@@ -142,8 +142,14 @@ export const runDelegate = async (
       // same registry/policy/approval evaluation as the main loop, with the
       // authorization context rebuilt for this nested tool name.
       const authorization = await ctx.authorizeSubAgentTool(toolName, toolArgs)
-      if (authorization.decision === 'deny') {
-        return authorization.result
+      if (authorization.decision !== 'allow') {
+        return authorization.decision === 'deny'
+          ? authorization.result
+          : {
+            inputSummary: summarizeToolInput(toolArgs),
+            output: 'This nested tool call requires approval from the main run.',
+            success: false,
+          }
       }
       if (mcpExposedNames.has(toolName)) {
         return mcpView.dispatch(toolName, toolArgs, toolCallId)

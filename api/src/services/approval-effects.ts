@@ -4,6 +4,7 @@ import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { activateAgentTodoTemplate } from '@nessie/workspace-admin'
 import { emitAuditEvent } from './audit.js'
+import { resumeRunFromApproval } from './approval-resume.js'
 import { createKnowledgePublicationAttention } from './push-attention.js'
 
 // The minimal shape runApprovalEffect needs from an approval row — matches
@@ -124,6 +125,21 @@ export const runApprovalEffect = async (
   actorContext: AuthorizedActionContext,
 ): Promise<ApprovalEffectResult> => {
   switch (approval.action) {
+    case 'tool.invoke': {
+      const result = await resumeRunFromApproval(prisma, approval.id)
+      switch (result.kind) {
+        case 'resumed':
+          return { note: `resumed run ${result.runId}` }
+        case 'run_not_waiting':
+          return { note: 'run no longer waiting' }
+        case 'already_resumed':
+          return { note: 'checkpoint was already consumed' }
+        case 'busy':
+          return { note: 'thread became busy before resume' }
+        case 'invalid_resume_state':
+          return { note: 'resume state is invalid — run not resumed' }
+      }
+    }
     case 'knowledge.page.publish':
       return runKnowledgePagePublishEffect(prisma, approval, actorContext)
     case 'agent.todo_template.publish':

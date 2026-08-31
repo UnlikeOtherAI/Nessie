@@ -81,6 +81,8 @@ export const buildModelPrompt = (
      * already framed by `buildCheckpointInjection`.
      */
     checkpointNotes?: string | null
+    /** Server-authored tool-gate fact for an approval continuation. */
+    approvalInstruction?: string | null
     /** Structural toolset facts driving the research routing block (§9). */
     routing?: ResearchRoutingFacts
     /** Bounded, durable to-do facts, omitted unless execution tools resolve. */
@@ -187,6 +189,9 @@ export const buildModelPrompt = (
   // conversation, carrying their own untrusted framing (§5).
   if (options.checkpointNotes) {
     messages.push({ content: options.checkpointNotes, role: 'system' })
+  }
+  if (options.approvalInstruction) {
+    messages.push({ content: options.approvalInstruction, role: 'system' })
   }
 
   // The clock is volatile by nature, so it rides behind the stable anchor and

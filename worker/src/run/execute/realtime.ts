@@ -32,7 +32,7 @@ export const publishAgentStatus = async (
   realtimeTransport: PgRealtimeTransport,
   context: RunContext,
   input: {
-    status: 'idle' | 'thinking' | 'executing' | 'error'
+    status: 'idle' | 'thinking' | 'executing' | 'waiting_approval' | 'error'
     currentRunId?: string
     currentToolName?: string
     currentToolStartedAt?: string

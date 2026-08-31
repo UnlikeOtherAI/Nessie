@@ -50,7 +50,7 @@ export type RunStopPlan = {
   }
 }
 
-const generateCheckpointNote = async (
+export const generateCheckpointNote = async (
   inference: RunInference,
   invocationSink: InvocationRecord[],
   input: { goal: string; lastAssistantText: string; messages: ProviderMessage[] },

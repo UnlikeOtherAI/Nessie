@@ -1,7 +1,6 @@
 import {
   failDeepWaterHandoffStart,
   findDeepWaterHandoffRun,
-  markAmbiguousDeepWaterHandoffRecoveryNeeded,
   markDeepWaterHandoffRecoveryNeeded,
   type DeepWaterHandoffRunLocator,
   type InvocationRecord,
@@ -14,41 +13,24 @@ import {
 } from '@nessie/schemas'
 import {
   createDeepWaterHandoffGuard,
-  DeepWaterHandoffFatalError,
   type DeepWaterHandoffGuard,
   DeepWaterHandoffInvariantError,
 } from '../deepwater-handoff-guard.js'
-import { promoteUnresolvedDeepWaterHandoffError } from '../deepwater-handoff-failure.js'
 import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
-import {
-  isFinalQueueAttempt,
-  shouldRetryRunWithoutTerminalizing,
-  type QueueAttempt,
-} from '../tool-execution-errors.js'
+import type { QueueAttempt } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
 import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
-import { classifyBudgetStop } from './budget-stop.js'
 import { isInteractiveRun } from './continuation.js'
 import { createRunInference } from './run-inference.js'
 import { prepareRunExecution } from './run-setup.js'
-import {
-  applyRunStopContinuation,
-  prepareRunStop,
-  prepareWindDownHandover,
-  WIND_DOWN_INSTRUCTION,
-} from './run-stop.js'
+import { WIND_DOWN_INSTRUCTION } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import { isContentlessAfterReacting, markWorking } from './working-marker.js'
-import { resolveRollingWatch } from './watch-status-gate.js'
-import { handleCancelStop } from './cancel-stop.js'
-import { completeRunExecution } from './completion.js'
+import { markWorking } from './working-marker.js'
 import { runExternalConversation } from '../external-conversation.js'
-import { persistInvocationLedgerEvents } from '../inference.js'
-import { handleRunExecutionFailure } from './failure.js'
 import {
   claimRunForExecution,
   loadRunContext,
@@ -56,7 +38,6 @@ import {
   updateTaskStatus,
   updateRunStatus,
 } from './lifecycle.js'
-import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import {
@@ -67,6 +48,8 @@ import {
 import { buildScopes } from './scopes.js'
 import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import { createDocumentStreamRecorder } from './document-stream.js'
+import { handleRunFailurePath } from './run-failure-path.js'
+import { handleRunLoopOutcome } from './run-outcome.js'
 import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
@@ -85,7 +68,6 @@ import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
 } from './personal-assistant-presence-placement.js'
-
 export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -111,12 +93,10 @@ export const executeRunJob = async (
     console.log(`[worker] Skipping already-${existingRun.status} run ${payload.runId}`)
     return
   }
-
   const context = await loadRunContext(deps.prisma, payload)
   if (!context) {
     return
   }
-
   // A queued PA presence run must not act after its owner leaves the room or
   // is deactivated. This is deliberately a quiet cancellation, not the normal
   // failure path: posting a failure would itself be an unauthorized PA action.
@@ -145,14 +125,12 @@ export const executeRunJob = async (
     where: { id: payload.messageId },
     select: { content: true, metadata: true, rootMessageId: true },
   })
-
   if (!message) {
     return
   }
 
   let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
-
   let streamStarted = false
   let planContext: RunPlanContext | null = null
   let deepWaterHandoffGuard: DeepWaterHandoffGuard | null = null
@@ -432,6 +410,7 @@ export const executeRunJob = async (
       }),
       checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
       inference,
+      isHandoffTurn: handoffLocator !== null,
       initialMessages: setup.initialMessages,
       executorToolset: setup.executorToolset,
       invocationSink: invocations,
@@ -457,182 +436,30 @@ export const executeRunJob = async (
     await documentStream.close()
     deepWaterHandoffGuard.assertCompletion()
 
-    const responseText = stripLeadingSectionTag(loopResult.finalText)
-
-    // A cooperative cancel is a classified, user-visible outcome (like a
-    // budget-cap stop): any partial answer is delivered with a "cancelled"
-    // notice and the run ends `cancelled`. DeepWater handoff runs are guarded
-    // against cancel at the API (409 → research_cancel), so `cancelRequestedAt`
-    // is never set on them; the `!handoffLocator` check keeps their invariants
-    // untouched even if the flag somehow appeared.
-    if (loopResult.cancelled && !handoffLocator) {
-      // Stopping means nothing is saved (a half-written document filed under a
-      // real name is worse than none), so any live session ends here — before
-      // the cancel handler publishes `stream.done`.
-      await documentStream.finalizeOutstanding('cancelled')
-      await handleCancelStop(deps, payload, context, planContext, loopResult, responseText)
-      terminalOutcome = 'cancelled'
-      return
-    }
-
-    // A budget-cap stop is a classified, user-visible outcome — never a silent
-    // empty reply. DeepWater handoff runs (`handoffLocator`) keep their exact
-    // existing completion path so their strict invariants are untouched.
-    if (loopResult.exhaustedBudget && !handoffLocator) {
-      await documentStream.finalizeOutstanding('budget_stopped')
-      const hadPartialText = responseText.trim().length > 0
-      // Reserved headroom pays for the checkpoint here, before anything is
-      // delivered — a checkpoint cannot be produced after the budget is gone.
-      const stopPlan = await prepareRunStop(deps, payload, context, {
-        goal: prompt,
-        hadPartialText,
-        inference,
-        invocationSink: invocations,
-        loopResult: { ...loopResult, exhaustedBudget: loopResult.exhaustedBudget },
-        priorGeneration: setup.checkpoint?.generation ?? 0,
-      })
-      if (hadPartialText) {
-        // Partial answer present: deliver it with the stop notice appended and
-        // complete the run normally.
-        await completeRunExecution(deps, payload, context, planContext, {
-          invocations: loopResult.invocations,
-          iterations: loopResult.iterations,
-          memories: setup.memories,
-          messageMetadata: { runStop: stopPlan.runStopMetadata },
-          responseText: `${responseText}\n\n${stopPlan.notice}`,
-          toolCallsUsed: loopResult.toolCallsUsed,
-        })
-        terminalOutcome = 'completed'
-      } else {
-        // No answer at all: still record the tokens/cost this run spent (the
-        // failure path does not, but completeRunExecution would have), then
-        // post the notice as the terminal message and fail the run so the user
-        // is told why nothing came back.
-        await persistInvocationLedgerEvents(deps.prisma, {
-          actorContext: payload.actorContext,
-          agentId: context.agent.id,
-          invocations: loopResult.invocations,
-          runId: context.run.id,
-        })
-        await handleRunExecutionFailure(deps, payload, context, {
-          error: new Error(
-            `Run stopped at ${classifyBudgetStop(loopResult.exhaustedBudget)}`,
-          ),
-          planContext,
-          streamStarted,
-          terminalMessage: stopPlan.notice,
-          terminalMessageMetadata: { runStop: stopPlan.runStopMetadata },
-        })
-        terminalOutcome = 'failed'
-      }
-      // Enqueued only after this run is terminal, so the per-(agent, thread)
-      // single-run invariant is never broken to force a continuation.
-      await applyRunStopContinuation(deps, payload, context, stopPlan)
-      return
-    }
-
-    // Wound-down handover (spec §3a): the model was told the run was ending and
-    // finished on its own terms. Its closing words ARE the notice; the
-    // checkpoint is written quietly so a reply or Continue resumes with state.
-    const windDownMetadata =
-      loopResult.woundDown && !handoffLocator && responseText.trim().length > 0
-        ? await prepareWindDownHandover(deps, payload, context, {
-          goal: prompt,
-          inference,
-          invocationSink: invocations,
-          loopResult,
-          priorGeneration: setup.checkpoint?.generation ?? 0,
-        })
-        : null
-
-    // A recurring watch that found nothing folds into its rolling status line
-    // rather than adding another "nothing changed" to the channel. Gated on
-    // structural facts — an unattended run belonging to a trigger that has not
-    // opted out — and then judged by the model, which fails open to posting.
-    const rollingWatch = await resolveRollingWatch(deps, payload, context, {
-      responseText,
-      runUtility: inference.runUtility,
-    })
-
-    // A run that answered with a reaction has already spoken. Posting its
-    // leftover "👍" as a message too would say the same thing twice, the
-    // second time as text.
-    const reactionWasTheAnswer = isContentlessAfterReacting(reacted, responseText)
-
-    await completeRunExecution(deps, payload, context, planContext, {
-      invocations: loopResult.invocations,
-      iterations: loopResult.iterations,
-      memories: setup.memories,
-      ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
-      responseText,
-      ...(rollingWatch ? { rollingWatch } : {}),
-      ...(reactionWasTheAnswer ? { reactionWasTheAnswer: true } : {}),
-      toolCallsUsed: loopResult.toolCallsUsed,
-    })
-    terminalOutcome = 'completed'
-  } catch (caughtError) {
-    // Same stream-contract rule as the success path: the failure handler will
-    // publish `stream.done`, so drain any buffered thinking first. Idempotent,
-    // error-swallowing, and also correct on the retry-throw path (the retry
-    // republishes `stream.start`, so its stream stays well-formed).
-    await thinkingRecorder.close()
-    // A document that was still streaming when the run failed never became a
-    // file. Terminalize it before the failure handler publishes `stream.done`,
-    // so the popup resolves instead of hanging on a run that has ended.
-    await documentStream.finalizeOutstanding('run_failed')
-    await documentStream.close()
-    const error = promoteUnresolvedDeepWaterHandoffError(
-      caughtError,
-      deepWaterHandoffGuard,
-    )
-    if (shouldRetryRunWithoutTerminalizing(error, queueAttempt)) throw error
-    if (
-      isFinalQueueAttempt(queueAttempt)
-      && error instanceof DeepWaterHandoffFatalError
-      && handoffLocator
-    ) {
-      if (error.handoffRunId) {
-        await markDeepWaterHandoffRecoveryNeeded(deps.prisma, {
-          ...handoffLocator,
-          runId: error.handoffRunId,
-        })
-      } else {
-        await markAmbiguousDeepWaterHandoffRecoveryNeeded(
-          deps.prisma,
-          handoffLocator,
-        )
-      }
-    }
-    // Attribute the tokens this run burned before it failed. Completion (and the
-    // budget-stop no-text path) persist their own invocations; a crashed/aborted
-    // run never reaches completion, so without this its inference spend would be
-    // dropped and impossible to attribute. Idempotent: persistInvocationLedgerEvents
-    // dedupes on inferenceInvocationId, so a later retry that reuses ids is safe.
-    // Best-effort — a ledger write must never mask the original failure.
-    if (invocations.length > 0) {
-      try {
-        await persistInvocationLedgerEvents(deps.prisma, {
-          actorContext: payload.actorContext,
-          agentId: context.agent.id,
-          invocations,
-          runId: context.run.id,
-        })
-      } catch (ledgerError) {
-        console.error(
-          '[worker] failed to persist ledger events for failed run',
-          context.run.id,
-          ledgerError,
-        )
-      }
-    }
-    await handleRunExecutionFailure(deps, payload, context, {
-      error,
+    terminalOutcome = await handleRunLoopOutcome(deps, payload, context, {
+      documentStream,
+      handoffLocator,
+      inference,
+      invocations,
+      loopResult,
       planContext,
+      prompt,
+      reacted,
+      setup,
       streamStarted,
     })
-    terminalOutcome = 'failed'
-
-    throw error
+  } catch (caughtError) {
+    await handleRunFailurePath(deps, payload, context, {
+      caughtError,
+      deepWaterHandoffGuard,
+      documentStream,
+      handoffLocator,
+      invocations,
+      planContext,
+      queueAttempt,
+      streamStarted,
+      thinkingRecorder,
+    })
   } finally {
     // Flush whatever thought process is still buffered, on every exit path
     // (completion, classified stop, crash, retry-throw). Idempotent and

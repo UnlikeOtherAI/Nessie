@@ -3866,6 +3866,14 @@ model ApprovalRequest {
   resolutionNote       String?        @map("resolution_note")
   requiredApproverRole String?        @map("required_approver_role")
   continuationToken    String         @map("continuation_token")
+  // Server-authored tool-gate identity. These values are deliberately absent
+  // from approval presenters: a human sees the bounded `context` summary,
+  // while the exact arguments and original run identity stay server-side.
+  toolCallId           String?        @map("tool_call_id")
+  toolName             String?        @map("tool_name")
+  argsHash             String?        @map("args_hash")
+  resumeState          Json?          @map("resume_state")
+  proofConsumedAt      DateTime?      @map("proof_consumed_at")
   expiresAt            DateTime       @map("expires_at") @db.Timestamptz(6)
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
