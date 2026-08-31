@@ -326,6 +326,52 @@ the server's aggregate rather than the length of the loaded slice. Narrowing is
 a server round trip (`useApps({ category })`) — per §"Search is the database's
 job", the client never filters what it was sent.
 
+## Icons resolve on first view, and the instance shares one copy
+
+The store rendered a monogram on all 5,548 rows, and the reason was one missing
+argument: icon caching was wired only into the **owner-triggered** sync route,
+and the scheduled worker sweep — the only sync that has ever written rows in
+production — passes no `iconCacher`. Six sweeps, `icons_cached = 0` on every
+one. The registry is also a poor source: it publishes an `icons` field on
+roughly 8% of records, while ~75% of catalogue rows carry a `websiteUrl`.
+
+So the icon is derived from the site, **lazily**, by
+`resolveAppIcon` (`apps/app-icon-resolve.ts`):
+
+- **On first view, never on a timer.** `GET /api/apps/:id/icon` starts the
+  resolution; a sweep over 5,500 author-chosen URLs would make every deployment
+  a scanner, and would decay and need re-paying forever. Attention bounds the
+  work, and a row that gains a website later resolves the next time it is seen.
+- **The request never waits for it.** An image request holds one of the ~6
+  connections a browser opens per origin, so awaiting the fetch serialised
+  dozens of cards into a minutes-long queue that starved the page's own API
+  calls. The route answers 404 immediately — the card draws its monogram — and
+  the icon appears on the next visit.
+- **One conditional UPDATE is the whole concurrency design.** Claiming
+  `iconResolvedAt` before fetching means dozens of simultaneous misses perform
+  one fetch, with no lock or transaction held across network I/O. Stamping
+  *before* the attempt is also what stops a site with no favicon being
+  re-fetched on every paint.
+- **Shared by the instance.** The result is one attachment, served cross-org by
+  the same store-visibility floor as the record, so the second viewer — in any
+  organisation — pays nothing.
+- **Bytes are sniffed, never trusted.** Origin-only candidates (a `websiteUrl`
+  cannot steer the fetch to a chosen path), `safeFetch` IP-pinning, a byte cap
+  enforced mid-stream, and raster-only output — an SVG is a script container and
+  is dropped however the host labels it. `FileService` stores it, so it is
+  accounted like any other file.
+- **The client fetches it as an authed blob**, through the same
+  `useAuthedObjectUrlFromPath` an agent avatar uses. `<img src="/api/…">` cannot
+  work here twice over: the admin and API are different origins (`app.` vs
+  `api.`), and an `<img>` cannot carry an `Authorization` header.
+
+Expect roughly a third to a half of cards to end up with a real mark: measured
+against live production sites, 4 of 6 serve a usable raster at the conventional
+paths, and 13 of 41 catalogue rows resolved in a batch. A monogram is a
+legitimate final state, not a failure — `icon-store.ts` holds the one
+fetch→cap→sniff→store pipeline all three cachers share, so a fourth source
+(an ICO decoder, `<link rel=icon>` parsing) plugs in without a fork.
+
 ## Not built yet
 
 Icon caching — `iconsCached` is always 0, because a cached icon has to go
