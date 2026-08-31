@@ -41,25 +41,9 @@ const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {
   'src/components/features/knowledge/FileVersionUploadDialog.tsx':
     'Documented in file: a rounded-2xl / --main / p-5 card with a drop shadow and a text "Close" '
     + 'control, none of which the shell\'s .create-channel-panel chrome expresses.',
-  'src/components/features/mcp-app-store/CredentialsDialog.tsx':
-    'Documented in file: the app-store modals are admin-card panels on --main with a ghost "Close" '
-    + 'control, not the shell\'s .create-channel-panel card and close cross.',
-  'src/components/features/mcp-app-store/InstallScopeDialog.tsx':
-    'Documented in file: an admin-card panel that *is* the <form>, with no close control at all — '
-    + 'the shell always renders one.',
-  'src/components/features/mcp-app-store/LibraryInstallDialog.tsx':
-    'Documented in file: an admin-card panel that *is* the <form>, with no close control at all — '
-    + 'the shell always renders one.',
-  'src/components/features/mcp-app-store/RejectDialog.tsx':
-    'Documented in file: an admin-card panel with no close control and no scrim dismissal — '
-    + 'rejecting needs a deliberate Cancel, not a stray click.',
   'src/components/features/triggers/TriggerEditorDialog.tsx':
     'Documented in file: its subtitle is mt-1 text-sm where the shell renders a description at '
     + 'text-xs, and its 680px panel is not one of the three geometries the shell ships.',
-  'src/pages/McpAppStorePage.tsx':
-    'Unconverted debt, no reason recorded in the file: the inline "Add MCP server" wizard modal, an '
-    + 'admin-card max-w-2xl on --main in the same family as the app-store dialogs above, with no '
-    + 'keyboard affordances at all.',
 }
 
 const walk = (dir: string): string[] =>

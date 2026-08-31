@@ -30,7 +30,6 @@ import { DashboardDetailPage } from './pages/DashboardDetailPage'
 import { LoginRoute } from './pages/LoginRoute'
 import { AppDetailPage } from './pages/AppDetailPage'
 import { AppsPage } from './pages/AppsPage'
-import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OperationalTelemetryPage } from './pages/OperationalTelemetryPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
@@ -257,10 +256,6 @@ export const router = createBrowserRouter([
       {
         path: '/apps/:slug',
         element: <AppDetailPage />,
-      },
-      {
-        path: '/mcp-app-store',
-        element: <McpAppStorePage />,
       },
       {
         path: '/settings',

@@ -8,7 +8,6 @@ import {
   channelKeys,
   dashboardKeys,
   knowledgeKeys,
-  mcpKeys,
   projectKeys,
   taskKeys,
   threadKeys,
@@ -168,11 +167,6 @@ test('task and knowledge keys keep their placeholder fallbacks', () => {
 test('a family root is the prefix its own children are built from', () => {
   assert.deepEqual(appKeys.detail('slack').slice(0, appKeys.all.length), appKeys.all)
   assert.deepEqual(appKeys.list({}).slice(0, appKeys.all.length), appKeys.all)
-
-  assert.deepEqual(
-    mcpKeys.librarySearch('linear').slice(0, mcpKeys.library.length),
-    mcpKeys.library,
-  )
 
   for (const key of [workflowKeys.failedRuns, workflowKeys.run('wr-1')]) {
     assert.deepEqual(key.slice(0, workflowKeys.runs.length), workflowKeys.runs)

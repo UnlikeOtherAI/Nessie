@@ -1,24 +1,21 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 
 import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
 import { useModalA11y } from '../../shared/useModalA11y'
 import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 import { connectAuthExpectation, connectPublisherLine } from './app-connect-copy'
+import { AppSecretDialog } from './AppSecretDialog'
 import { ConnectProgress } from './ConnectProgress'
 
 /**
  * Connecting an app, without leaving the Apps page.
  *
- * The card's Connect button used to hand the person to the Connectors page's
- * install form — an endpoint URL and a key box over a page they had not asked
- * for. This dialog runs the same `useAppConnectFlow` the detail hero drives,
- * in place: the step list while probing, the provider's sign-in window for
- * OAuth, and the existing credentials path when the app wants a key. No raw
- * endpoint, no scope picker, no credential field ever renders here — the
- * caller's own scope is the only one this surface offers, and a key belongs
- * to the encrypted credential dialog on the Connectors page, which the
- * `needs_secret` panel points at.
+ * This dialog runs the same `useAppConnectFlow` the detail hero drives: the
+ * step list while probing, the provider's sign-in window for OAuth, and the
+ * app-owned encrypted key dialog when a key is needed. No raw endpoint or
+ * scope picker renders here — the caller's own scope is the only one this
+ * surface offers.
  */
 
 type AppConnectDialogProps = {
@@ -30,6 +27,7 @@ type AppConnectDialogProps = {
 export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) => {
   const connect = useAppConnectFlow({ slug: app.slug ?? app.id })
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
   const titleId = useId()
   const descriptionId = useId()
 
@@ -39,6 +37,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   // invalidated and the card flips to Connected on its own.
   const handleClose = () => {
     connect.dismiss()
+    setSecretConnectionId(null)
     onClose()
   }
 
@@ -53,8 +52,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   useEffect(() => {
     if (open && phase === 'idle') {
       // The caller's own scope — connecting an app for yourself is what every
-      // member may do without asking. A shared install stays an owner's
-      // decision on the Connectors page, where the scope picker lives.
+      // member may do without asking.
       connect.connect({ scopeType: 'user' })
     }
     // `connect.connect` is stable for the slug's lifetime; keying on the phase
@@ -139,7 +137,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
             nothing — the header above carries the success sentence. */}
         <ConnectProgress
           appName={app.displayName}
-          credentialsHref={`/mcp-app-store?catalogEntryId=${encodeURIComponent(app.id)}`}
+          onAddSecret={setSecretConnectionId}
           onDismiss={connect.dismiss}
           onReopenAuthorization={connect.reopenAuthorization}
           onRetry={connect.retry}
@@ -158,6 +156,13 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
           </div>
         ) : null}
       </div>
+      <AppSecretDialog
+        connectionId={secretConnectionId}
+        onClose={() => setSecretConnectionId(null)}
+        onSaved={() => {
+          connect.retry()
+        }}
+      />
     </div>
   )
 }

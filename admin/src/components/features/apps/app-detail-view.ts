@@ -10,10 +10,9 @@ import type { ConnectPhase } from './connect-flow'
 /**
  * What the app detail page shows and in which tab.
  *
- * The page is the member surface: connect, accounts, capabilities, agents. The
- * Connectors page stays the owner's governance surface, and neither restates
- * the other — health probes, failure counts, endpoints and credentials are
- * operational facts that never render here.
+ * The page is the member surface: connect, accounts, capabilities, and agents.
+ * Health probes, failure counts, endpoints, and credentials are operational
+ * facts that do not render here.
  */
 
 // ─── Tabs ───────────────────────────────────────────────────────────────────
@@ -99,7 +98,7 @@ export type AppDetailCta =
  * GitHub's page under GitHub's name and icon does not need "Connect Nessie to
  * GitHub" spelled out. The card and the detail hero now offer the SAME action:
  * both run the connect flow in place (`kind: 'connect'`), because connecting
- * from the store must never bounce a person to the Connectors page. So this is
+ * from the store must never bounce a person away from their app. So this is
  * a pass-through — kept as a named seam because the hero has diverged from the
  * card before and may again, and one call site is cheaper to change than every
  * consumer.
@@ -115,17 +114,6 @@ export const appDetailCta = (app: AppDetailRecord): AppDetailCta => appCardActio
  */
 export const appConnectInFlight = (phase: ConnectPhase): boolean =>
   phase === 'probing' || phase === 'awaiting_authorization' || phase === 'verifying'
-
-/**
- * Where a person adds the key an app asked for.
- *
- * The Connectors page owns the encrypted credential dialog, and this points at
- * the app's installed scopes there — deliberately *not* at `installHref`, whose
- * install dialog would create a second account. By the time the server answers
- * `needs_secret` the account already exists; what is missing is its key.
- */
-export const appCredentialsHref = (app: AppDetailRecord): string =>
-  `/mcp-app-store?catalogEntryId=${encodeURIComponent(app.id)}`
 
 /** "by GitHub, Inc. · Development", or just the category when nobody claims it. */
 export const appProviderLine = (app: AppDetailRecord): string => {
@@ -147,7 +135,7 @@ export type AppDetailStat = { label: string; value: string }
 /**
  * "What did I get?" — the only telemetry a member needs. A tile with nothing to
  * report is cut rather than shown as zero: failure counts and health probes are
- * owner-ops data and live on the Connectors page.
+ * owner-ops data.
  */
 export const appDetailStats = (app: AppDetailRecord): AppDetailStat[] => {
   const stats: AppDetailStat[] = []

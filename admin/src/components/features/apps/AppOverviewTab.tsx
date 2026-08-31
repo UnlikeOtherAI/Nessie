@@ -9,7 +9,7 @@ type AppOverviewTabProps = {
 }
 
 // "What did I get, and who can already use it?" Health probes and failure
-// counts are owner-ops facts and stay on the Connectors page.
+// counts are owner-ops facts and do not render on this member surface.
 export const AppOverviewTab = ({ app }: AppOverviewTabProps) => {
   const stats = appDetailStats(app)
   const links = appDetailLinks(app)

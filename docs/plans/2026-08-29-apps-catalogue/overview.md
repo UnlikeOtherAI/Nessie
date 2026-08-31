@@ -1,4 +1,4 @@
-# MCP App Store
+# Apps catalogue
 
 Browsing and installing an integration should feel like installing an app in
 Slack or Notion, not like configuring a server. `/apps` is that surface.
@@ -26,14 +26,12 @@ without anyone running a CLI.
 - [ux-design-detail-and-connect.md](ux-design-detail-and-connect.md) — one app's
   detail page and the connect flow.
 
-## One catalogue, two faces
+## One catalogue, one product surface
 
 The App Store is **a second face on `McpCatalogEntry`, never a second
-catalogue**. One row is one app. `/apps` is the member-facing store; the
-existing `/mcp-app-store` "Connectors" page stays as the governance surface
-(catalog review, install scopes, credentials, the approval queue). Both read
-the same rows, so they cannot drift into two sources of truth — which is
-exactly what a parallel `mcp_apps` table would have guaranteed.
+catalogue**. One row is one app, and `/apps` is the one product surface.
+Keeping that presentation on the existing catalogue row prevents a second
+source of truth — exactly what a parallel `mcp_apps` table would guarantee.
 
 Product vocabulary on `/apps`: MCP server → **App**; a connection → **Connected
 account**; `tools/list` → **Capabilities**. A person never needs to know the
@@ -311,8 +309,8 @@ error, so a genuinely dead listing still reads as one. A human-authored entry is
 never overwritten: its `authMethod` is a statement, not a default.
 
 **Connecting happens on `/apps`, in a dialog that says what it will do.**
-Connect used to navigate to the Connectors page, which dropped the person out
-of the store mid-decision and into a surface built for a different question.
+Connect previously left the store mid-decision for a surface built for a
+different question.
 `AppConnectDialog` runs the whole flow in place and states the cost of the
 click *before* it is made — "Connecting opens a … sign-in window", "needs no
 sign-in", or "needs an API key" — read from `AppSummaryRecord.authMethod`. That

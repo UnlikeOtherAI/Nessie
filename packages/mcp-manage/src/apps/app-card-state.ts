@@ -8,7 +8,7 @@ import type { AppCardState, AppConnectionStatus } from '@nessie/schemas'
  * exercising directly, and a signature made of plain records is what lets that
  * happen without a database.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-catalogue.md` §4.
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-catalogue.md` §4.
  */
 
 export type AppAvailability = {

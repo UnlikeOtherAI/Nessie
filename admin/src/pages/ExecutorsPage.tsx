@@ -233,7 +233,7 @@ export const ExecutorsPage = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <Link className="admin-button admin-button-secondary" to="/mcp-app-store">Manage connectors</Link>
+            <Link className="admin-button admin-button-secondary" to="/apps">Manage apps</Link>
             <button className="admin-button admin-button-primary" onClick={() => setShowCreate((open) => !open)} type="button">
               {showCreate ? 'Close pairing' : 'Pair executor'}
             </button>

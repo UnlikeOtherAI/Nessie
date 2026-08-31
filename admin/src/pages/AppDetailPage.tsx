@@ -1,13 +1,14 @@
 import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
 import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
+import { AppSecretDialog } from '../components/features/apps/AppSecretDialog'
 import { ConnectProgress } from '../components/features/apps/ConnectProgress'
 import {
   appConnectInFlight,
-  appCredentialsHref,
   appDetailTabs,
   appNotFoundMessage,
   resolveAppDetailTab,
@@ -29,10 +30,8 @@ import { usePhoneLayout } from '../lib/mobile-shell'
  *
  * It is also where connecting happens. The hero's primary control runs the
  * connect flow in place and the progress panel renders under it, so a person
- * decides and acts on one screen instead of being handed to the Connectors
- * page's install dialog — the owner's governance surface, which asks questions
- * (scope, transport, credentials) a member connecting an app for themselves has
- * no reason to answer.
+ * decides and acts on one screen. A member connecting an app for themselves
+ * never needs to answer implementation questions about its transport or scope.
  */
 export const AppDetailPage = () => {
   const navigate = useNavigate()
@@ -43,8 +42,27 @@ export const AppDetailPage = () => {
   // endpoint takes the same identifier, and the flow re-reads the app through
   // the same cache entry this page renders from.
   const connect = useAppConnectFlow({ slug: slug ?? '' })
+  const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
+  const customConnectStartedFor = useRef<string | null>(null)
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
+
+  // A custom app has already created its user-scoped connection. Its first
+  // result may still need a key or OAuth, so it arrives here with one explicit
+  // request to resume that same flow rather than leaving a pending card that
+  // cannot explain its next action.
+  useEffect(() => {
+    if (searchParams.get('connect') !== 'true') {
+      customConnectStartedFor.current = null
+      return
+    }
+    if (connect.state.phase !== 'idle' || customConnectStartedFor.current === slug) return
+    customConnectStartedFor.current = slug ?? null
+    const params = new URLSearchParams(searchParams)
+    params.delete('connect')
+    setSearchParams(params, { replace: true })
+    connect.connect({ scopeType: 'user' })
+  }, [connect, searchParams, setSearchParams, slug])
 
   // Apps owns this detail's immediate parent. On a phone use the shell's
   // ledger-aware action so the labelled Apps doorway, an edge swipe, and
@@ -121,9 +139,7 @@ export const AppDetailPage = () => {
             app={app}
             connectInFlight={appConnectInFlight(connect.state.phase)}
             // The caller's own scope: connecting an app for yourself is what
-            // every member may do without asking. A shared install is an
-            // owner's decision and stays on the Connectors page, which is
-            // where the scope picker lives.
+            // every member may do without asking.
             onConnect={() => connect.connect({ scopeType: 'user' })}
             onManageAccess={() => selectTab('agents')}
           />
@@ -132,7 +148,7 @@ export const AppDetailPage = () => {
               Renders nothing while idle, so the grid gap does not open. */}
           <ConnectProgress
             appName={app.displayName}
-            credentialsHref={appCredentialsHref(app)}
+            onAddSecret={setSecretConnectionId}
             onDismiss={connect.dismiss}
             onReopenAuthorization={connect.reopenAuthorization}
             onRetry={connect.retry}
@@ -141,9 +157,21 @@ export const AppDetailPage = () => {
             // claims more than the record knows. The app's own name is true.
             state={connect.state}
           />
-          <AppDetailTabs activeTab={activeTab} app={app} onSelectTab={selectTab} />
+          <AppDetailTabs
+            activeTab={activeTab}
+            app={app}
+            onConnectAnother={() => connect.connect({ scopeType: 'user' })}
+            onSelectTab={selectTab}
+          />
         </div>
       </div>
+      <AppSecretDialog
+        connectionId={secretConnectionId}
+        onClose={() => setSecretConnectionId(null)}
+        onSaved={() => {
+          connect.retry()
+        }}
+      />
     </div>
   )
 }

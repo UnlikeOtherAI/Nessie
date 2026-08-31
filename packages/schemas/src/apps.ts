@@ -4,9 +4,9 @@ import { McpServerScopeTypeSchema } from './mcp.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 /**
- * MCP App Store — the wire contract for the consumer-facing catalogue.
+ * Apps catalogue — the wire contract for the consumer-facing catalogue.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-catalogue.md` and
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-catalogue.md` and
  * `…/ux-design-detail-and-connect.md`.
  *
  * The store is a presentation dimension on the existing `McpCatalogEntry`, not
@@ -211,15 +211,6 @@ export const AppSummaryRecordSchema = z.object({
   // holds, so the number on the card is the number the detail view lists.
   connectionCount: z.number().int().nonnegative(),
   state: AppCardStateSchema,
-  /**
-   * Where the card's primary action goes — today the existing Connectors
-   * install path (`/mcp-app-store?catalogEntryId=…&action=install`), since the
-   * universal connect flow is a later phase. On the summary and not only the
-   * detail record because the grid's buttons need it too, and a client that
-   * assembles this URL itself is a second opinion about the install route that
-   * will drift the moment that route moves.
-   */
-  installHref: NonEmptyStringSchema,
 })
 export type AppSummaryRecord = z.infer<typeof AppSummaryRecordSchema>
 

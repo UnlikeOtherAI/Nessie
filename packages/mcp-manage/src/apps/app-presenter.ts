@@ -143,15 +143,6 @@ export type AppPresentationContext = {
 export const appIconUrl = (row: StoreCatalogRow): string | null =>
   appIconIsResolvable(row) ? `/api/apps/${row.id}/icon` : null
 
-/**
- * The primary action still lands on the existing Connectors install path: the
- * universal connect flow is a later phase, and the server names the
- * destination so no surface assembles a URL of its own. It rides on the
- * *summary*, so the grid's buttons and the detail hero's are the same link.
- */
-export const appInstallHref = (row: StoreCatalogRow): string =>
-  `/mcp-app-store?catalogEntryId=${encodeURIComponent(row.id)}&action=install`
-
 export const presentAppSummary = (
   row: StoreCatalogRow,
   context: AppPresentationContext,
@@ -182,7 +173,6 @@ export const presentAppSummary = (
   ),
   locked: row.locked,
   connectionCount: context.connectionStatuses.length,
-  installHref: appInstallHref(row),
   state: deriveAppCardState(
     {
       blocked: row.trustLevel === 'blocked',

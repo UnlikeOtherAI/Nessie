@@ -67,9 +67,8 @@ const publicInstance = <T extends { credentialRef: string | null }>(
  * How many of each instance's projected tools are still awaiting owner review.
  *
  * Counted only over instance ids the caller was already entitled to see — the
- * list above resolves entitlement, this just annotates it. Without this the
- * Connectors page cannot tell anyone that a freshly installed connector has
- * tools nobody has approved yet, and the review surface has no doorway.
+ * list above resolves entitlement, this annotates it for API and assistant
+ * setup flows that need to direct an owner to the review surface.
  */
 const countPendingToolsByInstance = async (
   prisma: PrismaClient,

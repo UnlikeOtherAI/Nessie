@@ -239,19 +239,7 @@ export const knowledgeKeys = {
     ['knowledge-zip-entry', pageId ?? 'none', versionId ?? 'none', path ?? 'none'] as const,
 }
 
-const mcpLibraryRoot = ['mcp-library'] as const
-
 export const mcpKeys = {
-  catalog: ['mcp-catalog'] as const,
-  catalogList: (view: string, status: string | null) =>
-    ['mcp-catalog', view, status] as const,
-  instances: ['mcp-instances'] as const,
-  instanceCredentials: (instanceId: string) =>
-    ['mcp-instances', instanceId, 'credentials'] as const,
-  instanceList: (scopeType: string | null, scopeId: string | null) =>
-    ['mcp-instances', scopeType, scopeId] as const,
-  library: mcpLibraryRoot,
-  librarySearch: (search: string) => [...mcpLibraryRoot, search] as const,
   tools: ['mcp-tools'] as const,
 }
 

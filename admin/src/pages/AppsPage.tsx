@@ -7,6 +7,8 @@ import { AppCategorySection } from '../components/features/apps/AppCategorySecti
 import { AppFeaturedStrip } from '../components/features/apps/AppFeaturedStrip'
 import { AppCatalogueSkeleton } from '../components/features/apps/AppSkeletons'
 import { AppsToolbar } from '../components/features/apps/AppsToolbar'
+import { CustomAppDialog } from '../components/features/apps/CustomAppDialog'
+import { appDetailHref } from '../components/features/apps/app-card-presentation'
 import {
   APP_GRID_CLASS,
   APP_GRID_FIVE_COLUMN_QUERY,
@@ -51,9 +53,8 @@ import { registerViewportMediaQuery, useViewport } from '../hooks/useViewport'
  * state, and the filter all read from `data.applied` — the request the rendered
  * rows actually answer — rather than from what the search box currently holds.
  *
- * The Connectors page (`/mcp-app-store`) stays the owner's surface for catalog
- * governance and the add-server wizard, and is where this page's one deliberate
- * doorway into protocol land leads.
+ * Adding an app by address stays here too: the catalogue remains the one place
+ * a person goes to connect what they need.
  */
 
 // The two widths the named breakpoint scale cannot express, registered once so
@@ -61,14 +62,13 @@ import { registerViewportMediaQuery, useViewport } from '../hooks/useViewport'
 registerViewportMediaQuery('apps-grid-2col', APP_GRID_TWO_COLUMN_QUERY)
 registerViewportMediaQuery('apps-grid-5col', APP_GRID_FIVE_COLUMN_QUERY)
 
-const CONNECTORS_HREF = '/mcp-app-store'
-
 export const AppsPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
   const [activeCategory, setActiveCategory] = useState<AppCategory | null>(null)
+  const [customAppDialogOpen, setCustomAppDialogOpen] = useState(false)
 
   // 150 ms is below the threshold where typing feels laggy and above the rate
   // at which re-requesting would churn.
@@ -146,7 +146,7 @@ export const AppsPage = () => {
     setSearchParams(params, { replace: true })
   }
 
-  const openConnectors = () => void navigate(CONNECTORS_HREF)
+  const openCustomAppDialog = () => setCustomAppDialogOpen(true)
 
   const empty = searching ? results.length === 0 : shelves.length === 0
   const emptyModel = catalogueEmptyMessage({
@@ -164,7 +164,7 @@ export const AppsPage = () => {
             icon: faPlus,
             id: 'apps-add-custom',
             label: 'Add a custom app',
-            onSelect: openConnectors,
+            onSelect: openCustomAppDialog,
             primary: true,
             priority: 0,
           },
@@ -219,7 +219,7 @@ export const AppsPage = () => {
                 <button
                   className="admin-button admin-button-secondary mt-3"
                   data-testid="apps-empty-add-custom"
-                  onClick={openConnectors}
+                  onClick={openCustomAppDialog}
                   type="button"
                 >
                   {emptyModel.actionLabel}
@@ -283,7 +283,7 @@ export const AppsPage = () => {
                 <button
                   className="admin-button admin-button-secondary"
                   data-testid="apps-footer-add-custom"
-                  onClick={openConnectors}
+                  onClick={openCustomAppDialog}
                   type="button"
                 >
                   {CATALOGUE_FOOTER_NUDGE.actionLabel}
@@ -293,6 +293,13 @@ export const AppsPage = () => {
           </div>
         </div>
       </div>
+      <CustomAppDialog
+        onAdded={(app) => {
+          void navigate(`${appDetailHref(app)}?connect=true`)
+        }}
+        onClose={() => setCustomAppDialogOpen(false)}
+        open={customAppDialogOpen}
+      />
     </div>
   )
 }

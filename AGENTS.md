@@ -316,10 +316,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
   See `docs/security-audit-2026-06.md`.
-- **The App Store (`/apps`) is a second face on `McpCatalogEntry`, never a
-  second catalogue.** One row is one app, so the member-facing store and the
-  `/mcp-app-store` governance page cannot drift apart; a parallel `mcp_apps`
-  table would have guaranteed they did. Store visibility is
+- **The App Store (`/apps`) is the product surface on `McpCatalogEntry`, never
+  a second catalogue.** One row is one app; a parallel `mcp_apps` table would
+  guarantee drift. Store visibility is
   `moderationState IN ('curated','approved')` + `trustLevel <> 'blocked'`
   composed with `catalogTenancyWhere` — and `curated` additionally requires
   public+published or caller-owned, because the migration backfills `curated`
@@ -341,7 +340,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `buildAccessibleChannelWhere` from `@nessie/workspace-admin` rather than
   restating it, so a member-readable surface can never name an agent
   `GET /api/agents` would withhold. Spec:
-  `docs/plans/2026-08-29-mcp-app-store/overview.md`.
+  `docs/plans/2026-08-29-apps-catalogue/overview.md`.
 - **App Store connect orchestrates the existing OAuth/instance machinery; it is
   never a second stack.** `POST /api/apps/:slug/connect` sequences
   `createInstance` → probe → `startOAuth`. PKCE must be present on BOTH legs —

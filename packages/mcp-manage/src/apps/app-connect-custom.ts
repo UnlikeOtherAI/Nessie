@@ -20,7 +20,7 @@ import { toAppSlug } from './app-slug.js'
  * "Add a custom app" — the `/apps` page's own doorway for a server that is not
  * in the catalogue yet.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md`
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`
  * §5. Its own module because authoring a catalogue row from a pasted address
  * is a different responsibility from connecting an app that already has one —
  * and because both of those, together, exceed the file cap.

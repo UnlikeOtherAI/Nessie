@@ -10,7 +10,7 @@ const main = async (): Promise<void> => {
   const prisma = getPrismaClient()
   try {
     const { seeded } = await seedPublicConnectors(prisma)
-    console.log(`Seeded ${seeded} public connector(s) into the MCP App Store.`)
+    console.log(`Seeded ${seeded} public connector(s) into the Apps catalogue.`)
   } finally {
     await disconnectPrismaClient()
   }

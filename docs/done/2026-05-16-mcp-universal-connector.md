@@ -8,7 +8,7 @@
 
 Make Nessie a **universal MCP client** plus a **connector plugin system** so an org can wire any external tool surface (MCP, HTTP API, OpenAPI) into the workflow runtime with scoped install + per-principal credentials.
 
-Mental model: an admin runs an "MCP App Store"; users authenticate the servers they want; every agent the user owns can be granted those tools. Same model for HTTP API connectors.
+Mental model: an admin runs an app catalogue; users authenticate the servers they want; every agent the user owns can be granted those tools. Same model for HTTP API connectors.
 
 ## 2) Confirmed decisions
 
@@ -21,7 +21,7 @@ Mental model: an admin runs an "MCP App Store"; users authenticate the servers t
 | D5 | Multi-scope MCP installs: `system` (cross-org), `organization`, `project`, `team`, `channel`, `user`. Spec already supports it. | Matches user's "global / per-project / per-group / per-user" requirement. |
 | D6 | Credential resolution = 7-level: `user → agent → channel → team → project → org → default`. Per-principal overrides allowed. | Matches `external-tool-integration.md` §4. |
 | D7 | Credentials always stored as `secretRef` to `packages/runtime` secret resolver — never plaintext in DB. | Phase 3 secret management. |
-| D8 | Tool surface UI lives inside the **Workflows section**. MCP App Store is a **separate admin section**. Installed servers appear in workflow tool pickers. | User IA decision. |
+| D8 | Tool surface UI lives inside the **Workflows section**. The app catalogue is a **separate admin section**. Installed servers appear in workflow tool pickers. | User IA decision. |
 | D9 | All emitted `ToolRegistryEntry` rows start `status: pending_review`. Admin approval required before agents can call. | Matches spec defaults. |
 | D10 | Use official **`@modelcontextprotocol/sdk`** for transport plumbing. Don't reinvent the protocol. | Lower risk, ecosystem-aligned. |
 | D11 | Project rule: work on `main`, no branches. Parallel agents work on **disjoint file sets**. | Project `CLAUDE.md`. |
@@ -34,7 +34,7 @@ Mental model: an admin runs an "MCP App Store"; users authenticate the servers t
 | **A — `packages/mcp-client`** | `packages/mcp-client/src/**`, `packages/mcp-client/package.json`, `packages/mcp-client/tsconfig.json`, `packages/mcp-client/test/**` | — (self-contained) | 1 |
 | **D — `packages/connectors`** | `packages/connectors/src/**`, `packages/connectors/package.json`, `packages/connectors/tsconfig.json`, `packages/connectors/test/**`, `docs/nessie-toolset.example.json` is read-only reference | — | 1 |
 | **C — API routes + worker dispatch** | `api/src/services/mcp-catalog.ts`, `api/src/services/mcp-instances.ts`, `api/src/services/mcp-credentials.ts`, `api/src/services/tool-grants.ts`, `api/src/services/tool-dispatch.ts`, `api/src/routes/mcp.ts`, `api/src/routes/tools-bundles.ts`, `worker/src/run/tool-dispatch.ts`, `worker/src/run/tool-mcp.ts`, `worker/src/run/tool-http.ts` | B, A | 2 |
-| **E — Admin UI** | `admin/src/features/workflows/tools/**`, `admin/src/features/admin/mcp-app-store/**`, `admin/src/api/mcp.ts`, `admin/src/api/connectors.ts`, route wiring | C contract stable | 3 |
+| **E — Admin UI** | Historical connector-management UI, workflow tools, and route wiring | C contract stable | 3 |
 | **F — Builtin tool migration** | Extend `packages/runtime/src/builtin-tools.ts` with `http_fetch`/`file_read`/`file_write`/`file_glob`; worker handlers in `worker/src/run/builtin-handlers/*` | B | 2 |
 | **G — Review** | Parallel `feature-dev:code-reviewer` passes per merged slice | each slice on completion | continuous |
 
@@ -125,8 +125,8 @@ toolCall → resolve ToolRegistryEntry → check ToolGrant → route by transpor
 > renders this section's registry view (filters + detail + per-agent grant
 > matrix). The earlier read-only `/settings/tools` stub and the orphaned
 > `/workflows/tools` route were removed; both now redirect to `/agents/tools`.
-> The MCP App Store is reachable from the sidebar as **Connectors**
-> (`/mcp-app-store`). Read `/admin/workflows/tools` below as `/agents/tools`.
+> The retired connector-management screen has been removed. Read
+> `/admin/workflows/tools` below as `/agents/tools`.
 
 Per **D8** the UI splits in two:
 
@@ -137,7 +137,7 @@ Per **D8** the UI splits in two:
 - per-tool config drawer
 - reusable components: `ToolBadge`, `ToolTransportPill`, `ToolPermissionPill`, `ToolCategoryIcon` (already mandated by `provider-system-and-frontend-architecture.md` §8)
 
-**`/admin/admin/mcp-app-store`** (separate admin section)
+**Retired connector-management section**
 - catalog list (admin only)
 - "Add MCP server" wizard → stdio / http / sse → auth config (api_key with header+prefix, bearer, basic, oauth2)
 - "My installs" view per user / scope — install button per catalog row
@@ -188,7 +188,7 @@ This work is **done** when:
 - `pnpm --filter @nessie/mcp-client test` passes
 - **E2E browser-driven smoke** (Playwright first, Playwright MCP fallback, **always headless** unless user requests otherwise):
   - drive `http://localhost:5555` from the chat surface
-  - admin adds a catalog entry through the **MCP App Store** admin page
+  - admin adds a catalog entry through the app catalogue
   - install it at org scope with an API key auth config (custom header, custom prefix)
   - server transitions to `active`; tool appears in `/admin/workflows/tools`
   - grant the tool to an agent via the workflow tool picker
@@ -268,7 +268,7 @@ Slice C builder in test-writing phase (transcript mtime 3s ago, 1.18 MB). Five n
 ### Event 2026-05-16T20:11Z — Slice C landed
 Slice C complete (commit `16c4579`). 22 new/modified files. Gates green: api typecheck/lint/build/test (26 tests), worker typecheck/lint/build/test (69 tests). Marked #1 completed. Wave-3 unlocked: #6 (Slice E UI), #8 (prisma drift), #16 (SSRF dedupe) all now claimable. Dispatched 4 agents in parallel (file-disjoint per §3 ownership):
 - **Slice C reviewer** (`feature-dev:code-reviewer`) — read-only audit of all 22 files, focus on 7-level credential chain, SSRF bypass via fetchImpl seam, secret-resolver trust boundary, dispatch ordering.
-- **Slice E builder** — `admin/src/features/workflows/tools/**`, `admin/src/features/admin/mcp-app-store/**`, `admin/src/api/{mcp,connectors,toolGrants}.ts`, App Store + Workflows>Tools UI surfaces, Playwright verification required.
+- **Slice E builder** — historical connector-management UI and Workflows>Tools surfaces, Playwright verification required.
 - **#8 prisma drift** — `api/prisma/migrations/**` only, reconciliation migration so `prisma migrate diff --exit-code` returns 0.
 - **#16 SSRF dedupe** — `worker/src/run/tools.ts` + `worker/src/run/builtin-handlers/url-safety.ts`, consolidate `assertSafeFetchUrl` into the canonical home.
 
@@ -287,7 +287,7 @@ Commit `be423a5`. `worker/src/run/tools.ts` lost 100 lines (legacy `assertSafeFe
 
 ### Tick 2026-05-16T20:22Z
 Four background agents alive (transcript mtimes within 20s):
-- **Slice E builder** (424K) — dirty: 4 modified `admin/src/components/shared/Tool*.tsx`, untracked `admin/src/components/features/mcp-app-store/`, untracked `admin/src/facades/{connectors,mcp-catalog,mcp-instances,tool-grants}/`. Agent discovered existing `components/shared/` and `facades/` conventions — minor deviation from the literal owned-file list I gave it (`components/tools/`, `api/*`), but it's correctly conforming to the project's actual structure rather than creating parallel duplicates. Acceptable adaptation.
+- **Slice E builder** (424K) — historical note: connector-management components and facades were introduced beside the shared tool components. The implementation followed the project's component and facade conventions.
 - **#8 prisma retry** (148K) — dirty: `api/prisma/schema.prisma` modified, untracked `api/prisma/migrations/20260516202000_reconcile_drift/`. ThreadStreamEvent model addition + cleaned migration in progress.
 - **Slice C reviewer** (391K) — read-only audit ongoing.
 - **#16 reviewer** (222K) — read-only audit ongoing.
@@ -327,7 +327,7 @@ Six background agents alive after this tick's dispatch wave. Reviewer follow-ups
 Held #17 (conflicts with #19 on tool-dispatch.ts), #20+#21 (conflict on routes/mcp.ts), #18 (conflicts with #22 on mcp-instances.ts) — claim those once the active agents land. Still running from prior ticks: #6 (Slice E builder, `aa81518adf958254e`) and #8 (Prisma retry Option A, `a4f6233ea79ba1b60`). Total: 6 in flight, within the 8-agent cap.
 
 ### Event 2026-05-16T20:40Z — Slice E landed + #23 landed
-- **#6 Slice E (admin UI)** complete. Shipped `McpAppStorePage` + `WorkflowToolsPage` + 9 feature components + 4 facades + 4 shared `Tool*` pill upgrades + router wiring. Admin gates green (lint/typecheck/build). Builder needed to restart the 9.5h-stale API to pick up Slice C's new `/api/mcp/{catalog,instances,tools}` routes (now serving 401 on unauth, no 404). Browser verification via Playwright headless (the previous mobile-device screenshot tool was unavailable) — screenshots in `e2e/screenshots/2026-05-16-mcp-flow/` (`mcp-app-store.png`, `mcp-app-store-wizard-transport.png`, `workflows-tools.png`). All 3 pages render with 0 console errors; the workflow-tools page lists all 17 tools across all 23 agents in the grant matrix. Marked #6 completed. Builder flagged one limitation: `GET /api/mcp/tools` response has no `grants` field, so `AgentGrantMatrix` only reflects in-session state. Filed as task **#25** (api follow-up). Dispatched Slice E reviewer (`a00d50a14d921662d`) focused on owner-gating, secret handling, CSRF, race conditions, type contracts, file-length, and url-scheme validation.
+- **#6 Slice E (admin UI)** complete. Historical connector-management UI and workflow tools shipped with their supporting facades and router wiring. The retired connector screen was later removed when Apps became the sole user-facing surface.
 - **#23 (workflow web_fetch SSRF wrap)** complete (commit `7e72994`). Only one workflow SSRF-throwing call site found (`tools.ts:676`); now try/catches `HttpFetchError` and returns `workflowToolFailure` with the rejection message. Other workflow cases don't call `assertSafeUrl` or other SSRF-throwing primitives. New regression test `worker/test/workflow-tools.test.ts` (70 worker tests pass, up from 69). Gates green. Marked #23 completed. Sub-agent reported no TaskUpdate tool surfaced (their environment) — flipped manually.
 
 Three agents still in flight: #19 (`a450e76cfd1240b49`), #22 (`aba2deb60e158ca09`), #24 (`a6fbd7e7b09abab93`), plus the just-dispatched Slice E reviewer (`a00d50a14d921662d`) and the still-running #8 Prisma agent (`a4f6233ea79ba1b60`). Total 5 in flight. #3 (E2E Playwright) was originally blocked by #6; Slice E builder already produced 3 Playwright screenshots so #3's substantive verification is largely done — leaving #3 pending pending a deeper invoke-flow smoke (catalog → install → grant → tool call from agent) once the API CRUD endpoints for catalog entries are exercised end-to-end.
@@ -341,7 +341,7 @@ Big landing wave. Four agents finished simultaneously:
 - **#19 (cross-org grant bypass)** → commit `e4fb4ca`. tool-grants.ts/tool-dispatch.ts/routes/mcp.ts now scope every registry lookup by `organizationId` with an OR for global (null-org) entries. 9 new regression tests (3 createGrant, 3 deleteGrant, 3 planToolDispatch). Gates green. Marked completed.
 - **#22 (testInstance probe outcome)** → commit `53bd957`. Extracted pure `probeConnection(transport, factory?)` helper returning `{ok, error?, latencyMs, toolCount?, descriptors?}`. testInstance now only flips `lifecycleState='active'` on `ok=true`; failure → `'error'` + `healthFailureCount++` + throws `McpInstanceError(PROBE_FAILED)` (route already maps to 502). 7 new tests. Schema gap noted: no `lastError` column on `McpServerInstance` — filed as task **#27**.
 - **#8 (Prisma drift, Option A retry 2)** → work landed in `e4fb4ca` (concurrent-agent race on shared `.git/index` swept up the prisma files into #19's commit). Agent confirmed `prisma migrate diff --exit-code` returns 0 / "No difference detected" against shadow Postgres. Final annotation form used for `Thought.searchVector`: `@default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))"))` — confirmed via `pg_get_expr` against the live DB. Marked #8 completed.
-- **Slice E reviewer** → 1 CRITICAL + 4 HIGH + 3 MEDIUM + 1 LOW. Orchestrator verified the CRITICAL + 3 HIGHs via Read (McpAppStorePage owner gate race confirmed at L39-46/L77; AgentGrantMatrix silent uncheck confirmed at L78-85; AddServerWizard `ws` dead code confirmed at L29 vs L114; tool-grants/hooks.ts L51 inline type confirmed). All real. CredentialsDialog finding verified by inspection of reviewer's path. Bundled CRITICAL + 4 HIGHs into task **#28** and dispatched fix agent (`a57afe7385314d8ed`). MEDIUM #7+#8 bundled as **#26**. MEDIUM #6 (CSRF) and LOW #9 (1350-line layout file, pre-existing) skipped.
+- **Slice E reviewer** → historical note: the retired connector-management screen had an owner-gate race and its setup wizard contained a dead transport branch. The findings were bundled into follow-up tasks.
 
 **Commit hygiene problem recurring:** `e4fb4ca` (#19's commit) swept up #8's WIP from a shared `.git/index` race. Reinforced explicit per-file `git add` + `git diff --cached --stat` verify in #28's prompt. Need to consider serialising agents that touch sibling directories.
 
@@ -486,7 +486,7 @@ Wave-10 (sequential after #36 landed): #39 dispatched against the new sub-file l
 - API surface (`api/src/routes/mcp/*`) — catalog CRUD/publish/deprecate, instance CRUD/test/refresh/healthcheck, tools listing (with grants), grants CRUD, OAuth start/callback, credentials overrides. Split into 6 sub-files under the 500-line cap. Production guard fails loud when `oauthSecretStore` isn't wired.
 - OAuth2: RFC 6749-correct flow with `client_id`/`client_secret` in start URL + token exchange. Callback error params sanitized to whitelist. `credentialRef` never surfaces in responses. Conflict transitions return 409.
 - Worker dispatch (`worker/src/run`): SSRF-guarded http_fetch, workflow tool wrapping, sandbox symlink dereferencing, sub-agent inference no longer pollutes parent SSE.
-- Admin UI: MCP App Store with full wizard (transport/identity/auth with oauth2 client fields + scheme allowlist + onChange clears + a11y errors + 500-line cap maintained), tools matrix with per-agent grants, CredentialsDialog with refetch-safe masking.
+- Admin UI: app catalogue with a custom-app form, tools matrix with per-agent grants, and an encrypted key dialog with refetch-safe masking.
 - Security hardening: tool-grants org-scoped, principalId UUID validation, EnvSecretResolver opt-in, atomic publish TOCTOU.
 
 **Reviewer findings handled:** 12 reviews launched (Slice E, #10, #18, #20, #26, #31). Every finding ≥70 confidence verified by orchestrator Read before filing — 2 severity downgrades (#10 CRITICAL CONCURRENTLY/btree_gin → Important deferrals; #26 CRITICAL submit-revalidate → MEDIUM defensive gap). Zero false positives.

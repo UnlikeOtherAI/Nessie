@@ -23,8 +23,7 @@ export type TabDef = {
   matches: (pathname: string) => boolean
 }
 
-// Agents, workflows, the App Store and the MCP connector catalogue all live
-// under the Admin section. Mirror admin/src/layouts/admin-shell/nav-items.tsx
+// Agents, workflows, and Apps all live under the Admin section. Mirror admin/src/layouts/admin-shell/nav-items.tsx
 // ADMIN_ROUTE_PREFIXES — the RN shell cannot import from the admin package, so
 // this copy must be kept in step with it.
 const ADMIN_PREFIXES = [
@@ -32,7 +31,6 @@ const ADMIN_PREFIXES = [
   '/agents',
   '/workflows',
   '/apps',
-  '/mcp-app-store',
   '/approvals',
   '/audit',
   '/tokens',

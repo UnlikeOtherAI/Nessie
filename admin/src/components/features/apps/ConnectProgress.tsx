@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { connectErrorPresentation } from './connect-error-copy'
 import {
   connectShowsSlowProviderNote,
@@ -23,12 +22,8 @@ import {
 
 type ConnectProgressProps = {
   appName: string
-  /**
-   * Where a person adds an API key when the app wants one. The credential
-   * dialog on the Connectors page owns that path; this panel only points at it,
-   * because a second key form would be a second credential path.
-   */
-  credentialsHref?: string | null
+  /** Opens the app-owned key dialog for the connection the flow just created. */
+  onAddSecret?: (connectionId: string) => void
   onDismiss?: () => void
   onReopenAuthorization: () => void
   onRetry: () => void
@@ -91,7 +86,7 @@ const TechnicalDetails = ({ code, detail }: { code: string; detail: string | nul
 
 export const ConnectProgress = ({
   appName,
-  credentialsHref,
+  onAddSecret,
   onDismiss,
   onReopenAuthorization,
   onRetry,
@@ -134,15 +129,14 @@ export const ConnectProgress = ({
           {appName} signs in with a key you hold. Add it once and Nessie keeps it
           encrypted — it is never shown again, here or anywhere else.
         </p>
-        {credentialsHref ? (
-          // An in-app route, so a router link: an `<a href>` here would reload
-          // the whole admin to reach a page we are already inside.
-          <Link
+        {state.connectionId && onAddSecret ? (
+          <button
             className="admin-button admin-button-secondary admin-button-compact mt-3"
-            to={credentialsHref}
+            onClick={() => onAddSecret(state.connectionId as string)}
+            type="button"
           >
             Add the key
-          </Link>
+          </button>
         ) : null}
       </div>
     )

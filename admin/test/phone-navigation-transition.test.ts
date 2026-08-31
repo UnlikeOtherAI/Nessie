@@ -204,10 +204,6 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     { label: 'Back to Admin', pathname: '/settings' },
   )
   assert.deepEqual(
-    getPhoneNavigationBackTarget('/mcp-app-store'),
-    { label: 'Back to Admin', pathname: '/settings' },
-  )
-  assert.deepEqual(
     getPhoneNavigationBackTarget('/feedback'),
     { label: 'Back to Channels', pathname: '/channels' },
   )

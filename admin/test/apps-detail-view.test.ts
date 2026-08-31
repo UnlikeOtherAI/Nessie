@@ -7,7 +7,6 @@ import {
   agentsAccessEmptyMessage,
   appCapabilityCount,
   appConnectInFlight,
-  appCredentialsHref,
   appDetailCta,
   appDetailLinks,
   appDetailStats,
@@ -26,8 +25,8 @@ import {
 
 /**
  * The app detail page is the member surface: connect, accounts, capabilities,
- * agents. Health probes, failure counts, endpoints and credentials are
- * owner-ops facts that belong on the Connectors page and never render here.
+ * agents. Health probes, failure counts, endpoints, and credentials are
+ * operational facts that never render here.
  */
 
 const connection = (
@@ -58,7 +57,6 @@ const detail = (overrides: Partial<AppDetailRecord> = {}): AppDetailRecord => ({
   featuredOrder: null,
   iconUrl: null,
   id: 'app-1',
-  installHref: '/mcp-app-store?catalogEntryId=app-1&action=install',
   locked: false,
   longDescription: null,
   managedByIntegration: false,
@@ -136,7 +134,7 @@ test('a deep link to a tab this app does not offer falls back to Overview, not a
 
 test('Connect runs the flow on this page instead of linking at the install route', () => {
   // The whole point of the detail page owning connect: pressing this must not
-  // hand the person to the Connectors page's install dialog.
+  // hand the person to a separate install dialog.
   assert.deepEqual(appDetailCta(detail()), {
     kind: 'connect',
     label: 'Connect',
@@ -193,14 +191,6 @@ test('the CTA is spent only while the flow owns the outcome', () => {
   assert.equal(appConnectInFlight('error'), false)
   assert.equal(appConnectInFlight('needs_secret'), false)
   assert.equal(appConnectInFlight('connected'), false)
-})
-
-test('the key an app asked for is added beside the account, not through a second install', () => {
-  // The account already exists by the time the server says `needs_secret`;
-  // `installHref` would open the install dialog and make a second one.
-  const app = detail()
-  assert.equal(appCredentialsHref(app), '/mcp-app-store?catalogEntryId=app-1')
-  assert.notEqual(appCredentialsHref(app), app.installHref)
 })
 
 /**

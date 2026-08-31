@@ -583,7 +583,7 @@ Every UI/frontend change is verified with headless Playwright against
 rendering) before the work is considered done. Full rule: `AGENTS.md` →
 "Verification".
 
-## MCP App Store — `/apps`
+## Apps catalogue — `/apps`
 
 Installing an integration should feel like installing an app in Slack, not like
 configuring a server. `/apps` is that surface, filled from the official MCP
@@ -594,7 +594,7 @@ ranking with no client re-sorting, connect orchestrates the existing
 callback page, `noopener` popup), installing-is-not-granting via
 `requiresExplicitToolGrant`, and the leak-proof presenter — live in
 `AGENTS.md` (the two App Store bullets). Spec:
-[docs/plans/2026-08-29-mcp-app-store/overview.md](docs/plans/2026-08-29-mcp-app-store/overview.md).
+[docs/plans/2026-08-29-apps-catalogue/overview.md](docs/plans/2026-08-29-apps-catalogue/overview.md).
 Facts not restated there:
 
 - **Ingested rows are always `community`.** Trust decided from the advertised
@@ -625,7 +625,7 @@ The live API server (`api/`) exposes a **REST MCP connector-management surface**
 
 The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation — the sharing, scope, credential-ref, locking, and context-safe-toolset rules are in `AGENTS.md` (the MCP connector management bullet). On top of it:
 
-- **Library + discovery**: `GET /api/mcp/library` (curated well-known remote servers + live search of the official MCP registry, HTTP/SSE remotes only), `POST /api/mcp/discover` (probe a pasted link for an MCP endpoint + auth requirements), `POST /api/mcp/library/import`. Surfaced as the admin Connectors page **Library** tab with a guided one-click install.
+- **Library + discovery**: `GET /api/mcp/library` (curated well-known remote servers + live search of the official MCP registry, HTTP/SSE remotes only), `POST /api/mcp/discover` (probe a pasted link for an MCP endpoint + auth requirements), `POST /api/mcp/library/import`. The personal assistant uses these for guided setup; people add a custom app from `/apps`.
 - **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_authorize`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
 - **Dynamic OAuth** (MCP authorization spec): `{ method: "oauth2" }` with no static client triggers metadata discovery (RFC 9728/8414), Dynamic Client Registration (RFC 7591, one public client per org × issuer in `mcp_oauth_clients`), authorization-code + PKCE S256 + RFC 8707 `resource`, pg-backed one-shot state (`mcp_oauth_states`), per-user token placement, and automatic refresh at probe/dispatch. Notion/Linear/Sentry/Atlassian/Asana are curated OAuth entries — users just sign in. Set `NESSIE_API_PUBLIC_URL` in prod so the worker can mint callback URLs.
 - **Scoped sharing**: scope rules per `AGENTS.md`; members also see shared installs they can reach, and shared-scope installs keep the `pending_review` tool gate (user-scope installs auto-activate). See [docs/external-tool-integration.md](docs/external-tool-integration.md) §2.

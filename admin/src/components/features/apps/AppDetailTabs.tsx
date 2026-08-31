@@ -10,6 +10,7 @@ import { appDetailTabs, type AppDetailTab } from './app-detail-view'
 type AppDetailTabsProps = {
   activeTab: AppDetailTab
   app: AppDetailRecord
+  onConnectAnother: () => void
   onSelectTab: (tab: AppDetailTab) => void
 }
 
@@ -27,7 +28,12 @@ const TAB_ID_PREFIX = 'app-detail'
  * arrow/Home/End navigation are what a screen reader and keyboard expect of
  * anything announcing itself as a tablist.
  */
-export const AppDetailTabs = ({ activeTab, app, onSelectTab }: AppDetailTabsProps) => {
+export const AppDetailTabs = ({
+  activeTab,
+  app,
+  onConnectAnother,
+  onSelectTab,
+}: AppDetailTabsProps) => {
   // Memoised because `TabBar` observes its items to keep the sliding pill under
   // the selected one; a fresh array every render would re-subscribe each paint.
   const items = useMemo<ReadonlyArray<TabBarItem<AppDetailTab>>>(
@@ -62,7 +68,9 @@ export const AppDetailTabs = ({ activeTab, app, onSelectTab }: AppDetailTabsProp
       >
         {activeTab === 'overview' ? <AppOverviewTab app={app} /> : null}
         {activeTab === 'capabilities' ? <AppCapabilityList app={app} /> : null}
-        {activeTab === 'accounts' ? <AppConnectionsList app={app} /> : null}
+        {activeTab === 'accounts' ? (
+          <AppConnectionsList app={app} onConnectAnother={onConnectAnother} />
+        ) : null}
         {activeTab === 'agents' ? <AppAgentAccessList app={app} /> : null}
       </div>
     </div>

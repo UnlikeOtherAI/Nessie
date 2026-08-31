@@ -176,14 +176,11 @@ Example:
 ```
 
 **Where step 8 happens.** Owner review of discovered tools lives on
-`/agents/tools`, and the Connectors page is its doorway:
-
-- Each installed scope on the Connectors page shows an **"N tools awaiting
-  review"** chip when that instance has `pending_review` rows. It links to
-  `/agents/tools?status=pending_review&instance=<instanceId>`, so the owner
-  lands on exactly that connector's unreviewed tools. `GET /api/mcp/instances`
-  carries `pendingToolCount` per instance for this (counted only over
-  instances the caller was already entitled to see).
+`/agents/tools`. The list can be narrowed with
+`?status=pending_review&instance=<instanceId>` when an API or the personal
+assistant needs to send an owner to one connector's unreviewed tools.
+`GET /api/mcp/instances` carries `pendingToolCount` per instance (counted only
+over instances the caller is already entitled to see).
 - On `/agents/tools`, reviewable rows carry a checkbox plus **Select all
   shown**, and a review bar offers **Approve selected** / **Disable selected**.
   The selected tool's detail column also has single **Approve** / **Disable**
@@ -249,11 +246,10 @@ configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
   into a catalog entry: private self-published for members, or (owners with
   `shareToOrg: true`) published straight into the org store.
 
-The admin Connectors page exposes these as the **Library** tab (search +
-"Only have a link?" box + one-click guided install: pick "Just me" / "Whole
-organisation", then either paste the API key — stored encrypted — or, for
-OAuth connectors, approve access in the sign-in tab that opens; the flow ends
-with a connection test + tool discovery either way).
+The personal assistant and the remote API use these for guided setup. In the
+browser, `/apps` owns the human path: **Add a custom app** accepts the address,
+then its detail view completes the caller's own connection with an encrypted
+key or OAuth sign-in as required.
 
 ### OAuth (dynamic, MCP authorization spec)
 
@@ -724,10 +720,9 @@ There is deliberately no direct-provider fallback.
   operations fail with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; PA probe and
   uninstall operations explain the same ownership rule. The Integrations team
   toggle is the sole lifecycle path, so deleting an instance can never leave
-  the product toggle enabled and pointing at nothing. The Connectors UI replaces
-  normal catalog lifecycle/install/credential/probe controls with an
-  Integrations-managed notice, and migration removes old per-user overrides so
-  none can shadow the product-bound app API key.
+  the product toggle enabled and pointing at nothing. The Integrations surface
+  is the sole lifecycle control, and migration removes old per-user overrides
+  so none can shadow the product-bound app API key.
 - **Research retries preserve provider idempotency.** Each DeepWater dispatch
   forwards the model provider's stable `tool_call_id` in the signed context.
   `research_start` rejects a missing ID, and retrying the same logical tool call

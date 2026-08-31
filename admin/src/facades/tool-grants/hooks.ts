@@ -182,9 +182,6 @@ export const useSetToolRegistryStatus = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mcpKeys.tools })
-      // The Connectors page shows a pending-review count per installed scope;
-      // approving here is what makes that chip disappear.
-      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
     },
   })
 }

@@ -24,14 +24,14 @@ import { catalogTenancyWhere } from '../mcp-catalog-visibility.js'
  * where `getAccessibleCatalogEntry` would hand it over anyway — the published
  * public store, or the caller's own entries. `approved` is an explicit
  * decision a human made about the store and needs no such qualification.
- * Governance of other people's entries stays on the Connectors page.
+ * Governance of other people's entries remains an API and assistant concern.
  *
  * This read stays a single question about moderation state because every write
  * that decides a listing records itself there: `approveSubmission` writes
  * `approved`, `rejectSubmission` and `deprecateCatalogEntry` write `hidden`
- * (`mcp-catalog-review.ts`, `mcp-catalog.ts`). That is what makes the store and
- * the Connectors page two faces on one row rather than two sources of truth —
- * when the review flow moved only `visibility`/`status`, a rejected or
+ * (`mcp-catalog-review.ts`, `mcp-catalog.ts`). That keeps the store and its
+ * management APIs on one row rather than two sources of truth — when the
+ * review flow moved only `visibility`/`status`, a rejected or
  * deprecated entry stayed `curated` and its owner kept getting an app card,
  * Connect action included, for a connector that had been refused or withdrawn.
  * Adding `status` to this predicate would only paper over that: the decision

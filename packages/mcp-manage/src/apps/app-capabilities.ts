@@ -21,8 +21,8 @@ import { recordAppHealth } from './app-health.js'
  * detail page asks it: capabilities, resources, prompts.
  *
  * `probeConnection` (`mcp-instance-probe.ts`) answers one narrower question —
- * did `tools/list` work — and its contract is pinned by the Connectors page,
- * the PA `connector_*` tools and DeepWater activation. It is left byte-
+ * did `tools/list` work — and its contract is shared by the PA
+ * `connector_*` tools and DeepWater activation. It is left byte-
  * identical. This is a SECOND READ over the same seams (`assertMcpTransportSafe`,
  * `transportToConnectionSpec`, `ManagerFactory`, one `McpClientManager`), never
  * a second transport: it exists as its own function only because it must keep
@@ -32,7 +32,7 @@ import { recordAppHealth } from './app-health.js'
  * Discovery is READ-ONLY. It lists what a server offers; it never calls a
  * tool. Asking an app what it can do must not be able to make it do anything.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md`
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`
  * §1 (capability count strip) and §3 ("Refresh capabilities").
  */
 
@@ -304,8 +304,8 @@ export type ConnectionCapabilityContext = {
  * `loadUnreachableAppIds` reads to mark a dead server unavailable.
  *
  * It costs a second dial. `testInstance`'s probe cannot be reused for it: that
- * contract is pinned by the Connectors page, the PA `connector_*` tools and
- * DeepWater activation, and it closes its connection before resources or
+ * contract is shared by the PA `connector_*` tools and DeepWater activation,
+ * and it closes its connection before resources or
  * prompts could be asked for.
  *
  * Never throws. A connect that worked must not fail because a card could not

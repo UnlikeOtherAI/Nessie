@@ -38,7 +38,7 @@ import { getStoreApp } from './app-store-detail.js'
 
 /**
  * The universal Connect flow, as an **orchestration of what already exists**.
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md`
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`
  * §2 (connect), §3 (connection management).
  *
  * Nothing here is a second implementation of anything. Instance creation with
@@ -67,7 +67,7 @@ export type AppConnectOutcome =
  * They are deliberately *narrower* than the connector layer's. An upstream
  * transport message can carry the endpoint URL and provider internals, and no
  * `/api/apps` response may contain either; `testInstance` still persists the
- * raw detail on the instance row for the Connectors page, it simply never
+ * raw detail on the instance row for the management API, it simply never
  * travels on this surface.
  */
 export const APP_CONNECT_ERROR_CODES = {
@@ -457,8 +457,8 @@ export const resolveConnection = async (
       scopeId,
       // Installing an app is not the same decision as letting an agent use it
       // (the brief separates INSTALL from ASSIGN). Set only on the create
-      // branch: a connection first made on the Connectors page keeps the open
-      // rows it already had, and no agent loses a tool it is using today.
+      // branch: an existing connection keeps the open rows it already had, and
+      // no agent loses a tool it is using today.
       requiresExplicitToolGrant: true,
     })
   } catch (error) {

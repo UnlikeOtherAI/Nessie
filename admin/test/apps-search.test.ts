@@ -30,7 +30,6 @@ const app = (overrides: Partial<AppSummaryRecord> = {}): AppSummaryRecord => ({
   featuredOrder: null,
   iconUrl: null,
   id: 'app-1',
-  installHref: '/install/app-1',
   locked: false,
   managedByIntegration: false,
   name: 'github',

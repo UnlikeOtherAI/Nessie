@@ -6,7 +6,7 @@ import type {
 } from '../../../lib/api-client'
 import { usePrepareDeepTestReview } from '../../../facades/integrations/hooks'
 import { Pill, type PillTone } from '../../primitives/Pill'
-import { mcpInstallHref } from './AgentConnectorSection'
+import { appsHref } from './AgentConnectorSection'
 
 const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
   { label: 'Shallow', value: 'shallow' },
@@ -155,8 +155,8 @@ export const DeepTestSecurityPanel = ({
             </a>
           ) : null}
           {!connectorReady ? (
-            <Link className="admin-button admin-button-secondary admin-button-compact" to={mcpInstallHref(product)}>
-              Install MCP
+            <Link className="admin-button admin-button-secondary admin-button-compact" to={appsHref(product)}>
+              Connect app
             </Link>
           ) : null}
         </div>

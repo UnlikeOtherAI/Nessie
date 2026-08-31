@@ -7,10 +7,8 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/settings',
   '/agents',
   '/workflows',
-  // Apps (the store) and Connectors (its governance surface) are one pair;
-  // /apps/:slug belongs to the same section as its list.
+  // `/apps/:slug` belongs to the same section as its list.
   '/apps',
-  '/mcp-app-store',
   '/approvals',
   '/audit',
   '/tokens',

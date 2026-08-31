@@ -39,10 +39,9 @@ won there is exactly the one an app detail needs:
 
 **Justification against deep-linking.** A connected app is a durable object
 with durable substates (accounts, agent access). It must be linkable:
-`AgentConnectorSection.tsx` already deep-links from an agent's integrations
-page into the catalogue via query params
-(`/mcp-app-store?catalogEntryId=…&action=install`) — evidence that the product
-needs URL-addressable app surfaces. A path segment `/apps/:slug` is better
+`AgentConnectorSection.tsx` deep-links from an agent's integrations page into
+the Apps catalogue — evidence that the product needs URL-addressable app
+surfaces. A path segment `/apps/:slug` is better
 than a drawer opened by query param: it survives refresh, works in browser
 history, can be pasted into a chat to a teammate ("connect this:
 `https://app.nessie.works/apps/github`"), and lets a *later* agent config page
@@ -51,12 +50,10 @@ also fight the OAuth popup dance: the detail surface must be alive and polling
 while the user is off in a provider window; a full page is the more robust
 owner of that lifecycle.
 
-**What about `CatalogDetailPanel`?** It stays on `/mcp-app-store` as the
-owner/super-admin surface (publish, review, lock, deprecate). The `/apps`
-detail page is the *member* surface: connect, accounts, capabilities, agents.
-The two never fork each other — they share the capability-list and
-accounts-list components (§7). The Connectors page gets a link out: "View as
-App →" on published entries, so an owner can preview what members see.
+**There is no companion governance screen.** The `/apps` detail page is the
+member surface for connecting, accounts, capabilities, and agent access. The
+API and personal-assistant tools continue to enforce catalogue governance;
+they do not need a duplicate browser surface.
 
 ### Layout — not yet connected
 
@@ -151,8 +148,8 @@ border border-[var(--sep)] px-3 py-2`, label `text-[11px] font-semibold
 uppercase text-[var(--tx3)]`, value `mt-1 text-sm text-[var(--tx)]`. Tiles:
 Capabilities (tools), Resources, Prompts, Accounts. These answer "what did I
 get?" — the only telemetry a member needs. Failure counts and health probes
-are owner-ops data and stay on the Connectors page (rule 3: no ops telemetry
-on a member surface).
+are owner-ops data and do not render on the member surface (rule 3: no ops
+telemetry on a member surface).
 
 **Tab mechanics:** tabs render as a text tab row
 (`border-b border-[color:var(--sep)]`, active tab
@@ -357,8 +354,8 @@ bullet is omitted rather than shown as "0 agents" — no empty signal.
 **Never shown, anywhere in this UI:** any token, secret, `credentialRef`,
 secret id, or masked variant of one (`••••abcd` is still a tease of a secret —
 cut it). The only credential fact a member ever sees is "Stored encrypted",
-as `OverrideRow` already renders. Owner-level credential plumbing stays on the
-Connectors page.
+as `OverrideRow` already renders. Owner-level credential plumbing stays in the
+API and personal-assistant management surface.
 
 ---
 
@@ -425,9 +422,8 @@ product-integration status section (lifecycle pill, scope/status/tools/failures
 stat tiles, deep-link into the store) for *first-party integrated products* on
 an agent's integrations page. It is **extended, not reused wholesale and not
 forked**: its stat-tile grammar and its `mcpConnectorLabel`/`lifecycleLabels`
-patterns inform the app capability strip (§1), and its deep-link target
-changes from `/mcp-app-store?catalogEntryId=…` to `/apps/:slug` so the
-agent-side doorway lands on the new member surface. The future agent-config
+patterns inform the app capability strip (§1), and its deep-link target is
+`/apps` so the agent-side doorway lands on the member surface. The future agent-config
 "Apps" tab renders `AgentAccessList` directly beneath a slimmed
 `AgentConnectorSection`-style header. One new list component, one amended
 link helper, zero duplicated views.
@@ -575,7 +571,7 @@ click-through, so persistence is silent, not a checkbox). **Nessie** and
 | New piece | Reuse / extend | File path | Notes |
 |---|---|---|---|
 | Apps page header | **Reuse** `ResponsivePageHeader` | `admin/src/components/shared/ResponsivePageHeader.tsx` | Title "Apps", subtitle "Connect tools your agents can use", action slot holds `+ Add custom app`. Falls back to `AdminPageHeader` behavior at wide widths. |
-| Catalogue filter bar | **Extend** existing Connectors-page filter row if present; otherwise new thin composition | `admin/src/components/features/mcp-app-store/` (page-level) | Category chips + trust filter; compose from `SegmentedControl` (categories) — no new visual language. |
+| Catalogue filter bar | **Extend** the Apps filter row | `admin/src/components/features/apps/` | Category chips + trust filter; compose from `SegmentedControl` (categories) — no new visual language. |
 | Search input | **New component — no existing equivalent** | `admin/src/components/features/apps/AppSearchInput.tsx` | No reusable search field exists in shared/. Styling from `inputClass` in `InstallScopeDialog` (lift that class string into a shared module — it's currently copy-pasted across three dialogs). Debounce via `useDebouncedValue`. |
 | App card | **Extend** catalogue card from Part A | `admin/src/components/features/apps/AppCard.tsx` | Part A owns it; detail page and Part A must import the same file. |
 | Card status chip | **Reuse** `StatusPill` | `admin/src/components/primitives/StatusPill.tsx` | Tones: success/connected, warning/needs-attention, danger/blocked, accent/featured. |
@@ -584,21 +580,21 @@ click-through, so persistence is silent, not a checkbox). **Nessie** and
 | Detail hero | **New component — no existing equivalent** | `admin/src/components/features/apps/AppDetailHero.tsx` | Closest is AgentDetailPage's header block; apps need icon tile + trust badge + CTA + state pill, so compose from `StatusPill`, `ToolCategoryIcon`, `admin-button` classes rather than extracting the agent header. |
 | Detail back-nav + not-found state | **Copy pattern verbatim** | `admin/src/pages/AgentDetailPage.tsx` (as source) | Same header grammar: `PhoneNavigationButton`, `faChevronLeft` secondary button, centered `tx3` loading/not-found line. |
 | Tabs | **Reuse** `SegmentedControl` or the AgentDetailTabs inline-tab pattern | `admin/src/components/primitives/SegmentedControl.tsx`; `admin/src/components/features/agents/AgentDetailTabs.tsx` (pattern) | Prefer the AgentDetailTabs inline text-tab pattern for parity with agent detail; deep-link via `?tab=`. |
-| Capability list | **Extend** existing tools list primitives | `ToolBadge`, `ToolCategoryIcon`, `ToolPermissionPill`, `ToolTransportPill` in `admin/src/components/shared/` | New grouping container `AppCapabilityList.tsx`; row internals are entirely existing badges/pills. Shared between `/apps` detail and (read-only) Connectors detail — one file, scope prop. |
+| Capability list | **Extend** existing tools list primitives | `ToolBadge`, `ToolCategoryIcon`, `ToolPermissionPill`, `ToolTransportPill` in `admin/src/components/shared/` | New grouping container `AppCapabilityList.tsx`; row internals are entirely existing badges/pills. |
 | Capability count strip | **Extend pattern** from `AgentConnectorSection` stat tiles | `admin/src/components/features/integrations/AgentConnectorSection.tsx` (pattern) | Same tile classes; consider extracting the tile into `shared/StatTile.tsx` since this is the second use — that's the planned refactor, not a copy. |
-| Accounts list | **Extend** `OverrideRow` row grammar | `admin/src/components/features/mcp-app-store/CredentialsDialog.tsx` (pattern) | New `AppAccountsList.tsx`; same row shell, identity via primitives `Avatar`. |
+| Accounts list | **Use** the Apps account-row grammar | `admin/src/components/features/apps/AppConnectionsList.tsx` | Connected-account rows stay in the product surface. |
 | Agent access checkbox list | **New component — no existing equivalent** | `admin/src/components/features/apps/AgentAccessList.tsx` | Rows: checkbox + `AgentAvatar` + summary slot (future per-tool expansion). Parameterised by app or agent scope — the single component for both doorways (rule 4). |
 | Connect progress panel | **New component — no existing equivalent** | `admin/src/components/features/apps/ConnectProgress.tsx` | Step list with `--executing-soft` pulse + `--success-text` checks. Used by detail hero, custom-app modal, and reconnect. |
-| Connect/warning/error dialogs | **Extend** dialog shell conventions | `InstallScopeDialog.tsx`, `CredentialsDialog.tsx` (patterns) | Same scrim + `admin-card` + `max-w-md` shell; every new dialog wires `useModalA11y` + `useOverlayDismiss` — the two existing dialogs predate the hooks and should be retrofitted in the same change (small, mechanical). |
+| Connect/warning/error dialogs | **Reuse** dialog shell conventions | `admin/src/components/shared/Dialog.tsx` | `CustomAppDialog` and `AppSecretDialog` use the shared focus, Escape, and overlay-dismiss behavior. |
 | OAuth popup callback page | **New route — no existing equivalent** | `admin/src/pages/OAuthCallbackPage.tsx` | Themed interstitial ("You're connected…"), `window.close()` attempt. |
-| Custom app modal | **Extend** `InstallScopeDialog` | `admin/src/components/features/mcp-app-store/InstallScopeDialog.tsx` | Reuse its form classes, URL validation, and secret-handling discipline. Strip scope picking (custom adds default to workspace scope per entitlement); Advanced disclosure replaces the exposed endpoint field. |
-| Disconnect confirmation | **Extend** `dangerButton` + dialog shell | `CatalogDetailPanel.tsx` (`dangerButton` class string) | New `ConfirmDisconnectDialog.tsx`; if a generic confirm emerges from this + existing delete confirms, extract `shared/ConfirmDialog.tsx` — with two call sites the refactor rule is satisfied. |
+| Custom app modal | **Use** `CustomAppDialog` | `admin/src/components/features/apps/CustomAppDialog.tsx` | A custom app is added at the caller's user scope and then resumed on its detail page. |
+| Disconnect confirmation | **Reuse** dialog shell | `admin/src/components/shared/ConfirmDialog.tsx` | A generic confirm already exists; add a product-specific message only when a disconnect route exists. |
 | Empty states | **Reuse** `EmptyState` | `admin/src/components/shared/EmptyState.tsx` | Agents-with-access empty, search-no-results, category-empty, accounts-empty. |
 | Skeletons | **New component — no existing equivalent** | `admin/src/components/features/apps/AppSkeletons.tsx` | No shared skeleton exists. Simple `--overlay-weak` pulse bars mirroring card/hero geometry; `animate-pulse` with `duration-[var(--duration-base)]` cadence. |
-| Toasts / errors | **Inline panels, not toasts** | error notice pattern from `CatalogDetailPanel` / `InstallScopeDialog` | All §2 errors are inline `role="alert"` panels with `--danger`/`-soft`/`-border`/`-text` family. Transient success ("Capabilities refreshed") may use the app-shell toast if one exists; otherwise a self-dismissing inline `--success` notice. |
-| Deep links from agent page | **Extend** link helpers | `mcpCatalogHref` / `mcpInstallHref` in `AgentConnectorSection.tsx` | Point at `/apps/:slug` for member journeys; owner journeys keep `/mcp-app-store`. |
+| Toasts / errors | **Inline panels, not toasts** | App error notices | All §2 errors are inline `role="alert"` panels with `--danger`/`-soft`/`-border`/`-text` family. Transient success ("Capabilities refreshed") may use the app-shell toast if one exists; otherwise a self-dismissing inline `--success` notice. |
+| Deep links from agent page | **Extend** link helper | `appsHref` in `AgentConnectorSection.tsx` | All journeys open `/apps`. |
 | Viewport behavior | **Reuse** hooks | `admin/src/hooks/useViewport.ts`, `useDebouncedValue.ts` | Tab-row scroll, popup-vs-system-browser branch, search debounce. |
-| Modal a11y + dismiss | **Reuse** hooks | `admin/src/components/shared/useModalA11y.ts`, `useOverlayDismiss.ts` | Non-negotiable on every dialog in this spec; retrofit to the two legacy mcp-app-store dialogs while touching them. |
+| Modal a11y + dismiss | **Reuse** hooks | `admin/src/components/shared/Dialog.tsx` | Non-negotiable on every dialog in this spec. |
 
 **Token gaps to add to `admin/src/styles.css`:** effectively none for color —
 the status families, overlays, scrims, accent, and executing/thinking tokens
@@ -621,18 +617,14 @@ No new radii, durations, or font tokens are introduced anywhere in this spec.
    immutable field?** Deep links (`/apps/github`) must survive renames; if
    the slug is mutable we need redirects or id-based URLs (`/apps/:id`) with
    slug as decoration.
-2. **Who sees `/apps` vs `/mcp-app-store` in nav?** Recommendation: members
-   see only Apps; owners/admins see both (Connectors labelled "Connectors
-   (admin)"). Confirm the nav and whether `/mcp-app-store` eventually becomes
-   owner-only.
-3. **Is "Connect another account" available to members, or owner-gated?** The
+2. **Is "Connect another account" available to members, or owner-gated?** The
    backend scope rules (owners manage all install scopes, members user scope)
    suggest members' extra accounts are user-scoped — confirm the UI should
    label that ("Only you can use this account") on member-added rows.
-4. **Per-account agent access, or per-app?** §4 architects per-account
+3. **Per-account agent access, or per-app?** §4 architects per-account
    (account selector scoping the agent list). Confirm that matches the grant
    model, or simplify to per-app with all accounts implied.
-5. **Popup completion detection:** poll-on-focus is specified for simplicity
+4. **Popup completion detection:** poll-on-focus is specified for simplicity
    and cross-process safety. If we want sub-second flip-to-connected, is a
    `BroadcastChannel`/`postMessage` fast-path (with polling as fallback)
    acceptable, or is polling-only the deliberate choice?

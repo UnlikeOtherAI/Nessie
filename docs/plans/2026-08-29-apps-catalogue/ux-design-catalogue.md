@@ -1,6 +1,8 @@
-# Nessie Admin — "Apps" Catalogue (MCP App Store) — UX Design Document (Part A)
+# Nessie Admin — "Apps" Catalogue — UX Design Document (Part A)
 
-Route `/apps`, sidebar nav item **Apps** in the **Agents** group, alongside (not replacing) the existing `/mcp-app-store` "Connectors" page. Connectors remains the power surface for catalog governance, approval queues, installed scopes, and the add-server wizard; Apps is the consumer surface where installing an integration feels like installing an app in Slack or Notion.
+Route `/apps`, sidebar nav item **Apps** in the **Agents** group. It is the
+consumer surface where connecting an integration feels like installing an app
+in Slack or Notion.
 
 ---
 
@@ -53,7 +55,7 @@ The **Advanced** disclosure (on the app detail view, collapsed by default, `text
 
 ### Page shell
 
-The page follows the **AgentsPage** shell pattern exactly: a flex column, mobile section header on phone, content region below. Unlike the Connectors page (a `ColumnBrowserViewport`), Apps is a **single scrolling page** — a store, not a three-pane admin tool.
+The page follows the **AgentsPage** shell pattern exactly: a flex column, mobile section header on phone, content region below. Apps is a **single scrolling page** — a store, not a three-pane admin tool.
 
 ```
 <div className="flex h-full flex-col">
@@ -68,7 +70,7 @@ The page follows the **AgentsPage** shell pattern exactly: a flex column, mobile
 - **Header:** `AdminPageHeader` (titleTone `"page"`) with:
   - title: **Apps**
   - eyebrow: none
-  - actions: one primary action `+ Add custom MCP server` (`primary: true`, `priority: 0`) — it opens the *existing* `AddServerWizard` from `components/features/mcp-app-store` in a modal (reuse, never fork), and it is the deliberate, labelled doorway to protocol land. On overflow the `ResponsivePageHeader` measured overflow collapses it into the "More" menu automatically; on phone it collapses to a compact `+` button.
+  - actions: one primary action `+ Add a custom app` (`primary: true`, `priority: 0`) — it opens `CustomAppDialog`, the deliberate, labelled doorway for an app address. On overflow the `ResponsivePageHeader` measured overflow collapses it into the "More" menu automatically; on phone it collapses to a compact `+` button.
   - Subtitle line under the header (not an eyebrow — a real sentence, `text-sm text-[color:var(--tx2)]`): **"Connect Nessie and your agents to the tools your team uses."**
 - **Nav:** sidebar item "Apps" in the **Agents** group, above or below "Agents", using the same icon treatment as other entries (puzzle-piece / grid icon from the existing icon set).
 

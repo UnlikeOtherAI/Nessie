@@ -23,7 +23,7 @@ export { MCP_CATALOG_ERROR_CODES, McpCatalogError }
 export { isUniqueViolation }
 
 /**
- * MCP App Store catalog service.
+ * Apps catalogue service.
  *
  * Spec: `docs/external-tool-integration.md` §2,
  * `docs/plans/2026-05-30-mcp-store-publishing-approval.md`.

@@ -1,5 +1,4 @@
 import type { AppDetailRecord } from '@nessie/schemas'
-import { Link } from 'react-router-dom'
 import { Pill } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 import {
@@ -10,17 +9,17 @@ import { connectionsEmptyMessage } from './app-detail-view'
 
 type AppConnectionsListProps = {
   app: AppDetailRecord
+  onConnectAnother: () => void
 }
 
 // The accounts this app is reachable through, and who each one works for.
 // Never a token, a secret reference, or a masked variant of one — a member's
-// only credential fact is that it is stored encrypted, and that lives with the
-// owner tooling on the Connectors page.
+// only credential fact is that it is stored encrypted.
 //
 // `displayName` is already the server's wording for who the account works for,
 // so each row says it once: the name, the status pill, and — only when there is
 // one — how recently it was reached.
-export const AppConnectionsList = ({ app }: AppConnectionsListProps) => {
+export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsListProps) => {
   const now = Date.now()
 
   if (app.connections.length === 0) {
@@ -81,13 +80,14 @@ export const AppConnectionsList = ({ app }: AppConnectionsListProps) => {
         })}
       </ul>
       <div>
-        <Link
+        <button
           className="admin-button admin-button-secondary"
           data-testid="app-connect-another"
-          to={app.installHref}
+          onClick={onConnectAnother}
+          type="button"
         >
           Connect another account
-        </Link>
+        </button>
       </div>
     </div>
   )
