@@ -11,6 +11,7 @@ import {
   createInvocationRecord,
   nowIso,
   providerError,
+  providerHttpError,
 } from './connector-invocations.js'
 import {
   collectAnthropicStream,
@@ -62,8 +63,12 @@ export const createKimiConnector = (
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Kimi model error ${response.status}: ${errorText}`)
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'chat',
+        provider: 'kimi',
+        response,
+      })
     }
 
     return response

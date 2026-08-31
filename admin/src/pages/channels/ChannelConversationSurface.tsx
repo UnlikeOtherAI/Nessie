@@ -62,6 +62,7 @@ interface ChannelConversationSurfaceProps {
     | 'invitePendingAgent'
     | 'invitingAgentId'
     | 'isSendPending'
+    | 'sendError'
     | 'mentionRef'
     | 'message'
     | 'optimisticMessages'
@@ -82,7 +83,6 @@ interface ChannelConversationSurfaceProps {
   feedScroll: ReturnType<typeof useStickToBottom>
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
-  isInCall: boolean
   isPersonalAssistantConversation: boolean
   joinPending: boolean
   mentionEntities: ReturnType<typeof useChannelMentions>['mentionEntities']
@@ -100,7 +100,6 @@ interface ChannelConversationSurfaceProps {
     | 'updatePending'
   >
   me: MeResponse
-  onBannerJoin: () => void
   onCallButton: () => void
   onCreateAgent: () => void
   onJoin: () => void
@@ -152,13 +151,11 @@ export const ChannelConversationSurface = ({
   feedScroll,
   isConversationSurface,
   isExternalAgentConversation,
-  isInCall,
   isPersonalAssistantConversation,
   joinPending,
   mentionEntities,
   messageActions,
   me,
-  onBannerJoin,
   onCallButton,
   onCreateAgent,
   onJoin,
@@ -205,10 +202,10 @@ export const ChannelConversationSurface = ({
         activeChannel={activeChannel}
         boundAgents={boundAgents}
         callEligible={callEligible}
+        callMeetingUri={activeCall?.meetingUri}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
-        isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinPending}
         searchOpen={search.searchOpen}
@@ -235,8 +232,8 @@ export const ChannelConversationSurface = ({
         />
       ) : null}
 
-      {activeCall && !isInCall && callEligible && activeParticipants.length > 0 ? (
-        <CallBanner participants={activeParticipants} onJoin={onBannerJoin} />
+      {activeCall?.meetingUri && callEligible ? (
+        <CallBanner meetingUri={activeCall.meetingUri} participants={activeParticipants} />
       ) : null}
 
       <ChannelTabBar
@@ -325,6 +322,7 @@ export const ChannelConversationSurface = ({
         inviteErrors={composer.inviteErrors}
         invitingAgentId={composer.invitingAgentId}
         isSendPending={composer.isSendPending}
+        sendError={composer.sendError}
         mentionEntities={mentionEntities}
         mentionRef={composer.mentionRef}
         message={composer.message}

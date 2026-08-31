@@ -101,6 +101,7 @@ export const ChannelAgentInfoDrawer = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
     attachments,
     insertEmoji,
     sendText,
@@ -279,6 +280,7 @@ export const ChannelAgentInfoDrawer = ({
         <ChannelComposer
           attachments={attachments}
           isSendPending={isSendPending}
+          sendError={sendError}
           mentionEntities={mentionEntities}
           mentionRef={mentionRef}
           message={message}

@@ -32,7 +32,6 @@ interface ChannelOverlaysProps {
   deepWaterDialog: ReactNode
   hasRespondingAgent: boolean
   isExternalAgentConversation: boolean
-  isInCall: boolean
   isPersonalAssistantConversation: boolean
   me: MeResponse
   mentionEntities: MentionEntity[]
@@ -84,7 +83,6 @@ export const ChannelOverlays = ({
   deepWaterDialog,
   hasRespondingAgent,
   isExternalAgentConversation,
-  isInCall,
   isPersonalAssistantConversation,
   me,
   mentionEntities,
@@ -170,11 +168,11 @@ export const ChannelOverlays = ({
       pastedText={oversizePaste ?? ''}
     />
 
-    {showCallOverlay && activeCall && isInCall && (
+    {showCallOverlay && activeCall?.roomId && (
       <CallOverlay
         displayName={me.user.displayName ?? 'User'}
         onLeave={onLeaveCall}
-        roomId={activeCall.roomId ?? ''}
+        roomId={activeCall.roomId}
       />
     )}
 

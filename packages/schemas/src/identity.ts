@@ -83,6 +83,7 @@ export const UserPreferencesSchema = z.object({
   // users retain the current important-notifications behaviour.
   pushMessages: z.boolean().optional(),
   pushMentions: z.boolean().optional(),
+  pushIncomingCalls: z.boolean().optional(),
   pushBudgetAlerts: z.boolean().optional(),
   // A scheduled task that stopped running. Its own switch rather than a share
   // of budget alerts: silencing spend warnings must not silence the discovery

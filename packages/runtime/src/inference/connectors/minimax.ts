@@ -11,6 +11,7 @@ import {
   createInvocationRecord,
   nowIso,
   providerError,
+  providerHttpError,
 } from './connector-invocations.js'
 import { isLedgerEndpoint } from '../../ledger-identity.js'
 import { createBaseSnapshot } from './model-capabilities.js'
@@ -109,8 +110,12 @@ export const createMiniMaxConnector = (
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`MiniMax model error ${response.status}: ${errorText}`)
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'chat',
+        provider: 'minimax',
+        response,
+      })
     }
 
     return response

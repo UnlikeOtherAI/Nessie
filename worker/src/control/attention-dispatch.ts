@@ -50,8 +50,11 @@ const resolveAttention = async (
   body: string
   collapseId: string
   preferences: unknown
-  preferenceKind: 'assignedWork' | 'publishedKnowledge'
-  surface: { kind: 'project_board'; projectId: string } | { kind: 'knowledge_space'; spaceId: string }
+  preferenceKind: 'assignedWork' | 'incomingCalls' | 'publishedKnowledge'
+  surface:
+    | { kind: 'channel'; channelId: string; rootMessageId: null; threadId: string }
+    | { kind: 'project_board'; projectId: string }
+    | { kind: 'knowledge_space'; spaceId: string }
   title: string
   url: string
 } | null> => {
@@ -59,6 +62,13 @@ const resolveAttention = async (
     where: { id: payload.alertId, readAt: null },
     include: {
       actorUser: { select: { displayName: true } },
+      call: {
+        select: {
+          channel: { select: { id: true, label: true } },
+          id: true,
+          startedBy: { select: { displayName: true } },
+        },
+      },
       knowledgePage: {
         include: {
           space: {
@@ -133,6 +143,21 @@ const resolveAttention = async (
       surface: { kind: 'knowledge_space', spaceId: page.spaceId },
       title: 'New knowledge published',
       url: projectDestination,
+    }
+  }
+
+  if (alert.kind === 'call_missed') {
+    const call = alert.call
+    if (!call || !alert.channelId || !alert.threadId) return null
+    return {
+      alert,
+      body: `${call.startedBy.displayName} called in ${call.channel.label}`,
+      collapseId: `call:${call.id}`,
+      preferences: alert.user.preferences,
+      preferenceKind: 'incomingCalls',
+      surface: { kind: 'channel', channelId: call.channel.id, rootMessageId: null, threadId: alert.threadId },
+      title: 'Missed call',
+      url: `/channels/${call.channel.id}?incomingCall=${call.id}`,
     }
   }
 

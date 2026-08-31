@@ -15,6 +15,7 @@ type Seed = {
   organizationId: string
   otherChannelId: string
   otherOrganizationId: string
+  personalAssistantChannelId: string
   inviteeId: string
   userId: string
 }
@@ -55,11 +56,25 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
       organizationId: otherOrg.id, projectId: otherProject.id, teamId: otherTeam.id,
     },
   })
+  const personalAssistantChannel = await prisma.channel.create({
+    data: {
+      label: 'Personal Assistant',
+      dmKey: `pa:${org.id}:${invitee.id}`,
+      organizationId: org.id,
+      projectId: project.id,
+      systemChannelType: 'personal_assistant',
+      teamId: team.id,
+      type: 'dm',
+      visibility: 'private',
+      members: { create: { userId: invitee.id } },
+    },
+  })
   return {
     channelId: channel.id,
     organizationId: org.id,
     otherChannelId: otherChannel.id,
     otherOrganizationId: otherOrg.id,
+    personalAssistantChannelId: personalAssistantChannel.id,
     inviteeId: invitee.id,
     userId: user.id,
   }
@@ -68,8 +83,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
 const cleanup = async (prisma: PrismaClient, input: Seed): Promise<void> => {
   await prisma.$executeRaw`
     DELETE FROM queue_jobs
-    WHERE topic = 'call.ring-timeout'
-      AND payload->>'callId' IN (SELECT id::text FROM calls WHERE channel_id = ${input.channelId}::uuid)
+    WHERE payload->>'callId' IN (SELECT id::text FROM calls WHERE channel_id = ${input.channelId}::uuid)
   `
   await prisma.organization.deleteMany({ where: { id: { in: [input.organizationId, input.otherOrganizationId] } } })
   await prisma.user.deleteMany({ where: { id: { in: [input.userId, input.inviteeId] } } })
@@ -99,4 +113,18 @@ runDatabaseTest('startCallForUser uses the target channel organisation and the p
   assert.ok(rejected?.status === 'rejected' && rejected.reason instanceof CallStartError)
   if (rejected?.status === 'rejected') assert.equal(rejected.reason.code, 'ACTIVE_CALL_EXISTS')
   assert.equal(await prisma.call.count({ where: { channelId: workspace.channelId, status: 'ringing' } }), 1)
+})
+
+runDatabaseTest('startCallForUser keeps a Personal Assistant channel invisible to its non-member', async (t) => {
+  const prisma = new PrismaClient()
+  const workspace = await seed(prisma)
+  t.after(() => cleanup(prisma, workspace).then(() => prisma.$disconnect()))
+
+  await assert.rejects(
+    startCallForUser(prisma, {
+      actingUserId: workspace.userId,
+      channelId: workspace.personalAssistantChannelId,
+    }, jitsi),
+    (error: unknown) => error instanceof CallStartError && error.code === 'CHANNEL_NOT_FOUND',
+  )
 })

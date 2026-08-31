@@ -18,6 +18,7 @@ import {
   partitionPageHeaderActions,
   type PageHeaderActionLayout,
 } from './responsive-page-header-layout'
+import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
 import {
   HeaderAccountMenu,
@@ -25,15 +26,26 @@ import {
 } from '../../layouts/admin-shell/AccountMenuContext'
 import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 
-export type PageHeaderMenuItem = {
+type PageHeaderMenuItemBase = {
   checked?: boolean
   disabled?: boolean
   icon?: IconDefinition
   id: string
   label: string
-  onSelect: () => void
   title?: string
 }
+
+export type PageHeaderMenuButtonItem = PageHeaderMenuItemBase & {
+  onSelect: () => void
+}
+
+export type PageHeaderMenuLinkItem = PageHeaderMenuItemBase & {
+  href: string
+  rel?: string
+  target?: string
+}
+
+export type PageHeaderMenuItem = PageHeaderMenuButtonItem | PageHeaderMenuLinkItem
 
 type PageHeaderActionBase = {
   compact?: boolean
@@ -55,12 +67,19 @@ export type PageHeaderButtonAction = PageHeaderActionBase & {
   submit?: boolean
 }
 
+export type PageHeaderLinkAction = PageHeaderActionBase & {
+  href: string
+  kind: 'link'
+  rel?: string
+  target?: string
+}
+
 export type PageHeaderMenuAction = PageHeaderActionBase & {
   items: PageHeaderMenuItem[]
   kind: 'menu'
 }
 
-export type PageHeaderAction = PageHeaderButtonAction | PageHeaderMenuAction
+export type PageHeaderAction = PageHeaderButtonAction | PageHeaderLinkAction | PageHeaderMenuAction
 
 export type ResponsivePageHeaderProps = {
   actions?: PageHeaderAction[]
@@ -75,11 +94,6 @@ export type ResponsivePageHeaderProps = {
     value: string
   }
   titleTone?: 'page' | 'section'
-}
-
-type HeaderMenuProps = {
-  action: PageHeaderAction
-  onSelect: (item: PageHeaderMenuItem | PageHeaderButtonAction) => void
 }
 
 const ACTION_GAP = 8
@@ -113,46 +127,6 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
   ].join(' ')
 }
 
-const HeaderMenu = ({ action, onSelect }: HeaderMenuProps) => {
-  const items = action.kind === 'menu' ? action.items : [action]
-
-  return (
-    <>
-      {action.kind === 'menu' ? (
-        <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--tx3)]">
-          {action.label}
-        </div>
-      ) : null}
-      {items.map((item) => {
-        const checked = 'checked' in item ? item.checked : undefined
-        const icon = item.icon
-        const role = checked === undefined ? 'menuitem' : 'menuitemradio'
-        return (
-          <button
-            aria-checked={checked}
-            className={[
-              'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs',
-              'text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-              checked ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : '',
-              item.disabled ? 'cursor-not-allowed opacity-50' : '',
-            ].join(' ')}
-            disabled={item.disabled}
-            key={item.id}
-            onClick={() => onSelect(item)}
-            role={role}
-            title={item.title}
-            type="button"
-          >
-            {icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null}
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            {checked ? <span aria-hidden="true">✓</span> : null}
-          </button>
-        )
-      })}
-    </>
-  )
-}
-
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide workspace,
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
@@ -171,7 +145,7 @@ export const ResponsivePageHeader = ({
   const leadingMeasureRef = useRef<HTMLDivElement>(null)
   const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const moreMeasureRef = useRef<HTMLDivElement>(null)
-  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const triggerRefs = useRef<Record<string, HTMLElement | null>>({})
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [visibleIds, setVisibleIds] = useState(() => actions.map((action) => action.id))
   const [overflowIds, setOverflowIds] = useState<string[]>([])
@@ -251,7 +225,7 @@ export const ResponsivePageHeader = ({
   useEffect(() => {
     if (!openMenu) return undefined
     const frame = requestAnimationFrame(() => {
-      menuRefs.current[openMenu]?.querySelector<HTMLButtonElement>('[role^="menuitem"]')?.focus()
+      menuRefs.current[openMenu]?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus()
     })
     const closeForOutsidePointer = (event: MouseEvent) => {
       const target = event.target
@@ -278,7 +252,7 @@ export const ResponsivePageHeader = ({
     setOpenMenu(null)
     if (menu && restoreFocus) requestAnimationFrame(() => triggerRefs.current[menu]?.focus())
   }
-  const selectMenuItem = (item: PageHeaderMenuItem | PageHeaderButtonAction) => {
+  const selectMenuItem = (item: PageHeaderMenuButtonItem | PageHeaderButtonAction) => {
     closeMenu(false)
     item.onSelect()
   }
@@ -290,11 +264,11 @@ export const ResponsivePageHeader = ({
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
     const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'),
+      event.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]'),
     )
     if (items.length === 0) return
     event.preventDefault()
-    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    const current = items.indexOf(document.activeElement as HTMLElement)
     const next = event.key === 'Home'
       ? 0
       : event.key === 'End'
@@ -304,6 +278,21 @@ export const ResponsivePageHeader = ({
   }
   const toggleMenu = (id: string) => setOpenMenu((current) => (current === id ? null : id))
   const renderAction = (action: PageHeaderAction, measuring = false): ReactNode => {
+    if (action.kind === 'link') {
+      return (
+        <a
+          aria-label={action.compact ? action.label : undefined}
+          className={actionClassName(action, false)}
+          href={action.href}
+          rel={action.rel}
+          target={action.target}
+          title={action.title ?? action.label}
+        >
+          {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+          {action.compact ? null : <span>{action.label}</span>}
+        </a>
+      )
+    }
     const isMenu = action.kind === 'menu'
     const buttonAction = isMenu ? null : action
     const isOpen = !measuring && openMenu === action.id
@@ -389,7 +378,7 @@ export const ResponsivePageHeader = ({
                   ref={(element) => { menuRefs.current[action.id] = element }}
                   role="menu"
                 >
-                  <HeaderMenu action={action} onSelect={selectMenuItem} />
+                  <PageHeaderMenu action={action} onSelect={selectMenuItem} />
                 </div>
               ) : null}
             </div>
@@ -419,7 +408,7 @@ export const ResponsivePageHeader = ({
                 >
                   {overflowActions.map((action, index) => (
                     <div key={action.id}>
-                      <HeaderMenu action={action} onSelect={selectMenuItem} />
+                      <PageHeaderMenu action={action} onSelect={selectMenuItem} />
                       {index < overflowActions.length - 1 ? <div className="my-1 border-t border-[color:var(--sep)]" /> : null}
                     </div>
                   ))}

@@ -43,6 +43,7 @@ export const buildApnsBody = (payload: PushPayload): string => {
   }
   if (payload.badge !== undefined) aps.badge = payload.badge
   if (payload.collapseId !== undefined) aps['thread-id'] = payload.collapseId
+  if (payload.category !== undefined) aps.category = payload.category
   // expo-notifications serializes an APNs remote notification's `userInfo.body`
   // as `content.data`. Keep all routing metadata under that one key so a direct
   // APNs payload reaches the native deep-link bridge instead of just showing an
@@ -107,6 +108,9 @@ export class ApnsClient {
     }
     if (payload.collapseId !== undefined) {
       headers['apns-collapse-id'] = payload.collapseId
+    }
+    if (payload.priority === 'high') {
+      headers['apns-priority'] = '10'
     }
 
     let status: number
