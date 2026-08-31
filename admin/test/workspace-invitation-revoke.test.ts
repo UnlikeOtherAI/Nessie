@@ -64,7 +64,7 @@ type Recorded = { method: string; path: string }
 
 const mount = async (
   canManage: boolean,
-  options: { memberError?: ApiClientError; onReconnect?: () => Promise<void> } = {},
+  options: { memberError?: Error; onReconnect?: () => Promise<void> } = {},
 ) => {
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
   for (const [key, value] of Object.entries(domGlobals)) {
@@ -209,7 +209,7 @@ test('an unlinked UOA workspace offers a reconnection instead of a false outage'
   try {
     assert.match(
       harness.text(),
-      /no longer linked to the active UnlikeOtherAI workspace/,
+      /can no longer be reached through UnlikeOtherAI/,
     )
     assert.doesNotMatch(harness.text(), /directory could not be reached/)
     assert.equal(harness.buttons('Reconnect workspace').length, 1)
@@ -223,6 +223,30 @@ test('an unlinked UOA workspace offers a reconnection instead of a false outage'
 
     await harness.click(harness.buttons('Reconnect workspace')[0])
     assert.equal(reconnects, 1)
+  } finally {
+    await harness.unmount()
+  }
+})
+
+test('a rejected active workspace offers reconnection from the live roster error', async () => {
+  const harness = await mount(true, {
+    // The API client can be bundled separately from this page, so recovery
+    // reads the stable response fields rather than relying on `instanceof`.
+    memberError: Object.assign(
+      new Error('UnlikeOtherAI refused the request'),
+      { code: 'WORKSPACE_MEMBERS_REJECTED', status: 404 },
+    ),
+    onReconnect: async () => {},
+  })
+
+  try {
+    assert.match(harness.text(), /can no longer be reached through UnlikeOtherAI/)
+    assert.equal(harness.buttons('Reconnect workspace').length, 1)
+    assert.equal(harness.buttons('Send invitation').length, 0)
+    assert.equal(
+      harness.calls.some((call) => call.path === '/api/workspace/invitations'),
+      false,
+    )
   } finally {
     await harness.unmount()
   }

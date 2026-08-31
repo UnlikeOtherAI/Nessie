@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react'
-import { ApiClientError } from '@nessie/client-core'
 import type { WorkspaceInvitationRecord } from '@nessie/schemas'
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents } from '../../facades/agents/queries'
@@ -30,6 +29,19 @@ import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 const errorMessage = (caught: unknown, fallback: string): string =>
   caught instanceof Error ? caught.message : fallback
+
+// `GET /workspace/members` has no member or invitation parameter. A 404 from
+// the relay therefore identifies its active UOA workspace, even though the
+// shared mutation error code is also used for a missing member or invitation.
+const workspaceNeedsReconnect = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && 'status' in error
+  && (
+    error.code === 'WORKSPACE_NOT_LINKED'
+    || (error.code === 'WORKSPACE_MEMBERS_REJECTED' && error.status === 404)
+  )
 
 const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }) => {
   const resend = useResendWorkspaceInvitation()
@@ -227,14 +239,13 @@ export const WorkspaceMembersSection = ({
   pausedPrivateAgentCount?: number
 }) => {
   const members = useWorkspaceMembers()
-  const workspaceNotLinked =
-    members.error instanceof ApiClientError && members.error.code === 'WORKSPACE_NOT_LINKED'
+  const needsWorkspaceReconnect = workspaceNeedsReconnect(members.error)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [reconnectError, setReconnectError] = useState<string | null>(null)
   // Invitation emails are PII; the API serves this list to owners and admins only.
   // A linked roster is the prerequisite for invitation management. Waiting for
-  // it avoids issuing a second, guaranteed-404 UOA request when the local
-  // workspace binding is gone.
+  // it avoids issuing a second, guaranteed-404 UOA request when that roster's
+  // active UOA workspace cannot be reached.
   const invitations = useWorkspaceInvitations(canManage && members.isSuccess)
   // `scope: 'all'` so the system tier is classified into its own bucket rather
   // than silently missing from the tree. Entitlement is unchanged — the system
@@ -256,7 +267,7 @@ export const WorkspaceMembersSection = ({
   const invitationRows = (invitations.data?.invitations ?? []).filter(
     (invitation) => (invitation.status ?? 'pending') === 'pending',
   )
-  const hasUnassignedAgents = !workspaceNotLinked && (
+  const hasUnassignedAgents = !needsWorkspaceReconnect && (
     tree.pausedPrivateAgentCount > 0
     || tree.unowned.length > 0
     || tree.ownedOutsideWorkspace.length > 0
@@ -280,11 +291,11 @@ export const WorkspaceMembersSection = ({
       <section className="admin-card p-4">
         <SectionLabel>People</SectionLabel>
         <div className="mt-4 grid gap-2" data-testid="workspace-member-list">
-          {workspaceNotLinked ? (
+          {needsWorkspaceReconnect ? (
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'This Nessie workspace is no longer linked to the active UnlikeOtherAI workspace.',
+                message: 'This Nessie workspace can no longer be reached through UnlikeOtherAI.',
               }}
             />
           ) : members.isError ? (
@@ -295,7 +306,7 @@ export const WorkspaceMembersSection = ({
               }}
             />
           ) : null}
-          {workspaceNotLinked && onReconnect ? (
+          {needsWorkspaceReconnect && onReconnect ? (
             <button
               className="admin-button admin-button-primary justify-self-start"
               disabled={isReconnecting}
@@ -330,7 +341,7 @@ export const WorkspaceMembersSection = ({
         {hasUnassignedAgents ? <WorkspaceAgentBuckets tree={tree} /> : null}
       </section>
 
-      {canManage && !workspaceNotLinked ? (
+      {canManage && !needsWorkspaceReconnect ? (
         <div className="grid content-start gap-4">
           <section className="admin-card p-4">
             <SectionLabel>Invite to workspace</SectionLabel>
