@@ -153,9 +153,9 @@ export const ensureAgentDocsSpace = async (
         name: `${input.agentName} — Documents`,
         organizationId: input.organizationId,
         projectId: input.projectId,
-        // `privateToAgentId` restricts a machine reader; it is deliberately
-        // not a disclosure-basis scope. `ownerAgentId` names the human audience.
-        privateToAgentId: input.agentId,
+        // ownerAgentId derives the human audience. privateToAgentId is a
+        // separate machine-only restriction and would prevent an entitled
+        // human, subtask child, or explicitly granted agent from using this home.
         ownerAgentId: input.agentId,
         visibility: 'private',
         metadata: { agentDocs: true },

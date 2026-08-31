@@ -7,11 +7,12 @@ ship as one KB extension.
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
 rows; this design reuses its ownership/visibility verdicts),
-agent to-dos (branch `docs/agent-todos`,
-`docs/plans/2026-08-31-agent-todos.md` — the Designer-tab and
+agent to-dos
+([2026-08-31-agent-todos.md](2026-08-31-agent-todos.md) — the Designer-tab and
 audience-superset patterns),
 [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
-(`Agent.visibility` — still a proposal; in-flight on `feat/agent-scopes`),
+(`Agent.visibility` — landed; private visibility is part of the shared
+agent-audience predicate),
 [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship, landed),
 [2026-08-13-live-document-streaming/overview.md](2026-08-13-live-document-streaming/overview.md)
@@ -84,9 +85,8 @@ columns, `readMarkdownDocument`, the target bar) mean a new store still pays a
 generalization tax for zero functional gain. The agent-tables plan already
 drew this boundary from the other side: *"Not a second knowledge base.
 Documents and files stay in KB."* Same rule, read forward: **agent documents
-are KB pages in an agent-owned space.** What is genuinely missing is exactly
-one fact and one predicate arm: *a space owned by an agent, readable by
-whoever can see that agent.*
+are KB pages in an agent-owned space.** The shipped extension adds the
+ownership fact and derives its audience from the one agent-visibility predicate.
 
 (Also for clarity: `document_read` from the task brief is unrelated — it
 greps the repo's own `docs/**/*.md` from disk
@@ -101,11 +101,11 @@ Beyond §0, the facts this design composes with, each verified:
   (`packages/workspace-admin/src/agent-list.ts:31`, `access-checks.ts:54,88`)
   = bound into a channel the viewer can see OR stewarded
   (`buildVisibleAgentWhere`'s live-membership + `parentAgentId: null` arm); org
-  owners see every non-system agent. `Agent.visibility`
-  (`workspace | private`) is **proposed, not merged** — in-flight on
-  `feat/agent-scopes` with `buildAgentVisibilityWhere` composed into the
-  mirror pair. This design, like to-dos, gates every read through the mirror
-  pair so the private fragment is inherited with zero changes here.
+  owners see every non-system **workspace** agent. `Agent.visibility`
+  (`workspace | private`) is live, and `buildVisibleAgentWhere` owns both the
+  reach arms and the private-owner fence. This design, like to-dos, gates every
+  read through that one predicate, so a private agent's documents are owner-only
+  without a second document-specific audience rule.
 - **KB space access** (`packages/knowledge/src/access.ts`): user arm =
   creator / org-visibility / project membership / explicit
   `KnowledgeSpaceMember`; `private` and `channel`/`team` visibilities admit
@@ -163,6 +163,11 @@ ownerAgent   Agent?  @relation("AgentDocsSpaces", fields: [ownerAgentId], refere
   arm, an agent's documents are invisible rather than public. The new arm
   (§4) is the sole widener. A CHECK keeps the shape honest:
   `owner_agent_id IS NULL OR visibility = 'private'`.
+- **No data migration is needed for the removed `privateToAgentId` stamp.**
+  Agent documents had not reached production before this correction, so there
+  is no durable provisioned-home population to repair. Leaving that field's
+  existing semantics untouched avoids widening unrelated machine-private
+  spaces; every future agent home is created with `ownerAgentId` only.
 - **Provisioned lazily at run setup**, not at agent creation: when a run's
   toolset includes any KB write tool, run setup does one indexed SELECT for
   the agent's home space and creates it only if absent (so agents that never
@@ -268,12 +273,13 @@ shared agent-visibility predicate consumed by `workspace-admin`, never
 restating it:
 
 - **Single visibility definition** (`packages/db/src/agent-visibility.ts`):
-  `buildVisibleAgentWhere` owns channel-derived reach plus live top-level
-  stewardship. `listVisibleAgentIdsForUser` resolves that fragment to ids.
-  `listAgentsForUser`, `isAgentVisibleToUser`, KB access, and publication-alert
-  revalidation all compose this builder, so the agent page and its documents
-  cannot drift. The package is safe to import from knowledge because its Prisma
-  client stays lazy and it has no knowledge dependency.
+  `buildVisibleAgentWhere` owns channel-derived reach, live top-level
+  stewardship, and the private-owner fence. `listVisibleAgentIdsForUser`
+  resolves that complete fragment to ids. `listAgentsForUser`,
+  `isAgentVisibleToUser`, KB access, and publication-alert revalidation all
+  compose it, so the agent page and its documents cannot drift. The package is
+  safe to import from knowledge because its Prisma client stays lazy and it has
+  no knowledge dependency.
 - **TypeScript** (`packages/knowledge/src/access.ts` `loadUserViewer` /
   `canReadSpace`): `loadUserViewer` resolves the shared fragment once into
   `SpaceViewer.visibleAgentIds`; the pure, synchronous `canReadSpace` admits
@@ -430,8 +436,9 @@ organisation owners, and service actors at both the UI and route. Agent
 visibility does not widen knowledge access: the per-agent route returns an
 explicit unreadable state for a visible agent whose space the caller cannot
 read, and the tab explains that state instead of mounting a workspace that can
-only fail. The `ownerAgentId` contract is live here; populating it end to end
-still depends on the phase-1 sibling's domain-record and native-mapper change.
+only fail. `ownerAgentId` is populated end to end by the domain record and
+native mapper, so the shared browser/API contract carries the live doorway fact
+without a sibling dependency.
 
 ### 6.1 The owning surface: a Documents tab on agent detail
 
@@ -521,8 +528,7 @@ it names (`kb_list`, `kb_search`, `kb_document_compose`,
 
 1. **The owned space + access + safety (implemented).** `ownerAgentId` migration + CHECK;
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL
-   (delegating to the shared DB builder) + the row added to the agent-scopes
-   gating table; the basis-bridge branch (with the §5.1 send_message
+   (delegating to the shared DB builder); the basis-bridge branch (with the §5.1 send_message
    verification settled and recorded); the basis-aware refuse-before-write
    decision;
    the prompt block. Agents can now keep, re-read, and search their
@@ -549,35 +555,23 @@ it names (`kb_list`, `kb_search`, `kb_document_compose`,
 Phase 1 is independently shippable and delivers the product sentence by
 itself.
 
-## 10. Open questions (flagged, not guessed)
+## 10. Recorded decisions
 
-1. **Write default** — write-follows-read (adopted, per the product brief's
-   "humans can edit them too") vs steward-only-by-default with
-   `writeRestricted` inverted. Confirm the permissive default is intended
-   for shared agents.
-2. **Search inclusion** — agent docs appear in org-wide KB search for
-   entitled viewers (adopted: discoverability, one predicate). If dozens of
-   agents' working notes prove noisy in human search, add a default-off
-   facet rather than a visibility change.
-3. **Two ownership facts during transition** — `createdBy === agent.id`
-   already grants agent access to legacy agent-created spaces;
-   `ownerAgentId` is the typed successor. Should a follow-up migration stamp
-   `ownerAgentId` onto spaces whose `createdBy` matches an agent id, or does
-   the no-fabrication rule apply (a space an agent created for a project is
-   not necessarily *its* docs)? Recommended: no backfill; only
-   `ensureAgentDocsSpace` writes the column.
-4. **Default-on vs gated** — kept default-on (KB tools already are). Tables'
-   open question #2 is the same decision; whatever the team picks there
-   should apply here identically.
-5. **Quota posture** — doc bytes already ride `FileService` accounting and
-   `Budget.storageLimitBytes`. Is a per-agent page/space count cap wanted
-   (the tables quota instinct), or is org storage quota enough for prose?
-   Proposed: org quota only; revisit on abuse.
-6. **PA presence runs** (when agent-scopes lands): in a shared channel, a
-   PA presence writing "its" notes writes to the *owner's* My Docs — an
-   owner-private artifact — which the scopes plan puts behind the
-   owner-private tier. Confirm document writes join that tier's
-   approval-routed set rather than executing on a stranger's word.
-7. **Naming** — "Documents" tab and "<Agent> — Documents" space name;
-   "Notes" was considered (warmer, but collides with `kb_note_add`
-   annotations). Pick before the tab ships; nothing else depends on it.
+1. **Write default:** write follows read for an agent home. `writeRestricted`
+   is the explicit narrowing switch; access administrators retain its settings
+   doorway even after the switch removes ordinary content writes.
+2. **Search inclusion:** agent documents appear in organization-wide KB search
+   for entitled viewers. A future noise-control facet may narrow discovery, but
+   must not alter the visibility rule.
+3. **Ownership transition:** do not backfill `ownerAgentId` from `createdBy`.
+   An agent-created project space is not necessarily that agent's home; only
+   `ensureAgentDocsSpace` writes the typed ownership fact.
+4. **Availability:** the capability is default-on with the existing KB tools;
+   ordinary tool policy remains the deployment gate.
+5. **Quota:** document bytes use `FileService` accounting and the organization
+   `Budget.storageLimitBytes`; there is no per-agent page or space cap.
+6. **PA artifacts:** the system-managed PA has no agent-documents home. Its
+   authored documents belong in the effective user's My Docs, while PA presence
+   policy continues to withhold owner-private capability outside that user's DM.
+7. **Naming:** the shipped surface is **Documents**, and homes are named
+   `<Agent> — Documents`.

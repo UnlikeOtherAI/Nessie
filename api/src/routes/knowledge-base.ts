@@ -152,11 +152,20 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    const currentSpace = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
-    if (!currentSpace) return reply
     const changesAccess = body.writeRestricted !== undefined
       || body.memberUserIds !== undefined
       || body.memberAgentIds !== undefined
+    // Access administrators must be able to reverse writeRestricted even when
+    // it has removed their ordinary content-write permission. Read remains the
+    // floor: no administrator may configure a space they cannot discover.
+    const currentSpace = await accessSpace(
+      actorContext,
+      spaceId,
+      viewer,
+      changesAccess ? 'read' : 'write',
+      reply,
+    )
+    if (!currentSpace) return reply
     if (changesAccess && !canManageKnowledgeSpaceAccess(currentSpace, actorContext)) {
       sendApiError(
         reply,

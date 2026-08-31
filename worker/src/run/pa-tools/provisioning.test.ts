@@ -205,16 +205,30 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
   const result = await runAgentListTool(context, {})
 
   // A member reaches an agent through a channel they can see it in, or because
-  // they steward it. `agent_list` now calls the same shared list function as
-  // GET /api/agents, so the shared visibility branches are top-level here.
+  // they steward it. `agent_list` carries the complete shared document/agent
+  // predicate rather than extracting its OR arms, so reachability is nested
+  // under the shared visibility fragment.
   const where = queries[0]?.where as {
-    OR: Array<Record<string, unknown>>
+    AND: Array<Record<string, unknown>>
+    OR: Array<{ AND?: Array<{ OR?: Array<Record<string, unknown>> }> }>
     organizationId: string
   }
   assert.equal(where.organizationId, ORG_ID)
-  assert.equal(where.OR.length, 2)
+  assert.deepEqual(where.AND, [{
+    OR: [
+      { visibility: 'workspace' },
+      {
+        visibility: 'private',
+        ownerMembership: { deactivatedAt: null },
+        ownerUserId: USER_ID,
+        parentAgentId: null,
+      },
+    ],
+  }])
+  assert.equal(where.OR.length, 1)
+  const reachability = where.OR[0]?.AND?.[0]?.OR ?? []
   assert.deepEqual(
-    (where.OR[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
+    (reachability[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
     {
       organizationId: ORG_ID,
       OR: [{ visibility: 'public' }, { members: { some: { userId: USER_ID } } }],
@@ -222,13 +236,13 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
   )
   // Ownership widens by pointer equality, so it carries the live-membership
   // join and excludes spawned subtask children.
-  assert.deepEqual(where.OR[1], {
+  assert.deepEqual(reachability[1], {
     ownerMembership: { deactivatedAt: null },
     ownerUserId: USER_ID,
     parentAgentId: null,
   })
   assert.equal(
-    where.OR.some((branch) => 'bindings' in branch && 'none' in (branch.bindings as object)),
+    reachability.some((branch) => 'bindings' in branch && 'none' in (branch.bindings as object)),
     false,
     'a member must not get the owner-only unbound branch',
   )
@@ -267,7 +281,7 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
   const result = await runAgentListTool(context, { query: 'hardware' })
 
   const where = queries[0]?.where as {
-    OR: Array<{ OR?: Array<Record<string, unknown>> } & Record<string, unknown>>
+    OR: Array<{ AND?: Array<{ OR?: Array<Record<string, unknown>> }> } & Record<string, unknown>>
   }
   // The owner retains the exact shared channel/stewardship branches and gets
   // two additional routes: any in-org binding and no bindings at all.
@@ -280,7 +294,7 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
     'an owner still reaches unbound agents',
   )
   assert.ok(
-    where.OR.some((branch) =>
+    (where.OR[0]?.AND?.[0]?.OR ?? []).some((branch) =>
       (branch as { ownerUserId?: string }).ownerUserId === USER_ID,
     ),
     'the ownership branch is present for an owner too',

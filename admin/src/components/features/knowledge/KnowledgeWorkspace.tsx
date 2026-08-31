@@ -194,8 +194,10 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const pageAttachmentUpload = useUploadPageAttachment(current?.id)
   const fileVersionUpload = useUploadFileVersion(versionDialogFor?.id, selectedSpaceId)
   const canWrite = selectedSpace?.canWrite ?? false
-  const canManage = canWrite && (canManageSpace ?? true)
   const canManageAccess = selectedSpace?.canManageAccess ?? false
+  // A space administrator must retain the settings doorway after enabling
+  // writeRestricted, even when that switch removes ordinary content writes.
+  const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
 
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
     setViewMode(nextMode)

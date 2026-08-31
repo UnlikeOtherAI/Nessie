@@ -1,4 +1,8 @@
 import type { Prisma } from '@prisma/client'
+import {
+  buildAgentVisibilityWhere,
+  type AgentVisibilityScope,
+} from '@nessie/db'
 import type {
   AgentAvatarBackgroundColor,
   AgentEffort,
@@ -18,11 +22,7 @@ import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 
-export type AgentVisibilityScope = {
-  includeAllOrgChannels?: boolean
-  organizationId: string
-  userId: string
-}
+export type { AgentVisibilityScope } from '@nessie/db'
 
 export const buildAccessibleChannelWhere = (
   visibility: AgentVisibilityScope,
@@ -44,47 +44,7 @@ export const buildAccessibleThreadWhere = (
   channel: buildAccessibleChannelWhere(visibility),
 })
 
-/**
- * "An agent I steward" as a visibility rule.
- *
- * Two conditions are load-bearing and neither is optional:
- *
- * - `ownerMembership.deactivatedAt: null` — the branch widens by pointer
- *   equality to a user id, so on its own a member deactivated in this
- *   organization would keep seeing their agents. Liveness is re-derived here,
- *   never implied by the stored pointer or by the foreign key (which a retained
- *   deactivated row still satisfies).
- * - `parentAgentId: null` — `spawn_subtask` mints a permanent Agent row per
- *   delegation, inheriting its parent's owner, and nothing reaps them. Without
- *   this, owning one agent would pour every subtask child it has ever spawned
- *   into that person's agent list, forever.
- */
-export const buildOwnedAgentWhere = (
-  visibility: AgentVisibilityScope,
-): Prisma.AgentWhereInput => ({
-  ownerMembership: { deactivatedAt: null },
-  ownerUserId: visibility.userId,
-  parentAgentId: null,
-})
-
-/**
- * The privacy fence over every otherwise-entitled agent read.
- *
- * Workspace-visible agents keep their existing channel/owner entitlement.
- * Private agents are admitted only through the existing ownership predicate,
- * which deliberately re-derives live membership and excludes subtask rows.
- */
-export const buildAgentVisibilityWhere = (
-  visibility: AgentVisibilityScope,
-): Prisma.AgentWhereInput => ({
-  OR: [
-    { visibility: 'workspace' },
-    {
-      visibility: 'private',
-      ...buildOwnedAgentWhere(visibility),
-    },
-  ],
-})
+export { buildAgentVisibilityWhere }
 
 export const isSystemManagedAgent = (agent: {
   agentKind: string

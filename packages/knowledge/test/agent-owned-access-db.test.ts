@@ -23,8 +23,8 @@ dbTest('the four agent-document read implementations agree on one database fixtu
   const prisma = new PrismaClient()
   const suffix = randomUUID()
   const emails = [
-    `agent-doc-visible-${suffix}@test.local`,
-    `agent-doc-hidden-${suffix}@test.local`,
+    `agent-doc-owner-${suffix}@test.local`,
+    `agent-doc-shared-channel-${suffix}@test.local`,
   ]
   let organizationId: string | null = null
   t.after(async () => {
@@ -41,10 +41,10 @@ dbTest('the four agent-document read implementations agree on one database fixtu
   organizationId = organization.id
   const [visibleUser, hiddenUser] = await Promise.all([
     prisma.user.create({
-      data: { displayName: 'Visible reader', email: emails[0]! },
+    data: { displayName: 'Private agent owner', email: emails[0]! },
     }),
     prisma.user.create({
-      data: { displayName: 'Hidden reader', email: emails[1]! },
+    data: { displayName: 'Shared-channel reader', email: emails[1]! },
     }),
   ])
   await prisma.organizationMember.createMany({
@@ -73,17 +73,22 @@ dbTest('the four agent-document read implementations agree on one database fixtu
       slug: `agent-doc-private-${suffix}`,
       teamId: team.id,
       visibility: 'private',
-      members: { create: { userId: visibleUser.id } },
+      members: { create: { userId: hiddenUser.id } },
     },
   })
   const agent = await prisma.agent.create({
     data: {
       name: `Agent documents ${suffix}`,
       organizationId: organization.id,
+      ownerUserId: visibleUser.id,
       role: 'researcher',
       bindings: { create: { channelId: channel.id } },
     },
   })
+  // This is a legacy shape from before private-agent binding placement was
+  // structurally refused. Read access must still fail closed for it: a data
+  // repair cannot rely on every historical binding having disappeared first.
+  await prisma.agent.update({ data: { visibility: 'private' }, where: { id: agent.id } })
   const space = await prisma.knowledgeSpace.create({
     data: {
       createdBy: agent.id,
@@ -133,7 +138,11 @@ dbTest('the four agent-document read implementations agree on one database fixtu
   const mappedSpace = mapSpace(space)
 
   assert.equal(canReadSpace(mappedSpace, visibleViewer), true)
-  assert.equal(canReadSpace(mappedSpace, hiddenViewer), false)
+  assert.equal(
+    canReadSpace(mappedSpace, hiddenViewer),
+    false,
+    'sharing a channel with a private agent must not reveal its documents',
+  )
   assert.equal(canReadSpace(mappedSpace, agentViewer), true)
   assert.equal(canWriteSpace(mappedSpace, agentViewer), true)
 
@@ -152,7 +161,11 @@ dbTest('the four agent-document read implementations agree on one database fixtu
     ),
   ])
   assert.equal(visibleSql.some((row) => row.id === space.id), true)
-  assert.equal(hiddenSql.some((row) => row.id === space.id), false)
+  assert.equal(
+    hiddenSql.some((row) => row.id === space.id),
+    false,
+    'the SQL search mirror must apply the same private-agent fence',
+  )
   assert.equal(agentSql.some((row) => row.id === space.id), true)
 
   const [visibleAlerts, hiddenAlerts] = await Promise.all([

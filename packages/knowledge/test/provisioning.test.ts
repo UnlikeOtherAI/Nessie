@@ -62,7 +62,7 @@ dbTest('ensureAgentDocsSpace serializes concurrent provisioning into one valid h
     id: first.spaceId,
     metadata: { agentDocs: true },
     ownerAgentId: agent.id,
-    privateToAgentId: agent.id,
+    privateToAgentId: null,
     visibility: 'private',
   })
 })

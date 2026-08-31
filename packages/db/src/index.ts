@@ -15,8 +15,11 @@ export {
 
 export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
 export {
+  buildAgentVisibilityWhere,
+  buildOwnedAgentWhere,
   buildVisibleAgentWhere,
   listVisibleAgentIdsForUser,
+  type AgentVisibilityScope,
   type VisibleAgentWhereInput,
 } from './agent-visibility.js'
 export {
