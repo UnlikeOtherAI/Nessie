@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faChevronDown, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthProviders } from '../../facades/auth/hooks'
 import {
@@ -359,14 +359,22 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
           type="button"
         >
-          <WorkspaceAvatar
-            imageUrl={active?.avatarImageUrl}
-            label={active?.label ?? 'Workspace'}
-            revision={avatarRevision}
-            size={36}
-            teamId={active?.uoaWorkspace ? active.avatarTeamId ?? null : active?.teamId}
-            token={token}
-          />
+          <span className="relative">
+            <WorkspaceAvatar
+              imageUrl={active?.avatarImageUrl}
+              label={active?.label ?? 'Workspace'}
+              revision={avatarRevision}
+              size={36}
+              teamId={active?.uoaWorkspace ? active.avatarTeamId ?? null : active?.teamId}
+              token={token}
+            />
+            <span
+              aria-hidden="true"
+              className="absolute bottom-0 right-0 flex h-[10px] w-[10px] items-center justify-center rounded-[3px] border border-[color:var(--sep)] bg-[color:var(--panel)] text-[5px] text-[color:var(--tx)]"
+            >
+              <FontAwesomeIcon icon={faChevronDown} />
+            </span>
+          </span>
         </button>
       ) : variant === 'mobile-header' ? (
         <button

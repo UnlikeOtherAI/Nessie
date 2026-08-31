@@ -65,6 +65,11 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
     switcher.match(/imageUrl=\{active\?\.avatarImageUrl\}/g)?.length === 2,
     'both web workspace triggers must render the public avatar fallback',
   )
+  assert.match(switcher, /faChevronDown/)
+  assert.match(
+    switcher,
+    /h-\[10px\] w-\[10px\][\s\S]*?rounded-\[3px\][\s\S]*?<FontAwesomeIcon icon=\{faChevronDown\}/,
+  )
 })
 
 test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted sign-in', () => {
