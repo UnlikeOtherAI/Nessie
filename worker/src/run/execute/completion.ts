@@ -271,6 +271,7 @@ export const completeRunExecution = async (
   // in flight as one batched follow-up run (see thread-serialization.ts).
   await drainPendingThreadMessagesBestEffort(deps.prisma, {
     agentId: context.agent.id,
+    ...(context.run.principalUserId ? { principalUserId: context.run.principalUserId } : {}),
     threadId: context.run.threadId,
   })
   if (replyPushMessage) {

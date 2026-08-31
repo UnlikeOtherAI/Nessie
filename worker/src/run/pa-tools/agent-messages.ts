@@ -136,7 +136,12 @@ export const runMessageEditTool = async (
 
   // Agents may only edit messages they authored themselves.
   const existing = await context.prisma.message.findFirst({
-    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
+    where: {
+      id: input.messageId,
+      agentId: context.agentId,
+      deletedAt: null,
+      onBehalfOfUserId: context.run.principalUserId,
+    },
     select: { id: true, thread: { select: { channelId: true } } },
   })
   if (!existing) {
@@ -177,7 +182,12 @@ export const runMessageDeleteTool = async (
   }
 
   const existing = await context.prisma.message.findFirst({
-    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
+    where: {
+      id: input.messageId,
+      agentId: context.agentId,
+      deletedAt: null,
+      onBehalfOfUserId: context.run.principalUserId,
+    },
     select: { id: true },
   })
   if (!existing) {
@@ -241,7 +251,12 @@ export const runReactTool = async (
   const summary = `messageId=${input.messageId} emoji=${emoji}`
   if (input.remove) {
     await context.prisma.messageReaction.deleteMany({
-      where: { agentId: context.agentId, emoji, messageId: message.id },
+      where: {
+        agentId: context.agentId,
+        emoji,
+        messageId: message.id,
+        onBehalfOfUserId: context.run.principalUserId,
+      },
     })
     return {
       inputSummary: summary,
@@ -250,16 +265,14 @@ export const runReactTool = async (
     }
   }
 
-  await context.prisma.messageReaction.upsert({
-    create: { agentId: context.agentId, emoji, messageId: message.id },
-    update: {},
-    where: {
-      messageId_agentId_emoji: {
-        agentId: context.agentId,
-        emoji,
-        messageId: message.id,
-      },
-    },
+  await context.prisma.messageReaction.createMany({
+    data: [{
+      agentId: context.agentId,
+      emoji,
+      messageId: message.id,
+      onBehalfOfUserId: context.run.principalUserId,
+    }],
+    skipDuplicates: true,
   })
   return {
     inputSummary: summary,

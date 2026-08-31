@@ -1,8 +1,8 @@
 import type { AgentRecord } from '../../../lib/api-client'
-import { AgentAvatar } from '../../shared/AgentAvatar'
+import { AgentAvatar, type AgentAvatarSource } from '../../shared/AgentAvatar'
 
 type ChannelAgentGlyphProps = {
-  agent?: AgentRecord | null
+  agent?: AgentAvatarSource | AgentRecord | null
   size?: 'md' | 'lg'
   token: string | null
 }

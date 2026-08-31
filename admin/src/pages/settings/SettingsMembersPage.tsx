@@ -11,11 +11,12 @@ import {
 } from '../../facades/users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
+  PausedPrivateAgentsBucket,
   PersonAgents,
   UnassignedAgents,
 } from '../../components/features/members/PersonAgents'
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
-import { useAgents } from '../../facades/agents/queries'
+import { useAgents, usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
 import {
   FeedbackBanner,
@@ -151,11 +152,16 @@ export const SettingsMembersPage = () => {
    * sources — never a second implementation of the view.
    */
   const agentsQuery = useAgents({ scope: 'all' })
+  // The aggregate is an owner-only server surface. Keep that session-derived
+  // query here, at the page boundary, so the shared UOA roster section remains
+  // presentational and can render without an auth-session provider.
+  const pausedPrivateAgentCount = usePausedPrivateAgentCount(isOwner)
   const localTree = (() => {
     const agents = Array.isArray(agentsQuery.data) ? agentsQuery.data : []
     const tree = buildPeopleAgentsTree(
       users.map((user) => ({ displayName: user.displayName, uoaSub: user.id, userId: user.id })),
       agents,
+      { pausedPrivateAgentCount: pausedPrivateAgentCount.data?.count ?? 0 },
     )
     return {
       agentsByUserId: new Map(
@@ -182,7 +188,10 @@ export const SettingsMembersPage = () => {
     // those for anyone else, so rendering them would only produce 403s.
     return (
       <SettingsPanel eyebrow="Organization" title="Members">
-        <WorkspaceMembersSection canManage={canManageWorkspace} />
+        <WorkspaceMembersSection
+          canManage={canManageWorkspace}
+          pausedPrivateAgentCount={pausedPrivateAgentCount.data?.count ?? 0}
+        />
       </SettingsPanel>
     )
   }
@@ -233,17 +242,20 @@ export const SettingsMembersPage = () => {
               />
             ))}
           </div>
-          {localTree.tree.unowned.length > 0 ? (
+          {localTree.tree.pausedPrivateAgentCount > 0 || localTree.tree.unowned.length > 0 ? (
             <div
               className="mt-5 border-t border-[color:var(--sep)] pt-4"
               data-testid="local-unassigned-agents"
             >
-              <UnassignedAgents
-                agents={localTree.tree.unowned}
-                emptyLabel="None"
-                title="Unowned agents"
-                token={token}
-              />
+              <PausedPrivateAgentsBucket count={localTree.tree.pausedPrivateAgentCount} />
+              {localTree.tree.unowned.length > 0 ? (
+                <UnassignedAgents
+                  agents={localTree.tree.unowned}
+                  emptyLabel="None"
+                  title="Unowned agents"
+                  token={token}
+                />
+              ) : null}
             </div>
           ) : null}
         </section>

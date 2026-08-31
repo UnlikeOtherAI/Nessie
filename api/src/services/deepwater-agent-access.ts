@@ -308,11 +308,12 @@ export const getDeepWaterAgentAccess = async (
   input: {
     organizationId: string
     teamId: string
+    userId: string
   },
 ): Promise<DeepWaterAgentAccessResponse> => {
   const [access, targets] = await Promise.all([
     loadDeepWaterPolicyKeys(prisma, input),
-    listAgentToolPolicyTargets(prisma, input.organizationId),
+    listAgentToolPolicyTargets(prisma, input.organizationId, input.userId),
   ])
   const summaries = targets.map((target) =>
     summarizeTarget(target, access, input.teamId))

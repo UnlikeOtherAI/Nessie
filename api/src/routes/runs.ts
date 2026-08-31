@@ -45,8 +45,16 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void =
     if (!actorContext) return reply
 
     const [active, restartable] = await Promise.all([
-      listActiveRuns(prisma, actorContext.tenant.organizationId),
-      listRestartableRuns(prisma, actorContext.tenant.organizationId),
+      listActiveRuns(
+        prisma,
+        actorContext.tenant.organizationId,
+        actorContext.actor.actorId,
+      ),
+      listRestartableRuns(
+        prisma,
+        actorContext.tenant.organizationId,
+        actorContext.actor.actorId,
+      ),
     ])
     return createApiResponse({ restartable, runs: active })
   })

@@ -4,6 +4,7 @@ import {
   providerFailureDetails,
 } from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
+import { PrivateAgentPlacementError } from './execute/private-agent-placement.js'
 
 export type FailoverReason =
   | 'auth'
@@ -18,6 +19,7 @@ export type FailoverReason =
   | 'overloaded'
   | 'model_not_found'
   | 'content_filter'
+  | 'private_agent_placement'
   | 'format'
   | 'transient'
   | 'unknown'
@@ -56,6 +58,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
       return 'The configured model was not found. Ask a workspace owner to check the model configuration.'
     case 'content_filter':
       return 'The model provider blocked this request under its content policy. Try rephrasing it.'
+    case 'private_agent_placement':
+      return 'This private agent can only run in its private home conversation.'
     case 'format':
       return 'The model provider returned an invalid response. Please try again.'
     case 'unknown':
@@ -64,6 +68,7 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
 }
 
 export const classifyError = (error: unknown): FailoverReason => {
+  if (error instanceof PrivateAgentPlacementError) return 'private_agent_placement'
   if (!(error instanceof Error)) return 'unknown'
 
   if (isCreditsExhaustedError(error)) {
@@ -187,6 +192,7 @@ export const resolveRecovery = (
     case 'billing':
     case 'model_not_found':
     case 'content_filter':
+    case 'private_agent_placement':
       return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     default:

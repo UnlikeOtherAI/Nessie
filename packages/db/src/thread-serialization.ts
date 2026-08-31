@@ -12,7 +12,8 @@ import {
 } from '@nessie/schemas'
 import { enqueueRunExecution } from './queue.js'
 
-// Per-(agent, thread) run serialization.
+// Per-(agent, principal, thread) run serialization. `principal` is null for
+// ordinary bindings and PA DMs, and is the PA-presence owner in a shared room.
 //
 // Invariant: at most ONE in-flight run per (agent, thread). A message that
 // arrives while a run is in flight is recorded as a durable
@@ -26,7 +27,7 @@ import { enqueueRunExecution } from './queue.js'
 // drain, or an API-side queued cancel that never reached the worker).
 //
 // Race freedom comes from a transaction-scoped advisory lock keyed on
-// (agentId, threadId) taken by BOTH the claim side (orchestrate.decide reply,
+// (agentId, principalUserId, threadId) taken by BOTH the claim side (orchestrate.decide reply,
 // trigger fire, mailbox delivery, API trigger dispatch) and the drain side
 // inside the same transaction as the run/pending writes: a claim either sees
 // the run still active (and pends, so the pending row precedes any drain
@@ -55,25 +56,31 @@ import { enqueueRunExecution } from './queue.js'
 const ACTIVE_THREAD_RUN_STATUSES = ['pending', 'running', 'waiting_approval'] as const
 
 // Transaction-scoped advisory lock serializing claim vs. drain for one
-// (agent, thread) pair. Released automatically at commit/rollback.
+// (agent, principal, thread) tuple. Released automatically at commit/rollback.
 const acquireThreadRunLock = async (
   tx: Prisma.TransactionClient,
   agentId: string,
+  principalUserId: string | undefined,
   threadId: string,
 ): Promise<void> => {
   await tx.$executeRaw(
-    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${agentId}:${threadId}`}, 0))`,
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${agentId}:${principalUserId ?? 'ordinary'}:${threadId}`}, 0))`,
   )
 }
+
+const runPrincipalWhere = (principalUserId: string | undefined) =>
+  principalUserId === undefined ? { principalUserId: null } : { principalUserId }
 
 const findActiveThreadRun = async (
   tx: Prisma.TransactionClient,
   agentId: string,
+  principalUserId: string | undefined,
   threadId: string,
 ): Promise<{ id: string } | null> => {
   return tx.run.findFirst({
     where: {
       agentId,
+      ...runPrincipalWhere(principalUserId),
       threadId,
       status: { in: [...ACTIVE_THREAD_RUN_STATUSES] },
     },
@@ -98,6 +105,7 @@ export const claimThreadRunOrPend = async (
   tx: Prisma.TransactionClient,
   input: {
     agentId: string
+    principalUserId?: string
     threadId: string
     pending: {
       actorContext: AuthorizedActionContext
@@ -111,11 +119,12 @@ export const claimThreadRunOrPend = async (
     }
   },
 ): Promise<ThreadRunClaimOutcome> => {
-  await acquireThreadRunLock(tx, input.agentId, input.threadId)
+  await acquireThreadRunLock(tx, input.agentId, input.principalUserId, input.threadId)
 
   const alreadyDelivered = await tx.run.findFirst({
     where: {
       agentId: input.agentId,
+      ...runPrincipalWhere(input.principalUserId),
       threadId: input.threadId,
       triggerMessageId: input.pending.messageId,
     },
@@ -125,14 +134,23 @@ export const claimThreadRunOrPend = async (
     return 'duplicate'
   }
   const alreadyPended = await tx.runThreadPendingMessage.findFirst({
-    where: { agentId: input.agentId, messageId: input.pending.messageId },
+    where: {
+      agentId: input.agentId,
+      messageId: input.pending.messageId,
+      ...runPrincipalWhere(input.principalUserId),
+    },
     select: { seq: true },
   })
   if (alreadyPended) {
     return 'duplicate'
   }
 
-  const active = await findActiveThreadRun(tx, input.agentId, input.threadId)
+  const active = await findActiveThreadRun(
+    tx,
+    input.agentId,
+    input.principalUserId,
+    input.threadId,
+  )
   if (!active) {
     return 'claimed'
   }
@@ -140,6 +158,7 @@ export const claimThreadRunOrPend = async (
   await tx.runThreadPendingMessage.create({
     data: {
       agentId: input.agentId,
+      principalUserId: input.principalUserId ?? null,
       threadId: input.threadId,
       messageId: input.pending.messageId,
       channelId: input.pending.channelId,
@@ -160,10 +179,12 @@ export const claimThreadRunOrPend = async (
 // race-free against concurrent claims and drains inside this transaction.
 export const isThreadRunSlotBusy = async (
   tx: Prisma.TransactionClient,
-  input: { agentId: string; threadId: string },
+  input: { agentId: string; principalUserId?: string; threadId: string },
 ): Promise<boolean> => {
-  await acquireThreadRunLock(tx, input.agentId, input.threadId)
-  return (await findActiveThreadRun(tx, input.agentId, input.threadId)) !== null
+  await acquireThreadRunLock(tx, input.agentId, input.principalUserId, input.threadId)
+  return (
+    await findActiveThreadRun(tx, input.agentId, input.principalUserId, input.threadId)
+  ) !== null
 }
 
 // Drain every pending message for (agent, thread) into ONE batched follow-up
@@ -177,11 +198,16 @@ export const isThreadRunSlotBusy = async (
 // again).
 export const drainPendingThreadMessages = async (
   prisma: PrismaClient,
-  input: { agentId: string; threadId: string },
+  input: { agentId: string; principalUserId?: string; threadId: string },
 ): Promise<string | null> => {
   return prisma.$transaction(async (tx) => {
-    await acquireThreadRunLock(tx, input.agentId, input.threadId)
-    const active = await findActiveThreadRun(tx, input.agentId, input.threadId)
+    await acquireThreadRunLock(tx, input.agentId, input.principalUserId, input.threadId)
+    const active = await findActiveThreadRun(
+      tx,
+      input.agentId,
+      input.principalUserId,
+      input.threadId,
+    )
     if (active) {
       return null
     }
@@ -190,7 +216,11 @@ export const drainPendingThreadMessages = async (
     // order concurrent decide jobs happened to record their pending markers;
     // seq is the deterministic tiebreaker.
     const pendings = await tx.runThreadPendingMessage.findMany({
-      where: { agentId: input.agentId, threadId: input.threadId },
+      where: {
+        agentId: input.agentId,
+        threadId: input.threadId,
+        ...runPrincipalWhere(input.principalUserId),
+      },
       orderBy: [{ message: { createdAt: 'asc' } }, { seq: 'asc' }],
       include: { message: { select: { content: true } } },
     })
@@ -210,6 +240,7 @@ export const drainPendingThreadMessages = async (
     const run = await tx.run.create({
       data: {
         agentId: input.agentId,
+        principalUserId: latest.principalUserId,
         threadId: input.threadId,
         // A batched follow-up driven by a trigger fire is still a trigger run,
         // so it posts to the room rather than threading under its kickoff —
@@ -246,6 +277,7 @@ export const drainPendingThreadMessages = async (
         threadId: parseThreadId(input.threadId),
       }),
       agentId: parseAgentId(input.agentId),
+      ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
       interactive: latest.interactive,
       messageId: latest.messageId,
       runId: parseRunId(run.id),
@@ -277,7 +309,7 @@ export const drainPendingThreadMessages = async (
 // back into a failure — the sweep below is the backstop that retries.
 export const drainPendingThreadMessagesBestEffort = async (
   prisma: PrismaClient,
-  input: { agentId: string; threadId: string },
+  input: { agentId: string; principalUserId?: string; threadId: string },
 ): Promise<void> => {
   try {
     await drainPendingThreadMessages(prisma, input)
@@ -299,14 +331,21 @@ export const sweepPendingThreadMessages = async (
   prisma: PrismaClient,
   input: { limit?: number } = {},
 ): Promise<number> => {
-  const pairs = await prisma.$queryRaw<{ agentId: string; threadId: string }[]>(
+  const pairs = await prisma.$queryRaw<{
+    agentId: string
+    principalUserId: string | null
+    threadId: string
+  }[]>(
     Prisma.sql`
-      SELECT DISTINCT p.agent_id AS "agentId", p.thread_id AS "threadId"
+      SELECT DISTINCT p.agent_id AS "agentId",
+             p.principal_user_id AS "principalUserId",
+             p.thread_id AS "threadId"
       FROM run_thread_pending_messages p
       WHERE NOT EXISTS (
         SELECT 1 FROM runs r
         WHERE r.agent_id = p.agent_id
           AND r.thread_id = p.thread_id
+          AND r.principal_user_id IS NOT DISTINCT FROM p.principal_user_id
           AND r.status IN ('pending', 'running', 'waiting_approval')
       )
       LIMIT ${input.limit ?? 20}
@@ -315,7 +354,11 @@ export const sweepPendingThreadMessages = async (
 
   let drained = 0
   for (const pair of pairs) {
-    const runId = await drainPendingThreadMessages(prisma, pair)
+    const runId = await drainPendingThreadMessages(prisma, {
+      agentId: pair.agentId,
+      ...(pair.principalUserId ? { principalUserId: pair.principalUserId } : {}),
+      threadId: pair.threadId,
+    })
     if (runId) {
       drained += 1
     }

@@ -12,7 +12,11 @@ import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
 // The channel record is produced by `@nessie/workspace-admin`, which the worker
 // also uses, so its schema lives in `@nessie/schemas`.
-export { ChannelRecordSchema, type ChannelRecord } from '@nessie/schemas'
+export {
+  ChannelRecordSchema,
+  type ChannelRecord,
+  type PersonalAssistantPresenceParticipant,
+} from '@nessie/schemas'
 
 // sp-channels: body for PATCH /api/channels/:channelId
 export const UpdateChannelBodySchema = z
@@ -107,6 +111,13 @@ export const UpdateProjectBodySchema = z.object({
 
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
+})
+
+// POST always uses the caller as the PA principal. DELETE accepts a principal
+// only so a channel manager can remove another member's already-consented
+// presence; a member may still remove only their own.
+export const DeletePersonalAssistantPresenceBodySchema = z.object({
+  principalUserId: UserIdSchema.optional(),
 })
 
 export const StartChannelConversationBodySchema = z

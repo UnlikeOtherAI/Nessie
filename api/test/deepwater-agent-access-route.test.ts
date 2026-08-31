@@ -179,6 +179,7 @@ test('disabled integration still reports a retained bundle as revocable', async 
 const makeOwnerBootstrapApp = () => {
   let personalAssistantExists = false
   let personalAssistantPolicy: Record<string, boolean> = {}
+  const agentBindings: Array<{ agentId: string; channelId: string }> = []
   const db = {
     $executeRaw: async () => 0,
     agent: {
@@ -250,7 +251,25 @@ const makeOwnerBootstrapApp = () => {
     ...db,
     $transaction: async <T>(action: (client: typeof db) => Promise<T>) =>
       action(db),
-    agentBinding: { upsert: async () => ({}) },
+    agentBinding: {
+      createMany: async (args: {
+        data: Array<{ agentId: string; channelId: string }>
+        skipDuplicates?: boolean
+      }) => {
+        let count = 0
+        for (const binding of args.data) {
+          const duplicate = agentBindings.some((row) =>
+            row.agentId === binding.agentId && row.channelId === binding.channelId)
+          if (duplicate) {
+            if (args.skipDuplicates) continue
+            throw new Error('agent binding pair must be unique')
+          }
+          agentBindings.push({ ...binding })
+          count += 1
+        }
+        return { count }
+      },
+    },
     channel: { upsert: async () => ({ id: channelId }) },
     channelMember: {
       deleteMany: async () => ({ count: 0 }),
@@ -281,6 +300,9 @@ const makeOwnerBootstrapApp = () => {
     get personalAssistantPolicy() {
       return personalAssistantPolicy
     },
+    get agentBindings() {
+      return agentBindings
+    },
   }
 }
 
@@ -300,6 +322,7 @@ test('owner grant bootstraps the Personal Assistant and grants the exact bundle'
       Object.values(state.personalAssistantPolicy).filter(Boolean).length,
       7,
     )
+    assert.deepEqual(state.agentBindings, [{ agentId: personalAssistantId, channelId }])
   } finally {
     await state.app.close()
   }

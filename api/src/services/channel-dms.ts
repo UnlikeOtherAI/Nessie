@@ -297,18 +297,9 @@ export const findOrCreateAgentDmChannel = async (
       update: {},
       include: channelTeamInclude,
     })
-    await prisma.agentBinding.upsert({
-      where: {
-        agentId_channelId: {
-          agentId: agent.id,
-          channelId: channel.id,
-        },
-      },
-      create: {
-        agentId: agent.id,
-        channelId: channel.id,
-      },
-      update: {},
+    await prisma.agentBinding.createMany({
+      data: [{ agentId: agent.id, channelId: channel.id }],
+      skipDuplicates: true,
     })
     return mapChannelRecord(prisma, channel, input.currentUserId)
   } catch (error) {

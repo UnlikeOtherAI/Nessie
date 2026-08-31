@@ -44,6 +44,48 @@ export const buildAccessibleThreadWhere = (
   channel: buildAccessibleChannelWhere(visibility),
 })
 
+/**
+ * "An agent I steward" as a visibility rule.
+ *
+ * Two conditions are load-bearing and neither is optional:
+ *
+ * - `ownerMembership.deactivatedAt: null` — the branch widens by pointer
+ *   equality to a user id, so on its own a member deactivated in this
+ *   organization would keep seeing their agents. Liveness is re-derived here,
+ *   never implied by the stored pointer or by the foreign key (which a retained
+ *   deactivated row still satisfies).
+ * - `parentAgentId: null` — `spawn_subtask` mints a permanent Agent row per
+ *   delegation, inheriting its parent's owner, and nothing reaps them. Without
+ *   this, owning one agent would pour every subtask child it has ever spawned
+ *   into that person's agent list, forever.
+ */
+export const buildOwnedAgentWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.AgentWhereInput => ({
+  ownerMembership: { deactivatedAt: null },
+  ownerUserId: visibility.userId,
+  parentAgentId: null,
+})
+
+/**
+ * The privacy fence over every otherwise-entitled agent read.
+ *
+ * Workspace-visible agents keep their existing channel/owner entitlement.
+ * Private agents are admitted only through the existing ownership predicate,
+ * which deliberately re-derives live membership and excludes subtask rows.
+ */
+export const buildAgentVisibilityWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.AgentWhereInput => ({
+  OR: [
+    { visibility: 'workspace' },
+    {
+      visibility: 'private',
+      ...buildOwnedAgentWhere(visibility),
+    },
+  ],
+})
+
 export const isSystemManagedAgent = (agent: {
   agentKind: string
   systemManaged: boolean
@@ -145,6 +187,8 @@ export const mapAgentRecord = (agent: {
   effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
+  visibility: 'private' | 'workspace'
+  homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
   delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
@@ -179,6 +223,8 @@ export const mapAgentRecord = (agent: {
     owner,
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
+    visibility: agent.visibility,
+    ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,
     delegationMode: agent.delegationMode,
     currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,

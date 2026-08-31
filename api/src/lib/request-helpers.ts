@@ -187,6 +187,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             systemPrompt: true,
             toolPolicy: true,
             updatedAt: true,
+            visibility: true,
           },
         })
       : null
@@ -218,6 +219,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             status: agent.status,
             agentKind: agent.agentKind,
             systemManaged: agent.systemManaged,
+            visibility: agent.visibility,
             surfacePolicy: agent.surfacePolicy,
             delegationMode: agent.delegationMode,
             currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,

@@ -64,6 +64,7 @@ export const terminalizeBudgetBlockedRun = async (
   // thread) slot: release any pended messages as one batched follow-up.
   await drainPendingThreadMessagesBestEffort(deps.prisma, {
     agentId: context.agent.id,
+    ...(context.run.principalUserId ? { principalUserId: context.run.principalUserId } : {}),
     threadId: context.run.threadId,
   })
   await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)

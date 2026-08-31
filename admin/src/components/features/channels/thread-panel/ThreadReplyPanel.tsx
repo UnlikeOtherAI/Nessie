@@ -362,6 +362,7 @@ export const ThreadReplyPanel = ({
                   agentById={agentMap}
                   agentMap={agentMap}
                   channelUsers={channelUsers}
+                  personalAssistantPresences={activeChannel.personalAssistantPresences}
                   editingContent={editingContent}
                   editingMessageId={editingMessageId}
                   feedItems={threadFeedItems}
@@ -421,10 +422,10 @@ export const ThreadReplyPanel = ({
                     markReplySent()
                     void sendMessageSubmit(event)
                   }}
-                  onSubmitText={(text) => {
+                  onSubmitText={(text, agentMentions) => {
                     threadScroll.pinToBottom()
                     markReplySent()
-                    void sendText(text)
+                    void sendText(text, agentMentions)
                   }}
                   pendingAgentInvites={pendingAgentInvites}
                   invitingAgentId={invitingAgentId}

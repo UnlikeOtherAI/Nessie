@@ -1,5 +1,9 @@
 import { Fragment, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AgentRecord, MessageReaction, UserRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  PersonalAssistantPresenceParticipant,
+  UserRecord,
+} from '../../../lib/api-client'
 import {
   emptyDocumentStore,
   type DocumentStreamStore,
@@ -14,17 +18,22 @@ import type { AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelMessageRow } from './ChannelMessageRow'
 import type { DisclosureDuration } from './RestrictedMessageCard'
 import { OptimisticMessageRow, StreamingMessageRow } from './ChannelTransientMessageRows'
-import type { ResolveReactorName } from './ReactionPills'
 import { ThinkingBubble } from './ThinkingBubble'
 import { useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { useDocumentStreamDialog } from './DocumentStreamDialog'
 import { useThoughtProcessDialog } from './ThoughtProcessDialog'
 import {
   type FeedItem,
+  type ChannelAgentParticipant,
   type MessageUserIdentity,
   type OptimisticMessage,
 } from './channel-helpers'
 import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
+import {
+  indexPersonalAssistantPresences,
+  personalAssistantPresenceKey,
+} from './personal-assistant-presence'
+import { useResolveReactorName } from './useResolveReactorName'
 
 // Stable identity so a feed without a document facade never re-runs the
 // dialog's effects on a fresh array.
@@ -57,6 +66,7 @@ interface ChannelMessageFeedProps {
   // Channel members, when the host has them — lets the "who reacted" popover
   // name members who reacted without ever posting in the thread.
   channelUsers?: UserRecord[]
+  personalAssistantPresences?: PersonalAssistantPresenceParticipant[]
   token: string | null
   isPersonalAssistantConversation: boolean
   // First-class external-agent conversation (e.g. DeepSignal): same
@@ -90,7 +100,7 @@ interface ChannelMessageFeedProps {
   // Opens the reply-thread panel for a message's root (#233); when absent the
   // feed renders no thread affordances.
   onOpenThread?: (rootMessageId: string) => void
-  onSelectAgent?: (agent: AgentRecord) => void
+  onSelectAgent?: (agent: ChannelAgentParticipant) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
   // Ambient liveness (`useAgentLivenessHint`): one quiet, anonymous line at the
@@ -120,6 +130,7 @@ export const ChannelMessageFeed = ({
   meUserId,
   meAvatar,
   channelUsers,
+  personalAssistantPresences = [],
   token,
   isPersonalAssistantConversation,
   isExternalAgentConversation = false,
@@ -145,6 +156,10 @@ export const ChannelMessageFeed = ({
   thinkingSurface = 'channel',
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
+  const personalAssistantPresenceByIdentity = useMemo(
+    () => indexPersonalAssistantPresences(personalAssistantPresences),
+    [personalAssistantPresences],
+  )
   // Both the Personal Assistant and any external agent (DeepSignal, ...) read
   // as a first-class assistant conversation: one dedicated author identity,
   // no generic "agent" pill, "thinking" rather than "running".
@@ -225,37 +240,15 @@ export const ChannelMessageFeed = ({
       />
     )
   }
-  // Name resolution for the "who reacted" popover, layered from what this feed
-  // already knows: the viewer ("You"), channel members (when provided), the
-  // loaded messages' embedded authors, and the agent maps for agent reactions.
-  const resolveReactorName = useMemo<ResolveReactorName>(() => {
-    const userNames = new Map<string, string>()
-    for (const user of channelUsers ?? []) {
-      userNames.set(user.id, user.displayName)
-    }
-    for (const item of feedItems) {
-      if (
-        item.kind === 'message' &&
-        item.message.userId &&
-        item.message.author?.displayName
-      ) {
-        userNames.set(item.message.userId, item.message.author.displayName)
-      }
-    }
-    return (reaction: MessageReaction): string => {
-      if (reaction.userId) {
-        if (reaction.userId === meUserId) {
-          return 'You'
-        }
-        return userNames.get(reaction.userId) ?? 'Someone'
-      }
-      if (reaction.agentId) {
-        const agent = agentMap.get(reaction.agentId) ?? agentById.get(reaction.agentId)
-        return agent?.name ?? assistantFallbackName
-      }
-      return 'Someone'
-    }
-  }, [agentById, agentMap, assistantFallbackName, channelUsers, feedItems, meUserId])
+  const resolveReactorName = useResolveReactorName({
+    agentById,
+    agentMap,
+    assistantFallbackName,
+    channelUsers,
+    feedItems,
+    meUserId,
+    personalAssistantPresenceByIdentity,
+  })
   const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -343,6 +336,13 @@ export const ChannelMessageFeed = ({
         }
 
         const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
+        const personalAssistantPresence =
+          item.message.agentId && item.message.onBehalfOfUserId
+            ? personalAssistantPresenceByIdentity.get(personalAssistantPresenceKey(
+                item.message.agentId,
+                item.message.onBehalfOfUserId,
+              )) ?? null
+            : null
 
         return (
           <Fragment key={item.message.id}>
@@ -360,6 +360,7 @@ export const ChannelMessageFeed = ({
               meDisplayName={meDisplayName}
               meUserId={meUserId}
               message={item.message}
+              personalAssistantPresence={personalAssistantPresence}
               renderContent={renderContent}
               resolveReactorName={resolveReactorName}
               setActiveActionMessageId={setActiveActionMessageId}

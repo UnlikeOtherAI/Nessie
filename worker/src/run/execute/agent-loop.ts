@@ -132,6 +132,7 @@ export const runExecutionAgentLoop = async (
     run: {
       id: context.run.id,
       messageId: payload.messageId,
+      principalUserId: context.run.principalUserId,
       originatingUserId:
         toolActorContext.actionContext.effectiveUserId
         ?? (

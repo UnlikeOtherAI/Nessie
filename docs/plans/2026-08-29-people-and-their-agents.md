@@ -167,13 +167,15 @@ rather than a live code path.
 - The name collides with `Task.ownerUserId`, which means *assignment*. This one
   means *stewardship*. Worth a column comment.
 
-**Ownership is attribution and visibility — never lifecycle.** An agent owned by
-someone who leaves **keeps executing**: its triggers keep firing and its
-bindings keep it in channels. Verified: `setOrganizationMemberDeactivated`
-touches the membership row, refresh families and push presence, and nothing
-else; UOA-side removal writes nothing locally; there is no sweep and no
-`agent.orphaned` event. This is deliberate and unchanged here. Changing it is a
-separate piece of work with its own trigger and surface.
+**Ownership is attribution and visibility — not lifecycle for workspace
+agents.** A workspace-visible agent owned by someone who leaves keeps
+executing: its triggers keep firing and its bindings keep it in channels.
+Private agents are the deliberate exception. Once their sole owner is
+deactivated their audience is empty, so `setOrganizationMemberDeactivated`
+disables only those agents' triggers in the membership transaction, writes one
+aggregate audit transition without disclosing names or prompts, and leaves
+reactivation to an explicit trigger re-enable. It never pauses a workspace
+agent and never alerts a broader audience that cannot see the private agent.
 
 **The owner is a pointer whose meaning is re-derived on every read.** The
 composite FK proves the membership row exists in the right org; it cannot prove
@@ -304,8 +306,11 @@ tree and risk replacing its existing member management.
 
 **Level 3 — that person's agents**, `ownerUserId = person.userId` **intersected
 with the viewer's own `listAgentsForUser` result**, so entitlement is inherited
-rather than re-implemented. **No hidden counts** — "3 more you cannot see" leaks
-the shape of private channels.
+rather than re-implemented. **No hidden content counts** — "3 more you cannot
+see" leaks the shape of private channels. The sole exception is the aggregate
+number of private agents paused because their owner is inactive, which the
+owner-gated `GET /api/agents/paused-private-count` supplies to the shared tree
+without exposing agent names, prompts, or configuration.
 
 **Buckets at team level:** *Unowned*; *System* (collapsed, read-only); *Owner
 not in this workspace*; *Owner deactivated* (phase 3).

@@ -22,6 +22,7 @@ export const useCreateAgent = () => {
       systemPrompt?: string
       todosEnabled?: boolean
       toolPolicy?: Record<string, boolean>
+      visibility?: AgentRecord['visibility']
     }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
     onSuccess: () => {

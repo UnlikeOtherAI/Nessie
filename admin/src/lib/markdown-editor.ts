@@ -3,6 +3,7 @@ import { findMarkdownCodeRanges, type MarkdownCodeRange } from './message-markdo
 type MentionRange = {
   end: number
   id: string
+  principalUserId?: string
   start: number
   text: string
   type: string
@@ -72,6 +73,7 @@ const collectMentionRanges = (editor: HTMLElement): MentionRange[] => {
         ranges.push({
           end: offset + text.length,
           id: element.dataset.mentionId,
+          principalUserId: element.dataset.mentionPrincipalUserId,
           start: offset,
           text,
           type: element.dataset.mentionType ?? 'user',
@@ -191,6 +193,9 @@ const appendDecoratedContent = (
       mention.contentEditable = 'false'
       mention.dataset.mentionId = segment.id
       mention.dataset.mentionType = segment.type
+      if (segment.principalUserId) {
+        mention.dataset.mentionPrincipalUserId = segment.principalUserId
+      }
       mention.className = 'mention-tag'
       mention.textContent = segment.text
       fragment.appendChild(mention)

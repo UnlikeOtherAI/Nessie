@@ -178,6 +178,7 @@ const buildAgentRow = (input: {
   systemPrompt: null,
   todosEnabled: false,
   updatedAt: new Date('2026-01-01T00:00:00Z'),
+  visibility: 'workspace' as const,
 })
 
 test('agent_list gives a member the agents they may see, with the ids bind and trigger need', async () => {

@@ -4,13 +4,13 @@ import type { AgentRecord } from '../../../lib/api-client'
 // the scope is derived from fields the record already carries, so the tabs are
 // real, not a stored flag that can drift from the agent's behaviour.
 //
-//  - `personal` — the Personal Assistant (`agentKind === 'personal_assistant'`),
-//    the assistant that acts as its owner. Editable.
+//  - `personal` — the Personal Assistant (`agentKind === 'personal_assistant'`)
+//    plus private agents (`visibility === 'private'`). Editable.
 //  - `global`   — a system-provided agent (`systemManaged`, and not the PA):
 //    librarian, external-agent products, and other bootstrapped agents. These
 //    are not user-authored and are read-only, so the row omits its edit menu.
-//  - `team`     — everything else: ordinary shared agents the workspace builds
-//    and runs. Editable.
+//  - `team`     — everything else: workspace-visible agents the workspace
+//    builds and runs. Editable.
 //
 // Precedence matters: the PA is *both* `personal_assistant` and `systemManaged`,
 // so kind is checked first to keep it in Personal rather than Global.
@@ -21,6 +21,7 @@ export const AGENT_SCOPES: readonly AgentScope[] = ['personal', 'team', 'global'
 export const getAgentScope = (agent: AgentRecord): AgentScope => {
   if (agent.agentKind === 'personal_assistant') return 'personal'
   if (agent.systemManaged) return 'global'
+  if (agent.visibility === 'private') return 'personal'
   return 'team'
 }
 
@@ -36,8 +37,8 @@ type AgentScopeCopy = {
 
 export const AGENT_SCOPE_META: Record<AgentScope, AgentScopeCopy> = {
   personal: {
-    description: 'Your Personal Assistant — it acts as you across the workspace.',
-    empty: 'No personal assistant yet. Start a conversation with your assistant to set one up.',
+    description: 'Your Personal Assistant and agents only you can see.',
+    empty: 'No personal agents yet. Start a conversation with your assistant or create a private agent.',
     label: 'Personal agents',
   },
   team: {

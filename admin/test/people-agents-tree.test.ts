@@ -97,3 +97,10 @@ test('an owner absent from this team roster is separated from genuinely unowned'
   assert.deepEqual(tree.ownedOutsideWorkspace.map((one) => one.id), ['elsewhere'])
   assert.deepEqual(tree.unowned.map((one) => one.id), ['nobody'])
 })
+
+test('the tree carries only an aggregate paused-private-agent count', () => {
+  const tree = buildPeopleAgentsTree([], [], { pausedPrivateAgentCount: 3 })
+
+  assert.equal(tree.pausedPrivateAgentCount, 3)
+  assert.deepEqual(tree.people, [])
+})

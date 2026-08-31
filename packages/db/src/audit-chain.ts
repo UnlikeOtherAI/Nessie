@@ -123,57 +123,61 @@ const acquireOrgAuditLock = async (
  * ignored when locating the tip, so the chain simply starts at the first new
  * row per organization with `prevHash = null`.
  */
-export const writeAuditEntry = async (
-  prisma: PrismaClient,
+export const writeAuditEntryInTransaction = async (
+  tx: Prisma.TransactionClient,
   input: AuditEntryInput,
 ): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
-    await acquireOrgAuditLock(tx, input.organizationId)
+  await acquireOrgAuditLock(tx, input.organizationId)
 
-    const tip = await tx.auditLog.findFirst({
-      where: { organizationId: input.organizationId, entryHash: { not: null } },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { entryHash: true, createdAt: true },
-    })
+  const tip = await tx.auditLog.findFirst({
+    where: { organizationId: input.organizationId, entryHash: { not: null } },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { entryHash: true, createdAt: true },
+  })
 
-    const prevHash = tip?.entryHash ?? null
+  const prevHash = tip?.entryHash ?? null
     // Make per-org `createdAt` strictly monotonic within the serialized chain.
     // Postgres timestamp(3) is millisecond precision, and two lock-serialized
     // writes can still land in the same millisecond; without this bump the
     // ascending-createdAt verify walk (and the descending tip read) could
     // disagree with the actual chain-link order and falsely report a break.
     // A +1ms bump makes [createdAt asc] alone a total per-org insertion order.
-    const createdAt = new Date(
-      tip ? Math.max(Date.now(), tip.createdAt.getTime() + 1) : Date.now(),
-    )
-    const entryHash = computeEntryHash(
-      buildCanonicalAuditPayload(input, { createdAt, prevHash }),
-    )
+  const createdAt = new Date(
+    tip ? Math.max(Date.now(), tip.createdAt.getTime() + 1) : Date.now(),
+  )
+  const entryHash = computeEntryHash(
+    buildCanonicalAuditPayload(input, { createdAt, prevHash }),
+  )
 
-    await tx.auditLog.create({
-      data: {
-        organizationId: input.organizationId,
-        projectId: input.projectId ?? null,
-        teamId: input.teamId ?? null,
-        channelId: input.channelId ?? null,
-        actorType: input.actorType,
-        actorId: input.actorId,
-        action: input.action,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId ?? null,
-        outcome: input.outcome,
-        reason: input.reason ?? null,
-        metadata: input.metadata ?? undefined,
-        requestId: input.requestId,
-        ipAddress: input.ipAddress ?? null,
-        userAgent: input.userAgent ?? null,
-        createdAt,
-        prevHash,
-        entryHash,
-      },
-    })
+  await tx.auditLog.create({
+    data: {
+      organizationId: input.organizationId,
+      projectId: input.projectId ?? null,
+      teamId: input.teamId ?? null,
+      channelId: input.channelId ?? null,
+      actorType: input.actorType,
+      actorId: input.actorId,
+      action: input.action,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId ?? null,
+      outcome: input.outcome,
+      reason: input.reason ?? null,
+      metadata: input.metadata ?? undefined,
+      requestId: input.requestId,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
+      createdAt,
+      prevHash,
+      entryHash,
+    },
   })
 }
+
+export const writeAuditEntry = async (
+  prisma: PrismaClient,
+  input: AuditEntryInput,
+): Promise<void> =>
+  prisma.$transaction((tx) => writeAuditEntryInTransaction(tx, input))
 
 export type AuditChainVerification = {
   valid: boolean

@@ -18,6 +18,10 @@ test('an ordinary shared agent is a Team agent', () => {
   assert.equal(getAgentScope(agent({})), 'team')
 })
 
+test('a private agent is a Personal agent', () => {
+  assert.equal(getAgentScope(agent({ visibility: 'private' })), 'personal')
+})
+
 test('the Personal Assistant is a Personal agent', () => {
   assert.equal(getAgentScope(agent({ agentKind: 'personal_assistant' })), 'personal')
 })

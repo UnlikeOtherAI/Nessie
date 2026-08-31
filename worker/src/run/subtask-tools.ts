@@ -66,6 +66,7 @@ export const runSpawnSubtaskTool = async (
       provider: true,
       systemPrompt: true,
       toolPolicy: true,
+      visibility: true,
     },
   })
   if (!parentAgent) {
@@ -108,6 +109,7 @@ export const runSpawnSubtaskTool = async (
           role,
         }),
         toolPolicy: childToolPolicy as Prisma.InputJsonValue | undefined,
+        visibility: parentAgent.visibility,
       },
       select: { id: true, name: true },
     })
@@ -124,6 +126,10 @@ export const runSpawnSubtaskTool = async (
     const run = await tx.run.create({
       data: {
         agentId: childAgent.id,
+        // The PA-presence principal is a run capability, not an agent-kind
+        // detail. Carry it into the shared child so the reduced toolset remains
+        // in force while it acts as the owner's delegate in this room.
+        principalUserId: context.run.principalUserId ?? null,
         status: 'pending',
         threadId: context.run.threadId,
       },
@@ -154,6 +160,9 @@ export const runSpawnSubtaskTool = async (
         messageId: context.run.messageId,
         parentPlanId: plan?.id,
         parentPlanStepId: planStep?.stepId,
+        ...(context.run.principalUserId
+          ? { principalUserId: context.run.principalUserId }
+          : {}),
         promptOverride: task,
         runId: parseRunId(run.id),
         taskId: parseTaskId(childTask.id),

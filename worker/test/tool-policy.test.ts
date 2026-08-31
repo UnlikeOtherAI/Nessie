@@ -90,6 +90,39 @@ test('resolveAgentTools grants personal-assistant-only tools to the personal ass
   assert.deepEqual([...resolved.allowedIds].sort(), ['send_message', 'web_search'])
 })
 
+test('a PA presence withholds owner-scoped reads and communication mutations', () => {
+  const presenceDefinitions = [
+    ...definitions,
+    ...['workspace_search', 'kb_search', 'message_edit', 'message_delete', 'react'].map((id) => ({
+      description: id,
+      id,
+      label: id,
+      parameters: { properties: {}, type: 'object' as const },
+      safe: false,
+    })),
+  ] satisfies BuiltinToolDefinition[]
+  const resolved = resolveAgentTools(
+    new Set(presenceDefinitions.map((tool) => tool.id)),
+    presenceDefinitions,
+    null,
+    null,
+    'personal_assistant',
+    { isPersonalAssistantPresence: true },
+  )
+
+  for (const withheld of [
+    'send_message',
+    'workspace_search',
+    'kb_search',
+    'message_edit',
+    'message_delete',
+    'react',
+  ]) {
+    assert.equal(resolved.allowedIds.has(withheld), false, `${withheld} must be withheld`)
+  }
+  assert.equal(resolved.allowedIds.has('web_search'), true)
+})
+
 test('authorizeToolCall reports structured denial reasons', () => {
   assert.deepEqual(
     authorizeToolCall('web_search', new Set(['web_search']), definitions, { web_search: false }, null, 'shared'),

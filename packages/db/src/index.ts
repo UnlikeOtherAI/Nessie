@@ -6,6 +6,7 @@ export {
   stableStringify,
   verifyAuditChain,
   writeAuditEntry,
+  writeAuditEntryInTransaction,
   type AuditActorType,
   type AuditChainVerification,
   type AuditEntryInput,

@@ -8,7 +8,9 @@ import {
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
+import { buildAgentVisibilityWhere } from '@nessie/workspace-admin'
 
+import type { PersonalAssistantPresenceMention } from '../contracts/messaging.js'
 import { messageInclude, type MessageWithReactions } from './messages.js'
 
 // ─── Message creation (top-level posts + reply-thread replies) ─────────────
@@ -20,6 +22,9 @@ const ATTACHMENT_ONLY_BROADCAST_CONTENT = 'Shared an attachment'
 export type ChannelAgent = {
   id: string
   name: string
+  // Present only for a PA binding placed by this member. It turns the
+  // organization-singleton PA into a distinct orchestration candidate.
+  principalUserId?: string
   role: string
   systemPrompt: string | null
 }
@@ -34,6 +39,8 @@ export type CreateThreadMessageResult =
       // Agents @mentioned in the message that are not members of the channel.
       // They are NOT dispatched; the client offers to invite them.
       pendingAgentInvites: { id: string; name: string }[]
+      // Structured PA-presence mentions retained from the validated message.
+      agentMentions?: PersonalAssistantPresenceMention[]
       // Set when the message is a reply: the root id plus its post-bookkeeping
       // metadata, so the route can publish `message.reply.meta` without a
       // re-read.
@@ -48,6 +55,11 @@ export type CreateThreadMessageResult =
       // rootMessageId did not reference a top-level message in this thread.
       kind: 'invalid_root'
     }
+  | {
+      // A PA mention was not the exact presence currently bound to this
+      // channel. Never treat client-provided ids as an authority.
+      kind: 'invalid_agent_mention'
+    }
 
 export const createThreadMessage = async (
   prisma: PrismaClient,
@@ -57,6 +69,7 @@ export const createThreadMessage = async (
     userId: string
     rootMessageId?: string
     alsoSendToChannel?: boolean
+    agentMentions?: PersonalAssistantPresenceMention[]
   },
 ): Promise<CreateThreadMessageResult> => {
   const thread = await prisma.thread.findUnique({
@@ -67,7 +80,13 @@ export const createThreadMessage = async (
           agentBindings: {
             include: {
               agent: {
-                select: { id: true, name: true, role: true, systemPrompt: true },
+                select: {
+                  agentKind: true,
+                  id: true,
+                  name: true,
+                  role: true,
+                  systemPrompt: true,
+                },
               },
             },
             orderBy: { createdAt: 'asc' },
@@ -87,6 +106,27 @@ export const createThreadMessage = async (
 
   if (!thread) {
     return { kind: 'thread_not_found' }
+  }
+
+  // Structured PA mentions are valid only for the exact binding that is live
+  // in this channel right now. This is deliberately before the message write:
+  // a forged/stale presence must neither persist nor enter orchestration.
+  const agentMentions = [...new Map(
+    (input.agentMentions ?? []).map((mention) => [
+      `${mention.agentId}:${mention.principalUserId}`,
+      mention,
+    ]),
+  ).values()]
+  const validPresenceMentionKeys = new Set(
+    thread.channel.agentBindings.flatMap((binding) =>
+      binding.principalUserId && binding.agent.agentKind === 'personal_assistant'
+        ? [`${binding.agent.id}:${binding.principalUserId}`]
+        : []),
+  )
+  if (agentMentions.some(
+    (mention) => !validPresenceMentionKeys.has(`${mention.agentId}:${mention.principalUserId}`),
+  )) {
+    return { kind: 'invalid_agent_mention' }
   }
 
   // Resolve human + broadcast mentions on the inbound content. Agent mentions
@@ -198,6 +238,7 @@ export const createThreadMessage = async (
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
     id: b.agent.id,
     name: b.agent.name,
+    ...(b.principalUserId ? { principalUserId: b.principalUserId } : {}),
     role: b.agent.role,
     systemPrompt: b.agent.systemPrompt,
   }))
@@ -205,6 +246,9 @@ export const createThreadMessage = async (
     thread.channel.systemChannelType === 'personal_assistant'
       ? channelAgents.slice(0, 1)
       : channelAgents
+  const ordinaryChannelAgents = resolvedChannelAgents.filter(
+    (agent) => agent.principalUserId === undefined,
+  )
 
   // An @mention of an agent that is NOT a member (bound) of this channel does
   // not silently pull it in: only members participate. Such mentions are
@@ -217,6 +261,10 @@ export const createThreadMessage = async (
     const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
     const candidates = await prisma.agent.findMany({
       where: {
+        AND: [buildAgentVisibilityWhere({
+          organizationId: thread.channel.organizationId,
+          userId: input.userId,
+        })],
         agentKind: 'shared',
         id: { notIn: [...boundIds] },
         organizationId: thread.channel.organizationId,
@@ -239,11 +287,15 @@ export const createThreadMessage = async (
   // human/broadcast mentions were already written at create time.
   const mentionedAgentIds = mentionedAgentIdsFromContent(
     input.content,
-    resolvedChannelAgents,
+    ordinaryChannelAgents,
   )
   let persistedMessage = message
-  const mergedMentions = { ...mentions, agentIds: mentionedAgentIds }
-  if (mentionedAgentIds.length > 0) {
+  const mergedMentions = {
+    ...mentions,
+    agentIds: mentionedAgentIds,
+    ...(agentMentions.length > 0 ? { agentMentions } : {}),
+  }
+  if (mentionedAgentIds.length > 0 || agentMentions.length > 0) {
     persistedMessage = await prisma.message.update({
       where: { id: message.id },
       data: { metadata: { mentions: mergedMentions } as Prisma.InputJsonValue },
@@ -280,6 +332,7 @@ export const createThreadMessage = async (
     channelAgents: resolvedChannelAgents,
     alertedUserIds,
     pendingAgentInvites,
+    ...(agentMentions.length > 0 ? { agentMentions } : {}),
     ...(replyRoot ? { replyRoot } : {}),
     ...(broadcastMessage ? { broadcastMessage } : {}),
   }

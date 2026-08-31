@@ -44,6 +44,8 @@ export type ExecutionDependencies = {
 export type RunContext = {
   agent: {
     agentKind: 'personal_assistant' | 'shared'
+    visibility?: 'private' | 'workspace'
+    ownerUserId?: string | null
     effort: AgentEffort
     executionMode: 'inference' | 'external_mcp'
     id: string
@@ -68,6 +70,7 @@ export type RunContext = {
     projectId: string
     teamId: string
     systemChannelType: ChannelSystemType | null
+    dmKey?: string | null
   }
   /**
    * Agent audiences every reader of the reply channel already satisfies.
@@ -84,6 +87,9 @@ export type RunContext = {
   consumedSources: ConsumedSourceSink
   run: {
     id: string
+    // Present only for a shared-channel PA presence. This is carried from the
+    // durable Run row to every message/reaction write chokepoint.
+    principalUserId?: string | null
     threadId: string
     // Run row creation ≈ enqueue instant (run.create + job enqueue share one
     // transaction), used as the queue-wait baseline for run.timing.
@@ -95,6 +101,7 @@ export type RunContext = {
      * `resolveReplyRootMessageId`.
      */
     replyPlacement: RunReplyPlacement | null
+    trigger?: { agentId: string | null; targetThreadId: string | null } | null
   }
   task: {
     id: string

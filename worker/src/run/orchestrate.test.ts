@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { resolvePersonalAssistantDecisions } from './orchestrate.js'
+import {
+  resolvePersonalAssistantDecisions,
+  runActorContextForCandidate,
+} from './orchestrate.js'
 
 const personalAssistant = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -31,4 +34,23 @@ test('shared channels remain on the model-judged engagement path', () => {
     resolvePersonalAssistantDecisions(null, 'user', [personalAssistant]),
     null,
   )
+})
+
+test('a shared-channel PA run takes the presence owner as its effective user', () => {
+  const principalUserId = '00000000-0000-4000-8000-000000000002'
+  const context = runActorContextForCandidate(
+    {
+      actionContext: { requestId: 'pa-presence' },
+      actor: {
+        actorId: '00000000-0000-4000-8000-000000000003',
+        actorType: 'user',
+        roles: ['member'],
+      },
+      tenant: { organizationId: '00000000-0000-4000-8000-000000000004' },
+    } as never,
+    { ...personalAssistant, principalUserId } as never,
+  )
+
+  assert.equal(context.actor.actorId, '00000000-0000-4000-8000-000000000003')
+  assert.equal(context.actionContext.effectiveUserId, principalUserId)
 })
