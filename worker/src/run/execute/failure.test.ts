@@ -267,6 +267,7 @@ test('an invalid private placement fails without speaking into the shared destin
       systemPrompt: null,
       visibility: 'private',
     },
+    boundAgentIds: [],
     channel: {
       dmKey: null,
       id: ID.channel,

@@ -26,6 +26,7 @@ const presenceContext = (): RunContext => ({
     provider: null,
     systemPrompt: null,
   },
+  boundAgentIds: [],
   channel: {
     id: id('3'),
     organizationId: id('4'),

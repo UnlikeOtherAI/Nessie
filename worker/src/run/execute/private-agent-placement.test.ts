@@ -25,6 +25,7 @@ const privateContext = (): RunContext => ({
     systemPrompt: null,
     visibility: 'private',
   },
+  boundAgentIds: [],
   channel: {
     dmKey: null,
     id: id('3'),
