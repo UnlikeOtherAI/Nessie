@@ -13,6 +13,7 @@ import {
   buildBuiltinToolsetView,
   executeBuiltinToolSpec,
 } from './builtin-toolset-deferred.js'
+import { resolveAgentTools } from './tool-policy.js'
 
 const definition = (
   id: string,
@@ -130,4 +131,36 @@ test('repeated composition produces a byte-stable descriptor array', () => {
   const second = buildBuiltinToolsetView(definitions, 2)
 
   assert.equal(JSON.stringify(first.descriptors), JSON.stringify(second.descriptors))
+})
+
+// End-to-end authorization pin: the agent loop composes tool_spec's lookup
+// list from the run's RESOLVED tool ids, never the raw registry. A shared
+// agent must not be able to read a PA-only tool's schema through tool_spec —
+// this is what breaks if a refactor ever passes BUILTIN_TOOL_DEFINITIONS
+// unfiltered into executeBuiltinToolSpec.
+test('tool_spec cannot surface a PA-only schema to a shared agent', () => {
+  const enabledIds = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))
+  const resolved = resolveAgentTools(
+    enabledIds,
+    BUILTIN_TOOL_DEFINITIONS,
+    null,
+    null,
+    'shared',
+  )
+  // Mirrors agent-loop.ts: allowed definitions are filtered by resolved ids.
+  const allowedDefinitions = BUILTIN_TOOL_DEFINITIONS.filter((tool) =>
+    resolved.allowedIds.has(tool.id),
+  )
+  assert.equal(resolved.allowedIds.has('send_message'), false)
+
+  const result = executeBuiltinToolSpec(
+    { names: ['send_message', 'workspace_search'] },
+    allowedDefinitions,
+  )
+  const output = JSON.parse(result.output) as {
+    tools: Array<{ name: string }>
+    unknownNames?: string[]
+  }
+  assert.deepEqual(output.tools.map((tool) => tool.name), ['workspace_search'])
+  assert.deepEqual(output.unknownNames, ['send_message'])
 })

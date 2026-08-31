@@ -1,6 +1,8 @@
-import type {
-  BuiltinToolDefinition,
-  ToolSchemaDescriptor,
+import {
+  KB_DOCUMENT_COMPOSE_TOOL_ID,
+  KB_DOCUMENT_EDIT_TOOL_ID,
+  type BuiltinToolDefinition,
+  type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 
 import type { AgenticToolResult } from './tool-types.js'
@@ -9,7 +11,11 @@ export const DEFAULT_BUILTIN_INLINE_TOOL_LIMIT = 20
 export const BUILTIN_TOOL_SPEC_NAME = 'tool_spec'
 
 // Seeded from expected high-frequency calls. Replace intuition with ToolCall
-// frequency data once enough production history is available.
+// frequency data once enough production history is available. The document
+// tools reference their runtime constants because their hot-set membership is
+// load-bearing: `composeAvailable` in run-inference.ts raises the output cap by
+// name, and a compose demoted to the stub tier would truncate streamed
+// documents at the ordinary cap.
 export const BUILTIN_HOT_TOOL_IDS = [
   'react',
   'web_search',
@@ -19,8 +25,8 @@ export const BUILTIN_HOT_TOOL_IDS = [
   'people_search',
   'channel_find',
   'delegate',
-  'kb_document_compose',
-  'kb_document_edit',
+  KB_DOCUMENT_COMPOSE_TOOL_ID,
+  KB_DOCUMENT_EDIT_TOOL_ID,
 ] as const
 
 const BUILTIN_HOT_TOOL_ID_SET = new Set<string>(BUILTIN_HOT_TOOL_IDS)

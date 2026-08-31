@@ -205,8 +205,10 @@ outputs already in context.
 
 `resolveAgentTools` now applies authorization and temporary-context narrowing
 first, then builds a two-tier, run-stable descriptor array when the remaining
-set exceeds `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20). Ten fixed hot tools
-keep their full descriptions and schemas. Every other allowed builtin keeps
+set exceeds `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20). A fixed list of ten
+hot tools keeps full descriptions and schemas — those of the ten the agent is
+actually allowed; a hot tool outside the allowed set is simply absent, never
+replaced by promoting another. Every other allowed builtin keeps
 its real name but advertises a curated compact summary and a permissive schema
 that points the model to `tool_spec`; `tool_spec` returns the requested full
 descriptions and JSON schemas as tool output. It never mutates the descriptor
