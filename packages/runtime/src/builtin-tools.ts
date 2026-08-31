@@ -15,6 +15,7 @@ import { EXECUTOR_TOOL_DEFINITIONS } from './builtin-executor-tools.js'
 import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
+import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 
 export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
 import {
@@ -32,6 +33,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
+export { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 export {
   FILE_GLOB_TOOL_DEFINITION,
   FILE_READ_TOOL_DEFINITION,
@@ -428,6 +430,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...EXECUTOR_TOOL_DEFINITIONS,
   ...INTEGRATION_TOOL_DEFINITIONS,
   ...COMMS_TOOL_DEFINITIONS,
+  ...TODO_TOOL_DEFINITIONS,
 ]
 
 // `delegate` is deliberately absent: the workflow builtin-tool executor has no
