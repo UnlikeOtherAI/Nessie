@@ -16,18 +16,20 @@ import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
 import { ToolExecutionLog } from './ToolExecutionLog'
+import { AgentTodosTab } from './todos/AgentTodosTab'
 import {
   useDesignerAssistantPanel,
   type DesignerPageContext,
 } from './designer/DesignerAssistantPanelContext'
 
-type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages'
+type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'to-dos'
 
 const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'Activity', value: 'activity' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
+  { label: 'To-dos', value: 'to-dos' },
 ]
 
 const PAGE_SIZE = 10
@@ -57,6 +59,11 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
     actions: [],
     description: 'Review messages this agent has sent or received.',
     title: 'Messages',
+  },
+  'to-dos': {
+    actions: [],
+    description: 'Review this agent’s reusable checklists and tracked to-dos.',
+    title: 'To-dos',
   },
 }
 
@@ -163,6 +170,8 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
         )}
 
         {activeTab === 'tools' && <AgentAvailableTools agent={agent} />}
+
+        {activeTab === 'to-dos' && <AgentTodosTab agent={agent} />}
 
             {activeTab === 'messages' && (
           <div className="grid gap-4">

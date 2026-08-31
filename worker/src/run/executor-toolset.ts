@@ -28,6 +28,9 @@ type ExecutorEntry = {
   toolName: string
 }
 
+const compareToolName = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0
+
 export type ExecutorToolset = {
   descriptors: ToolSchemaDescriptor[]
   dispatch: (toolName: string, args: Record<string, unknown>, providerToolCallId: string) => Promise<AgenticToolResult>
@@ -202,7 +205,7 @@ export const buildExecutorToolset = async (
       sessionProfile: binding.session?.profile ?? null,
       toolName: descriptor.toolName,
     }]
-  })
+  }).sort((left, right) => compareToolName(left.toolName, right.toolName))
   const entryByName = new Map(entries.map((entry) => [entry.toolName, entry]))
 
   return {

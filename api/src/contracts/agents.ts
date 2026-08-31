@@ -36,6 +36,7 @@ export const CreateAgentBodySchema = z.object({
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   visibility: AgentVisibilitySchema.optional(),
+  todosEnabled: z.boolean().optional(),
 })
 
 export const UpdateAgentBodySchema = z.object({
@@ -62,6 +63,7 @@ export const UpdateAgentBodySchema = z.object({
   model: z.string().optional(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
+  todosEnabled: z.boolean().optional(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({

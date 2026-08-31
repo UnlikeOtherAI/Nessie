@@ -21,6 +21,7 @@ export type AgentFormState = {
   runLimits: RunLimitsFormState
   streamingField: string | null
   systemPrompt: string
+  todosEnabled: boolean
   tools: Record<string, boolean>
   visibility: AgentVisibilityValue
 }
@@ -37,6 +38,7 @@ export type AgentDesignerAction =
   | { prompt: string; type: 'set_system_prompt' }
   | { role: string; type: 'set_role' }
   | { field: RunLimitsField; type: 'set_run_limit'; value: string }
+  | { enabled: boolean; type: 'set_todos_enabled' }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
   | { visibility: AgentVisibilityValue; type: 'set_visibility' }
 
@@ -52,6 +54,7 @@ const DEFAULT_STATE: AgentFormState = {
   runLimits: emptyRunLimitsForm,
   streamingField: null,
   systemPrompt: '',
+  todosEnabled: false,
   tools: {},
   visibility: 'workspace',
 }
@@ -79,6 +82,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
         ...state,
         runLimits: { ...state.runLimits, [action.field]: action.value },
       }
+    case 'set_todos_enabled':
+      return { ...state, todosEnabled: action.enabled }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_visibility':
@@ -101,6 +106,7 @@ export type AgentDesignerActions = {
   setRole: (role: string) => void
   setRunLimit: (field: RunLimitsField, value: string) => void
   setSystemPrompt: (prompt: string) => void
+  setTodosEnabled: (enabled: boolean) => void
   toggleTool: (toolId: string, enabled: boolean) => void
   setVisibility: (visibility: AgentVisibilityValue) => void
 }
@@ -141,6 +147,10 @@ export const useAgentDesigner = (
   )
   const setVisibility = useCallback(
     (visibility: AgentVisibilityValue) => dispatch({ type: 'set_visibility', visibility }),
+    [],
+  )
+  const setTodosEnabled = useCallback(
+    (enabled: boolean) => dispatch({ enabled, type: 'set_todos_enabled' }),
     [],
   )
 
@@ -201,6 +211,7 @@ export const useAgentDesigner = (
     setRunLimit,
     setSystemPrompt,
     setVisibility,
+    setTodosEnabled,
     toggleTool,
   }
 

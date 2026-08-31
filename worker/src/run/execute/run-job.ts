@@ -374,8 +374,10 @@ export const executeRunJob = async (
       deepWaterHandoffGuard,
       mcpToolset: setup.mcpToolset,
       resolvedToolIds: setup.resolvedToolIds,
+      stubbedBuiltinToolIds: setup.stubbedBuiltinToolIds,
       thinkingRecorder,
       toolDefs: setup.toolDefs,
+      toolSpecEnabled: setup.toolSpecEnabled,
       toolPolicy: setup.toolPolicy,
       // Wind-down (spec §3a): interactive, non-handoff runs get told to finish
       // inside the reserve instead of being cut off. Scheduled/trigger runs

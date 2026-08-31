@@ -1,5 +1,9 @@
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 import type { BuiltinToolDefinition } from '@nessie/runtime'
+import {
+  buildBuiltinToolsetView,
+  resolveBuiltinInlineToolLimit,
+} from './builtin-toolset-deferred.js'
 
 type ToolPolicy = Record<string, boolean>
 
@@ -22,6 +26,8 @@ export const isPersonalAssistantPresenceRun = (input: {
 type ResolvedToolSet = {
   descriptors: ToolSchemaDescriptor[]
   allowedIds: Set<string>
+  stubbedIds: Set<string>
+  toolSpecEnabled: boolean
 }
 
 // These reads normally resolve through the PA owner's personal audience. A PA
@@ -116,7 +122,7 @@ export const resolveAgentTools = (
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
   agentKind: AgentKind,
-  options: { isPersonalAssistantPresence?: boolean } = {},
+  options: { inlineToolLimit?: number; isPersonalAssistantPresence?: boolean } = {},
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
@@ -136,13 +142,16 @@ export const resolveAgentTools = (
     }
   }
 
-  const descriptors: ToolSchemaDescriptor[] = allToolDefinitions
-    .filter((tool) => allowedIds.has(tool.id))
-    .map((tool) => ({
-      toolName: tool.id,
-      description: tool.description,
-      inputSchema: tool.parameters,
-    }))
+  const allowedDefinitions = allToolDefinitions.filter((tool) => allowedIds.has(tool.id))
+  const view = buildBuiltinToolsetView(
+    allowedDefinitions,
+    options.inlineToolLimit ?? resolveBuiltinInlineToolLimit(),
+  )
 
-  return { descriptors, allowedIds }
+  return {
+    allowedIds,
+    descriptors: view.descriptors,
+    stubbedIds: view.stubbedIds,
+    toolSpecEnabled: view.toolSpecEnabled,
+  }
 }

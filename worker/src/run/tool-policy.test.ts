@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { BuiltinToolDefinition } from '@nessie/runtime'
 
-import { authorizeToolCall } from './tool-policy.js'
+import { authorizeToolCall, resolveAgentTools } from './tool-policy.js'
 
 /**
  * Builtin authorization for `requiresExplicitGrant` tools (e.g.
@@ -13,6 +13,7 @@ import { authorizeToolCall } from './tool-policy.js'
 
 const dwTool: BuiltinToolDefinition = {
   id: 'deep_water_run_update',
+  summary: 'Record a Deep Water run update.',
   label: 'Deep Water Run Update',
   description: 'x',
   parameters: { type: 'object', properties: {}, required: [] },
@@ -22,6 +23,7 @@ const dwTool: BuiltinToolDefinition = {
 
 const plainTool: BuiltinToolDefinition = {
   id: 'web_search',
+  summary: 'Search the web.',
   label: 'Web Search',
   description: 'x',
   parameters: { type: 'object', properties: {}, required: [] },
@@ -72,4 +74,39 @@ test('an explicit deny still blocks the explicit-grant builtin', () => {
 test('ordinary builtins stay allowed by default (no regression)', () => {
   const decision = authorizeToolCall('web_search', enabled, defs, null, null, 'shared')
   assert.deepEqual(decision, { allowed: true })
+})
+
+test('a temporary-context narrowing below the threshold stays fully inline', () => {
+  const narrowedDefinitions = [
+    plainTool,
+    {
+      ...plainTool,
+      id: 'message_search',
+      label: 'Message Search',
+      summary: 'Search messages.',
+    },
+    {
+      ...plainTool,
+      id: 'channel_find',
+      label: 'Channel Find',
+      summary: 'Find channels.',
+    },
+  ]
+  // loadAllowedToolIds applies TemporaryContextSession grants before this
+  // resolver. Model that narrowed registry result by enabling only two tools.
+  const resolved = resolveAgentTools(
+    new Set(['web_search', 'message_search']),
+    narrowedDefinitions,
+    null,
+    null,
+    'shared',
+    { inlineToolLimit: 2 },
+  )
+
+  assert.equal(resolved.toolSpecEnabled, false)
+  assert.deepEqual(resolved.descriptors, narrowedDefinitions.slice(0, 2).map((tool) => ({
+    toolName: tool.id,
+    description: tool.description,
+    inputSchema: tool.parameters,
+  })))
 })

@@ -1,4 +1,5 @@
 import {
+  BUILTIN_TOOL_DEFINITIONS,
   type InvocationRecord,
   type ProviderMessage,
   type ToolSchemaDescriptor,
@@ -30,6 +31,10 @@ import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { runReplyIsRestricted } from './agent-message.js'
+import {
+  BUILTIN_TOOL_SPEC_NAME,
+  executeBuiltinToolSpec,
+} from '../builtin-toolset-deferred.js'
 
 export const runExecutionAgentLoop = async (
   deps: ExecutionDependencies,
@@ -56,10 +61,12 @@ export const runExecutionAgentLoop = async (
     /** Called when the run reacts, so the terminal path knows it already spoke. */
     onReacted?: () => void
     resolvedToolIds: Set<string>
+    stubbedBuiltinToolIds: Set<string>
     // Durable thought log + coalesced live thinking events for the main agent.
     // Delegate sub-agents stay silent, exactly as before.
     thinkingRecorder: ThinkingRecorder
     toolDefs: ToolSchemaDescriptor[]
+    toolSpecEnabled: boolean
     toolPolicy: Record<string, boolean> | null
     // Wind-down instruction for the main loop, or null to disable (delegate
     // sub-agents and DeepWater handoff turns; non-interactive runs keep the
@@ -70,14 +77,30 @@ export const runExecutionAgentLoop = async (
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
-    (descriptor) => descriptor.toolName !== 'delegate' && input.resolvedToolIds.has(descriptor.toolName),
+    (descriptor) =>
+      descriptor.toolName !== 'delegate'
+      && (
+        input.resolvedToolIds.has(descriptor.toolName)
+        || (input.toolSpecEnabled && descriptor.toolName === BUILTIN_TOOL_SPEC_NAME)
+      ),
+  )
+  const allowedBuiltinDefinitions = BUILTIN_TOOL_DEFINITIONS.filter((definition) =>
+    input.resolvedToolIds.has(definition.id),
+  )
+  const subAgentBuiltinDefinitions = allowedBuiltinDefinitions.filter(
+    (definition) => definition.id !== 'delegate',
   )
   // Per-run MCP view: in deferred mode its descriptor array is LIVE
   // (mcp_load_tools / mcp_drop_tools mutate it), so the model's tool list is
   // recomposed from it on every inference call below.
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
-  const externalToolNames = new Set([...mcpExposedNames, ...input.executorToolset.handledNames])
+  const builtinMetaNames = input.toolSpecEnabled ? [BUILTIN_TOOL_SPEC_NAME] : []
+  const externalToolNames = new Set([
+    ...mcpExposedNames,
+    ...input.executorToolset.handledNames,
+    ...builtinMetaNames,
+  ])
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
   const delegateGate = createDelegateGate()
@@ -132,6 +155,7 @@ export const runExecutionAgentLoop = async (
       toolName,
       args,
       buildBuiltinCtx(toolActorContext, toolCallId),
+      input.stubbedBuiltinToolIds,
     )
 
   const contextPlan = buildContextPlan({
@@ -276,6 +300,9 @@ export const runExecutionAgentLoop = async (
       if (authorization.decision === 'deny') {
         return authorization.result
       }
+      if (toolName === BUILTIN_TOOL_SPEC_NAME) {
+        return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+      }
       if (toolName === 'react') {
         input.onReacted?.()
       }
@@ -304,7 +331,10 @@ export const runExecutionAgentLoop = async (
               {
                 agentKind: context.agent.agentKind,
                 allowedToolIds: input.allowedToolIds,
-                externalToolNames: subAgentMcpView.handledNames,
+                externalToolNames: new Set([
+                  ...subAgentMcpView.handledNames,
+                  ...builtinMetaNames,
+                ]),
                 parentAgentId: context.agent.parentAgentId,
                 toolPolicy: input.toolPolicy,
               },
@@ -317,7 +347,9 @@ export const runExecutionAgentLoop = async (
               },
             ),
           executeBuiltinTool: (n, a, id, toolActorContext) =>
-            executeGuardedBuiltin(n, a, toolActorContext, id),
+            n === BUILTIN_TOOL_SPEC_NAME
+              ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
+              : executeGuardedBuiltin(n, a, toolActorContext, id),
           builtinDescriptors: subAgentBuiltinDescriptors,
         })
         input.invocationSink.push(...result.invocations)
@@ -337,6 +369,7 @@ export const runExecutionAgentLoop = async (
         toolName,
         args,
         buildBuiltinCtx(authorization.toolActorContext, toolCallId),
+        input.stubbedBuiltinToolIds,
       )
     },
     initialMessages: input.initialMessages,

@@ -194,6 +194,7 @@ export const mapAgentRecord = (agent: {
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
   runLimits?: unknown
+  todosEnabled: boolean
   toolPolicy?: unknown
   updatedAt: Date
 }): AgentRecord => {
@@ -244,6 +245,7 @@ export const mapAgentRecord = (agent: {
     model: agent.model ?? undefined,
     effort: agent.effort,
     runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
+    todosEnabled: agent.todosEnabled,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     avatarBackgroundColor: readAgentAvatarBackgroundColor(agent.avatarBackgroundColor),

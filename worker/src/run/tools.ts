@@ -1,4 +1,6 @@
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
+import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
 import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
 import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
@@ -125,7 +127,7 @@ const wrapBuiltinResult = (
     },
   )
 
-export const executeBuiltinTool = async (
+const executeBuiltinToolUncorrected = async (
   toolName: string,
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
@@ -374,4 +376,19 @@ export const executeBuiltinTool = async (
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }
+}
+
+export const executeBuiltinTool = async (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: BuiltinToolRuntimeContext,
+  stubbedIds: ReadonlySet<string> = new Set(),
+): Promise<AgenticToolResult> => {
+  const result = await executeBuiltinToolUncorrected(toolName, args, context)
+  return appendStubbedBuiltinSchema(
+    toolName,
+    result,
+    stubbedIds,
+    BUILTIN_TOOL_DEFINITIONS,
+  )
 }

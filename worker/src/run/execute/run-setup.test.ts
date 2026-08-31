@@ -18,6 +18,8 @@ const resolved = () => ({
     descriptor('web_search'),
     descriptor('mcp_research_start'),
   ],
+  stubbedIds: new Set(['mcp_research_start']),
+  toolSpecEnabled: true,
 })
 
 test('an ordinary turn keeps delegate in the advertised toolset', () => {
@@ -38,4 +40,6 @@ test('a DeepWater launch turn is never shown delegate', () => {
     ['web_search', 'mcp_research_start'],
   )
   assert.deepEqual([...toolset.allowedIds].sort(), ['mcp_research_start', 'web_search'])
+  assert.deepEqual([...toolset.stubbedIds], ['mcp_research_start'])
+  assert.equal(toolset.toolSpecEnabled, true)
 })

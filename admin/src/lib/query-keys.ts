@@ -52,6 +52,16 @@ export const agentKeys = {
   triggers: (agentId?: string) => ['agents', agentId, 'triggers'] as const,
 }
 
+// To-dos are an agent sub-resource. Keeping them beneath the agents root means
+// an agent update still refreshes every mounted per-agent view, while the
+// to-do facade can invalidate the precise collection after a checklist write.
+export const agentTodoKeys = {
+  all: agentKeys.all,
+  instances: (agentId?: string) => ['agents', agentId, 'todos'] as const,
+  templates: (agentId?: string, includeArchived = false) =>
+    ['agents', agentId, 'todo-templates', includeArchived] as const,
+}
+
 export const alertKeys = {
   all: ['alerts'] as const,
   list: (limit: number, unreadOnly: boolean) =>

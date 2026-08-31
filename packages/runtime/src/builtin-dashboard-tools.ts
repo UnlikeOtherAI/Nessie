@@ -21,6 +21,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_list',
+    summary: 'List dashboards you can access and their IDs.',
     label: 'List Dashboards',
     description:
       'List the dashboards you can reach, with their id, title and where they '
@@ -42,6 +43,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_create',
+    summary: 'Create an empty dashboard at a chosen visibility home.',
     label: 'Create Dashboard',
     description:
       'Create an empty dashboard. Pick the home deliberately: it decides who can '
@@ -71,6 +73,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_list',
+    summary: 'List dashboard data sources and their declared columns.',
     label: 'List Data Sources',
     description:
       'List the dashboard data sources in this organisation, with the columns '
@@ -83,6 +86,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_probe',
+    summary: 'Probe dashboard-source data without saving it.',
     label: 'Probe A Data Source',
     description:
       'Fetch a source once and return its columns plus a small sample of rows. '
@@ -124,6 +128,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_create',
+    summary: 'Create a dashboard data source from a probed HTTPS API.',
     label: 'Create A Data Source',
     description:
       'Save a data source after probing it. HTTPS GET returning JSON only. If the '
@@ -155,6 +160,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_set_credential',
+    summary: 'Store a write-only credential for a dashboard data source.',
     label: 'Set A Data Source Credential',
     description:
       'Attach an API key or token to a source so it can authenticate. WRITE-ONLY: '
@@ -182,6 +188,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_add',
+    summary: 'Add a data-bound widget to a dashboard.',
     label: 'Add A Widget',
     description:
       'Add a widget to a dashboard. Choose the kind by the question it answers: '
@@ -214,6 +221,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_update',
+    summary: "Replace a dashboard widget's complete definition.",
     label: 'Update A Widget',
     description:
       'Replace a widget\'s definition — retitle it, rebind a field, change its '
@@ -233,6 +241,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_move',
+    summary: 'Set dashboard widget positions and sizes.',
     label: 'Move Or Resize Widgets',
     description:
       'Reposition and resize widgets on the canvas — this is what "move that one '
@@ -259,6 +268,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_remove',
+    summary: 'Remove a widget from a dashboard.',
     label: 'Remove A Widget',
     description:
       'Delete a widget from a dashboard. The dashboard keeps a version history, so '
@@ -274,6 +284,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_read',
+    summary: 'Read dashboard widgets, current data, and freshness.',
     label: 'Read A Dashboard',
     description:
       'Read a dashboard: its widgets, and for each one the current values and how '
@@ -301,6 +312,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
 export const DASHBOARD_EMBED_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_widget_post',
+    summary: 'Post a static or live dashboard widget in the current conversation.',
     label: 'Post A Widget Into A Conversation',
     description:
       'Put a widget into the current conversation. Use mode "static" (the '

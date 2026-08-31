@@ -176,6 +176,7 @@ const buildAgentRow = (input: {
   surfacePolicy: 'shared' as const,
   systemManaged: false,
   systemPrompt: null,
+  todosEnabled: false,
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   visibility: 'workspace' as const,
 })
