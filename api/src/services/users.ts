@@ -191,6 +191,15 @@ export const setOrganizationMemberDeactivated = async (
     })
     if (input.deactivated && membership?.deactivatedAt === null) {
       await pausePrivateAgentsForDeactivatedOwner(transaction, input)
+      // A PA presence is consent for this live organization member only. Keep
+      // the invariant true at rest rather than merely excluding old rows while
+      // assembling engagement candidates.
+      await transaction.agentBinding.deleteMany({
+        where: {
+          principalUserId: input.userId,
+          channel: { organizationId: input.organizationId },
+        },
+      })
     }
 
     if (input.deactivated) {

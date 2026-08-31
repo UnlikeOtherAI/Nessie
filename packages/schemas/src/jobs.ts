@@ -13,6 +13,9 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   agentId: AgentIdSchema,
+  // Presence owner for a shared-channel Personal Assistant run. Omitted for
+  // ordinary agents and PA DMs, whose existing `(agent, thread)` slot remains.
+  principalUserId: z.string().uuid().optional(),
   // True only for a live human conversational turn (a person's chat message and
   // the agent's direct reply). Triggers (even manually fired), subtasks, mailbox,
   // and scheduled runs leave this unset — they are background automation and are
@@ -41,6 +44,9 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
     z.object({
       id: z.string().uuid(),
       name: z.string().min(1),
+      // A non-null principal turns the organization-singleton PA row into one
+      // distinct engagement candidate for this channel member.
+      principalUserId: z.string().uuid().optional(),
       role: z.string().min(1),
       systemPrompt: z.string().nullable(),
     }),

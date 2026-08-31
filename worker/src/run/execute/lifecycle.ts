@@ -48,13 +48,14 @@ export const updateRunStatus = async (
   // must never be able to turn that into a thrown error.
   try {
     const run = await prisma.run.findUnique({
-      select: { agentId: true, threadId: true, triggerMessageId: true },
+      select: { agentId: true, principalUserId: true, threadId: true, triggerMessageId: true },
       where: { id: runId },
     })
     if (!run?.triggerMessageId) return
     await clearWorking(prisma, transport ?? null, {
       agentId: run.agentId,
       messageId: run.triggerMessageId,
+      ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
       threadId: run.threadId,
     })
   } catch (error) {
@@ -168,6 +169,7 @@ export const loadRunContext = async (
     consumedSources: createConsumedSourceSink(),
     run: {
       id: run.id,
+      principalUserId: run.principalUserId,
       threadId: run.thread.id,
       createdAt: run.createdAt,
       replyPlacement: run.replyPlacement,

@@ -75,6 +75,7 @@ const isManagedDeepWaterRow = (row: RegistryRow): boolean =>
 type RunScopeContext = {
   agentKind: 'personal_assistant' | 'shared'
   effectiveUserId: string | null
+  isPersonalAssistantPresence: boolean
   channelId: string
   teamId: string | null
   projectId: string | null
@@ -104,7 +105,9 @@ const scopeMatchesRun = (
     case 'channel':
       return ctx.channelId === scopeId
     case 'user':
-      return ctx.agentKind === 'personal_assistant' && ctx.effectiveUserId === scopeId
+      return !ctx.isPersonalAssistantPresence
+        && ctx.agentKind === 'personal_assistant'
+        && ctx.effectiveUserId === scopeId
     default:
       return false
   }
@@ -154,13 +157,19 @@ const isExposed = (
 
 const buildRunScopeContext = (
   actorContext: AuthorizedActionContext,
-  runtimeContext: { agentId: string; agentKind: 'personal_assistant' | 'shared'; channelId: string },
+  runtimeContext: {
+    agentId: string
+    agentKind: 'personal_assistant' | 'shared'
+    channelId: string
+    isPersonalAssistantPresence?: boolean
+  },
 ): RunScopeContext => ({
   agentKind: runtimeContext.agentKind,
   effectiveUserId:
     actorContext.actionContext.effectiveUserId
     ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null),
   channelId: runtimeContext.channelId,
+  isPersonalAssistantPresence: runtimeContext.isPersonalAssistantPresence === true,
   teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null,
   projectId: actorContext.tenant.projectId ?? null,
 })
@@ -263,6 +272,7 @@ export const buildMcpToolset = async (
     agentId: string
     agentKind: 'personal_assistant' | 'shared'
     channelId: string
+    isPersonalAssistantPresence?: boolean
   },
   // Attribution for operational connector telemetry — every dispatched MCP
   // tool call writes a cost-free row keyed to its org/agent/channel/run. Ledger

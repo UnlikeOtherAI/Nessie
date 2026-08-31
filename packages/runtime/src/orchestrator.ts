@@ -3,7 +3,14 @@ import type { ModelClient, ModelMessage } from './model.js'
 
 export type OrchestratorAgent = {
   id: string
+  /**
+   * Stable model-facing candidate id. A PA presence needs this because several
+   * members can contribute the same singleton Agent id to one channel.
+   */
+  engagementId?: string
   name: string
+  /** Owner of a shared-channel PA presence; absent for ordinary bindings. */
+  principalUserId?: string
   role: string
   systemPrompt: string | null
 }
@@ -17,9 +24,17 @@ export type OrchestratorAgent = {
 export type ReplyPlacementDecision = 'thread' | 'channel'
 
 export type OrchestratorDecision =
-  | { action: 'reply'; agentId: string; replyPlacement?: ReplyPlacementDecision }
-  | { action: 'acknowledge'; agentId: string; emoji: string }
+  | {
+      action: 'reply'
+      agentId: string
+      principalUserId?: string
+      replyPlacement?: ReplyPlacementDecision
+    }
+  | { action: 'acknowledge'; agentId: string; emoji: string; principalUserId?: string }
   | { action: 'none' }
+
+const engagementIdFor = (agent: OrchestratorAgent): string =>
+  agent.engagementId ?? agent.id
 
 // Accept only the two literals the contract defines; anything else (missing,
 // misspelled, a sentence) yields no field, so placement falls back to the
@@ -122,9 +137,16 @@ export const decideAgentEngagement = async (
   const mentionedIds = new Set<string>()
   for (const agent of input.agents) {
     const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    if (new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i').test(input.content)) {
-      if (!mentionedIds.has(agent.id)) {
-        mentionedIds.add(agent.id)
+    // PA presences are structured-only. Their display/mention projection lands
+    // in the next slice; accepting the singleton's bare name here would make
+    // two members' PAs indistinguishable and could address both by accident.
+    if (
+      agent.principalUserId === undefined
+      && new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i').test(input.content)
+    ) {
+      const engagementId = engagementIdFor(agent)
+      if (!mentionedIds.has(engagementId)) {
+        mentionedIds.add(engagementId)
         // Being addressed by an explicit @mention is a structural fact, not an
         // interpretation: the answer belongs to the asker's exchange, so it is
         // always threaded.
@@ -144,13 +166,16 @@ export const decideAgentEngagement = async (
   // LLM decision: should any agent engage? Annotate the agents already
   // following this thread so the model keeps them engaged on follow-ups.
   const followingIds = new Set(
-    (input.followingAgentIds ?? []).filter((id) => input.agents.some((a) => a.id === id)),
+    (input.followingAgentIds ?? []).filter((id) =>
+      input.agents.some((agent) => engagementIdFor(agent) === id),
+    ),
   )
   const agentDescriptions = input.agents
     .map((a) => {
-      const following = followingIds.has(a.id) ? ' [already participating in this thread]' : ''
+      const engagementId = engagementIdFor(a)
+      const following = followingIds.has(engagementId) ? ' [already participating in this thread]' : ''
       const summary = a.systemPrompt?.slice(0, 120) ?? 'general assistant'
-      return `- "${a.name}" (id: ${a.id}, role: ${a.role})${following}: ${summary}`
+      return `- "${a.name}" (id: ${engagementId}, role: ${a.role})${following}: ${summary}`
     })
     .join('\n')
 
@@ -262,22 +287,31 @@ export const decideAgentEngagement = async (
       emoji?: string
       replyPlacement?: unknown
     }
-    if (parsed.action === 'reply' && input.agents.some((a) => a.id === parsed.agentId)) {
+    const selected = input.agents.find((agent) => engagementIdFor(agent) === parsed.agentId)
+    if (parsed.action === 'reply' && selected) {
       const replyPlacement = parseReplyPlacement(parsed.replyPlacement)
       return [{
         action: 'reply',
-        agentId: parsed.agentId!,
+        agentId: selected.id,
+        ...(selected.principalUserId ? { principalUserId: selected.principalUserId } : {}),
         ...(replyPlacement ? { replyPlacement } : {}),
       }]
     }
     if (
       parsed.action === 'acknowledge' &&
-      input.agents.some((a) => a.id === parsed.agentId)
+      selected
     ) {
       const emoji = parseAcknowledgeEmoji(parsed.emoji)
       // A decision that names no usable emoji is not an acknowledgement; better
       // no reaction than a reaction carrying something that is not one.
-      return emoji ? [{ action: 'acknowledge', agentId: parsed.agentId!, emoji }] : []
+      return emoji
+        ? [{
+            action: 'acknowledge',
+            agentId: selected.id,
+            ...(selected.principalUserId ? { principalUserId: selected.principalUserId } : {}),
+            emoji,
+          }]
+        : []
     }
     return []
   } catch {

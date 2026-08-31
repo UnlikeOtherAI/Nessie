@@ -70,6 +70,7 @@ export {
   runAgentTriggerCreateTool,
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
+export { runPersonalAssistantJoinChannelTool } from './pa-tools/presence.js'
 export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,

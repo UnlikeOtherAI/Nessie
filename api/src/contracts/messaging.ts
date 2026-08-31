@@ -17,6 +17,7 @@ export const MessageReactionRecordSchema = z.object({
   id: z.string().uuid(),
   messageId: z.string().uuid(),
   agentId: AgentIdSchema.nullish(),
+  onBehalfOfUserId: z.string().uuid().nullish(),
   userId: z.string().uuid().nullish(),
   emoji: z.string(),
   createdAt: TimestampSchema,
@@ -38,6 +39,9 @@ export const ThreadMessageRecordSchema = z.object({
   id: z.string().uuid(),
   threadId: ThreadIdSchema,
   agentId: AgentIdSchema.nullish(),
+  // PA-presence owner for an assistant reply in a shared channel. The client
+  // renders this structural identity in the follow-up display slice.
+  onBehalfOfUserId: z.string().uuid().nullish(),
   userId: z.string().uuid().nullish(),
   author: MessageAuthorSchema.nullish(),
   role: MessageRoleSchema,

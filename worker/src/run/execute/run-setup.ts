@@ -96,6 +96,11 @@ export const prepareRunExecution = async (
       toolPolicy,
       context.agent.parentAgentId,
       context.agent.agentKind,
+      {
+        isPersonalAssistantPresence:
+          context.agent.agentKind === 'personal_assistant'
+          && context.channel.systemChannelType !== 'personal_assistant',
+      },
     ),
     input.isHandoffTurn,
   )
@@ -110,6 +115,9 @@ export const prepareRunExecution = async (
         agentId: context.agent.id,
         agentKind: context.agent.agentKind,
         channelId: context.channel.id,
+        isPersonalAssistantPresence:
+          context.agent.agentKind === 'personal_assistant'
+          && context.channel.systemChannelType !== 'personal_assistant',
       },
       attributionFromActorContext(payload.actorContext, {
         agentId: context.agent.id,

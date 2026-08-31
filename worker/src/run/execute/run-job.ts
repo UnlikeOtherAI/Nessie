@@ -54,6 +54,7 @@ import {
   loadRunContext,
   setAgentStatus,
   updateTaskStatus,
+  updateRunStatus,
 } from './lifecycle.js'
 import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
@@ -71,6 +72,10 @@ import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { runReplyIsRestricted } from './agent-message.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
+import {
+  assertPersonalAssistantPresenceRunPlacement,
+  PersonalAssistantPresencePlacementError,
+} from './personal-assistant-presence-placement.js'
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -100,6 +105,30 @@ export const executeRunJob = async (
 
   const context = await loadRunContext(deps.prisma, payload)
   if (!context) {
+    return
+  }
+
+  // A queued PA presence run must not act after its owner leaves the room or
+  // is deactivated. This is deliberately a quiet cancellation, not the normal
+  // failure path: posting a failure would itself be an unauthorized PA action.
+  try {
+    await assertPersonalAssistantPresenceRunPlacement(deps.prisma, context)
+  } catch (error) {
+    if (!(error instanceof PersonalAssistantPresencePlacementError)) throw error
+    await updateRunStatus(
+      deps.prisma,
+      context.run.id,
+      'cancelled',
+      deps.realtimeTransport,
+    )
+    await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
+    await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
+    await publishTaskUpdated(
+      deps.realtimeTransport,
+      buildScopes(context),
+      context.task.id,
+      'cancelled',
+    )
     return
   }
 
@@ -266,6 +295,9 @@ export const executeRunJob = async (
     await markWorking(deps.prisma, deps.realtimeTransport, {
       agentId: context.agent.id,
       messageId: payload.messageId,
+      ...(context.run.principalUserId
+        ? { onBehalfOfUserId: context.run.principalUserId }
+        : {}),
       threadId: context.run.threadId,
     })
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')

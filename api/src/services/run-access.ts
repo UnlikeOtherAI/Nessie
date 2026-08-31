@@ -16,6 +16,9 @@ export const RESTARTABLE_RUN_STATUSES: RunStatus[] = ['failed', 'cancelled']
 export type OrgRun = {
   id: string
   agentId: string
+  // Present only for a PA shared-channel presence. Lifecycle actions must
+  // preserve this owner rather than turn a restart into the clicker's PA run.
+  principalUserId: string | null
   status: RunStatus
   channelId: string
   threadId: string
@@ -36,6 +39,7 @@ export const loadRunForOrg = async (
     select: {
       id: true,
       agentId: true,
+      principalUserId: true,
       status: true,
       threadId: true,
       triggerMessageId: true,
@@ -48,6 +52,7 @@ export const loadRunForOrg = async (
   return {
     id: run.id,
     agentId: run.agentId,
+    principalUserId: run.principalUserId,
     status: run.status,
     channelId: run.thread.channelId,
     threadId: run.threadId,

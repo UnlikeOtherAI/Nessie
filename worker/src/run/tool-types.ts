@@ -83,6 +83,7 @@ export type BuiltinToolRuntimeContext = {
     id: string
     messageId: string
     originatingUserId?: string | null
+    principalUserId?: string | null
     threadId: string
   }
   toolCallId: string | null

@@ -23,12 +23,19 @@ export const WORKING_EMOJI = '👀'
 
 export const publishReactionChanged = async (
   transport: PgRealtimeTransport,
-  input: { agentId: string; emoji: string; messageId: string; threadId: string },
+  input: {
+    agentId: string
+    emoji: string
+    messageId: string
+    onBehalfOfUserId?: string
+    threadId: string
+  },
 ): Promise<void> => {
   await transport.publishSse(input.threadId, 'message.reaction', {
     agentId: parseAgentId(input.agentId),
     emoji: input.emoji,
     messageId: input.messageId,
+    ...(input.onBehalfOfUserId ? { onBehalfOfUserId: input.onBehalfOfUserId } : {}),
   })
 }
 
@@ -40,18 +47,16 @@ type ReactionPrisma = Pick<PrismaClient, 'messageReaction'>
  */
 export const setAgentReaction = async (
   prisma: ReactionPrisma,
-  input: { agentId: string; emoji: string; messageId: string },
+  input: { agentId: string; emoji: string; messageId: string; onBehalfOfUserId?: string },
 ): Promise<void> => {
-  await prisma.messageReaction.upsert({
-    create: input,
-    update: {},
-    where: {
-      messageId_agentId_emoji: {
-        agentId: input.agentId,
-        emoji: input.emoji,
-        messageId: input.messageId,
-      },
-    },
+  await prisma.messageReaction.createMany({
+    data: [{
+      agentId: input.agentId,
+      emoji: input.emoji,
+      messageId: input.messageId,
+      onBehalfOfUserId: input.onBehalfOfUserId ?? null,
+    }],
+    skipDuplicates: true,
   })
 }
 
@@ -67,7 +72,12 @@ export const setAgentReaction = async (
 export const markWorking = async (
   prisma: ReactionPrisma,
   transport: PgRealtimeTransport,
-  input: { agentId: string; messageId: string | null; threadId: string },
+  input: {
+    agentId: string
+    messageId: string | null
+    onBehalfOfUserId?: string
+    threadId: string
+  },
 ): Promise<void> => {
   if (!input.messageId) return
   try {
@@ -76,6 +86,7 @@ export const markWorking = async (
       where: {
         agentId: input.agentId,
         emoji: WORKING_EMOJI,
+        onBehalfOfUserId: input.onBehalfOfUserId ?? null,
         message: { threadId: input.threadId },
         messageId: { not: input.messageId },
       },
@@ -86,6 +97,7 @@ export const markWorking = async (
           agentId: input.agentId,
           emoji: WORKING_EMOJI,
           messageId: { in: stale.map((row) => row.messageId) },
+          onBehalfOfUserId: input.onBehalfOfUserId ?? null,
         },
       })
       for (const row of stale) {
@@ -93,6 +105,9 @@ export const markWorking = async (
           agentId: input.agentId,
           emoji: WORKING_EMOJI,
           messageId: row.messageId,
+          ...(input.onBehalfOfUserId
+            ? { onBehalfOfUserId: input.onBehalfOfUserId }
+            : {}),
           threadId: input.threadId,
         })
       }
@@ -102,11 +117,17 @@ export const markWorking = async (
       agentId: input.agentId,
       emoji: WORKING_EMOJI,
       messageId: input.messageId,
+      ...(input.onBehalfOfUserId
+        ? { onBehalfOfUserId: input.onBehalfOfUserId }
+        : {}),
     })
     await publishReactionChanged(transport, {
       agentId: input.agentId,
       emoji: WORKING_EMOJI,
       messageId: input.messageId,
+      ...(input.onBehalfOfUserId
+        ? { onBehalfOfUserId: input.onBehalfOfUserId }
+        : {}),
       threadId: input.threadId,
     })
   } catch (error) {
@@ -121,7 +142,12 @@ export const markWorking = async (
 export const clearWorking = async (
   prisma: ReactionPrisma,
   transport: PgRealtimeTransport | null,
-  input: { agentId: string; messageId: string | null; threadId: string },
+  input: {
+    agentId: string
+    messageId: string | null
+    onBehalfOfUserId?: string
+    threadId: string
+  },
 ): Promise<void> => {
   if (!input.messageId) return
   try {
@@ -130,6 +156,7 @@ export const clearWorking = async (
         agentId: input.agentId,
         emoji: WORKING_EMOJI,
         messageId: input.messageId,
+        onBehalfOfUserId: input.onBehalfOfUserId ?? null,
       },
     })
     if (count > 0 && transport) {
@@ -137,6 +164,9 @@ export const clearWorking = async (
         agentId: input.agentId,
         emoji: WORKING_EMOJI,
         messageId: input.messageId,
+        ...(input.onBehalfOfUserId
+          ? { onBehalfOfUserId: input.onBehalfOfUserId }
+          : {}),
         threadId: input.threadId,
       })
     }

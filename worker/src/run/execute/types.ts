@@ -81,6 +81,9 @@ export type RunContext = {
   consumedSources: ConsumedSourceSink
   run: {
     id: string
+    // Present only for a shared-channel PA presence. This is carried from the
+    // durable Run row to every message/reaction write chokepoint.
+    principalUserId?: string | null
     threadId: string
     // Run row creation ≈ enqueue instant (run.create + job enqueue share one
     // transaction), used as the queue-wait baseline for run.timing.

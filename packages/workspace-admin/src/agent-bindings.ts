@@ -81,18 +81,14 @@ export const bindAgentToChannel = async (
     || channel.systemChannelType === 'personal_assistant'
   ) return null
 
-  await prisma.agentBinding.upsert({
-    where: {
-      agentId_channelId: {
-        agentId: input.agentId,
-        channelId: input.channelId,
-      },
-    },
-    update: {},
-    create: {
+  await prisma.agentBinding.createMany({
+    data: [{
       agentId: input.agentId,
       channelId: input.channelId,
-    },
+    }],
+    // The storage-level partial unique keeps ordinary `(agent, channel)`
+    // bindings idempotent while PA presences use their own key.
+    skipDuplicates: true,
   })
 
   const boundAgent = await prisma.agent.findFirst({
@@ -158,6 +154,7 @@ export const unbindAgentFromChannel = async (
     where: {
       agentId: input.agentId,
       channelId: input.channelId,
+      principalUserId: null,
     },
   })
 }

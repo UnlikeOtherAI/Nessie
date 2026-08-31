@@ -5,6 +5,7 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
+  parseUserId,
   withActionContext,
   type AuthorizedActionContext,
   type RunStatus,
@@ -224,6 +225,13 @@ export const restartRun = async (
   const run = await loadRunForOrg(prisma, input.runId, input.organizationId)
   if (!run) return { kind: 'not_found' }
 
+  // A PA presence represents one person in a shared room. A colleague may be
+  // able to read the room, but cannot restart work under that person's PA.
+  if (
+    run.principalUserId
+    && actorContext.actor.actorId !== run.principalUserId
+  ) return { kind: 'not_found' }
+
   const productSlug = handoffProductSlug(run.triggerMessageMetadata)
   if (productSlug) return { kind: 'handoff_managed', productSlug }
 
@@ -246,12 +254,17 @@ export const restartRun = async (
   const created = await prisma.$transaction(async (tx) => {
     // Same (agent, thread) slot as every other run-creation path: restarting
     // into a busy thread is rejected, never silently queued.
-    if (await isThreadRunSlotBusy(tx, { agentId: run.agentId, threadId: run.threadId })) {
+    if (await isThreadRunSlotBusy(tx, {
+      agentId: run.agentId,
+      ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
+      threadId: run.threadId,
+    })) {
       return { busy: true as const }
     }
     const newRun = await tx.run.create({
       data: {
         agentId: run.agentId,
+        principalUserId: run.principalUserId,
         status: 'pending',
         threadId: run.threadId,
         triggerMessageId: message.id,
@@ -278,10 +291,14 @@ export const restartRun = async (
         actorContext: withActionContext(actorContext, {
           agentId: parseAgentId(run.agentId),
           channelId: parseChannelId(run.channelId),
+          ...(run.principalUserId
+            ? { effectiveUserId: parseUserId(run.principalUserId) }
+            : {}),
           taskId: parseTaskId(newTask.id),
           threadId: parseThreadId(run.threadId),
         }),
         agentId: parseAgentId(run.agentId),
+        ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
         interactive: actorContext.actor.actorType === 'user',
         messageId: message.id,
         runId: parseRunId(newRun.id),

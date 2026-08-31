@@ -4,8 +4,12 @@
 visibility slice is implemented: stored visibility + constraints, shared read
 predicate, enumerated reader gates, placement refusal, creation contract, and
 subtask inheritance. Personal-agent home DMs, the worker run-start placement
-assertion, and owner-deactivation trigger pausing are implemented. PA presence,
-admin UI, and global agent reachability remain later phases.
+assertion, and owner-deactivation trigger pausing are implemented. The PA
+shared-channel server core is implemented: per-principal bindings and database
+invariants, lifecycle removal, orchestration identity and serialization,
+on-behalf message/reaction attribution, destination containment, and reduced
+presence toolsets. Structured presence mentions, PA/display UI, and global
+agent reachability remain later phases.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),

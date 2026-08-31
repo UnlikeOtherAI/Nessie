@@ -128,6 +128,23 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'pa_join_channel',
+    label: 'Add Personal Assistant To Channel',
+    personalAssistantOnly: true,
+    description:
+      'Make your Personal Assistant available in a shared channel you already belong to. '
+      + 'This adds only your own PA presence; it cannot add another member’s assistant. '
+      + 'Use channel_find first when you only know the channel name.',
+    parameters: {
+      type: 'object',
+      properties: {
+        channelId: { type: 'string', description: 'The channel where your assistant should be present.' },
+      },
+      required: ['channelId'],
+    },
+    safe: false,
+  },
+  {
     id: 'agent_trigger_create',
     label: 'Create Agent Trigger',
     personalAssistantOnly: true,

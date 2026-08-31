@@ -21,6 +21,9 @@ const ATTACHMENT_ONLY_BROADCAST_CONTENT = 'Shared an attachment'
 export type ChannelAgent = {
   id: string
   name: string
+  // Present only for a PA binding placed by this member. It turns the
+  // organization-singleton PA into a distinct orchestration candidate.
+  principalUserId?: string
   role: string
   systemPrompt: string | null
 }
@@ -199,6 +202,7 @@ export const createThreadMessage = async (
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
     id: b.agent.id,
     name: b.agent.name,
+    ...(b.principalUserId ? { principalUserId: b.principalUserId } : {}),
     role: b.agent.role,
     systemPrompt: b.agent.systemPrompt,
   }))

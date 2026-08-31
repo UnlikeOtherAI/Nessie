@@ -71,10 +71,9 @@ export const ensurePrivateAgentHome = async (
   // Home bindings are the one structural exception to `bindAgentToChannel`:
   // the migration trigger independently proves this exact DM belongs to this
   // exact private agent and owner before accepting the row.
-  await prisma.agentBinding.upsert({
-    where: { agentId_channelId: { agentId: input.agentId, channelId: channel.id } },
-    create: { agentId: input.agentId, channelId: channel.id },
-    update: {},
+  await prisma.agentBinding.createMany({
+    data: [{ agentId: input.agentId, channelId: channel.id }],
+    skipDuplicates: true,
   })
 
   return parseChannelId(channel.id)
