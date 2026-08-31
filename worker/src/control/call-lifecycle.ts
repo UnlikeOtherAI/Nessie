@@ -89,7 +89,10 @@ export const handleCallRingTimeout = async (
     return { callId, missedInviteeIds }
   })
   if (!missed) return false
-  await publishCallTransitionRealtime(prisma, realtimeTransport, missed)
+  await publishCallTransitionRealtime(prisma, realtimeTransport, {
+    callId: missed.callId,
+    inviteeUserIds: missed.missedInviteeIds,
+  })
   return true
 }
 
