@@ -21,6 +21,7 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     provider: null,
     systemPrompt: null,
   },
+  boundAgentIds: [],
   channel: {
     id: 'c',
     organizationId: 'o',

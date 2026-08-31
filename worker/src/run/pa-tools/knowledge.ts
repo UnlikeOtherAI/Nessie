@@ -285,6 +285,9 @@ export const runKbListTool = async (
         toolName: 'kb_list',
       }
     }
+    // Space titles disclose what exists just as ticket/page titles do. Record
+    // every listed space before its name reaches the model.
+    recordKnowledgeSpaceRead(context, result.data)
     const lines = result.data.map(
       (space, index) => `${index + 1}. ${space.name} (spaceId=${space.id}, visibility=${space.visibility})`,
     )

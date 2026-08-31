@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import {
   clampKbSearchLimit,
   runKbListTool,
@@ -298,4 +299,18 @@ test('kb_list denies access to a space the agent cannot read', async () => {
 
   assert.equal(result.toolName, 'kb_list')
   assert.equal(result.outputPreview, 'You do not have access to this knowledge space.')
+})
+
+test('kb_list records the scopes of spaces whose names it lists', async () => {
+  const consumedSources = createConsumedSourceSink()
+  const space = buildSpaceRow({ ownerAgentId: 'agent-1', visibility: 'private' })
+  const prisma = buildFakePrisma({ space })
+  const context = makeContext(prisma, { consumedSources })
+
+  const result = await runKbListTool(context, {})
+
+  assert.match(result.outputPreview, /Engineering/)
+  assert.deepEqual(consumedSources.list(), [
+    { scopeId: 'agent-1', scopeType: 'agent' },
+  ])
 })

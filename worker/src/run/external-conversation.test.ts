@@ -218,6 +218,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       provider: null,
       systemPrompt: null,
     },
+    boundAgentIds: [],
     channel: {
       id: CHANNEL,
       organizationId: ORG,

@@ -84,6 +84,12 @@ Facts not restated there:
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +
   `RunBasisScope` in the same transaction as the message; `agent-message.ts`
   opens that transaction itself rather than trusting callers.
+- Basis vocabulary is `user | channel | team | project | organization | agent`.
+  `agent:<id>` means exactly the people who pass the shared live agent-visibility
+  predicate. A destination implies agents bound to its channel; those ids are
+  loaded once into the run context so `runReplyIsRestricted` stays synchronous
+  on every streamed delta. Tool-posted messages resolve the bindings of their
+  own target channel instead.
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.

@@ -1,6 +1,6 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** design proposal; phase 1b access arm implemented.
+**Status:** design proposal; phase 1b access arm and phase 1c disclosure basis/publish gate implemented.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -336,28 +336,36 @@ Two directions, both owned by this design:
 agent-owned space breaks that mapping: its stored visibility is `private`
 with **no `userId`**, which maps to `null` — silently unscoped, the exact
 fail-open defect class AGENTS.md names. So the same change that adds the
-access arm extends the basis bridge, beside the reader as always:
+access arm extends the basis bridge, beside the reader as always.
 
-- A space with `ownerAgentId` whose agent resolves **private** (once
-  `Agent.visibility` lands; until then: never — everything is `workspace`)
-  records `{user, <agent.ownerUserId>}` — the doc's audience is one person.
-- A space with `ownerAgentId` whose agent is **workspace** records
-  **nothing**, on the audience-superset argument the to-dos plan made for
-  its checklists: the docs' audience is everyone who can see the agent;
-  every destination the agent replies into is a channel it is bound to (or
-  presently posting in), whose members can therefore see the agent and so
-  the docs. **One verification gate before relying on this:** confirm that
-  `send_message` / `message_send` cannot post as the agent into a channel
-  whose members would *not* see the agent (an unbound cross-channel post
-  would break the superset). If it can, the fallback is to record
-  `{user, steward}` conservatively — over-restriction fails closed. Flagged
-  in §10, to be settled against code during phase 1, and recorded in the
-  basis bridge's comment either way.
-- The principled future fix — an `agent:<id>` basis scope type evaluated in
-  `viewerSatisfiesBasis` as "viewer passes `isAgentVisibleToUser`" — is
-  named but deferred: it extends the basis vocabulary beyond audiences of
-  people, which the disclosure design explicitly scoped out, and nothing in
-  v1 needs it if the superset argument holds.
+The original audience-superset proposal — record nothing for a workspace
+agent — was **refuted in review**. There are live paths where an agent-authored
+message reaches a channel that does not make that agent visible: a
+`spawn_subtask` child posts as itself into its parent's thread, the PA rolling
+watch writes agent-authored status into shared channels, and workflow
+`message_send` accepts a target channel without requiring a binding. Empty
+basis on any of those paths would publish an agent's document content to
+people outside the document audience. Stamping only `{user, steward}` was also
+rejected because it needlessly withholds shared-agent notes from entitled
+colleagues.
+
+What shipped is the exact audience:
+
+- an agent-owned space records `{scopeType: 'agent', scopeId: ownerAgentId}`;
+- `resolveDisclosureViewer` carries `agent:<id>` for every agent returned by
+  the shared `listVisibleAgentIdsForUser` predicate, so the existing pure
+  set-containment `viewerSatisfiesBasis` needs no special case;
+- a reply destination implies every agent bound to that channel. The binding
+  ids are loaded once into the run context, keeping `runReplyIsRestricted`
+  synchronous and monotone per streamed delta; a tool post resolves the
+  bindings of its own target channel rather than reusing the run's;
+- `privateToAgentId` remains untranslated because it restricts a machine
+  reader, while `ownerAgentId` names a human audience: whoever can see the
+  agent.
+
+This is exact in both directions: the routine bound-agent read subtracts to an
+empty basis and remains streamable/searchable, while an unbound cross-channel
+post retains `agent:<id>` and fails closed.
 
 ### 5.2 Writing agent docs must not launder a privileged read
 
@@ -376,9 +384,9 @@ just applies it:
   as an ordinary **draft** and the agent is told to use
   `kb_publish_request` — the existing human review gate becomes the consent
   mechanism, which is exactly the nod principle: *a human lifts a
-  restriction; the agent never does.* For a private agent the audience is
-  its steward, so "audience implies" reduces to "does the steward satisfy
-  the basis" — evaluable at write time against one person.
+  restriction; the agent never does.* The document audience implies exactly
+  its own `agent:<ownerAgentId>` scope; the destination channel is deliberately
+  irrelevant because the document persists outside that room.
 - **Close the streaming gap in the same phase.** The document stream lanes
   gain the `runReplyIsRestricted(context)` gate that `stream.delta` and the
   thinking recorder already have, and the session bootstrap route checks the
@@ -488,46 +496,41 @@ migrations additive only.
 4. **Refinements with real use:** proprietor ergonomics (`kb_file`
    relaxation if not already in 1), steward-widened template of write
    permissions when people-and-their-agents phase 3 decides entitlements,
-   and — if cross-agent doc use grows — the `agent:` basis scope type done
-   properly.
+   and later cross-agent document refinements. The `agent:` basis scope itself
+   shipped in phase 1c because the audience-superset premise was false.
 
 Phase 1 is independently shippable and delivers the product sentence by
 itself.
 
 ## 10. Open questions (flagged, not guessed)
 
-1. **The send_message superset check (§5.1).** Must be verified against
-   code before the workspace-agent "record nothing" rule ships; if an agent
-   can post into a channel whose members cannot see it, the conservative
-   `{user, steward}` stamp is the fallback. *This is the one item that can
-   change the design's disclosure posture.*
-2. **Write default** — write-follows-read (adopted, per the product brief's
+1. **Write default** — write-follows-read (adopted, per the product brief's
    "humans can edit them too") vs steward-only-by-default with
    `writeRestricted` inverted. Confirm the permissive default is intended
    for shared agents.
-3. **Search inclusion** — agent docs appear in org-wide KB search for
+2. **Search inclusion** — agent docs appear in org-wide KB search for
    entitled viewers (adopted: discoverability, one predicate). If dozens of
    agents' working notes prove noisy in human search, add a default-off
    facet rather than a visibility change.
-4. **Two ownership facts during transition** — `createdBy === agent.id`
+3. **Two ownership facts during transition** — `createdBy === agent.id`
    already grants agent access to legacy agent-created spaces;
    `ownerAgentId` is the typed successor. Should a follow-up migration stamp
    `ownerAgentId` onto spaces whose `createdBy` matches an agent id, or does
    the no-fabrication rule apply (a space an agent created for a project is
    not necessarily *its* docs)? Recommended: no backfill; only
    `ensureAgentDocsSpace` writes the column.
-5. **Default-on vs gated** — kept default-on (KB tools already are). Tables'
+4. **Default-on vs gated** — kept default-on (KB tools already are). Tables'
    open question #2 is the same decision; whatever the team picks there
    should apply here identically.
-6. **Quota posture** — doc bytes already ride `FileService` accounting and
+5. **Quota posture** — doc bytes already ride `FileService` accounting and
    `Budget.storageLimitBytes`. Is a per-agent page/space count cap wanted
    (the tables quota instinct), or is org storage quota enough for prose?
    Proposed: org quota only; revisit on abuse.
-7. **PA presence runs** (when agent-scopes lands): in a shared channel, a
+6. **PA presence runs** (when agent-scopes lands): in a shared channel, a
    PA presence writing "its" notes writes to the *owner's* My Docs — an
    owner-private artifact — which the scopes plan puts behind the
    owner-private tier. Confirm document writes join that tier's
    approval-routed set rather than executing on a stranger's word.
-8. **Naming** — "Documents" tab and "<Agent> — Documents" space name;
+7. **Naming** — "Documents" tab and "<Agent> — Documents" space name;
    "Notes" was considered (warmer, but collides with `kb_note_add`
    annotations). Pick before the tab ships; nothing else depends on it.

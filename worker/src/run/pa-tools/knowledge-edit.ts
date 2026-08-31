@@ -1,12 +1,19 @@
 import { Readable } from 'node:stream'
-import { attributionFromActorContext } from '@nessie/runtime'
-import { canWriteSpace, loadSpaceViewer } from '@nessie/knowledge'
+import { attributionFromActorContext, type FileService } from '@nessie/runtime'
+import {
+  canWriteSpace,
+  loadSpaceViewer,
+  type KnowledgeProvider,
+} from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { fileServiceFor } from '../file-service.js'
 import { applyDocumentEdits } from '../execute/document-stream-edit.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
-import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
+import {
+  recordKnowledgeSpaceRead,
+  sourcesOutsideAgentDocumentAudience,
+} from './knowledge-basis.js'
 import { readMarkdownDocument } from './knowledge-document-io.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -16,6 +23,12 @@ type EditInput = {
   pageId?: string
   changeComment?: string
   edits?: { find?: string; replace?: string }[]
+}
+
+type EditDependencies = {
+  files?: FileService
+  provider?: KnowledgeProvider
+  readDocument?: typeof readMarkdownDocument
 }
 
 /**
@@ -28,6 +41,7 @@ type EditInput = {
 export const runKbDocumentEditTool = async (
   context: BuiltinToolRuntimeContext,
   input: EditInput,
+  dependencies: EditDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const pageId = input.pageId?.trim()
   if (!pageId) {
@@ -45,8 +59,13 @@ export const runKbDocumentEditTool = async (
   })
 
   const organizationId = String(context.channel.organizationId)
-  const fileService = fileServiceFor(context.prisma)
-  const document = await readMarkdownDocument(context.prisma, fileService, organizationId, pageId)
+  const fileService = dependencies.files ?? fileServiceFor(context.prisma)
+  const document = await (dependencies.readDocument ?? readMarkdownDocument)(
+    context.prisma,
+    fileService,
+    organizationId,
+    pageId,
+  )
   if (!document) {
     throw new Error(
       `No markdown document found for pageId=${pageId}. `
@@ -54,7 +73,7 @@ export const runKbDocumentEditTool = async (
     )
   }
 
-  const provider = createWorkerKnowledgeProvider(context)
+  const provider = dependencies.provider ?? createWorkerKnowledgeProvider(context)
   const page = await provider.getPage(organizationId, pageId)
   if (!page) {
     throw new Error(`Knowledge page not found: ${pageId}`)
@@ -128,6 +147,21 @@ export const runKbDocumentEditTool = async (
       pageId,
     })
     const versionNumber = version?.versionNumber ?? null
+    const needsDisclosureReview = space.ownerAgentId !== null
+      && sourcesOutsideAgentDocumentAudience(context, space.ownerAgentId).length > 0
+    // Editing a published agent document keeps the common covered-audience
+    // path live: publish the new version only when the document audience covers
+    // the run. A page that was already a draft never becomes published here.
+    const published = space.ownerAgentId !== null
+      && page.status === 'published'
+      && !needsDisclosureReview
+    if (published) {
+      await provider.publishPage({
+        actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
+        organizationId,
+        pageId,
+      })
+    }
 
     if (session) {
       await context.prisma.runDocumentSession.update({
@@ -136,6 +170,7 @@ export const runKbDocumentEditTool = async (
           chars: applied.length,
           finishedAt: new Date(),
           pageId,
+          ...(space.ownerAgentId !== null ? { published } : {}),
           status: 'saved',
           versionNumber,
         },
@@ -149,7 +184,16 @@ export const runKbDocumentEditTool = async (
       outputPreview:
         `Applied ${edits.length} edit${edits.length === 1 ? '' : 's'} to "${document.title}" `
         + `(${delta >= 0 ? '+' : ''}${delta} characters, now ${applied.length}). `
-        + `pageId=${pageId}${versionNumber ? `, version ${versionNumber}` : ''}.`,
+        + `pageId=${pageId}${versionNumber ? `, version ${versionNumber}` : ''}.`
+        + (space.ownerAgentId === null
+          ? ''
+          : needsDisclosureReview
+            ? ' The new version was saved as a draft needing review because it drew on '
+              + 'restricted sources; call kb_publish_request to ask for publication.'
+            : published
+              ? ' The new version is published in that agent-owned space.'
+              : ' The page was already a draft, so the new version remains a draft; '
+                + 'call kb_publish_request when it is ready for review.'),
       toolName: 'kb_document_edit',
     }
   } catch (error) {

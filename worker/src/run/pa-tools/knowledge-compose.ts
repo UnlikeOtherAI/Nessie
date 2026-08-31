@@ -1,9 +1,14 @@
 import { Readable } from 'node:stream'
-import { attributionFromActorContext } from '@nessie/runtime'
-import { canWriteSpace, loadSpaceViewer } from '@nessie/knowledge'
+import { attributionFromActorContext, type FileService } from '@nessie/runtime'
+import {
+  canWriteSpace,
+  loadSpaceViewer,
+  type KnowledgeProvider,
+} from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { fileServiceFor } from '../file-service.js'
 import { buildSpaceViewerPrincipal } from './access.js'
+import { sourcesOutsideAgentDocumentAudience } from './knowledge-basis.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -27,6 +32,11 @@ type ComposeInput = {
   markdown?: string
 }
 
+type ComposeDependencies = {
+  files?: FileService
+  provider?: KnowledgeProvider
+}
+
 /**
  * Write a markdown document and save it as a `.md` file node.
  *
@@ -40,6 +50,7 @@ type ComposeInput = {
 export const runKbDocumentComposeTool = async (
   context: BuiltinToolRuntimeContext,
   input: ComposeInput,
+  dependencies: ComposeDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const markdown = input.markdown ?? ''
   if (!markdown.trim()) {
@@ -89,7 +100,7 @@ export const runKbDocumentComposeTool = async (
     throw new Error('spaceId is required.')
   }
 
-  const provider = createWorkerKnowledgeProvider(context)
+  const provider = dependencies.provider ?? createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
   const space = await provider.getSpace(organizationId, spaceId)
   if (!space) {
@@ -116,7 +127,7 @@ export const runKbDocumentComposeTool = async (
     }
   }
 
-  const fileService = fileServiceFor(context.prisma)
+  const fileService = dependencies.files ?? fileServiceFor(context.prisma)
   const attribution = attributionFromActorContext(context.actorContext)
   const filename = toMarkdownFilename(input.title)
   const { attachment } = await fileService.store({
@@ -147,11 +158,12 @@ export const runKbDocumentComposeTool = async (
       title: filename,
     })
 
-    // Publish where review would be ceremony rather than oversight. In a
-    // private space the person who asked for the document is its only reader
-    // and just watched it being written, so leaving it as a draft they have to
-    // approve to themselves helps nobody. Shared spaces keep the review gate.
-    const published = space.visibility === 'private'
+    // Ordinary private spaces retain their historical auto-publish behaviour.
+    // An agent-owned space is broader than one person, so it auto-publishes only
+    // when its exact agent audience implies everything the run consumed.
+    const needsDisclosureReview = space.ownerAgentId !== null
+      && sourcesOutsideAgentDocumentAudience(context, space.ownerAgentId).length > 0
+    const published = space.visibility === 'private' && !needsDisclosureReview
     if (published) {
       await provider.publishPage({
         actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
@@ -182,7 +194,10 @@ export const runKbDocumentComposeTool = async (
         `Saved "${filename}" (${markdown.length} characters) to space "${space.name}"`
         + `${stored?.overrideSpaceId ? ' — the person moved it there from the document window' : ''}`
         + `. pageId=${page.id}, version ${versionNumber}. `
-        + (published
+        + (needsDisclosureReview
+          ? 'It was saved as a draft needing review because it drew on restricted sources; '
+            + 'call kb_publish_request to ask for publication.'
+          : published
           ? 'It is published in that private space.'
           : 'It is a draft; call kb_publish_request when it is ready for review.'),
       toolName: 'kb_document_compose',

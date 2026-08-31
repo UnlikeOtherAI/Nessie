@@ -28,6 +28,7 @@ const loopResult = (over: Partial<LoopResult> = {}): LoopResult => ({
 
 const context = {
   agent: { id: 'agent-1' },
+  boundAgentIds: [],
   // The checkpoint now carries the writing run's disclosure basis, so the
   // context needs the sink and the destination chain the basis is computed
   // against. An empty sink is the common case: an unrestricted run.

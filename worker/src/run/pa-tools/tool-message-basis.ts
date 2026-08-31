@@ -33,19 +33,31 @@ export const resolveToolPostBasis = async (
   if (consumed.length === 0) {
     return []
   }
-  const channel = await context.prisma.channel.findUnique({
-    where: { id: channelId },
-    select: { projectId: true, teamId: true },
-  })
+  const [channel, boundAgents] = await Promise.all([
+    context.prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { projectId: true, teamId: true },
+    }),
+    // This target may differ from the run's reply channel, so its implication
+    // set must be resolved independently rather than reusing RunContext.
+    context.prisma.agentBinding.findMany({
+      where: { channelId },
+      select: { agentId: true },
+    }),
+  ])
   if (!channel) {
     return []
   }
-  return computeReplyBasis(consumed, {
-    channelId,
-    organizationId: String(context.channel.organizationId),
-    projectId: channel.projectId,
-    teamId: channel.teamId,
-  })
+  return computeReplyBasis(
+    consumed,
+    {
+      channelId,
+      organizationId: String(context.channel.organizationId),
+      projectId: channel.projectId,
+      teamId: channel.teamId,
+    },
+    boundAgents.map((binding) => binding.agentId),
+  )
 }
 
 /**
