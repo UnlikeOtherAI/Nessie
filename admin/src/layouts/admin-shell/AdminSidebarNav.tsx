@@ -289,15 +289,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
-        path: '/settings/channels',
-        label: 'Channels',
-        icon: icon(
-          <>
-            <path d="M7 8h10M5 12h14M7 16h10" strokeLinecap="round" strokeLinejoin="round" />
-          </>,
-        ),
-      },
-      {
         path: '/settings/members',
         label: 'Members',
         // On a UOA session the roster read is entitlement-scoped to any active

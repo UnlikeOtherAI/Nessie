@@ -46,13 +46,12 @@ API:
 
 Admin UI:
 
-- Channel archive is reachable from two places only:
-  `admin/src/components/shared/ChannelSettingsDialog.tsx` (Archive /
-  Unarchive button + confirm modal) and
-  `admin/src/pages/settings/SettingsChannelsPage.tsx` (`/settings/channels`,
-  which lists Active and an "Archived" section with an Unarchive button).
-- `admin/src/facades/channels/hooks.ts` has `useAllChannels`
-  (`?includeArchived=true`) and `useArchiveChannel`.
+- Channel creation, settings, and archive are owned by the main `/channels`
+  surface through `admin/src/components/shared/ChannelSettingsDialog.tsx`
+  (Archive / Unarchive button + confirm modal). The separate Settings →
+  Channels page and route are removed.
+- `admin/src/facades/channels/hooks.ts` keeps `useArchiveChannel`; the retired
+  page's `useAllChannels` query is removed with it.
 - Projects: `/projects`, `/projects/:id` with tabs board / backlog / insights /
   docs / settings (`admin/src/pages/project/`). **No archive UI whatsoever.**
 - Route table is `admin/src/router.tsx` (~50 routes; `/settings/*`,
@@ -121,8 +120,9 @@ states. A reviewer reading it should be able to build from it.
    Propose the exact policy.
 7. **Empty, permission-denied, and partial states.** What a member sees vs an
    admin vs an owner.
-8. **Migration of what exists** — the two current channel-archive entry points
-   and the Settings → Channels list: keep, absorb, or replace?
+8. **Migration of what exists** — preserve the main Channels surface as the
+   one channel creation/settings/archive owner; remove the separate Settings
+   page, route, and navigation item.
 9. **The minimum first slice.** If only one week of work were available, what
    ships first and still satisfies Rule zero?
 

@@ -83,7 +83,7 @@ use). Sections load independently — one slow query never blanks the page.
 - **Cap:** 8 rows. When more exist, a final quiet row: "Show all N channels" expands the list
   in place (no separate page exists and none is needed).
 - **Header:** `CHANNELS · N` (N = filtered count). No header action — channel creation already
-  lives in the sidebar `+` and Settings → Channels.
+  lives in the sidebar `+` and the main `/channels` surface.
 - **Click:** row → `/channels/:channelId`.
 - **Loading:** 3 skeleton rows (`bg-[color:var(--overlay)]`, `animate-pulse`, rounded).
 - **Empty:** "No channels yet. Channels created under this project's teams will appear here."

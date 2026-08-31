@@ -66,7 +66,7 @@ transaction, no partial-cascade failure states.
 
 | Level | Entry points | Confirm pattern |
 |---|---|---|
-| Channel | `ChannelSettingsDialog` (existing Archive button, kept) — reachable from the channel header and Settings → Channels | Confirm modal (exists), then toast with **Undo** |
+| Channel | `ChannelSettingsDialog` (existing Archive button, kept) — reachable from the channel header in the main `/channels` surface | Confirm modal (exists), then toast with **Undo** |
 | Project | (1) Sidebar project `⋯` menu → "Archive project…"; (2) Project → Settings tab → new **General** section | Confirm modal naming consequences, then toast with **Undo** |
 | Task | Existing: card menu + `ArchiveDoneMenu` bulk action | Unchanged (undoable via Archived section) |
 | Knowledge page | Existing status control | Unchanged |
@@ -109,11 +109,11 @@ archived-only — Delete.
 
 ## 3. Where archived things live: `/settings/archive`
 
-One owning surface, one component. `ArchivePage` at `/settings/archive`
-(sidebar Settings nav item "Archive"), rendering a shared
-`ArchivedItemsList` component parameterised by scope — the same component the
-Settings → Channels page and project-scoped views embed, per the
-reuse-never-fork rule.
+One owning recovery surface, one component. `ArchivePage` at `/settings/archive`
+(sidebar Settings nav item "Archive") renders a shared `ArchivedItemsList`
+component parameterised by scope. Channel creation, settings, and archive
+actions remain on the main `/channels` surface; the separate settings route is
+removed.
 
 ```
 ┌ Archive ──────────────────────────────────────────────────────────┐
@@ -252,11 +252,9 @@ each record (the client cannot compute channel/team roles itself).
 - **`ChannelSettingsDialog`** — kept and rewired: Archive/Unarchive stays; the
   fake Delete goes; a real Delete appears only when `archivedAt` is set and
   the viewer is org owner.
-- **`SettingsChannelsPage`** — kept as the channel management list, but its
-  inline "Archived" section is **absorbed**: replaced by the shared
-  `ArchivedItemsList` scope-parameterised embed or, simpler, a footer link
-  "5 archived channels ›" to `/settings/archive?type=channels`. Two archived
-  lists with two implementations would break the reuse rule.
+- **`SettingsChannelsPage`** and its route — removed. `/channels` is the sole
+  channel surface for creation, settings, and archive actions; no duplicate
+  channel-management list remains.
 - **`ArchiveDoneMenu` / Kanban archived section** — kept untouched; it is the
   tone reference (quiet, verb-first, undoable) the new surfaces copy.
 
@@ -270,7 +268,8 @@ Ships end-to-end and satisfies Rule zero on day five:
    join on channel reads.
 2. UI: sidebar `⋯` → "Archive project…" + confirm modal; Project Settings
    General section; sidebar `N archived ›` footer rows; `ArchivePage` at
-   `/settings/archive` (projects + channels tabs, reusing `useAllChannels`);
+   `/settings/archive` (projects + channels tabs, with the archive facade owning
+   its include-archived query);
    read-only banner on archived project tabs and archived channels.
 3. **Honesty fix:** remove the lying Delete button from
    `ChannelSettingsDialog` in the same slice — shipping a button that
