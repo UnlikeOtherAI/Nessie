@@ -28,6 +28,7 @@ import {
   type OAuthStateStore,
   type SecretStore,
 } from '../mcp-oauth.js'
+import { discoverMcpEndpoint } from '../discovery.js'
 import type { McpUrlSafetyOptions } from '../mcp-security.js'
 import type { SecretResolver } from '../secret-resolver.js'
 
@@ -94,6 +95,12 @@ export class AppConnectError extends Error {
 // ─── Context ────────────────────────────────────────────────────────────────
 
 export type AppConnectContext = {
+  /**
+   * How a failed probe learns what the server wants. Defaults to the shared
+   * `discoverMcpEndpoint`; injected by tests so no unit test dials a real host.
+   */
+  discoverEndpoint?: typeof discoverMcpEndpoint
+
   prisma: PrismaClient
   actorContext: AuthorizedActionContext
   /**
@@ -249,9 +256,77 @@ const canManageScope = async (
  * the custom-server path. They differ only in how they arrived at an instance,
  * which is why this is one function rather than three similar ones.
  */
+/**
+ * The endpoint an instance actually talks to, or null when it carries none.
+ *
+ * Read from the instance's own transport rather than the catalogue, because
+ * that is the address the failing probe used.
+ */
+const instanceEndpointUrl = (instance: McpInstanceRow): string | null => {
+  const config = instance.transportConfig
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null
+  const url = (config as Record<string, unknown>).url
+  return typeof url === 'string' && url.length > 0 ? url : null
+}
+
+/**
+ * A probe that failed may mean the server is down — or that it answered "you
+ * need to sign in", which is a different fact with a different remedy.
+ *
+ * The MCP authorization spec says a server states its auth by refusing an
+ * unauthenticated request and pointing at its metadata (RFC 9728). Nessie has
+ * always implemented that in `discoverMcpEndpoint`; the App Store connect path
+ * simply never reached it, because `chooseConnectStep` trusted the catalogue's
+ * `authMethod` — and on a registry-ingested row that value is the column
+ * default, not a statement anybody made. GitLab's official server is the case
+ * in point: it answers 401 with
+ * `WWW-Authenticate: Bearer resource_metadata="…/oauth-protected-resource/api/v4/mcp"`,
+ * advertises an authorization server and even a DCR registration endpoint —
+ * everything this codebase already speaks — and the store still told people
+ * "we couldn't reach the server", for 4,685 of 5,548 rows.
+ *
+ * So a failed probe asks the server what it wants before giving up.
+ */
+const learnAuthFromServer = async (
+  ctx: AppConnectContext,
+  entry: Pick<McpCatalogEntryRow, 'id' | 'authMethod'>,
+  instance: McpInstanceRow,
+): Promise<'oauth2' | 'secret' | null> => {
+  // A human-authored entry already states its auth; only a defaulted one is
+  // worth re-deriving, and only that one may be overwritten below. `appSource`
+  // is read here rather than widened into `McpCatalogEntryRow`, which flows
+  // through every catalogue caller for a field only this decision needs.
+  if (entry.authMethod !== 'none') return null
+  const row = await ctx.prisma.mcpCatalogEntry.findUnique({
+    select: { appSource: true },
+    where: { id: entry.id },
+  })
+  if (row?.appSource !== 'mcp_registry') return null
+  const endpoint = instanceEndpointUrl(instance)
+  if (!endpoint) return null
+
+  // Injected so a unit test never dials a real host; production takes the
+  // shared, SSRF-pinned implementation.
+  const discover = ctx.discoverEndpoint ?? discoverMcpEndpoint
+  const discovered = await discover(endpoint).catch(() => null)
+  const method = discovered?.proposal?.authMethod ?? null
+  if (method === 'oauth2') {
+    // Persist what the server said, so the next person sees "Connecting opens
+    // a sign-in window" before clicking and `startOAuth`'s own guard passes.
+    // `{ method: 'oauth2' }` with no static client is exactly the dynamic
+    // shape: discovery, DCR, then PKCE.
+    await ctx.prisma.mcpCatalogEntry.update({
+      data: { authConfig: { method: 'oauth2' }, authMethod: 'oauth2' },
+      where: { id: entry.id },
+    })
+    return 'oauth2'
+  }
+  return method === 'bearer' || method === 'api_key' ? 'secret' : null
+}
+
 export const runConnectHandshake = async (
   ctx: AppConnectContext,
-  entry: Pick<McpCatalogEntryRow, 'label' | 'authMethod'>,
+  entry: Pick<McpCatalogEntryRow, 'id' | 'label' | 'authMethod'>,
   instance: McpInstanceRow,
   options: { reauthorize?: boolean } = {},
 ): Promise<AppConnectOutcome> => {
@@ -309,6 +384,33 @@ export const runConnectHandshake = async (
     await captureConnectionCapabilities(ctx, instance)
     return { status: 'connected', connectionId: instance.id }
   } catch (error) {
+    // Before calling it unreachable, ask the server what it wants. A 401
+    // carrying RFC 9728 metadata is a working server stating its terms.
+    if (
+      error instanceof McpInstanceError
+      && error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED
+    ) {
+      const learned = await learnAuthFromServer(ctx, entry, instance)
+      if (learned === 'secret') {
+        return { status: 'needs_secret', connectionId: instance.id }
+      }
+      if (learned === 'oauth2') {
+        const flow = await startOAuth({
+          prisma: ctx.prisma,
+          store: ctx.oauth.stateStore,
+          secretStore: ctx.oauth.secretStore,
+          instanceId: instance.id,
+          actorContext: ctx.actorContext,
+          callbackUrl: ctx.oauth.callbackUrl,
+          resolveHost: ctx.oauth.resolveHost,
+        })
+        return {
+          status: 'authorize',
+          connectionId: instance.id,
+          authorizationUrl: flow.authorizationUrl,
+        }
+      }
+    }
     return mapHandshakeError(error, entry.label)
   }
 }

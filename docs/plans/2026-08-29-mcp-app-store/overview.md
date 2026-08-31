@@ -288,6 +288,28 @@ Error copy follows from the same rule: an unreachable server is reported as
 outage at Atlassian on the strength of a stranger's listing and sends the reader
 to check the wrong thing.
 
+**A failed probe asks the server what it wants before giving up.** The MCP
+authorization spec says a server declares its auth by refusing an
+unauthenticated request and pointing at RFC 9728 metadata, and
+`discoverMcpEndpoint` has always implemented exactly that — the App Store
+connect path simply never reached it, because `chooseConnectStep` trusted
+`entry.authMethod`, which on a registry-ingested row is the column default
+rather than anybody's statement. GitLab's official server is the case in point:
+it answers `401` with
+`WWW-Authenticate: Bearer resource_metadata="…/oauth-protected-resource/api/v4/mcp"`,
+advertises an authorization server and even a DCR `registration_endpoint` —
+every piece this codebase already speaks — and the store still said "we couldn't
+reach the server". That reply was wrong for 4,685 of 5,548 rows.
+
+`learnAuthFromServer` now runs on a `PROBE_FAILED`, for a defaulted ingested row
+only: discovery classifies the endpoint, an `oauth2` answer persists
+`authMethod: 'oauth2'` + `authConfig: { method: 'oauth2' }` (the dynamic shape —
+discovery, DCR, then PKCE) so the next person is told "Connecting opens a
+sign-in window" *before* clicking and `startOAuth`'s own guard passes, and a
+bearer/key answer routes to `needs_secret`. Anything else keeps the original
+error, so a genuinely dead listing still reads as one. A human-authored entry is
+never overwritten: its `authMethod` is a statement, not a default.
+
 **Connecting happens on `/apps`, in a dialog that says what it will do.**
 Connect used to navigate to the Connectors page, which dropped the person out
 of the store mid-decision and into a surface built for a different question.
