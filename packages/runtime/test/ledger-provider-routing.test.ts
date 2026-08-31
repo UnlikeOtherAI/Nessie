@@ -101,10 +101,14 @@ test('routes every compiled/custom connector through its Ledger service id', asy
         'https://ledger.unlikeotherai.com/v1/kimi/messages',
     },
     {
+      // No compiled MiniMax connector exists: a Ledger-listed 'minimax'
+      // service id rides the generic OpenAI-compatible connector and still
+      // reaches its own Ledger adapter segment.
       config: {
         apiKey: 'ledger-proxy',
         baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
-        provider: 'minimax',
+        provider: 'openai-compatible',
+        serviceId: 'minimax',
       },
       expectedUrl:
         'https://ledger.unlikeotherai.com/v1/minimax/chat/completions',
@@ -168,7 +172,7 @@ test('Kimi streams through the Ledger Anthropic adapter path and headers', async
   assert.equal(outputText, 'hi')
 })
 
-test('MiniMax streams through Ledger OpenAI chat while preserving its direct path', async () => {
+test('a MiniMax service id without a compiled adapter streams via openai-compatible', async () => {
   const sse = [
     'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":null}]}\n\n',
     'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
@@ -177,7 +181,8 @@ test('MiniMax streams through Ledger OpenAI chat while preserving its direct pat
   const { captured, outputText } = await withStreamCapture({
     apiKey: 'ledger-proxy',
     baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
-    provider: 'minimax',
+    provider: 'openai-compatible',
+    serviceId: 'minimax',
   }, sse)
 
   assert.equal(
@@ -188,15 +193,4 @@ test('MiniMax streams through Ledger OpenAI chat while preserving its direct pat
   assert.equal(captured.headers.get('x-nessie-context'), 'signed-context')
   assert.equal(captured.body.stream, true)
   assert.equal(outputText, 'hi')
-
-  const direct = await withFetchCapture({
-    apiKey: 'minimax-direct',
-    baseUrl: 'https://api.minimax.io/v1',
-    provider: 'minimax',
-  })
-  assert.equal(
-    direct.url,
-    'https://api.minimax.io/v1/text/chatcompletion_v2',
-  )
-  assert.equal(direct.headers.get('authorization'), 'Bearer minimax-direct')
 })

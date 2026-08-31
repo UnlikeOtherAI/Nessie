@@ -75,5 +75,4 @@ test('capability snapshots report vision truthfully per provider', async () => {
   assert.equal(await visionOf('openai-compatible'), true)
   assert.equal(await visionOf('deepseek'), false)
   assert.equal(await visionOf('kimi'), false)
-  assert.equal(await visionOf('minimax'), false)
 })

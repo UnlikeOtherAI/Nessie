@@ -5,7 +5,6 @@ import type {
   ProviderConnector,
 } from '../types.js'
 import { createKimiConnector } from './kimi.js'
-import { createMiniMaxConnector } from './minimax.js'
 import { createOpenAiLikeConnector } from './openai.js'
 
 export const createConnectorRegistry = (): ConnectorRegistry => {
@@ -13,7 +12,6 @@ export const createConnectorRegistry = (): ConnectorRegistry => {
     ModelProviderName,
     (config: ModelProviderConfig) => ProviderConnector
   >([
-    ['minimax', createMiniMaxConnector],
     ['kimi', createKimiConnector],
     ['deepseek', (config) => createOpenAiLikeConnector('deepseek', {
       ...config,

@@ -17,16 +17,14 @@ test('Ledger routing never forwards provider bindings or direct-provider keys', 
   const previous = {
     bound: process.env.TEST_PROVIDER_BINDING,
     kimi: process.env.KIMI_API_KEY,
-    minimax: process.env.MINIMAX_API_KEY,
     openai: process.env.OPENAI_API_KEY,
   }
   process.env.TEST_PROVIDER_BINDING = 'bound-direct-secret'
   process.env.KIMI_API_KEY = 'kimi-direct-secret'
-  process.env.MINIMAX_API_KEY = 'minimax-direct-secret'
   process.env.OPENAI_API_KEY = 'openai-direct-secret'
 
   try {
-    for (const provider of ['openai', 'kimi', 'minimax', 'deepseek'] as const) {
+    for (const provider of ['openai', 'kimi', 'deepseek'] as const) {
       assert.equal(
         resolveStageApiKey({
           authSecretRef: 'TEST_PROVIDER_BINDING',
@@ -46,7 +44,6 @@ test('Ledger routing never forwards provider bindings or direct-provider keys', 
     }
     restore('TEST_PROVIDER_BINDING', previous.bound)
     restore('KIMI_API_KEY', previous.kimi)
-    restore('MINIMAX_API_KEY', previous.minimax)
     restore('OPENAI_API_KEY', previous.openai)
   }
 })

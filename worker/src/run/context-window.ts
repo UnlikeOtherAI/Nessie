@@ -29,6 +29,9 @@ const KNOWN_MODEL_WINDOWS: Array<[string, number]> = [
   ['claude', 200_000],
   ['deepseek', 128_000],
   ['kimi', 128_000],
+  // Model-name keyed, not provider keyed: a MiniMax model served through
+  // Ledger's openai-compatible route still resolves here even though the
+  // compiled MiniMax connector was removed.
   ['minimax', 128_000],
 ]
 

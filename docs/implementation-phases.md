@@ -504,7 +504,7 @@ These are Phase 2 code assumptions that **must be fixed** before or during Phase
 
 #### Critical -- secrets
 
-5. **Model API keys read from raw env vars.** `packages/config/src/index.ts` reads `NESSIE_MODEL_API_KEY`, `OPENAI_API_KEY`, `MINIMAX_API_KEY` directly from environment. Phase 3 must integrate secret vault with encrypted storage, `secretRef` resolution, and audit.
+5. **Model API keys read from raw env vars.** `packages/config/src/index.ts` reads `NESSIE_MODEL_API_KEY`, `OPENAI_API_KEY`, and provider-specific fallbacks directly from environment. Phase 3 must integrate secret vault with encrypted storage, `secretRef` resolution, and audit.
 6. **OAuth client secrets unencrypted in config.** `api/src/services/external-auth.ts` stores provider credentials in plain config. Phase 3 must use `SecretRecord` for provider secrets.
 
 #### High -- verification and auth

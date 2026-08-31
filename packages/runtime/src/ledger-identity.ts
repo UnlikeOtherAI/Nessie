@@ -156,7 +156,7 @@ export const isLedgerEndpoint = (
  * Ledger's generic provider proxy is `/v1/:serviceId/*`. The deployment may
  * configure the canonical OpenAI route as its base URL; every inference
  * service rewrites that final service segment to the provider selected for the
- * actual stage so Kimi, MiniMax, and custom adapters cannot fall through the
+ * actual stage so Kimi and custom adapters cannot fall through the
  * OpenAI route.
  */
 export const resolveLedgerServiceBaseUrl = (

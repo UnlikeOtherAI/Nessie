@@ -143,7 +143,7 @@ Mechanics beyond those invariants:
   name with empty arguments and yields no event. The same change removed a
   `continue` that silently dropped tool fragments from chunks that also carried
   content, corrupting the executed call. **Only OpenAI-compatible connectors
-  stream tool arguments**; Kimi and MiniMax are `prompt-translated` and degrade
+  stream tool arguments**; Kimi is `prompt-translated` and degrades
   honestly — the popup waits and the document appears complete when it
   arrives, never a fake typewriter.
 - Lanes (`document-stream-lanes.ts`): **live** = `publishSseEphemeral`
