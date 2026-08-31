@@ -8,8 +8,15 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "device": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ADMIN_URL": "https://app.nessie.works"
+      }
+    },
     "preview": {
-      "distribution": "internal"
+      "extends": "device"
     },
     "production": {
       "autoIncrement": false
