@@ -179,6 +179,54 @@ test('a matched state-less flow remains single-flight until exact completion cle
   )
 })
 
+test('an explicit restart replaces only the pending state the caller observed', async () => {
+  const storage = memoryStorage()
+  await withMockFetch(
+    (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
+    async () => {
+      const first = await beginExternalAuth({ ...beginInput(storage), teamHint: 'team-a' })
+      const second = await beginExternalAuth({
+        ...beginInput(storage),
+        replacePendingState: first.state,
+        teamHint: 'team-b',
+      })
+
+      assert.notEqual(second.state, first.state)
+      assert.equal(readPendingExternalAuth(storage)?.state, second.state)
+      assert.equal(claimPendingExternalAuth(storage, first.state).kind, 'state-mismatch')
+    },
+  )
+})
+
+test('simultaneous restarts cannot erase the new flow with an old observed state', async () => {
+  const storage = memoryStorage()
+  await withMockFetch(
+    (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
+    async () => {
+      const first = await beginExternalAuth(beginInput(storage))
+      const observedState = first.state
+      const restarted = beginExternalAuth({
+        ...beginInput(storage),
+        replacePendingState: observedState,
+        teamHint: 'team-a',
+      })
+
+      await assert.rejects(
+        beginExternalAuth({
+          ...beginInput(storage),
+          replacePendingState: observedState,
+          teamHint: 'team-b',
+        }),
+        /already in progress/,
+      )
+
+      const result = await restarted
+      assert.equal(readPendingExternalAuth(storage)?.state, result.state)
+      assert.equal(readPendingExternalAuth(storage)?.teamHint, 'team-a')
+    },
+  )
+})
+
 test('completed callback replay cache survives adapter recreation and stays bounded', () => {
   const stored = memoryStorage()
   const first = createCompletedExternalAuthCallbackCache(stored)

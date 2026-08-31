@@ -5,6 +5,7 @@ import { isReactNativeWebView } from './mobile-shell'
 import {
   beginExternalAuth,
   clearPendingExternalAuthMatching,
+  readPendingExternalAuth,
 } from './pkce'
 
 // Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
@@ -63,8 +64,14 @@ export const startExternalSignIn = async (
   options: ExternalSignInOptions = {},
 ): Promise<void> => {
   const redirectUri = externalAuthRedirectUri()
+  // A fresh press is an explicit request to restart. Retire only the state we
+  // just observed, so an unrelated concurrent launcher cannot be erased. This
+  // makes a browser or desktop app that lost its callback recoverable without
+  // weakening the PKCE single-flight rule.
+  const replacePendingState = readPendingExternalAuth()?.state
   const { authorizeUrl, state: launchedState } = await beginExternalAuth({
     providerId,
+    ...(replacePendingState ? { replacePendingState } : {}),
     redirectUri,
     ...(options.returnPath ? { returnPath: options.returnPath } : {}),
     ...(options.targetWorkspace ? { targetWorkspace: options.targetWorkspace } : {}),
