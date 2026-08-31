@@ -33,13 +33,24 @@ export const PresenceBadge = ({
     return (
       <span
         aria-hidden
-        className="block rounded-full"
+        className="block"
         style={{
           ...base,
           background: '#ffffff',
-          border: '1.5px dashed var(--success)',
+          borderRadius: '50%',
+          display: 'block',
+          position: 'relative',
         }}
-      />
+      >
+        <span
+          style={{
+            borderRadius: '50%',
+            inset: 1,
+            border: '1px dashed var(--success)',
+            position: 'absolute',
+          }}
+        />
+      </span>
     )
   }
 

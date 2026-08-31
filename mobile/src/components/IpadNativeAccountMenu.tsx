@@ -23,7 +23,7 @@ const PresenceBadge = ({
   theme,
 }: Pick<IpadNativeAccountButtonProps, 'focusModeEnabled' | 'presence' | 'theme'>): React.JSX.Element => {
   const dot = focusModeEnabled
-    ? { backgroundColor: '#ffffff', borderColor: '#20a86b', borderStyle: 'dashed' as const, borderWidth: 1.5 }
+    ? { backgroundColor: '#ffffff' }
     : presence === 'online'
     ? { backgroundColor: '#20a86b' }
     : presence === 'away'
@@ -33,6 +33,7 @@ const PresenceBadge = ({
   return (
     <View style={[styles.presenceRing, { backgroundColor: theme.backgroundColor }]}>
       <View style={[styles.presenceDot, dot]}>
+        {focusModeEnabled ? <View style={styles.focusPresenceDash} /> : null}
         {presence === 'away' ? <Text style={styles.awayMark}>z</Text> : null}
       </View>
     </View>
@@ -80,6 +81,17 @@ const styles = StyleSheet.create({
   avatar: { borderRadius: 16, height: 32, width: 32 },
   awayMark: { color: '#2b2018', fontSize: 8, fontWeight: '700', lineHeight: 9 },
   fallback: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
+  focusPresenceDash: {
+    borderColor: '#20a86b',
+    borderRadius: 4,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    bottom: 1,
+    left: 1,
+    position: 'absolute',
+    right: 1,
+    top: 1,
+  },
   initial: { color: '#fff', fontSize: 12, fontWeight: '700' },
   presenceDot: { alignItems: 'center', borderRadius: 5, height: 10, justifyContent: 'center', width: 10 },
   presenceRing: {
