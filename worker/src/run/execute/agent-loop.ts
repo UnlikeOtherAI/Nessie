@@ -24,7 +24,7 @@ import { executeBuiltinTool } from '../tools.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
-import { buildToolActorContext } from './policy.js'
+import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
@@ -276,7 +276,31 @@ export const runExecutionAgentLoop = async (
       return mcpView.dispatch(toolName, args, toolCallId)
     }
     if (input.executorToolset.handledNames.has(toolName)) {
-      return input.executorToolset.dispatch(toolName, args, toolCallId)
+      const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
+      if (toolName === 'executor.browser.act' || toolName === 'executor.command.run') {
+        const metadata = toolName === 'executor.browser.act'
+          ? {
+              action: typeof args.action === 'string' ? args.action : 'unknown',
+              ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
+              runId: context.run.id,
+              toolCallId,
+            }
+          : {
+              program: typeof args.program === 'string' ? args.program : 'unknown',
+              runId: context.run.id,
+              toolCallId,
+            }
+        await emitWorkerAuditEvent(deps.prisma, authorization.toolActorContext, {
+          action: toolName === 'executor.browser.act'
+            ? 'executor.browser.action.dispatched'
+            : 'executor.command.run.dispatched',
+          metadata,
+          outcome: result.success ? 'success' : 'error',
+          resourceId: result.toolCallRecordId,
+          resourceType: 'executor_command',
+        })
+      }
+      return result
     }
     return executeBuiltinTool(
       toolName,

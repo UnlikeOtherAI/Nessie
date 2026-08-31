@@ -187,7 +187,10 @@ export const emitWorkerAuditEvent = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: {
-    action: 'policy.evaluated'
+    action:
+      | 'executor.browser.action.dispatched'
+      | 'executor.command.run.dispatched'
+      | 'policy.evaluated'
     metadata?: Record<string, unknown>
     outcome: 'denied' | 'error' | 'success'
     reason?: string

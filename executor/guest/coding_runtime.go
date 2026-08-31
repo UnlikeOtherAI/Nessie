@@ -18,6 +18,7 @@ const (
 	codingControlDirectory         = "/run/nessie-executor"
 	codingCredentialHome           = "/run/nessie-executor/codex-home"
 	codingCredentialCanary         = codingCredentialHome + "/auth-canary"
+	codingCredentialBootstrapPath  = "/etc/nessie/codex-auth.json"
 	codingProfileRoot              = "/work"
 	codingSessionName              = "nessie"
 	codingSocketPath               = "/run/nessie-executor/tmux/session.sock"
@@ -68,7 +69,7 @@ func codexSandboxConfiguration() []string {
 }
 
 func newCodingRuntime(manifest *runtimeManifest) *codingRuntime {
-	if manifest == nil || manifest.Entrypoints["tmux"] == "" {
+	if manifest == nil || manifest.Entrypoints["tmux"] == "" || !hasCodingCredentialBootstrap() {
 		return nil
 	}
 	agents := map[codingAgent]string{}
@@ -88,6 +89,11 @@ func newCodingRuntime(manifest *runtimeManifest) *codingRuntime {
 		tmux:             filepath.Join("/runtime", filepath.FromSlash(manifest.Entrypoints["tmux"])),
 		profileRoot:      codingProfileRoot,
 	}
+}
+
+func hasCodingCredentialBootstrap() bool {
+	info, err := os.Lstat(codingCredentialBootstrapPath)
+	return err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
 }
 
 func validCodingAgent(value codingAgent) bool {

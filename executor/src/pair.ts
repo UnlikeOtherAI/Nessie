@@ -41,8 +41,9 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
 ] as const
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
-export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
+export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe', 'browser.act'] as const
 export const CODING_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
+export const COMMAND_OPERATION_KEY = 'command.run' as const
 
 type GuestVmArtifactInput = {
   guestInitrdBuilderPath: string
@@ -94,17 +95,17 @@ const configuredOperationKeys = (
   if ([...requested].some((operationKey) => (
     !ImplementedExecutorOperationKeySchema.safeParse(operationKey).success
   ))) {
-    throw new Error('Only implemented workspace, browser, and coding operations may be configured.')
+    throw new Error('Only implemented workspace, command, browser, and coding operations may be configured.')
   }
   const requestedBrowserOperations = BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
   if (requestedBrowserOperations.length > 0 && requestedBrowserOperations.length !== BROWSER_OPERATION_KEYS.length) {
-    throw new Error('browser.open and browser.observe must be enabled together.')
+    throw new Error('browser.open, browser.observe, and browser.act must be enabled together.')
   }
   if (requestedBrowserOperations.length > 0 && !browserConfigured) {
     throw new Error('Configure the owner-only browser VM and allowed origins before enabling browser operations.')
   }
   if (requestedBrowserOperations.length > 0 && !requested.has('sandbox.stop')) {
-    throw new Error('browser.open and browser.observe require sandbox.stop.')
+    throw new Error('Browser operations require sandbox.stop.')
   }
   const requestedCodingOperations = CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
   if (requestedCodingOperations.length > 0 && requestedCodingOperations.length !== CODING_OPERATION_KEYS.length) {
@@ -118,8 +119,17 @@ const configuredOperationKeys = (
   )) {
     throw new Error('coding.launch and coding.observe require workspace.review and sandbox.stop.')
   }
+  if (requested.has(COMMAND_OPERATION_KEY) && !browserConfigured) {
+    throw new Error('Configure the owner-only guest VM before enabling command.run.')
+  }
+  if (requested.has(COMMAND_OPERATION_KEY) && (
+    !requested.has('workspace.review') || !requested.has('sandbox.stop')
+  )) {
+    throw new Error('command.run requires workspace.review and sandbox.stop.')
+  }
   return [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+    ...(requested.has(COMMAND_OPERATION_KEY) ? [COMMAND_OPERATION_KEY] : []),
     ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),

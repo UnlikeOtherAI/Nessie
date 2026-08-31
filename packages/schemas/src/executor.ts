@@ -123,8 +123,10 @@ export const IMPLEMENTED_EXECUTOR_OPERATION_KEYS = [
   'file.list',
   'file.read',
   'file.write',
+  'command.run',
   'browser.open',
   'browser.observe',
+  'browser.act',
   'coding.launch',
   'coding.observe',
   'workspace.review',
@@ -178,9 +180,89 @@ export const ExecutorBrowserOpenArgumentsSchema = z
   .strict()
 export type ExecutorBrowserOpenArguments = z.infer<typeof ExecutorBrowserOpenArgumentsSchema>
 
-/** Browser observation takes no model-supplied selector, script, or action. */
-export const ExecutorBrowserObserveArgumentsSchema = z.object({}).strict()
+/**
+ * Browser observation exposes a bounded accessibility snapshot to every model.
+ * A screenshot remains opt-in because only vision-capable providers can use it.
+ */
+export const ExecutorBrowserObserveArgumentsSchema = z
+  .object({
+    includeScreenshot: z.boolean().optional(),
+  })
+  .strict()
 export type ExecutorBrowserObserveArguments = z.infer<typeof ExecutorBrowserObserveArgumentsSchema>
+
+const ExecutorBrowserNodeIdSchema = z.number().int().min(0).max(2_147_483_647)
+const ExecutorBrowserKeySchema = z.enum([
+  'Enter',
+  'Escape',
+  'Tab',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Backspace',
+  'Delete',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Space',
+])
+
+/**
+ * Closed CDP actions addressed only by a backend accessibility node id emitted
+ * from `browser.observe`. Selectors, scripts, and pixel coordinates are never
+ * accepted from the model.
+ */
+export const ExecutorBrowserActArgumentsSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('navigate'), url: z.string().url().max(4_096) }).strict(),
+  z.object({ action: z.literal('click'), nodeId: ExecutorBrowserNodeIdSchema }).strict(),
+  z.object({ action: z.literal('type'), nodeId: ExecutorBrowserNodeIdSchema, text: z.string().max(4_096) }).strict(),
+  z.object({ action: z.literal('press'), key: ExecutorBrowserKeySchema }).strict(),
+  z.object({ action: z.literal('scroll'), nodeId: ExecutorBrowserNodeIdSchema.optional(), deltaY: z.number().int().min(-10_000).max(10_000).refine((value) => value !== 0) }).strict(),
+])
+export type ExecutorBrowserActArguments = z.infer<typeof ExecutorBrowserActArgumentsSchema>
+
+const commandString = (maximum: number) => z.string().max(maximum).refine(
+  (value) => !value.includes('\u0000'),
+  'NUL bytes are not valid command arguments.',
+)
+const commandProgram = z.string()
+  .min(1)
+  .max(256)
+  .refine((value) => !value.includes('\u0000'), 'NUL bytes are not valid command arguments.')
+  .refine((value) => !value.includes('/'), 'program must resolve through the fixed guest PATH.')
+  .refine(
+    (value) => !['bash', 'dash', 'fish', 'ksh', 'sh', 'zsh'].includes(value),
+    'Shell interpreters are not available to executor commands.',
+  )
+const commandArgumentBytes = (value: { args: string[]; cwd?: string; program: string }): number => (
+  new TextEncoder().encode([value.program, value.cwd ?? '', ...value.args].join('\u0000')).byteLength
+)
+const relativeWorkspacePath = (value: string): boolean => (
+  value === '.' || (
+    !value.startsWith('/')
+    && value.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+  )
+)
+
+/** A shell-free argv command confined to the guest's COW workspace. */
+export const ExecutorCommandRunArgumentsSchema = z
+  .object({
+    args: z.array(commandString(4_096)).max(64),
+    cwd: commandString(1_024).refine(relativeWorkspacePath, 'cwd must stay within the workspace.').optional(),
+    program: commandProgram,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (commandArgumentBytes(value) > 24_576) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Command argv exceeds the executor control-frame budget.',
+      })
+    }
+  })
+export type ExecutorCommandRunArguments = z.infer<typeof ExecutorCommandRunArgumentsSchema>
 
 /**
  * A coding task becomes a positional Codex prompt after a `--` option
@@ -456,16 +538,19 @@ export const ExecutorRunLaunchRequestSchema = z.object({
     const browserBundle: ImplementedExecutorOperationKey[] = [
       'browser.open',
       'browser.observe',
+      'browser.act',
       'sandbox.stop',
     ]
-    const browserRequested = value.includes('browser.open') || value.includes('browser.observe')
+    const browserRequested = value.includes('browser.open')
+      || value.includes('browser.observe')
+      || value.includes('browser.act')
     if (browserRequested && (
       value.length !== browserBundle.length
       || browserBundle.some((operationKey) => !value.includes(operationKey))
     )) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Browser runs are exactly browser.open, browser.observe, and sandbox.stop.',
+        message: 'Browser runs are exactly browser.open, browser.observe, browser.act, and sandbox.stop.',
       })
     }
     const codingBundle: ImplementedExecutorOperationKey[] = [
@@ -475,10 +560,20 @@ export const ExecutorRunLaunchRequestSchema = z.object({
       'sandbox.stop',
     ]
     const codingRequested = value.includes('coding.launch') || value.includes('coding.observe')
-    if (browserRequested && codingRequested) {
+    const commandBundle: ImplementedExecutorOperationKey[] = [
+      'command.run',
+      'workspace.review',
+      'sandbox.stop',
+    ]
+    const commandRequested = value.includes('command.run')
+    if (
+      (browserRequested && codingRequested)
+      || (browserRequested && commandRequested)
+      || (codingRequested && commandRequested)
+    ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Browser and coding operations cannot share one executor run.',
+        message: 'Browser, coding, and command operations cannot share one executor run.',
       })
     }
     if (codingRequested && (
@@ -488,6 +583,15 @@ export const ExecutorRunLaunchRequestSchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Coding runs are exactly coding.launch, coding.observe, workspace.review, and sandbox.stop.',
+      })
+    }
+    if (commandRequested && (
+      value.length !== commandBundle.length
+      || commandBundle.some((operationKey) => !value.includes(operationKey))
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Command runs are exactly command.run, workspace.review, and sandbox.stop.',
       })
     }
   }),

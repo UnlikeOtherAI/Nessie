@@ -72,7 +72,7 @@ const runContext = (): RunContext => ({
 
 type FakePrisma = {
   approvalRequests: Array<Record<string, unknown>>
-  auditLog: { createCalls: number }
+  auditLog: { createCalls: number; entries: Array<Record<string, unknown>> }
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
   setRules: (rules: Array<Record<string, unknown>>) => void
@@ -82,7 +82,7 @@ const fakePrisma = (): FakePrisma => {
   let rules: Array<Record<string, unknown>> = []
   const state = {
     approvalRequests: [] as Array<Record<string, unknown>>,
-    auditLog: { createCalls: 0 },
+    auditLog: { createCalls: 0, entries: [] as Array<Record<string, unknown>> },
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
       rules = next
@@ -92,8 +92,9 @@ const fakePrisma = (): FakePrisma => {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({
       $executeRaw: async () => 1,
       auditLog: {
-        create: async () => {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
           state.auditLog.createCalls += 1
+          state.auditLog.entries.push(data)
           return {}
         },
         findFirst: async () => null,
@@ -454,6 +455,59 @@ test('main executor: an approval-required allow suspends before dispatch', async
   })
   assert.deepEqual(harness.dispatchedExecutor, [])
   assert.equal(suspendedApproval(harness.result, 'executor.file.read'), 'approval-1')
+})
+
+test('main executor: browser act writes a bounded audit-chain entry after dispatch', async () => {
+  const harness = await runLoop({
+    executorTools: {
+      'executor.browser.act': {
+        inputSummary: 'click button',
+        output: '{"status":"acted"}',
+        success: true,
+        toolCallRecordId: 'tool-call-1',
+      },
+    },
+    toolArgs: { action: 'click', nodeId: 42, text: 'must not enter the audit chain' },
+    toolName: 'executor.browser.act',
+  })
+
+  assert.ok(harness.dispatchedExecutor.length > 0)
+  const entries = harness.fake.auditLog.entries.filter(
+    (entry) => entry['action'] === 'executor.browser.action.dispatched',
+  )
+  assert.ok(entries.length > 0)
+  assert.deepEqual(entries[0]?.['metadata'], {
+    action: 'click',
+    nodeId: 42,
+    runId: RUN_ID,
+    toolCallId: 'call-1',
+  })
+  assert.equal(entries[0]?.['resourceId'], 'tool-call-1')
+})
+
+test('main executor: command run audits only the argv program, never its arguments', async () => {
+  const harness = await runLoop({
+    executorTools: {
+      'executor.command.run': {
+        inputSummary: 'run command',
+        output: '{"exitCode":0}',
+        success: true,
+        toolCallRecordId: 'tool-call-2',
+      },
+    },
+    toolArgs: { args: ['--token=not-for-audit'], program: 'tool' },
+    toolName: 'executor.command.run',
+  })
+
+  const entries = harness.fake.auditLog.entries.filter(
+    (entry) => entry['action'] === 'executor.command.run.dispatched',
+  )
+  assert.ok(entries.length > 0)
+  assert.deepEqual(entries[0]?.['metadata'], {
+    program: 'tool',
+    runId: RUN_ID,
+    toolCallId: 'call-1',
+  })
 })
 
 // --- delegated paths: the model calls delegate; the sub-agent then calls the

@@ -14,7 +14,7 @@ const (
 )
 
 var (
-	codingAuthProfileSource      = "/etc/nessie/codex-auth.json"
+	codingAuthProfileSource      = codingCredentialBootstrapPath
 	codingAuthProfileDestination = codingCredentialHome + "/auth.json"
 )
 
@@ -82,6 +82,26 @@ func prepareCodingRuntime(identity guestIdentity) error {
 		return errInvalidFrame
 	}
 	return nil
+}
+
+// Command-only guest images deliberately do not materialize a Codex auth
+// profile or tmux state. They still need the root-created control canary that
+// the shared no-network/no-control-directory sandbox conformance probe reads.
+func prepareCommandRuntime(identity guestIdentity) error {
+	if err := os.Mkdir("/run", 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if err := os.Mkdir(codingRuntimeDirectory, 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, err := os.Lstat(codingRuntimeDirectory)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errInvalidFrame
+	}
+	if err := os.Chmod(codingRuntimeDirectory, 0o755); err != nil {
+		return err
+	}
+	return prepareCodingControlCanary(identity)
 }
 
 // The canary sits beside the tmux socket. A passing Codex conformance probe

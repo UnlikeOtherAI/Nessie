@@ -1,12 +1,7 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"io"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -14,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 )
 
 const (
@@ -24,7 +18,6 @@ const (
 	browserDevToolsURL      = "http://127.0.0.1:9222/json/list"
 	maxBrowserURLBytes      = 4_096
 	maxBrowserTargets       = 32
-	maxBrowserObserveBytes  = 65_536
 )
 
 type browserProcess interface {
@@ -33,10 +26,13 @@ type browserProcess interface {
 }
 
 type browserLauncher func(path string, args, environment []string) (browserProcess, error)
-type browserObserver func() (browserObservation, error)
+type browserObserver func(includeScreenshot bool) (browserObservation, error)
+type browserActor func(browserAction) (browserActionResult, error)
 
 type browserObservation struct {
-	Targets []browserTarget `json:"targets"`
+	AccessibilityTree []browserAXNode    `json:"accessibilityTree"`
+	Screenshot        *browserScreenshot `json:"screenshot,omitempty"`
+	Targets           []browserTarget    `json:"targets"`
 }
 
 type browserTarget struct {
@@ -45,15 +41,29 @@ type browserTarget struct {
 	URL   string `json:"url"`
 }
 
+type browserAXNode struct {
+	Name   string `json:"name"`
+	NodeID int    `json:"nodeId"`
+	Role   string `json:"role"`
+	Value  string `json:"value,omitempty"`
+}
+
+type browserScreenshot struct {
+	DataBase64 string `json:"dataBase64"`
+	MIME       string `json:"mime"`
+}
+
 type browserRuntime struct {
-	executable  string
-	launch      browserLauncher
-	observe     browserObserver
-	profile     string
-	profileRoot string
-	mu          sync.Mutex
-	process     browserProcess
-	generation  uint64
+	executable      string
+	launch          browserLauncher
+	observe         browserObserver
+	act             browserActor
+	profile         string
+	profileRoot     string
+	mu              sync.Mutex
+	process         browserProcess
+	generation      uint64
+	observedNodeIDs map[int]struct{}
 }
 
 func newBrowserRuntime(manifest *runtimeManifest) *browserRuntime {
@@ -61,11 +71,13 @@ func newBrowserRuntime(manifest *runtimeManifest) *browserRuntime {
 		return nil
 	}
 	return &browserRuntime{
-		executable:  filepath.Join("/runtime", filepath.FromSlash(manifest.Entrypoints["browser"])),
-		launch:      launchBrowserProcess,
-		observe:     observeBrowserTargets,
-		profile:     browserProfileDirectory,
-		profileRoot: "/work",
+		executable:      filepath.Join("/runtime", filepath.FromSlash(manifest.Entrypoints["browser"])),
+		launch:          launchBrowserProcess,
+		observe:         observeBrowser,
+		act:             actBrowser,
+		profile:         browserProfileDirectory,
+		profileRoot:     "/work",
+		observedNodeIDs: map[int]struct{}{},
 	}
 }
 
@@ -152,7 +164,7 @@ func (browser *browserRuntime) close() {
 	}
 }
 
-func (browser *browserRuntime) observation() (browserObservation, error) {
+func (browser *browserRuntime) observation(includeScreenshot bool) (browserObservation, error) {
 	browser.mu.Lock()
 	active := browser.process != nil
 	observer := browser.observe
@@ -160,7 +172,45 @@ func (browser *browserRuntime) observation() (browserObservation, error) {
 	if !active || observer == nil {
 		return browserObservation{}, errInvalidFrame
 	}
-	return observer()
+	observation, err := observer(includeScreenshot)
+	if err != nil {
+		return browserObservation{}, err
+	}
+	nodes := make(map[int]struct{}, len(observation.AccessibilityTree))
+	for _, node := range observation.AccessibilityTree {
+		nodes[node.NodeID] = struct{}{}
+	}
+	browser.mu.Lock()
+	if browser.process == nil {
+		browser.mu.Unlock()
+		return browserObservation{}, errInvalidFrame
+	}
+	browser.observedNodeIDs = nodes
+	browser.mu.Unlock()
+	return observation, nil
+}
+
+func (browser *browserRuntime) action(action browserAction) (browserActionResult, error) {
+	browser.mu.Lock()
+	active := browser.process != nil
+	actor := browser.act
+	_, observed := browser.observedNodeIDs[action.NodeID]
+	browser.mu.Unlock()
+	if !active || actor == nil || !validBrowserAction(action) {
+		return browserActionResult{}, errInvalidFrame
+	}
+	if browserActionRequiresNode(action) && !observed {
+		return browserActionResult{}, errInvalidFrame
+	}
+	// Every mutating action invalidates the prior snapshot. A caller must
+	// observe again before it can target another element, so a backend node id
+	// cannot be replayed across navigation or DOM churn.
+	defer func() {
+		browser.mu.Lock()
+		browser.observedNodeIDs = map[int]struct{}{}
+		browser.mu.Unlock()
+	}()
+	return actor(action)
 }
 
 func fixedBrowserArguments(rawURL, profile string) []string {
@@ -208,56 +258,6 @@ func launchBrowserProcess(path string, args, environment []string) (browserProce
 		return nil, err
 	}
 	return &execBrowserProcess{command: command}, nil
-}
-
-func observeBrowserTargets() (browserObservation, error) {
-	client := &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		Timeout:       2 * time.Second,
-		Transport: &http.Transport{
-			DialContext: dialBrowserDevTools,
-			Proxy:       nil,
-		},
-	}
-	response, err := client.Get(browserDevToolsURL)
-	if err != nil {
-		return browserObservation{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return browserObservation{}, errInvalidFrame
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxBrowserObserveBytes+1))
-	if err != nil || len(body) > maxBrowserObserveBytes {
-		return browserObservation{}, errInvalidFrame
-	}
-	var raw []struct {
-		Title string `json:"title"`
-		Type  string `json:"type"`
-		URL   string `json:"url"`
-	}
-	if json.Unmarshal(body, &raw) != nil || len(raw) > maxBrowserTargets {
-		return browserObservation{}, errInvalidFrame
-	}
-	targets := make([]browserTarget, 0, len(raw))
-	for _, target := range raw {
-		if target.Type != "page" || len(target.Title) > 512 {
-			return browserObservation{}, errInvalidFrame
-		}
-		url, ok := safeObservedBrowserURL(target.URL)
-		if !ok {
-			return browserObservation{}, errInvalidFrame
-		}
-		targets = append(targets, browserTarget{Title: target.Title, Type: target.Type, URL: url})
-	}
-	return browserObservation{Targets: targets}, nil
-}
-
-func dialBrowserDevTools(ctx context.Context, network, address string) (net.Conn, error) {
-	if network != "tcp" || address != browserDevToolsAddress {
-		return nil, errors.New("unexpected browser observer destination")
-	}
-	return (&net.Dialer{}).DialContext(ctx, network, address)
 }
 
 func safeObservedBrowserURL(raw string) (string, bool) {

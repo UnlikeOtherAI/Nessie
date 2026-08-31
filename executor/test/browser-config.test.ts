@@ -114,7 +114,7 @@ test('Codex configuration stores only an owner-private source path and a pinned 
   }
 })
 
-test('browser configuration verifies owner-controlled guest artifacts before enabling both browser operations', async () => {
+test('browser configuration verifies owner-controlled guest artifacts before enabling the exact browser bundle', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
@@ -152,10 +152,10 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
     await saveExecutorState(stateDir, state)
     await assert.rejects(
       configureExecutorLocalPolicy(stateDir, state, ['browser.open']),
-      /browser\.open and browser\.observe must be enabled together/,
+      /browser\.open, browser\.observe, and browser\.act must be enabled together/,
     )
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, state, ['browser.open', 'browser.observe']),
+      configureExecutorLocalPolicy(stateDir, state, ['browser.open', 'browser.observe', 'browser.act']),
       /Configure the owner-only browser VM and allowed origins/,
     )
 
@@ -178,11 +178,12 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
       'sandbox.stop',
       'browser.open',
       'browser.observe',
+      'browser.act',
     ])
     assert.equal(configured.descriptor.revision, 2)
     assert.deepEqual(await loadExecutorState(stateDir), configured)
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, configured, ['browser.open', 'browser.observe']),
+      configureExecutorLocalPolicy(stateDir, configured, ['browser.open', 'browser.observe', 'browser.act']),
       /require sandbox\.stop/,
     )
   } finally {

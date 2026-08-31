@@ -195,14 +195,22 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
         calls.push(call)
         return {
           closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
-	          closeCodingSession: async () => {},
-	          inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
-	          launchCodingSession: async () => {},
-	          observeCodingSession: async () => ({ agent: 'codex' as const, lifecycle: 'running' as const, output: '' }),
-          observeBrowser: async () => ({ targets: [{ title: 'Guide', type: 'page' as const, url: 'https://app.example.test/guide' }] }),
+          actBrowser: async (action) => {
+            assert.deepEqual(action, { action: 'click', nodeId: 9 })
+            return { status: 'acted' as const }
+          },
+          closeCodingSession: async () => {},
+          inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
+          launchCodingSession: async () => {},
+          observeCodingSession: async () => ({ agent: 'codex' as const, lifecycle: 'running' as const }),
+          observeBrowser: async () => ({
+            accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
+            targets: [{ title: 'Guide', type: 'page' as const, url: 'https://app.example.test/guide' }],
+          }),
           openBrowser: async (url) => {
             assert.equal(url, 'https://app.example.test/guide')
           },
+          runCommand: async () => ({ exitCode: 0, output: '', success: true }),
           stop: async () => { resolveClosed?.() },
         }
       },
@@ -236,8 +244,10 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     await session.openBrowser('https://app.example.test/guide')
     await assert.rejects(session.openBrowser('https://blocked.example.test/'), /not allowed by local policy/)
     assert.deepEqual(await session.observeBrowser(), {
+      accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
       targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
     })
+    assert.deepEqual(await session.actBrowser({ action: 'click', nodeId: 9 }), { status: 'acted' })
     await session.stop()
     await session.closed
     await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)

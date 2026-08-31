@@ -137,6 +137,12 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == codingConformanceProbeArgument {
 		os.Exit(runCodingConformanceProbe(os.Args[2:]))
 	}
+	if len(os.Args) >= 2 && os.Args[1] == commandSandboxRunnerArgument {
+		os.Exit(runCommandSandboxRunner(os.Args[2:]))
+	}
+	if len(os.Args) >= 2 && os.Args[1] == commandConformanceProbeArgument {
+		os.Exit(runCommandConformanceProbe(os.Args[2:]))
+	}
 	workspaceAttached, err := mountGuestWorkspaceIfRequested()
 	if err != nil {
 		os.Exit(1)
@@ -151,8 +157,13 @@ func main() {
 	}
 	runtimeController := newRuntimeController(runtimeManifest)
 	defer runtimeController.close()
-	if runtimeController != nil && runtimeController.coding != nil && prepareCodingRuntime(identity) != nil {
-		os.Exit(1)
+	if runtimeController != nil {
+		if runtimeController.coding != nil && prepareCodingRuntime(identity) != nil {
+			os.Exit(1)
+		}
+		if runtimeController.coding == nil && runtimeController.command != nil && prepareCommandRuntime(identity) != nil {
+			os.Exit(1)
+		}
 	}
 	token, err := readBootstrapToken()
 	if err != nil {

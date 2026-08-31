@@ -2,12 +2,13 @@
 
 > Status: in delivery. **Shipped to `main` 2026-08-31:** P0 honesty fix,
 > Gap 1 P1 (approval suspend/resume + hardened proof), Gap 3 P1 (demonstration
-> capture) — each code-verified against a throwaway pgvector DB (typecheck,
-> lint, migrations, DB-backed + unit suites). Remaining: Gap 2 actuation
-> (`command.run` → `browser.act`, needs a real executor host), Gap 1 P2/P3
-> (auto-review), the remaining Gap 3 adoption measurement and to-do fallback,
-> in-thread approval/RunStop admin doorways, and P6 (persistent/headless
-> executor). Decisions resolved on the best-experience lens (§7).
+> capture), Gap 3 P2 (generalise a demonstration into a draft Workflow), and
+> Gap 2 actuation code (`command.run` → `browser.act`, host-only microVM boot
+> outstanding) — each code-verified against a throwaway pgvector DB (typecheck,
+> lint, migrations, DB-backed + unit suites; the guest built/vetted/tested for
+> linux/arm64). Remaining: Gap 1 P2/P3 (auto-review + in-thread approval admin
+> doorways — in flight) and P6 (persistent/headless executor). Decisions
+> resolved on the best-experience lens (§7).
 > Derived from the code-grounded audit
 > [2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md)
 > (the three dimensions where Nessie is genuinely behind).

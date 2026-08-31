@@ -24,6 +24,11 @@ const CODING_SESSION_OPERATION_KEYS = new Set([
   'workspace.review',
   'sandbox.stop',
 ])
+const COMMAND_SESSION_OPERATION_KEYS = new Set([
+  'command.run',
+  'workspace.review',
+  'sandbox.stop',
+])
 
 const digest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(canonicalExecutorJson(value)).digest('hex')}`
@@ -72,7 +77,11 @@ export type ExecutorCommandCreateInput = {
 export const assertExecutorCommandBindingCurrent = async (
   tx: Prisma.TransactionClient,
   bindingId: string,
-  options: { allowPendingBrowserOpen?: boolean; allowPendingCodingLaunch?: boolean } = {},
+  options: {
+    allowPendingBrowserOpen?: boolean
+    allowPendingCodingLaunch?: boolean
+    allowPendingCommandRun?: boolean
+  } = {},
 ): Promise<{ executorId: string; runId: string; sessionId: string | null }> => {
   let binding = await tx.executorBinding.findUnique({
     where: { id: bindingId },
@@ -135,6 +144,36 @@ export const assertExecutorCommandBindingCurrent = async (
     throw new ExecutorError(
       EXECUTOR_ERROR_CODES.BINDING_FENCED,
       'Executor binding provenance is no longer available.',
+    )
+  }
+  const commandSession = binding.session?.profile === 'workspace_sandbox'
+  const sessionMatchesBinding = Boolean(
+    binding.sessionId
+    && binding.session?.executorId === binding.executorId
+    && binding.session?.runId === binding.runId,
+  )
+  const commandBoundOperation = (
+    binding.operationKey === 'command.run'
+    || (commandSession && COMMAND_SESSION_OPERATION_KEYS.has(binding.operationKey))
+  )
+  if (
+    commandBoundOperation && binding.operationKey !== 'sandbox.stop'
+    && (
+      !sessionMatchesBinding
+      || !commandSession
+      || (
+        binding.session?.status !== 'active'
+        && !(
+          options.allowPendingCommandRun === true
+          && binding.operationKey === 'command.run'
+          && binding.session?.status === 'pending'
+        )
+      )
+    )
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'The command session is no longer active for this executor command.',
     )
   }
   const executor = await tx.executor.findUnique({
@@ -239,13 +278,22 @@ export const assertExecutorCommandBindingCurrent = async (
       'Executor binding is no longer authorized for new work.',
     )
   }
-  const sessionMatchesBinding = Boolean(
-    binding.sessionId
-    && binding.session?.executorId === executor.id
-    && binding.session.runId === binding.runId,
-  )
   if (
-    (binding.operationKey === 'browser.open' || binding.operationKey === 'browser.observe')
+    commandSession
+    && binding.operationKey === 'command.run'
+    && (!sessionMatchesBinding || !COMMAND_SESSION_OPERATION_KEYS.has(binding.operationKey))
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'A command session cannot dispatch an operation outside its exact bundle.',
+    )
+  }
+  if (
+    (
+      binding.operationKey === 'browser.open'
+      || binding.operationKey === 'browser.observe'
+      || binding.operationKey === 'browser.act'
+    )
     && (
       !sessionMatchesBinding
       || binding.session?.profile !== 'workspace_sandbox'
@@ -503,7 +551,11 @@ export const recordExecutorCommandReceipt = async (
       if (command.binding.operationKey === 'sandbox.stop') {
         terminalSessionState = 'stopped'
       } else if (
-        (command.binding.operationKey === 'browser.open' || command.binding.operationKey === 'browser.observe')
+        (
+          command.binding.operationKey === 'browser.open'
+          || command.binding.operationKey === 'browser.observe'
+          || command.binding.operationKey === 'browser.act'
+        )
         && result?.success !== true
       ) {
         terminalSessionState = 'failed'

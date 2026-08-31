@@ -115,7 +115,8 @@ export const launchExecutorRun = async (
     })
     const isBrowserRun = input.operationKeys.includes('browser.open')
     const isCodingRun = input.operationKeys.includes('coding.launch')
-    if (isBrowserRun || isCodingRun) {
+    const isCommandRun = input.operationKeys.includes('command.run')
+    if (isBrowserRun || isCodingRun || isCommandRun) {
       const executorId = bindings[0]?.executorId
       if (!executorId || bindings.some((binding) => binding.executorId !== executorId)) {
         throw new Error('Isolated executor bundle must bind one executor.')

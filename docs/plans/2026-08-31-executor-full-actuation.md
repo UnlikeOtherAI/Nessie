@@ -1,6 +1,9 @@
 # Full browser & terminal actuation for the executor
 
-> Status: proposed plan, not started — **revision 1**
+> Status: implementation delivered in this slice; real guest/microVM/CDP
+> verification remains host-only. See [`SLICE-STATUS-actuation.md`](../../SLICE-STATUS-actuation.md).
+> The code citations in §1 are the pre-implementation baseline retained for
+> planning traceability; the current protocol is `docs/executor-protocol.md`.
 > Closes the largest gap in the 2026-08-31 capability audit
 > ([2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md),
 > dimensions 1 & 2, and the §6 Rule-zero risk).
@@ -133,7 +136,7 @@ bundles — without loosening one isolation boundary."
 |---|---|---|
 | Model supplies a shell string for `command.run`? | **Never.** Structured `{ program, args[] }` only; the guest `exec`s the argv directly (no shell, no `sh -c`). | A cloud-supplied shell string is injection-by-construction and defeats the argv-audit story. Mirrors the daemon's existing "positional Codex prompt after `--`" discipline (`executor.ts:161-171`). |
 | `command.run` reaches the network? | **No.** The argv runs with the same Codex-style launch-gated profile: `network.enabled=false`, `cwd` pinned to `/work`, control dir `deny`. | The browser lane is the *only* actuation lane that touches allowlisted origins; a general shell with egress is Grok's high-blast-radius model, which §9 of the audit says Nessie deliberately rejects. |
-| `browser.act` free-form CDP / `Runtime.evaluate`? | **No.** A closed verb set — `navigate`, `click`, `type`, `press`, `scroll`, `select` — addressed by a **backend node id from the observation**, never a raw selector, XPath, or script. | Arbitrary JS in the page is arbitrary egress and arbitrary DOM read; the whole point of the deny-by-default origin gate is that the *executor*, not the model, decides where bytes go. |
+| `browser.act` free-form CDP / `Runtime.evaluate`? | **No.** A closed verb set — `navigate`, `click`, `type`, `press`, `scroll` — addressed by a **backend node id from the observation**, never a raw selector, XPath, or script. | Arbitrary JS in the page is arbitrary egress and arbitrary DOM read; the whole point of the deny-by-default origin gate is that the *executor*, not the model, decides where bytes go. |
 | Where does the target address come from? | The **observation returns stable `nodeId`s**; `browser.act` references one. Model never invents a coordinate or selector. | Coordinate-replay is Grok's brittle demo-learning failure mode (audit §7); a11y-node addressing generalises and is auditable. |
 | Persistent per-user VM? | **No** — keep ephemeral per-run, extend only the *TTL ceiling* and add explicit human-driven session hold. §7 states the full tradeoff. | A persistent VM with retained cookies/creds is precisely the "Bots are not a security boundary" model Nessie is ahead of. Persistence is a convenience gap we close differently (§7). |
 | Screenshot bytes to the model? | **Yes, bounded** — one downscaled WebP per `browser.observe`, hard byte cap, plus a pruned a11y tree. Never full-resolution, never every frame. | Actuation is untargetable from title/URL alone; but unbounded pixels are a context-window and exfiltration hazard. |
@@ -190,7 +193,6 @@ existing 64 KiB frame without bumping `protocol.go` deliberately and updating
   - `{ action: 'click', nodeId }` / `{ action: 'type', nodeId, text }` (text
     length-capped) / `{ action: 'press', key }` (from a fixed key enum, not
     arbitrary chords) / `{ action: 'scroll', nodeId?, deltaY }` /
-    `{ action: 'select', nodeId, value }`.
   - No selector, no XPath, no script, no coordinate. `nodeId` must be a
     non-negative int; the guest maps it to the CDP backend node and refuses an
     unknown/stale id (`EXECUTOR_BROWSER_STALE_NODE`).

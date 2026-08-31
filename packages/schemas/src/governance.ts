@@ -243,6 +243,8 @@ export const AuditActionSchema = z.enum([
   'executor.workspace_promotion.confirmed',
   'executor.workspace_promotion.rejected',
   'executor.run.launched',
+  'executor.browser.action.dispatched',
+  'executor.command.run.dispatched',
   'approval.created',
   'approval.approved',
   'approval.rejected',

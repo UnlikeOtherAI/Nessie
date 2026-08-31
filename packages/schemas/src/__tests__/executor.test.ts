@@ -12,8 +12,10 @@ import {
   ExecutorCommandEnvelopeSchema,
   ExecutorDaemonChallengeResponseSchema,
   ExecutorDaemonClaimRequestSchema,
+  ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
+  ExecutorCommandRunArgumentsSchema,
   ExecutorFileWriteArgumentsSchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   ExecutorWorkspacePromotionPrepareRequestSchema,
@@ -192,7 +194,7 @@ test('workspace write arguments are bounded for the COW backend', () => {
   )
 })
 
-test('browser arguments cannot smuggle a selector, script, or action', () => {
+test('browser arguments cannot smuggle a selector, script, or unapproved action', () => {
   assert.deepEqual(
     ExecutorBrowserOpenArgumentsSchema.parse({ url: 'https://app.example.test/guide' }),
     { url: 'https://app.example.test/guide' },
@@ -206,6 +208,27 @@ test('browser arguments cannot smuggle a selector, script, or action', () => {
   )
   assert.equal(ExecutorBrowserObserveArgumentsSchema.safeParse({}).success, true)
   assert.equal(ExecutorBrowserObserveArgumentsSchema.safeParse({ script: 'document.body' }).success, false)
+  assert.equal(ExecutorBrowserActArgumentsSchema.safeParse({ action: 'click', nodeId: 3 }).success, true)
+  assert.equal(ExecutorBrowserActArgumentsSchema.safeParse({ action: 'select', nodeId: 3, value: 'admin' }).success, false)
+  assert.equal(ExecutorBrowserActArgumentsSchema.safeParse({ action: 'click', selector: 'button' }).success, false)
+  assert.equal(ExecutorBrowserActArgumentsSchema.safeParse({ action: 'scroll', deltaY: 0 }).success, false)
+})
+
+test('command arguments are shell-free and remain under the COW workspace', () => {
+  assert.deepEqual(
+    ExecutorCommandRunArgumentsSchema.parse({
+      args: ['build'],
+      cwd: 'packages/runtime',
+      program: 'pnpm',
+    }),
+    { args: ['build'], cwd: 'packages/runtime', program: 'pnpm' },
+  )
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: [], program: 'sh' }).success, false)
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: ['-c', 'echo unsafe'], program: 'sh' }).success, false)
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: [], program: '/bin/sh' }).success, false)
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: [], cwd: '../outside', program: 'tool' }).success, false)
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: [], cwd: '/work', program: 'tool' }).success, false)
+  assert.equal(ExecutorCommandRunArgumentsSchema.safeParse({ args: [], program: 'tool\u0000suffix' }).success, false)
 })
 
 test('availability candidates expose opaque handles rather than executor IDs', () => {
@@ -270,6 +293,13 @@ test('a direct executor run names an agent, opaque choice, and an exact operatio
       ...request,
       operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
     }).success,
+    false,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
+    }).success,
     true,
   )
   assert.equal(
@@ -290,6 +320,20 @@ test('a direct executor run names an agent, opaque choice, and an exact operatio
     ExecutorRunLaunchRequestSchema.safeParse({
       ...request,
       operationKeys: ['browser.open', 'coding.launch', 'workspace.review', 'sandbox.stop'],
+    }).success,
+    false,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['command.run', 'workspace.review', 'sandbox.stop'],
+    }).success,
+    true,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['command.run', 'sandbox.stop'],
     }).success,
     false,
   )
