@@ -40,7 +40,13 @@ const seed = async (prisma: PrismaClient) => {
       { organizationId, role: 'owner', userId: ownerId },
     ],
   })
-  return { memberId, organizationId, ownerId, privateOwnerId }
+  const project = await prisma.project.create({
+    data: { name: `task-agent-${organizationId}`, organizationId },
+  })
+  const team = await prisma.team.create({
+    data: { name: `task-agent-${organizationId}`, projectId: project.id },
+  })
+  return { memberId, organizationId, ownerId, privateOwnerId, projectId: project.id, teamId: team.id }
 }
 
 const withDb = async (run: (prisma: PrismaClient, seed: Awaited<ReturnType<typeof seed>>) => Promise<void>) => {
@@ -64,8 +70,24 @@ dbTest('a member cannot assign another member’s private agent to a task', asyn
       organizationId: fixture.organizationId,
       ownerUserId: fixture.privateOwnerId,
       role: 'assistant',
+      teamId: fixture.teamId,
       visibility: 'private',
     })
+    assert.equal(privateAgent.visibility, 'private', 'the assignee is a private agent')
+    assert.ok(privateAgent.homeChannelId, 'private creation provisions the owner-only home DM')
+    const privateHome = await prisma.channel.findUniqueOrThrow({
+      where: { id: privateAgent.homeChannelId },
+      select: { organizationId: true, projectId: true, teamId: true },
+    })
+    assert.deepEqual(
+      privateHome,
+      {
+        organizationId: fixture.organizationId,
+        projectId: fixture.projectId,
+        teamId: fixture.teamId,
+      },
+      'the private agent home belongs to this test fixture’s organization, project, and team',
+    )
     const actorContext = actorFor(fixture.organizationId, fixture.memberId, 'member')
 
     const created = await createHumanTask(prisma, {
