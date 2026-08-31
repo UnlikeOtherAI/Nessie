@@ -1,3 +1,5 @@
+import { useCallback, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   channelHashClassName,
   projectSelectionClassName,
@@ -13,6 +15,11 @@ import type {
   SidebarMenu,
   SidebarProject,
 } from './types';
+
+type ProjectMenuPosition = {
+  left: number;
+  top: number;
+};
 
 type SidebarProjectsSectionProps = {
   attentionCountByProjectId: Map<string, number>;
@@ -54,6 +61,25 @@ export const SidebarProjectsSection = ({
   visibleSidebarProjects,
 }: SidebarProjectsSectionProps) => {
   const { token } = useAuthSession();
+  const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null);
+
+  const closeProjectMenu = useCallback(() => {
+    setMenuPosition(null);
+    setSidebarMenu(() => null);
+  }, [setSidebarMenu]);
+
+  useLayoutEffect(() => {
+    if (!menuPosition) return undefined;
+
+    const closeOnViewportChange = () => closeProjectMenu();
+    window.addEventListener('resize', closeOnViewportChange);
+    window.addEventListener('scroll', closeOnViewportChange, true);
+    return () => {
+      window.removeEventListener('resize', closeOnViewportChange);
+      window.removeEventListener('scroll', closeOnViewportChange, true);
+    };
+  }, [closeProjectMenu, menuPosition]);
+
   return (
     <SidebarMenuSection
       action={
@@ -85,6 +111,8 @@ export const SidebarProjectsSection = ({
         </button>
       ) : visibleSidebarProjects.map((project) => {
         const isStarredProject = starredProjectIds.has(project.id);
+        const isProjectMenuOpen =
+          sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id;
         const projectUnreadCount = project.channels.reduce(
           (total, channel) => total + channel.unreadCount,
           0,
@@ -126,57 +154,74 @@ export const SidebarProjectsSection = ({
               <span className="relative ml-1 flex-shrink-0">
                 <span
                   aria-label={`Project actions for ${project.name}`}
+                  aria-expanded={isProjectMenuOpen}
+                  aria-haspopup="menu"
                   className="admin-sidebar-more"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSidebarMenu((current) =>
-                      current?.type === 'project' && current.projectId === project.id
-                        ? null
-                        : { projectId: project.id, type: 'project' },
-                    );
+                    if (isProjectMenuOpen) {
+                      closeProjectMenu();
+                      return;
+                    }
+
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setMenuPosition({ left: rect.left, top: rect.bottom });
+                    setSidebarMenu(() => ({ projectId: project.id, type: 'project' }));
                   }}
                   role="button"
                   tabIndex={0}
                 >
                   ⋯
                 </span>
-                {sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id ? (
-                  <>
-                    <span
-                      className="fixed inset-0 z-10"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSidebarMenu(() => null);
-                      }}
-                      role="presentation"
-                    />
-                    <span className="admin-sidebar-menu admin-sidebar-menu-project">
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenCreateChannel({
-                            projectName: project.name,
-                            teamId: teamIdByProjectId.get(project.id),
-                          });
-                        }}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        Add new channel within project
-                      </span>
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenEditProject(project);
-                        }}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        Edit
-                      </span>
-                    </span>
-                  </>
-                ) : null}
+                {isProjectMenuOpen && menuPosition
+                  ? createPortal(
+                      <>
+                        <button
+                          aria-hidden="true"
+                          className="fixed inset-0 z-[60] cursor-default"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closeProjectMenu();
+                          }}
+                          tabIndex={-1}
+                          type="button"
+                        />
+                        <span
+                          className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[61]"
+                          onClick={(e) => e.stopPropagation()}
+                          role="menu"
+                          style={menuPosition}
+                        >
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeProjectMenu();
+                              onOpenCreateChannel({
+                                projectName: project.name,
+                                teamId: teamIdByProjectId.get(project.id),
+                              });
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            Add new channel within project
+                          </span>
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeProjectMenu();
+                              onOpenEditProject(project);
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            Edit
+                          </span>
+                        </span>
+                      </>,
+                      document.body,
+                    )
+                  : null}
               </span>
             </button>
 
