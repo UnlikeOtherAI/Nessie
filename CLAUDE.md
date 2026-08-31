@@ -107,6 +107,21 @@ preview/save implementations): `AGENTS.md` → "Live document streaming". Spec:
 [docs/plans/2026-08-13-live-document-streaming/overview.md](docs/plans/2026-08-13-live-document-streaming/overview.md).
 Mechanics beyond those invariants:
 
+- The document recorder receives the same live
+  `() => runReplyIsRestricted(context)` predicate as the thinking recorder.
+  It consults that monotone predicate per fragment: once a privileged source
+  closes the thread-wide lane, `stream.document.delta` and
+  `stream.document.edit` stay suppressed, metadata names are withheld, and
+  structural/terminal frames carry `restricted: true` without document
+  content. Durable chunks still contain the complete document so the
+  streamed-vs-parsed byte assertion and save path remain independent; the
+  current `RunBasisScope` is persisted before a restricted session or fragment
+  becomes bootstrap-readable (the final reply is too late for a mid-stream
+  reconnect), and the
+  document-stream list/detail routes apply `RunBasisScope` through the shared
+  run-disclosure reader before returning any session, target name, offset, or
+  markdown to a reconnecting viewer.
+
 - The OpenAI-compatible connector enriches each `tool_call.delta` fragment with
   the call's accumulated `id`/`toolName`/`index` (`openai-chat-protocol.ts`) —
   never from the current chunk, because the canonical first chunk announces the

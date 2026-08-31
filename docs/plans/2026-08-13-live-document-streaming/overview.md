@@ -457,8 +457,9 @@ tool-call deltas and:
    (`status: streaming`) and publish `stream.document.start` immediately —
    before the location args have finished streaming — so the popup opens at
    the earliest honest moment. As `spaceId`/`parentPageId`/`title` become
-   parseable from the partial JSON, publish a single
-   `stream.document.meta` with the resolved names (one cheap lookup).
+   parseable, publish one `stream.document.meta` with their resolved names;
+   when the injected `runReplyIsRestricted` is true, start instead carries
+   `restricted: true` and no title or target name enters the broadcast.
 3. **Extracts markdown incrementally — as a lexical scanner, not a
    heuristic.** A shared, React-free incremental extractor (new module in
    `@nessie/runtime` or `packages/schemas`; the designer facade's
@@ -499,16 +500,15 @@ tool-call deltas and:
    (a degraded Postgres), adjacent offset-contiguous queued fragments merge
    into one — content-preserving and latency-neutral, since it only merges
    what is already backed up, so the real-time requirement is untouched.
-   **`seq` is assigned at publish time, after any merge** (never at enqueue),
-   so merging can't fabricate gaps or duplicates; the oversized-fragment
-   split likewise numbers each piece at publish.
+   **`seq` is assigned at publish time, after merge/split**. The injected
+   `runReplyIsRestricted` is checked per delta/edit and is monotone (additive
+   source sink, fixed destination), so a closed stream never reopens.
 5. **Persists durable chunks, coalesced — in a separate lane.** A second,
    independent queue appends decoded markdown to `run_document_chunks`
    batched at 2 KiB / 250 ms (ThinkingRecorder constants). Two lanes, not
-   one: a slow durable INSERT must never delay a later live notify (the §4.6
-   audit table depends on this). The durable lane is the
-   mid-stream-join/reconnect source of truth; session finalization
-   (`settle`, §4.2(b)) awaits **both** lanes.
+   one: slow persistence never delays live notify. Restriction retains these
+   bytes for save equality and entitled bootstrap, but stamps `RunBasisScope`
+   before the session/fragment is readable; list/detail then apply that basis.
 6. **Finalizes — before `stream.done`, with a crash backstop.** The tool
    handler (§4.1) closes a session `saved`; invocation brackets mark
    `superseded` (§4.2(b)). The ordering constraint "the run terminator is
@@ -596,8 +596,9 @@ GET /api/threads/:threadId/document-streams/:sessionId
 The per-session route additionally verifies
 `session.threadId === :threadId && session.organizationId === actor org`
 before answering — `sessionId` is a global UUID, and the thread gate alone
-would let any authenticated user with *some* readable thread fetch any org's
-streamed markdown by UUID. 404 on mismatch, indistinguishable from absent.
+would let a user with *some* readable thread fetch another org's markdown by
+UUID. List/detail also apply `RunBasisScope` through the shared predicate
+before names/chunks: failure is omitted/404, indistinguishable from absent.
 
 One mutation route backs the popup's address bar (§4.4):
 

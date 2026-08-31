@@ -13,6 +13,7 @@ import {
 import { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from '@nessie/runtime'
 import { createDurableLane, createLiveLane } from './document-stream-lanes.js'
 import { createDocumentEditTracker, type DocumentEditTracker } from './document-stream-edit.js'
+import { createDocumentStreamDisclosureGate } from './document-stream-disclosure.js'
 
 /** The argument whose value is the document body. */
 const MARKDOWN_ARGUMENT = 'markdown'
@@ -76,6 +77,8 @@ type TrackedCall = {
 }
 
 type RecorderInput = {
+  isRestricted: () => boolean
+  persistRestrictionBasis: () => Promise<void>
   prisma: PrismaClient
   realtimeTransport: Pick<PgRealtimeTransport, 'publishSse' | 'publishSseEphemeral'>
   run: RunContext
@@ -89,14 +92,7 @@ type RecorderInput = {
   >
 }
 
-/**
- * Turns a model's in-flight `kb_document_compose` arguments into a live
- * document stream.
- *
- * Everything here is presentation: authorization still happens when the tool
- * actually executes. Failures are swallowed — a broken preview must never fail
- * a run that is otherwise writing a perfectly good document.
- */
+/** Streams in-flight compose/edit arguments; tool execution still authorizes. */
 export const createDocumentStreamRecorder = (
   input: RecorderInput,
 ): DocumentStreamRecorder => {
@@ -104,6 +100,7 @@ export const createDocumentStreamRecorder = (
   const byToolCallId = new Map<string, TrackedCall>()
   let invocationId: string | null = null
   let closed = false
+  const disclosure = createDocumentStreamDisclosureGate(input)
 
   const publish = async (
     event: 'stream.document.start' | 'stream.document.meta' | 'stream.document.done'
@@ -139,10 +136,13 @@ export const createDocumentStreamRecorder = (
       console.warn('[worker] document stream terminalize failed', error)
       return
     }
+    const restricted = disclosure.isRestricted()
+    if (restricted) await disclosure.beforeRestrictedReadable()
     await publish('stream.document.error', {
       reason,
       runId: parseRunId(input.run.id),
       sessionId,
+      ...(restricted ? { restricted: true } : {}),
     })
   }
 
@@ -153,6 +153,7 @@ export const createDocumentStreamRecorder = (
   ): Promise<void> => {
     const baseDocument = base?.content ?? null
     try {
+      if (disclosure.isRestricted()) await disclosure.beforeRestrictedReadable()
       const session = await input.prisma.runDocumentSession.create({
         data: {
           agentId: input.run.agentId,
@@ -184,6 +185,10 @@ export const createDocumentStreamRecorder = (
       }
       call.live = createLiveLane({
         publish: async (fragment) => {
+          if (disclosure.isRestricted()) {
+            await disclosure.beforeRestrictedReadable()
+            return
+          }
           await input.realtimeTransport.publishSseEphemeral(
             input.run.threadId,
             'stream.document.delta',
@@ -204,6 +209,7 @@ export const createDocumentStreamRecorder = (
           where: { id: session.id },
         })
       }
+      const restricted = disclosure.isRestricted()
       await publish('stream.document.start', {
         agentId: parseAgentId(input.run.agentId),
         mode: call.mode,
@@ -211,20 +217,27 @@ export const createDocumentStreamRecorder = (
         sessionId: session.id,
         threadId: parseThreadId(input.run.threadId),
         toolCallId: call.toolCallId,
+        ...(restricted ? { restricted: true } : {}),
       })
       if (call.mode === 'edit' && base) {
-        const space = await input.prisma.knowledgeSpace.findFirst({
-          select: { name: true },
-          where: { id: base.spaceId, organizationId: input.run.organizationId },
-        })
-        await publish('stream.document.meta', {
-          parentPageId: base.parentPageId ?? undefined,
-          runId: parseRunId(input.run.id),
-          sessionId: session.id,
-          spaceId: base.spaceId,
-          spaceName: space?.name,
-          title: base.title,
-        })
+        // Names are presentation-only; the session keeps the authorized target.
+        if (!disclosure.isRestricted()) {
+          const space = await input.prisma.knowledgeSpace.findFirst({
+            select: { name: true },
+            where: { id: base.spaceId, organizationId: input.run.organizationId },
+          })
+          // Re-check after the awaited name lookup.
+          if (!disclosure.isRestricted()) {
+            await publish('stream.document.meta', {
+              parentPageId: base.parentPageId ?? undefined,
+              runId: parseRunId(input.run.id),
+              sessionId: session.id,
+              spaceId: base.spaceId,
+              spaceName: space?.name,
+              title: base.title,
+            })
+          }
+        }
       }
     } catch (error) {
       console.warn('[worker] document stream session create failed', error)
@@ -239,17 +252,19 @@ export const createDocumentStreamRecorder = (
     if (!title && !spaceId) return
     call.metaPublished = true
 
+    const restricted = disclosure.isRestricted()
     let spaceName: string | undefined
     let parentTitle: string | undefined
     try {
-      if (spaceId) {
+      if (restricted) await disclosure.beforeRestrictedReadable()
+      if (spaceId && !restricted) {
         const space = await input.prisma.knowledgeSpace.findFirst({
           select: { name: true },
           where: { id: spaceId, organizationId: input.run.organizationId },
         })
         spaceName = space?.name
       }
-      if (fields.parentPageId) {
+      if (fields.parentPageId && !restricted) {
         const parent = await input.prisma.knowledgePage.findFirst({
           select: { title: true },
           where: { id: fields.parentPageId, organizationId: input.run.organizationId },
@@ -268,6 +283,7 @@ export const createDocumentStreamRecorder = (
       console.warn('[worker] document stream meta resolve failed', error)
     }
 
+    if (disclosure.isRestricted()) return
     await publish('stream.document.meta', {
       parentPageId: fields.parentPageId,
       parentTitle,
@@ -285,22 +301,31 @@ export const createDocumentStreamRecorder = (
     if (!scanner || !tracker) return
     tracker.pump(scanner.edits(), {
       beginEdit: ({ editIndex, offset, removeLength }) => {
-        void publish('stream.document.edit', {
-          editIndex,
-          offset,
-          removeLength,
-          runId: parseRunId(input.run.id),
-          sessionId: call.sessionId!,
-        })
+        if (!disclosure.isRestricted()) {
+          void publish('stream.document.edit', {
+            editIndex,
+            offset,
+            removeLength,
+            runId: parseRunId(input.run.id),
+            sessionId: call.sessionId!,
+          })
+        }
         // The removal alone changes the document, so the snapshot is stale
         // even before any replacement text arrives.
-        call.durable?.append({ content: '', offset })
+        appendDurable(call, { content: '', offset })
       },
       insert: ({ content, offset }) => {
         call.live?.enqueue({ content, offset })
-        call.durable?.append({ content, offset })
+        appendDurable(call, { content, offset })
       },
     })
+  }
+
+  const appendDurable = (
+    call: TrackedCall,
+    fragment: { content: string; offset: number },
+  ): void => {
+    disclosure.appendDurable(() => call.durable?.append(fragment))
   }
 
   const pump = (call: TrackedCall): void => {
@@ -323,7 +348,7 @@ export const createDocumentStreamRecorder = (
     if (created) {
       void created.then(() => {
         call.live?.enqueue(fragment)
-        call.durable?.append(fragment)
+        appendDurable(call, fragment)
         void publishMeta(call)
       })
     }
@@ -419,6 +444,7 @@ export const createDocumentStreamRecorder = (
       if (!call) return null
       await call.created
       await call.live?.settle()
+      await disclosure.settleDurableFeed()
       await call.durable?.settle()
       if (!call.sessionId) return null
       if (call.mode === 'edit') {
@@ -451,6 +477,7 @@ export const createDocumentStreamRecorder = (
       for (const call of byToolCallId.values()) {
         await call.created
         await call.live?.settle()
+        await disclosure.settleDurableFeed()
         await call.durable?.settle()
         await terminalize(call, reason)
       }
@@ -462,6 +489,7 @@ export const createDocumentStreamRecorder = (
       for (const call of byToolCallId.values()) {
         await call.created
         await call.live?.settle()
+        await disclosure.settleDurableFeed()
         await call.durable?.settle()
       }
     },
