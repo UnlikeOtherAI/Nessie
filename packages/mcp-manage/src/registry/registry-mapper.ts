@@ -52,6 +52,13 @@ export type RegistryAppMapping = {
   vendor: string | null
   websiteUrl: string | null
   /**
+   * The publisher's own declared icon, persisted so the lazy resolver can try
+   * it before guessing. Ingestion previously read no icon field at all, so the
+   * one source where somebody actually stated "this is my icon" — about 8% of
+   * registry records — was discarded on every sync.
+   */
+  declaredIconUrl: string | null
+  /**
    * Always null today: the registry's server schema publishes no documentation
    * link. Carried so the column has one owner rather than two opinions about
    * where its value comes from.
@@ -222,6 +229,11 @@ export const mapRegistryRecord = (record: RegistryRecord): RegistryMappingResult
       description,
       vendor: publisherHandle(record.name),
       websiteUrl: sanitizeHttpUrl(record.websiteUrl),
+      // First http(s) entry wins; the resolver still fetches, caps and sniffs
+      // it, so a hostile or dead URL costs an icon and nothing more.
+      declaredIconUrl:
+        record.declaredIconUrls.map((src) => sanitizeHttpUrl(src)).find((url) => url !== null)
+        ?? null,
       documentationUrl: null,
       repositoryUrl: sanitizeHttpUrl(record.repositoryUrl),
       sourceUrl:

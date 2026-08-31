@@ -1,11 +1,17 @@
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  extractPngFromIco,
   MAX_ICON_BYTES,
   readCappedIconBody,
   safeIconFetch,
   storeIconBytes,
 } from '../registry/icon-store.js'
+import {
+  conventionalCandidates,
+  discoverDeclaredIcons,
+  githubAvatarCandidate,
+} from '../registry/icon-sources.js'
 import { sniffImageMime, type IconFetch, type IconFileService } from '../registry/registry-icons.js'
 
 /**
@@ -44,35 +50,6 @@ const PER_CANDIDATE_TIMEOUT_MS = 2_500
 /** Where a derived icon came from, recorded as the entry's `iconSource`. */
 export const SITE_ICON_SOURCE = 'site_favicon'
 
-/**
- * Conventional favicon locations, best first.
- *
- * `apple-touch-icon.png` leads because it is specified to be a raster of decent
- * size, where `/favicon.ico` is frequently a 16px ICO — a format `sniffImageMime`
- * rejects, and rightly: the store renders a 40px tile.
- */
-const ICON_PATHS = ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png', '/favicon.png', '/favicon.ico'] as const
-
-/**
- * Candidate URLs for one site, origin-only.
- *
- * The path is replaced rather than appended to, and anything but http(s) is
- * refused, so a `websiteUrl` a registry author chose cannot steer the fetch to a
- * path of their choosing on a host of their choosing. `safeFetch` still pins the
- * address and bounds redirects; this is the layer above that.
- */
-export const siteIconCandidates = (websiteUrl: string): string[] => {
-  let origin: string
-  try {
-    const parsed = new URL(websiteUrl)
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return []
-    origin = parsed.origin
-  } catch {
-    return []
-  }
-  return ICON_PATHS.map((path) => `${origin}${path}`)
-}
-
 /** Fetch one candidate and return validated raster bytes, or null. */
 const fetchIconBytes = async (
   url: string,
@@ -86,8 +63,11 @@ const fetchIconBytes = async (
     if (!response.ok || !response.body) return null
     const declared = Number(response.headers.get('content-length'))
     if (Number.isFinite(declared) && declared > MAX_ICON_BYTES) return null
-    const bytes = await readCappedIconBody(response.body, controller)
-    if (!bytes) return null
+    const raw = await readCappedIconBody(response.body, controller)
+    if (!raw) return null
+    // A `.ico` is usually a container around a PNG; lift it out rather than
+    // rejecting the several sites that serve nothing else.
+    const bytes = extractPngFromIco(raw) ?? raw
     // Sniffed, never taken from `content-type`: the header is the remote host's
     // claim, and an SVG mislabelled as a PNG would be a script container we then
     // served from our own origin.
@@ -122,14 +102,27 @@ export const resolveAppIcon = async (params: {
 
   const entry = await params.prisma.mcpCatalogEntry.findUnique({
     where: { id: params.entryId },
-    select: { displayName: true, iconAttachmentId: true, iconResolvedAt: true, label: true, websiteUrl: true },
+    select: {
+      displayName: true,
+      iconAttachmentId: true,
+      iconResolvedAt: true,
+      iconUrl: true,
+      label: true,
+      repositoryUrl: true,
+      websiteUrl: true,
+    },
   })
   if (!entry) return null
   if (entry.iconAttachmentId) return { attachmentId: entry.iconAttachmentId }
   // Already tried and found nothing: the monogram is the answer.
   if (entry.iconResolvedAt) return null
 
-  const candidates = entry.websiteUrl ? siteIconCandidates(entry.websiteUrl) : []
+  const declared = entry.iconUrl ? [entry.iconUrl] : []
+  const conventional = entry.websiteUrl ? conventionalCandidates(entry.websiteUrl) : []
+  const avatar = entry.repositoryUrl ? githubAvatarCandidate(entry.repositoryUrl) : null
+  // Cheap, already-known candidates are decided before the claim; the homepage
+  // scan costs a request, so it happens after this caller has won the claim.
+  const hasSomethingToTry = declared.length + conventional.length > 0 || avatar !== null
 
   /**
    * Claim the attempt with one conditional UPDATE, before fetching anything.
@@ -155,6 +148,25 @@ export const resolveAppIcon = async (params: {
     })
     return settled?.iconAttachmentId ? { attachmentId: settled.iconAttachmentId } : null
   }
+  if (!hasSomethingToTry && !entry.websiteUrl) return null
+
+  /**
+   * Sources in descending order of what they are worth, each fetched, capped
+   * and sniffed identically: what the publisher declared to the registry, what
+   * the site's own HTML declares, the conventional paths, then the publisher's
+   * GitHub avatar. Guessing paths alone resolved about a third of the
+   * catalogue; of fourteen rows that failed, eleven declared `<link rel=icon>`
+   * at a path nobody could guess.
+   */
+  const declaredBySite = entry.websiteUrl
+    ? await discoverDeclaredIcons(entry.websiteUrl, fetchIcon)
+    : []
+  const candidates = [
+    ...declared,
+    ...declaredBySite,
+    ...conventional,
+    ...(avatar ? [avatar] : []),
+  ]
   if (candidates.length === 0) return null
 
   const displayName = entry.displayName ?? entry.label

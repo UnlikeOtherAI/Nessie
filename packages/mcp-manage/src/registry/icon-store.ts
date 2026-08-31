@@ -120,3 +120,47 @@ export const storeIconBytes = async (params: {
     return null
   }
 }
+
+/**
+ * The bytes an icon candidate really is, after unwrapping an ICO container.
+ *
+ * `sniffImageMime` allows PNG/JPEG/WebP only, and rightly — but that rejected
+ * every `favicon.ico`, which is what several sites serve and nothing else. A
+ * modern ICO is usually a *container around a PNG*: the directory entry points
+ * at data that begins with the PNG magic, so the icon can be lifted out with no
+ * decoder and no new dependency. An ICO holding only legacy BMP bitmaps is
+ * still refused, because decoding one would mean carrying a decoder for a
+ * format these sites are abandoning anyway.
+ *
+ * Everything here reads a length or an offset out of somebody else's file, so
+ * every read is bounds-checked against the buffer before it is used.
+ */
+const ICO_HEADER_BYTES = 6
+const ICO_ENTRY_BYTES = 16
+const PNG_MAGIC = Buffer.from('89504e470d0a1a0a', 'hex')
+
+const looksLikeIco = (bytes: Buffer): boolean =>
+  bytes.length >= ICO_HEADER_BYTES
+  && bytes.readUInt16LE(0) === 0
+  && bytes.readUInt16LE(2) === 1
+  && bytes.readUInt16LE(4) > 0
+
+/** The largest embedded PNG in an ICO, or null when it holds none. */
+export const extractPngFromIco = (bytes: Buffer): Buffer | null => {
+  if (!looksLikeIco(bytes)) return null
+  const count = bytes.readUInt16LE(4)
+  let best: Buffer | null = null
+  for (let index = 0; index < count; index += 1) {
+    const entry = ICO_HEADER_BYTES + index * ICO_ENTRY_BYTES
+    if (entry + ICO_ENTRY_BYTES > bytes.length) break
+    const size = bytes.readUInt32LE(entry + 8)
+    const offset = bytes.readUInt32LE(entry + 12)
+    // A crafted directory can point anywhere; refuse anything that is not
+    // wholly inside the buffer rather than letting `subarray` clamp silently.
+    if (size === 0 || offset + size > bytes.length) continue
+    const image = bytes.subarray(offset, offset + size)
+    if (!image.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) continue
+    if (!best || image.length > best.length) best = image
+  }
+  return best
+}

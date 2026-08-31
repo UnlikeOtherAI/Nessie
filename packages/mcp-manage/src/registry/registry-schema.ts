@@ -52,6 +52,15 @@ const RegistryServerSchema = z.object({
   description: z.string().optional(),
   version: z.string().optional(),
   websiteUrl: z.string().optional(),
+  // The publisher's own icons. Lenient by design — a malformed entry must cost
+  // an icon, never the whole record — and read here as well as in
+  // `registry-icons.ts` so ingestion can persist the best URL for the lazy
+  // resolver instead of discarding what the publisher actually declared.
+  icons: z.array(z.object({
+    mimeType: z.string().optional(),
+    sizes: z.union([z.string(), z.array(z.string())]).optional(),
+    src: z.string(),
+  }).passthrough()).optional(),
   repository: z.object({ url: z.string().optional() }).optional(),
   remotes: z.array(RegistryRemoteSchema).optional(),
 })
@@ -87,6 +96,8 @@ export type RegistryRecord = {
   version: string | null
   websiteUrl: string | null
   repositoryUrl: string | null
+  /** Publisher-declared icon URLs, unvalidated; the resolver vets them. */
+  declaredIconUrls: string[]
   remotes: RegistryRemote[]
   /** Registry lifecycle: `active` | `deprecated` | `deleted`. */
   status: string | null
@@ -116,6 +127,7 @@ export const parseRegistryEntry = (
       version: server.version ?? null,
       websiteUrl: server.websiteUrl ?? null,
       repositoryUrl: server.repository?.url ?? null,
+      declaredIconUrls: (server.icons ?? []).map((icon) => icon.src),
       remotes: server.remotes ?? [],
       status: official.status ?? null,
       // Absent means the registry did not vouch for this row being current, and
@@ -153,6 +165,11 @@ export const readUpstreamSnapshot = (value: unknown): RegistryRecord | null => {
     version: text('version'),
     websiteUrl: text('websiteUrl'),
     repositoryUrl: text('repositoryUrl'),
+    // A stored snapshot predating icon capture simply has none; the resolver
+    // then derives one from the site exactly as it does for every other row.
+    declaredIconUrls: Array.isArray(record.declaredIconUrls)
+      ? record.declaredIconUrls.filter((src): src is string => typeof src === 'string')
+      : [],
     remotes,
     status: text('status'),
     isLatest: record.isLatest === true,
