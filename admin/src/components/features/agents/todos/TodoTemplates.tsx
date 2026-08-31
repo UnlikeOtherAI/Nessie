@@ -6,6 +6,7 @@ import {
   useCreateAgentTodoTemplate,
   useUpdateAgentTodoTemplate,
 } from '../../../../facades/agent-todos/hooks'
+import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../../../../facades/approvals/hooks'
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
@@ -27,6 +28,8 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
   const createTemplate = useCreateAgentTodoTemplate()
   const updateTemplate = useUpdateAgentTodoTemplate()
   const archiveTemplate = useArchiveAgentTodoTemplate()
+  const approvals = useApprovalRequests()
+  const resolveApproval = useResolveApproval()
   const [editingTemplate, setEditingTemplate] = useState<AgentTodoTemplateRecord | null | undefined>()
 
   const refuseOwnerAction = () => {
@@ -80,6 +83,12 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
   }
 
   const editorIsOpen = editingTemplate !== undefined
+  const proposalFor = (templateId: string): ApprovalRequest | undefined =>
+    approvals.data?.find((approval) => {
+      const context = approval.context
+      return approval.action === 'agent.todo_template.publish'
+        && context?.templateId === templateId
+    })
 
   return (
     <section className="grid gap-4" data-testid="agent-todo-templates">
@@ -129,6 +138,11 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
             onArchive={archive}
             onEdit={setEditingTemplate}
             onRefuseOwnerAction={refuseOwnerAction}
+            onResolveProposal={(approval, resolution) => resolveApproval.mutate(
+              { id: approval.id, resolution },
+              { onError: (error) => pushToast({ body: error.message, title: 'Could not resolve proposal' }) },
+            )}
+            proposal={proposalFor(template.id)}
             template={template}
           />
         ))}

@@ -8,7 +8,12 @@ import { updateAgentTodoStep } from '@nessie/workspace-admin'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { executeBuiltinTool } from '../tools.js'
-import { runTodoStartTool, runTodoStepUpdateTool } from './todos.js'
+import {
+  runTodoStartTool,
+  runTodoStepUpdateTool,
+  runTodoTemplateProposeTool,
+} from './todos.js'
+import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -101,7 +106,9 @@ const contextFor = (
   channel: { id: fixture.channelId, organizationId: parseOrganizationId(fixture.organizationId) },
   ledgerIdentity: null,
   prisma,
-  realtimeTransport: {} as BuiltinToolRuntimeContext['realtimeTransport'],
+  realtimeTransport: {
+    publishWs: async () => undefined,
+  } as BuiltinToolRuntimeContext['realtimeTransport'],
   run: { id: runId, messageId: randomUUID(), threadId: fixture.threadId },
   toolCallId: null,
 })
@@ -376,4 +383,71 @@ test('todo_start gives the model one legible refusal when its mode is ambiguous'
     assert.equal(result.success, false)
     assert.equal(result.output, `Tool error: ${TODO_START_MODE_MESSAGE}`)
   }
+})
+
+dbTest('todo_template_propose creates an agent draft and owner-only approval in one transaction', async () => {
+  await withDatabase(async (prisma, fixture) => {
+    const runId = await createRun(prisma, fixture)
+    const result = await runTodoTemplateProposeTool(contextFor(prisma, fixture, runId), {
+      description: 'Repetitive QA checks.',
+      name: 'QA checklist',
+      steps: [{ instructions: 'Check the deployed route.', title: 'Check route' }],
+    })
+    assert.match(result.outputPreview, /owner review/)
+    const template = await prisma.agentTodoTemplate.findFirstOrThrow({
+      where: { agentId: fixture.agentId, proposedByRunId: runId },
+    })
+    assert.equal(template.authorType, 'agent')
+    assert.equal(template.status, 'draft')
+    const approval = await prisma.approvalRequest.findFirstOrThrow({
+      where: { action: 'agent.todo_template.publish', agentId: fixture.agentId },
+    })
+    assert.equal(approval.requesterId, fixture.agentId)
+    assert.equal(approval.requiredApproverRole, 'owner')
+    assert.deepEqual(approval.context, { templateId: template.id, version: template.version })
+  })
+})
+
+dbTest('todo_template_propose refuses a run that consumed a scoped source', async () => {
+  await withDatabase(async (prisma, fixture) => {
+    const runId = await createRun(prisma, fixture)
+    const context = contextFor(prisma, fixture, runId)
+    const consumedSources = createConsumedSourceSink()
+    consumedSources.add({ scopeId: randomUUID(), scopeType: 'user' })
+    context.consumedSources = consumedSources
+    await assert.rejects(
+      () => runTodoTemplateProposeTool(context, {
+        name: 'Do not launder',
+        steps: [{ instructions: 'This stays out.', title: 'Stay out' }],
+      }),
+      /drew on restricted material/,
+    )
+    assert.equal(await prisma.agentTodoTemplate.count({ where: { proposedByRunId: runId } }), 0)
+  })
+})
+
+dbTest('todo_template_propose refuses the eleventh pending proposal', async () => {
+  await withDatabase(async (prisma, fixture) => {
+    const runId = await createRun(prisma, fixture)
+    await prisma.approvalRequest.createMany({
+      data: Array.from({ length: 10 }, () => ({
+        action: 'agent.todo_template.publish',
+        agentId: fixture.agentId,
+        continuationToken: randomUUID(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+        organizationId: fixture.organizationId,
+        reason: 'pending proposal',
+        requesterId: fixture.agentId,
+        runId,
+        status: 'pending' as const,
+      })),
+    })
+    await assert.rejects(
+      () => runTodoTemplateProposeTool(contextFor(prisma, fixture, runId), {
+        name: 'Number eleven',
+        steps: [{ instructions: 'Must not write.', title: 'Refuse' }],
+      }),
+      /10 to-do template proposals/,
+    )
+  })
 })

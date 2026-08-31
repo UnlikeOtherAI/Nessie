@@ -295,6 +295,7 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
         currentUserId,
         isOwner,
         onCancel: () => undefined,
+        onRun: () => undefined,
         onUpdateStep: () => undefined,
         todo,
       }),
@@ -319,4 +320,47 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
   assert.doesNotMatch(unrelated, /Last changed by not yet changed/)
   assert.doesNotMatch(unrelated, /Cancel to-do/)
   assert.doesNotMatch(unrelated, />completed<\/button>/)
+})
+
+test('agent proposals show their review state and owner-only resolve controls', () => {
+  const proposal = {
+    action: 'agent.todo_template.publish',
+    agentId,
+    context: { templateId, version: 1 },
+    createdAt: timestamp,
+    expiresAt: timestamp,
+    id: '00000000-0000-4000-8000-000000000109',
+    reason: 'Agent-proposed to-do template: Release checklist',
+    requesterId: agentId,
+    resolution: null,
+    resolutionNote: null,
+    resolverId: null,
+    status: 'pending',
+  }
+  const proposedTemplate = { ...template, authorType: 'agent' as const, status: 'draft' as const }
+  const owner = renderToStaticMarkup(createElement(TodoTemplateCard, {
+    isOwner: true,
+    onArchive: () => undefined,
+    onEdit: () => undefined,
+    onRefuseOwnerAction: () => undefined,
+    onResolveProposal: () => undefined,
+    proposal,
+    template: proposedTemplate,
+  }))
+  assert.match(owner, /proposed by the agent/)
+  assert.match(owner, />Approve<\/button>/)
+  assert.match(owner, />Reject<\/button>/)
+
+  const member = renderToStaticMarkup(createElement(TodoTemplateCard, {
+    isOwner: false,
+    onArchive: () => undefined,
+    onEdit: () => undefined,
+    onRefuseOwnerAction: () => undefined,
+    onResolveProposal: () => undefined,
+    proposal,
+    template: proposedTemplate,
+  }))
+  assert.match(member, /proposed by the agent/)
+  assert.doesNotMatch(member, />Approve<\/button>/)
+  assert.doesNotMatch(member, />Reject<\/button>/)
 })

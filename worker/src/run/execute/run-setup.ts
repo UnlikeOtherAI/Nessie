@@ -212,7 +212,7 @@ export const prepareRunExecution = async (
       organizationId: context.channel.organizationId,
       runId: context.run.id,
     }),
-    resolvedToolIds.has('todo_start') && resolvedToolIds.has('todo_step_update')
+    (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
           organizationId: context.channel.organizationId,

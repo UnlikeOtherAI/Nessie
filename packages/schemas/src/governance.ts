@@ -221,6 +221,7 @@ export const AuditActionSchema = z.enum([
   'agent.deleted',
   'agent.bound',
   'agent.unbound',
+  'agent.todo_template.published',
   'agent.private.paused_owner_deactivated',
   'personal_assistant.bootstrap',
   'personal_assistant.rotate',

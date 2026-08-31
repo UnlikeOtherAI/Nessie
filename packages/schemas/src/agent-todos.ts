@@ -22,6 +22,8 @@ export const AGENT_TODO_TEMPLATE_DESCRIPTION_MAX = 500
 export const AGENT_TODO_PROMPT_TEMPLATE_LIMIT = 20
 export const AGENT_TODO_PROMPT_INSTANCE_LIMIT = 10
 export const AGENT_TODO_PROMPT_PROPOSAL_LIMIT = 5
+export const AGENT_TODO_PENDING_PROPOSAL_LIMIT = 10
+export const AGENT_TODO_APPROVAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
 
 export const AgentTodoTemplateStatusSchema = z.enum([
   'draft',
@@ -68,6 +70,15 @@ export const AgentTodoTemplateStepInputSchema = AgentTodoTemplateStepSchema.exte
 export type AgentTodoTemplateStepInput = z.infer<
   typeof AgentTodoTemplateStepInputSchema
 >
+
+export const AgentTodoTemplateProposalInputSchema = z.object({
+  description: z.string().max(AGENT_TODO_TEMPLATE_DESCRIPTION_MAX).optional(),
+  name: z.string().min(1).max(AGENT_TODO_TEMPLATE_NAME_MAX),
+  steps: z.array(AgentTodoTemplateStepInputSchema.omit({ key: true }))
+    .min(1)
+    .max(AGENT_TODO_MAX_STEPS),
+}).strict()
+export type AgentTodoTemplateProposalInput = z.infer<typeof AgentTodoTemplateProposalInputSchema>
 
 export const AgentTodoTemplateStepsSchema = z
   .array(AgentTodoTemplateStepSchema)

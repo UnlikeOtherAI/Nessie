@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
@@ -18,6 +19,8 @@ import {
   updateAgentTodoStep,
 } from '@nessie/workspace-admin'
 import { requestRunCancellation } from '../src/services/runs.js'
+import { runApprovalEffect } from '../src/services/approval-effects.js'
+import { actorContextFor } from './agent-todo-route-fixture.js'
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
 
 import {
@@ -521,6 +524,66 @@ dbTest('an API-side queued cancellation leaves a stale pointer harmless and recl
     })
     assert.equal(claimed.activeRunId === run.id, false)
     assert.equal(claimed.status, 'running')
+  })
+})
+
+dbTest('an approved template proposal activates only the reviewed draft version', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const template = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'agent',
+      createdByUserId: null,
+      name: 'Proposed template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'draft',
+      steps: [{ instructions: 'Review the result.', title: 'Review' }],
+    })
+    const approval = await prisma.approvalRequest.create({
+      data: {
+        action: 'agent.todo_template.publish',
+        agentId: seed.agentId,
+        context: { templateId: template.id, version: template.version },
+        continuationToken: randomUUID(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+        organizationId: seed.organizationId,
+        reason: 'Proposed template',
+        requesterId: seed.agentId,
+        requiredApproverRole: 'owner',
+        status: 'pending',
+      },
+    })
+    const published = await runApprovalEffect(prisma, approval, actorContextFor(seed, 'owner'))
+    assert.equal(published.note, 'published')
+    assert.equal(
+      (await prisma.agentTodoTemplate.findUnique({ where: { id: template.id } }))?.status,
+      'active',
+    )
+
+    const stale = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'agent',
+      createdByUserId: null,
+      name: 'Edited before review',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'draft',
+      steps: [{ instructions: 'Original.', title: 'Original' }],
+    })
+    await prisma.agentTodoTemplate.update({
+      where: { id: stale.id },
+      data: { version: { increment: 1 } },
+    })
+    const staleResult = await runApprovalEffect(prisma, {
+      action: 'agent.todo_template.publish',
+      context: { templateId: stale.id, version: stale.version },
+      id: randomUUID(),
+    }, actorContextFor(seed, 'owner'))
+    assert.match(staleResult.note ?? '', /superseded/)
+    assert.equal(
+      (await prisma.agentTodoTemplate.findUnique({ where: { id: stale.id } }))?.status,
+      'draft',
+    )
   })
 })
 

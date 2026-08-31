@@ -1,12 +1,18 @@
+import { randomUUID } from 'node:crypto'
 import {
+  AGENT_TODO_APPROVAL_EXPIRY_MS,
+  AGENT_TODO_PENDING_PROPOSAL_LIMIT,
   AGENT_TODO_MAX_STEPS,
   AGENT_TODO_STEP_NOTE_MAX,
   AgentTodoStepStatusSchema,
   AgentTodoTemplateRecordSchema,
+  AgentTodoTemplateProposalInputSchema,
   AgentTodoTemplateStepInputSchema,
   AgentTodoTemplateStepKeySchema,
 } from '@nessie/schemas'
 import {
+  acquireAgentTodoAgentLock,
+  createAgentTodoTemplate,
   startAgentTodoForRun,
   updateAgentTodoStep,
   publishAgentTodoUpdated,
@@ -63,6 +69,76 @@ const TodoStepUpdateInputSchema = z.object({
 
 const checklistOutput = (todo: Awaited<ReturnType<typeof startAgentTodoForRun>>): string =>
   JSON.stringify(todo, null, 2)
+
+const PROPOSAL_RESTRICTED_MESSAGE =
+  'This conversation drew on restricted material — a person should author this template, or ask me again in a clean conversation.'
+
+/**
+ * A template is visible to every agent viewer before approval. It cannot carry
+ * a per-run disclosure basis, so any scoped source makes this write fail closed
+ * (docs/plans/2026-08-31-agent-todos.md §5).
+ */
+export const runTodoTemplateProposeTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = AgentTodoTemplateProposalInputSchema.parse(input)
+  if ((context.consumedSources?.size() ?? 0) > 0) {
+    throw new Error(PROPOSAL_RESTRICTED_MESSAGE)
+  }
+  const organizationId = String(context.channel.organizationId)
+  const approval = await context.prisma.$transaction(async (tx) => {
+    // Equivalent proposals have no stable dedupe id, so lock and count the
+    // pending set itself rather than trusting the model to stop at ten.
+    await acquireAgentTodoAgentLock(tx, context.agentId)
+    const pending = await tx.approvalRequest.count({
+      where: {
+        action: 'agent.todo_template.publish',
+        agentId: context.agentId,
+        organizationId,
+        status: 'pending',
+      },
+    })
+    if (pending >= AGENT_TODO_PENDING_PROPOSAL_LIMIT) {
+      throw new Error('This agent already has 10 to-do template proposals awaiting review.')
+    }
+    const template = await createAgentTodoTemplate(tx, {
+      agentId: context.agentId,
+      authorType: 'agent',
+      createdByUserId: null,
+      description: args.description,
+      name: args.name,
+      organizationId,
+      proposedByRunId: context.run.id,
+      status: 'draft',
+      steps: args.steps,
+    })
+    // Approval visibility can include a member. The required role is what
+    // mirrors the owner-only direct template-authoring route.
+    return tx.approvalRequest.create({
+      data: {
+        action: 'agent.todo_template.publish',
+        agentId: context.agentId,
+        channelId: context.channel.id,
+        context: { templateId: template.id, version: template.version },
+        continuationToken: randomUUID(),
+        expiresAt: new Date(Date.now() + AGENT_TODO_APPROVAL_EXPIRY_MS),
+        organizationId,
+        reason: `Agent-proposed to-do template: ${template.name}`,
+        requesterId: context.agentId,
+        requiredApproverRole: 'owner',
+        runId: context.run.id,
+        status: 'pending',
+      },
+      select: { id: true },
+    })
+  })
+  return {
+    inputSummary: `template=${JSON.stringify(args.name)}`,
+    outputPreview: `Template proposal submitted for owner review (approval ${approval.id}).`,
+    toolName: 'todo_template_propose',
+  }
+}
 
 /**
  * To-do mutations are shared workspace-admin operations. The worker supplies

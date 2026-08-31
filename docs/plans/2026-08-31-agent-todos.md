@@ -4,7 +4,8 @@
 (§11). The data contract, shared service, REST surface, and Phase 1 Designer
 and To-dos surfaces have landed. Phase 2 is complete: its execution builtins,
 bounded prompt facts, liveness discipline, Run-now path, progress card, and
-id-only realtime invalidation have landed. Phases 3–4 remain.
+id-only realtime invalidation have landed. Phase 3's agent proposal and
+owner-review flow is complete; Phase 4 scheduling remains.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round

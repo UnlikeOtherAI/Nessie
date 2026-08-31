@@ -1,6 +1,7 @@
 import type { AgentTodoTemplateRecord } from '@nessie/schemas'
 
 import { Pill } from '../../../primitives/Pill'
+import type { ApprovalRequest } from '../../../../facades/approvals/hooks'
 import { templateStatusTone } from './todo-presentation'
 
 type TodoTemplateCardProps = {
@@ -8,6 +9,8 @@ type TodoTemplateCardProps = {
   onArchive: (template: AgentTodoTemplateRecord) => void
   onEdit: (template: AgentTodoTemplateRecord) => void
   onRefuseOwnerAction: () => void
+  onResolveProposal?: (approval: ApprovalRequest, resolution: 'approved' | 'rejected') => void
+  proposal?: ApprovalRequest
   template: AgentTodoTemplateRecord
 }
 
@@ -16,6 +19,8 @@ export const TodoTemplateCard = ({
   onArchive,
   onEdit,
   onRefuseOwnerAction,
+  onResolveProposal,
+  proposal,
   template,
 }: TodoTemplateCardProps) => {
   const ownerAction = (action: () => void) => {
@@ -30,6 +35,8 @@ export const TodoTemplateCard = ({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">{template.name}</h3>
             <Pill tone={templateStatusTone(template.status)}>{template.status}</Pill>
+            {template.authorType === 'agent' ? <Pill tone="warning">proposed by the agent</Pill> : null}
+            {proposal?.status === 'rejected' ? <Pill tone="danger">rejected</Pill> : null}
           </div>
           {template.description ? (
             <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">{template.description}</p>
@@ -51,6 +58,12 @@ export const TodoTemplateCard = ({
             >
               Archive
             </button>
+          ) : null}
+          {proposal?.status === 'pending' && isOwner && onResolveProposal ? (
+            <>
+              <button className="admin-button admin-button-primary" onClick={() => onResolveProposal(proposal, 'approved')} type="button">Approve</button>
+              <button className="admin-button admin-button-secondary" onClick={() => onResolveProposal(proposal, 'rejected')} type="button">Reject</button>
+            </>
           ) : null}
         </div>
       </div>
