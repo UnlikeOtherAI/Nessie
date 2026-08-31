@@ -35,6 +35,7 @@ import {
   executeToolBatch,
   type ExecuteToolFn,
   type ExecutedToolResult,
+  type PrepareToolFn,
   type ToolApprovalSuspension,
   type ToolBatchCallbacks,
 } from './tool-batch.js'
@@ -55,8 +56,7 @@ export type LoopResult = {
   messages: ProviderMessage[]
   toolCallsUsed: number
   // Aggregate wall-clock time spent inside tool executions. It measures tool
-  // work rather than the run span; approval-gated batches run in order so a
-  // later call cannot cross a suspension boundary.
+  // work rather than the run span; same-batch calls may overlap.
   toolMs: number
   totalCostCents: number
   wallclockMs: number
@@ -112,6 +112,8 @@ export const runAgenticLoop = async (input: {
   // Compaction/trim thresholds for this run's model (see context-window.ts).
   contextPlan?: ContextPlan
   executeTool: ExecuteToolFn
+  /** Optional authorization preflight that can suspend a whole tool batch. */
+  prepareTool?: PrepareToolFn
   initialMessages: ProviderMessage[]
   // Optional caller-owned accumulator for every inference invocation the loop
   // makes. It is populated live (before the loop can throw), so a crashed or
@@ -139,7 +141,7 @@ export const runAgenticLoop = async (input: {
   // structural fan-out (the delegate gate) for the rest of the run.
   onWindDown?: () => void
 }): Promise<LoopResult> => {
-  const { budget, callbacks, executeTool, initialMessages } = input
+  const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const messages: ProviderMessage[] = [...initialMessages]
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
@@ -298,6 +300,7 @@ export const runAgenticLoop = async (input: {
       callbacks,
       circuitBreaker,
       executeTool,
+      prepareTool,
       signatureCounts,
       toolCalls: result.toolCalls,
       toolTimeoutError: input.toolTimeoutError,

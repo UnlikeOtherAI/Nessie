@@ -100,6 +100,7 @@ export const evaluateToolInvokePolicy = async (
   context: RunContext,
   toolName: string,
   args: Record<string, unknown>,
+  options: { consumeApprovalProof?: boolean } = {},
 ): Promise<ToolPolicyEvaluation> => {
   const chain = buildScopeChain(actorContext, {
     agentId: context.agent.id,
@@ -143,6 +144,7 @@ export const evaluateToolInvokePolicy = async (
     && decision.approvalProofUsed
     && verifiedApproval
     && approvalProof
+    && options.consumeApprovalProof !== false
   ) {
     if (!await consumeToolApprovalProof(prisma, {
       ...approvalProofInput,

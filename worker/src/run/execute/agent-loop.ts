@@ -21,7 +21,7 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
-import { authorizeToolExecution } from './tool-authorization.js'
+import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
 import { buildToolActorContext } from './policy.js'
@@ -173,6 +173,180 @@ export const runExecutionAgentLoop = async (
     toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
   })
 
+  const authorizeMainTool = (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+    options: { consumeApprovalProof?: boolean; maySuspendForApproval?: boolean } = {},
+  ) =>
+    authorizeToolExecution(
+      deps.prisma,
+      payload.actorContext,
+      context,
+      toolName,
+      args,
+      toolCallId,
+      {
+        agentKind: context.agent.agentKind,
+        allowedToolIds: input.allowedToolIds,
+        consumeApprovalProof: options.consumeApprovalProof,
+        resolvedBuiltinToolIds: input.resolvedToolIds,
+        externalToolNames,
+        maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
+        parentAgentId: context.agent.parentAgentId,
+        resumeState: {
+          actorContext: payload.actorContext,
+          interactive: payload.interactive === true,
+          messageId: payload.messageId,
+        },
+        toolPolicy: input.toolPolicy,
+      },
+      { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
+    )
+
+  const executeAuthorizedTool = async (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+    authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
+  ) => {
+    if (toolName === BUILTIN_TOOL_SPEC_NAME) {
+      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+    }
+    if (toolName === 'react') {
+      input.onReacted?.()
+    }
+    if (toolName === 'delegate') {
+      if (!delegateGate.tryAcquire()) {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: delegateGate.overLimitMessage(),
+          success: false,
+        }
+      }
+      // Created here rather than inside runDelegate so the authorization
+      // gate can recognize the sub-agent view's exposed MCP names.
+      const subAgentMcpView = input.mcpToolset.createView()
+      const result = await runDelegate(args, {
+        mcpView: subAgentMcpView,
+        mcpToolset: input.mcpToolset,
+        runInference: input.inference.runUtility,
+        authorizeSubAgentTool: (nestedToolName, nestedArgs) =>
+          authorizeToolExecution(
+            deps.prisma,
+            payload.actorContext,
+            context,
+            nestedToolName,
+            nestedArgs,
+            'sub-agent',
+            {
+              agentKind: context.agent.agentKind,
+              allowedToolIds: input.allowedToolIds,
+              resolvedBuiltinToolIds: input.resolvedToolIds,
+              externalToolNames: new Set([
+                ...subAgentMcpView.handledNames,
+                ...builtinMetaNames,
+              ]),
+              maySuspendForApproval: false,
+              parentAgentId: context.agent.parentAgentId,
+              toolPolicy: input.toolPolicy,
+            },
+            {
+              deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+              // The sub-agent's audit/ToolCall recording is out of scope for
+              // this ordering change: nested denials keep the previous
+              // silent behaviour while going through the same gate.
+              emitAudit: async () => undefined,
+            },
+          ),
+        executeBuiltinTool: (n, a, id, toolActorContext) =>
+          n === BUILTIN_TOOL_SPEC_NAME
+            ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
+            : executeGuardedBuiltin(n, a, toolActorContext, id),
+        builtinDescriptors: subAgentBuiltinDescriptors,
+      })
+      input.invocationSink.push(...result.invocations)
+      return {
+        inputSummary: result.inputSummary,
+        output: result.output,
+        success: result.success,
+      }
+    }
+    if (mcpExposedNames.has(toolName)) {
+      return mcpView.dispatch(toolName, args, toolCallId)
+    }
+    if (input.executorToolset.handledNames.has(toolName)) {
+      return input.executorToolset.dispatch(toolName, args, toolCallId)
+    }
+    return executeBuiltinTool(
+      toolName,
+      args,
+      buildBuiltinCtx(authorization.toolActorContext, toolCallId),
+      input.stubbedBuiltinToolIds,
+    )
+  }
+
+  const suspensionResult = (
+    args: Record<string, unknown>,
+    authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
+  ) => ({
+    inputSummary: summarizeToolInput(args),
+    output: 'Tool execution is waiting for human approval.',
+    pendingApproval: {
+      approvalId: authorization.approval.id,
+      toolName: authorization.approval.toolName,
+    },
+    success: false,
+  })
+
+  const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const authorization = await authorizeMainTool(toolName, args, toolCallId)
+    if (authorization.decision === 'deny') {
+      return authorization.result
+    }
+    if (authorization.decision === 'suspend') {
+      return suspensionResult(args, authorization)
+    }
+    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+  }
+
+  const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    // A preflight verified any proof without consuming it. Re-run the gate at
+    // dispatch to claim the one-time proof only when this tool will run.
+    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
+      maySuspendForApproval: false,
+    })
+    if (authorization.decision === 'deny') {
+      return authorization.result
+    }
+    if (authorization.decision === 'suspend') {
+      throw new Error('Prepared tool authorization unexpectedly requested approval.')
+    }
+    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+  }
+
+  const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
+      consumeApprovalProof: false,
+    })
+    if (authorization.decision === 'suspend') {
+      return {
+        approval: {
+          approvalId: authorization.approval.id,
+          toolName: authorization.approval.toolName,
+        },
+        kind: 'suspend' as const,
+      }
+    }
+    return {
+      execute: async () =>
+        authorization.decision === 'deny'
+          ? authorization.result
+          : executePreparedTool(toolName, args, toolCallId),
+      kind: 'execute' as const,
+    }
+  }
+
   const loopResult = await runAgenticLoop({
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
@@ -290,124 +464,10 @@ export const runExecutionAgentLoop = async (
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
     },
-    executeTool: async (toolName, args, toolCallId) => {
-      // Gate before dispatch: every tool name — `delegate` itself, MCP names,
-      // executor names and builtins — is authorized (handoff suppression,
-      // registry/grant gate, policy/approval) before any dispatcher runs.
-      const authorization = await authorizeToolExecution(
-        deps.prisma,
-        payload.actorContext,
-        context,
-        toolName,
-        args,
-        toolCallId,
-        {
-          agentKind: context.agent.agentKind,
-          allowedToolIds: input.allowedToolIds,
-          resolvedBuiltinToolIds: input.resolvedToolIds,
-          externalToolNames,
-          maySuspendForApproval: !input.isHandoffTurn,
-          parentAgentId: context.agent.parentAgentId,
-          resumeState: {
-            actorContext: payload.actorContext,
-            interactive: payload.interactive === true,
-            messageId: payload.messageId,
-          },
-          toolPolicy: input.toolPolicy,
-        },
-        { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
-      )
-      if (authorization.decision === 'deny') {
-        return authorization.result
-      }
-      if (authorization.decision === 'suspend') {
-        return {
-          inputSummary: summarizeToolInput(args),
-          output: 'Tool execution is waiting for human approval.',
-          pendingApproval: {
-            approvalId: authorization.approval.id,
-            toolName: authorization.approval.toolName,
-          },
-          success: false,
-        }
-      }
-      if (toolName === BUILTIN_TOOL_SPEC_NAME) {
-        return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
-      }
-      if (toolName === 'react') {
-        input.onReacted?.()
-      }
-      if (toolName === 'delegate') {
-        if (!delegateGate.tryAcquire()) {
-          return {
-            inputSummary: summarizeToolInput(args),
-            output: delegateGate.overLimitMessage(),
-            success: false,
-          }
-        }
-        // Created here rather than inside runDelegate so the authorization
-        // gate can recognize the sub-agent view's exposed MCP names.
-        const subAgentMcpView = input.mcpToolset.createView()
-        const result = await runDelegate(args, {
-          mcpView: subAgentMcpView,
-          mcpToolset: input.mcpToolset,
-          runInference: input.inference.runUtility,
-          authorizeSubAgentTool: (nestedToolName, nestedArgs) =>
-            authorizeToolExecution(
-              deps.prisma,
-              payload.actorContext,
-              context,
-              nestedToolName,
-              nestedArgs,
-              'sub-agent',
-              {
-                agentKind: context.agent.agentKind,
-                allowedToolIds: input.allowedToolIds,
-                resolvedBuiltinToolIds: input.resolvedToolIds,
-                externalToolNames: new Set([
-                  ...subAgentMcpView.handledNames,
-                  ...builtinMetaNames,
-                ]),
-                maySuspendForApproval: false,
-                parentAgentId: context.agent.parentAgentId,
-                toolPolicy: input.toolPolicy,
-              },
-              {
-                deepWaterHandoffGuard: input.deepWaterHandoffGuard,
-                // The sub-agent's audit/ToolCall recording is out of scope for
-                // this ordering change: nested denials keep the previous
-                // silent behaviour while going through the same gate.
-                emitAudit: async () => undefined,
-              },
-            ),
-          executeBuiltinTool: (n, a, id, toolActorContext) =>
-            n === BUILTIN_TOOL_SPEC_NAME
-              ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
-              : executeGuardedBuiltin(n, a, toolActorContext, id),
-          builtinDescriptors: subAgentBuiltinDescriptors,
-        })
-        input.invocationSink.push(...result.invocations)
-        return {
-          inputSummary: result.inputSummary,
-          output: result.output,
-          success: result.success,
-        }
-      }
-      if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, args, toolCallId)
-      }
-      if (input.executorToolset.handledNames.has(toolName)) {
-        return input.executorToolset.dispatch(toolName, args, toolCallId)
-      }
-      return executeBuiltinTool(
-        toolName,
-        args,
-        buildBuiltinCtx(authorization.toolActorContext, toolCallId),
-        input.stubbedBuiltinToolIds,
-      )
-    },
+    executeTool: executeMainTool,
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
+    prepareTool: prepareMainTool,
     runInference: (messages) =>
       input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,

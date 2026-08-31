@@ -51,6 +51,8 @@ export type ToolAuthorizationContext = {
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
+  /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
+  consumeApprovalProof?: boolean
   resumeState?: {
     actorContext: AuthorizedActionContext
     interactive: boolean
@@ -170,6 +172,7 @@ export const authorizeToolExecution = async (
     context,
     toolName,
     args,
+    { consumeApprovalProof: auth.consumeApprovalProof },
   )
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {

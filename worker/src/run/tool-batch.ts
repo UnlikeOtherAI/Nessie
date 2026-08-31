@@ -41,6 +41,26 @@ export type ExecuteToolFn = (
   toolCallId: string,
 ) => Promise<ExecutedToolResult>
 
+export type PreparedToolExecution =
+  | {
+      kind: 'execute'
+      execute: () => Promise<ExecutedToolResult>
+    }
+  | {
+      approval: ToolApprovalSuspension
+      kind: 'suspend'
+    }
+
+/**
+ * Authorize a call without dispatching it. A suspension is a batch barrier:
+ * no prepared execution may run once a gate has been found.
+ */
+export type PrepareToolFn = (
+  toolName: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+) => Promise<PreparedToolExecution>
+
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
 const LOOP_DETECTION_THRESHOLD = 3
 
@@ -67,17 +87,16 @@ const withTimeout = async <T>(
 const toolCallSignature = (name: string, args: Record<string, unknown>): string =>
   `${name}:${JSON.stringify(args)}`
 
-/**
- * Run a provider tool-call batch in order. Normal batches used to fan out in
- * parallel, but a suspend is a durable control-flow boundary: once a human
- * gate is reached no later call in that provider batch may execute before the
- * model has replanned after the approval. The order also makes the first gate
- * deterministic when a model emits more than one gated call at once.
- */
+type RunnableToolCall = {
+  index: number
+  toolCall: ProviderToolCall
+}
+
 export const executeToolBatch = async (input: {
   callbacks: ToolBatchCallbacks
   circuitBreaker: ToolCircuitBreaker
   executeTool: ExecuteToolFn
+  prepareTool?: PrepareToolFn
   signatureCounts: Map<string, number>
   toolCalls: ProviderToolCall[]
   toolTimeoutError?: (toolName: string) => Error | null
@@ -90,53 +109,97 @@ export const executeToolBatch = async (input: {
 }> => {
   let loopDetected = false
   let toolMs = 0
-  const results: ExecutedToolResult[] = []
+  const resultSlots: Array<ExecutedToolResult | undefined> = []
+  const runnable: RunnableToolCall[] = []
 
-  for (const toolCall of input.toolCalls) {
+  for (const [index, toolCall] of input.toolCalls.entries()) {
     const signature = toolCallSignature(toolCall.toolName, toolCall.arguments)
     const count = (input.signatureCounts.get(signature) ?? 0) + 1
     input.signatureCounts.set(signature, count)
 
     if (count >= LOOP_DETECTION_THRESHOLD) {
       loopDetected = true
-      results.push({
+      resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
         output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
-      })
+      }
       continue
     }
     if (input.circuitBreaker.isTripped(toolCall.toolName)) {
-      results.push({
+      resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
         output: input.circuitBreaker.trippedErrorMessage(toolCall.toolName),
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
-      })
+      }
       continue
     }
 
+    runnable.push({ index, toolCall })
+  }
+
+  const prepared: Array<RunnableToolCall & { execute: () => Promise<ExecutedToolResult> }> = []
+  for (const call of runnable) {
+    let preparation: PreparedToolExecution
+    try {
+      preparation = input.prepareTool
+        ? await input.prepareTool(call.toolCall.toolName, call.toolCall.arguments, call.toolCall.toolCallId)
+        : {
+          kind: 'execute',
+          execute: () => input.executeTool(
+            call.toolCall.toolName,
+            call.toolCall.arguments,
+            call.toolCall.toolCallId,
+          ),
+        }
+    } catch (error) {
+      preparation = {
+        kind: 'execute',
+        execute: async () => { throw error },
+      }
+    }
+
+    if (preparation.kind === 'suspend') {
+      resultSlots[call.index] = {
+        inputSummary: summarizeToolInput(call.toolCall.arguments),
+        output: 'Tool execution is waiting for human approval.',
+        pendingApproval: preparation.approval,
+        success: false,
+        toolCallId: call.toolCall.toolCallId,
+        toolName: call.toolCall.toolName,
+      }
+      return {
+        loopDetected,
+        pendingApproval: preparation.approval,
+        results: resultSlots.filter((result): result is ExecutedToolResult => result !== undefined),
+        toolMs,
+      }
+    }
+    prepared.push({ ...call, execute: preparation.execute })
+  }
+
+  const settled = await Promise.allSettled(prepared.map(async ({ execute, toolCall }) => {
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
     try {
       const result = await withTimeout(
-        input.executeTool(toolCall.toolName, toolCall.arguments, toolCall.toolCallId),
+        execute(),
         input.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
         toolCall.toolName,
         () => input.toolTimeoutError?.(toolCall.toolName) ?? null,
       )
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs
-      if (result.pendingApproval) {
-        // The proposed call did not run, so it must not count as a tool error
-        // or trip the breaker; it is recorded as the durable approval gate.
-      } else if (result.success) {
-        input.circuitBreaker.recordSuccess(toolCall.toolName)
-      } else {
-        input.circuitBreaker.recordError(toolCall.toolName)
+      if (!result.pendingApproval) {
+        if (result.success) {
+          input.circuitBreaker.recordSuccess(toolCall.toolName)
+        } else {
+          input.circuitBreaker.recordError(toolCall.toolName)
+        }
       }
       await input.callbacks.onToolCallEnd(
         toolCall.toolName,
@@ -149,16 +212,7 @@ export const executeToolBatch = async (input: {
         result.connectorUsage,
         result.toolCallRecordId,
       )
-      const completed = { ...result, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName }
-      results.push(completed)
-      if (completed.pendingApproval) {
-        return {
-          loopDetected,
-          pendingApproval: completed.pendingApproval,
-          results,
-          toolMs,
-        }
-      }
+      return { ...result, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName }
     } catch (error) {
       const fatal = isFatalToolExecutionError(error)
       const output = fatal
@@ -185,15 +239,31 @@ export const executeToolBatch = async (input: {
         if (!fatal) throw callbackError
       }
       if (fatal) throw error
-      results.push({
+      return {
         inputSummary: summarizeToolInput(toolCall.arguments),
         output,
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
-      })
+      }
+    }
+  }))
+
+  const fatalRejection = settled.find(
+    (result): result is PromiseRejectedResult =>
+      result.status === 'rejected' && isFatalToolExecutionError(result.reason),
+  )
+  if (fatalRejection) throw fatalRejection.reason
+
+  const rejection = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (rejection) throw rejection.reason
+
+  for (const [index, result] of settled.entries()) {
+    if (result.status === 'fulfilled') {
+      resultSlots[prepared[index]!.index] = result.value
     }
   }
-
-  return { loopDetected, pendingApproval: null, results, toolMs }
+  const results = resultSlots.filter((result): result is ExecutedToolResult => result !== undefined)
+  const pending = results.find((result) => result.pendingApproval)?.pendingApproval ?? null
+  return { loopDetected, pendingApproval: pending, results, toolMs }
 }
