@@ -185,6 +185,9 @@ export const ChannelOverlays = ({
       <CallerCallDialog
         actionError={callerCallActionError}
         actionPending={callerCallActionPending}
+        canManageCallSettings={
+          me.user.roleIds.includes('owner') || me.user.roleIds.includes('admin')
+        }
         call={callerDialogCall}
         channelLabel={activeChannel.label}
         onCancel={onFinishCall}

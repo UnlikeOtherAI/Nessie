@@ -63,6 +63,28 @@ export const useCreateTeam = () => {
   })
 }
 
+/** Updates the call-link provider a team uses when a person presses Call. */
+export const useUpdateTeamCallProvider = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { callProvider: TeamRecord['callProvider']; teamId: string }) =>
+      apiClient.patch<Pick<TeamRecord, 'callProvider' | 'id'>>(
+        `/api/teams/${input.teamId}/settings`,
+        { callProvider: input.callProvider },
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<TeamRecord[]>(teamKeys.all, (teams) =>
+        teams?.map((team) =>
+          team.id === updated.id ? { ...team, callProvider: updated.callProvider } : team,
+        ),
+      )
+      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
+    },
+  })
+}
+
 export const useUpdateProject = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

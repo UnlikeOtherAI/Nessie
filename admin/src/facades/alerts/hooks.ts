@@ -8,7 +8,7 @@ import { useEventStream } from '../realtime/event-stream'
 
 export type UserAlertRecord = {
   id: string
-  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health'
+  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health' | 'call_missed'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null
@@ -167,6 +167,15 @@ export const getAlertLink = (
   }
   if (alert.kind === 'knowledge_published' && alert.projectId && alert.knowledgePageId) {
     return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
+  }
+  if (alert.kind === 'call_missed' && alert.channelId) {
+    // A missed call belongs to its channel's call record/message, never to a
+    // reply thread. Keep this separate from generic mentions so this durable
+    // attention kind has an explicit owning surface.
+    return {
+      to: `/channels/${alert.channelId}`,
+      state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,
+    }
   }
   if (alert.channelId) {
     if (alert.threadId && alert.rootMessageId) {

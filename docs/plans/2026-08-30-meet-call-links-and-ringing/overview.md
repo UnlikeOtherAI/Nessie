@@ -1,6 +1,6 @@
 # Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
-**Status:** Implemented — delivery slices 1–5 complete · 2026-08-31
+**Status:** Implemented — delivery slices 1–6 complete · 2026-08-31
 **Provider decision (made by the product owner, 2026-08-30, amended same
 day):** the link provider is a **per-team setting** — **Google Meet (the
 default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
@@ -198,6 +198,15 @@ explicitly reinstated: "some people wanna just create a Teams link").
    target-channel tenancy, and stamp `Call.createdViaAgentId`; the retired
    video-calling document is under `docs/done/`, and the operational
    invariants are recorded in `CLAUDE.md` and `AGENTS.md`.
+6. **Call settings + missed-call presentation — implemented 2026-08-31.**
+   `/settings/organization` now lists every entitled team with its selectable
+   call provider. Availability comes from `GET /api/teams`: a provider that
+   this deployment has not configured is disabled and names why, so the
+   existing `PATCH /api/teams/:teamId/settings` route has a real owner/admin
+   surface rather than a hand-crafted-HTTP-only path. The caller popup links
+   its provider label to that setting for owners/admins. `call_missed` alerts
+   now identify the missed call and deep-link explicitly to the channel
+   message, rather than falling through to mention copy.
 
 ## 12. Decisions and accepted tradeoffs
 
@@ -236,6 +245,10 @@ explicitly reinstated: "some people wanna just create a Teams link").
 10. **Teams sequencing** (§3.7): decided v1 is Meet + Jitsi with the
     three-valued setting and seam. Microsoft Teams lands with its Microsoft
     comms OAuth leg as a separate project.
+11. **Unavailable provider settings**: keep the three-valued team setting in
+    the UI, but disable every unconfigured deployment provider with its reason
+    in the select. This preserves the durable team choice without presenting a
+    control that can only fail after a click.
 
 ## 13. Review log
 
