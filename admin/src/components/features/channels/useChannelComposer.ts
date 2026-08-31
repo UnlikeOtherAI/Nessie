@@ -29,6 +29,7 @@ interface UseChannelComposerResult {
   setOversizePaste: React.Dispatch<React.SetStateAction<string | null>>
   mentionRef: React.RefObject<MentionInputHandle | null>
   isSendPending: boolean
+  sendError: string | null
   // Files staged for the next send (paperclip + drag-and-drop).
   attachments: ComposerAttachments
   insertEmoji: (emoji: string) => void
@@ -68,6 +69,7 @@ export const useChannelComposer = ({
   const [pendingInviteMessageIds, setPendingInviteMessageIds] = useState<Record<string, string>>({})
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
+  const [sendError, setSendError] = useState<string | null>(null)
   const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
 
@@ -94,6 +96,7 @@ export const useChannelComposer = ({
     setPendingAgentInvites([])
     setPendingInviteMessageIds({})
     setInviteErrors({})
+    setSendError(null)
   }, [activeChannel?.id])
 
   const sendText = useCallback(
@@ -147,6 +150,7 @@ export const useChannelComposer = ({
       }
       setMessage('')
       mentionRef.current?.clear()
+      setSendError(null)
 
       try {
         const result = await sendMessage.mutateAsync({
@@ -172,11 +176,16 @@ export const useChannelComposer = ({
             return next
           })
         }
-      } catch {
+      } catch (error) {
         setOptimisticMessages((current) =>
           current.map((entry) =>
             entry.clientId === clientId ? { ...entry, status: 'failed' } : entry,
           ),
+        )
+        setSendError(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Could not send this message. Please try again.',
         )
       }
     },
@@ -272,16 +281,25 @@ export const useChannelComposer = ({
         setOversizePaste(null)
         return
       }
-      const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
-      const attachment = await uploadAttachment.mutateAsync(file)
-      await sendMessage.mutateAsync({
-        attachmentIds: [attachment.id],
-        content: `Shared file: ${attachment.filename}`,
-        // Same routing as a typed reply — without this the escape hatch posted
-        // to the channel instead of into the open reply thread.
-        ...getSendExtras?.(),
-      })
-      setOversizePaste(null)
+      setSendError(null)
+      try {
+        const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
+        const attachment = await uploadAttachment.mutateAsync(file)
+        await sendMessage.mutateAsync({
+          attachmentIds: [attachment.id],
+          content: `Shared file: ${attachment.filename}`,
+          // Same routing as a typed reply — without this the escape hatch posted
+          // to the channel instead of into the open reply thread.
+          ...getSendExtras?.(),
+        })
+        setOversizePaste(null)
+      } catch (error) {
+        setSendError(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Could not send this message. Please try again.',
+        )
+      }
     },
     [activeChannel, uploadAttachment, sendMessage, getSendExtras],
   )
@@ -294,6 +312,7 @@ export const useChannelComposer = ({
     setOversizePaste,
     mentionRef,
     isSendPending: sendMessage.isPending,
+    sendError,
     attachments,
     insertEmoji,
     sendText,

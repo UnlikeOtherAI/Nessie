@@ -55,6 +55,10 @@ export const callInferenceWithRetry = async (
         continue
       }
 
+      if (recovery.action === 'fail_run') {
+        throw error
+      }
+
       if (recovery.action === 'surface_error') {
         return {
           correlationId: undefined,

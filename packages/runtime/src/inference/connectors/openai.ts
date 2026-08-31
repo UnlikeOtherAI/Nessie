@@ -1,4 +1,5 @@
 import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
+import { isLedgerEndpoint } from '../../ledger-identity.js'
 import type {
   ModelCapabilitySnapshot,
   ModelProviderConfig,
@@ -17,6 +18,7 @@ import {
   createInvocationRecord,
   nowIso,
   providerError,
+  providerHttpError,
 } from './connector-invocations.js'
 import { createBaseSnapshot } from './model-capabilities.js'
 import {
@@ -43,6 +45,7 @@ export const createOpenAiLikeConnector = (
   }
 
   const baseUrl = config.baseUrl ?? 'https://api.openai.com/v1'
+  const ledgerRouted = isLedgerEndpoint(baseUrl)
   const headers = {
     Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
@@ -69,8 +72,12 @@ export const createOpenAiLikeConnector = (
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`${provider} model error ${response.status}: ${errorText}`)
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'chat',
+        provider,
+        response,
+      })
     }
 
     return response
@@ -143,8 +150,12 @@ export const createOpenAiLikeConnector = (
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+          throw await providerHttpError({
+            ledgerRouted,
+            operation: 'embedding',
+            provider,
+            response,
+          })
         }
 
         const json = (await response.json()) as OpenAiEmbeddingResponse
@@ -198,8 +209,12 @@ export const createOpenAiLikeConnector = (
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+          throw await providerHttpError({
+            ledgerRouted,
+            operation: 'embedding',
+            provider,
+            response,
+          })
         }
 
         const json = (await response.json()) as OpenAiEmbeddingResponse

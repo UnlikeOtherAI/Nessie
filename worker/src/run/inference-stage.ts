@@ -4,6 +4,7 @@ import type { ModelConfig } from '@nessie/config'
 import {
   isLedgerEndpoint,
   createInferenceService,
+  providerFailureDetails,
   type ModelProviderConfig,
   type ProviderMessage,
   type ProviderToolCall,
@@ -52,8 +53,11 @@ export type StageExecutionSuccess = {
 }
 
 type StageExecutionFailure = Error & {
+  creditRefusal?: 'ledger'
   invocation?: InvocationRecord
+  providerCode?: string
   stageId?: string
+  statusCode?: number
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -64,11 +68,22 @@ const toErrorMessage = (error: unknown): string =>
 
 const createStageFailure = (
   message: string,
-  input?: { invocation?: InvocationRecord; stageId?: string },
+  input?: {
+    invocation?: InvocationRecord
+    providerFailure?: {
+      creditRefusal?: 'ledger'
+      providerCode?: string
+      statusCode?: number
+    }
+    stageId?: string
+  },
 ): StageExecutionFailure => {
   const error = new Error(message) as StageExecutionFailure
+  error.creditRefusal = input?.providerFailure?.creditRefusal
   error.invocation = input?.invocation
+  error.providerCode = input?.providerFailure?.providerCode
   error.stageId = input?.stageId
+  error.statusCode = input?.providerFailure?.statusCode
   return error
 }
 
@@ -399,6 +414,7 @@ export const executeStage = async (
 
     throw createStageFailure(toErrorMessage(error), {
       invocation,
+      providerFailure: providerFailureDetails(error),
       stageId: input.stage.id,
     })
   } finally {

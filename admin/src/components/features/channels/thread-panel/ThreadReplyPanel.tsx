@@ -125,6 +125,7 @@ export const ThreadReplyPanel = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
     attachments,
     insertEmoji,
     sendText,
@@ -405,6 +406,7 @@ export const ThreadReplyPanel = ({
                 <ChannelComposer
                   attachments={attachments}
                   isSendPending={isSendPending}
+                  sendError={sendError}
                   mentionEntities={mentionEntities}
                   mentionRef={mentionRef}
                   message={message}
