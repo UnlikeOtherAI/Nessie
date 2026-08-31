@@ -170,9 +170,38 @@ only unauthenticated call endpoint; it consumes a still-ringing invite exactly
 once and returns `204` with no call record or meeting URI. The normal call
 routes remain bearer-authenticated.
 
-The service worker and native-shell handling for this versioned call protocol
-ship in later call-delivery slices. Until then, server fan-out is safe to run:
-old clients receive ordinary payload data and do not gain an external URL path.
+The version gate is a client safety boundary. A service worker handles only
+`version: "1"` `call.ring` and `call.cancel` payloads; it ignores any other
+`call.*` version rather than rendering a future cancel as an ordinary visible
+notification. Ring notifications use a stable `call-<callId>` tag, show
+**Accept** and **Decline** actions, require interaction, and renotify. Closing a
+notification is deliberately local-only: it neither declines the invite nor
+sends an action token.
+
+On an **Accept** notification action, the service worker calls
+`clients.openWindow(meetingUri)` synchronously before starting any async work,
+then posts the supplied accept token to the response route under
+`event.waitUntil`. The worker is registered with the admin bundle's configured
+API origin in its script URL, so this token response reaches the API even when
+the admin and API have separate production origins and the SPA is not running.
+If cross-origin `openWindow` returns `null` or rejects, the worker opens the
+same-origin `/channels/:channelId?acceptCall=:callId` fallback, where the app
+can offer a real-click join. A body click is never an implied accept; it opens
+`/channels/:channelId?incomingCall=:callId` for the incoming-call dialog.
+
+A cancel push closes all displayed notifications with its matching call tag.
+Some Chromium push implementations require a notification per delivered push,
+so the worker briefly creates and immediately closes a silent one after that
+cleanup. This low-volume protocol cancellation is a valid exception to the
+platform's penalty for habitual no-show push delivery.
+
+The mobile shell keeps native call payloads internal: the normal
+`pathFromPushData` rule still accepts only Nessie paths, and a ring opens
+`/channels/:channelId?incomingCall=:callId`. It registers the server's
+`incoming-calls` category as a dedicated high-importance Android channel and
+iOS category. While the shell is alive, a versioned cancellation push locates
+presented ring notifications by call id and dismisses only their identifiers;
+it never clears every notification card to cancel one call.
 
 ## Security
 
@@ -210,7 +239,8 @@ old clients receive ordinary payload data and do not gain an external URL path.
 - **Service worker** — `admin/public/sw.js` handles the `push` event
   (`showNotification` with the payload title/body/icon and a per-channel `tag`)
   and `notificationclick` (focus an existing tab on the deep-link URL or open a
-  new one).
+  new one). Versioned incoming-call payloads additionally use the action and
+  cancellation behaviour described above.
 - **Web app manifest** — `admin/public/manifest.webmanifest` (standalone
   display, icons) makes the admin installable as a PWA, which is required for
   Web Push on iOS.
