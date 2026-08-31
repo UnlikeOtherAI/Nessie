@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  ImplementedExecutorOperationKeySchema,
+  type AuthorizedActionContext,
+  type ImplementedExecutorOperationKey,
+} from '@nessie/schemas'
 
 import {
   lockExecutorMutation,
@@ -40,7 +44,7 @@ export type ExecutorAccessChange =
   | {
       kind: 'agent_operation_grant'
       agentId: string
-      operationKey: string
+      operationKey: ImplementedExecutorOperationKey
       state: 'allowed' | 'denied'
     }
   | {
@@ -109,7 +113,7 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
   if (
     change.kind === 'agent_operation_grant'
     && typeof change.agentId === 'string'
-    && typeof change.operationKey === 'string'
+    && ImplementedExecutorOperationKeySchema.safeParse(change.operationKey).success
     && (change.state === 'allowed' || change.state === 'denied')
   ) {
     return stored as StoredAccessChange

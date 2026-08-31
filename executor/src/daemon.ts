@@ -8,6 +8,7 @@ import {
   ExecutorBrowserOpenArgumentsSchema,
   ExecutorCodingLaunchArgumentsSchema,
   ExecutorCodingObserveArgumentsSchema,
+  ImplementedExecutorOperationKeySchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
   type ExecutorCommandEnvelope,
@@ -133,6 +134,9 @@ export const executeExecutorCommand = async (
     codingSessions?: ExecutorCodingSessionManager
   } = {},
 ): Promise<Record<string, unknown>> => {
+  if (!ImplementedExecutorOperationKeySchema.safeParse(command.operationKey).success) {
+    return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
+  }
   if (new Date(command.expiresAt) <= new Date()) {
     return { code: 'EXECUTOR_COMMAND_EXPIRED', success: false }
   }

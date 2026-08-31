@@ -1,5 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  ImplementedExecutorOperationKeySchema,
+  type AuthorizedActionContext,
+  type ImplementedExecutorOperationKey,
+} from '@nessie/schemas'
 
 import {
   canManageExecutor,
@@ -238,7 +242,7 @@ export const removePrivateAssignment = async (
 export type AgentOperationGrantMutation = {
   executorId: string
   agentId: string
-  operationKey: string
+  operationKey: ImplementedExecutorOperationKey
   state: 'allowed' | 'denied'
 }
 
@@ -248,6 +252,13 @@ export const setExecutorAgentOperationGrantInTransaction = async (
   input: AgentOperationGrantMutation,
 ): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
+  const operationKey = ImplementedExecutorOperationKeySchema.safeParse(input.operationKey)
+  if (!operationKey.success) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.SCOPE_INVALID,
+      'Only implemented executor operations can be granted.',
+    )
+  }
   const actorUserId = requireHumanActor(actorContext)
   if (!actorUserId) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.SCOPE_ENTITLEMENT_DENIED, 'Human access required.')
@@ -275,13 +286,13 @@ export const setExecutorAgentOperationGrantInTransaction = async (
       executorId_agentId_operationKey: {
         executorId: executor.id,
         agentId: input.agentId,
-        operationKey: input.operationKey,
+        operationKey: operationKey.data,
       },
     },
     create: {
       executorId: executor.id,
       agentId: input.agentId,
-      operationKey: input.operationKey,
+      operationKey: operationKey.data,
       state: input.state,
       authorizationRevision,
       updatedByUserId: actorUserId,

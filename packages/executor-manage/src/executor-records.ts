@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import { ExecutorCapabilityDescriptorSchema, ExecutorScopeSchema } from '@nessie/schemas'
+import {
+  ExecutorCapabilityDescriptorSchema,
+  ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
+} from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
   ExecutorScope,
@@ -402,7 +405,7 @@ export const getExecutorAccessView = async (
         })
       : [],
     prisma.executorAgentOperationGrant.findMany({
-      where: { executorId: found.executor.id },
+      where: { executorId: found.executor.id, operationKey: { in: [...IMPLEMENTED_EXECUTOR_OPERATION_KEYS] } },
       orderBy: [{ agentId: 'asc' }, { operationKey: 'asc' }],
       select: { agentId: true, operationKey: true, state: true, updatedAt: true },
     }),

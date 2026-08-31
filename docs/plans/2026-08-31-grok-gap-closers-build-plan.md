@@ -408,7 +408,7 @@ skill, human edit/test, and execution.
 
 | Phase | Ships | Depends on | Parallelisable with |
 |-------|-------|-----------|---------------------|
-| **P0** | Honesty fix: hide/flag-off `browser.act`/`command.run` until real | — | everything |
+| **P0 — DONE** | Honesty fix: hide/flag-off `browser.act`/`command.run` until real | — | everything |
 | **P1** | Gap 1 suspend/resume core (checkpoint→`waiting_approval`→resume) | — | Gap 3 P1 capture |
 | **P2** | Gap 2 `command.run` (gated through Gap 1) | Gap 1 P1 | Gap 3 P1–P2 |
 | **P3** | Gap 1 auto-review layer | Gap 1 P1 | Gap 2 P2 |

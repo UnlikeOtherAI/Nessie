@@ -13,7 +13,7 @@ import {
   PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
-  type ExecutorOperationKey,
+  type ImplementedExecutorOperationKey,
   type ExecutorPrivateAssignment,
   type ExecutorScope,
 } from '@nessie/schemas'
@@ -123,7 +123,7 @@ export const useExecutorAvailability = () => {
   return useMutation({
     mutationFn: async (input: {
       agentId: string
-      operationKeys: ExecutorOperationKey[]
+      operationKeys: ImplementedExecutorOperationKey[]
       projectId?: string
     }) => ExecutorAvailabilityResponseSchema.parse(
       await apiClient.post('/api/executor-availability', input),
@@ -139,7 +139,7 @@ export const useLaunchExecutorRun = () => {
       agentId: string
       candidateHandle: string
       content: string
-      operationKeys: ExecutorOperationKey[]
+      operationKeys: ImplementedExecutorOperationKey[]
       threadId: string
     }) => ExecutorRunLaunchResponseSchema.parse(
       await apiClient.post(`/api/threads/${input.threadId}/executor-runs`, {

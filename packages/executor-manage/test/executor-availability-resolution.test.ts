@@ -58,6 +58,7 @@ const availabilityPrisma = (
   },
   organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
   toolRegistryEntry: {
+    deleteMany: async () => ({ count: 0 }),
     upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
       id: where.organizationId_scopeKey_toolId.toolId,
     }),

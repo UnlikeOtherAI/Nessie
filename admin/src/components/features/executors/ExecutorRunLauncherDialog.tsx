@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   type ExecutorAvailabilityCandidate,
-  type ExecutorOperationKey,
+  type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
 import type { AgentRecord } from '../../../lib/api-client'
@@ -25,7 +25,7 @@ type ExecutorRunLauncherDialogProps = {
 type OperationOption = {
   description: string
   label: string
-  operationKeys: ExecutorOperationKey[]
+  operationKeys: ImplementedExecutorOperationKey[]
   value: string
 }
 

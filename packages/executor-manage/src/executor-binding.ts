@@ -2,8 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   ExecutorCapabilityDescriptorSchema,
   ExecutorCandidateHandleSchema,
-  ExecutorOperationKeySchema,
-  type ExecutorOperationKey,
+  ImplementedExecutorOperationKeySchema,
+  type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
 import { resolveExecutorAvailability } from './availability.js'
@@ -15,12 +15,12 @@ import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 export type ExecutorBindingInput = {
   actorUserId: string
   candidateHandle: string
-  operationKey: ExecutorOperationKey
+  operationKey: ImplementedExecutorOperationKey
   runId: string
 }
 
 export type ExecutorBindingBundleInput = Omit<ExecutorBindingInput, 'operationKey'> & {
-  operationKeys: ExecutorOperationKey[]
+  operationKeys: ImplementedExecutorOperationKey[]
 }
 
 export type ExecutorBindingRecord = {
@@ -28,7 +28,7 @@ export type ExecutorBindingRecord = {
   capabilityRevision: number
   executorId: string
   fence: string
-  operationKey: ExecutorOperationKey
+  operationKey: ImplementedExecutorOperationKey
   runId: string
 }
 
@@ -36,19 +36,19 @@ const BROWSER_RUN_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
 const CODING_RUN_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
 const CODING_RUN_BUNDLE = ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'] as const
 
-const isBrowserRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+const isBrowserRunOperation = (operationKey: ImplementedExecutorOperationKey): boolean =>
   BROWSER_RUN_OPERATION_KEYS.includes(operationKey as typeof BROWSER_RUN_OPERATION_KEYS[number])
 
-const isCodingRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+const isCodingRunOperation = (operationKey: ImplementedExecutorOperationKey): boolean =>
   CODING_RUN_OPERATION_KEYS.includes(operationKey as typeof CODING_RUN_OPERATION_KEYS[number])
 
-const isIsolatedRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+const isIsolatedRunOperation = (operationKey: ImplementedExecutorOperationKey): boolean =>
   isBrowserRunOperation(operationKey) || isCodingRunOperation(operationKey)
 
 const lockBinding = async (
   tx: Prisma.TransactionClient,
   runId: string,
-  operationKey: ExecutorOperationKey,
+  operationKey: ImplementedExecutorOperationKey,
 ): Promise<void> => {
   await tx.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(
@@ -135,7 +135,7 @@ export const bindExecutorCandidateInTransaction = async (
   allowIsolatedBundle = false,
 ): Promise<ExecutorBindingRecord> => {
   const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
-  const operationKey = ExecutorOperationKeySchema.parse(input.operationKey)
+  const operationKey = ImplementedExecutorOperationKeySchema.parse(input.operationKey)
   if (isIsolatedRunOperation(operationKey) && !allowIsolatedBundle) {
     return candidateError(
       'CANDIDATE_INVALID',
@@ -348,7 +348,7 @@ export const bindExecutorCandidateBundleInTransaction = async (
   now = new Date(),
 ): Promise<ExecutorBindingRecord[]> => {
   const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
-  const operationKeys = [...new Set(input.operationKeys.map((key) => ExecutorOperationKeySchema.parse(key)))]
+  const operationKeys = [...new Set(input.operationKeys.map((key) => ImplementedExecutorOperationKeySchema.parse(key)))]
   if (operationKeys.length === 0 || operationKeys.length > 4 || operationKeys.length !== input.operationKeys.length) {
     return candidateError('CANDIDATE_INVALID', 'The executor operation bundle is invalid.')
   }

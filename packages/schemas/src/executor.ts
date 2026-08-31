@@ -113,6 +113,30 @@ export const ExecutorOperationKeySchema = z.enum([
 ])
 export type ExecutorOperationKey = z.infer<typeof ExecutorOperationKeySchema>
 
+/**
+ * The sole catalog of executor operations with a live daemon implementation.
+ * `workspace.promote` stays here because its daemon path is real, although it
+ * remains intentionally absent from the model-facing toolset: only a person
+ * can issue a reviewed promotion.
+ */
+export const IMPLEMENTED_EXECUTOR_OPERATION_KEYS = [
+  'file.list',
+  'file.read',
+  'file.write',
+  'browser.open',
+  'browser.observe',
+  'coding.launch',
+  'coding.observe',
+  'workspace.review',
+  'workspace.promote',
+  'sandbox.stop',
+] as const satisfies readonly ExecutorOperationKey[]
+export type ImplementedExecutorOperationKey =
+  (typeof IMPLEMENTED_EXECUTOR_OPERATION_KEYS)[number]
+export const ImplementedExecutorOperationKeySchema = z.enum(
+  IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
+)
+
 /** Arguments accepted by the first read-only workspace backend. */
 export const ExecutorFileListArgumentsSchema = z
   .object({
@@ -222,7 +246,7 @@ export const ExecutorAgentOperationGrantSchema = z
   .object({
     executorId: ExecutorIdSchema,
     agentId: AgentIdSchema,
-    operationKey: ExecutorOperationKeySchema,
+    operationKey: ImplementedExecutorOperationKeySchema,
     state: ExecutorAgentOperationGrantStateSchema,
     authorizationRevision: z.number().int().nonnegative(),
     updatedAt: TimestampSchema,
@@ -244,7 +268,7 @@ export const ExecutorCapabilityDescriptorSchema = z
         osMajorVersion: z.number().int().min(15),
       })
       .strict(),
-    operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({
@@ -360,7 +384,7 @@ export type ExecutorCandidateHandle = z.infer<typeof ExecutorCandidateHandleSche
 export const ExecutorAvailabilityRequestSchema = z
   .object({
     agentId: AgentIdSchema,
-    operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
     projectId: ProjectIdSchema.optional(),
     runId: RunIdSchema.optional(),
   })
@@ -372,7 +396,7 @@ export type ExecutorAvailabilityRequest = z.infer<
 export const ExecutorAvailabilityCandidateSchema = z
   .object({
     handle: ExecutorCandidateHandleSchema,
-    operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
     readiness: z.literal('ready'),
     scopeKind: ExecutorScopeKindSchema,
     expiresAt: TimestampSchema,
@@ -404,7 +428,7 @@ export type ExecutorAvailabilityResponse = z.infer<
 
 export const ExecutorRunBindRequestSchema = z.object({
   candidateHandle: ExecutorCandidateHandleSchema,
-  operationKey: ExecutorOperationKeySchema,
+  operationKey: ImplementedExecutorOperationKeySchema,
 }).strict()
 export type ExecutorRunBindRequest = z.infer<typeof ExecutorRunBindRequestSchema>
 
@@ -412,7 +436,7 @@ export const ExecutorRunBindResponseSchema = z.object({
   bindingId: ExecutorBindingIdSchema,
   capabilityRevision: z.number().int().positive(),
   fence: z.string().regex(/^\d+$/),
-  operationKey: ExecutorOperationKeySchema,
+  operationKey: ImplementedExecutorOperationKeySchema,
   runId: RunIdSchema,
 }).strict()
 export type ExecutorRunBindResponse = z.infer<typeof ExecutorRunBindResponseSchema>
@@ -425,11 +449,11 @@ export const ExecutorRunLaunchRequestSchema = z.object({
   // Every operation in this bundle is independently re-authorized and bound
   // under the same opaque candidate. This lets draft work and its read-only
   // review stay on the same COW workspace without a model selecting a machine.
-  operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(4).superRefine((value, context) => {
+  operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(4).superRefine((value, context) => {
     if (new Set(value).size !== value.length) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: 'Operation keys must be unique.' })
     }
-    const browserBundle: ExecutorOperationKey[] = [
+    const browserBundle: ImplementedExecutorOperationKey[] = [
       'browser.open',
       'browser.observe',
       'sandbox.stop',
@@ -444,7 +468,7 @@ export const ExecutorRunLaunchRequestSchema = z.object({
         message: 'Browser runs are exactly browser.open, browser.observe, and sandbox.stop.',
       })
     }
-    const codingBundle: ExecutorOperationKey[] = [
+    const codingBundle: ImplementedExecutorOperationKey[] = [
       'coding.launch',
       'coding.observe',
       'workspace.review',
@@ -494,7 +518,7 @@ export const ExecutorCommandEnvelopeSchema = z
     bindingId: ExecutorBindingIdSchema,
     bindingFence: z.string().regex(/^\d+$/),
     capabilityRevision: z.number().int().positive(),
-    operationKey: ExecutorOperationKeySchema,
+    operationKey: ImplementedExecutorOperationKeySchema,
     expiresAt: TimestampSchema,
     idempotencyKey: z.string().min(1).max(255),
     argumentDigest: Sha256DigestSchema,
@@ -575,7 +599,7 @@ export const ExecutorAccessChangeRequestSchema = z.union([
   z.object({
     kind: z.literal('agent_operation_grant'),
     agentId: AgentIdSchema,
-    operationKey: ExecutorOperationKeySchema,
+    operationKey: ImplementedExecutorOperationKeySchema,
     state: ExecutorAgentOperationGrantStateSchema,
   }).strict(),
   z.object({
@@ -666,7 +690,7 @@ export type ExecutorPrivateAssignmentResponse = z.infer<
 /** A reviewed, signed local policy proposal. The raw signature remains server-only. */
 export const ExecutorDescriptorReviewResponseSchema = z.object({
   localPolicyDigest: Sha256DigestSchema,
-  operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(100),
+  operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(100),
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
   revision: z.number().int().positive(),
@@ -707,7 +731,7 @@ export const ExecutorAccessViewResponseSchema = z.object({
   descriptorRevisions: z.array(ExecutorDescriptorReviewResponseSchema).max(20).optional(),
   operationGrants: z.array(z.object({
     agentId: AgentIdSchema,
-    operationKey: ExecutorOperationKeySchema,
+    operationKey: ImplementedExecutorOperationKeySchema,
     state: ExecutorAgentOperationGrantStateSchema,
     updatedAt: TimestampSchema,
   }).strict()).optional(),

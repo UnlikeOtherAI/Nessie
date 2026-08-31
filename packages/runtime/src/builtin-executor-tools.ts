@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 
 const UUID = { type: 'string', format: 'uuid' }
 
@@ -116,12 +117,7 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
       agentId: UUID,
       operationKey: {
         type: 'string',
-        enum: [
-          'file.list', 'file.read', 'file.write', 'command.run', 'browser.open',
-          'browser.observe', 'browser.act', 'workspace.review', 'workspace.promote', 'sandbox.stop',
-          'coding.launch', 'coding.attach', 'coding.observe', 'coding.prompt',
-          'coding.interrupt', 'coding.close',
-        ],
+        enum: [...IMPLEMENTED_EXECUTOR_OPERATION_KEYS],
       },
       state: { type: 'string', enum: ['allowed', 'denied'] },
     },

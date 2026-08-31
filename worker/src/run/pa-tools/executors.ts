@@ -8,7 +8,7 @@ import {
 } from '@nessie/executor-manage'
 import { writeAuditEntry } from '@nessie/db'
 import {
-  ExecutorOperationKeySchema,
+  ImplementedExecutorOperationKeySchema,
   parseAgentId,
   parseUserId,
   type AuthorizedActionContext,
@@ -212,8 +212,8 @@ export const runExecutorAgentAccessPrepareTool = async (
   context: BuiltinToolRuntimeContext,
   input: { agentId: unknown; executorId: unknown; operationKey: unknown; state: unknown },
 ): Promise<ToolExecutionResult> => {
-  const operationKey = ExecutorOperationKeySchema.safeParse(input.operationKey)
-  if (!operationKey.success) throw new Error('operationKey is not an executor operation.')
+  const operationKey = ImplementedExecutorOperationKeySchema.safeParse(input.operationKey)
+  if (!operationKey.success) throw new Error('operationKey is not an implemented executor operation.')
   if (input.state !== 'allowed' && input.state !== 'denied') {
     throw new Error('state must be allowed or denied.')
   }
