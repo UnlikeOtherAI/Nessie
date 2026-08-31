@@ -93,7 +93,6 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
 
 test('a shared child carrying a PA-presence principal keeps the reduced toolset', () => {
   const isPresence = isPersonalAssistantPresenceRun({
-    agentKind: 'shared',
     principalUserId: OWNER_USER_ID,
     systemChannelType: null,
   })
@@ -111,4 +110,11 @@ test('a shared child carrying a PA-presence principal keeps the reduced toolset'
     { isPersonalAssistantPresence: isPresence },
   )
   assert.equal(resolved.allowedIds.has('kb_search'), false)
+})
+
+test('a missing principal is not a PA-presence run', () => {
+  assert.equal(isPersonalAssistantPresenceRun({
+    principalUserId: undefined,
+    systemChannelType: null,
+  }), false)
 })

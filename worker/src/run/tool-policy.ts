@@ -11,12 +11,11 @@ export type AgentKind = 'personal_assistant' | 'shared'
  * so the reduced toolset follows the owner's delegated identity.
  */
 export const isPersonalAssistantPresenceRun = (input: {
-  agentKind: AgentKind
-  principalUserId: string | null
+  principalUserId?: string | null
   systemChannelType: string | null | undefined
 }): boolean =>
   input.systemChannelType !== 'personal_assistant'
-  && (input.agentKind === 'personal_assistant' || input.principalUserId !== null)
+  && input.principalUserId != null
 
 type ResolvedToolSet = {
   descriptors: ToolSchemaDescriptor[]

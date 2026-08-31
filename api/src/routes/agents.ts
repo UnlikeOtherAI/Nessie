@@ -278,7 +278,6 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         ownerUserId: true,
         provider: true,
         systemManaged: true,
-        visibility: true,
       },
     })
     if (
@@ -293,16 +292,6 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     // bound to could otherwise change its systemPrompt, toolPolicy or model —
     // a same-tenant takeover of an agent other people rely on.
     if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    if (body.ownerUserId !== undefined && existingAgent.visibility === 'private') {
-      sendApiError(
-        reply,
-        400,
-        AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,
-        'Private agents cannot be transferred. Publish the agent before transferring it.',
-      )
       return reply
     }
 
