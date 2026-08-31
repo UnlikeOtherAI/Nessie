@@ -19,6 +19,7 @@ import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { ExternalAuthCompletionPage } from './pages/ExternalAuthCompletionPage'
 import { ThreadsPage } from './pages/ThreadsPage'
 import { UnreadMessagesPage } from './pages/UnreadMessagesPage'
 import { FeedbackPage } from './pages/FeedbackPage'
@@ -26,7 +27,7 @@ import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { DashboardsPage } from './pages/DashboardsPage'
 import { DashboardDetailPage } from './pages/DashboardDetailPage'
-import { LoginPage } from './pages/LoginPage'
+import { LoginRoute } from './pages/LoginRoute'
 import { AppDetailPage } from './pages/AppDetailPage'
 import { AppsPage } from './pages/AppsPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
@@ -82,7 +83,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    element: <LoginPage />,
+    element: <LoginRoute />,
+  },
+  {
+    path: '/login/completing',
+    element: <ExternalAuthCompletionPage />,
   },
   {
     path: '/workflows',

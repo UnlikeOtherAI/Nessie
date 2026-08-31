@@ -334,6 +334,11 @@ The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the
 sign-in panel before the welcome panel, keeping hosted SSO visible without an
 initial scroll; desktop keeps the two-column welcome/sign-in order.
+On the hosted web app, UOA still returns to the byte-exact `/login?code=…`
+redirect URI, but that route immediately replaces itself with
+`/login/completing?code=…`. The dedicated **Finishing sign-in…** surface owns
+the exchange and then replaces itself with the destination, so neither the
+interactive login form nor the callback remains in browser history.
 Native SSO reports every terminal `ASWebAuthenticationSession` result back to
 that login surface. A successful deep link continues through the existing PKCE
 exchange; closing or dismissing the iOS sheet clears the pending PKCE attempt
