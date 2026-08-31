@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import {
+  AGENT_TODO_STEP_NOTE_MAX,
   type AgentTodoRecord,
   type AgentTodoTemplateRecord,
 } from '@nessie/schemas'
@@ -109,6 +110,7 @@ dbTest('template instantiation pins and copies the edited version without mutati
               title: 'Second step',
             },
           ],
+          version: template.version,
         },
         url: `/api/agents/${seed.agentId}/todo-templates/${template.id}`,
       })
@@ -176,6 +178,63 @@ dbTest('an instance refuses a template belonging to another agent', async () => 
   })
 })
 
+dbTest('an instance refuses a draft template belonging to the same agent', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const ownerApp = createAgentTodoRouteApp(prisma, seed, 'owner')
+    const memberApp = createAgentTodoRouteApp(prisma, seed, 'member')
+    try {
+      const draftTemplate = await createActiveTemplate(ownerApp, seed.agentId, {
+        ...activeTemplatePayload,
+        status: 'draft',
+      })
+      const response = await memberApp.inject({
+        method: 'POST',
+        payload: { templateId: draftTemplate.id },
+        url: `/api/agents/${seed.agentId}/todos`,
+      })
+
+      assert.equal(response.statusCode, 409)
+      assert.equal(
+        responseErrorCode(response),
+        AGENT_TODO_ERROR_CODES.TEMPLATE_UNAVAILABLE,
+      )
+    } finally {
+      await closeApps(ownerApp, memberApp)
+    }
+  })
+})
+
+dbTest('a step update refuses a note beyond the shared maximum', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const app = createAgentTodoRouteApp(prisma, seed, 'member')
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        payload: {
+          steps: [{ instructions: 'Keep working.', key: 'work', title: 'Work' }],
+          title: 'Bounded note checklist',
+        },
+        url: `/api/agents/${seed.agentId}/todos`,
+      })
+      assert.equal(created.statusCode, 201)
+      const todo = responseData<AgentTodoRecord>(created)
+
+      const response = await app.inject({
+        method: 'POST',
+        payload: {
+          note: 'x'.repeat(AGENT_TODO_STEP_NOTE_MAX + 1),
+          status: 'completed',
+        },
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}/steps/work`,
+      })
+
+      assert.equal(response.statusCode, 400)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
 dbTest('the last terminal step completes a todo even when another step failed', async () => {
   await withDatabase(async (prisma, seed) => {
     const app = createAgentTodoRouteApp(prisma, seed, 'member')
@@ -200,6 +259,10 @@ dbTest('the last terminal step completes a todo even when another step failed', 
       })
       assert.equal(failed.statusCode, 200)
       assert.equal(responseData<AgentTodoRecord>(failed).status, 'open')
+      assert.equal(
+        responseData<AgentTodoRecord>(failed).steps.find((step) => step.key === 'attempt')?.note,
+        'The action failed.',
+      )
 
       const completed = await app.inject({
         method: 'POST',
@@ -260,6 +323,7 @@ dbTest('agent writes cannot overwrite a human terminal step but a human can corr
       assert.equal(corrected.statusCode, 200)
       const current = responseData<AgentTodoRecord>(corrected)
       assert.equal(current.steps[0]?.status, 'skipped')
+      assert.equal(current.steps[0]?.note, 'Correction by the person.')
       assert.equal(current.steps[0]?.updatedByActorId, seed.memberId)
 
       const byId = await updateAgentTodoStep(prisma, {

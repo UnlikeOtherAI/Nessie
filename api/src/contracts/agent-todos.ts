@@ -1,5 +1,6 @@
 import {
   AGENT_TODO_MAX_STEPS,
+  AGENT_TODO_STEP_NOTE_MAX,
   AGENT_TODO_TEMPLATE_DESCRIPTION_MAX,
   AGENT_TODO_TEMPLATE_NAME_MAX,
   AgentTodoRecordSchema,
@@ -52,6 +53,7 @@ export const UpdateAgentTodoTemplateBodySchema = z.object({
   description: TemplateDescriptionSchema.nullable().optional(),
   name: TemplateNameSchema.optional(),
   steps: TemplateStepInputsSchema.optional(),
+  version: z.number().int().positive(),
 }).strict().refine(
   (body) =>
     body.description !== undefined
@@ -73,7 +75,7 @@ export const CreateAgentTodoBodySchema = z.union([
 ])
 
 export const UpdateAgentTodoStepBodySchema = z.object({
-  note: z.string().nullable().optional(),
+  note: z.string().max(AGENT_TODO_STEP_NOTE_MAX).nullable().optional(),
   status: AgentTodoStepStatusSchema,
 }).strict()
 

@@ -14,6 +14,7 @@ export const AGENT_TODO_MAX_STEPS = 50
 export const AGENT_TODO_STEP_KEY_MAX = 64
 export const AGENT_TODO_STEP_TITLE_MAX = 200
 export const AGENT_TODO_STEP_INSTRUCTIONS_MAX = 2_000
+export const AGENT_TODO_STEP_NOTE_MAX = 2_000
 export const AGENT_TODO_TEMPLATE_NAME_MAX = 120
 export const AGENT_TODO_TEMPLATE_DESCRIPTION_MAX = 500
 
@@ -160,7 +161,7 @@ export const AgentTodoStepRecordSchema = z.object({
   title: z.string().max(AGENT_TODO_STEP_TITLE_MAX),
   instructions: z.string().max(AGENT_TODO_STEP_INSTRUCTIONS_MAX),
   status: AgentTodoStepStatusSchema,
-  note: z.string().nullable(),
+  note: z.string().max(AGENT_TODO_STEP_NOTE_MAX).nullable(),
   updatedByActorType: AgentTodoActorTypeSchema.nullable(),
   updatedByActorId: z.string().uuid().nullable(),
   completedAt: TimestampSchema.nullable(),

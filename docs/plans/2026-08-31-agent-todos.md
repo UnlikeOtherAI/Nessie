@@ -440,6 +440,10 @@ Service functions live in `@nessie/workspace-admin` (`agent-todos.ts`) so the
 API routes and the worker's builtins call the same code — the provisioning
 mirror rule, stated before any tool ships.
 
+**Template saves are version-pinned.** The editor sends the `version` returned
+with the template; the update is conditional on that version and a stale save
+refuses with `AGENT_TODO_TEMPLATE_CHANGED` rather than replacing a newer edit.
+
 ## 5. The agent-recommends flow
 
 The agent can propose both **that** a to-do should exist and **what its steps

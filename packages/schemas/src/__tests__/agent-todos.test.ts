@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import {
   AGENT_TODO_MAX_STEPS,
+  AGENT_TODO_STEP_NOTE_MAX,
   AGENT_TODO_STEP_TITLE_MAX,
+  AgentTodoStepRecordSchema,
   AgentTodoTemplateStepsSchema,
   assignStepKeys,
 } from '../index.js'
@@ -27,6 +29,24 @@ test('AgentTodoTemplateStepsSchema rejects an over-long step title', () => {
       title: 'x'.repeat(AGENT_TODO_STEP_TITLE_MAX + 1),
     },
   ])
+
+  assert.equal(parsed.success, false)
+})
+
+test('AgentTodoStepRecordSchema rejects an over-long step note', () => {
+  const parsed = AgentTodoStepRecordSchema.safeParse({
+    completedAt: null,
+    id: 'd136b3df-1f31-4dcb-9ea8-5f44a89b74ad',
+    instructions: 'Confirm the deployment completed successfully.',
+    key: 'deployment',
+    note: 'x'.repeat(AGENT_TODO_STEP_NOTE_MAX + 1),
+    sequence: 0,
+    status: 'pending',
+    title: 'Check deployment',
+    todoId: '7c946c74-2b59-4f8b-8df2-f6f7995fea94',
+    updatedByActorId: null,
+    updatedByActorType: null,
+  })
 
   assert.equal(parsed.success, false)
 })

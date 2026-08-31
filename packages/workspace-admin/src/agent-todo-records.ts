@@ -13,6 +13,7 @@ import {
 } from '@nessie/schemas'
 
 export const agentTodoWithOrderedSteps = {
+  activeRun: { select: { threadId: true } },
   steps: { orderBy: { sequence: 'asc' as const } },
 } satisfies Prisma.AgentTodoInclude
 
@@ -34,15 +35,27 @@ export const mapAgentTodoTemplateRecord = (
 
 export const mapAgentTodoRecord = (
   row: AgentTodoWithOrderedSteps,
+  accessibleThreadIds?: ReadonlySet<string>,
 ): AgentTodoRecord =>
   AgentTodoRecordSchema.parse({
     ...row,
+    activeRunId: row.activeRunId && row.activeRun?.threadId
+      && accessibleThreadIds?.has(row.activeRun.threadId)
+      ? row.activeRunId
+      : accessibleThreadIds === undefined
+        ? row.activeRunId
+        : null,
     completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     steps: row.steps.map((step) => ({
       ...step,
       completedAt: step.completedAt?.toISOString() ?? null,
     })),
+    threadId: row.threadId && accessibleThreadIds?.has(row.threadId)
+      ? row.threadId
+      : accessibleThreadIds === undefined
+        ? row.threadId
+        : null,
     updatedAt: row.updatedAt.toISOString(),
   })
 

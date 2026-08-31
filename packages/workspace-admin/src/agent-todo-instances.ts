@@ -12,9 +12,14 @@ import {
   AgentTodoError,
 } from './agent-todo-errors.js'
 import {
+  buildAccessibleThreadWhere,
+  type AgentVisibilityScope,
+} from './agent-record.js'
+import {
   agentTodoWithOrderedSteps,
   mapAgentTodoRecord,
   prepareAgentTodoSteps,
+  type AgentTodoWithOrderedSteps,
 } from './agent-todo-records.js'
 import { acquireAgentTodoLock } from './agent-todo-lock.js'
 
@@ -23,6 +28,32 @@ type PrismaLike = PrismaClient | Prisma.TransactionClient
 type AgentTodoIdentity = {
   agentId: string
   organizationId: string
+}
+
+type AgentTodoReadInput = AgentTodoIdentity & {
+  visibility?: AgentVisibilityScope
+}
+
+const filterAgentTodoThreadLinks = async (
+  prisma: PrismaLike,
+  rows: readonly AgentTodoWithOrderedSteps[],
+  visibility: AgentVisibilityScope | undefined,
+): Promise<AgentTodoRecord[]> => {
+  if (!visibility) return rows.map((row) => mapAgentTodoRecord(row))
+
+  const threadIds = rows.flatMap((row) => [
+    ...(row.threadId ? [row.threadId] : []),
+    ...(row.activeRun?.threadId ? [row.activeRun.threadId] : []),
+  ])
+  const accessibleThreadIds = new Set((await prisma.thread.findMany({
+    select: { id: true },
+    where: {
+      ...buildAccessibleThreadWhere(visibility),
+      id: { in: threadIds },
+    },
+  })).map((thread) => thread.id))
+
+  return rows.map((row) => mapAgentTodoRecord(row, accessibleThreadIds))
 }
 
 const withTransaction = async <T>(
@@ -35,7 +66,7 @@ const withTransaction = async <T>(
 
 export const listAgentTodos = async (
   prisma: PrismaLike,
-  input: AgentTodoIdentity & { status?: AgentTodoStatus },
+  input: AgentTodoReadInput & { status?: AgentTodoStatus },
 ): Promise<AgentTodoRecord[]> => {
   const rows = await prisma.agentTodo.findMany({
     include: agentTodoWithOrderedSteps,
@@ -46,12 +77,12 @@ export const listAgentTodos = async (
       ...(input.status ? { status: input.status } : {}),
     },
   })
-  return rows.map(mapAgentTodoRecord)
+  return filterAgentTodoThreadLinks(prisma, rows, input.visibility)
 }
 
 export const getAgentTodo = async (
   prisma: PrismaLike,
-  input: AgentTodoIdentity & { todoId: string },
+  input: AgentTodoReadInput & { todoId: string },
 ): Promise<AgentTodoRecord | null> => {
   const row = await prisma.agentTodo.findFirst({
     include: agentTodoWithOrderedSteps,
@@ -61,7 +92,8 @@ export const getAgentTodo = async (
       organizationId: input.organizationId,
     },
   })
-  return row ? mapAgentTodoRecord(row) : null
+  if (!row) return null
+  return (await filterAgentTodoThreadLinks(prisma, [row], input.visibility))[0] ?? null
 }
 
 export const createAgentTodoFromTemplate = async (
@@ -140,7 +172,7 @@ export const createStandaloneAgentTodo = async (
 
 export const cancelAgentTodo = async (
   prisma: PrismaLike,
-  input: AgentTodoIdentity & { todoId: string },
+  input: AgentTodoReadInput & { todoId: string },
 ): Promise<AgentTodoRecord> =>
   withTransaction(prisma, async (tx) => {
     await acquireAgentTodoLock(tx, input.todoId)

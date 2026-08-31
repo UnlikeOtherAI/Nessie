@@ -11,6 +11,7 @@ import {
 } from './agent-todo-errors.js'
 import { getAgentTodo } from './agent-todo-instances.js'
 import { acquireAgentTodoLock } from './agent-todo-lock.js'
+import type { AgentVisibilityScope } from './agent-record.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
 
@@ -41,6 +42,7 @@ export const updateAgentTodoStep = async (
     organizationId: string
     status: AgentTodoStepStatus
     todoId: string
+    visibility?: AgentVisibilityScope
   },
 ): Promise<AgentTodoRecord> =>
   withTransaction(prisma, async (tx) => {

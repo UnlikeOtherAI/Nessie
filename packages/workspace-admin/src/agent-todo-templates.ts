@@ -8,6 +8,10 @@ import {
 } from '@nessie/schemas'
 
 import {
+  AGENT_TODO_ERROR_CODES,
+  AgentTodoError,
+} from './agent-todo-errors.js'
+import {
   mapAgentTodoTemplateRecord,
   prepareAgentTodoSteps,
   prepareEditedAgentTodoSteps,
@@ -86,6 +90,7 @@ export const updateAgentTodoTemplate = async (
     name?: string
     steps?: readonly AgentTodoTemplateStepInput[]
     templateId: string
+    version: number
   },
 ): Promise<AgentTodoTemplateRecord | null> => {
   const existing = await getAgentTodoTemplate(prisma, input)
@@ -94,7 +99,7 @@ export const updateAgentTodoTemplate = async (
   const steps = input.steps
     ? prepareEditedAgentTodoSteps(existing.steps, input.steps)
     : undefined
-  const row = await prisma.agentTodoTemplate.update({
+  const changed = await prisma.agentTodoTemplate.updateMany({
     data: {
       authorType: 'user',
       createdByUserId: input.createdByUserId,
@@ -107,9 +112,20 @@ export const updateAgentTodoTemplate = async (
       ...(steps ? { steps: steps as Prisma.InputJsonValue } : {}),
       version: { increment: 1 },
     },
-    where: { id: existing.id },
+    where: {
+      agentId: input.agentId,
+      id: existing.id,
+      organizationId: input.organizationId,
+      version: input.version,
+    },
   })
-  return mapAgentTodoTemplateRecord(row)
+  if (changed.count === 0) {
+    throw new AgentTodoError(
+      AGENT_TODO_ERROR_CODES.TEMPLATE_CHANGED,
+      'This to-do template changed before your edit could be saved. Refresh and try again.',
+    )
+  }
+  return getAgentTodoTemplate(prisma, input)
 }
 
 /**

@@ -101,6 +101,80 @@ dbTest('a bound channel member can list an agent templates and instances', async
   })
 })
 
+dbTest('to-do thread and run links are withheld from a viewer outside that thread', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const ownerApp = createAgentTodoRouteApp(prisma, seed, 'owner')
+    const memberApp = createAgentTodoRouteApp(prisma, seed, 'member')
+    try {
+      const alternateChannelId = randomUUID()
+      await prisma.channel.create({
+        data: {
+          id: alternateChannelId,
+          label: 'agent-todo-alternate-channel',
+          organizationId: seed.organizationId,
+          projectId: seed.projectId,
+          slug: `agent-todo-alternate-${alternateChannelId.slice(0, 8)}`,
+          teamId: seed.teamId,
+          visibility: 'private',
+          members: { create: { userId: seed.memberId } },
+        },
+      })
+      await prisma.agentBinding.create({
+        data: { agentId: seed.agentId, channelId: alternateChannelId },
+      })
+      await prisma.channelMember.delete({
+        where: {
+          channelId_userId: { channelId: seed.channelId, userId: seed.memberId },
+        },
+      })
+
+      const created = await memberApp.inject({
+        method: 'POST',
+        payload: {
+          steps: [{ instructions: 'Keep working.', key: 'work', title: 'Work' }],
+          title: 'Linked checklist',
+        },
+        url: `/api/agents/${seed.agentId}/todos`,
+      })
+      assert.equal(created.statusCode, 201)
+      const todo = responseData<AgentTodoRecord>(created)
+      const run = await prisma.run.create({
+        data: { agentId: seed.agentId, status: 'running', threadId: seed.threadId },
+      })
+      await prisma.agentTodo.update({
+        data: { activeRunId: run.id, threadId: seed.threadId },
+        where: { id: todo.id },
+      })
+
+      const hiddenResponse = await memberApp.inject({
+        method: 'GET',
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}`,
+      })
+      assert.equal(hiddenResponse.statusCode, 200)
+      const hidden = responseData<AgentTodoRecord>(hiddenResponse)
+      assert.equal(hidden.threadId, null)
+      assert.equal(hidden.activeRunId, null)
+
+      const hiddenList = await memberApp.inject({
+        method: 'GET',
+        url: `/api/agents/${seed.agentId}/todos`,
+      })
+      assert.equal(responseData<AgentTodoRecord[]>(hiddenList)[0]?.threadId, null)
+
+      const visibleResponse = await ownerApp.inject({
+        method: 'GET',
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}`,
+      })
+      assert.equal(visibleResponse.statusCode, 200)
+      const visible = responseData<AgentTodoRecord>(visibleResponse)
+      assert.equal(visible.threadId, seed.threadId)
+      assert.equal(visible.activeRunId, run.id)
+    } finally {
+      await closeApps(ownerApp, memberApp)
+    }
+  })
+})
+
 dbTest('an actor with no path to the agent gets AGENT_NOT_FOUND on every route', async () => {
   await withDatabase(async (prisma, seed) => {
     const app = createAgentTodoRouteApp(prisma, seed, 'outsider')

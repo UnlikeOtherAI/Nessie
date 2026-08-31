@@ -198,12 +198,18 @@ export const registerAgentTodoRoutes = (
       const body = parseInput(UpdateAgentTodoTemplateBodySchema, request.body, reply)
       if (!body) return reply
 
-      const template = await updateAgentTodoTemplate(deps.prisma, {
-        ...agent,
-        ...body,
-        createdByUserId: actorContext.actor.actorId,
-        templateId: params.templateId,
-      })
+      let template
+      try {
+        template = await updateAgentTodoTemplate(deps.prisma, {
+          ...agent,
+          ...body,
+          createdByUserId: actorContext.actor.actorId,
+          templateId: params.templateId,
+        })
+      } catch (error) {
+        if (sendAgentTodoError(reply, error)) return reply
+        throw error
+      }
       if (!template) {
         sendApiError(
           reply,
@@ -265,7 +271,11 @@ export const registerAgentTodoRoutes = (
     )
     if (!query) return reply
 
-    const todos = await listAgentTodos(deps.prisma, { ...agent, status: query.status })
+    const todos = await listAgentTodos(deps.prisma, {
+      ...agent,
+      status: query.status,
+      visibility: deps.createAgentVisibilityScope(actorContext),
+    })
     return createApiResponse(AgentTodoRecordSchema.array().parse(todos))
   })
 
@@ -307,7 +317,11 @@ export const registerAgentTodoRoutes = (
     const agent = await loadAvailableAgent(deps, actorContext, params.agentId, reply)
     if (!agent) return reply
 
-    const todo = await getAgentTodo(deps.prisma, { ...agent, todoId: params.todoId })
+    const todo = await getAgentTodo(deps.prisma, {
+      ...agent,
+      todoId: params.todoId,
+      visibility: deps.createAgentVisibilityScope(actorContext),
+    })
     if (!todo) {
       sendApiError(reply, 404, AGENT_TODO_ERROR_CODES.NOT_FOUND, 'To-do not found.')
       return reply
@@ -341,6 +355,7 @@ export const registerAgentTodoRoutes = (
           actor: { id: actorContext.actor.actorId, type: 'user' },
           key: params.stepKey,
           todoId: params.todoId,
+          visibility: deps.createAgentVisibilityScope(actorContext),
         })
         return createApiResponse(AgentTodoRecordSchema.parse(todo))
       } catch (error) {
@@ -370,6 +385,7 @@ export const registerAgentTodoRoutes = (
       const todo = await cancelAgentTodo(deps.prisma, {
         ...agent,
         todoId: params.todoId,
+        visibility: deps.createAgentVisibilityScope(actorContext),
       })
       return createApiResponse(AgentTodoRecordSchema.parse(todo))
     } catch (error) {

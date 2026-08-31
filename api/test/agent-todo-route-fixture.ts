@@ -177,6 +177,11 @@ export const createAgentTodoRouteApp = (
   const actorContext = actorContextFor(seed, actor)
   const app = Fastify({ logger: false })
   registerAgentTodoRoutes(app, {
+    createAgentVisibilityScope: (context) => ({
+      includeAllOrgChannels: context.actor.roles?.includes('owner') ?? false,
+      organizationId: context.tenant.organizationId,
+      userId: context.actor.actorId,
+    }),
     isAgentAccessibleToActor: (context, agentId) =>
       isAgentAccessibleToActor(prisma, context, agentId),
     prisma,
