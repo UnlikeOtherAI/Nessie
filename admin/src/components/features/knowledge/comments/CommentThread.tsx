@@ -19,6 +19,7 @@ type RowProps = {
   token: string | null
   resolveAuthor: AuthorResolver
   actions: AnnotationActions
+  canWrite: boolean
   topLevel: boolean
   onReply: () => void
 }
@@ -31,6 +32,7 @@ const CommentRow = ({
   token,
   resolveAuthor,
   actions,
+  canWrite,
   topLevel,
   onReply,
 }: RowProps) => {
@@ -99,7 +101,8 @@ const CommentRow = ({
           <p className="whitespace-pre-wrap text-sm text-[color:var(--tx)]">{annotation.body}</p>
         )}
         <CommentActions
-          canModify={isOwn}
+          canInteract={canWrite}
+          canModify={canWrite && isOwn}
           currentUserId={currentUserId}
           onDelete={() => actions.remove(annotation.id)}
           onEdit={() => setEditing(true)}
@@ -120,6 +123,7 @@ type CommentThreadProps = {
   currentUserId?: string
   authorLabel: AuthorResolver
   actions: AnnotationActions
+  canWrite: boolean
   showAnchorQuote?: boolean
 }
 
@@ -129,6 +133,7 @@ export const CommentThread = ({
   currentUserId,
   authorLabel,
   actions,
+  canWrite,
   showAnchorQuote,
 }: CommentThreadProps) => {
   const { token } = useAuthSession()
@@ -147,6 +152,7 @@ export const CommentThread = ({
       <CommentRow
         actions={actions}
         annotation={annotation}
+        canWrite={canWrite}
         currentUserId={currentUserId}
         onReply={() => setReplying((value) => !value)}
         resolveAuthor={authorLabel}
@@ -159,6 +165,7 @@ export const CommentThread = ({
             <CommentRow
               actions={actions}
               annotation={reply}
+              canWrite={canWrite}
               currentUserId={currentUserId}
               key={reply.id}
               onReply={() => setReplying(true)}
@@ -169,7 +176,7 @@ export const CommentThread = ({
           ))}
         </div>
       ) : null}
-      {replying ? (
+      {canWrite && replying ? (
         <div className="px-5 py-2" onClick={stop}>
           <CommentComposer
             autoFocus

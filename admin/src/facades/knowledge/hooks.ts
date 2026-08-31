@@ -22,6 +22,7 @@ export type KnowledgePageKind = 'document' | 'file'
 
 export type KnowledgeSpaceRecord = {
   id: string
+  ownerAgentId: string | null
   name: string
   description: string | null
   // Server-set space metadata. `personal: true` marks the caller's own
@@ -30,6 +31,8 @@ export type KnowledgeSpaceRecord = {
   projectId: string
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  writeRestricted: boolean
+  canWrite: boolean
   memberUserIds: string[]
   memberAgentIds: string[]
   sourceRef: string
@@ -75,6 +78,8 @@ export type UpdateSpaceInput = {
   name?: string
   description?: string | null
   memberAgentIds?: string[]
+  memberUserIds?: string[]
+  writeRestricted?: boolean
 }
 
 export type SavePageInput = {
@@ -104,13 +109,24 @@ const invalidateKnowledge = (
 // Org-wide by default (the Knowledge section). Pass a projectId for a
 // project's own Documents tab: the API narrows the list to that project on top
 // of the caller's per-space read access.
-export const useKnowledgeSpaces = (projectId?: string) => {
+export const useKnowledgeSpaces = (projectId?: string, enabled = true) => {
   const apiClient = useApiClient()
   const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
 
   return useQuery<KnowledgeSpaceRecord[]>({
+    enabled,
     queryKey: knowledgeKeys.scopedSpaces(projectId),
     queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
+  })
+}
+
+export const useKnowledgeSpace = (spaceId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<KnowledgeSpaceRecord>({
+    enabled: Boolean(spaceId),
+    queryKey: knowledgeKeys.space(spaceId),
+    queryFn: () => apiClient.get(`/api/knowledge-base/spaces/${spaceId}`),
   })
 }
 

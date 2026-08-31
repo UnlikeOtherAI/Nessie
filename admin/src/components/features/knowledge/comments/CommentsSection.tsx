@@ -13,9 +13,11 @@ import { useAnnotationAuthors } from './useAnnotationAuthors'
 // list of comments, newest first. Notes (text-anchored) are rendered inline in
 // the reader, not here.
 export const CommentsSection = ({
+  canWrite,
   composerRef,
   pageId,
 }: {
+  canWrite: boolean
   composerRef?: RefObject<HTMLTextAreaElement | null>
   pageId: string
 }) => {
@@ -31,7 +33,7 @@ export const CommentsSection = ({
       <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
         Comments
       </h2>
-      <div className="mt-3">
+      {canWrite ? <div className="mt-3">
         <CommentComposer
           onSubmit={(body) => createComment.mutateAsync({ body })}
           pending={createComment.isPending}
@@ -39,7 +41,7 @@ export const CommentsSection = ({
           submitLabel="Comment"
           textareaRef={composerRef}
         />
-      </div>
+      </div> : null}
       <div className="mt-4 flex flex-col gap-3">
         {comments.length === 0 ? (
           <p className="text-sm text-[color:var(--tx3)]">No comments yet.</p>
@@ -49,6 +51,7 @@ export const CommentsSection = ({
               actions={actions}
               annotation={comment}
               authorLabel={authorLabel}
+              canWrite={canWrite}
               currentUserId={me?.user.id}
               key={comment.id}
             />

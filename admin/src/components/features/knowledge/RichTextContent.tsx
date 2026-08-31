@@ -15,6 +15,7 @@ import { WidgetEmbedReading } from './widget-embed/WidgetEmbedView'
 export type SelectionPoint = { top: number; left: number }
 
 type RichTextContentProps = {
+  canCreate?: boolean
   html: string
   notes?: NoteAnchorInput[]
   onNoteHover?: (id: string) => void
@@ -27,6 +28,7 @@ type RichTextContentProps = {
 // are supplied it also paints inline highlights and reports hover / new-selection
 // so the reader can anchor comments to a passage.
 export const RichTextContent = ({
+  canCreate = true,
   html,
   notes,
   onNoteHover,
@@ -110,7 +112,7 @@ export const RichTextContent = ({
       return
     }
     const unresolvedEl = target.closest('[data-kb-unresolved-title]')
-    if (unresolvedEl) {
+    if (canCreate && unresolvedEl) {
       const title = unresolvedEl.getAttribute('data-kb-unresolved-title')
       if (title) {
         const rect = unresolvedEl.getBoundingClientRect()
@@ -122,7 +124,7 @@ export const RichTextContent = ({
   return (
     <div onClick={handleClick} onFocus={handleFocus} onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
       <EditorContent editor={editor} />
-      {confirmCreate ? (
+      {canCreate && confirmCreate ? (
         <WikilinkCreateConfirm
           at={confirmCreate.at}
           onCancel={cancelCreate}

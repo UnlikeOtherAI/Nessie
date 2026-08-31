@@ -79,3 +79,12 @@ export const AgentChildSchema = z.object({
   createdAt: TimestampSchema,
 })
 export type AgentChild = z.infer<typeof AgentChildSchema>
+
+export const AgentDocumentsResponseSchema = z.object({
+  space: z.object({
+    id: z.string().uuid(),
+    name: NonEmptyStringSchema,
+    canWrite: z.boolean(),
+  }).nullable(),
+})
+export type AgentDocumentsResponse = z.infer<typeof AgentDocumentsResponseSchema>
