@@ -1640,19 +1640,26 @@ a {
 /* Agents list table: zebra striping over the row-hover highlight. The `:hover`
    rule follows `:nth-child(even)` at equal specificity so it always wins for the
    hovered row; both reference theme tokens so every theme picks them up. */
-.agents-table tbody tr {
+/* Zebra striping, hover and focus for every dense data table in the admin.
+   `.agents-table` is the original name; `.admin-table` is the generic alias so
+   a new table reuses these rules instead of forking a look-alike. */
+.agents-table tbody tr,
+.admin-table tbody tr {
   transition: background var(--duration-fast) var(--easing-standard);
 }
 
-.agents-table tbody tr:nth-child(even) {
+.agents-table tbody tr:nth-child(even),
+.admin-table tbody tr:nth-child(even) {
   background: var(--panel);
 }
 
-.agents-table tbody tr:hover {
+.agents-table tbody tr:hover,
+.admin-table tbody tr:hover {
   background: var(--main-hover);
 }
 
-.agents-table tbody tr:focus-visible {
+.agents-table tbody tr:focus-visible,
+.admin-table tbody tr:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -1923,6 +1930,13 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx);
   outline: none;
   padding: 10px 12px;
+}
+
+/* Dense variant for controls inside a table row. It must come after
+   `.admin-input` so its padding wins — a Tailwind `py-*` utility does not,
+   which silently clips a select's text to a few pixels. */
+.admin-input-sm {
+  padding: 4px 8px;
 }
 
 .admin-input::placeholder {

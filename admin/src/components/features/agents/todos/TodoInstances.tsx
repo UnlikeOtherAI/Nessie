@@ -114,7 +114,18 @@ export const TodoInstances = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select aria-label="Channel for Run now" className="admin-input min-w-48" value={runChannelId} onChange={(event) => setRunChannelId(event.target.value)}>
+          {/* An empty picker reads as a broken control, so when the agent is
+              bound nowhere the select says why instead of rendering blank. */}
+          <select
+            aria-label="Channel for Run now"
+            className="admin-input min-w-48"
+            disabled={runnableChannels.length === 0}
+            onChange={(event) => setRunChannelId(event.target.value)}
+            value={runChannelId}
+          >
+            {runnableChannels.length === 0 ? (
+              <option value="">No channel — bind this agent to one first</option>
+            ) : null}
             {runnableChannels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.label}</option>)}
           </select>
           <select

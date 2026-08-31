@@ -312,14 +312,21 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
     renderTodoCard(unrelatedUserId, true),
   ]) {
     assert.match(markup, /Cancel to-do/)
-    assert.match(markup, />completed<\/button>/)
+    // An entitled viewer gets a real status control offering every status. The
+    // control is a select rather than a row of buttons, so assert the
+    // capability (a labelled picker carrying the statuses), not the element.
+    assert.match(markup, /<select[^>]*aria-label="Status for step 1/)
+    assert.match(markup, /<option value="completed">completed<\/option>/)
   }
 
   const unrelated = renderTodoCard(unrelatedUserId, false)
-  assert.match(unrelated, /This step has not been changed yet\./)
+  assert.match(unrelated, /not changed yet/)
+  // The copy bug this file was written for: a step nobody has touched must
+  // never render the fallback word inside the "Last changed by" sentence.
   assert.doesNotMatch(unrelated, /Last changed by not yet changed/)
   assert.doesNotMatch(unrelated, /Cancel to-do/)
-  assert.doesNotMatch(unrelated, />completed<\/button>/)
+  // A viewer who may not change the to-do gets no status control at all.
+  assert.doesNotMatch(unrelated, /<select/)
 })
 
 test('agent proposals show their review state and owner-only resolve controls', () => {
