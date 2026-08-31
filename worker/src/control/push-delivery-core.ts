@@ -284,6 +284,7 @@ type NativeDeliveryInput = {
   messageId: string | null
   surface: PushSurfaceTarget
   now: () => Date
+  bypassSurfaceSuppression: boolean
 }
 
 /**
@@ -310,7 +311,7 @@ const deliverNativeTokens = async (
   const checkedRecipients = new Set<string>()
   const recipientsViewingTarget = new Set<string>()
   for (const token of tokens) {
-    if (!checkedRecipients.has(token.userId)) {
+    if (!input.bypassSurfaceSuppression && !checkedRecipients.has(token.userId)) {
       checkedRecipients.add(token.userId)
       const viewers = await findRecipientsViewingPushSurface(input.prisma, {
         now: input.now(),
@@ -320,7 +321,7 @@ const deliverNativeTokens = async (
       })
       for (const viewer of viewers) recipientsViewingTarget.add(viewer)
     }
-    if (recipientsViewingTarget.has(token.userId)) {
+    if (!input.bypassSurfaceSuppression && recipientsViewingTarget.has(token.userId)) {
       continue
     }
     let outcome: PushSendOutcome | null = null
@@ -394,6 +395,8 @@ export type DeliverToRecipientsInput = {
   senders?: PushSenders
   retryDelayMs: (completedAttempt: number) => number
   payload: PushPayload
+  /** Optional browser-only framing; calls must not put their meeting URI in native payloads. */
+  webPayload?: PushPayload
   /** The pre-filtered recipient user ids (preferences already applied). */
   recipientIds: string[]
   organizationId: string
@@ -405,6 +408,8 @@ export type DeliverToRecipientsInput = {
   now: () => Date
   /** Optional source message; null for non-message notifications. */
   messageId?: string | null
+  /** Rings every device, including devices already viewing the destination. */
+  bypassSurfaceSuppression?: boolean
 }
 
 /**
@@ -418,12 +423,14 @@ export const deliverToRecipients = async (
   if (input.recipientIds.length === 0) {
     return summary
   }
-  const recipientsViewingTarget = await findRecipientsViewingPushSurface(input.prisma, {
-    now: input.now(),
-    organizationId: input.organizationId,
-    recipientIds: input.recipientIds,
-    surface: input.surface,
-  })
+  const recipientsViewingTarget = input.bypassSurfaceSuppression
+    ? new Set<string>()
+    : await findRecipientsViewingPushSurface(input.prisma, {
+      now: input.now(),
+      organizationId: input.organizationId,
+      recipientIds: input.recipientIds,
+      surface: input.surface,
+    })
   const recipientIds = input.recipientIds.filter((id) => !recipientsViewingTarget.has(id))
   if (recipientIds.length === 0) {
     return summary
@@ -444,6 +451,7 @@ export const deliverToRecipients = async (
       messageId,
       surface: input.surface,
       now: input.now,
+      bypassSurfaceSuppression: input.bypassSurfaceSuppression ?? false,
     })
     summary.sent += native.summary.sent
     summary.failed += native.summary.failed
@@ -451,12 +459,14 @@ export const deliverToRecipients = async (
   }
 
   if (input.webPush) {
-    const recipientsViewingTarget = await findRecipientsViewingPushSurface(input.prisma, {
-      now: input.now(),
-      organizationId: input.organizationId,
-      recipientIds,
-      surface: input.surface,
-    })
+    const recipientsViewingTarget = input.bypassSurfaceSuppression
+      ? new Set<string>()
+      : await findRecipientsViewingPushSurface(input.prisma, {
+        now: input.now(),
+        organizationId: input.organizationId,
+        recipientIds,
+        surface: input.surface,
+      })
     const webRecipientIds = recipientIds.filter((id) => !recipientsViewingTarget.has(id))
     if (webRecipientIds.length === 0) {
       return summary
@@ -465,7 +475,7 @@ export const deliverToRecipients = async (
       prisma: input.prisma,
       creds: input.webPush,
       recipientIds: webRecipientIds,
-      payload: input.payload,
+      payload: input.webPayload ?? input.payload,
       organizationId: input.organizationId,
       messageId,
       deepLinkUrl: input.deepLinkUrl,
