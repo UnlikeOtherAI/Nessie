@@ -1,6 +1,7 @@
 # Agent to-dos — checklists, SOPs, and runbooks per agent
 
-**Status:** discovery + design for review — no code changes.
+**Status:** finalised design — all open questions decided 2026-08-31 (§11);
+ready to build along the phases in §10. No code changes in this doc.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round
@@ -224,7 +225,8 @@ Decisions folded into that shape:
   needs per-step status, actor attribution and timestamps — that is row
   territory (the `PlanStep` precedent). The step schema lives in
   `packages/schemas/src/agent-todos.ts` (`{ key, title, instructions }`,
-  ≥1 step, bounded count and lengths) so API validation, the worker's prompt
+  1–50 steps, title ≤ 200 / instructions ≤ 2,000 chars — §11 pins every
+  bound) so API validation, the worker's prompt
   assembly, and the admin editor share one contract — the
   `EMBEDDING_DIMENSIONS` "state it once" discipline.
 - **Instances pin the template version and copy the steps.** Editing a
@@ -278,7 +280,7 @@ Decisions folded into that shape:
    to-do whose steps all terminated with some `failed` **is `completed`,
    with the failures visible** on the card and in the rows — holding it open
    forever would be the dishonest state; whether a failure additionally
-   *alerts* anyone is open question 4. A run ending with steps still
+   *alerts* anyone is decided in §11.4 (no new alert kind in v1). A run ending with steps still
    `pending` leaves the to-do honestly `open` (or `running` → back to `open`
    when `activeRunId` clears); nothing auto-ticks.
 4. Step transitions are guarded, not last-writer-wins: an agent write is a
@@ -460,8 +462,9 @@ should be** — following `kb_publish_request` piece for piece:
      material — a person should author this template, or ask me again in a
      clean conversation"). Over-restrictive by design, the search-fails-
      closed posture; refine later if it bites.
-   - **A structural proposal cap** — at most `N` pending agent proposals per
-     agent (the `MAX_ACTIVE_SCHEDULES = 25` precedent), refused in words
+   - **A structural proposal cap** — at most 10 pending agent proposals per
+     agent (`NESSIE_MAX_PENDING_TODO_PROPOSALS`; the `MAX_ACTIVE_SCHEDULES`
+     precedent), refused in words
      beyond it. Same-draft dedupe alone cannot stop *equivalent* re-proposals
      (each call mints a fresh template id); the cap bounds the blast radius
      structurally, and the prompt block's pending/rejected-drafts facts (§3)
@@ -564,8 +567,9 @@ is an `AgentTrigger` whose config carries `todoTemplateId`:
   instance, honestly (running the same checklist twice back-to-back is
   noise, and the delivery rows still record every fire). Uncoalesced fires
   are each a fresh instance — a Monday checklist half-done on Tuesday stays
-  visible as its own honest record; next Monday starts clean (rollover is an
-  open question, §10).
+  visible as its own honest record; next Monday starts clean — no rollover,
+  no auto-cancel; the kickoff names still-open same-template instances as
+  structural facts and adoption stays the model's call (§11.3).
 - A template cannot be archived, and `todosEnabled` cannot be switched off,
   while any referencing trigger has **`enabled: true`** — the exact
   predicate, not "active": an `enabled` trigger in `needs_reauthorization`
@@ -674,35 +678,63 @@ adoption, and the progress card could not record deterministic progress, which
 is the feature's whole claim. Order is therefore 1 → 2 → {3, 4} in either
 order.
 
-## 11. Open questions (flagged, not guessed)
+## 11. Decisions (previously open questions — all resolved 2026-08-31)
 
-1. **Instance-creation floor.** v1 says any member who can see the agent may
-   instantiate and Run (they could ask the agent in chat anyway). Should
-   Run-now be narrower than instantiate-for-tracking?
-2. **Steward editing rights.** Template editing widens from org owner to
-   `ownerUserId` when people-and-their-agents phase 3's entitlement decision
-   lands. Confirm to-dos ride that decision rather than pre-empting it.
-3. **Scheduled-instance rollover.** Each fire creates a fresh instance;
-   should an unfinished previous instance auto-cancel, roll its unfinished
-   steps forward, or just accumulate as honest history (current design)?
-   Decide after real use; accumulation is the no-magic default.
-4. **Failed steps — alerting only.** A to-do whose steps all terminated with
-   failures among them is `completed` with the failures visible (§2.3).
-   Should a failure additionally raise anything (a mention-style alert to
-   the instantiator?), or is the progress card + unread state enough in v1?
-5. **Convergence with Playbooks.** If Stage 2 of workflows lands
-   `invoke_workflow`, a to-do step saying "run Playbook X" becomes natural.
-   That is the sanctioned crossing point — a step that *references* a
-   Playbook — and should be designed then, not now.
-6. **Proposal breadth.** Should the agent also be able to propose *edits* to
-   an existing active template (a step diff), or only new templates in v1?
-   Proposed: new-only; an edit proposal reuses the same draft+approval shape
-   later.
-7. **Should a run auto-adopt an open scheduled instance?** When a schedule
-   fires and last week's instance is still open, the new run today ignores
-   it (fresh instance per fire, §6). Should the kickoff instead mention the
-   still-open one so the model can decide to finish it first? Structural
-   fact injection is cheap; decide with question 3.
+1. **Instance-creation floor: one member-level rule, no narrowing.** Any
+   active member who passes the agent gate may instantiate, Run now, and tick
+   per the §4 table. Run-now is not narrower than instantiate — the person
+   could ask the agent the same thing in chat, and its channel constraint
+   (bound + caller membership) already contains where it can post. Two tiers
+   of "may start this checklist" would be a distinction no other agent
+   interaction draws.
+2. **Steward editing rights ride people-and-their-agents phase 3.** Template
+   writes are org-owner in v1, exactly the Designer's gate, and widen to
+   `ownerUserId` in the same change that widens the Designer — never before,
+   never separately. To-dos add no entitlement of their own.
+3. **Scheduled instances accumulate; no rollover, no auto-cancel, no
+   auto-adopt.** Each uncoalesced fire is a fresh instance and unfinished ones
+   stand as honest history. The only assist is structural: when a scheduled
+   kickoff finds still-open instances of the same template, their ids and
+   ages are included as facts in the kickoff prompt, and whether to finish
+   one first (`todo_start` adopting it) or start fresh is the model's
+   judgement. Nothing silently cancels or merges a person's half-ticked
+   checklist.
+4. **Failed steps raise no new alert kind in v1.** The progress card, the
+   run's own reply, and the unread state carry the signal; a to-do completing
+   with failures is visible wherever the work happened. A dedicated alert is
+   added only if real use shows failures going unseen — the alert-kind
+   machinery (`UserAlert` + `user_alerts` dedupe) is ready when that day
+   comes.
+5. **Playbooks convergence is deferred to workflows Stage 2.** The sanctioned
+   crossing point is a to-do step that *references* a Playbook via
+   `invoke_workflow` when that lands; to-dos grow no typed steps, guards, or
+   branching before then, and the Designer's template editor links to the
+   workflow designer for work that needs them.
+6. **Proposals are new-templates-only in v1.** An agent cannot propose edits
+   to an active template; the edit-proposal flow (a step diff through the
+   same draft+approval shape) is future work, taken up when proposals prove
+   themselves.
+7. **Cancel semantics are as specified in §2.2** — creator or org owner
+   cancels; the run is never touched; the next agent step-write refuses in
+   words against live state.
+
+### Pinned bounds (defaults; schema constants unless marked env)
+
+| Bound | Value | Where |
+|---|---|---|
+| Steps per template | 1–50 | `AgentTodoTemplateStepsSchema` (`@nessie/schemas`) |
+| Step title / instructions length | ≤ 200 / ≤ 2,000 chars | same schema |
+| Template name / description | ≤ 120 / ≤ 500 chars | same schema |
+| Prompt block: active templates listed | 20, newest-first + "and N more" | worker prompt assembly |
+| Prompt block: open instances listed | 10, newest-first + "and N more" | worker prompt assembly |
+| Prompt block: own proposal drafts listed | 5, newest-first | worker prompt assembly |
+| Pending agent proposals per agent | 10 (`NESSIE_MAX_PENDING_TODO_PROPOSALS`, env) | proposal tool |
+| Proposal approval expiry | 7 days (`PENDING_APPROVAL_EXPIRY_MS` precedent) | proposal tool |
+
+Schema-shape bounds are constants stated once in
+`packages/schemas/src/agent-todos.ts` (the `EMBEDDING_DIMENSIONS` discipline);
+only the proposal cap is deployment-tunable, because it is a behavioural
+heuristic rather than a contract.
 
 ## Cross-model review — kimix and Codex Sol
 
