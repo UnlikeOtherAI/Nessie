@@ -4,7 +4,20 @@
  * callers must first check `isWebPushSupported()`.
  */
 
+import { getBaseUrl } from './api-client'
+
 const SERVICE_WORKER_URL = '/sw.js'
+
+/**
+ * The worker receives push while the SPA is not running, so its response-token
+ * fetch must retain the admin bundle's API origin in the worker script URL.
+ */
+export const serviceWorkerUrl = (): string => {
+  const apiBaseUrl = getBaseUrl()
+  return apiBaseUrl
+    ? `${SERVICE_WORKER_URL}?apiBase=${encodeURIComponent(apiBaseUrl)}`
+    : SERVICE_WORKER_URL
+}
 
 /** True when this browser exposes the full service-worker + push + permission stack. */
 export const isWebPushSupported = (): boolean =>
@@ -33,11 +46,7 @@ export const getRegistration = (): Promise<ServiceWorkerRegistration | undefined
 
 /** Resolve to a ready registration, registering the worker first if needed. */
 export const ensureRegistered = async (): Promise<ServiceWorkerRegistration> => {
-  const existing = await getRegistration()
-  if (existing) {
-    return navigator.serviceWorker.ready
-  }
-  await navigator.serviceWorker.register(SERVICE_WORKER_URL)
+  await navigator.serviceWorker.register(serviceWorkerUrl())
   return navigator.serviceWorker.ready
 }
 

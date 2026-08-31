@@ -215,6 +215,16 @@ lives in `mobile/src/config.ts`:
 Update the dev branch of `ADMIN_URL` to your Mac's LAN IP before building. The
 old native app (login/channels screens) is archived at `archive/mobile-native`.
 
+**External call links.** The mobile shell keeps its WebView on the configured
+admin origin. Top-level links to Google Meet and Microsoft Teams open in the
+system browser, as do Jitsi links for the shell's own
+`EXPO_PUBLIC_JITSI_DOMAIN` configuration (default: `meet.jit.si`). Set that
+build-time variable to the same hostname and optional port as
+`NESSIE_JITSI_DOMAIN` for a self-hosted Jitsi deployment; it is deliberately
+not accepted from the hosted admin page. Other non-Nessie top-level origins are
+blocked rather than treated as generic external links, while embedded content
+continues to load normally.
+
 **Navigation bridge.** Neither tab surface hosts separate WebViews — each drives
 the single WebView via the postMessage bridge. Tapping a tab calls
 `window.__nessieNavigate(path)` in the SPA; the SPA reports route changes back as
