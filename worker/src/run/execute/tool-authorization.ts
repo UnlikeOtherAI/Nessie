@@ -30,8 +30,9 @@ export type ToolAuthorizationContext = {
   allowedToolIds: Set<string>
   /**
    * Names dispatched outside the builtin registry (MCP views, the executor
-   * toolset). The registry/grant gate only judges registered builtin ids —
-   * external names skip it and still pass the policy/approval evaluation.
+   * toolset, and worker-owned meta tools such as `tool_spec`). The
+   * registry/grant gate only judges registered builtin ids — external names
+   * skip it and still pass the policy/approval evaluation.
    */
   externalToolNames?: Set<string>
   parentAgentId: string | null

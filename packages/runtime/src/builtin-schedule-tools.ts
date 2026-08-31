@@ -2,6 +2,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'schedule_task',
+  summary: 'Schedule this agent to run a task once or repeatedly.',
   label: 'Schedule Task',
   description:
     'Schedule yourself to run a task later — once, on a recurring cron schedule, ' +
@@ -80,6 +81,7 @@ export const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const LIST_SCHEDULED_TASKS_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'list_scheduled_tasks',
+  summary: 'List scheduled tasks created for the current user.',
   label: 'List Scheduled Tasks',
   description:
     'List the scheduled tasks you have created for the current user, including ' +
@@ -93,6 +95,7 @@ export const LIST_SCHEDULED_TASKS_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CANCEL_SCHEDULED_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'cancel_scheduled_task',
+  summary: 'Disable a scheduled task by its ID or name.',
   label: 'Cancel Scheduled Task',
   description:
     'Cancel (disable) a previously scheduled task by its id or name so it stops ' +
