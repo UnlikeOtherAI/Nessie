@@ -16,6 +16,14 @@ type AppCategorySectionProps = {
   onToggleExpanded: () => void
   pageSize: number
   section: AppCategorySectionModel
+  /**
+   * This category *is* the page, because the toolbar is narrowed to it. It then
+   * renders as a bare grid: no heading, because the dropdown directly above
+   * already reads "Communication (150)" and repeating it 40px lower says
+   * nothing new; no two-row cap and no "Show all", because collapsing the only
+   * thing on the page back to two rows is not a move anybody wants.
+   */
+  standalone?: boolean
 }
 
 export const appCategorySectionId = (category: string): string => `apps-category-${category}`
@@ -41,53 +49,60 @@ export const AppCategorySection = ({
   onToggleExpanded,
   pageSize,
   section,
+  standalone = false,
 }: AppCategorySectionProps) => {
+  // Narrowed to this one category, the shelf *is* the page, so it starts open
+  // and keeps paging: a person who picked "Communication" asked for all 150,
+  // not for two rows of them.
+  const open = standalone || expanded
   const partial = section.total > section.apps.length
   const pages = useAppCategoryPages({
     category: section.category,
-    enabled: expanded && partial,
+    enabled: open && partial,
     installed,
   })
 
   const loaded = pages.data?.pages.flatMap((page) => page.apps) ?? []
   // Until the first page lands the shelf stays on screen: replacing it with a
   // spinner would make "Show all" read as "clear the section".
-  const visible = expanded && loaded.length > 0
+  const visible = open && loaded.length > 0
     ? loaded
-    : sectionVisibleApps(section, pageSize, expanded)
+    : sectionVisibleApps(section, pageSize, open)
 
   return (
     <section
       // The sticky bar sits over the top of the page, and it is taller on
       // phone where the filter row stacks under the search field.
-      className="mt-10 scroll-mt-32 lg:scroll-mt-20"
+      className={standalone ? 'mt-6' : 'mt-10 scroll-mt-32 lg:scroll-mt-20'}
       data-testid={`app-category-section-${section.category}`}
       id={appCategorySectionId(section.category)}
     >
-      <div className="mb-4 flex items-baseline justify-between gap-4">
-        <h2 className="flex items-baseline gap-2 text-base font-semibold text-[color:var(--tx)]">
-          {section.label}
-          <span className="text-sm font-normal text-[color:var(--tx3)]">
-            ({section.total})
-          </span>
-        </h2>
-        {sectionOffersShowAll(section, pageSize) ? (
-          <button
-            className="text-[color:var(--accent)] hover:text-[color:var(--accent-hover)]"
-            data-testid={`app-category-toggle-${section.category}`}
-            onClick={onToggleExpanded}
-            type="button"
-          >
-            <span className="text-xs font-medium">{sectionToggleLabel(section, expanded)}</span>
-          </button>
-        ) : null}
-      </div>
+      {standalone ? null : (
+        <div className="mb-4 flex items-baseline justify-between gap-4">
+          <h2 className="flex items-baseline gap-2 text-base font-semibold text-[color:var(--tx)]">
+            {section.label}
+            <span className="text-sm font-normal text-[color:var(--tx3)]">
+              ({section.total})
+            </span>
+          </h2>
+          {sectionOffersShowAll(section, pageSize) ? (
+            <button
+              className="text-[color:var(--accent)] hover:text-[color:var(--accent-hover)]"
+              data-testid={`app-category-toggle-${section.category}`}
+              onClick={onToggleExpanded}
+              type="button"
+            >
+              <span className="text-xs font-medium">{sectionToggleLabel(section, expanded)}</span>
+            </button>
+          ) : null}
+        </div>
+      )}
       <div className={APP_GRID_CLASS}>
         {visible.map((app) => (
           <AppCard app={app} key={app.id} />
         ))}
       </div>
-      {expanded && pages.hasNextPage ? (
+      {open && pages.hasNextPage ? (
         <div className="mt-4 flex justify-center">
           <button
             className="admin-button admin-button-secondary"
@@ -102,7 +117,7 @@ export const AppCategorySection = ({
           </button>
         </div>
       ) : null}
-      {expanded && pages.isError ? (
+      {open && pages.isError ? (
         <p
           className="mt-4 text-center text-sm text-[color:var(--danger-text)]"
           data-testid={`app-category-error-${section.category}`}
