@@ -210,6 +210,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         runLimits: body.runLimits,
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
+        todosEnabled: body.todosEnabled,
         toolPolicy: body.toolPolicy,
       })
     } catch (error) {

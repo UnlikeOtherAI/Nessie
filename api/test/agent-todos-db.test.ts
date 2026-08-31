@@ -3,20 +3,21 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { Prisma, PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+import Fastify from 'fastify'
 
-import {
-  CreateAgentBodySchema,
-  UpdateAgentBodySchema,
-} from '../src/contracts/agents.js'
+import { registerAgentRoutes } from '../src/routes/agents.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
 type Seed = {
   agentId: string
+  avatarAttachmentId: string
   otherAgentId: string
   organizationId: string
   otherOrganizationId: string
+  userId: string
 }
 
 const templateSteps = [
@@ -32,12 +33,36 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const otherOrganizationId = randomUUID()
   const agentId = randomUUID()
   const otherAgentId = randomUUID()
+  const avatarAttachmentId = randomUUID()
+  const userId = randomUUID()
 
   await prisma.organization.createMany({
     data: [
       { id: organizationId, name: `agent-todos-${organizationId}` },
       { id: otherOrganizationId, name: `agent-todos-${otherOrganizationId}` },
     ],
+  })
+  await prisma.user.create({
+    data: {
+      displayName: 'Agent to-dos test owner',
+      email: `agent-todos-${userId}@example.test`,
+      id: userId,
+    },
+  })
+  await prisma.organizationMember.create({
+    data: { organizationId, role: 'owner', userId },
+  })
+  await prisma.attachment.create({
+    data: {
+      filename: 'agent-todos-avatar.png',
+      id: avatarAttachmentId,
+      kind: 'image',
+      mime: 'image/png',
+      organizationId,
+      sizeBytes: 1n,
+      storageKey: `agent-todos/${avatarAttachmentId}`,
+      uploaderId: userId,
+    },
   })
   await prisma.agent.createMany({
     data: [
@@ -46,7 +71,14 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     ],
   })
 
-  return { agentId, organizationId, otherAgentId, otherOrganizationId }
+  return {
+    agentId,
+    avatarAttachmentId,
+    organizationId,
+    otherAgentId,
+    otherOrganizationId,
+    userId,
+  }
 }
 
 const cleanup = async (prisma: PrismaClient, value: Seed) => {
@@ -60,6 +92,7 @@ const cleanup = async (prisma: PrismaClient, value: Seed) => {
   await prisma.organization.deleteMany({
     where: { id: { in: [value.organizationId, value.otherOrganizationId] } },
   })
+  await prisma.user.deleteMany({ where: { id: value.userId } })
 }
 
 const withDatabase = async (run: (prisma: PrismaClient, value: Seed) => Promise<void>) => {
@@ -83,14 +116,51 @@ const isForeignKeyViolation = (error: unknown) =>
 const isUniqueViolation = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 
-test('agent create and update contracts accept todosEnabled', () => {
-  const created = CreateAgentBodySchema.safeParse({ name: 'Todo agent', todosEnabled: true })
-  const updated = UpdateAgentBodySchema.safeParse({ todosEnabled: false })
+const isTemplateVersionPinViolation = (error: unknown) =>
+  error instanceof Error
+  && error.message.includes('agent_todos_template_version_pin_chk')
 
-  assert.equal(created.success, true)
-  assert.equal(created.success ? created.data.todosEnabled : undefined, true)
-  assert.equal(updated.success, true)
-  assert.equal(updated.success ? updated.data.todosEnabled : undefined, false)
+dbTest('POST /api/agents persists todosEnabled through the route', async () => {
+  await withDatabase(async (prisma, value) => {
+    const actorContext: AuthorizedActionContext = {
+      actionContext: { requestId: `agent-todos-create-${value.agentId}` },
+      actor: { actorId: value.userId, actorType: 'user', roles: ['owner'] },
+      tenant: { organizationId: value.organizationId },
+    }
+    const app = Fastify({ logger: false })
+    registerAgentRoutes(app, {
+      config: { model: {} },
+      createAgentVisibilityScope: () => ({}),
+      getChannelIfMember: async () => null,
+      isAgentAccessibleToActor: async () => false,
+      prisma,
+      requireActorContext: () => actorContext,
+      requireOwner: () => true,
+    } as unknown as Parameters<typeof registerAgentRoutes>[1])
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        payload: {
+          avatarAttachmentId: value.avatarAttachmentId,
+          name: 'Route-created to-do agent',
+          todosEnabled: true,
+        },
+        url: '/api/agents',
+      })
+
+      assert.equal(response.statusCode, 201)
+      const created = response.json().data as { id: string; todosEnabled: boolean }
+      assert.equal(created.todosEnabled, true)
+      const row = await prisma.agent.findUnique({
+        select: { todosEnabled: true },
+        where: { id: created.id },
+      })
+      assert.equal(row?.todosEnabled, true)
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 dbTest('a shared agent update persists and returns todosEnabled', async () => {
@@ -166,11 +236,40 @@ dbTest('the database rejects an AgentTodo using a template from another agent', 
             agentId: value.otherAgentId,
             organizationId: value.organizationId,
             templateId: template.id,
+            templateVersion: template.version,
             title: 'Wrong-agent template instance',
           },
         }),
       isForeignKeyViolation,
       'the composite agent/template FK must reject another agent\'s template',
+    )
+  })
+})
+
+dbTest('the database rejects a template to-do without its pinned version', async () => {
+  await withDatabase(async (prisma, value) => {
+    const template = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: value.agentId,
+        authorType: 'user',
+        name: 'Versioned template',
+        organizationId: value.organizationId,
+        steps: templateSteps,
+      },
+    })
+
+    await assert.rejects(
+      () =>
+        prisma.agentTodo.create({
+          data: {
+            agentId: value.agentId,
+            organizationId: value.organizationId,
+            templateId: template.id,
+            title: 'Unpinned template instance',
+          },
+        }),
+      isTemplateVersionPinViolation,
+      'a template-backed to-do must pin the template version',
     )
   })
 })
@@ -208,6 +307,43 @@ dbTest('the database rejects duplicate AgentTodo step keys', async () => {
         }),
       isUniqueViolation,
       'the per-to-do step key constraint must reject duplicate keys',
+    )
+  })
+})
+
+dbTest('the database rejects duplicate AgentTodo step sequences', async () => {
+  await withDatabase(async (prisma, value) => {
+    const todo = await prisma.agentTodo.create({
+      data: {
+        agentId: value.agentId,
+        organizationId: value.organizationId,
+        title: 'Unique step sequences',
+      },
+    })
+
+    await prisma.agentTodoStep.create({
+      data: {
+        instructions: 'Do this first.',
+        key: 'first-step',
+        sequence: 0,
+        title: 'First',
+        todoId: todo.id,
+      },
+    })
+
+    await assert.rejects(
+      () =>
+        prisma.agentTodoStep.create({
+          data: {
+            instructions: 'This must not occupy the same position.',
+            key: 'second-step',
+            sequence: 0,
+            title: 'Second',
+            todoId: todo.id,
+          },
+        }),
+      isUniqueViolation,
+      'the per-to-do sequence constraint must reject duplicate positions',
     )
   })
 })

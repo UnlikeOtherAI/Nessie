@@ -190,6 +190,7 @@ export const cloneAgentRecord = async (
       systemManaged: true,
       systemPrompt: true,
       teamId: true,
+      todosEnabled: true,
       toolPolicy: true,
     },
   })
@@ -222,6 +223,7 @@ export const cloneAgentRecord = async (
       systemPrompt: source.systemPrompt,
       systemManaged: false,
       teamId: source.teamId,
+      todosEnabled: source.todosEnabled,
       toolPolicy,
     },
     include: agentRecordInclude,
