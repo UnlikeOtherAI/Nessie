@@ -100,6 +100,13 @@ export type BeginExternalAuthInput = {
   redirectUri: string
   // App route to land on after the exchange completes (defaults to /channels).
   returnPath?: string
+  /**
+   * The exact pending state this user deliberately chose to replace. A boolean
+   * "replace" would let concurrent launchers tear down each other's PKCE
+   * exchange; matching the state keeps replacement a compare-and-reserve
+   * transition in this synchronous section.
+   */
+  replacePendingState?: string
   storage: PkceStorage
   targetWorkspace?: PendingExternalAuthTarget
   teamHint?: string
@@ -132,19 +139,14 @@ export const beginExternalAuth = async ({
   providerId,
   redirectUri,
   returnPath,
+  replacePendingState,
   storage,
   targetWorkspace,
   teamHint,
   theme,
 }: BeginExternalAuthInput): Promise<BeginExternalAuthResult> => {
-  if (readPendingExternalAuth(storage)) {
-    throw new Error('An external sign-in is already in progress.')
-  }
-  const codeVerifier = randomString()
-  const state = randomString()
-
   // providerId names the authorize endpoint; it must be bounded before it is
-  // persisted with the exchange entry.
+  // persisted with the exchange entry or allowed to retire a previous entry.
   if (!isBoundedId(providerId)) {
     throw new Error('The external auth provider id must be a bounded identifier.')
   }
@@ -160,6 +162,20 @@ export const beginExternalAuth = async ({
   ) {
     throw new Error('The workspace-switch target must carry bounded organization and team ids.')
   }
+
+  const existing = readPendingExternalAuth(storage)
+  if (existing) {
+    if (replacePendingState !== existing.state) {
+      throw new Error('An external sign-in is already in progress.')
+    }
+    // No await separates the equality check, removal, and new reservation.
+    // A second restart holding the old state therefore cannot erase the new
+    // flow that the first restart has already created.
+    clearPendingExternalAuth(storage)
+  }
+
+  const codeVerifier = randomString()
+  const state = randomString()
 
   storage.setItem(
     PENDING_EXTERNAL_AUTH_KEY,

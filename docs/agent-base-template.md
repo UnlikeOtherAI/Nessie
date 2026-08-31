@@ -1,5 +1,20 @@
 # Agent Base Template
 
+> ⚠️ **Stale in part — §3–§4's tool-execution model is no longer how runs work.**
+> This document still describes tools being selected by keyword detection and
+> executed *before* the model call, with the prompt telling the agent "The
+> required safe tools have already been executed. Do not emit tool-call markup or
+> request more tool execution." That was replaced on **2026-04-14** (`a36ad091`)
+> by a real agentic loop: `runAgenticLoop` (`worker/src/run/agentic-loop.ts`)
+> sends tool schemas to the provider, executes the model's own tool calls,
+> appends results and iterates, with per-call authorization in
+> `worker/src/run/tool-policy.ts`. Neither quoted sentence exists anywhere in the
+> code. Treat §3–§4 as history until they are rewritten; the run-flow steps and
+> the §5 review/approval material are unaffected. Written 2026-08-31, after this
+> document's stale text was cited in good faith as current fact by
+> [agent-honesty-and-third-party-harm.md](agent-honesty-and-third-party-harm.md)
+> — see that document's §1a.
+
 Defines the universal agent contract in Nessie — what every agent is, what it can do, and how it operates. All agent types (built-in, user-created, spawned children) conform to this template.
 
 This document serves as the foundation for the agent system. Any new agent type must satisfy this contract.

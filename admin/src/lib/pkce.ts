@@ -29,6 +29,7 @@ export const completedExternalAuthCallbackCache =
 export const beginExternalAuth = (input: {
   origin?: string
   providerId: string
+  replacePendingState?: string
   redirectUri: string
   returnPath?: string
   targetWorkspace?: PendingExternalAuthTarget
@@ -41,6 +42,7 @@ export const beginExternalAuth = (input: {
     baseUrl: getBaseUrl(),
     origin,
     providerId: input.providerId,
+    ...(input.replacePendingState ? { replacePendingState: input.replacePendingState } : {}),
     redirectUri: input.redirectUri,
     ...(input.returnPath ? { returnPath: input.returnPath } : {}),
     storage,
