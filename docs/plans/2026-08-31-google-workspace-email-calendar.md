@@ -1,16 +1,75 @@
 # Google Workspace in chat — Gmail, Calendar, Meet, negotiated scopes
 
-Date: 2026-08-31
-Status: **plan — no code changed yet**
+Date: 2026-08-31 (v2 — rewritten after cross-model review)
+Status: **plan**
 
-Goal: a person (or a custom agent, or the Personal Assistant) can, **from a
-chat message**, read and search their mail, draft and send email, read and
-write their calendar, and create Google Meet meetings — with the exact OAuth
-scopes chosen up front, and any missing scope requested and granted **in the
-same conversation**. A composed email appears in chat as a card showing
-recipients, CC, subject and body, with a Send button.
+Goal: a person, their Personal Assistant, or a granted custom agent can — **from
+a chat message** — search and read mail, draft and send email, read and write
+the calendar, and create Google Meet meetings. OAuth scopes are chosen up
+front, and any missing scope is requested and granted **in the same
+conversation**. A composed email appears in chat as a card showing recipients,
+CC, subject and body, with a Send button. A person may grant standing consent
+so agents can send on their behalf **when asked** without approving each one.
 
-Every claim about the current tree below carries a file citation.
+> ## Review outcome (Fable + kimix + Codex Sol, 2026-08-31)
+>
+> v1 was reviewed by three models and **was not implementation-ready**. The
+> direction held — first-party builtins, one Google credential store, live
+> reads, disclosure provenance — but the send path was neither owner-bound nor
+> content-bound, and four OAuth/Gmail assumptions were false. Every finding
+> below was re-verified against the tree before acceptance; two reviewer claims
+> were rejected as wrong (recorded in §14).
+>
+> **Blockers that changed the design:**
+> 1. **The send gate failed open.** `evaluateToolInvokePolicy` uses
+>    `defaultVerdict: 'allow'` ([policy.ts:136](worker/src/run/execute/policy.ts:136))
+>    and default seeding writes no send rule with no backfill
+>    ([policy.ts:266](api/src/services/policy.ts:266)) — so gating by seeded
+>    `PolicyRule` rows leaves every existing org sending ungated. → §7.1 makes
+>    the gate **structural in the tool definition**.
+> 2. **Anyone who can see the channel could approve a send as you.**
+>    `approvalVisibilityWhere` passes any member of a **public** channel
+>    ([approvals.ts:85](api/src/services/approvals.ts:85)) and gates resolution
+>    on the same predicate ([approvals.ts:170](api/src/services/approvals.ts:170)).
+>    `requesterId` is the **agent** ([tool-authorization.ts:259](worker/src/run/execute/tool-authorization.ts:259)),
+>    so the SELF_APPROVAL check never fires for a user, and `ApprovalRequest`
+>    has `requiredApproverRole` but **no required user**. → §7.2 adds
+>    `requiredApproverUserId`.
+> 3. **`argsHash` binds the draft id, not the draft.**
+>    `hashJsonValue(args)` ([policy.ts:123](worker/src/run/execute/policy.ts:123))
+>    over `{draftId}` says nothing about recipients or body, and the draft stays
+>    mutable. → §9 adds a durable draft projection with a content fingerprint.
+> 4. **`grantedScopes` is not fail-closed.** `parseScopeString` returns the
+>    **requested** scopes when the token response omits `scope`
+>    ([connector.ts:29](packages/comms-google/src/connector.ts:29)), so a
+>    connection can record authority Google never granted. → §4.4.
+> 5. **`users.getProfile` blocks every non-Gmail capability set.** Connect calls
+>    it unconditionally ([connector.ts:66](packages/comms-google/src/connector.ts:66));
+>    it does not accept `gmail.send`, Calendar or Meet scopes, so a
+>    Calendar-only or send-only connection fails at connect. → §4.5 takes
+>    identity from the OIDC `id_token`.
+> 6. **Every 403 is retried** ([http.ts:33](packages/comms-google/src/http.ts:33)),
+>    so Gmail's `insufficientPermissions` would loop instead of raising the
+>    scope card — breaking the "ask for a scope in chat" requirement outright.
+>    → §4.6.
+>
+> **Corrections to v1's own claims:** explicit-grant builtins are **filtered out
+> of Agent Designer** and granted from the Tools page, not via
+> `/api/mcp/tools/:id/policy-targets` (that route is keyed by
+> `toolRegistryEntryId`, an MCP row — [tools.ts:251](api/src/routes/mcp/tools.ts:251));
+> `metadata.approvalGate` has **no admin renderer at all** (zero hits in
+> `admin/src`), so the approval card is unbuilt work, not a re-skin; a withheld
+> message carries **no metadata** ([messages.ts:129](api/src/services/messages.ts:129)),
+> so the "generic draft chip for non-owners" is impossible and the standard
+> restricted placeholder is what they get; the free/busy `organization:` carve-out
+> was **unsafe** (a Nessie org is not a Google Workspace domain) and is
+> withdrawn; `email_received` is an `event` **eventType**, not a new enum member
+> ([trigger-events.ts:19](worker/src/control/trigger-events.ts:19)); and
+> `api/src/routes/comms-connections.ts` is already **493 lines**, so P0 splits it
+> before adding anything.
+>
+> **Out of scope by direction:** IP-pinning/`safeFetch` for the Google
+> connector. Reviewers raised it; it is not part of this work.
 
 ---
 
@@ -18,375 +77,402 @@ Every claim about the current tree below carries a file citation.
 
 | Piece | Where | State |
 |---|---|---|
-| Google OAuth start (PKCE, `access_type=offline`, `include_granted_scopes=true`) | [oauth-config.ts:52-70](api/src/routes/comms/oauth-config.ts:52) | **Scope list is a hardcoded constant**: `gmail.readonly`, `meetings.space.created`, `openid`, `email`, `profile` |
-| Per-user connection + encrypted tokens | Prisma `CommsConnection` / `CommsConnectionCredential`; `grantedScopes` persisted **from the token response** | Live |
-| Credential chokepoint | [`loadUserGoogleCommsCredential`](packages/workspace-admin/src/comms-credential-coordinator.ts:196) — picks the newest active connection **holding `requiredScope`**, decrypts only that row, serialises refresh under a row lock, typed `SCOPE_MISSING` / `NEEDS_REAUTHORIZATION` | Live |
-| Gmail adapter | [`packages/comms-google`](packages/comms-google/src) — OAuth exchange/refresh/revoke, profile, labels, messages list/get, history, `users.watch` + Pub/Sub, normalize → `CommsEvent` | **Read-only.** No send, no drafts, no threads-modify |
-| Meet | [`createGoogleMeetSpace`](packages/comms-google/src/meet.ts:34) — standalone Meet space via `meetings.space.created`, through `safeFetch` | Live |
-| Meet in chat | `meeting_link_create`, `call_start` — [PA-only builtins](packages/runtime/src/builtin-comms-tools.ts:44) calling `createCallLinkForTeamUser` | Live |
-| Connect card in chat | `comms_connect_card` → [`CommsConnectCard`](admin/src/components/features/channels/CommsConnectCard.tsx) via `metadata.card = { kind: 'comms_connect' }` | Live |
-| Approval **suspend/resume** | [`approval-suspend.ts`](worker/src/run/execute/approval-suspend.ts) + [`approval-resume.ts`](api/src/services/approval-resume.ts): gated tool → `RunCheckpoint(reason:'approval_required')` + `metadata.approvalGate` card + `Run.status = waiting_approval` → resolve → **verified, single-use, args-scoped** `approvalProof` → continuation run | **Landed 2026-08-31** |
-| Disclosure sink | [`ConsumedSourceSink`](worker/src/run/execute/disclosure-basis.ts:27) + `computeReplyBasis`; empty basis = unrestricted | Live |
-| **Calendar** | — | **Does not exist anywhere in the repo** |
+| Google OAuth start | [oauth-config.ts:52-70](api/src/routes/comms/oauth-config.ts:52) | PKCE + `access_type=offline` + `include_granted_scopes=true`; **scope list is a hardcoded constant** |
+| OAuth state | [comms-connections.ts:150](api/src/routes/comms-connections.ts:150) | Carries **only** `redirectUri` + PKCE verifier — no target connection, no expected identity, no capabilities |
+| Per-user connection + encrypted tokens | Prisma `CommsConnection` / `CommsConnectionCredential` | Live; `grantedScopes` **fails open** (§4.4) |
+| Credential chokepoint | [`loadUserGoogleCommsCredential`](packages/workspace-admin/src/comms-credential-coordinator.ts:196) | Live. Takes **one** `requiredScope`; picks the newest active connection holding it |
+| Gmail adapter | [`packages/comms-google`](packages/comms-google/src) | **Read-only.** No send, no drafts, no modify |
+| Meet | [`createGoogleMeetSpace`](packages/comms-google/src/meet.ts:34) | Live — standalone space only |
+| Meet in chat | `meeting_link_create`, `call_start` | Live, [PA-only](packages/runtime/src/builtin-comms-tools.ts:44) |
+| Approval suspend/resume | [approval-suspend.ts](worker/src/run/execute/approval-suspend.ts) + [approval-resume.ts](api/src/services/approval-resume.ts) | Landed 2026-08-31. **No admin renderer** |
+| Standing-consent precedent | [`ScopeDisclosureGrant`](api/prisma/schema.prisma:1896) + duration menu [RestrictedMessageCard.tsx:16](admin/src/components/features/channels/RestrictedMessageCard.tsx:16) | Live — reused verbatim in §8 |
+| Disclosure sink | [disclosure-basis.ts:27](worker/src/run/execute/disclosure-basis.ts:27) | Live. **Empty basis = unrestricted** |
+| **Calendar** | — | **Does not exist** |
 | **Gmail write** | — | **Does not exist** |
 
-Two structural facts that shape everything below:
+## 2. Decision: what "MCP-enabled" means here
 
-1. **`include_granted_scopes=true` is already set**, so Google incremental
-   authorization is half-wired — the missing half is a *catalog* and a
-   *request* path, not new OAuth plumbing.
-2. **`grantedScopes` is persisted from the token response, not from what we
-   asked for** ([connector.ts:71-79](packages/comms-google/src/connector.ts:71)).
-   A user who un-ticks a box on Google's consent screen ends up with fewer
-   scopes than requested, and the chokepoint already fails closed on that.
-   Everything new must keep asking the chokepoint, never a local wish-list.
+Nessie is an MCP **client**; the JSON-RPC server was removed with the legacy
+tree. Chosen: **first-party builtin tools** reusing the one Google credential
+store, the disclosure sink, `FileService`, and the approval gate. A third-party
+Google MCP connector would mint a *second* encrypted Google credential beside
+`comms_connection_credentials` and could feed neither the provenance sink nor
+`FileService` — the fork Rule zero forbids, on the most sensitive credential in
+the product.
 
----
+Honest caveat (Sol): builtins are **not** identical to MCP tools in grant and
+catalog behaviour — separate registries and keyspaces, and explicit-grant
+builtins are filtered out of Agent Designer (§10). The capability catalog plus
+the Tools-page grant **is** the replacement governance story and must be built,
+not assumed. Exposing these outward to an external MCP client is a separate
+capability (option (c)); the functions live in `@nessie/comms-google` +
+`@nessie/workspace-admin` so that stays open.
 
-## 2. Decision: how "MCP-enabled" is satisfied
+## 3. Scopes are a capability catalog
 
-**Nessie is an MCP *client*, not a server.** The JSON-RPC `/mcp` endpoint was
-removed with the legacy `src/` tree (CLAUDE.md → "Legacy JSON-RPC MCP server
-removed"); `packages/mcp-client` is a client and `@nessie/mcp-manage` manages
-*outbound* connectors. So "100% MCP-enabled" cannot be satisfied literally
-without building a new server. Three options were weighed:
-
-| Option | Verdict |
-|---|---|
-| **(a) First-party builtin tools** in the worker, reusing `loadUserGoogleCommsCredential` | **Recommended.** Same tool surface to the model as any MCP tool (one `tools` array), per-agent `requiresExplicitGrant`, one credential store, disclosure sink and approval gate for free |
-| (b) Install a third-party Google MCP server as an `McpServerInstance` | **Rejected.** It would create a *second* Google credential store (`mcp_server_credentials` beside `comms_connection_credentials`) and a second OAuth flow — exactly the fork Rule zero forbids, on the most sensitive credential in the product. It also cannot feed the disclosure sink or the `FileService` |
-| (c) Build a Nessie MCP **server** exposing these functions outward | Separate, larger piece of work. Compatible later: (a)'s functions live in `@nessie/comms-google` + `@nessie/workspace-admin` and a server would call the same functions |
-
-**Chosen: (a).** From the model's point of view the tools are indistinguishable
-from MCP tools — same schema shape, same grant model, same `tool_spec` /
-deferred-loading machinery. If you want (c) as well, say so and it becomes a
-Phase 4; it does not change anything below.
-
-> ⚠️ **Decision point for you.** If "100% MCP-enabled" specifically means
-> "reachable by an external MCP client", that is option (c) and I should scope
-> it separately.
-
----
-
-## 3. Scopes are a capability catalog, not a constant
-
-New `packages/schemas/src/google-capabilities.ts` — the single source of truth,
-imported by API (authorize URL), worker (tool preflight) and admin (UI copy).
-
-```ts
-export type GoogleCapability = {
-  id: GoogleCapabilityId
-  scopes: readonly string[]      // the exact Google scope strings
-  label: string                  // "Send email as you"
-  explains: string               // one plain sentence for the consent card
-  risk: 'read' | 'write' | 'send'
-  googleTier: 'basic' | 'sensitive' | 'restricted'  // verification burden
-}
-```
+New `packages/schemas/src/google-capabilities.ts` — one source of truth for API,
+worker and admin.
 
 | id | Google scope(s) | Tier | Enables |
 |---|---|---|---|
-| `gmail.read` | `gmail.readonly` | restricted | search, read threads/messages, labels, attachments |
-| `gmail.compose` | `gmail.compose` | restricted | create/update/delete drafts **and send** (Google does not separate them — see below) |
-| `gmail.send` | `gmail.send` | sensitive | send only, no read — for a send-only agent |
-| `gmail.modify` | `gmail.modify` | restricted | labels, archive, trash, mark read |
-| `calendar.read` | `calendar.readonly` | sensitive | list calendars, read events, free/busy |
-| `calendar.write` | `calendar.events` | sensitive | create/update/cancel events, invite attendees |
-| `meet.create` | `meetings.space.created` | sensitive | standalone Meet space (**already used** by `meeting_link_create`) |
+| `gmail.read` | `gmail.readonly` | restricted | search, read threads, labels, attachments |
+| `gmail.compose` | `gmail.compose` | restricted | drafts **and** `drafts.send` |
+| `gmail.send` | `gmail.send` | sensitive | `messages.send` **only** — cannot touch drafts |
+| `gmail.modify` | `gmail.modify` | restricted | labels, archive, trash |
+| `calendar.read` | `calendar.readonly` | sensitive | calendars, events |
+| `calendar.freebusy` | `calendar.freebusy` | sensitive | availability only — **its own narrow scope** |
+| `calendar.write` | `calendar.events` | sensitive | create/update/cancel, invite (**also grants event reads**) |
+| `meet.create` | `meetings.space.created` | sensitive | standalone Meet space |
 | `contacts.read` | `contacts.readonly`, `directory.readonly` | sensitive | resolve "email Jana" → an address |
 
-Three facts this catalog has to state honestly:
+Four facts the catalog states in its own copy:
 
-- **Google has no "drafts but cannot send" scope.** `gmail.compose` grants
-  both. The product separation between *draft* and *send* is therefore
-  enforced by **Nessie's tool policy + approval gate**, not by the OAuth
-  scope. That is the single most important line in this plan: the safety
-  property comes from `evaluateToolInvokePolicy`, not from Google.
-- **Restricted scopes need Google's CASA assessment** for a *public* OAuth
-  client. Nessie is self-hosted: each deployment registers its **own** Google
-  Cloud OAuth client (`NESSIE_COMMS_GOOGLE_CLIENT_ID` already per-deployment),
-  and an **Internal** Workspace app skips verification entirely. Hosted
-  `nessie.works` would need the assessment for `gmail.read`/`compose`/`modify`.
-  Document this in `docs/deployment.md`; it is an operational gate, not a code
-  one, and it must not be discovered after the build.
-- **Google cannot partially revoke.** `/revoke` kills the whole grant. So
-  per-capability "remove" is a **local block** (§7) plus an explicit
-  "Disconnect" for a true revoke. Saying "revoked" for a local block would be
-  a lie to the user.
+- **`gmail.send` cannot create or send a draft.** `drafts.create`/`drafts.send`
+  accept `gmail.compose` or `gmail.modify` only. So the draft-card flow needs
+  `gmail.compose`; `gmail.send` backs a separate direct-send tool (§6.3).
+- **Google has no "drafts but cannot send" scope** — `gmail.compose` grants
+  both. The draft/send separation is enforced by **Nessie's structural gate**
+  (§7), never by OAuth. The consent copy says this rather than implying Google
+  enforces it.
+- **The internal-use exception is narrow.** Restricted Gmail scopes skip the
+  CASA assessment only when all users are in the **same** Workspace/Cloud
+  Identity org, the Cloud project is owned by that org, **and** the consent
+  screen is Internal — not merely because Nessie is self-hosted. Recorded in
+  `docs/deployment.md`. Tiers must be re-confirmed against Google's current
+  verification FAQ before P1; Google moves them.
+- **Google cannot partially revoke.** `/revoke` kills the whole grant, so a
+  per-capability "remove" is a **local block** (§4.7) and the UI says
+  "blocked locally — Disconnect to revoke at Google", never "revoked".
 
----
-
-## 4. Scope negotiation — three flows, one route
+## 4. Scope negotiation
 
 ### 4.1 Connect with a chosen set
-`POST /api/comms/connections/google/start` gains an optional body
-`{ capabilities: GoogleCapabilityId[] }`, validated against the catalog and
-expanded to scope strings by `buildAuthorizeUrl`. **Omitted → today's exact
-list**, so the existing flow is byte-identical.
+`POST /api/comms/connections/google/start` takes `{ capabilities[] }`, validated
+against the catalog. Omitted → today's exact list, byte-identical.
 
-### 4.2 Add a capability to a live connection (incremental auth)
-Same route with `{ capabilities, connectionId }`. The authorize URL asks for
-`existing grantedScopes ∪ requested`; `include_granted_scopes=true` (already
-set) makes Google return a token covering the union, and the callback
-re-persists `grantedScopes` from the token response — **already the behaviour**
-([connector.ts:71](packages/comms-google/src/connector.ts:71)). `prompt=consent`
-stays, because a new scope needs consent and re-issues the refresh token.
+### 4.2 Add to a live connection
+Same route with `{ capabilities, connectionId }`. Requests
+`grantedScopes ∪ requested`; `include_granted_scopes=true` (already set) returns
+the union. `prompt=consent` becomes **conditional**, not unconditional — it is
+not required merely because a scope is new, and the design must not assume a new
+refresh token comes back (Sol).
 
-`CommsConnection` gains `requestedCapabilities Json @default("[]")` so the UI
-can show *asked-for-but-declined* (the user un-ticked it) rather than silently
-showing "not granted".
+### 4.3 Ask from inside the chat ← the requirement
+`requireGoogleCapability(context, capabilityId)` in the worker: resolve the
+acting user, call the chokepoint with **all** the capability's scopes; on
+failure post a server-authored
+`metadata.card = { kind: 'google_scope_request', capabilityId, … }` and refuse
+to the model in words. `GoogleScopeRequestCard` shows the label, the one-sentence
+explanation and a **Grant** button running §4.2. The card is stamped with the
+mailbox owner's basis (§6.4) so it cannot leak into a shared room.
 
-### 4.3 Ask for a capability **from inside the chat** ← the requirement
-One shared helper in the worker, `requireGoogleCapability(context, capabilityId)`:
+### 4.4 `grantedScopes` must become fail-closed
+[connector.ts:29](packages/comms-google/src/connector.ts:29) returns the
+**requested** scopes when the token response omits `scope`, recording authority
+Google never granted. Fix in P0: a missing/empty `scope` is an **error**, not a
+fallback. This is the foundation every capability check stands on.
 
-1. Resolve the acting user (§6.1) and call the credential chokepoint with the
-   capability's scopes.
-2. On `SCOPE_MISSING` / `CONNECTION_NOT_FOUND` / `NEEDS_REAUTHORIZATION`:
-   post a **server-authored** card
-   `metadata.card = { kind: 'google_scope_request', capabilityId, reason,
-   connectionId? }` into the thread, and return a *refusal in words* to the
-   model ("I need permission to send email as you — I've put a Grant button in
-   the chat").
-3. `GoogleScopeRequestCard` renders capability label + one-sentence
-   explanation + **Grant** → `POST …/start` with that capability → new tab →
-   on return, realtime `message.updated` flips the card to "Granted ✓".
+### 4.5 Identity comes from the `id_token`, not Gmail
+Connect calls `users.getProfile` unconditionally
+([connector.ts:66](packages/comms-google/src/connector.ts:66)), which requires a
+Gmail read scope — so a Calendar-only, send-only or Meet-only connection **fails
+at connect today**. That alone would sink capability selection. `openid email
+profile` is already requested: take `externalUserId`/`externalTenantId` from the
+validated OIDC `id_token`, and call `getProfile` only when a Gmail read scope is
+actually present.
 
-This is the same shape as `CommsConnectCard` and the same "tool refuses in
-words, never claims it has no such capability" rule the `connector_*` tools
-already follow (AGENTS.md → PA-tool bullet). The card is **never** authored
-from model output — the capability id comes from the tool that failed, exactly
-as `metadata.runStop` is server-stamped.
+### 4.6 `insufficientPermissions` must fail closed
+[http.ts:33](packages/comms-google/src/http.ts:33) treats **every** 403 as
+retryable, so a scope error would be retried until the job dies and the scope
+card would never appear. Classify Google's structured `reason`: only
+quota/rate-limit reasons retry; `insufficientPermissions` returns a typed
+scope-missing result that raises §4.3.
 
----
+### 4.7 OAuth state must bind its target
+The state row carries only `redirectUri` + PKCE
+([comms-connections.ts:150](api/src/routes/comms-connections.ts:150)), and the
+callback persists whichever Google account completed consent
+([comms-connections.ts:237](api/src/routes/comms-connections.ts:237)). Add:
+target `connectionId`, **expected Google subject**, the requested capability
+set, and the originating card `messageId`. A different account → create a
+separate connection or refuse; **never silently re-point an existing mailbox**.
+The card id is what lets the callback publish the promised `message.updated`.
 
-## 5. Provider layer — extend `@nessie/comms-google`
+Local blocks live in `CommsConnection.disabledCapabilities` and are enforced
+**at the chokepoint**, which gains `requiredScopes: string[]` (all-of) plus the
+block filter — and are re-checked at click time in the send route, since a
+blocked capability's Google scope is still live.
 
-New directories (the 500-line cap is real; `client.ts` is already 266):
+## 5. Provider layer
+
+`api/src/routes/comms-connections.ts` is **493 lines** — P0 splits it (OAuth
+start/callback vs connection management) *before* adding anything. `client.ts`
+(266 lines) is split, not grown.
 
 ```
-src/gmail/
-  drafts.ts      create / update / get / list / delete / send
-  send.ts        messages.send (direct), threads.modify
-  mime.ts        RFC 5322 + multipart build, base64url  (read-side mime.ts stays)
-  threads.ts     threads.get with format=full, attachment fetch
-src/calendar/
-  calendars.ts   calendarList.list, calendars.get
-  events.ts      events.list/get/insert/patch/delete, sendUpdates
-  freebusy.ts    freeBusy.query
-  conference.ts  conferenceData + conferenceDataVersion=1  ← Meet **on an event**
+src/gmail/     drafts.ts  send.ts  mime-build.ts  threads.ts  attachments.ts
+src/calendar/  calendars.ts  events.ts  freebusy.ts  conference.ts
+src/contacts/  people.ts
 ```
 
-Notes:
-- **Meet has two shapes and both are wanted.** `meetings.space.created` (a
-  standalone room, already live) vs. `conferenceData` on a calendar event (a
-  Meet link attached to a real invite). "Create a Google Meet meeting" in the
-  user's sense is usually the second. Both ship.
-- Every new call goes through **`safeFetch`**, matching `meet.ts` — fixed
-  Google hosts, still DNS-pinned like every other credentialed outbound call
-  (AGENTS.md → "Outbound egress is IP-pinned").
-- **Attachments go through `FileService`** in both directions — inbound
-  (email attachment → `Attachment` row, accounted, thumbnailed) and outbound
-  (an `Attachment` the user already has → MIME part). Never `storage.*`
-  directly (AGENTS.md → "File storage & accounting").
-- **Tools read Gmail/Calendar live, not `CommsEvent`.** The sync store stays
-  the async index for retrieval/embedding; a tool answering "what did Jana say
-  yesterday" must not depend on whether a Pub/Sub push landed. Stating this
-  explicitly so nobody builds a second read path.
+Calendar conferencing needs more than `conferenceDataVersion=1`: a freshly
+generated conference `requestId`, handling of the **`pending`** response with
+polling to success/failure, explicit `sendUpdates`, and durable idempotency for
+retried inserts (prefer a deterministic client-supplied event id).
 
----
+Attachments go through `FileService` both ways — but `openStream` checks
+**organization only** ([files/index.ts:105](packages/runtime/src/files/index.ts:105)),
+so an outbound attachment id must be access-proved separately, as the existing
+attachment tool does ([attachments.ts:159](worker/src/run/pa-tools/attachments.ts:159)).
+Inbound attachments need an owning message, a retention rule and a doorway, or
+they are unreachable rows (Rule zero). Byte/count caps, streaming MIME
+construction, sanitised filenames and headers, and a disclosure stamp for any
+attachment content entering the run.
+
+Tools read Gmail/Calendar **live**; the `CommsEvent` store stays the async index.
 
 ## 6. The tools
 
-All new tools are **`requiresExplicitGrant: true` builtins** (the DeepWater
-precedent) so an owner grants the Google bundle per agent in the Agent
-Designer; a custom agent and the PA reach them identically. The three existing
-PA-only comms tools are untouched.
+All new tools are `requiresExplicitGrant: true` builtins.
 
 ### 6.1 Who the tool acts as
-`resolveEffectiveUserId(context)`
-([access.ts:21](worker/src/run/pa-tools/access.ts:21)) — the interactive
-requester, or the PA's delegated owner. For an **unattended** run (trigger /
-schedule) the acting user is the trigger's **launch-origin user**, which
-already carries a captured, verifiable UOA identity and an owner-revocation
-gate (`AGENTS.md` → "A capability that can stop working owns the way a person
-finds out"). Rules:
-
-- **Read tools** may run unattended under the launch-origin user. This is what
-  makes "every morning, summarise my inbox" work at all.
-- **Write/send tools always suspend for approval** when unattended — no
-  exception, no policy override. An unattended run cannot mail your customers
-  because a model changed its mind at 06:00.
-- A deactivated `OrganizationMember` → refuse, reusing the existing
-  `isConnectionOwnerActive` gate ([comms-sync.ts](worker/src/control/comms-sync.ts)).
-- **More than one Google account** on the connection set → refuse with a
-  disambiguation question naming the addresses, unless the tool was given an
-  explicit `account`. Today `loadUserGoogleCommsCredential` silently picks
-  *the newest connection holding the scope*, which is wrong once someone links
-  work + personal. The chokepoint gains an optional `connectionId` and a
-  `listUserGoogleConnections` sibling.
+`resolveEffectiveUserId` — the interactive requester, or the PA's delegated
+owner. Unattended runs use the trigger's launch-origin user. Reads may run
+unattended; **writes and sends never do** (§7.1). Deactivated member → refuse,
+via a membership-liveness check like `resolveActingMember`'s, not the sync
+loop's warn-and-skip. More than one Google account → refuse with a
+disambiguation naming the addresses; the chokepoint gains an optional
+`connectionId` and a `listUserGoogleConnections` sibling scoped
+`organizationId + ownerUserId`.
 
 ### 6.2 Read (safe: true)
-`gmail_search`, `gmail_thread_read`, `gmail_message_read`, `gmail_labels_list`,
-`calendar_list`, `calendar_events_list`, `calendar_event_read`,
-`calendar_freebusy`.
+`gmail_search`, `gmail_thread_read`, `gmail_message_read`,
+`gmail_attachment_read`, `gmail_labels_list`, `calendar_list`,
+`calendar_events_list`, `calendar_event_read`, `calendar_freebusy`,
+`contacts_search`.
 
 ### 6.3 Write (safe: false)
-`gmail_draft_create`, `gmail_draft_update`, `gmail_draft_send`,
-`gmail_reply_draft`, `gmail_label_apply`, `gmail_archive`,
-`calendar_event_create` (with `addMeet: boolean`), `calendar_event_update`,
+`gmail_draft_create`, `gmail_draft_update`, `gmail_draft_send`, `gmail_send`
+(direct, `messages.send`), `gmail_reply_draft`, `gmail_label_apply`,
+`gmail_archive`, `calendar_event_create` (`addMeet`), `calendar_event_update`,
 `calendar_event_respond`, `calendar_event_cancel`.
 
-Gating, by default `PolicyRule` seeds (`conditions.requiresApproval: true`):
+### 6.4 Invariants
+- **Reads feed the sink**: `user:<mailbox owner>`, in the same change as the
+  read. Consequence, and it is correct: an agent that read your mail and answers
+  in `#general` produces a reply restricted to you, with the existing share
+  affordance.
+- **Cards carry their own basis.** A draft card, scope-request card or approval
+  notice can be posted *before any read*, leaving the sink empty and the message
+  **unrestricted** — leaking owner id, connection id, draft id and the fact of a
+  send into a shared room. Every mailbox-associated card is inserted with an
+  explicit `user:<connection owner>` basis independent of prior reads.
+- **Free/busy stays `user:<owner>`.** v1's `organization:` carve-out is
+  withdrawn: a Nessie organisation is not proof of a shared Google Workspace
+  domain, so Google's own sharing defaults cannot be translated into a Nessie
+  entitlement. Widening needs a separate explicit, validated sharing grant.
+- **Output caps** wired per tool at the existing chokepoint (the 32,000 default
+  is not a cap); plus a size cap on **outbound** MIME bodies.
+- Unattended runs must target the owner's own thread — a trigger can target any
+  thread ([schema.prisma:2460](api/prisma/schema.prisma:2460)), and a restricted
+  summary posted to a shared channel is visible to nobody but the owner.
 
-| Action | Gate |
+## 7. Sending is a structural, owner-bound gate
+
+### 7.1 Structural, not seeded
+`defaultVerdict: 'allow'` + no send rule in default seeding means a
+`PolicyRule`-based gate is **absent** in every existing org. The send tools
+therefore carry the requirement **in the tool definition** — the way
+`requiresExplicitGrant` is code, not data — so an org with no rows still gates.
+`PolicyRule` may *loosen* (auto-review) but never silently omit.
+
+### 7.2 Only the mailbox owner may approve
+`ApprovalRequest` gains **`requiredApproverUserId`**, set to the live connection
+owner for send gates and enforced in `resolveApprovalRequest` beside the existing
+role check. Without it, any member who can read a public channel can approve an
+email sent as you. `requesterId` stays the agent; the owner is not the requester,
+so self-approval is correctly permitted for the person whose mailbox it is.
+
+### 7.3 Expiry
+The 30-minute default ([tool-authorization.ts:215](worker/src/run/execute/tool-authorization.ts:215))
+kills a 06:00 unattended send before anyone wakes, silently. Send approvals get
+a longer configurable expiry **and** a durable `UserAlert` on both raise and
+expiry, so a stopped send is discoverable — the "a capability that can stop
+working owns the way a person finds out" rule.
+
+## 8. Standing consent — "send on my behalf when I ask"
+
+Modelled verbatim on [`ScopeDisclosureGrant`](api/prisma/schema.prisma:1896):
+exact-key lookup, no wildcard, no inheritance, no fallback.
+
+**`SendAuthorizationGrant`**, keyed exactly on `(connectionId, agentId)`, with
+the existing duration menu (`10m | today | 30d | forever`), defaulting to 30
+days. Consenting for the PA implies nothing about a custom agent; one mailbox
+implies nothing about another.
+
+Asked in three places, one component:
+1. **After the Google grant returns** — "You've granted send. Would you like
+   agents to send email on your behalf when you ask them to, without approving
+   each one?" A Nessie policy question, so it cannot ride Google's consent screen.
+2. **On the approval card** — a third action: *Approve, and don't ask again* with
+   the duration dropdown. The `RestrictedMessageCard` idiom: settle this one, or
+   stand up a rule, with a real email in front of you.
+3. **`/settings/connections`** — grants listed with agent, expiry, Revoke. The
+   home; the other two are doorways.
+
+**What a grant never covers:** an unattended run (always suspends); a requester
+who is not the mailbox owner; the content fingerprint check (§9); the Google
+scope; the per-agent tool grant. Four independent keys. Every send under a grant
+writes an audit entry naming the grant id.
+
+**Undo.** Because the grant removes the pre-send gate, dispatch is held ~15s
+(configurable) with **Undo** on the card. Gmail's Undo Send is a UI trick, not
+an API feature — the API sends immediately — so holding it is the only way to
+make an agent send recoverable.
+
+## 9. The draft card
+
+### 9.1 A durable draft projection
+`GmailDraftAction`: `organizationId`, `ownerUserId`, `connectionId`, provider
+`draftId`, `contentFingerprint` (sha256 over canonical to/cc/bcc/subject/body/
+attachmentIds), `revision`, `state` (`draft | sending | sent | discarded`),
+`sentAt`, `messageId`. This is where the conditional `draft → sending → sent`
+claim lives — v1's "no new table" had nowhere authoritative to make it, and no
+way to bind approval to content.
+
+### 9.2 Approval binds content, not the id
+The approval records the `contentFingerprint` **and** `revision` at creation.
+Every send path — the agent tool **and** the human Send route — re-reads and
+compares before dispatch, refusing on mismatch. That closes both races: the
+model editing after approval, and the draft changing between render and click.
+`gmail_draft_update` therefore stays ungated: an edit simply invalidates the
+approval and the model must ask again.
+
+### 9.3 One shared service, two callers
+`sendDraftForUser` in `@nessie/workspace-admin` owns tenant + connection checks,
+disabled-capability enforcement, fingerprint verification, the state claim,
+idempotency, audit and the provider call. The API route and the worker tool both
+call it — `api/src/services/*` is unreachable from the worker, so this is the
+route-mirroring rule, not a preference.
+
+### 9.4 What the card carries
+Message metadata carries **identifiers only** — `draftId`, `connectionId`,
+`ownerUserId`, `state`. Content is fetched from an owner-gated
+`GET /api/comms/google/gmail/drafts/:draftId` that 404s indistinguishably for
+everyone else. A non-owner sees the **standard restricted placeholder**, not a
+draft-specific chip: a withheld message carries no metadata at all
+([messages.ts:129](api/src/services/messages.ts:129)), so a custom chip is not
+renderable.
+
+Owner sees to/cc/bcc/subject/body/attachments, then **Send** (or **Undo** while
+held) / **Edit** / **Discard** / **Open in Gmail** — the last treated as
+best-effort, since `mail/u/0` can select the wrong account and the compose deep
+link is an undocumented route.
+
+### 9.5 The approval card must be built
+`metadata.approvalGate` carries no draft id, `resumeState` is deliberately never
+presented, and **no admin component renders it** — so an owner-only
+approval→draft projection endpoint plus the card itself are new work in P1, not
+a re-skin. It renders `GmailDraftCard` in `mode="approval"`.
+
+## 10. Surfaces
+
+- **Home** — `/settings/connections`: capability rows (granted / grant / blocked
+  locally), standing send grants, connected accounts.
+- **Doorway 1** — the in-chat `google_scope_request` card.
+- **Doorway 2** — `comms_connect_card` gains a capability summary.
+- **Doorway 3** — **the Tools page** ([ToolsPage.tsx:231](admin/src/pages/ToolsPage.tsx:231)),
+  not Agent Designer: explicit-grant builtins are filtered out of the Designer
+  catalog ([tool-catalog.ts:85](admin/src/facades/designer/tool-catalog.ts:85)),
+  and the `policy-targets` route is keyed by `toolRegistryEntryId` (an MCP row).
+  Granting an explicit-grant **builtin** writes its tool id into
+  `Agent.toolPolicy` through a dedicated service, because generic agent PUT
+  strips protected keys.
+- **Doorway 4** — Google as a **managed integrated-product catalog row** whose
+  `/apps` card directs to Connections, parameterising the existing presenter
+  ([app-card-presentation.ts:135](admin/src/components/features/apps/app-card-presentation.ts:135)).
+  A hard-coded standalone entry would fork the catalog.
+
+## 11. Alternate transport — SMTP/IMAP (optional)
+
+`gmail.send` is *sensitive*, so **sending does not need the CASA assessment**;
+reading (`gmail.readonly`) and drafts (`gmail.compose`) do. SMTP-for-send alone
+therefore solves a problem we do not have.
+
+What *does* dodge verification is **SMTP + IMAP with a Google App Password** —
+no OAuth scope for read or send. The cost is that it defeats this plan's centre:
+an app password is **all-or-nothing full-mailbox access**, so there is no
+capability catalog, no incremental grant, and no in-chat "grant me send". It also
+needs 2-Step Verification, Workspace admins can disable it org-wide, there is no
+Pub/Sub push (IMAP IDLE), no drafts API (IMAP `APPEND`), and **no Calendar or
+Meet at all**.
+
+Recommendation: OAuth stays primary; SMTP/IMAP is an explicit alternate
+transport behind the same tools — same `gmail_*` surface, different credential
+resolution at the chokepoint — modelled honestly as a single `mailbox.full`
+capability. The credential lives in the existing encrypted
+`CommsConnectionCredential` shape and is never returned to the browser. Distinct
+from [the SES plan](docs/plans/2026-04-07-email-integration.md), which gives
+*agents* their own addresses: send-as-you and send-as-the-agent are different
+products and must not share a code path.
+
+## 12. Data model
+
+Additive migration:
+
+```
+comms_connections        + requested_capabilities jsonb default '[]'
+                         + disabled_capabilities  jsonb default '[]'
+                         + account_label          text null
+approval_requests        + required_approver_user_id uuid null   (§7.2)
+gmail_draft_actions      new table                               (§9.1)
+send_authorization_grants new table                              (§8)
+```
+
+## 13. Phases
+
+| Phase | Ships |
 |---|---|
-| draft create/update | **none** — a draft is reversible and lives in the person's own mailbox |
-| `gmail_draft_send`, `gmail_send` | **approval** — suspends the run, §8 |
-| `calendar_event_create` **with attendees** | **approval** — an invite is an outbound send |
-| `calendar_event_create` solo / `calendar_event_respond` | none |
-| `gmail_archive`, `gmail_label_apply` | none (reversible, own mailbox) |
+| **P0** | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
+| **P1** | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
+| **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
+| **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType**; optional SMTP/IMAP transport |
 
-### 6.4 Two invariants every tool obeys
+P0 is pure negotiation and correctness — it fixes three live fail-open defects
+and makes today's connection self-service before any new Google surface lands.
 
-- **Disclosure sink.** Every read calls
-  `context.consumedSources.add({ scopeType: 'user', scopeId: <mailbox owner> })`
-  *in the same change as the read* (AGENTS.md → "A read that enters a run's
-  context feeds the disclosure sink"; an empty basis means unrestricted, so
-  forgetting this publishes your inbox to the room). Consequence, and it is
-  the correct one: an agent that read your mail and answers in `#general`
-  produces a reply **restricted to you**, with `RestrictedMessageCard`'s
-  existing one-click share affordance. See §11 for the free/busy carve-out.
-- **Output truncation.** Per-tool caps at the existing chokepoint
-  ([tool-util.ts](worker/src/run/tool-util.ts)) — `gmail_search` 4,000 chars
-  like `web_search`; `gmail_thread_read` 12,000 like `http_fetch`. An
-  unbounded inbox read would eat a context window in one call.
+## 14. Reviewer claims rejected
 
----
+- **"The approval flow is uncompletable by the asker" (kimix).** False:
+  `requesterId` is the agent ([tool-authorization.ts:259](worker/src/run/execute/tool-authorization.ts:259)),
+  so SELF_APPROVAL never fires for a user, and in a DM the owner passes the
+  channel-membership arm of `approvalVisibilityWhere`. The real defect is the
+  **inverse** — the approver set is too broad (§7.2).
+- **"`email_received` correctly extends the trigger enum" (kimix).** The `event`
+  type already matches a configurable `eventType`
+  ([trigger-events.ts:19](worker/src/control/trigger-events.ts:19)); a new enum
+  member forks that dispatch.
+- **safeFetch / IP pinning for the Google connector (kimix BLOCKER, Sol MAJOR).**
+  Ruled out of scope by direction.
 
-## 7. Admin surfaces (Rule zero check 1: a home **and** doorways)
+## 15. Verification
 
-- **Home** — `/settings/connections` → the Google connection gains a
-  **Permissions** section: one row per capability, `Granted ✓` /
-  `Grant` / `Blocked`, each with its one-sentence explanation. `Grant` runs
-  §4.2. `Block` writes `CommsConnection.disabledCapabilities` (enforced at the
-  credential chokepoint, so a block is real even though Google's token still
-  carries the scope) and the row says **"blocked locally — Disconnect to
-  revoke at Google"**, never "revoked".
-- **Doorway 1** — the in-chat `google_scope_request` card (§4.3). This is the
-  one that matters: the capability is requested where the person is standing.
-- **Doorway 2** — `comms_connect_card` gains a capability summary so the first
-  connect is not silently "whatever the constant said".
-- **Doorway 3** — Agent Designer's tool-grant list shows the Google bundle
-  (Gmail read / compose / calendar) as grantable per agent, reusing the
-  `policy-targets` merge mutation the DeepWater bundle uses.
-- **Doorway 4** — an `/apps` catalog entry "Google Workspace" whose Connect
-  deep-links to `/settings/connections` (it is not a generic MCP install).
+Coverage required before P1 merges: absent / malformed / partially-declined
+scopes; all-of scope enforcement and local blocks; cross-user, cross-account and
+cross-org draft access; non-owner approval attempts; draft modified after
+approval; concurrent and double send; standing-grant boundaries (unattended,
+non-owner, expired, revoked); restricted cards and SSE behaviour; custom agent
+vs PA; Google 401/403 reason classification; Calendar retry/idempotency and the
+conference `pending` state; and Playwright runs over connect, incremental scope
+grant, draft, Send, Edit, approval, and the withheld view.
 
----
+Intent fixtures must include non-English, slang and misspelled inputs.
 
-## 8. The draft card — recipients, CC, subject, body, Send
+## 16. Docs to update in the same turns
 
-`metadata.card = { kind: 'gmail_draft', … }`, **server-authored** (the
-`metadata.runStop` precedent), written by `gmail_draft_create` /
-`gmail_draft_update` in the same transaction as the message.
-
-### 8.1 Metadata carries identifiers only
-```ts
-{ kind: 'gmail_draft', draftId, connectionId, ownerUserId,
-  status: 'draft' | 'sent' | 'discarded', sentAt? }
-```
-**No recipients, no subject, no body in message metadata.** Message metadata is
-readable by everyone who can read the message; putting the subject line there
-would leak the one thing the disclosure system exists to protect. The card
-fetches its content from `GET /api/comms/google/gmail/drafts/:draftId`, which
-resolves the caller's own connection and answers an **indistinguishable 404**
-for anyone else — the App Store presenter rule, applied to a draft. A
-non-owner sees a generic "Email draft" chip (and in practice the whole message
-is already restricted by §6.4).
-
-### 8.2 What the owner sees
-Recipients / CC / BCC / Subject / body (rendered markdown, scrollable) /
-attachment chips, then:
-
-| Button | Does |
-|---|---|
-| **Send** | `POST /api/comms/google/gmail/drafts/:id/send` — the *person* clicking their own button, authenticated as themselves. Not an agent action; no approval machinery. Conditional `draft → sent` claim makes double-click idempotent |
-| **Edit** | inline editor → `PATCH …/drafts/:id` → re-renders |
-| **Discard** | `DELETE …/drafts/:id` → card flips to "Discarded" |
-| **Open in Gmail** | `https://mail.google.com/mail/u/0/#drafts?compose=<id>` |
-
-After send: the route patches the message metadata to `status:'sent'` and
-publishes `message.updated` — the **watch-status precedent**, which refreshes
-the open thread without adding a row or moving an unread badge.
-
-### 8.3 The agent-initiated send is the *same component*
-When the model calls `gmail_draft_send` and the policy gate fires, the run
-suspends and posts `metadata.approvalGate = { approvalId, toolName:
-'gmail_draft_send', … }`. The approval card renders **`GmailDraftCard` with
-`mode="approval"`** — identical draft view, buttons wired to
-`POST /api/approvals/:id/resolve`. Approve → the existing verified,
-args-scoped, single-use `approvalProof` → continuation run re-issues the send.
-One component, two action modes (Rule zero check 4). The `argsHash` binding
-means the model cannot change the recipients between approval and send.
-
----
-
-## 9. Data model
-
-One additive migration (`api/prisma/migrations/…_google_capabilities`):
-
-```
-comms_connections
-  + requested_capabilities  jsonb not null default '[]'
-  + disabled_capabilities   jsonb not null default '[]'
-  + account_label           text null           -- "work" / "personal"
-```
-
-No new table. `granted_scopes` already exists and is already authoritative.
-Approval gating uses existing `PolicyRule.conditions.requiresApproval` — seeded
-rows, no schema change.
-
----
-
-## 10. Phases
-
-| Phase | Ships | Why this order |
-|---|---|---|
-| **P0** | Capability catalog, `/start` accepting capabilities, incremental add, `google_scope_request` card, `/settings/connections` Permissions section, `disabledCapabilities` enforcement | Pure negotiation. Zero new Google API surface, and it makes *today's* Gmail-read + Meet connection self-service. Delivers the "specify the scope / add a scope" requirement on its own |
-| **P1** | Gmail read tools + disclosure sink + truncation; `gmail_draft_create/update`; `GmailDraftCard` + owner-gated draft route + human **Send** | The headline UX: "prep this email" → card → Send |
-| **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet`, invite gating, `calendar_event_update/respond/cancel` | Meet-on-an-event and scheduling |
-| **P3** | Agent-initiated `gmail_draft_send` behind the approval gate; `gmail_modify` tools; model auto-review for routine sends; an `email_received` trigger (extends `AgentTriggerTypeSchema`, currently `manual\|scheduled\|webhook\|event\|interval`) | Everything that needs P1+P2 in place first |
-
-Each phase merges to `main` on its own with docs updated in the same turn.
-
----
-
-## 11. Open questions — flagged, with a recommendation
-
-1. **Free/busy vs. the disclosure sink.** Restricting every calendar-derived
-   reply to one person makes "find us a slot" useless in a channel.
-   *Recommendation:* free/busy is scoped `organization:<id>` (not `user:<id>`)
-   when the user opts in — Google Workspace already publishes free/busy
-   org-wide by default. **Event details stay `user:<id>`.** The opt-in lives
-   beside the capability rows.
-2. **Multiple Google accounts.** §6.1 refuses ambiguity. Alternative: a
-   per-agent default account. *Recommendation:* refuse first, add a default
-   later if it actually annoys people.
-3. **Restricted-scope verification.** Hosted `nessie.works` needs a CASA
-   assessment for `gmail.readonly`/`compose`/`modify`. Self-hosted with an
-   Internal Workspace app does not. *Needs your call on which one P1 targets.*
-4. **MCP interpretation** — §2. Option (c) on request.
-5. **`gmail.compose` grants send.** A person who grants "draft my emails" has
-   technically granted send at the Google layer. The gate is Nessie's policy.
-   *Recommendation:* say this in the consent card's own words rather than
-   implying Google is enforcing it.
-
----
-
-## 12. Documentation to update in the same turns
-
-`docs/plans/2026-07-21-individual-communications-connector.md` (Google section),
-`docs/external-tool-integration.md`, `docs/deployment.md` (the Google Cloud
-OAuth client + verification tier), `CLAUDE.md` → "Individual Communications
-Connector", `AGENTS.md` → the comms bullet (capability catalog + the
-send-gating invariant).
+`docs/plans/2026-07-21-individual-communications-connector.md`,
+`docs/plans/2026-08-11-disclosure-boundaries-build.md` (register the new read
+paths in its sink inventory), `docs/external-tool-integration.md`,
+`docs/deployment.md` (Google Cloud OAuth client + the exact internal-use
+conditions), `CLAUDE.md` → "Individual Communications Connector", `AGENTS.md` →
+the comms bullet (capability catalog + the structural send gate).
