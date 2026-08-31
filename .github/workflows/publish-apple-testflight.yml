@@ -75,9 +75,14 @@ jobs:
     if: ${{ inputs.publish && (inputs.platform == 'ios' || inputs.platform == 'both') }}
     runs-on: ubuntu-latest
     environment: app-store-production
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Require Expo access token
+        run: test -n "$EXPO_TOKEN"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -92,7 +97,7 @@ jobs:
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+          token: ${{ env.EXPO_TOKEN }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
