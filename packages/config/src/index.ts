@@ -33,7 +33,7 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
-export const ModelProviderSchema = z.enum(['openai', 'minimax', 'kimi', 'deepseek'])
+export const ModelProviderSchema = z.enum(['openai', 'kimi', 'deepseek'])
 export type ModelProvider = z.infer<typeof ModelProviderSchema>
 
 export const ModelConfigSchema = z.object({
@@ -73,7 +73,6 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>
 // these embeds exactly as it did before this block existed.
 export const EmbeddingProviderSchema = z.enum([
   'openai',
-  'minimax',
   'kimi',
   'deepseek',
   'openai-compatible',
@@ -444,9 +443,7 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     firstNonEmpty(env.NESSIE_MODEL_PROVIDER, env.LLM_PROVIDER) ??
     (env.KIMI_API_KEY !== undefined
       ? 'kimi'
-      : env.MINIMAX_API_KEY !== undefined
-        ? 'minimax'
-        : env.DEEPSEEK_API_KEY !== undefined
+      : env.DEEPSEEK_API_KEY !== undefined
           ? 'deepseek'
         : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
           ? 'openai'
@@ -465,9 +462,7 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     firstNonEmpty(env.NESSIE_MODEL_API_KEY) ??
     (modelProvider === 'kimi'
       ? env.KIMI_API_KEY
-      : modelProvider === 'minimax'
-        ? env.MINIMAX_API_KEY
-        : modelProvider === 'deepseek'
+      : modelProvider === 'deepseek'
           ? env.DEEPSEEK_API_KEY
         : modelProvider === 'openai'
           ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY

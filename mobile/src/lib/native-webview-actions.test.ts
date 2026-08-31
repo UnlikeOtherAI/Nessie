@@ -13,3 +13,14 @@ test('native tab and creation controls can dismiss every hosted transient menu',
     'window.__nessieCloseTransientMenus && window.__nessieCloseTransientMenus();',
   ])
 })
+
+test('native focus control delegates to the hosted focus-mode action', () => {
+  const scripts: string[] = []
+  const actions = createNativeWebviewActions((script) => scripts.push(script))
+
+  actions.toggleFocusMode()
+
+  assert.deepEqual(scripts, [
+    'window.__nessieToggleFocusMode && window.__nessieToggleFocusMode();',
+  ])
+})

@@ -35,7 +35,9 @@ Two mitigations soften the picture and must be kept in mind when prioritizing:
   prefix). When the stable prefix (system prompt + tool schemas) doesn't change
   within a run, iterations 2…N read it from cache cheaply. There is **no native
   Anthropic connector** — Fable/Opus/Sonnet-class models run through the
-  OpenAI-compatible path. MiniMax has no caching.
+  OpenAI-compatible path. (The compiled MiniMax connector was removed on
+  2026-08-31 — a Ledger-listed MiniMax model rides the OpenAI-compatible
+  path like any other uncompiled service id.)
 - **Existing caps.** Memory injection, conversation length, and MCP schemas are
   already bounded (see §5). The gaps are specific and enumerated below.
 

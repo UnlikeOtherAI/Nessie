@@ -143,7 +143,7 @@ Mechanics beyond those invariants:
   name with empty arguments and yields no event. The same change removed a
   `continue` that silently dropped tool fragments from chunks that also carried
   content, corrupting the executed call. **Only OpenAI-compatible connectors
-  stream tool arguments**; Kimi and MiniMax are `prompt-translated` and degrade
+  stream tool arguments**; Kimi is `prompt-translated` and degrades
   honestly — the popup waits and the document appears complete when it
   arrives, never a fake typewriter.
 - Lanes (`document-stream-lanes.ts`): **live** = `publishSseEphemeral`
@@ -602,8 +602,12 @@ Facts not restated there:
 - **An app icon resolves on first view and the instance shares one copy.**
   Caching was wired only into the owner-triggered sync, so the scheduled sweep —
   the only sync that writes in production — left all 5,548 rows on a monogram.
-  `resolveAppIcon` derives it from the row's `websiteUrl` (the registry declares
-  `icons` on ~8% of records; ~75% of rows carry a site), claims the attempt with
+  `resolveAppIcon` asks four sources in descending order of worth — the
+  publisher's registry-declared `icons` (now captured at ingest; it used to be
+  discarded), the site's own `<link rel="icon">`, conventional paths, then the
+  publisher's GitHub avatar — unwrapping a PNG out of an `.ico` rather than
+  rejecting it. That is 75% of rows measured, against 32% for guessed paths
+  alone. It claims the attempt with
   one conditional `iconResolvedAt` UPDATE so dozens of cards fetch once and a
   site with no favicon is never re-tried, and **never blocks the request** — the
   route 404s immediately and the icon appears next visit. Bytes are

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { ApiClient } from '@nessie/client-core'
+import { ApiClientError, type ApiClient } from '@nessie/client-core'
 import { JSDOM } from 'jsdom'
 
 import { workspaceKeys } from '../src/lib/query-keys.js'
@@ -62,7 +62,10 @@ const invitations = {
 
 type Recorded = { method: string; path: string }
 
-const mount = async (canManage: boolean) => {
+const mount = async (
+  canManage: boolean,
+  options: { memberError?: ApiClientError; onReconnect?: () => Promise<void> } = {},
+) => {
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
   for (const [key, value] of Object.entries(domGlobals)) {
     previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
@@ -72,6 +75,7 @@ const mount = async (canManage: boolean) => {
   const calls: Recorded[] = []
   const record = (method: string) => async (path: string) => {
     calls.push({ method, path })
+    if (path === '/api/workspace/members' && options.memberError) throw options.memberError
     if (path === '/api/workspace/members') return { members: [] }
     if (path === '/api/workspace/invitations') return invitations
     return { ok: true }
@@ -84,8 +88,8 @@ const mount = async (canManage: boolean) => {
     put: record('PUT'),
   } as unknown as ApiClient
 
-  const queryClient = new QueryClient()
-  queryClient.setQueryData(workspaceKeys.members, { members: [] })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  if (!options.memberError) queryClient.setQueryData(workspaceKeys.members, { members: [] })
   queryClient.setQueryData(workspaceKeys.invitations, invitations)
 
   const container = dom.window.document.createElement('div')
@@ -99,10 +103,13 @@ const mount = async (canManage: boolean) => {
         h(
           ApiClientProvider,
           { client: apiClient },
-          h(WorkspaceMembersSection, { canManage }),
+          h(WorkspaceMembersSection, { canManage, onReconnect: options.onReconnect }),
         ),
       ),
     )
+  })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
   })
 
   const buttons = (label: string): HTMLElement[] =>
@@ -113,6 +120,7 @@ const mount = async (canManage: boolean) => {
   return {
     buttons,
     calls,
+    text: () => container.textContent ?? '',
     click: async (element: HTMLElement) => {
       await act(async () => {
         element.dispatchEvent(
@@ -180,6 +188,58 @@ test('a member who cannot manage the workspace is offered no revoke', async () =
       harness.calls.some((call) => call.path.includes('/revoke')),
       false,
     )
+  } finally {
+    await harness.unmount()
+  }
+})
+
+test('an unlinked UOA workspace offers a reconnection instead of a false outage', async () => {
+  let reconnects = 0
+  const harness = await mount(true, {
+    memberError: new ApiClientError(
+      'This workspace is not linked to an UnlikeOtherAI workspace',
+      'WORKSPACE_NOT_LINKED',
+      404,
+    ),
+    onReconnect: async () => {
+      reconnects += 1
+    },
+  })
+
+  try {
+    assert.match(
+      harness.text(),
+      /no longer linked to the active UnlikeOtherAI workspace/,
+    )
+    assert.doesNotMatch(harness.text(), /directory could not be reached/)
+    assert.equal(harness.buttons('Reconnect workspace').length, 1)
+    // The linked route also owns invitations, so do not leave an owner with a
+    // form that can only return the same 404.
+    assert.equal(harness.buttons('Send invitation').length, 0)
+    assert.equal(
+      harness.calls.some((call) => call.path === '/api/workspace/invitations'),
+      false,
+    )
+
+    await harness.click(harness.buttons('Reconnect workspace')[0])
+    assert.equal(reconnects, 1)
+  } finally {
+    await harness.unmount()
+  }
+})
+
+test('a UOA directory outage remains distinct from an unlinked workspace', async () => {
+  const harness = await mount(false, {
+    memberError: new ApiClientError(
+      'The UnlikeOtherAI directory is temporarily unavailable',
+      'UOA_DIRECTORY_UNAVAILABLE',
+      502,
+    ),
+  })
+
+  try {
+    assert.match(harness.text(), /directory could not be reached/)
+    assert.equal(harness.buttons('Reconnect workspace').length, 0)
   } finally {
     await harness.unmount()
   }

@@ -241,7 +241,7 @@ control. New writes have been refused since the phase-0 secret-custody gate
 
 After deploying:
 
-* **Compiled providers** (`openai`, `deepseek`, `kimi`, `minimax`) keep working
+* **Compiled providers** (`openai`, `deepseek`, `kimi`) keep working
   on the deployment-level credential (`NESSIE_MODEL_API_KEY` and the
   provider-specific fallbacks). Nothing to do.
 * **OpenAI-compatible providers** that were running on such a binding are

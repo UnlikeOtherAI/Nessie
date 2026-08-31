@@ -288,6 +288,28 @@ Error copy follows from the same rule: an unreachable server is reported as
 outage at Atlassian on the strength of a stranger's listing and sends the reader
 to check the wrong thing.
 
+**A failed probe asks the server what it wants before giving up.** The MCP
+authorization spec says a server declares its auth by refusing an
+unauthenticated request and pointing at RFC 9728 metadata, and
+`discoverMcpEndpoint` has always implemented exactly that — the App Store
+connect path simply never reached it, because `chooseConnectStep` trusted
+`entry.authMethod`, which on a registry-ingested row is the column default
+rather than anybody's statement. GitLab's official server is the case in point:
+it answers `401` with
+`WWW-Authenticate: Bearer resource_metadata="…/oauth-protected-resource/api/v4/mcp"`,
+advertises an authorization server and even a DCR `registration_endpoint` —
+every piece this codebase already speaks — and the store still said "we couldn't
+reach the server". That reply was wrong for 4,685 of 5,548 rows.
+
+`learnAuthFromServer` now runs on a `PROBE_FAILED`, for a defaulted ingested row
+only: discovery classifies the endpoint, an `oauth2` answer persists
+`authMethod: 'oauth2'` + `authConfig: { method: 'oauth2' }` (the dynamic shape —
+discovery, DCR, then PKCE) so the next person is told "Connecting opens a
+sign-in window" *before* clicking and `startOAuth`'s own guard passes, and a
+bearer/key answer routes to `needs_secret`. Anything else keeps the original
+error, so a genuinely dead listing still reads as one. A human-authored entry is
+never overwritten: its `authMethod` is a statement, not a default.
+
 **Connecting happens on `/apps`, in a dialog that says what it will do.**
 Connect used to navigate to the Connectors page, which dropped the person out
 of the store mid-decision and into a surface built for a different question.
@@ -373,12 +395,37 @@ So the icon is derived from the site, **lazily**, by
   work here twice over: the admin and API are different origins (`app.` vs
   `api.`), and an `<img>` cannot carry an `Authorization` header.
 
-Expect roughly a third to a half of cards to end up with a real mark: measured
-against live production sites, 4 of 6 serve a usable raster at the conventional
-paths, and 13 of 41 catalogue rows resolved in a batch. A monogram is a
-legitimate final state, not a failure — `icon-store.ts` holds the one
-fetch→cap→sniff→store pipeline all three cachers share, so a fourth source
-(an ICO decoder, `<link rel=icon>` parsing) plugs in without a fork.
+**Four sources, asked in descending order of what they are worth**
+(`icon-sources.ts`), because guessing paths alone resolved only about a third of
+the catalogue. Of fourteen rows that failed, eleven *did* declare
+`<link rel="icon">` — just not anywhere guessable:
+
+1. **What the publisher declared to the registry** (`server.icons`) — the only
+   source where somebody stated *this is my icon*. Ingestion previously read no
+   icon field at all, so that ~8% was discarded on every sync; it is now
+   captured into `iconUrl` by the mapper and merge.
+2. **What the site's HTML declares** — `<link rel="icon">` and friends, ranked
+   `apple-touch-icon` (a real raster by spec) over `icon` over `mask-icon` (a
+   monochrome silhouette, a poor tile), resolved against the page and refused
+   unless http(s). A bounded scan rather than a spec parser: that would mean a
+   new runtime dependency in the API image for a cosmetic feature, and a
+   mis-parse costs exactly one icon — the bytes are still capped and sniffed.
+3. **Conventional paths** — for sites that ship the files without declaring them.
+4. **The publisher's GitHub avatar** (`github.com/<owner>.png`) — no token, and
+   it answered for seven of eight repositories sampled, covering the 42% of rows
+   with a GitHub repository. The publisher's mark rather than the product's,
+   which is why it is last; the owner name is whitelisted to GitHub's own
+   alphabet because it is interpolated into a URL.
+
+An `.ico` is unwrapped rather than rejected (`extractPngFromIco`): a modern one
+is a container around a PNG, so it needs no decoder, and every offset is
+bounds-checked because it comes out of somebody else's file. An ICO holding only
+legacy BMP is still refused. One site answered `/favicon.ico` with an HTML page
+— the sniff caught it, which is the reason bytes are never trusted from a header.
+
+Measured on 40 real catalogue rows: **30 resolved (75%)**, up from 13 of 41
+(32%) with conventional paths alone. A monogram stays a legitimate final state
+for the rest.
 
 ## Not built yet
 

@@ -19,6 +19,7 @@
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
     "@nessie/config": "workspace:*",
+    "@nessie/db": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",

@@ -4,11 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import {
-  appIconIsResolvable,
-  resolveAppIcon,
-  siteIconCandidates,
-} from '../src/apps/app-icon-resolve.js'
+import { appIconIsResolvable, resolveAppIcon } from '../src/apps/app-icon-resolve.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -19,25 +15,7 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip
  * replacement: resolve when somebody looks, once, and share the result.
  */
 
-// ─── The URL rules, no database needed ──────────────────────────────────────
-
-test('candidates are origin-only, so a registry author cannot choose the path', () => {
-  // The `websiteUrl` is somebody else's text. Taking its origin and appending
-  // our own well-known paths means a crafted URL cannot point the fetch at an
-  // arbitrary path, and a non-http scheme yields nothing at all.
-  assert.deepEqual(siteIconCandidates('https://example.com/deep/page?x=1#frag'), [
-    'https://example.com/apple-touch-icon.png',
-    'https://example.com/apple-touch-icon-precomposed.png',
-    'https://example.com/favicon.png',
-    'https://example.com/favicon.ico',
-  ])
-  assert.deepEqual(siteIconCandidates('file:///etc/passwd'), [])
-  assert.deepEqual(siteIconCandidates('javascript:alert(1)'), [])
-  assert.deepEqual(siteIconCandidates('not a url'), [])
-  // A port is part of the origin and must survive, or the fetch silently
-  // retargets the default port on the same host.
-  assert.equal(siteIconCandidates('http://example.com:8443/x')[0], 'http://example.com:8443/apple-touch-icon.png')
-})
+// ─── What is worth asking about ───────────────────────────────────────────
 
 test('a row is only worth asking about while an icon is still possible', () => {
   const base = { iconAttachmentId: null, iconResolvedAt: null, websiteUrl: null }
@@ -98,7 +76,11 @@ dbTest('the first viewer fetches the icon and everyone after reads it', async ()
       prisma,
     })
     assert.deepEqual(first, { attachmentId })
-    assert.equal(fetches, 1)
+    // Not an exact count: the chain asks several sources (a homepage scan
+    // precedes the icon fetch), and pinning a number here would encode today's
+    // internal order rather than the behaviour anybody depends on.
+    const afterFirst = fetches
+    assert.ok(afterFirst > 0, 'the first viewer really fetched')
 
     // The second viewer — in any organisation — pays nothing. This is what
     // "the whole system shares them" means in practice.
@@ -111,7 +93,7 @@ dbTest('the first viewer fetches the icon and everyone after reads it', async ()
       prisma,
     })
     assert.deepEqual(second, { attachmentId }, 'the shared icon, not a second copy')
-    assert.equal(fetches, 1, 'no second fetch')
+    assert.equal(fetches, afterFirst, 'the second viewer fetched nothing')
 
     const row = await prisma.mcpCatalogEntry.findUnique({
       where: { id: entryId },
