@@ -3,7 +3,6 @@ package main
 import (
 	"io"
 	"net"
-	"os"
 )
 
 const (
@@ -28,11 +27,6 @@ func startGuestEgressProxy(address, sessionToken string, dial guestEgressDialer)
 	slots := make(chan struct{}, guestEgressTunnelLimit)
 	go acceptGuestEgressConnections(listener, sessionToken, dial, slots)
 	return listener, nil
-}
-
-func egressRequestedFromProc() bool {
-	commandLine, err := os.ReadFile("/proc/cmdline")
-	return err == nil && egressRequested(string(commandLine))
 }
 
 func acceptGuestEgressConnections(

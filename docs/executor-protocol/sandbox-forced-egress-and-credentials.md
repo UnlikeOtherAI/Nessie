@@ -224,48 +224,59 @@ keep browser and coding profiles unavailable.
 
 ### Linux backend — Firecracker
 
-On Linux the same guest runs under Firecracker, one jailer-isolated micro-VM
-per session. Only the hypervisor differs: the artifact checks, the COW lease,
-the initrd build, the runtime snapshot, the forced-egress gateway, and every
-guest frame above them are shared, and the choice between backends is made once
-from the descriptor's own `sandboxBackend` (§4.5) by `selectGuestVmBackend`.
-A host reporting `none` or `hyperv` is refused there in words rather than
-falling through to another backend.
+On Linux the same guest runs under Firecracker, one micro-VM per session. Only
+the hypervisor and the *shape of its two shares* differ: the artifact checks,
+the COW lease, the initrd build, the runtime snapshot, the forced-egress
+gateway, and every guest frame above them are shared, and the choice between
+backends is made once from the descriptor's own `sandboxBackend` (§4.5) by
+`selectGuestVmBackend`. A host reporting `none` or `hyperv` is refused there in
+words rather than falling through to another backend.
 
 **Binaries.** The executor's stored `browserSandbox`/`codexSandbox`
-`vmHelperPath` is the Firecracker binary itself, and the jailer is required to
-be its sibling `jailer` in the same owner-only directory — Firecracker's
-documentation requires a jailer of the same version as the binary it execs. The
-standalone package installs both root-owned and mode 0755 under
-`/usr/lib/nessie-executor/resources/firecracker/`, pinned by version *and* by
-the SHA-256 the upstream release publishes for its own archive, with every
-shipped resource's digest recorded in `resources/manifest.json`. No executor
-state field was added: the Linux meaning of the existing paths is this
-paragraph.
+`vmHelperPath` is the Firecracker binary itself; `kernelPath` is the packaged
+guest kernel and `guestInitrdBuilderPath` the packaged initrd builder. The
+standalone package installs all of them root-owned under
+`/usr/lib/nessie-executor/resources/`: `firecracker/firecracker` pinned by
+version *and* by the SHA-256 the upstream release publishes for its own
+archive, and `guest/{init,build-initrd,vmlinux}`, with every shipped resource's
+digest recorded in `resources/manifest.json`. No executor state field was
+added: the Linux meaning of the existing paths is this paragraph.
 
-**Privilege.** The jailer unshares a mount namespace, `pivot_root`s into the
-session chroot, `mknod`s `/dev/kvm`, and chowns the jail before dropping to the
-uid and gid it is told to use. Firecracker's own documentation states that it
-is run as root ("it actually requires a more restricted set of capabilities,
-but that's to be determined as features stabilize"), so the backend checks for
-uid 0 at session start and refuses with that remedy named, rather than letting
-the jailer die halfway through building a chroot. The uid and gid handed to
-`--uid`/`--gid` are the daemon's own, so the jailed Firecracker process runs as
-the account that owns the workspace.
+**Root ownership is the second admissible provenance.** A guest artifact is
+admitted by `verifyPrivateGuestVmFile` if it is this account's own file with no
+group or other permissions at all, **or** if it is owned by uid 0, is not group-
+or world-writable, and resolves under `/usr/lib` or `/usr/share`. The second is
+not a relaxation of the first: apt verifies the repository signature and dpkg
+lays those files down root-owned, a state only an administrator can produce, so
+a user-writable copy in a home directory can never impersonate it. Symbolic
+links are refused on either path, and root ownership *outside* those prefixes
+proves nothing and is refused.
+
+**No jailer, and therefore no chroot.** Firecracker documents its jailer as
+running as root — it unshares a mount namespace, `pivot_root`s into a session
+chroot, `mknod`s `/dev/kvm` and chowns the jail before dropping privileges — and
+neither Linux supervisor is root: the standalone package is a systemd *user*
+service and the desktop supervisor runs as the person. The backend therefore
+runs Firecracker directly, the posture upstream's own getting-started guide
+uses, and takes its isolation from what it does not configure: no network
+interface and so no TAP device, an owner-only directory for every socket and
+image, and Firecracker's **default seccomp filter**, which is on unless
+`--no-seccomp` is passed and is deliberately never passed. The host gate is
+therefore read/write access to `/dev/kvm`, refused before anything is staged
+with the `kvm` group named as the remedy. A privileged launcher that could
+restore the jailer is a stated non-goal of this release
+([the Linux plan](../plans/2026-09-01-linux-desktop-delivery.md) records why).
 
 **Configuration.** Per session the backend spawns
-`jailer --id <session> --exec-file <firecracker> --uid <uid> --gid <gid>
---chroot-base-dir <owner-only short-lived dir> --cgroup-version 2 --
---api-sock /firecracker.socket` — an argv list, never a shell string. It waits
-for the API socket the jailer's chroot exposes, hard-links (or, across
-filesystems, copies) the kernel and initrd into the jail as the jailer
-requires, and then issues exactly four calls on that Unix socket:
+`firecracker --api-sock <owner-only path> --id <session>` — an argv list, never
+a shell string — waits for the API socket, and issues these calls on it:
 
 | Call | Body |
 | --- | --- |
 | `PUT /boot-source` | `kernel_image_path`, `initrd_path`, and `boot_args` |
 | `PUT /machine-config` | `vcpu_count`, `mem_size_mib`, `smt: false` |
 | `PUT /vsock` | `guest_cid: 3`, `uds_path` |
+| `PUT /drives/{runtime,workspace,draft}` | `drive_id`, `path_on_host`, `is_root_device: false`, `is_read_only` |
 | `PUT /actions` | `{"action_type": "InstanceStart"}` |
 
 There is deliberately **no** `PUT /network-interfaces` and no TAP device is
@@ -275,11 +286,88 @@ forced-egress gateway it has on macOS.
 `boot_args` is Firecracker's documented baseline `console=ttyS0 reboot=k
 panic=1 pci=off` plus `rdinit=/init` and the `nessie.*` flags the guest reads
 back out of `/proc/cmdline` — `nessie.runtime_manifest=<digest>`,
-`nessie.runtime=1`, `nessie.workspace=1`, and `nessie.egress=1` for a session
-that has a gateway. The guest init stays in the initramfs and never calls
-`pivot_root`: an initrd-mounted rootfs cannot be unmounted, so Firecracker's
-documentation requires `switch_root` instead, and mounting in place satisfies
-that by construction.
+`nessie.runtime=1`, `nessie.workspace=1`, `nessie.shares=block`, and
+`nessie.egress=1` for a session that has a gateway. The guest init stays in the
+initramfs and never calls `pivot_root`: an initrd-mounted rootfs cannot be
+unmounted, so Firecracker's documentation requires `switch_root` instead, and
+mounting in place satisfies that by construction.
+
+**Shares are block images, because no hypervisor but Apple's has virtio-fs.**
+The guest mounts `/runtime` and `/work` as virtiofs on macOS; Firecracker
+implements no virtio-fs device and neither does Hyper-V, so on those hosts the
+same two shares arrive as raw ext4 images over virtio-block. The images are
+built per session **without root** by `mke2fs -d`, which populates a filesystem
+from a directory tree in userspace — no loop device, no `mount`, no privileged
+helper — with `-E root_owner=<uid>:<gid>` so the guest drops to the account that
+owns the workspace rather than to root, `-N` sizing the inode table from the
+measured file count, and `-O ^has_journal -m 0` because a session image is never
+recovered. The daemon refuses to build them at all when it is running as uid 0,
+naming that rather than letting the guest fail its own root-owned-workspace
+check at boot. A machine with no `mkfs.ext4` is told to install e2fsprogs.
+
+Three images, and the attach order **is** the contract: Firecracker's block
+devices appear in the guest in the order they were configured, so the host
+attaches runtime, workspace, draft and the guest reads `/dev/vda`, `/dev/vdb`,
+`/dev/vdc`. That ordering has been an upstream bug before (device-tree
+insertion order on aarch64, firecracker#1264), so each image also carries an
+ext4 volume label — `nessie-runtime`, `nessie-work`, `nessie-draft` — that the
+guest reads straight out of the superblock and refuses if it is not the one the
+order promised. The order decides; the label proves. Both halves are stated in
+`GUEST_BLOCK_DEVICE_ORDER` (`executor/src/firecracker/layout.ts`) and in
+`executor/guest/mounts_linux.go`.
+
+Inside the guest the paths are unchanged. `/runtime` is the runtime image,
+read-only, `nosuid,nodev` and deliberately executable. `/work` is an **overlay**:
+the workspace image is the read-only lower layer, the draft image the writable
+upper and work layers, mounted `nodev,nosuid,noexec`, so guest execution can
+still originate only from the read-only runtime or the initrd's own `/init`. The
+merged root takes its owner from the upper layer, so the draft image's root
+owner is what the guest drops privileges to — the same derivation virtiofs
+gives it. The overlay is mounted `userxattr`, which puts overlayfs's own markers
+in the `user.` namespace instead of `trusted.` (which needs CAP_SYS_ADMIN to
+read); that is what lets the guest still report a directory its workload emptied
+after it has dropped privileges, and it requires Linux 5.11 or newer. The
+packaged kernel is Firecracker's own CI 6.1 build, pinned by key and by the
+SHA-256 of the bytes that key returned — upstream publishes no checksum file
+beside these objects, unlike its release archives, so the digest recorded in
+`build-deb.mjs` is what makes a later change to the object fail the build.
+
+**Drafts come back over the control channel; the host never parses ext4.** Two
+new control operations carry them. `workspace.draft_scan {cursor}` pages the
+overlay's upper layer — at most 64 entries a call, pre-order so a directory
+always precedes its contents, names sorted — each entry a relative path,
+permission bits and one of `file`, `dir` or `whiteout` (overlayfs records a
+deletion as a 0:0 character device), with `opaque` on a directory the workload
+emptied. `workspace.draft_read {path, offset, maxResultBytes}` returns at most
+16 KiB of a regular file, well inside the 32 KiB payload ceiling. Symbolic
+links, sockets and fifos are never reported: they have no promotion meaning.
+The guest refuses an absolute path, a `.`/`..` segment or any symbolic-link
+component, and the host independently re-validates every path through
+`resolveWorkspaceWritePath` — the same no-follow resolver promotion uses — and
+writes with `O_NOFOLLOW`, bounded at 10,000 files and 128 MiB. A whiteout
+removes; an opaque directory is emptied before the entries that follow are
+applied, which is what makes `rm -rf dir` visible to a review.
+
+The session drains that stream into the run's own overlay directory before it
+stops, and `sandbox-workspace.ts` drains it again at the top of
+`promotionManifestForSandbox`, so `workspace.review` and promotion keep their
+exact contracts and see live work. A block-mode session registers its flush by
+run id for the duration; a virtiofs session registers nothing, because its guest
+already wrote straight into that directory — the absence of a draft reader on
+`ActiveGuestVmSessionProcess` *is* the fact that the share is a share.
+
+**The initrd builder is a portable binary.** `executor/vm/scripts/build-guest-initrd.sh`
+uses BSD `stat -f` and shells out to `go build`, so it is macOS-only and needs a
+Go toolchain on the machine running the daemon. `executor/guest/cmd/build-initrd`
+is a drop-in for the same `guestInitrdBuilderPath` contract —
+`--output <absolute> [--codex-auth <absolute>] --bootstrap-token-stdin`, token
+on standard input only, never argv, never a log, never an error message — that
+writes a gzip newc cpio archive from an already-built guest init found as its
+own sibling (`--init` overrides). Output is deterministic: mtime 0, uid/gid 0, a
+fixed member order and a timestamp-free gzip header, so identical inputs give
+byte-identical archives. Members are `/init` 0500, `/etc` and `/etc/nessie`
+0700, the one-use token 0400, and the Codex auth profile 0400 when one is
+staged. The macOS shell builder is unchanged and still in use there.
 
 **Transports.** Firecracker maps guest `AF_VSOCK` ports 1:1 onto host Unix
 sockets. Both of Nessie's channels are guest-initiated, so both arrive on
@@ -301,25 +389,27 @@ for `OK <assigned_hostside_port>\n` before speaking anything else. Nothing in
 the session path uses it, because the guest dials out on both channels.
 
 **Path length.** `sun_path` is 108 bytes on Linux and the executor's state root
-already spends most of it, so the jail — which carries the API socket and both
-vsock sockets — is created under its own short owner-only temporary root, the
-same treatment the egress socket already gets, and a session id is 16 hex
-characters rather than a UUID.
+already spends most of it, so the API socket and both vsock sockets live in
+their own short owner-only temporary root — the same treatment the egress socket
+already gets — and a session id is 16 hex characters rather than a UUID. The
+drive images have no such bound and stay in the session directory under the
+state root, where they are disk-backed rather than on a tmpfs.
 
 **Stop.** Closing the control channel is what ends this guest: its init returns
 on EOF. `SendCtrlAltDel` is issued as the documented graceful action but is
 best-effort, because Firecracker documents it as Intel and AMD only — it
 emulates an i8042 keyboard that aarch64 micro-VMs do not have. The backend then
-waits, kills the jailer process tree on timeout, and removes the session's
-chroot: a surviving jail is a surviving capability, so no chroot or socket is
-left behind on stop, on guest exit, or on any failure during start.
+waits, kills the process on timeout, and removes both the socket root and the
+image directory: a surviving image is a surviving copy of the workspace, so
+nothing is left behind on stop, on guest exit, or on any failure during start.
 
-**Not yet proven on hardware.** The workspace and runtime shares are still
-described to the guest as virtiofs mounts, which Firecracker does not
-implement; a booted Linux guest therefore needs those two shares re-expressed
-as block devices (or an equivalent) before the command and coding profiles can
-be advertised on this backend. The KVM-gated `firecracker-conformance` job in
-`.github/workflows/desktop-linux.yml` is where that boot is proved; it fails
+**Not yet proven on hardware.** Every layer above has host-side coverage — the
+argv and API sequence, a real `mke2fs -d` image verified with `e2fsck` and
+`debugfs`, the draft protocol asserted against one fixture both the Go encoder
+and the host validator are tested on, the device-order contract, and a
+deterministic initrd whose members are decoded back out — but no guest has
+booted. That needs `/dev/kvm`. The KVM-gated `firecracker-conformance` job in
+`.github/workflows/desktop-linux.yml` is where the boot is proved; it fails
 rather than skips when `/dev/kvm` is absent, and GitHub-hosted runners have
 none.
 

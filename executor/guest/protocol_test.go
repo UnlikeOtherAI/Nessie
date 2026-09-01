@@ -132,7 +132,7 @@ func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) 
 		"codex":   "bin/codex",
 		"tmux":    "bin/tmux",
 	}}
-	controller := newRuntimeController(&manifest)
+	controller := newRuntimeController(&manifest, nil)
 	defer controller.close()
 	payload := []byte(`{"operation":"runtime.inspect","version":1}`)
 	response := handleRuntimeControlRequest(payload, controller)

@@ -38,10 +38,31 @@ const FIRECRACKER_MACHINE = 'x86_64'
 const FIRECRACKER_URL = 'https://github.com/firecracker-microvm/firecracker/releases/download/'
   + `${FIRECRACKER_VERSION}/firecracker-${FIRECRACKER_VERSION}-${FIRECRACKER_MACHINE}.tgz`
 
-// The jailer must be the same version as the firecracker binary it execs
-// (Firecracker docs/jailer.md), so both come out of the one archive, and the
-// backend requires them to sit beside each other in this directory.
-const FIRECRACKER_BINARIES = ['firecracker', 'jailer']
+// Only the firecracker binary is shipped. The jailer is deliberately absent:
+// it is documented as running as root, and neither Linux supervisor is root
+// (executor/src/firecracker/layout.ts). Shipping an executable this release
+// cannot use would be a capability nobody audited.
+const FIRECRACKER_BINARIES = ['firecracker']
+
+// The guest kernel. Firecracker publishes the kernels its own CI boots, and
+// this is the exact object that bucket serves — pinned by key AND by the
+// SHA-256 of the bytes that key returned, verified before packaging. Upstream
+// publishes no checksum file beside these objects (unlike the release archive
+// above), so the digest recorded here was computed once from a fetch of that
+// key and is what makes a later change to the object fail the build instead of
+// shipping silently. Upgrading means changing both constants in one commit
+// after re-reading the bucket.
+//
+// 6.1 rather than the 5.10 the same bucket offers: overlayfs `userxattr`
+// (Linux 5.11+) is what lets the unprivileged guest report a directory its
+// workload emptied. Both kernels carry CONFIG_BLK_DEV_INITRD, CONFIG_VIRTIO_BLK,
+// CONFIG_EXT4_FS, CONFIG_OVERLAY_FS and CONFIG_VIRTIO_VSOCKETS; neither has
+// virtio-fs, which is why the shares are block images at all.
+const GUEST_KERNEL_CI_VERSION = 'v1.15'
+const GUEST_KERNEL_RELEASE = '6.1.155'
+const GUEST_KERNEL_SHA256 = 'e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2'
+const GUEST_KERNEL_URL = 'https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/'
+  + `${GUEST_KERNEL_CI_VERSION}/${FIRECRACKER_MACHINE}/vmlinux-${GUEST_KERNEL_RELEASE}`
 
 const packageVersion = async () => {
   const declared = process.env.NESSIE_EXECUTOR_VERSION
@@ -69,8 +90,8 @@ const control = (version) => [
   ' Runs a paired Nessie executor as a systemd user service, so a computer with',
   ' no Nessie desktop app can carry out sandboxed work for agents. Ships the',
   ' executor command, its pinned Node runtime with a sha256 manifest, the pinned',
-  ' Firecracker hypervisor with its jailer, the Linux guest init, and the',
-  ' nessie-executor@.service template.',
+  ' Firecracker hypervisor, the pinned guest kernel, the Linux guest init with',
+  ' its initrd builder, and the nessie-executor@.service template.',
   '',
 ].join('\n')
 
@@ -90,6 +111,16 @@ const LAUNCHER = [
 
 const sha256File = async (path) => createHash('sha256').update(await readFile(path)).digest('hex')
 
+const downloadPinned = async (url, destination, expected, label) => {
+  const response = await fetch(url, { redirect: 'follow' })
+  if (!response.ok) throw new Error(`Downloading ${url} failed with HTTP ${response.status}.`)
+  await writeFile(destination, Buffer.from(await response.arrayBuffer()), { mode: 0o644 })
+  const digest = await sha256File(destination)
+  if (digest !== expected) {
+    throw new Error(`The pinned ${label} hashed ${digest}, not ${expected}. Refusing to package it.`)
+  }
+}
+
 /**
  * Downloads and verifies the pinned Firecracker release, then lays its two
  * binaries down under their unversioned names. dpkg makes them root-owned;
@@ -100,18 +131,7 @@ const sha256File = async (path) => createHash('sha256').update(await readFile(pa
 const stageFirecracker = async (destination) => {
   await mkdir(destination, { mode: 0o755, recursive: true })
   const archive = join(destination, 'firecracker-release.tgz')
-  const response = await fetch(FIRECRACKER_URL, { redirect: 'follow' })
-  if (!response.ok) {
-    throw new Error(`Downloading ${FIRECRACKER_URL} failed with HTTP ${response.status}.`)
-  }
-  await writeFile(archive, Buffer.from(await response.arrayBuffer()), { mode: 0o644 })
-  const digest = await sha256File(archive)
-  if (digest !== FIRECRACKER_ARCHIVE_SHA256) {
-    throw new Error(
-      `The Firecracker ${FIRECRACKER_VERSION} archive hashed ${digest}, not the pinned `
-      + `${FIRECRACKER_ARCHIVE_SHA256}. Refusing to package an unverified hypervisor.`,
-    )
-  }
+  await downloadPinned(FIRECRACKER_URL, archive, FIRECRACKER_ARCHIVE_SHA256, 'Firecracker release archive')
   const unpacked = join(destination, 'unpacked')
   await mkdir(unpacked, { mode: 0o755, recursive: true })
   await run('tar', ['--extract', '--gzip', '--file', archive, '--directory', unpacked])
@@ -129,14 +149,28 @@ const stageFirecracker = async (destination) => {
   await rm(unpacked, { force: true, recursive: true })
 }
 
-/** The Go guest init, built for the architecture this package targets. */
+
+/**
+ * The guest payload: the Go init the initrd is built from, the portable initrd
+ * builder that assembles it (the executor's `guestInitrdBuilderPath` on Linux
+ * — it finds `init` as its own sibling, which is why the two ship together),
+ * and the pinned guest kernel.
+ */
 const stageGuest = async (destination) => {
   await mkdir(destination, { mode: 0o755, recursive: true })
+  const goEnvironment = { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'linux' }
   await run('go', ['build', '-trimpath', '-o', join(destination, 'init'), '.'], {
     cwd: join(executorDirectory, 'guest'),
-    env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'linux' },
+    env: goEnvironment,
   })
   await chmod(join(destination, 'init'), 0o755)
+  await run('go', ['build', '-trimpath', '-o', join(destination, 'build-initrd'), './cmd/build-initrd'], {
+    cwd: join(executorDirectory, 'guest'),
+    env: goEnvironment,
+  })
+  await chmod(join(destination, 'build-initrd'), 0o755)
+  await downloadPinned(GUEST_KERNEL_URL, join(destination, 'vmlinux'), GUEST_KERNEL_SHA256, 'guest kernel')
+  await chmod(join(destination, 'vmlinux'), 0o644)
 }
 
 /**
@@ -159,7 +193,12 @@ const resourceManifest = async (directory) => {
     }
   }
   await walk(directory)
-  return { files, firecrackerVersion: FIRECRACKER_VERSION, version: 1 }
+  return {
+    files,
+    firecrackerVersion: FIRECRACKER_VERSION,
+    guestKernelVersion: GUEST_KERNEL_RELEASE,
+    version: 1,
+  }
 }
 
 const stage = async (stagingDirectory) => {
@@ -174,10 +213,12 @@ const stage = async (stagingDirectory) => {
   })
   await chmod(join(stagingDirectory, INSTALL_PREFIX), 0o755)
 
-  // The sandbox artifacts the Firecracker backend resolves at session start:
-  // `resources/firecracker/{firecracker,jailer}` — the executor's stored
-  // `vmHelperPath` on Linux is the firecracker binary and the jailer is its
-  // sibling — plus the guest init the initrd is built from.
+  // The sandbox artifacts a session resolves at start. `vmHelperPath` on Linux
+  // is `resources/firecracker/firecracker`; `kernelPath` is
+  // `resources/guest/vmlinux`; and `guestInitrdBuilderPath` is
+  // `resources/guest/build-initrd`, which finds `resources/guest/init` beside
+  // itself. All are root-owned under /usr/lib, which is exactly the provenance
+  // `verifyPrivateGuestVmFile` admits as a packaged artifact.
   const resourcesDirectory = join(stagingDirectory, INSTALL_PREFIX, RESOURCES)
   await mkdir(resourcesDirectory, { mode: 0o755, recursive: true })
   await stageFirecracker(join(resourcesDirectory, 'firecracker'))

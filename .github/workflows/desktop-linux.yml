@@ -239,28 +239,48 @@ jobs:
       - name: Firecracker backend conformance
         working-directory: executor
         # The suites that gate the command and coding profiles: the backend's
-        # jailer argv, its API configuration sequence, the vsock framing, and
-        # the guest control and forced-egress channels. A booted-guest run is
-        # added here once the Linux kernel and initrd artifacts land beside
-        # these binaries; see docs/executor-protocol/overview.md §8.
-        run: node --test --import tsx 'test/firecracker-*.test.ts'
+        # argv and API configuration sequence, the block-image builder that
+        # replaces virtio-fs, the draft read-back, the vsock framing, and the
+        # guest control and forced-egress channels. A booted-guest run is added
+        # here once a KVM runner is available; see
+        # docs/executor-protocol/sandbox-forced-egress-and-credentials.md.
+        run: |
+          set -euo pipefail
+          sudo apt-get install --yes e2fsprogs
+          node --test --import tsx 'test/firecracker-*.test.ts' \
+            'test/guest-images.test.ts' 'test/guest-draft-ingest.test.ts' \
+            'test/guest-vm-artifacts.test.ts'
 
-      - name: The packaged hypervisor and jailer run on this host
+      - name: The packaged hypervisor and guest payload run on this host
         run: |
           set -euo pipefail
           node executor/packaging/linux/build-deb.mjs
           sudo apt-get install --yes ./dist/nessie-executor_*.deb
-          # Both binaries must be root-owned and executable: that ownership is
-          # the Linux trust root, and the jailer additionally needs to start as
-          # root to build a chroot (Firecracker docs/jailer.md).
+          # Root ownership is the Linux trust root: only an administrator can
+          # produce it, which is what `verifyPrivateGuestVmFile` admits as a
+          # packaged artifact. There is no jailer to check — the daemon runs
+          # Firecracker itself (executor/src/firecracker/layout.ts).
           for path in /usr/lib/nessie-executor/resources/firecracker/firecracker \
-                      /usr/lib/nessie-executor/resources/firecracker/jailer \
+                      /usr/lib/nessie-executor/resources/guest/build-initrd \
                       /usr/lib/nessie-executor/resources/guest/init; do
             [ "$(stat -c '%U' "${path}")" = "root" ]
             [ "$(stat -c '%a' "${path}")" = "755" ]
           done
+          [ "$(stat -c '%U' /usr/lib/nessie-executor/resources/guest/vmlinux)" = "root" ]
+          [ "$(stat -c '%a' /usr/lib/nessie-executor/resources/guest/vmlinux)" = "644" ]
+          [ ! -e /usr/lib/nessie-executor/resources/firecracker/jailer ]
           /usr/lib/nessie-executor/resources/firecracker/firecracker --version
-          /usr/lib/nessie-executor/resources/firecracker/jailer --version
+          # The packaged builder produces a real initrd from its sibling init,
+          # deterministically, without a Go toolchain on the target machine.
+          install -d -m 700 "${RUNNER_TEMP}/initrd"
+          head -c 32 /dev/urandom | basenc --base64url | tr -d '=' \
+            > "${RUNNER_TEMP}/initrd/token"
+          for name in a b; do
+            /usr/lib/nessie-executor/resources/guest/build-initrd \
+              --output "${RUNNER_TEMP}/initrd/${name}.cpio.gz" \
+              --bootstrap-token-stdin < "${RUNNER_TEMP}/initrd/token"
+          done
+          cmp "${RUNNER_TEMP}/initrd/a.cpio.gz" "${RUNNER_TEMP}/initrd/b.cpio.gz"
           # The manifest records what was shipped; re-checking it here proves
           # dpkg laid down the same bytes the build verified against the
           # upstream published checksum.

@@ -21,9 +21,24 @@ export type GuestVmProcessRunner = (input: {
 
 const ownerId = (): number | undefined => process.getuid?.()
 
+/**
+ * The administrator-installed prefixes. A packaged guest artifact — the kernel,
+ * the initrd builder, the runtime, the Firecracker binary — is root-owned by
+ * dpkg (`--root-owner-group`, behind an apt repository signature), which is
+ * precisely the Linux trust root: only an administrator can produce that state,
+ * so a user-writable copy in a home directory can never impersonate it. That is
+ * a *different* proof from the owner-private one, not a relaxation of it, so it
+ * is admitted only under these prefixes and only for uid 0.
+ */
+const PACKAGED_ARTIFACT_PREFIXES = ['/usr/lib/', '/usr/share/']
+
+const isPackagedArtifactPath = (canonical: string): boolean =>
+  PACKAGED_ARTIFACT_PREFIXES.some((prefix) => canonical.startsWith(prefix))
+
 const verifyOwnerPrivateFile = async (
   value: string,
   options: {
+    allowPackagedRoot?: boolean
     executable: boolean
     expectedModes?: number[]
     label: string
@@ -40,11 +55,20 @@ const verifyOwnerPrivateFile = async (
   }
   const canonical = await realpath(declared)
   const info = await lstat(canonical)
+  // Two admissible provenances, never a blend: this account's own private file,
+  // or an administrator-installed root-owned one under a packaged prefix. Both
+  // forbid group and world *write*; the packaged one is deliberately readable,
+  // because the daemon runs as an ordinary account.
+  const ownedPrivately = ownerId() === undefined || info.uid === ownerId()
+  const ownedByPackage = Boolean(options.allowPackagedRoot)
+    && info.uid === 0
+    && isPackagedArtifactPath(canonical)
   if (
     info.isSymbolicLink()
     || !info.isFile()
-    || (ownerId() !== undefined && info.uid !== ownerId())
-    || (info.mode & 0o077) !== 0
+    || (!ownedPrivately && !ownedByPackage)
+    || (info.mode & 0o022) !== 0
+    || (!ownedByPackage && (info.mode & 0o077) !== 0)
     || (options.executable && (info.mode & constants.S_IXUSR) === 0)
     || (options.expectedModes !== undefined && !options.expectedModes.includes(info.mode & 0o777))
     || (options.maxBytes !== undefined && info.size > options.maxBytes)
@@ -57,7 +81,7 @@ const verifyOwnerPrivateFile = async (
 }
 
 export const verifyPrivateGuestVmFile = async (value: string, executable: boolean): Promise<string> =>
-  verifyOwnerPrivateFile(value, { executable, label: 'VM artifact' })
+  verifyOwnerPrivateFile(value, { allowPackagedRoot: true, executable, label: 'VM artifact' })
 
 /** A login profile is copied by the owner-controlled initrd builder, never read by Nessie. */
 export const verifyPrivateCodexAuthProfile = async (value: string): Promise<string> =>
@@ -149,13 +173,10 @@ export const secureGuestVmGatewayDirectory = (): Promise<string> =>
   secureShortSocketDirectory('nex-egress-', 'egress.sock', 'egress socket')
 
 /**
- * The jailer's `--chroot-base-dir`. Firecracker binds both its API socket and
- * its vsock device inside `<base>/firecracker/<id>/root`, so the base carries
- * the same length budget as any other socket root.
+ * Firecracker binds its REST API socket and its vsock device here, and each
+ * guest-initiated vsock port adds a `_<port>` suffix to the latter, so the
+ * longest child is the egress channel's listener. There is no jailer and hence
+ * no chroot: this owner-only directory *is* the session's socket root.
  */
-export const secureFirecrackerJailDirectory = (sessionIdMaxChars: number): Promise<string> =>
-  secureShortSocketDirectory(
-    'nex-fc-',
-    join('firecracker', 'i'.repeat(sessionIdMaxChars), 'root', 'firecracker.socket'),
-    'micro-VM jail',
-  )
+export const secureFirecrackerSocketDirectory = (): Promise<string> =>
+  secureShortSocketDirectory('nex-fc-', 'v.sock_49153', 'micro-VM socket')

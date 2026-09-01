@@ -5,11 +5,43 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { createFirecrackerBackend, guestBootArgs } from '../src/firecracker/index.js'
+import {
+  createFirecrackerBackend,
+  guestBootArgs,
+  GUEST_BLOCK_DEVICE_ORDER,
+} from '../src/firecracker/index.js'
+import { GUEST_IMAGE_LABELS } from '../src/guest-images.js'
 import { newGuestVmSessionId, type GuestVmBackendStartInput } from '../src/guest-vm-backend.js'
 import { createFakeFirecracker } from './firecracker-fake.js'
 
-const ROOT_PROBE = { getgid: () => 0, getuid: () => 0 }
+/** The daemon is never root, so /dev/kvm access is the only host gate. */
+const KVM_PRESENT = { access: async (): Promise<void> => undefined }
+const KVM_ABSENT = {
+  access: async (): Promise<void> => { throw new Error('EACCES') },
+}
+
+const IDENTITY = { gid: 1_000, uid: 1_000 }
+
+type StagedImages = { argv: string[][] }
+
+/**
+ * A stand-in for `mkfs.ext4` that records the argv and creates the image file,
+ * so the backend's drive configuration is exercised without e2fsprogs. The
+ * real builder is proven separately in guest-images.test.ts.
+ */
+const stageImageBuilder = (): {
+  images: StagedImages
+  spawnProcess: (input: { argv: string[]; path: string }) => Promise<void>
+} => {
+  const images: StagedImages = { argv: [] }
+  return {
+    images,
+    spawnProcess: async ({ argv }) => {
+      images.argv.push(argv)
+      await writeFile(argv[argv.length - 2]!, '')
+    },
+  }
+}
 
 const stageRuntime = async (): Promise<{
   firecrackerPath: string
@@ -21,15 +53,14 @@ const stageRuntime = async (): Promise<{
   await mkdir(resources, { mode: 0o700, recursive: true })
   const firecrackerPath = join(resources, 'firecracker')
   await writeFile(firecrackerPath, '#!/bin/sh\n')
-  await writeFile(join(resources, 'jailer'), '#!/bin/sh\n')
   await chmod(firecrackerPath, 0o700)
-  await chmod(join(resources, 'jailer'), 0o700)
   const kernelPath = join(root, 'vmlinux')
   const initrdPath = join(root, 'initrd')
   await writeFile(kernelPath, 'kernel')
   await writeFile(initrdPath, 'initrd')
   const sessionDirectory = join(root, 'session')
-  await mkdir(sessionDirectory, { mode: 0o700, recursive: true })
+  await mkdir(join(sessionDirectory, 'runtime'), { mode: 0o700, recursive: true })
+  await mkdir(join(sessionDirectory, 'work'), { mode: 0o700, recursive: true })
   return {
     firecrackerPath,
     input: (bootstrapToken, egressGatewaySocketPath) => ({
@@ -51,57 +82,76 @@ const stageRuntime = async (): Promise<{
   }
 }
 
-test('the Firecracker backend configures, boots, serves the guest, and leaves no jail behind', async () => {
+test('the Firecracker backend runs without a jailer, as the daemon itself', async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
-  const { fake, spawnProcess } = createFakeFirecracker({
-    bootstrapToken,
-    runtimeDirectory: staged.root,
-  })
+  const { fake, spawnProcess } = createFakeFirecracker({ bootstrapToken })
+  const builder = stageImageBuilder()
   try {
-    const backend = createFirecrackerBackend({ privilegeProbe: ROOT_PROBE, spawnProcess })
+    const backend = createFirecrackerBackend({
+      hostProbe: KVM_PRESENT,
+      images: { builderPath: '/sbin/mkfs.ext4', identity: IDENTITY, spawnProcess: builder.spawnProcess },
+      spawnProcess,
+    })
     assert.equal(backend.kind, 'firecracker')
     const started = staged.input(bootstrapToken)
     const session = await backend.start(started)
 
-    // The jailer is argv, never a shell string, and carries the daemon identity.
-    assert.equal(fake.jailerPath, join(staged.root, 'resources', 'jailer'))
-    assert.deepEqual(fake.jailerArgv, [
+    // The Firecracker binary itself is spawned — no jailer, no chroot, no root.
+    assert.equal(fake.firecrackerPath, staged.firecrackerPath)
+    assert.deepEqual(fake.firecrackerArgv, [
+      '--api-sock', join(fake.socketDirectory, 'api.sock'),
       '--id', started.sessionId,
-      '--exec-file', staged.firecrackerPath,
-      '--uid', '0',
-      '--gid', '0',
-      '--chroot-base-dir', fake.chrootBaseDirectory,
-      '--cgroup-version', '2',
-      '--',
-      '--api-sock', '/firecracker.socket',
     ])
-    assert.equal(fake.jailerArgv.some((value) => /[;&|]/.test(value)), false)
+    // Default seccomp stays on: the disabling flag is never passed.
+    assert.equal(fake.firecrackerArgv.includes('--no-seccomp'), false)
+    assert.equal(fake.firecrackerArgv.some((value) => /[;&|]/.test(value)), false)
+    assert.equal(fake.consolePath, started.consolePath)
 
     // The exact configuration sequence, and no network interface at all.
     assert.deepEqual(fake.calls.map((call) => call.path), [
       '/boot-source',
       '/machine-config',
       '/vsock',
+      '/drives/runtime',
+      '/drives/workspace',
+      '/drives/draft',
       '/actions',
     ])
     assert.deepEqual(fake.calls[0].body, {
       boot_args: guestBootArgs({ egress: false, runtimeManifestDigest: started.runtimeManifestDigest }),
-      initrd_path: '/initrd.cpio',
-      kernel_image_path: '/vmlinux',
+      initrd_path: started.initrdPath,
+      kernel_image_path: started.kernelPath,
     })
-    assert.deepEqual(fake.calls[1].body, {
-      mem_size_mib: 4_096,
-      smt: false,
-      track_dirty_pages: false,
-      vcpu_count: 2,
-    })
-    assert.deepEqual(fake.calls[2].body, { guest_cid: 3, uds_path: '/v.sock' })
-    assert.deepEqual(fake.calls[3].body, { action_type: 'InstanceStart' })
+    assert.deepEqual(fake.calls[2].body, { guest_cid: 3, uds_path: join(fake.socketDirectory, 'v.sock') })
 
-    // The boot images were staged inside the jail, as the jailer requires.
-    assert.equal((await stat(join(fake.chrootDirectory, 'vmlinux'))).isFile(), true)
-    assert.equal((await stat(join(fake.chrootDirectory, 'initrd.cpio'))).isFile(), true)
+    // Every share is a block device because Firecracker has no virtio-fs, and
+    // only the draft is writable.
+    assert.deepEqual(fake.calls.slice(3, 6).map((call) => call.body), [
+      {
+        drive_id: 'runtime',
+        is_read_only: true,
+        is_root_device: false,
+        path_on_host: join(started.sessionDirectory, 'images', 'runtime.img'),
+      },
+      {
+        drive_id: 'workspace',
+        is_read_only: true,
+        is_root_device: false,
+        path_on_host: join(started.sessionDirectory, 'images', 'workspace.img'),
+      },
+      {
+        drive_id: 'draft',
+        is_read_only: false,
+        is_root_device: false,
+        path_on_host: join(started.sessionDirectory, 'images', 'draft.img'),
+      },
+    ])
+    // Each image carries the label the guest checks against the attach order.
+    assert.deepEqual(
+      builder.images.argv.map((argv) => argv[argv.indexOf('-L') + 1]),
+      GUEST_BLOCK_DEVICE_ORDER.map((device) => device.label),
+    )
 
     // The guest's own frames reach the shared control client unchanged.
     assert.deepEqual(await session.inspectRuntime(), {
@@ -112,33 +162,45 @@ test('the Firecracker backend configures, boots, serves the guest, and leaves no
     })
 
     await session.stop()
-    // Graceful stop asks for SendCtrlAltDel before the process tree is killed.
     assert.deepEqual(fake.calls.at(-1)?.body, { action_type: 'SendCtrlAltDel' })
-    await assert.rejects(stat(fake.chrootBaseDirectory), /ENOENT/)
+    await assert.rejects(stat(fake.socketDirectory), /ENOENT/)
+    await assert.rejects(stat(join(started.sessionDirectory, 'images')), /ENOENT/)
   } finally {
     await fake.stop()
     await rm(staged.root, { force: true, recursive: true })
   }
 })
 
-test('a session with forced egress boots with the egress flag and both guest channels listening', async () => {
+test('the guest is told its shares are block devices, and never on macOS', async () => {
+  const digest = `sha256:${'b'.repeat(64)}`
+  const args = guestBootArgs({ egress: true, runtimeManifestDigest: digest })
+  assert.equal(args.includes('nessie.shares=block'), true)
+  assert.equal(args.includes('nessie.egress=1'), true)
+  assert.equal(args.includes('rdinit=/init'), true)
+  assert.equal(args.includes('console=ttyS0'), true)
+  assert.equal(guestBootArgs({ egress: false, runtimeManifestDigest: digest }).includes('nessie.egress'), false)
+  assert.deepEqual(
+    GUEST_BLOCK_DEVICE_ORDER.map((device) => device.label),
+    [GUEST_IMAGE_LABELS.runtime, GUEST_IMAGE_LABELS.workspace, GUEST_IMAGE_LABELS.draft],
+  )
+})
+
+test('a session with forced egress boots with both guest channels listening', async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
-  const { fake, spawnProcess } = createFakeFirecracker({
-    bootstrapToken,
-    runtimeDirectory: staged.root,
-  })
+  const { fake, spawnProcess } = createFakeFirecracker({ bootstrapToken })
+  const builder = stageImageBuilder()
   const gatewayDirectory = await mkdtemp(join(tmpdir(), 'nessie-egress-'))
   try {
-    const backend = createFirecrackerBackend({ privilegeProbe: ROOT_PROBE, spawnProcess })
+    const backend = createFirecrackerBackend({
+      hostProbe: KVM_PRESENT,
+      images: { builderPath: '/sbin/mkfs.ext4', identity: IDENTITY, spawnProcess: builder.spawnProcess },
+      spawnProcess,
+    })
     const started = staged.input(bootstrapToken, join(gatewayDirectory, 'egress.sock'))
     const session = await backend.start(started)
-    const bootArgs = (fake.calls[0].body as { boot_args: string }).boot_args
-    assert.equal(bootArgs.includes('nessie.egress=1'), true)
-    assert.equal(bootArgs.includes('rdinit=/init'), true)
-    assert.equal(bootArgs.includes('console=ttyS0'), true)
-    assert.equal((await stat(join(fake.chrootDirectory, 'v.sock_49152'))).isSocket(), true)
-    assert.equal((await stat(join(fake.chrootDirectory, 'v.sock_49153'))).isSocket(), true)
+    assert.equal((await stat(join(fake.socketDirectory, 'v.sock_49152'))).isSocket(), true)
+    assert.equal((await stat(join(fake.socketDirectory, 'v.sock_49153'))).isSocket(), true)
     await session.stop()
   } finally {
     await fake.stop()
@@ -147,19 +209,21 @@ test('a session with forced egress boots with the egress flag and both guest cha
   }
 })
 
-test('a guest that never presents its control hello fails the session closed and cleans the jail', async () => {
+test('a guest that never presents its control hello fails the session closed and cleans up', async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
-  const { fake, spawnProcess } = createFakeFirecracker({
-    bootGuest: false,
-    bootstrapToken,
-    runtimeDirectory: staged.root,
-  })
+  const { fake, spawnProcess } = createFakeFirecracker({ bootGuest: false, bootstrapToken })
+  const builder = stageImageBuilder()
   try {
-    const backend = createFirecrackerBackend({ privilegeProbe: ROOT_PROBE, spawnProcess })
+    const backend = createFirecrackerBackend({
+      hostProbe: KVM_PRESENT,
+      images: { builderPath: '/sbin/mkfs.ext4', identity: IDENTITY, spawnProcess: builder.spawnProcess },
+      spawnProcess,
+    })
     const started = { ...staged.input(bootstrapToken), readyTimeoutMs: 250 }
     await assert.rejects(backend.start(started), /executor/i)
-    await assert.rejects(stat(fake.chrootBaseDirectory), /ENOENT/)
+    await assert.rejects(stat(fake.socketDirectory), /ENOENT/)
+    await assert.rejects(stat(join(started.sessionDirectory, 'images')), /ENOENT/)
   } finally {
     await fake.stop()
     await rm(staged.root, { force: true, recursive: true })
@@ -169,13 +233,15 @@ test('a guest that never presents its control hello fails the session closed and
 test('a guest presenting the wrong bootstrap token is refused before any control byte is served', async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
-  const { fake, spawnProcess } = createFakeFirecracker({
-    // The guest speaks a well-formed hello carrying somebody else's token.
-    bootstrapToken: randomBytes(32).toString('base64url'),
-    runtimeDirectory: staged.root,
-  })
+  // The guest speaks a well-formed hello carrying somebody else's token.
+  const { fake, spawnProcess } = createFakeFirecracker({ bootstrapToken: randomBytes(32).toString('base64url') })
+  const builder = stageImageBuilder()
   try {
-    const backend = createFirecrackerBackend({ privilegeProbe: ROOT_PROBE, spawnProcess })
+    const backend = createFirecrackerBackend({
+      hostProbe: KVM_PRESENT,
+      images: { builderPath: '/sbin/mkfs.ext4', identity: IDENTITY, spawnProcess: builder.spawnProcess },
+      spawnProcess,
+    })
     const started = { ...staged.input(bootstrapToken), readyTimeoutMs: 2_000 }
     await assert.rejects(backend.start(started), /control authentication|timed out/i)
   } finally {
@@ -184,27 +250,27 @@ test('a guest presenting the wrong bootstrap token is refused before any control
   }
 })
 
-test('an unprivileged daemon is refused at session start with the remedy named', async () => {
+test('a host whose /dev/kvm is unreachable is refused with the group remedy named', async () => {
   const staged = await stageRuntime()
   try {
-    const backend = createFirecrackerBackend({ privilegeProbe: { getgid: () => 1_000, getuid: () => 1_000 } })
+    const backend = createFirecrackerBackend({ hostProbe: KVM_ABSENT })
     await assert.rejects(
       backend.start(staged.input(randomBytes(32).toString('base64url'))),
-      /jailer must run as root/,
+      /kvm group/,
     )
   } finally {
     await rm(staged.root, { force: true, recursive: true })
   }
 })
 
-test('a missing jailer beside the firecracker binary is named rather than guessed at', async () => {
+test('a missing Firecracker binary is named rather than guessed at', async () => {
   const staged = await stageRuntime()
   try {
-    await rm(join(staged.root, 'resources', 'jailer'))
-    const backend = createFirecrackerBackend({ privilegeProbe: ROOT_PROBE })
+    await rm(staged.firecrackerPath)
+    const backend = createFirecrackerBackend({ hostProbe: KVM_PRESENT })
     await assert.rejects(
       backend.start(staged.input(randomBytes(32).toString('base64url'))),
-      /jailer must be installed beside the firecracker binary/,
+      /Firecracker binary is not installed/,
     )
   } finally {
     await rm(staged.root, { force: true, recursive: true })

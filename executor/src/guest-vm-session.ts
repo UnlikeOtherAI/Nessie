@@ -10,6 +10,12 @@ import {
 import { startExecutorEgressGateway } from './egress-gateway.js'
 import { createFirecrackerBackend } from './firecracker/index.js'
 import {
+  ingestGuestDrafts,
+  registerSandboxDraftSource,
+  releaseSandboxDraftSource,
+  type SandboxDraftFlush,
+} from './guest-draft-ingest.js'
+import {
   GUEST_VM_RESOURCES,
   newGuestVmSessionId,
   selectGuestVmBackend,
@@ -114,10 +120,12 @@ export const startGuestVmSession = async (
   const bootstrapToken = randomBytes(32).toString('base64url')
   const runProcess = dependencies.runProcess ?? runGuestVmProcess
   let process: ActiveGuestVmSessionProcess | undefined
+  let draftFlush: SandboxDraftFlush | undefined
   let cleaned = false
   const cleanup = async (): Promise<void> => {
     if (cleaned) return
     cleaned = true
+    if (draftFlush) releaseSandboxDraftSource(input.lease.runId, draftFlush)
     await gateway?.close().catch(() => undefined)
     await removeGuestRuntimeBundleSnapshot(join(sessionDirectory, 'runtime')).catch(() => undefined)
     await rm(sessionDirectory, { force: true, recursive: true })
@@ -156,6 +164,22 @@ export const startGuestVmSession = async (
       vmHelperPath: helperPath,
       workspacePath: input.lease.workspace,
     })
+    const started = process
+    // A backend whose shares are block images cannot let the host read the
+    // draft, so it exposes the guest's own reader instead. Registering it is
+    // what makes `workspace.review` and promotion see live work; draining it
+    // before stop is what makes the draft survive the guest.
+    if (started.readDraft && started.scanDrafts) {
+      const reader = { readDraft: started.readDraft, scanDrafts: started.scanDrafts }
+      let draining: Promise<void> | undefined
+      draftFlush = () => {
+        draining = (draining ?? Promise.resolve())
+          .catch(() => undefined)
+          .then(async () => { await ingestGuestDrafts(reader, input.lease.workspace) })
+        return draining
+      }
+      registerSandboxDraftSource(input.lease.runId, draftFlush)
+    }
     const closed = process.closed.finally(cleanup)
     return {
       actBrowser: (action) => process!.actBrowser(action),
@@ -172,6 +196,10 @@ export const startGuestVmSession = async (
       },
       runCommand: (request) => process!.runCommand(request),
       stop: async () => {
+        // The draft is drained while the guest is still answering. A failure
+        // here must not leave a running VM behind, so it is recorded by the
+        // caller's own review rather than blocking teardown.
+        await draftFlush?.().catch(() => undefined)
         await process?.stop()
         await closed
       },

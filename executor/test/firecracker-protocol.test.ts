@@ -7,11 +7,13 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import {
-  buildJailerArgv,
+  assertFirecrackerHostReady,
+  buildFirecrackerArgv,
   connectGuestVsockPort,
   deriveGuestEgressToken,
-  jailerLayout,
+  firecrackerLayout,
   listenGuestVsockPort,
+  KVM_DEVICE_PATH,
 } from '../src/firecracker/index.js'
 import {
   createVirtualizationFrameworkBackend,
@@ -95,25 +97,34 @@ test('the macOS backend still builds exactly the session argv the signed helper 
   assert.equal(calls[0].argv.includes('token'), false)
 })
 
-test('the jailer layout and argv follow the documented chroot path and id rules', () => {
-  const layout = jailerLayout({
-    chrootBaseDirectory: '/state/jail',
-    firecrackerPath: '/usr/lib/nessie-executor/resources/firecracker/firecracker',
-    sessionId: 'abc-123',
-  })
-  assert.equal(layout.chrootDirectory, '/state/jail/firecracker/abc-123/root')
-  assert.equal(layout.apiSocketPath, '/state/jail/firecracker/abc-123/root/firecracker.socket')
-  assert.equal(layout.vsockPath, '/state/jail/firecracker/abc-123/root/v.sock')
-  assert.equal(layout.jailerPath, '/usr/lib/nessie-executor/resources/firecracker/jailer')
+test('Firecracker is run by the daemon itself, with default seccomp and no jailer', async () => {
+  const layout = firecrackerLayout({ sessionId: 'abc-123', socketDirectory: '/tmp/nex-fc-1' })
+  assert.equal(layout.apiSocketPath, '/tmp/nex-fc-1/api.sock')
+  assert.equal(layout.vsockPath, '/tmp/nex-fc-1/v.sock')
+  const argv = buildFirecrackerArgv({ apiSocketPath: layout.apiSocketPath, sessionId: 'abc-123' })
+  assert.deepEqual(argv, ['--api-sock', '/tmp/nex-fc-1/api.sock', '--id', 'abc-123'])
+  // Firecracker's seccomp filters are on by default (docs/seccomp.md) and the
+  // only way to lose them is a flag this backend never builds.
+  assert.equal(argv.includes('--no-seccomp'), false)
+  assert.equal(argv.includes('--seccomp-filter'), false)
+  // Neither the layout nor the argv can be steered by a malformed session id.
   assert.throws(
-    () => buildJailerArgv({
-      chrootBaseDirectory: '/state/jail',
-      firecrackerPath: '/fc',
-      gid: 0,
-      sessionId: 'not a valid id',
-      uid: 0,
-    }),
-    /valid jailer id/,
+    () => firecrackerLayout({ sessionId: 'not a valid id', socketDirectory: '/tmp/x' }),
+    /session id is invalid/,
+  )
+  assert.throws(
+    () => buildFirecrackerArgv({ apiSocketPath: '/tmp/x/api.sock', sessionId: '../escape' }),
+    /session id is invalid/,
+  )
+  // The host gate is /dev/kvm access, not root: the remedy is a group.
+  let requested = ''
+  await assertFirecrackerHostReady({
+    access: async (path) => { requested = path },
+  })
+  assert.equal(requested, KVM_DEVICE_PATH)
+  await assert.rejects(
+    assertFirecrackerHostReady({ access: async () => { throw new Error('EACCES') } }),
+    /kvm group/,
   )
 })
 
