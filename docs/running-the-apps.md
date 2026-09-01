@@ -95,6 +95,22 @@ attempt it observed. In a web browser, returning with Back cancels the pending
 attempt instead of reopening the provider; a restored browser page also
 reconciles its session again so it cannot remain at **Loading workspace…**.
 
+### The desktop window is Nessie's own chrome
+
+macOS keeps its overlay title bar and the OS traffic lights, and the admin only
+reserves their 68 px seat in the top bar. Windows and Linux run undecorated, so
+the admin draws the window itself: `DesktopWindowFrame`
+(`admin/src/components/desktop/DesktopWindowFrame.tsx`) mounts above the router
+— the sign-in screen included — and adds a top drag strip behind the top bar's
+own drag zones, minimize / maximize-restore / close at the top right, and 8 px
+invisible resize grips on the edges and corners. F11 toggles fullscreen on both;
+Ctrl+Q closes the Linux window (Windows keeps the OS's Alt+F4). Linux runs a
+transparent window, so the admin paints its own 12 px corners and a soft shadow
+into a 12 px gutter and drops both when maximized or fullscreen; Windows lets the
+OS draw the shadow and, on Windows 11, the rounded corners. The platform reaches
+the admin through `window.__nessieDesktopPlatform`, published by the shell before
+any admin code runs — never from the user agent.
+
 ### Desktop notifications
 
 The desktop app uses the same authenticated realtime message controller as the
