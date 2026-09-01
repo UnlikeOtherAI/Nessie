@@ -287,22 +287,23 @@ export const buildMcpToolset = async (
         projectId: runScope.projectId,
         organizationId,
       })
+    const credentialRef = credential.credentialRef
+    const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
     // A connection requiring credentials is not a callable capability for a
-    // person without one. This is particularly important for shared OAuth
-    // installs: another member must not even see a tool backed by somebody
-    // else's personal override.
+    // person without a usable one. This is particularly important for shared
+    // OAuth installs: another member must not even see a tool backed by
+    // somebody else's personal override, or a stale secret reference whose
+    // plaintext can no longer be resolved.
     if (
       !deepWater
       && mcpAuthRequiresCredential(
         row.mcpInstance.catalogEntry.authMethod,
         row.mcpInstance.catalogEntry.authConfig,
       )
-      && !credential.credentialRef
+      && !secret
     ) {
       continue
     }
-    const credentialRef = credential.credentialRef
-    const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
     const userCredentialScopeId = !deepWater
       && runScope.effectiveUserId
       && (

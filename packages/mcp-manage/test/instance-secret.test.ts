@@ -30,6 +30,7 @@ test('only an API key may become a shared instance credential', async () => {
     }, {
       access: { role: 'owner' },
       authMethod: 'oauth2',
+      authConfig: { method: 'oauth2' },
       instance,
       secret: 'oauth-access-token',
       shared: true,
@@ -58,6 +59,7 @@ test('an authorized manager may deliberately share an API key', async () => {
   }, {
     access: { role: 'owner' },
     authMethod: 'api_key',
+    authConfig: { method: 'api_key', headerName: 'X-API-Key', valuePrefix: '' },
     instance,
     secret: 'team-api-key',
     shared: true,
@@ -69,4 +71,32 @@ test('an authorized manager may deliberately share an API key', async () => {
     data: { credentialRef: 'secret_shared_key' },
     where: { id: 'instance-1' },
   }])
+})
+
+test('a method label alone cannot promote a shared credential', async () => {
+  let stored = 0
+  const prisma = {
+    mcpServerInstance: { update: async () => ({}) },
+  } as unknown as PrismaClient
+
+  await assert.rejects(
+    storeInstanceSecret(prisma, {
+      put: async () => {
+        stored += 1
+        return 'secret_should_not_exist'
+      },
+    }, {
+      access: { role: 'owner' },
+      authMethod: 'api_key',
+      authConfig: { method: 'bearer' },
+      instance,
+      secret: 'mistyped-api-key',
+      shared: true,
+      userId: 'user-1',
+    }),
+    (error: unknown) =>
+      error instanceof McpCredentialError
+      && error.code === MCP_CREDENTIAL_ERROR_CODES.SHARED_CREDENTIAL_AUTH_FORBIDDEN,
+  )
+  assert.equal(stored, 0)
 })

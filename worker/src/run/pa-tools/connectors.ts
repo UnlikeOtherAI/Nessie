@@ -315,7 +315,7 @@ export const runConnectorSetSecretTool = async (
   )
   const catalogEntry = await context.prisma.mcpCatalogEntry.findFirst({
     where: { id: instance.catalogEntryId, organizationId: ctx.organizationId },
-    select: { authMethod: true },
+    select: { authMethod: true, authConfig: true },
   })
   if (!catalogEntry) {
     return {
@@ -329,6 +329,7 @@ export const runConnectorSetSecretTool = async (
     userId: ctx.userId,
     access: ctx.access,
     authMethod: catalogEntry.authMethod,
+    authConfig: catalogEntry.authConfig,
     secret: secretValue,
     shared: input.shared,
   })

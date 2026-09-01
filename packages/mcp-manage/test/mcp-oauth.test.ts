@@ -168,7 +168,7 @@ const makePrismaStub = (options: StubOptions = {}): {
   const prisma = {
     mcpServerInstance: {
       findFirst: async () => current,
-      findUnique: async () => current,
+      findUnique: async () => current && { ...current, catalogEntry },
       update: async ({ data }: { data: Record<string, unknown> }) => applyUpdate(data),
     },
     mcpCatalogEntry: {

@@ -63,7 +63,13 @@ const makePrisma = (seeds: RowSeed[]): PrismaClient => ({
     findUnique: async () => null,
   },
   mcpServerInstance: {
-    findUnique: async () => ({ credentialRef: null, id: 'inst-private' }),
+    findUnique: async ({ where }: { where: { id: string } }) => ({
+      credentialRef: null,
+      id: where.id,
+      scopeId: 'org-1',
+      scopeType: 'organization',
+      catalogEntry: { authMethod: 'none', authConfig: { method: 'none' } },
+    }),
   },
 } as unknown as PrismaClient)
 

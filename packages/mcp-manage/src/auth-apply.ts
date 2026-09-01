@@ -10,11 +10,25 @@ import {
  * method is credential-free.
  */
 export const mcpAuthRequiresCredential = (
-  authMethod: McpCatalogAuthMethod,
+  authMethod: McpCatalogAuthMethod | string,
   authConfig: unknown,
 ): boolean => {
   const parsed = McpServerAuthConfigSchema.safeParse(authConfig)
   return !parsed.success || parsed.data.method !== 'none' || authMethod !== 'none'
+}
+
+/**
+ * Shared MCP credentials are deliberately limited to catalog entries whose
+ * method *and* parsed config prove that the credential is an API key. Keeping
+ * this beside the auth parser lets every write and resolution boundary apply
+ * the same fail-closed test to legacy or malformed catalog rows.
+ */
+export const isValidatedMcpApiKeyAuth = (
+  authMethod: McpCatalogAuthMethod | string,
+  authConfig: unknown,
+): boolean => {
+  const parsed = McpServerAuthConfigSchema.safeParse(authConfig)
+  return authMethod === 'api_key' && parsed.success && parsed.data.method === 'api_key'
 }
 
 /**

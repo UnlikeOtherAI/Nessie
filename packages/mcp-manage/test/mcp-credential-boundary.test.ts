@@ -128,6 +128,10 @@ test('resolution reports whether an opaque ref came from the user or shared scop
         credentialRef: 'secret_shared',
         scopeType: 'organization',
         scopeId: 'org-1',
+        catalogEntry: {
+          authMethod: 'api_key',
+          authConfig: { method: 'api_key', headerName: 'X-API-Key', valuePrefix: '' },
+        },
       }),
     },
     mcpServerCredentialOverride: {
@@ -146,7 +150,65 @@ test('resolution reports whether an opaque ref came from the user or shared scop
   )
 })
 
-test('shared-scope instances keep resolving regardless of the effective user', async () => {
+test('shared non-API-key instances resolve only the effective user override', async () => {
+  const lookups: Array<{ principalType: string; principalId: string }> = []
+  const prisma = {
+    mcpServerInstance: {
+      findUnique: async () => ({
+        id: 'instance-1',
+        credentialRef: 'secret_legacy_instance_default',
+        scopeType: 'organization',
+        scopeId: 'org-1',
+        catalogEntry: { authMethod: 'oauth2', authConfig: { method: 'oauth2' } },
+      }),
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async ({ where }: {
+        where: {
+          instanceId_principalType_principalId: {
+            principalType: string
+            principalId: string
+          }
+        }
+      }) => {
+        const principal = where.instanceId_principalType_principalId
+        lookups.push(principal)
+        return principal.principalType === 'user'
+          ? { credentialRef: 'secret_effective_user' }
+          : { credentialRef: 'secret_legacy_principal_override' }
+      },
+    },
+  } as unknown as PrismaClient
+
+  assert.equal(
+    await resolveCredentialRef(prisma, 'instance-1', {
+      userId: 'user-1',
+      agentId: 'agent-1',
+      channelId: 'channel-1',
+      teamId: 'team-1',
+      projectId: 'project-1',
+      organizationId: 'org-1',
+    }),
+    'secret_effective_user',
+  )
+  assert.deepEqual(lookups, [{
+    instanceId: 'instance-1',
+    principalType: 'user',
+    principalId: 'user-1',
+  }])
+
+  lookups.splice(0)
+  assert.equal(
+    await resolveCredentialRef(prisma, 'instance-1', {
+      agentId: 'agent-1',
+      organizationId: 'org-1',
+    }),
+    null,
+  )
+  assert.deepEqual(lookups, [])
+})
+
+test('shared API-key instances retain their validated default resolution chain', async () => {
   for (const scopeType of ['system', 'organization', 'team', 'project', 'channel']) {
     const prisma = {
       mcpServerInstance: {
@@ -155,6 +217,10 @@ test('shared-scope instances keep resolving regardless of the effective user', a
           credentialRef: 'secret_shared',
           scopeType,
           scopeId: 'scope-1',
+          catalogEntry: {
+            authMethod: 'api_key',
+            authConfig: { method: 'api_key', headerName: 'X-API-Key', valuePrefix: '' },
+          },
         }),
       },
       mcpServerCredentialOverride: {

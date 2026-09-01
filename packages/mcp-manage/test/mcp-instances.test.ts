@@ -313,7 +313,7 @@ const makeStubPrisma = (
   const prisma = {
     mcpServerInstance: {
       findFirst: async () => instance,
-      findUnique: async () => instance,
+      findUnique: async () => ({ ...instance, catalogEntry }),
       update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
         updates.push(args)
         return { ...instance, ...(args.data as Partial<McpInstanceRow>) }
@@ -465,7 +465,7 @@ test('refreshInstance persists lastError when the probe fails', async () => {
         findFirstCalls += 1
         return findFirstCalls === 1 ? baseInstance : failedRow
       },
-      findUnique: async () => baseInstance,
+      findUnique: async () => ({ ...baseInstance, catalogEntry: catalogEntryStub }),
       update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
         updates.push(args)
         return failedRow
@@ -574,7 +574,7 @@ test('refreshInstance returns the updated row (lifecycleState=error) on probe fa
         // (inside refreshInstance's fallback) sees the post-fail row.
         return findFirstCalls === 1 ? baseInstance : failedRow
       },
-      findUnique: async () => baseInstance,
+      findUnique: async () => ({ ...baseInstance, catalogEntry: catalogEntryStub }),
       update: async () => failedRow,
     },
     mcpServerCredentialOverride: {

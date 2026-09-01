@@ -1196,7 +1196,11 @@ prefix. User-provided secrets enter through `POST
 /api/mcp/instances/:id/secret` (admin UI) or the PA's `connector_set_secret`
 tool — one shared implementation (`storeInstanceSecret`): own user-scope
 instance → the instance credential; shared instance + manage rights +
-`shared: true` → the shared default; otherwise a per-user override.
+`shared: true` → the shared default only when the catalog's `authMethod` and
+`authConfig` validate an `api_key`; otherwise a per-user override. A shared
+instance using OAuth, bearer, basic, a malformed config, or a legacy non-key
+default never falls back to its instance/default principal credential: it
+resolves only the effective user's own override.
 
 ```
 Agent calls MCP tool "stripe_create_customer"
@@ -1234,7 +1238,7 @@ mcp_server_credential_overrides
   @@unique([server_id, principal_type, principal_id])
 ```
 
-Resolution order:
+For a catalog entry with a validated `api_key` auth config, resolution order is:
 1. User-specific credential (personal API key for GitHub)
 2. Agent-specific credential (agent's own Stripe account)
 3. Channel-specific credential
@@ -1242,6 +1246,13 @@ Resolution order:
 5. Project-specific credential
 6. Organization-specific credential
 7. Connector/server default credential
+
+For every other auth method, a shared-scope instance resolves **only** the
+effective user's user override. It never consumes an instance default or an
+agent/channel/team/project/organization override, including records left by an
+older release. An auth-requiring tool without a resolved plaintext credential
+is not dispatched; user-scoped product and external-conversation callers
+surface their normal setup-required state instead.
 
 The install scope is a hard ceiling, checked **before** the override chain: for
 a `user`-scoped instance the caller's effective user must equal the instance's
@@ -1258,9 +1269,10 @@ visible only to that person even if the agent lives in a shared channel.
 
 API-key connections have a separate, explicit choice. The default is a
 personal user override; an authorized scope manager may choose **shared** only
-for an `api_key` connector, which stores an instance default usable by everyone
-who can reach that connection. OAuth, bearer and other personal tokens cannot
-be promoted to shared credentials. Probes (test/refresh/healthcheck) always
+for a catalog entry whose `authMethod` and parsed `authConfig` both prove it is
+an `api_key` connector, which stores an instance default usable by everyone who
+can reach that connection. OAuth, bearer and other personal tokens cannot be
+promoted to shared credentials. Probes (test/refresh/healthcheck) always
 resolve as a concrete probe user, so an owner or admin may manage a
 user-scoped instance but never probe it with the installer's credential.
 

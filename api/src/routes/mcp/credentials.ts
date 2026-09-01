@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   getCatalogEntry,
+  isValidatedMcpApiKeyAuth,
   getInstance,
   isManagedIntegrationInstance,
   MCP_INSTANCE_ERROR_CODES,
@@ -119,16 +120,19 @@ export const registerMcpCredentialRoutes = (
     // authenticated them. Even an owner cannot attach one to an agent, channel,
     // or another person through this low-level override route. The OAuth
     // completion flow follows the same rule by writing the signing-in user's
-    // override itself. API keys are the one deliberate shared-credential form.
+    // override itself. A shared credential needs a catalog contract that
+    // validates both the API-key method and its header configuration.
     if (
-      catalogEntry.authMethod !== 'api_key'
-      && (body.principalType !== 'user' || body.principalId !== actorContext.actor.actorId)
+      (body.principalType !== 'user' || body.principalId !== actorContext.actor.actorId)
+      && !isValidatedMcpApiKeyAuth(catalogEntry.authMethod, catalogEntry.authConfig)
     ) {
       sendApiError(
         reply,
         403,
-        MCP_CREDENTIAL_ERROR_CODES.PERSONAL_CREDENTIAL_PRINCIPAL_FORBIDDEN,
-        'OAuth and personal tokens can only be stored for the person who authenticated them.',
+        catalogEntry.authMethod === 'api_key'
+          ? MCP_CREDENTIAL_ERROR_CODES.SHARED_CREDENTIAL_AUTH_FORBIDDEN
+          : MCP_CREDENTIAL_ERROR_CODES.PERSONAL_CREDENTIAL_PRINCIPAL_FORBIDDEN,
+        'Only a validated API-key catalog config can store a shared credential. OAuth and personal tokens can only be stored for the person who authenticated them.',
       )
       return reply
     }

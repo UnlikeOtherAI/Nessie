@@ -82,6 +82,10 @@ const makePrisma = (
           credentialRef: row?.credentialRef ?? null,
           scopeId: row?.scopeId ?? 'org-1',
           scopeType: row?.scopeType ?? 'organization',
+          catalogEntry: {
+            authMethod: row?.authMethod ?? 'none',
+            authConfig: row?.authConfig ?? { method: 'none' },
+          },
         }
       },
     },
@@ -132,6 +136,7 @@ const exposedNames = async (
     effectiveUserId?: string | null
     channelId?: string
     teamId?: string | null
+    secretResolver?: { resolve(ref: string): Promise<string | null> }
   } = {},
 ): Promise<string[]> => {
   const toolset = await buildMcpToolset(
@@ -148,6 +153,7 @@ const exposedNames = async (
       channelId: options.channelId ?? 'channel-1',
     },
     { organizationId: 'org-1', actorId: 'agent-1' },
+    { secretResolver: options.secretResolver ?? { resolve: async () => 'test-secret' } },
   )
   return toolset.entries.map((entry) => entry.originalToolName)
 }
@@ -195,6 +201,24 @@ test('user-scope connections follow the effective user, with shared-agent policy
     }),
     [],
   )
+})
+
+test('an auth-requiring connection is hidden when its stored secret cannot resolve', async () => {
+  const names = await exposedNames([
+    {
+      authConfig: { method: 'oauth2' },
+      authMethod: 'oauth2',
+      credentialRef: 'secret_stale',
+      id: 'r1',
+      scopeId: 'user-1',
+      scopeType: 'user',
+      toolName: 'calendar',
+    },
+  ], {
+    secretResolver: { resolve: async () => null },
+  })
+
+  assert.deepEqual(names, [])
 })
 
 test('an explicit policy allow never broadens an explicit-grant user-scope install past its ceiling', async () => {
@@ -250,6 +274,7 @@ test('a shared OAuth connection is not advertised without the effective user\'s 
       actorContext({ effectiveUserId }),
       { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
       { organizationId: 'org-1', actorId: 'agent-1' },
+      { secretResolver: { resolve: async () => 'test-secret' } },
     )
 
   assert.deepEqual(
@@ -273,7 +298,11 @@ test('credential-backed MCP output records the user scope only for personal cred
       actorContext(),
       { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
       { organizationId: 'org-1', actorId: 'agent-1' },
-      { consumedSources, dispatchMcpTool },
+      {
+        consumedSources,
+        dispatchMcpTool,
+        secretResolver: { resolve: async () => 'test-secret' },
+      },
     )
     const entry = toolset.entries[0]
     assert.ok(entry)

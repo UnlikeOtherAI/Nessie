@@ -116,6 +116,8 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       findUnique: async () => ({
         id: INSTANCE,
         credentialRef: opts.credentialRef ?? 'DEEPSIGNAL_MCP_APP_KEY',
+        scopeId: USER,
+        scopeType: 'user',
         transportConfig: {},
         lifecycleState: opts.lifecycleState ?? 'active',
         catalogEntry: {

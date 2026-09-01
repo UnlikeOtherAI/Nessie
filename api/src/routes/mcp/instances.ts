@@ -398,6 +398,7 @@ export const registerMcpInstanceRoutes = (
         userId: actorContext.actor.actorId,
         access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
         authMethod: catalogEntry.authMethod,
+        authConfig: catalogEntry.authConfig,
         secret: body.secret,
         shared: body.shared,
       })

@@ -75,6 +75,12 @@ const makeFake = (
           return {
             credentialRef,
             id: 'inst-1',
+            scopeId: USER,
+            scopeType: 'user',
+            catalogEntry: {
+              authConfig: { method: 'bearer' },
+              authMethod: 'bearer',
+            },
           }
         }
         return {

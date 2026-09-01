@@ -4,7 +4,7 @@ import {
   type ToolTransportConfig,
 } from '@nessie/schemas'
 
-import { resolveCredentialRef } from '@nessie/mcp-manage'
+import { mcpAuthRequiresCredential, resolveCredentialRef } from '@nessie/mcp-manage'
 import type { CredentialResolutionContext } from '@nessie/mcp-manage'
 import { hasAllowedGrantForPrincipals } from './tool-grants.js'
 import { NullSecretResolver, type SecretResolver } from '@nessie/mcp-manage'
@@ -179,13 +179,10 @@ export const planToolDispatch = async (
   }
 
   const transportConfig = decodeTransportConfig(entry.transportConfig)
-  // Default to NullSecretResolver: if no resolver is injected at boot, refs
-  // resolve to `null` and the call arrives at the transport with `secret:
-  // null`. The transport then fails loudly if auth was required, instead of
-  // the old EnvSecretResolver default silently looking up opaque `secret_*`
-  // refs as env-var names (always undefined → silent null). Production
-  // callers MUST inject a concrete `SecretResolver` via
-  // `options.secretResolver`.
+  // Default to NullSecretResolver: if no resolver is injected at boot, opaque
+  // refs resolve to `null`, so every auth-requiring transport is refused
+  // before dispatch. Production callers MUST inject a concrete
+  // `SecretResolver` via `options.secretResolver`.
   const secretResolver = options.secretResolver ?? new NullSecretResolver()
 
   switch (transportConfig.transport) {
@@ -201,7 +198,9 @@ export const planToolDispatch = async (
           credentialRef: true,
           lifecycleState: true,
           transportConfig: true,
-          catalogEntry: { select: { defaultTransportConfig: true } },
+          catalogEntry: {
+            select: { authConfig: true, authMethod: true, defaultTransportConfig: true },
+          },
         },
       })
       if (!instance) {
@@ -226,10 +225,18 @@ export const planToolDispatch = async (
       }
       const ref = await resolveCredentialRef(prisma, instance.id, context.credentialContext)
       const secret = ref ? await secretResolver.resolve(ref) : null
-      // A `null` secret is OK only when the credential chain explicitly chose
-      // "no auth"; flagging that here would require knowing the catalog's
-      // authMethod. We defer to the transport layer: it will fail loudly if
-      // the server demands auth and none is provided.
+      if (
+        mcpAuthRequiresCredential(
+          instance.catalogEntry.authMethod,
+          instance.catalogEntry.authConfig,
+        )
+        && !secret
+      ) {
+        throw new ToolDispatchError(
+          TOOL_DISPATCH_ERROR_CODES.SECRET_UNAVAILABLE,
+          `MCP instance ${instance.id} requires a credential for this caller`,
+        )
+      }
       return {
         transport: 'mcp',
         toolName: transportConfig.toolName,
@@ -245,14 +252,38 @@ export const planToolDispatch = async (
       // HTTP tools store their endpoint shape in `transportConfig` keyed by
       // `endpointId`. The full endpoint payload lives on the bundle/tool row
       // metadata in a follow-up slice; for now we forward the raw value.
-      const ref = entry.mcpInstanceId
-        ? await resolveCredentialRef(
-          prisma,
-          entry.mcpInstanceId,
-          context.credentialContext,
+      const instance = entry.mcpInstanceId
+        ? await prisma.mcpServerInstance.findUnique({
+          where: { id: entry.mcpInstanceId },
+          select: {
+            id: true,
+            catalogEntry: { select: { authConfig: true, authMethod: true } },
+          },
+        })
+        : null
+      if (entry.mcpInstanceId && !instance) {
+        throw new ToolDispatchError(
+          TOOL_DISPATCH_ERROR_CODES.MCP_INSTANCE_NOT_FOUND,
+          `MCP instance ${entry.mcpInstanceId} not found`,
         )
+      }
+      const ref = instance
+        ? await resolveCredentialRef(prisma, instance.id, context.credentialContext)
         : null
       const secret = ref ? await secretResolver.resolve(ref) : null
+      if (
+        instance
+        && mcpAuthRequiresCredential(
+          instance.catalogEntry.authMethod,
+          instance.catalogEntry.authConfig,
+        )
+        && !secret
+      ) {
+        throw new ToolDispatchError(
+          TOOL_DISPATCH_ERROR_CODES.SECRET_UNAVAILABLE,
+          `HTTP tool ${toolRegistryEntryId} requires a credential for this caller`,
+        )
+      }
       return {
         transport: 'http',
         endpoint: entry.transportConfig,

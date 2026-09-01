@@ -30,6 +30,7 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     updatedAt: Date
   }> = []
   let authMethod: 'api_key' | 'oauth2' = 'api_key'
+  let authConfig: unknown = { method: 'api_key', headerName: 'X-API-Key', valuePrefix: '' }
   const prisma = {
     mcpServerInstance: {
       findFirst: async (args: { where: { catalogEntry?: unknown } }) =>
@@ -43,9 +44,7 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
               scopeId: USER_ID,
             },
     },
-    mcpCatalogEntry: {
-      findFirst: async () => ({ authMethod }),
-    },
+    mcpCatalogEntry: { findFirst: async () => ({ authMethod, authConfig }) },
     mcpServerCredentialOverride: {
       findMany: async () => overrides,
       upsert: async (args: {
@@ -143,9 +142,30 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     assert.equal(saved.body.includes('secret_mcp_server_minted'), false)
     assert.equal('credentialRef' in saved.json().data, false)
 
+    // The low-level route must validate the full auth contract before an API
+    // key can be assigned to a shared principal. A method label alone cannot
+    // turn a malformed or mismatched legacy row into a shared credential.
+    authConfig = { method: 'bearer' }
+    const invalidApiKeyForAgent = await app.inject({
+      method: 'PUT',
+      url: `/api/mcp/instances/${INSTANCE_ID}/credentials`,
+      payload: {
+        principalType: 'agent',
+        principalId: '55555555-5555-4555-8555-555555555555',
+        secret: 'mistyped-api-key',
+      },
+    })
+    assert.equal(invalidApiKeyForAgent.statusCode, 403, invalidApiKeyForAgent.body)
+    assert.equal(
+      invalidApiKeyForAgent.json().error.code,
+      'MCP_SHARED_CREDENTIAL_AUTH_FORBIDDEN',
+    )
+    assert.deepEqual(storedSecrets, [plaintext])
+
     // A raw OAuth token cannot be assigned to a shared principal by an owner;
     // OAuth completion is user-bound and the generic route has the same fence.
     authMethod = 'oauth2'
+    authConfig = { method: 'oauth2' }
     const oauthForAgent = await app.inject({
       method: 'PUT',
       url: `/api/mcp/instances/${INSTANCE_ID}/credentials`,
