@@ -57,9 +57,11 @@ bar with traffic lights and the OS's own rounded corners; it is unchanged.
   bar" / "hidden on macOS"), so both other platforms use `decorations: false`.
   - Windows: `shadow: true`. Tauri's config documents that for an undecorated
     window this gives "a 1px white border, and on Windows 11, it will have a
-    rounded corners" with the OS shadow. The supported target is Windows 11;
-    on Windows 10 (out of support since October 2025) the window is square.
-    The window is not transparent — a transparent window loses the OS shadow.
+    rounded corners" with the OS shadow. Windows 10 is supported with the same
+    custom chrome and square corners: its window manager never rounds a
+    top-level window, and Microsoft documents the per-pixel-alpha alternative
+    as forfeiting the system shadow. The window is not transparent on either
+    version; the OS decides the corner shape (Windows plan).
   - Linux: `transparent: true`, because Tauri documents `shadow` as
     "Unsupported" on Linux and an undecorated GTK window has square corners.
     The admin paints a 12 px radius on the app root and a soft shadow inside
@@ -479,8 +481,9 @@ a clean Ubuntu 26.04 x86_64 desktop with KVM:
 - **The window is fully custom.** The earlier revision chose the native
   title bar off macOS; replaced by the frameless `DesktopWindowFrame` design
   (no borders, rounded corners, Nessie's own controls), with the Tauri
-  platform facts that shape it (Windows `shadow: true` rounding on Windows 11;
-  Linux transparent window + painted corners, no OS shadow).
+  platform facts that shape it (Windows `shadow: true` rounding on Windows 11
+  and square corners on Windows 10; Linux transparent window + painted
+  corners, no OS shadow).
 
 **Findings from reviewing the first draft against the code and current
 third-party documentation:**
