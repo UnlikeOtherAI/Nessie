@@ -766,8 +766,9 @@ Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` fo
 This is an unsigned development build. There is no signed Windows release
 pipeline yet, the executor companion refuses every platform but macOS, and a
 second launch currently drops the `nessie://` sign-in callback. The design for
-the signed release, the window chrome under a native title bar, the Executors
-page's explanatory card, and the deferred Windows executor is
+the signed release, the frameless custom window chrome, the Executors page's
+availability cards, the desktop app enabled as an executor, and the standalone
+Nessie Executor service with its tray icon is
 [docs/plans/2026-09-01-windows-desktop-parity.md](plans/2026-09-01-windows-desktop-parity.md);
 the install, replacement, log-collection, and signature-verification steps
 land here with that work.
@@ -777,11 +778,13 @@ land here with that work.
 Not yet buildable as a release. The shell compiles its single-instance plugin
 only for macOS and Windows and the executor companion refuses Linux. The
 delivery design — Ubuntu 26.04 x86_64 `.deb` as the supported install,
-AppImage as an evaluator artifact, the shared window/notification/sign-in
-contract, and the diagnosable failure modes (missing WebKitGTK, blank
-WebKitGTK window, scheme not registered, no notification service) — is
+AppImage as an evaluator artifact for the shell only, the shared frameless
+window/notification/sign-in contract, the desktop app enabled as an executor,
+the standalone `nessie-executor` daemon as a lingering systemd user service,
+and the diagnosable failure modes — is
 [docs/plans/2026-09-01-linux-desktop-delivery.md](plans/2026-09-01-linux-desktop-delivery.md);
-the install, upgrade, removal, and diagnosis steps land here with that work.
+the install, upgrade, removal, daemon, and diagnosis steps land here with that
+work.
 
 ## Status And Caveats
 
