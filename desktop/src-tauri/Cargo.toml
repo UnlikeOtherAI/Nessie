@@ -17,11 +17,15 @@ libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tauri = { version = "2.11.2", features = [] }
+# image-png decodes the bundled overlay-badge dot that Windows shows over the
+# taskbar button; every other desktop platform reports unread counts through
+# the window badge API instead.
+tauri = { version = "2.11.2", features = ["image-png"] }
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-opener = "2.5.4"
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-tauri-plugin-single-instance = "2.4.2"
+# The deep-link feature hands a second launch's argv URL to the running
+# instance's onOpenUrl listeners, which is how the `nessie://` sign-in callback
+# reaches an already open app on Windows and Linux.
+tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }
