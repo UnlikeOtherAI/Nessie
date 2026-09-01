@@ -763,6 +763,26 @@ pnpm --filter @nessie/desktop exec tauri build
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
 
+This is an unsigned development build. There is no signed Windows release
+pipeline yet, the executor companion refuses every platform but macOS, and a
+second launch currently drops the `nessie://` sign-in callback. The design for
+the signed release, the window chrome under a native title bar, the Executors
+page's explanatory card, and the deferred Windows executor is
+[docs/plans/2026-09-01-windows-desktop-parity.md](plans/2026-09-01-windows-desktop-parity.md);
+the install, replacement, log-collection, and signature-verification steps
+land here with that work.
+
+## Linux Desktop
+
+Not yet buildable as a release. The shell compiles its single-instance plugin
+only for macOS and Windows and the executor companion refuses Linux. The
+delivery design — Ubuntu 26.04 x86_64 `.deb` as the supported install,
+AppImage as an evaluator artifact, the shared window/notification/sign-in
+contract, and the diagnosable failure modes (missing WebKitGTK, blank
+WebKitGTK window, scheme not registered, no notification service) — is
+[docs/plans/2026-09-01-linux-desktop-delivery.md](plans/2026-09-01-linux-desktop-delivery.md);
+the install, upgrade, removal, and diagnosis steps land here with that work.
+
 ## Status And Caveats
 
 The current `com.km.nessie` TestFlight upload is `0.1.1 (3)`. App Store Connect

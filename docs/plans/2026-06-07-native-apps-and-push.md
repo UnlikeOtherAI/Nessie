@@ -335,6 +335,11 @@ simulator in CI — verified by `tsc --noEmit` + `expo export`).
 
 ### Linux desktop discovery scope (2026-09-01)
 
+Superseded in detail by the delivery designs
+[2026-09-01-linux-desktop-delivery.md](2026-09-01-linux-desktop-delivery.md)
+and [2026-09-01-windows-desktop-parity.md](2026-09-01-windows-desktop-parity.md);
+the scope below remains the origin of the Ubuntu-first decision.
+
 Linux uses the existing `desktop/` Tauri shell and therefore the same `admin/`
 artifact, API contracts, SSE notification path, and `nessie://` callback as the
 other desktop shells. It does **not** add a Linux-specific UI or port the
