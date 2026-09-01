@@ -181,7 +181,7 @@ authenticated shell; the name follows in a later rename). It owns:
   inline with the finger — the same three callers, the same numbers, so a
   push, a pop and a released swipe dim identically.
 
-- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §6) at
+- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §7) at
   the moment the settle lands and the route is about to change. A cancelled
   swipe and a tapped Back give none.
 
@@ -228,7 +228,54 @@ stay one layer. The page-owned detail columns (Knowledge, the column
 browsers, Dashboards) join the stack as nested stages in step 6; the thread
 panel becomes a nested stage on `single` and a `Sheet` on `split` in step 8.
 
-## 6. Native shell contract — **built** (the two bridge pieces)
+## 6. Nested stages — **built** (step 6, the core; the adopters follow)
+
+A nested stage is a state-driven screen a page pushes over its own route: a
+column browser's next column, a Knowledge folder → document → history →
+editor, a dashboard's add-widget panel. It is **one component**,
+`navigation/NestedStage.tsx`:
+
+```tsx
+<NestedStage id="document" label="Back to folder" active={open} onBack={close} priority={12}>
+  …
+</NestedStage>
+```
+
+- **On a single-column layout it is a layer in the stack**, keyed
+  `stage:<id>` one depth above whatever it was pushed over
+  (`phone-navigation-stack.ts` `pushPhoneNavigationStage` /
+  `popPhoneNavigationStage`). It slides in with the same `runStackTransition`
+  as a route, is retained inert under whatever is pushed over it (a route
+  pushed over an open stage returns to that stage on Back, not to the list
+  beneath), unwinds with Back through the one resolver (it registers with
+  the local-back registry as `stage:<id>`), and the edge swipe drives it
+  when it is the top layer and `swipeable` (the default). A same-route
+  re-render refreshes the route beneath it (`refreshPhoneNavigationRoute`)
+  and never touches the stages.
+- **The page keeps rendering it.** The content goes through a portal into
+  the layer's container, so context, state and providers never leave the
+  page; only the DOM moves. Keep the stage mounted and toggle `active` — an
+  unmount leaves without motion.
+- **Where no stack hosts stages** — a split layout's detail column, a test
+  without a viewport — the stage renders inline where it stands and the page
+  composes it (the column browser's multi-column track, Knowledge's
+  columns). Nothing reads a breakpoint to decide this; the host's presence
+  does.
+- **Ownership is per instance.** A push over an open stage mounts the page
+  again for the new route, so two instances render the same stage id; only
+  the instance that pushed the entry may pop it, or the second one's unmount
+  would close the first one's open document.
+- Pinned by `admin/test/nested-stage-viewport.test.ts` (push, Back, swipe,
+  retention under a route) and `admin/test/phone-navigation-stack.test.ts`.
+
+Adopters (this step, in progress): `ColumnBrowserViewport` on `single`
+mounts each column beyond the first as a stage; Knowledge's folder /
+document / history / editor become stages and `animate-kb-view-slide` is
+deleted; the executor and dashboard side panels become stages on `single`;
+`AgentDetailPage` drops its own Back registration now that `/agents/:id` is
+a real depth-2 route.
+
+## 7. Native shell contract — **built** (the two bridge pieces)
 
 The two `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7)
 calls out as their own pieces are **built**; the rest of §4.15/§4.16 (the
@@ -265,7 +312,7 @@ headers, step 14 shell polish) land.
   repeating `navigator.vibrate` pattern via the same helper's fallback); the
   sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
 
-## 7. Verification — the transition suite — **built** (step 2)
+## 8. Verification — the transition suite — **built** (step 2)
 
 The JSDOM harness cannot see an animation and cannot see a layout, so the
 motion itself is pinned in a real browser:
@@ -338,7 +385,7 @@ re-render in place and releases the entries above only for a sibling swap;
 pin it. The JSDOM stack test had passed because it never replayed a route —
 the browser suite is what sees it.
 
-## 8. Everything else — **planned**
+## 9. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

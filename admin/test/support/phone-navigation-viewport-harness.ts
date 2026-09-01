@@ -118,12 +118,19 @@ const { MemoryRouter, useLocation, useNavigate } = await import('react-router-do
 const { PhoneNavigationViewport } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationViewport'
 )
+const { NestedStage } = await import('../../src/navigation/NestedStage')
 const { PhoneNavigationProvider } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationProvider'
+)
+const { LocalBackProvider } = await import(
+  '../../src/layouts/admin-shell/local-back/LocalBackContext'
 )
 
 export type PhoneNavigationViewportHarness = {
   container: HTMLElement
+  // Opens or closes the detail screen's nested stage (a state-driven screen
+  // the page pushes over itself), the way a page toggles its own state.
+  setStage: (active: boolean) => Promise<void>
   currentPathname: () => HTMLElement | null
   flush: (ms?: number) => Promise<void>
   goTo: (pathname: string, paint?: boolean) => Promise<void>
@@ -183,6 +190,17 @@ export const mountPhoneNavigationViewport = async (
     }, [])
     return h(Screen, { label: '/channels' })
   }
+  // The detail's nested stage is toggled from outside React through a tiny
+  // store, so a test can open and close it like the page's own state.
+  const stageListeners = new Set<() => void>()
+  let stageActive = false
+  const stageStore = {
+    subscribe: (listener: () => void) => {
+      stageListeners.add(listener)
+      return () => stageListeners.delete(listener)
+    },
+    getSnapshot: () => stageActive,
+  }
   const ChannelsDetail = () => {
     React.useEffect(() => {
       mounts['channels-detail'] = (mounts['channels-detail'] ?? 0) + 1
@@ -190,7 +208,26 @@ export const mountPhoneNavigationViewport = async (
         mounts['channels-detail'] = (mounts['channels-detail'] ?? 1) - 1
       }
     }, [])
-    return h(Screen, { label: '/channels/channel_a' })
+    const active = React.useSyncExternalStore(stageStore.subscribe, stageStore.getSnapshot)
+    return h(
+      React.Fragment,
+      null,
+      h(Screen, { label: '/channels/channel_a' }),
+      h(
+        NestedStage,
+        {
+          active,
+          id: 'inspector',
+          label: 'Back from inspector',
+          onBack: () => {
+            stageActive = false
+            for (const listener of stageListeners) listener()
+          },
+          priority: 30,
+        },
+        h('div', { 'data-stage': 'inspector' }, 'stage:inspector'),
+      ),
+    )
   }
 
   const Host = () => {
@@ -231,7 +268,7 @@ export const mountPhoneNavigationViewport = async (
       h(
         MemoryRouter,
         { initialEntries: ['/outside', initialPathname], initialIndex: 1 },
-        h(PhoneNavigationProvider, null, h(Host)),
+        h(LocalBackProvider, null, h(PhoneNavigationProvider, null, h(Host))),
       ),
     )
   })
@@ -270,6 +307,13 @@ export const mountPhoneNavigationViewport = async (
 
   return {
     container,
+    setStage: async (active: boolean) => {
+      stageActive = active
+      await act(async () => {
+        for (const listener of stageListeners) listener()
+      })
+      await flush()
+    },
     currentPathname: () =>
       container.querySelector(
         '[data-phone-navigation-layer="current"] [data-screen-label]',

@@ -272,13 +272,18 @@ test('the native Admin actions retain the cache-busting full refresh', () => {
 
 test('the native phone shell clears the glass tab bar within the WebView content', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
-  const phoneViewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  // The page scroll shell is the layer's (a route's subtree and a nested
+  // stage's container both carry it).
+  const phoneLayer = readSource('../src/layouts/admin-shell/PhoneNavigationLayer.tsx')
+  const nestedStage = readSource('../src/navigation/NestedStage.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
-  assert.match(phoneViewport, /className="phone-navigation-page"/)
-  assert.match(phoneViewport, /data-phone-navigation-page/)
+  assert.match(phoneLayer, /className="phone-navigation-page"/)
+  assert.match(phoneLayer, /data-phone-navigation-page/)
+  assert.match(nestedStage, /container\.className = 'phone-navigation-page'/)
+  assert.match(nestedStage, /setAttribute\('data-phone-navigation-page', ''\)/)
   assert.match(
     styles,
     /\.phone-navigation-page\s*\{[\s\S]*?overflow-y: auto[\s\S]*?overscroll-behavior-y: contain/,

@@ -6,6 +6,10 @@ import {
   createPhoneNavigationStack,
   currentPhoneNavigationEntry,
   dropPhoneNavigationEntriesAboveCurrent,
+  hasPhoneNavigationStage,
+  popPhoneNavigationStage,
+  pushPhoneNavigationStage,
+  refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from '../src/layouts/admin-shell/phone-navigation-stack'
 
@@ -239,4 +243,50 @@ test('a re-render of the returning screen during a Back keeps the outgoing scree
   )
   assert.deepEqual(keys(swapped), ['root:channels:/channels', 'channels:channel'])
   assert.equal(swapped.entries.length, 2)
+})
+
+test('a nested stage is an entry one depth above its route, keyed by id, and pops beneath itself', () => {
+  const detail = stackAt('/channels', '/channels/channel_a')
+  const withStage = pushPhoneNavigationStage(detail, 'document', 'payload:document')
+  assert.deepEqual(keys(withStage), ['root:channels:/channels', 'channels:channel', 'stage:document'])
+  assert.equal(withStage.currentIndex, 2)
+  assert.equal(currentPhoneNavigationEntry(withStage).depth, 2)
+  assert.equal(currentPhoneNavigationEntry(withStage).pathname, '/channels/channel_a')
+  assert.equal(currentPhoneNavigationEntry(withStage).layerKey, 'channels:2:stage:document')
+  assert.equal(hasPhoneNavigationStage(withStage, 'document'), true)
+  // Re-asserting an open stage changes nothing.
+  assert.equal(pushPhoneNavigationStage(withStage, 'document', 'again'), withStage)
+  // The committed route is still the route beneath.
+  assert.equal(committedPhoneNavigationRoute(withStage).pathname, '/channels/channel_a')
+
+  const popped = popPhoneNavigationStage(withStage, 'document')
+  assert.equal(popped.currentIndex, 1)
+  assert.equal(popped.entries.length, 3, 'the stage stays retained until the animation releases it')
+  assert.equal(dropPhoneNavigationEntriesAboveCurrent(popped).entries.length, 2)
+  assert.equal(popPhoneNavigationStage(popped, 'document'), popped)
+})
+
+test('a same-route re-render refreshes the route beneath its stages and keeps them', () => {
+  const stack = pushPhoneNavigationStage(
+    pushPhoneNavigationStage(stackAt('/channels', '/channels/channel_a'), 'folder', 'p:folder'),
+    'document',
+    'p:document',
+  )
+  const refreshed = refreshPhoneNavigationRoute(stack, 'payload:/channels/channel_a#2')
+  assert.equal(refreshed.currentIndex, 3)
+  assert.deepEqual(keys(refreshed), keys(stack))
+  assert.equal(refreshed.entries[1]?.payload, 'payload:/channels/channel_a#2')
+  assert.equal(refreshed.entries[2], stack.entries[2])
+  assert.equal(refreshed.entries[3], stack.entries[3])
+})
+
+test('a route pushed over open stages returns to the topmost stage on Back', () => {
+  const stack = pushPhoneNavigationStage(stackAt('/channels', '/channels/channel_a'), 'document', 'p:document')
+  const deeper = advancePhoneNavigationStack(stack, '/channels/channel_a/info', 'p:info')
+  assert.deepEqual(keys(deeper), ['root:channels:/channels', 'channels:channel', 'stage:document', 'channels:channel'])
+  assert.equal(deeper.currentIndex, 3)
+  const back = advancePhoneNavigationStack(deeper, '/channels/channel_a', 'p:channel_a#2')
+  assert.equal(back.currentIndex, 2, 'Back lands on the document stage, not the list beneath it')
+  assert.equal(back.entries[1]?.payload, 'p:channel_a#2')
+  assert.equal(back.entries.length, 4, 'the outgoing info screen is retained for its slide')
 })

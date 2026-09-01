@@ -46,6 +46,22 @@ type CommittedRoute = {
 const layerIdentity = (screen: PhoneNavigationScreen): string =>
   `${screen.section}:${screen.depth}:${screen.key}`
 
+export const STAGE_KEY_PREFIX = 'stage:'
+
+export const isPhoneNavigationStageEntry = <Payload>(
+  entry: PhoneNavigationStackEntry<Payload>,
+): boolean => entry.key.startsWith(STAGE_KEY_PREFIX)
+
+// The route entry the current position rests on: the current entry, or the
+// nearest route beneath the stages stacked over it.
+const routeIndexOf = <Payload>(stack: PhoneNavigationStack<Payload>): number => {
+  for (let index = stack.currentIndex; index >= 0; index -= 1) {
+    const entry = stack.entries[index]
+    if (entry && !isPhoneNavigationStageEntry(entry)) return index
+  }
+  return 0
+}
+
 const requireScreen = (pathname: string, layout: NavigationLayout): PhoneNavigationScreen => {
   const screen = getPhoneNavigationScreen(pathname, layout)
   if (!screen) {
@@ -113,7 +129,11 @@ export const advancePhoneNavigationStack = <Payload>(
   layout: NavigationLayout = 'single',
 ): PhoneNavigationStack<Payload> => {
   const screen = requireScreen(pathname, layout)
-  const current = stack.entries[stack.currentIndex]
+  // Routes compare against the route the stack rests on, never against a
+  // stage stacked over it: a stage's depth is a stacking position, not a
+  // place in the section's route hierarchy.
+  const routeIndex = routeIndexOf(stack)
+  const current = stack.entries[routeIndex]
   if (!current || screen.section !== current.section) {
     return createPhoneNavigationStack(pathname, payload, layout)
   }
@@ -131,14 +151,15 @@ export const advancePhoneNavigationStack = <Payload>(
       // one layer identity by design, so the route, not the key, says
       // whether this is the same screen.
       const entries = stack.entries.slice()
-      entries[stack.currentIndex] = nextEntry
+      entries[routeIndex] = nextEntry
       return { ...stack, entries }
     }
     // A sibling swap (channel A → B): another route at the same depth
-    // replaces the current layer and releases anything retained above.
-    const entries = stack.entries.slice(0, stack.currentIndex)
+    // replaces the route layer and releases anything above it, its stages
+    // included — they belonged to the sibling that left.
+    const entries = stack.entries.slice(0, routeIndex)
     entries.push(nextEntry)
-    return { currentIndex: stack.currentIndex, entries }
+    return { currentIndex: routeIndex, entries }
   }
 
   if (screen.depth > current.depth) {
@@ -161,7 +182,14 @@ export const advancePhoneNavigationStack = <Payload>(
   if (retainedIndex !== -1) {
     const entries = stack.entries.slice()
     entries[retainedIndex] = nextEntry
-    return { ...stack, currentIndex: retainedIndex, entries }
+    // A route that had stages open when it was left returns to the topmost
+    // of them — the document the person was reading, not the list under it.
+    let currentIndex = retainedIndex
+    while (
+      currentIndex + 1 < stack.currentIndex
+      && isPhoneNavigationStageEntry(stack.entries[currentIndex + 1]!)
+    ) currentIndex += 1
+    return { ...stack, currentIndex, entries }
   }
 
   // No retained screen to return to: replace at the first stack position
@@ -169,12 +197,81 @@ export const advancePhoneNavigationStack = <Payload>(
   // identity, nothing above is worth animating out because it was never
   // navigated from.
   const replaceIndex = stack.entries.findIndex(
-    (entry, index) => index < stack.currentIndex && entry.depth === screen.depth,
+    (entry, index) => index < routeIndex && entry.depth === screen.depth,
   )
   const position = replaceIndex === -1 ? 0 : replaceIndex
   const entries = stack.entries.slice(0, position)
   entries.push(nextEntry)
   return { currentIndex: position, entries }
+}
+
+// ── Nested stages ────────────────────────────────────────────────────────
+// A stage is a state-driven screen a page pushes above its own route (a
+// column browser's next column, a Knowledge document, a dashboard panel).
+// It is an entry like any other — same layers, same motion, same Back —
+// keyed `stage:<id>`, one depth above whatever it was pushed over, and it
+// carries its route's pathname so a same-route re-render still refreshes
+// the route beneath it (docs/navigation.md §6).
+const stageIndexOf = <Payload>(stack: PhoneNavigationStack<Payload>, id: string): number =>
+  stack.entries.findIndex(
+    (entry, index) => index <= stack.currentIndex && entry.key === `${STAGE_KEY_PREFIX}${id}`,
+  )
+
+export const hasPhoneNavigationStage = <Payload>(
+  stack: PhoneNavigationStack<Payload>,
+  id: string,
+): boolean => stageIndexOf(stack, id) !== -1
+
+// The same route re-rendering (its data settled): refresh the route entry's
+// payload in place and touch nothing above it — neither a retained outgoing
+// screen mid-Back nor the stages stacked over the route.
+export const refreshPhoneNavigationRoute = <Payload>(
+  stack: PhoneNavigationStack<Payload>,
+  payload: Payload,
+): PhoneNavigationStack<Payload> => {
+  const index = routeIndexOf(stack)
+  const entry = stack.entries[index]
+  if (!entry) return stack
+  const entries = stack.entries.slice()
+  entries[index] = { ...entry, payload }
+  return { ...stack, entries }
+}
+
+// Pushes a stage over the current entry. Re-pushing a stage that is already
+// stacked is a no-op, so a page may re-assert its open stage freely.
+export const pushPhoneNavigationStage = <Payload>(
+  stack: PhoneNavigationStack<Payload>,
+  id: string,
+  payload: Payload,
+): PhoneNavigationStack<Payload> => {
+  if (hasPhoneNavigationStage(stack, id)) return stack
+  const current = currentPhoneNavigationEntry(stack)
+  const key = `${STAGE_KEY_PREFIX}${id}`
+  const depth = current.depth + 1
+  const entry: PhoneNavigationStackEntry<Payload> = {
+    depth,
+    key,
+    layerKey: `${current.section}:${depth}:${key}`,
+    pathname: current.pathname,
+    payload,
+    section: current.section,
+  }
+  const position = stack.currentIndex + 1
+  const entries = stack.entries.slice(0, position)
+  entries.push(entry)
+  return { currentIndex: position, entries }
+}
+
+// Pops a stage: the entry beneath it becomes current and the stage (with
+// anything stacked over it) stays retained until the Back animation
+// releases it through dropPhoneNavigationEntriesAboveCurrent.
+export const popPhoneNavigationStage = <Payload>(
+  stack: PhoneNavigationStack<Payload>,
+  id: string,
+): PhoneNavigationStack<Payload> => {
+  const index = stageIndexOf(stack, id)
+  if (index <= 0) return stack
+  return { ...stack, currentIndex: index - 1 }
 }
 
 // Releases the screens a completed Back animation slid away. The outgoing

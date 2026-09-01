@@ -3,9 +3,9 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
-  type ContextType,
   type ReactNode,
 } from 'react'
 import { UNSAFE_LocationContext, useNavigate } from 'react-router-dom'
@@ -23,21 +23,27 @@ import {
   createPhoneNavigationStack,
   currentPhoneNavigationEntry,
   dropPhoneNavigationEntriesAboveCurrent,
+  hasPhoneNavigationStage,
+  isPhoneNavigationStageEntry,
+  popPhoneNavigationStage,
+  pushPhoneNavigationStage,
+  refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
-import {
-  dimAt,
-  NAV_MOTION,
-  runStackTransition,
-  type StackTransitionRun,
-} from '../../navigation/motion'
+import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
 import type { NavigationLayout } from '../../navigation/layout'
+import { NestedStageHostContext, type NestedStageHost } from '../../navigation/NestedStage'
 import { haptic } from '../../lib/haptics'
 import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
+import {
+  PhoneNavigationLayer,
+  type LayerPayload,
+  type LayerRole,
+} from './PhoneNavigationLayer'
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 registerViewportMediaQuery('reducedMotion', REDUCED_MOTION_QUERY)
@@ -52,12 +58,7 @@ type PhoneNavigationViewportProps = {
   pathname: string
 }
 
-type ScreenPayload = {
-  locationContext: ContextType<typeof UNSAFE_LocationContext>
-  screen: ReactNode
-}
-
-type Stack = PhoneNavigationStack<ScreenPayload>
+type Stack = PhoneNavigationStack<LayerPayload>
 
 type ActiveTransition = {
   direction: PhoneNavigationDirection
@@ -71,21 +72,13 @@ type ActiveTransition = {
 // animation, a hidden tab): the scripted duration plus slack.
 const TRANSITION_FALLBACK_SLACK_MS = 100
 
-const NavigationScreen = ({ payload }: { payload: ScreenPayload }) => (
-  <UNSAFE_LocationContext.Provider value={payload.locationContext}>
-    <div className="phone-navigation-page" data-phone-navigation-page>
-      {payload.screen}
-    </div>
-  </UNSAFE_LocationContext.Provider>
-)
-
-const percent = (value: number): string => `${value.toFixed(2)}%`
-
-// Phone route navigation owns a live DOM stack, not snapshots. Lower screens
-// remain mounted and inert under the current screen, preserving scroll and
-// component state. A forward push covers the immediate predecessor; Back
-// slides the outgoing screen away from the retained target. Tablets never
-// mount this component because AdminShellLayout keeps their columns adjacent.
+// The navigation stack. Route screens and nested stages are one retained DOM
+// stack: lower layers stay mounted and inert under the current one,
+// preserving scroll and component state. A forward push covers the
+// immediate predecessor; Back slides the outgoing layer away from the
+// retained target; the edge swipe drives the same two layers with the
+// finger. One instance covers a phone's whole content region; on a split
+// layout one sits in each detail column (docs/navigation.md §4–§6).
 export const PhoneNavigationViewport = ({
   children,
   layout = 'single',
@@ -102,6 +95,7 @@ export const PhoneNavigationViewport = ({
   const initialStack = useRef<Stack | null>(null)
   if (initialStack.current === null) {
     initialStack.current = createPhoneNavigationStack(pathname, {
+      kind: 'screen',
       locationContext,
       screen: children,
     }, layout)
@@ -114,8 +108,9 @@ export const PhoneNavigationViewport = ({
   // A committed interactive swipe has already animated one exact target into
   // place. Remember that pathname (rather than a loose boolean) so an
   // unrelated navigation that wins the same event turn can never have its
-  // own transition suppressed.
+  // own transition suppressed. Stages get the same marker by id.
   const suppressNextRouteAnimation = useRef<string | null>(null)
+  const suppressNextStageAnimation = useRef<string | null>(null)
 
   const commitStack = useCallback((next: Stack): void => {
     stackRef.current = next
@@ -133,6 +128,24 @@ export const PhoneNavigationViewport = ({
     commitTransition(null)
   }, [commitStack, commitTransition])
 
+  const startTransition = useCallback((
+    direction: PhoneNavigationDirection,
+    fromLayerKey: string,
+    toLayerKey: string,
+  ): void => {
+    transitionId.current += 1
+    commitTransition({
+      direction,
+      fromLayerKey,
+      id: transitionId.current,
+      // Back already has two painted, retained screens. A forward push has
+      // just mounted its destination, so hold it offscreen until the browser
+      // has painted that DOM once before starting either transform.
+      phase: direction === 'forward' && !reducedMotion ? 'preparing' : 'running',
+      toLayerKey,
+    })
+  }, [commitTransition, reducedMotion])
+
   // Route children are captured only after the route commits. Until this
   // layout effect, React continues to render the previous stack unchanged;
   // a retained lower layer can therefore never receive the incoming route's
@@ -140,9 +153,9 @@ export const PhoneNavigationViewport = ({
   useLayoutEffect(() => {
     const current = stackRef.current
     const committed = committedPhoneNavigationRoute(current)
-    const payload = { locationContext, screen: children }
+    const payload: LayerPayload = { kind: 'screen', locationContext, screen: children }
     if (committed.pathname === pathname) {
-      commitStack(advancePhoneNavigationStack(current, pathname, payload, layout))
+      commitStack(refreshPhoneNavigationRoute(current, payload))
       return
     }
 
@@ -152,12 +165,10 @@ export const PhoneNavigationViewport = ({
     suppressNextRouteAnimation.current = null
 
     if (!direction || suppressed) {
-      // The interactive gesture already animated a Back before changing the
-      // URL. Drop its outgoing layer in the same commit so no second route
-      // animation—or stale hidden detail—survives the settle.
-      if (suppressed && direction === 'back') {
-        next = dropPhoneNavigationEntriesAboveCurrent(next)
-      }
+      // Nothing will animate, so nothing above the new current entry will
+      // ever be shown again: an interactive swipe already animated its Back,
+      // and an in-place swap has no outgoing screen.
+      next = dropPhoneNavigationEntriesAboveCurrent(next)
       commitTransition(null)
       commitStack(next)
       return
@@ -172,17 +183,7 @@ export const PhoneNavigationViewport = ({
       commitTransition(null)
       return
     }
-    transitionId.current += 1
-    commitTransition({
-      direction,
-      fromLayerKey,
-      id: transitionId.current,
-      // Back already has two painted, retained screens. A forward push has
-      // just mounted its destination, so hold it offscreen until the browser
-      // has painted that DOM once before starting either transform.
-      phase: direction === 'forward' && !reducedMotion ? 'preparing' : 'running',
-      toLayerKey,
-    })
+    startTransition(direction, fromLayerKey, toLayerKey)
   }, [
     children,
     commitStack,
@@ -190,8 +191,57 @@ export const PhoneNavigationViewport = ({
     layout,
     locationContext,
     pathname,
-    reducedMotion,
+    startTransition,
   ])
+
+  // Nested stages join the same stack (docs/navigation.md §6): activation
+  // pushes a layer over the current entry and runs the forward motion;
+  // deactivation makes the entry beneath current and runs Back, unless the
+  // edge swipe already animated it. Only a single-column layout hosts
+  // stages; a split layout's pages compose their stages inline.
+  const activateStage = useCallback((id: string, container: HTMLElement): void => {
+    const running = transitionRef.current
+    if (running) finishTransition(running.id)
+    const current = stackRef.current
+    const next = pushPhoneNavigationStage(current, id, { kind: 'stage', container })
+    if (next === current) return
+    const fromLayerKey = currentPhoneNavigationEntry(current).layerKey
+    commitStack(next)
+    startTransition('forward', fromLayerKey, currentPhoneNavigationEntry(next).layerKey)
+  }, [commitStack, finishTransition, startTransition])
+
+  const deactivateStage = useCallback((id: string, options: { animate: boolean }): void => {
+    if (!hasPhoneNavigationStage(stackRef.current, id)) return
+    const running = transitionRef.current
+    if (running) finishTransition(running.id)
+    const current = stackRef.current
+    const suppressed = suppressNextStageAnimation.current === id
+    suppressNextStageAnimation.current = null
+    const outgoing = currentPhoneNavigationEntry(current)
+    const next = popPhoneNavigationStage(current, id)
+    if (next === current) return
+    const isTop = outgoing.key === `stage:${id}`
+    if (!options.animate || suppressed || !isTop) {
+      commitTransition(null)
+      commitStack(dropPhoneNavigationEntriesAboveCurrent(next))
+      return
+    }
+    commitStack(next)
+    startTransition('back', outgoing.layerKey, currentPhoneNavigationEntry(next).layerKey)
+  }, [commitStack, commitTransition, finishTransition, startTransition])
+
+  const stageIds = useMemo(
+    () => stack.entries
+      .filter((entry, index) => index <= stack.currentIndex && isPhoneNavigationStageEntry(entry))
+      .map((entry) => entry.key.slice('stage:'.length)),
+    [stack],
+  )
+  const stageHost = useMemo<NestedStageHost | null>(
+    () => (layout === 'single'
+      ? { activate: activateStage, deactivate: deactivateStage, stageIds }
+      : null),
+    [activateStage, deactivateStage, layout, stageIds],
+  )
 
   useEffect(() => {
     if (
@@ -206,9 +256,8 @@ export const PhoneNavigationViewport = ({
     let secondFrame = 0
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
-        const current = transitionRef.current
-        if (current?.id !== transition.id || current.phase !== 'preparing') return
-        commitTransition({ ...current, phase: 'running' })
+        if (transitionRef.current?.id !== transition.id) return
+        commitTransition({ ...transition, phase: 'running' })
       })
     })
 
@@ -255,15 +304,14 @@ export const PhoneNavigationViewport = ({
     }
   }, [finishTransition, reducedMotion, transition])
 
-  // The finger settles first; only its completion changes the route. That
-  // route commit is marked as already animated, preventing a second keyframe.
-  // The swipe drives the retained route layers, so it arms only when the one
-  // resolver answers with a route Back: an in-page owner (a column, a
-  // knowledge stage) is not a layer yet and would close in place under a
-  // slide that revealed the wrong screen. Owners join the gesture when they
-  // become nested stages (docs/navigation.md).
-  const routeBackAction = navigation?.resolveBackAction(pathname) ?? null
-  const gestureArmed = routeBackAction?.kind === 'route'
+  // The finger settles first; only its completion changes the route or
+  // closes the stage. The swipe drives the retained layers, so it arms when
+  // the one resolver answers with a route Back, or with an owner that is the
+  // stage on top of this stack and allows the gesture.
+  const backAction = navigation?.resolveBackAction(pathname) ?? null
+  const topEntry = currentPhoneNavigationEntry(stack)
+  const gestureArmed = backAction?.kind === 'route'
+    || (backAction?.kind === 'owner' && backAction.swipeable && topEntry.key === backAction.id)
 
   const performGestureBack = useCallback(() => {
     const activeTransition = transitionRef.current
@@ -278,11 +326,15 @@ export const PhoneNavigationViewport = ({
     }
     // Resolve while the gesture is still armed, then execute that immutable
     // action. Re-resolving through performBack after the settle could let a
-    // newly mounted owner consume the swipe and leave the route suppression
-    // marker attached to the wrong future navigation.
+    // newly mounted owner consume the swipe and leave the suppression marker
+    // attached to the wrong future navigation.
     const action = navigation.resolveBackAction(pathname)
-    if (action?.kind !== 'route') return
-    suppressNextRouteAnimation.current = action.to
+    if (!action) return
+    if (action.kind === 'owner') {
+      suppressNextStageAnimation.current = action.id.slice('stage:'.length)
+    } else {
+      suppressNextRouteAnimation.current = action.to
+    }
     // The one haptic of a Back: the swipe has settled and the route is about
     // to change. A cancelled swipe and a tapped Back give none.
     haptic('light')
@@ -296,118 +348,40 @@ export const PhoneNavigationViewport = ({
     viewportRef,
   })
 
-  const gestureTopTravel = gesture.progress === null
-    ? null
-    : percent(gesture.progress * 100)
-  const gestureUnderlayTravel = gesture.progress === null
-    ? null
-    : percent(-(1 - gesture.progress) * NAV_MOTION.parallax * 100)
-
-  const renderLayer = (index: number) => {
-    const entry = stack.entries[index]
-    if (!entry) return null
-
-    const isCurrent = index === stack.currentIndex
-    const isImmediateLower = index === stack.currentIndex - 1
-    const isTop = transition
-      ? entry.layerKey === (
-          transition.direction === 'forward'
-            ? transition.toLayerKey
-            : transition.fromLayerKey
-        )
-      : isCurrent
-    const isBottom = transition
-      ? entry.layerKey === (
-          transition.direction === 'forward'
-            ? transition.fromLayerKey
-            : transition.toLayerKey
-        )
-      : isImmediateLower
-    const hidden = !isTop && !isBottom
-    const layerName = isTop
-      ? transition
-        ? transition.direction === 'forward' ? 'incoming' : 'outgoing'
-        : 'current'
-      : isBottom
-        ? transition
-          ? transition.direction === 'forward' ? 'outgoing' : 'incoming'
-          : 'underlay'
-        : 'retained'
-    const inertLayer = isBottom || Boolean(transition && isTop)
-    const classes = ['phone-navigation-screen']
-    let style: React.CSSProperties | undefined
-    // The finger drives the revealed layer's scrim inline, like its
-    // transform; a scripted transition animates it from the same poses.
-    let dimStyle: React.CSSProperties | undefined
-
-    if (isTop) {
-      if (transition) {
-        classes.push(
-          transition.direction === 'forward'
-            ? transition.phase === 'preparing'
-              ? 'phone-navigation-screen--forward-ready'
-              : 'phone-navigation-screen--forward-in'
-            : 'phone-navigation-screen--back-out',
-        )
-      } else {
-        classes.push('phone-navigation-screen--current')
-        if (gestureTopTravel !== null && stack.currentIndex > 0) {
-          style = {
-            boxShadow: 'var(--nav-shadow)',
-            transform: `translate3d(${gestureTopTravel}, 0, 0)`,
-          }
-        }
-      }
-    } else if (isBottom) {
-      if (transition) {
-        classes.push(
-          transition.direction === 'forward'
-            ? transition.phase === 'preparing'
-              ? 'phone-navigation-screen--forward-source-ready'
-              : 'phone-navigation-screen--forward-out'
-            : 'phone-navigation-screen--back-in',
-        )
-      } else {
-        classes.push('phone-navigation-screen--underlay')
-        if (gestureUnderlayTravel !== null && gesture.progress !== null) {
-          style = { transform: `translate3d(${gestureUnderlayTravel}, 0, 0)` }
-          dimStyle = { opacity: dimAt(gesture.progress) }
-        }
-      }
+  const roleOf = (index: number): LayerRole => {
+    const entry = stack.entries[index]!
+    if (transition) {
+      const forward = transition.direction === 'forward'
+      if (entry.layerKey === (forward ? transition.toLayerKey : transition.fromLayerKey)) return 'top'
+      if (entry.layerKey === (forward ? transition.fromLayerKey : transition.toLayerKey)) return 'bottom'
+      return 'hidden'
     }
-
-    return (
-      <div
-        aria-hidden={inertLayer || hidden ? true : undefined}
-        className={classes.join(' ')}
-        data-phone-navigation-layer={layerName}
-        data-phone-navigation-route={entry.key}
-        hidden={hidden || undefined}
-        inert={inertLayer || undefined}
-        key={entry.layerKey}
-        style={style}
-      >
-        <NavigationScreen payload={entry.payload} />
-        <div
-          aria-hidden
-          className="phone-navigation-dim"
-          data-phone-navigation-dim
-          style={dimStyle}
-        />
-      </div>
-    )
+    if (index === stack.currentIndex) return 'top'
+    if (index === stack.currentIndex - 1) return 'bottom'
+    return 'hidden'
   }
 
   return (
-    <div
-      className="phone-navigation-viewport"
-      data-phone-navigation-direction={transition?.direction}
-      data-phone-navigation-gesture={gesture.settle ? 'settling' : 'idle'}
-      data-phone-navigation-phase={transition?.phase}
-      data-phone-navigation-viewport
-      ref={viewportRef}
-    >
-      {stack.entries.map((_, index) => renderLayer(index))}
-    </div>
+    <NestedStageHostContext.Provider value={stageHost}>
+      <div
+        className="phone-navigation-viewport"
+        data-phone-navigation-direction={transition?.direction}
+        data-phone-navigation-gesture={gesture.settle ? 'settling' : 'idle'}
+        data-phone-navigation-phase={transition?.phase}
+        data-phone-navigation-viewport
+        ref={viewportRef}
+      >
+        {stack.entries.map((entry, index) => (
+          <PhoneNavigationLayer
+            entry={entry}
+            gestureProgress={gesture.progress}
+            hasUnderlay={stack.currentIndex > 0}
+            key={entry.layerKey}
+            role={roleOf(index)}
+            transition={transition}
+          />
+        ))}
+      </div>
+    </NestedStageHostContext.Provider>
   )
 }
