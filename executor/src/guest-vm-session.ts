@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -9,6 +8,14 @@ import {
   type ExecutorEgressPolicy,
 } from './egress-policy.js'
 import { startExecutorEgressGateway } from './egress-gateway.js'
+import { createFirecrackerBackend } from './firecracker/index.js'
+import {
+  GUEST_VM_RESOURCES,
+  newGuestVmSessionId,
+  selectGuestVmBackend,
+  type ActiveGuestVmSessionProcess,
+  type GuestVmBackendDependencies,
+} from './guest-vm-backend.js'
 import {
   GUEST_VM_BUILD_TIMEOUT_MS,
   GUEST_VM_HANDSHAKE_TIMEOUT_MS,
@@ -19,16 +26,15 @@ import {
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
-import {
-  GuestVmControlClient,
-  type GuestBrowserAction,
-  type GuestBrowserActionResult,
-  type GuestBrowserObservation,
-  type GuestCodingAgent,
-  type GuestCodingObservation,
-  type GuestCommandRequest,
-  type GuestCommandResult,
-  type GuestRuntimeInspection,
+import type {
+  GuestBrowserAction,
+  GuestBrowserActionResult,
+  GuestBrowserObservation,
+  GuestCodingAgent,
+  GuestCodingObservation,
+  GuestCommandRequest,
+  GuestCommandResult,
+  GuestRuntimeInspection,
 } from './guest-vm-control.js'
 import {
   materializeGuestRuntimeBundle,
@@ -40,29 +46,8 @@ import {
   assertGuestWorkspaceLeaseCurrent,
   releaseGuestWorkspaceLease,
 } from './guest-workspace-lease.js'
+import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
 import { WorkspacePathError } from './workspace-paths.js'
-
-const SESSION_STOP_TIMEOUT_MS = 10_000
-
-type ActiveGuestVmSessionProcess = {
-	actBrowser: (action: GuestBrowserAction) => Promise<GuestBrowserActionResult>
-  closed: Promise<void>
-  closeCodingSession: () => Promise<void>
-  inspectRuntime: () => Promise<GuestRuntimeInspection>
-  launchCodingSession: (agent: GuestCodingAgent, prompt: string) => Promise<void>
-  observeCodingSession: () => Promise<GuestCodingObservation>
-  observeBrowser: (includeScreenshot?: boolean) => Promise<GuestBrowserObservation>
-  openBrowser: (url: string) => Promise<void>
-  runCommand: (request: GuestCommandRequest) => Promise<GuestCommandResult>
-  stop: () => Promise<void>
-}
-
-type GuestVmSessionLauncher = (input: {
-  argv: string[]
-  input: string
-  path: string
-  readyTimeoutMs: number
-}) => Promise<ActiveGuestVmSessionProcess>
 
 export type GuestVmSessionInput = GuestVmHandshakeInput & {
   codexAuthProfilePath?: string
@@ -72,7 +57,7 @@ export type GuestVmSessionInput = GuestVmHandshakeInput & {
 }
 
 export type GuestVmSession = {
-	actBrowser: (action: GuestBrowserAction) => Promise<GuestBrowserActionResult>
+  actBrowser: (action: GuestBrowserAction) => Promise<GuestBrowserActionResult>
   closed: Promise<void>
   closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
@@ -84,67 +69,28 @@ export type GuestVmSession = {
   stop: () => Promise<void>
 }
 
-const waitForExit = (child: ChildProcess): Promise<void> => new Promise((resolvePromise) => {
-  child.once('error', () => resolvePromise())
-  child.once('exit', () => resolvePromise())
-})
-
-const stopChild = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return
-  const exited = waitForExit(child)
-  child.kill('SIGTERM')
-  let timeout: NodeJS.Timeout | undefined
-  await Promise.race([
-    exited,
-    new Promise<void>((resolvePromise) => {
-      timeout = setTimeout(resolvePromise, SESSION_STOP_TIMEOUT_MS)
-    }),
-  ])
-  if (timeout) clearTimeout(timeout)
-  if (child.exitCode === null && child.signalCode === null) {
-    child.kill('SIGKILL')
-    await exited
-  }
-}
-
-const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path, readyTimeoutMs }) => {
-  const child = spawn(path, argv, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
-  if (!child.stdin || !child.stdout) throw new WorkspacePathError('The executor VM helper is unavailable.')
-  const control = new GuestVmControlClient(child.stdin, child.stdout)
-  const closed = waitForExit(child).finally(() => control.close())
-  try {
-    child.stdin.write(input)
-    await control.waitForReady(readyTimeoutMs)
-  } catch (error) {
-    await stopChild(child)
-    throw error
-  }
-  return {
-	actBrowser: (action) => control.actBrowser(action),
-    closed,
-    closeCodingSession: () => control.closeCodingSession(),
-    inspectRuntime: () => control.inspectRuntime(),
-    launchCodingSession: (agent, prompt) => control.launchCodingSession(agent, prompt),
-    observeCodingSession: () => control.observeCodingSession(),
-    observeBrowser: (includeScreenshot) => control.observeBrowser(includeScreenshot),
-    openBrowser: (url) => control.openBrowser(url),
-    runCommand: (request) => control.runCommand(request),
-    stop: () => stopChild(child),
-  }
+export type GuestVmSessionDependencies = GuestVmBackendDependencies & {
+  /** Injected in tests; production reads the real host. */
+  host?: ExecutorHost
+  runProcess?: GuestVmProcessRunner
 }
 
 /**
  * Starts one lease-bound guest VM and its owner-only forced-egress gateway.
- * This is companion infrastructure only: callers hold the returned session and
- * must stop it; no executor descriptor or daemon operation calls this yet.
+ * Everything above this point — the artifact checks, the COW lease, the initrd
+ * build, the runtime snapshot, the egress gateway, and the guest protocol — is
+ * shared by every host. Only the hypervisor differs, and that difference is
+ * confined to the backend chosen from the host's own sandbox fact.
  */
 export const startGuestVmSession = async (
   input: GuestVmSessionInput,
-  dependencies: {
-    launchProcess?: GuestVmSessionLauncher
-    runProcess?: GuestVmProcessRunner
-  } = {},
+  dependencies: GuestVmSessionDependencies = {},
 ): Promise<GuestVmSession> => {
+  const backend = selectGuestVmBackend(
+    dependencies.host ?? detectExecutorHost(),
+    dependencies,
+    () => createFirecrackerBackend(),
+  )
   const egressSettings = input.egressPolicy
     ? compileExecutorEgressPolicy(input.egressPolicy)
     : undefined
@@ -167,7 +113,6 @@ export const startGuestVmSession = async (
   const gatewayPath = gatewayDirectory ? join(gatewayDirectory, 'egress.sock') : undefined
   const bootstrapToken = randomBytes(32).toString('base64url')
   const runProcess = dependencies.runProcess ?? runGuestVmProcess
-  const launchProcess = dependencies.launchProcess ?? launchGuestVmSession
   let process: ActiveGuestVmSessionProcess | undefined
   let cleaned = false
   const cleanup = async (): Promise<void> => {
@@ -196,21 +141,20 @@ export const startGuestVmSession = async (
       timeoutMs: GUEST_VM_BUILD_TIMEOUT_MS,
     })
     await assertGuestWorkspaceLeaseCurrent(input.stateDir, input.lease)
-    process = await launchProcess({
-      argv: [
-        'session',
-        '--console', consolePath,
-        '--kernel', kernelPath,
-        '--initrd', initrdPath,
-        '--workspace-cow', input.lease.workspace,
-        '--runtime-bundle', runtimeSnapshot.root,
-        '--runtime-manifest-digest', runtimeSnapshot.manifestDigest,
-        ...(gateway ? ['--egress-gateway', gateway.socketPath] : []),
-        '--bootstrap-token-stdin',
-      ],
-      input: bootstrapToken,
-      path: helperPath,
+    process = await backend.start({
+      bootstrapToken,
+      consolePath,
+      ...(gateway ? { egressGatewaySocketPath: gateway.socketPath } : {}),
+      initrdPath,
+      kernelPath,
       readyTimeoutMs: GUEST_VM_HANDSHAKE_TIMEOUT_MS,
+      resources: GUEST_VM_RESOURCES,
+      runtimeManifestDigest: runtimeSnapshot.manifestDigest,
+      runtimeSnapshotPath: runtimeSnapshot.root,
+      sessionDirectory,
+      sessionId: newGuestVmSessionId(),
+      vmHelperPath: helperPath,
+      workspacePath: input.lease.workspace,
     })
     const closed = process.closed.finally(cleanup)
     return {

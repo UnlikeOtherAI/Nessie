@@ -413,6 +413,33 @@ network device, egress only through the daemon's gateway. The conformance
 tests that gate the coding and command profiles on macOS run against it on a
 KVM-capable Linux runner; a runner without KVM must fail the job, not skip it.
 
+**Landed.** The fork the phrase "beside the macOS one" invited was avoided:
+spawning moved behind one `GuestVmBackend` seam
+(`executor/src/guest-vm-backend.ts`) chosen from the descriptor's own
+`sandboxBackend`, with `virtualization_framework` keeping today's argv exactly
+and `executor/src/firecracker/` implementing the jailer, the four-call API
+sequence, the two guest-initiated vsock channels, graceful stop, and chroot
+cleanup. The guest builds for `linux/amd64` as well as `linux/arm64` — nothing
+in it was arch-specific, so the `_linux_arm64.go` files became `_linux.go` and
+`AF_VSOCK` is declared once (Go's syscall tables omit it on amd64). The
+standalone `.deb` ships Firecracker and its jailer pinned by version and by the
+upstream published SHA-256, plus the amd64 guest, with a `resources/manifest.json`
+of digests. `firecracker-conformance` in `.github/workflows/desktop-linux.yml`
+runs the backend suites on `[self-hosted, linux, kvm]` and fails when
+`/dev/kvm` is absent. Contract: `docs/executor-protocol.md` §8 → "Linux
+backend — Firecracker".
+
+**Two design statements did not survive contact.** First, the table above says
+the guest "stays byte-identical to macOS", and it does for boot, control, and
+egress — but *not* for the filesystem: the guest mounts `/work` and `/runtime`
+as **virtiofs**, and Firecracker implements no virtio-fs device. Both shares
+must be re-expressed (block devices are the obvious candidate) before a Linux
+guest can actually boot with a workspace, and that change reaches the guest,
+`sandbox-workspace.ts`, and the workspace-review read-back together. Second,
+the plan assumed the daemon could run the jailer; Firecracker documents the
+jailer as running **as root**, so the backend refuses at session start when it
+is not, and the standalone package's supervisor has to supply that privilege.
+
 ### 5. Standalone package and desktop enablement
 
 The `nessie-executor` `.deb`, the systemd unit template, the `enable` /

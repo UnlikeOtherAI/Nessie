@@ -727,6 +727,107 @@ It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
 keep browser and coding profiles unavailable.
 
+### Linux backend — Firecracker
+
+On Linux the same guest runs under Firecracker, one jailer-isolated micro-VM
+per session. Only the hypervisor differs: the artifact checks, the COW lease,
+the initrd build, the runtime snapshot, the forced-egress gateway, and every
+guest frame above them are shared, and the choice between backends is made once
+from the descriptor's own `sandboxBackend` (§4.5) by `selectGuestVmBackend`.
+A host reporting `none` or `hyperv` is refused there in words rather than
+falling through to another backend.
+
+**Binaries.** The executor's stored `browserSandbox`/`codexSandbox`
+`vmHelperPath` is the Firecracker binary itself, and the jailer is required to
+be its sibling `jailer` in the same owner-only directory — Firecracker's
+documentation requires a jailer of the same version as the binary it execs. The
+standalone package installs both root-owned and mode 0755 under
+`/usr/lib/nessie-executor/resources/firecracker/`, pinned by version *and* by
+the SHA-256 the upstream release publishes for its own archive, with every
+shipped resource's digest recorded in `resources/manifest.json`. No executor
+state field was added: the Linux meaning of the existing paths is this
+paragraph.
+
+**Privilege.** The jailer unshares a mount namespace, `pivot_root`s into the
+session chroot, `mknod`s `/dev/kvm`, and chowns the jail before dropping to the
+uid and gid it is told to use. Firecracker's own documentation states that it
+is run as root ("it actually requires a more restricted set of capabilities,
+but that's to be determined as features stabilize"), so the backend checks for
+uid 0 at session start and refuses with that remedy named, rather than letting
+the jailer die halfway through building a chroot. The uid and gid handed to
+`--uid`/`--gid` are the daemon's own, so the jailed Firecracker process runs as
+the account that owns the workspace.
+
+**Configuration.** Per session the backend spawns
+`jailer --id <session> --exec-file <firecracker> --uid <uid> --gid <gid>
+--chroot-base-dir <owner-only short-lived dir> --cgroup-version 2 --
+--api-sock /firecracker.socket` — an argv list, never a shell string. It waits
+for the API socket the jailer's chroot exposes, hard-links (or, across
+filesystems, copies) the kernel and initrd into the jail as the jailer
+requires, and then issues exactly four calls on that Unix socket:
+
+| Call | Body |
+| --- | --- |
+| `PUT /boot-source` | `kernel_image_path`, `initrd_path`, and `boot_args` |
+| `PUT /machine-config` | `vcpu_count`, `mem_size_mib`, `smt: false` |
+| `PUT /vsock` | `guest_cid: 3`, `uds_path` |
+| `PUT /actions` | `{"action_type": "InstanceStart"}` |
+
+There is deliberately **no** `PUT /network-interfaces` and no TAP device is
+ever created. The guest's only route off the machine is the same vsock-bridged
+forced-egress gateway it has on macOS.
+
+`boot_args` is Firecracker's documented baseline `console=ttyS0 reboot=k
+panic=1 pci=off` plus `rdinit=/init` and the `nessie.*` flags the guest reads
+back out of `/proc/cmdline` — `nessie.runtime_manifest=<digest>`,
+`nessie.runtime=1`, `nessie.workspace=1`, and `nessie.egress=1` for a session
+that has a gateway. The guest init stays in the initramfs and never calls
+`pivot_root`: an initrd-mounted rootfs cannot be unmounted, so Firecracker's
+documentation requires `switch_root` instead, and mounting in place satisfies
+that by construction.
+
+**Transports.** Firecracker maps guest `AF_VSOCK` ports 1:1 onto host Unix
+sockets. Both of Nessie's channels are guest-initiated, so both arrive on
+`<uds_path>_<port>` listeners the backend opens *before* `InstanceStart` —
+Firecracker resets a guest connection for which nothing is listening. Port
+49152 is the control channel and 49153 the forced-egress tunnel, the same
+numbers the macOS helper uses. The control listener admits one connection,
+reads the guest's `hello` frame, compares its token in constant time, and only
+then presents the stream to the shared control client, exactly as the signed
+Swift helper does; a second connection is destroyed rather than allowed to
+replace a live channel. Each egress tunnel presents the 48-byte
+`NEXG`+version+token prelude derived as
+`HMAC-SHA-256(bootstrapToken, "nessie-executor-egress-v1")` before its bytes
+are relayed to the daemon's owner-only CONNECT gateway.
+
+The host-initiated direction is implemented for completeness and follows
+Firecracker's framing: connect to `uds_path`, send `CONNECT <port>\n`, and wait
+for `OK <assigned_hostside_port>\n` before speaking anything else. Nothing in
+the session path uses it, because the guest dials out on both channels.
+
+**Path length.** `sun_path` is 108 bytes on Linux and the executor's state root
+already spends most of it, so the jail — which carries the API socket and both
+vsock sockets — is created under its own short owner-only temporary root, the
+same treatment the egress socket already gets, and a session id is 16 hex
+characters rather than a UUID.
+
+**Stop.** Closing the control channel is what ends this guest: its init returns
+on EOF. `SendCtrlAltDel` is issued as the documented graceful action but is
+best-effort, because Firecracker documents it as Intel and AMD only — it
+emulates an i8042 keyboard that aarch64 micro-VMs do not have. The backend then
+waits, kills the jailer process tree on timeout, and removes the session's
+chroot: a surviving jail is a surviving capability, so no chroot or socket is
+left behind on stop, on guest exit, or on any failure during start.
+
+**Not yet proven on hardware.** The workspace and runtime shares are still
+described to the guest as virtiofs mounts, which Firecracker does not
+implement; a booted Linux guest therefore needs those two shares re-expressed
+as block devices (or an equivalent) before the command and coding profiles can
+be advertised on this backend. The KVM-gated `firecracker-conformance` job in
+`.github/workflows/desktop-linux.yml` is where that boot is proved; it fails
+rather than skips when `/dev/kvm` is absent, and GitHub-hosted runners have
+none.
+
 ### Desktop-packaged companion
 
 A companion launched this way is the `desktop` supervisor: the shell sets

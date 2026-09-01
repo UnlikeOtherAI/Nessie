@@ -1,4 +1,4 @@
-//go:build linux && arm64
+//go:build linux
 
 package main
 
@@ -15,6 +15,12 @@ const (
 	bootstrapTokenPath = "/etc/nessie/bootstrap-token"
 	guestControlPort   = 49_152
 	vmaddrCIDHost      = 2
+	// Linux UAPI `AF_VSOCK`, which is 0x28 on every architecture: it is a
+	// socket family in include/linux/socket.h, not an arch-specific number.
+	// Go's syscall package only generates the constant for some targets — it
+	// is absent on linux/amd64 — so the guest declares it once here rather
+	// than growing a per-architecture file that would say the same thing.
+	afVSock = 0x28
 )
 
 type sockaddrVM struct {
@@ -35,11 +41,11 @@ func connectGuestEgress() (*os.File, error) {
 }
 
 func connectGuestVirtioPort(port uint32, name string) (*os.File, error) {
-	descriptor, err := syscall.Socket(syscall.AF_VSOCK, syscall.SOCK_STREAM, 0)
+	descriptor, err := syscall.Socket(afVSock, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
 	}
-	address := sockaddrVM{Family: syscall.AF_VSOCK, Port: port, CID: vmaddrCIDHost}
+	address := sockaddrVM{Family: afVSock, Port: port, CID: vmaddrCIDHost}
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_CONNECT,
 		uintptr(descriptor),

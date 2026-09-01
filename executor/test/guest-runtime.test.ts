@@ -190,6 +190,9 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
       stateDir,
       vmHelperPath: helperPath,
     }, {
+      // The macOS backend, named explicitly: this suite exercises the shared
+      // session pipeline, not the host's own sandbox detection.
+      host: { platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 }, sandboxBackend: 'virtualization_framework', supervisor: 'service' },
       runProcess: async (call) => { calls.push(call) },
       launchProcess: async (call) => {
         calls.push(call)

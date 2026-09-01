@@ -111,10 +111,21 @@ export const secureGuestVmSessionDirectory = async (
   return directory
 }
 
-/** Unix socket paths are short on macOS, so gateway transport gets its own
- * owner-private ephemeral directory rather than widening the socket limit. */
-export const secureGuestVmGatewayDirectory = async (): Promise<string> => {
-  const directory = await mkdtemp(join(tmpdir(), 'nex-egress-'))
+/**
+ * An owner-private ephemeral directory shallow enough to hold a Unix socket.
+ * `sun_path` is 104 bytes on macOS and 108 on Linux, and the executor's own
+ * state root — `~/.local/state/nessie-executor/<id>/runtime/guest-vms/<lease>`
+ * — already spends most of that, so any transport socket gets its own short
+ * root instead of a deeper path that binds fine in a test and fails in a home
+ * directory. `longestChild` is the longest path that will ever hang below it,
+ * checked here rather than at each `listen`.
+ */
+const secureShortSocketDirectory = async (
+  prefix: string,
+  longestChild: string,
+  label: string,
+): Promise<string> => {
+  const directory = await mkdtemp(join(tmpdir(), prefix))
   try {
     await chmod(directory, 0o700)
     const info = await lstat(directory)
@@ -123,9 +134,9 @@ export const secureGuestVmGatewayDirectory = async (): Promise<string> => {
       || !info.isDirectory()
       || (ownerId() !== undefined && info.uid !== ownerId())
       || (info.mode & 0o077) !== 0
-      || join(directory, 'egress.sock').length > 96
+      || join(directory, longestChild).length > 96
     ) {
-      throw new WorkspacePathError('The executor egress socket directory is unavailable.')
+      throw new WorkspacePathError(`The executor ${label} directory is unavailable.`)
     }
     return directory
   } catch (error) {
@@ -133,3 +144,18 @@ export const secureGuestVmGatewayDirectory = async (): Promise<string> => {
     throw error
   }
 }
+
+export const secureGuestVmGatewayDirectory = (): Promise<string> =>
+  secureShortSocketDirectory('nex-egress-', 'egress.sock', 'egress socket')
+
+/**
+ * The jailer's `--chroot-base-dir`. Firecracker binds both its API socket and
+ * its vsock device inside `<base>/firecracker/<id>/root`, so the base carries
+ * the same length budget as any other socket root.
+ */
+export const secureFirecrackerJailDirectory = (sessionIdMaxChars: number): Promise<string> =>
+  secureShortSocketDirectory(
+    'nex-fc-',
+    join('firecracker', 'i'.repeat(sessionIdMaxChars), 'root', 'firecracker.socket'),
+    'micro-VM jail',
+  )
