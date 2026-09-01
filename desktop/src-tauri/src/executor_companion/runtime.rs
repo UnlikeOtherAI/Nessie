@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
-    fs::{self, File},
-    io::{Read, Write},
+    fs,
+    io::Write,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::Mutex,
@@ -9,15 +9,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
+
+pub(super) mod availability;
+pub(super) mod integrity;
+
+use availability::{classify_availability, virtualization_available};
+use integrity::verified_runtime_directory;
+
+pub use availability::{CompanionAvailability, ExecutorCompanionAvailability};
 
 const EXECUTOR_DIRECTORY: &str = "executors";
 const EXECUTOR_STATE_FILE: &str = "executor-state.json";
 const EXECUTOR_DAEMON_LEASE_FILE: &str = "daemon.pid";
-#[cfg(not(debug_assertions))]
-const PRODUCTION_SIGNING_TEAM_ID: Option<&str> = option_env!("NESSIE_DESKTOP_SIGNING_TEAM_ID");
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
@@ -38,14 +43,6 @@ pub struct ExecutorCompanionStatus {
     pub daemon_status: &'static str,
     pub executor_id: String,
     pub workspace_configured: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeManifest {
-    executor_bundle_sha256: String,
-    format: u8,
-    node_sha256: String,
 }
 
 pub(super) fn executor_state_dir(app: &AppHandle, executor_id: &str) -> Result<PathBuf, String> {
@@ -93,107 +90,20 @@ pub(super) fn companion_root(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub(super) fn runtime_directory(app: &AppHandle) -> Result<PathBuf, String> {
-    #[cfg(debug_assertions)]
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/executor-runtime");
-    #[cfg(not(debug_assertions))]
-    let root = app
-        .path()
-        .resource_dir()
-        .map_err(|_| "Nessie Desktop could not find its packaged executor companion.".to_owned())?
-        .join("executor-runtime");
-    for name in ["node", "nessie-executor.cjs", "manifest.json", "NODE_LICENSE"] {
-        let candidate = root.join(name);
-        let metadata = fs::symlink_metadata(&candidate)
-            .map_err(|_| "Nessie Desktop's packaged executor companion is unavailable.".to_owned())?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            return Err("Nessie Desktop's packaged executor companion is invalid.".to_owned());
-        }
-    }
-    let manifest: RuntimeManifest = serde_json::from_slice(
-        &fs::read(root.join("manifest.json"))
-            .map_err(|_| "Nessie Desktop's packaged executor companion is invalid.".to_owned())?,
+    verified_runtime_directory(app).map_err(|failure| failure.reason)
+}
+
+/// What this computer can do as an executor, decided from the packaged runtime,
+/// the release-provenance check, and local virtualization. It never fails: a
+/// companion that cannot run here has to say so, not disappear.
+pub(super) fn companion_availability(app: &AppHandle) -> (CompanionAvailability, String) {
+    let platform = crate::shell::desktop_platform();
+    let runtime = verified_runtime_directory(app).err();
+    classify_availability(
+        platform,
+        runtime.as_ref().map(|failure| (failure.kind, failure.reason.as_str())),
+        virtualization_available(),
     )
-    .map_err(|_| "Nessie Desktop's packaged executor companion is invalid.".to_owned())?;
-    if manifest.format != 1
-        || manifest.node_sha256 != file_sha256(&root.join("node"))?
-        || manifest.executor_bundle_sha256 != file_sha256(&root.join("nessie-executor.cjs"))?
-    {
-        return Err("Nessie Desktop's packaged executor companion did not pass integrity verification.".to_owned());
-    }
-    require_release_signature(app, &root)?;
-    Ok(root)
-}
-
-#[cfg(not(debug_assertions))]
-fn require_release_signature(_app: &AppHandle, resource_dir: &Path) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let expected_team = PRODUCTION_SIGNING_TEAM_ID
-            .filter(|team| !team.is_empty() && team.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-            .ok_or_else(|| "Executor controls require a release build with a pinned Developer ID team.".to_owned())?;
-        let bundle = application_bundle_from_resource_dir(resource_dir)?;
-        let verified = Command::new("/usr/bin/codesign")
-            .args(["--verify", "--deep", "--strict"])
-            .arg(bundle)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|_| "Nessie Desktop could not verify its release signature.".to_owned())?
-            .success();
-        if !verified {
-            return Err("Executor controls require a signed, intact Nessie Desktop release.".to_owned());
-        }
-        let metadata = Command::new("/usr/bin/codesign")
-            .args(["-dvv"])
-            .arg(bundle)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|_| "Nessie Desktop could not inspect its release signature.".to_owned())?;
-        let details = String::from_utf8_lossy(&metadata.stderr);
-        if details.lines().any(|line| line == format!("TeamIdentifier={expected_team}"))
-            && details.lines().any(|line| line.starts_with("Authority=Developer ID Application:"))
-        {
-            Ok(())
-        } else {
-            Err("Executor controls require the pinned Developer ID signature.".to_owned())
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = resource_dir;
-        Err("Nessie Desktop executor controls are currently supported only on signed macOS releases.".to_owned())
-    }
-}
-
-#[cfg(any(not(debug_assertions), test))]
-pub(super) fn application_bundle_from_resource_dir(resource_dir: &Path) -> Result<&Path, String> {
-    resource_dir
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .ok_or_else(|| "Nessie Desktop could not locate its application bundle.".to_owned())
-}
-
-#[cfg(debug_assertions)]
-fn require_release_signature(_app: &AppHandle, _resource_dir: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-fn file_sha256(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path)
-        .map_err(|_| "Nessie Desktop's packaged executor companion is unavailable.".to_owned())?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0_u8; 65_536];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|_| "Nessie Desktop could not verify its packaged executor companion.".to_owned())?;
-        if read == 0 {
-            return Ok(format!("{:x}", hash.finalize()));
-        }
-        hash.update(&buffer[..read]);
-    }
 }
 
 pub(super) fn executor_command(app: &AppHandle) -> Result<Command, String> {
@@ -215,6 +125,9 @@ pub(super) fn executor_command(app: &AppHandle) -> Result<Command, String> {
     let mut command = Command::new(node);
     command.arg(runtime.join("nessie-executor.cjs"));
     command.env("NESSIE_EXECUTOR_PACKAGED_CLI", "1");
+    // Which supervisor owns this executor id decides which controls a person is
+    // offered, so the desktop names itself on every invocation.
+    command.env("NESSIE_EXECUTOR_SUPERVISOR", "desktop");
     #[cfg(debug_assertions)]
     command.env("NESSIE_EXECUTOR_ALLOW_LOCAL_API", "1");
     command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());

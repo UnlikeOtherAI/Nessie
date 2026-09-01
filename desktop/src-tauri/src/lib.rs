@@ -1,16 +1,13 @@
 use std::io::{Error, ErrorKind};
 use tauri::utils::config::WebviewUrl;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
 mod executor_companion;
+mod shell;
 
-const DESKTOP_INIT_SCRIPT: &str = concat!(
-    include_str!("desktop_notifications_init.js"),
-    "\n",
-    include_str!("desktop_build_freshness_init.js")
-);
+use shell::{desktop_init_script, desktop_platform, should_register_deep_link_schemes};
+
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
@@ -31,18 +28,19 @@ fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default();
+    // Resolved before the first window exists: an unsupported target has no
+    // frame the admin knows how to draw, so it must not reach a window at all.
+    let platform = desktop_platform();
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    tauri::Builder::default()
+        // The single-instance plugin must be registered first, and its
+        // deep-link feature is what carries a second launch's `nessie://`
+        // callback into the running instance's onOpenUrl listeners.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
-        }));
-    }
-
-    builder
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -54,8 +52,17 @@ pub fn run() {
             executor_companion::executor_companion_start,
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
+            shell::desktop_set_badge,
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            if should_register_deep_link_schemes(
+                std::env::consts::OS,
+                std::env::var_os("APPIMAGE").as_deref(),
+            ) {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.deep_link().register_all()?;
+            }
+
             let main_window = app
                 .config()
                 .app
@@ -68,7 +75,7 @@ pub fn run() {
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
-                .initialization_script(DESKTOP_INIT_SCRIPT)
+                .initialization_script(desktop_init_script(platform))
                 .build()?;
 
             Ok(())
@@ -77,7 +84,9 @@ pub fn run() {
         .expect("error while building Nessie Desktop")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
-                executor_companion::shutdown(app.state::<executor_companion::ExecutorCompanionState>().inner());
+                executor_companion::shutdown(
+                    app.state::<executor_companion::ExecutorCompanionState>().inner(),
+                );
             }
         });
 }

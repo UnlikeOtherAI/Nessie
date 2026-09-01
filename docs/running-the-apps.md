@@ -68,6 +68,20 @@ license in the bundle; use the package scripts below rather than invoking the
 Tauri binary directly, so the companion cannot launch a stale or missing
 executor runtime.
 
+The window itself is configured per platform. `desktop/src-tauri/tauri.conf.json`
+holds everything the three desktop targets share, and Tauri merges
+`tauri.macos.conf.json`, `tauri.windows.conf.json`, or `tauri.linux.conf.json`
+over it for the target being built. That merge is RFC 7396 JSON Merge Patch, in
+which a patched array replaces the whole array rather than merging into it, so
+each platform file restates the complete main window and a Rust unit test
+(`src/shell.rs`) asserts they still agree on size, minimum size, and background
+colour. macOS keeps the overlay title bar with its traffic lights; Windows and
+Linux are frameless (`decorations: false`, with `shadow` on Windows and a
+transparent window on Linux) and the admin draws Nessie's own chrome. The design
+behind that split is
+[docs/plans/2026-09-01-linux-desktop-delivery.md](plans/2026-09-01-linux-desktop-delivery.md)
+→ "Shared shell contract", which the Windows plan adopts by reference.
+
 ## Connected Chrome tab foundation
 
 `executor/chrome-extension/` contains the signed-release source for Nessie's
@@ -762,6 +776,35 @@ pnpm --filter @nessie/desktop exec tauri build
 ```
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
+
+This is an unsigned development build. There is no signed Windows release
+pipeline yet, and the executor companion answers `unsupported_platform` on
+Windows — the Executors panel says so and names the signed Windows release as
+the remedy, rather than disappearing. A second launch now carries the
+`nessie://` sign-in callback into the running instance. The design for
+the signed release, the frameless custom window chrome, the Executors page's
+availability cards, the desktop app enabled as an executor, and the standalone
+Nessie Executor service with its tray icon is
+[docs/plans/2026-09-01-windows-desktop-parity.md](plans/2026-09-01-windows-desktop-parity.md);
+the install, replacement, log-collection, and signature-verification steps
+land here with that work.
+
+## Linux Desktop
+
+Not yet buildable as a release. The shell now compiles on Linux — single
+instance with the deep-link feature, the frameless transparent window, and an
+executor companion that verifies a package-manager install (root-owned runtime
+under `/usr/lib` or `/usr/share`) and reports `workspace_only` when `/dev/kvm`
+is not readable and writable by the current user. Packaging, CI, and the
+Firecracker sandbox backend are still outstanding. The delivery design —
+Ubuntu 26.04 x86_64 `.deb` as the supported install,
+AppImage as an evaluator artifact for the shell only, the shared frameless
+window/notification/sign-in contract, the desktop app enabled as an executor,
+the standalone `nessie-executor` daemon as a lingering systemd user service,
+and the diagnosable failure modes — is
+[docs/plans/2026-09-01-linux-desktop-delivery.md](plans/2026-09-01-linux-desktop-delivery.md);
+the install, upgrade, removal, daemon, and diagnosis steps land here with that
+work.
 
 ## Status And Caveats
 
