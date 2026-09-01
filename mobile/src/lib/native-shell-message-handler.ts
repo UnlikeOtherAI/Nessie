@@ -5,6 +5,9 @@ import {
 import {
   isOpenExternalMessage,
 } from './call-external-url'
+import {
+  isConnectorAuthorizationMessage,
+} from './connector-authorization'
 import { isAuthGateRoute } from './native-shell-layout'
 import type { NativeShellMessage } from './native-shell-message'
 import { nativePushPathScript } from './native-shell'
@@ -22,6 +25,7 @@ type Input = {
   flushExternalAuthDelivery: () => void
   markBooted: () => void
   noteBackState: (hasBackDepth: boolean) => void
+  openConnectorAuthorization: (url: string) => void
   openExternalUrl: (url: string) => void
   reconcileNativeAttention: (total: number) => Promise<void>
   replayPendingPushPath: () => string | null
@@ -42,6 +46,10 @@ export const handleNativeShellMessage = (message: NativeShellMessage, input: Inp
   }
   if (isOpenExternalMessage(message)) {
     input.openExternalUrl(message.url)
+    return
+  }
+  if (isConnectorAuthorizationMessage(message)) {
+    input.openConnectorAuthorization(message.authorizationUrl)
     return
   }
   if (message.type === 'nessie:external-auth' && typeof message.url === 'string') {

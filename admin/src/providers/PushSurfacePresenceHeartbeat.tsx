@@ -10,11 +10,11 @@ import {
   type PushSurfaceReport,
 } from '../lib/push-surface'
 import { getBaseUrl } from '../lib/api-client'
+import { NATIVE_APP_FOREGROUND_EVENT } from '../lib/native-app-foreground'
 import { useAuthSession } from './AuthSessionProvider'
 
 const HEARTBEAT_MS = 25_000
 const CLIENT_ID_KEY = 'nessie.push-surface-client-id'
-const NATIVE_APP_FOREGROUND_EVENT = 'nessie:native-app-foreground'
 
 type NativeAppForegroundWindow = Window & {
   __nessieNativeAppForeground?: boolean

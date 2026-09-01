@@ -3,6 +3,7 @@ export type NativeShellMessage = {
   accent?: string
   accentStrong?: string
   active?: boolean
+  authorizationUrl?: string
   assignedWork?: number
   canBack?: boolean
   canForward?: boolean

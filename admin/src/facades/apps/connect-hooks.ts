@@ -18,11 +18,19 @@ import {
   type ConnectState,
 } from '../../components/features/apps/connect-flow'
 import {
+  createNativeConnectorAuthorizationLauncher,
   createWindowAuthLauncher,
   type AuthHandle,
   type ExternalAuthLauncher,
+  type ExternalAuthHost,
+  type NativeConnectorAuthorizationHost,
 } from '../../components/features/apps/external-auth-launcher'
 import { getBaseUrl } from '../../lib/api-client'
+import {
+  isNativeAppForegroundEvent,
+  NATIVE_APP_FOREGROUND_EVENT,
+} from '../../lib/native-app-foreground'
+import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { APPS_QUERY_KEY } from './hooks'
 
@@ -76,6 +84,19 @@ const POPUP_WATCH_INTERVAL_MS = 700
 /** Status reads while verifying, and the gap between them. */
 const VERIFY_ATTEMPTS = 5
 const VERIFY_INTERVAL_MS = 900
+
+type AppConnectAuthorizationHost = ExternalAuthHost & NativeConnectorAuthorizationHost
+
+/**
+ * Browser web keeps the centred popup. Only the React Native WebView uses its
+ * connector-specific bridge, leaving the hosted page on the Nessie admin URL.
+ */
+export const createAppConnectAuthorizationLauncher = (
+  host: AppConnectAuthorizationHost,
+  nativeShell = isReactNativeWebView(),
+): ExternalAuthLauncher => nativeShell
+  ? createNativeConnectorAuthorizationLauncher(host)
+  : createWindowAuthLauncher(host)
 
 const readMarker = (slug: string, now: number) => {
   try {
@@ -205,7 +226,7 @@ export const useAppConnectFlow = (input: {
   const [state, dispatch] = useReducer(connectReducer, initialConnectState)
 
   const launcher = useMemo(
-    () => input.launcher ?? createWindowAuthLauncher(window),
+    () => input.launcher ?? createAppConnectAuthorizationLauncher(window),
     [input.launcher],
   )
   // The single origin a completion message may come from: the API serves the
@@ -341,10 +362,14 @@ export const useAppConnectFlow = (input: {
       if (document.visibilityState === 'hidden') return
       void probeStatus(connectionId)
     }
+    const onNativeAppForeground = (event: Event) => {
+      if (isNativeAppForegroundEvent(event)) void probeStatus(connectionId)
+    }
 
     window.addEventListener('message', onMessage)
     window.addEventListener('focus', onReturn)
     document.addEventListener('visibilitychange', onReturn)
+    window.addEventListener(NATIVE_APP_FOREGROUND_EVENT, onNativeAppForeground)
 
     const watch = window.setInterval(() => {
       // Only a window we actually opened can be observed closing; a native or
@@ -373,6 +398,7 @@ export const useAppConnectFlow = (input: {
       window.removeEventListener('message', onMessage)
       window.removeEventListener('focus', onReturn)
       document.removeEventListener('visibilitychange', onReturn)
+      window.removeEventListener(NATIVE_APP_FOREGROUND_EVENT, onNativeAppForeground)
       window.clearInterval(watch)
       window.clearTimeout(slowNote)
       window.clearTimeout(expiry)

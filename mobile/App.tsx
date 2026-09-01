@@ -40,6 +40,7 @@ import type { NativeShellMessage } from './src/lib/native-shell-message'
 import { isDark } from './src/lib/webview-inject'
 import { statusBarStyleForNativeBackdrop } from './src/lib/status-bar'
 import { openAllowedCallExternalUrl, webViewNavigationDisposition } from './src/lib/call-external-url'
+import { openConnectorAuthorizationUrl } from './src/lib/connector-authorization'
 import { handleNativeShellMessage } from './src/lib/native-shell-message-handler'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
@@ -300,6 +301,7 @@ const Shell = (): React.JSX.Element => {
       flushExternalAuthDelivery,
       markBooted: bootRecovery.markBooted,
       noteBackState: phoneBack.noteBackState,
+      openConnectorAuthorization: (url) => openConnectorAuthorizationUrl(url, Linking.openURL),
       openExternalUrl: (url) => openAllowedCallExternalUrl(url, { jitsiDomain: CALL_JITSI_DOMAIN }, Linking.openURL),
       reconcileNativeAttention: async (total) => reconcileNativeAttentionPresentation(total),
       replayPendingPushPath,
