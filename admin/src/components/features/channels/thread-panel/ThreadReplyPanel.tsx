@@ -14,7 +14,9 @@ import type { AgentRecord, ChannelRecord, UserRecord } from '../../../../lib/api
 import type { PendingStreamMessage } from '../../../../facades/threads/thinking'
 import type { useReplyThread } from '../../../../pages/channels/useReplyThread'
 import { useFileDrop } from '../../../../hooks/useFileDrop'
+import { useResizeHandleReveal } from '../../../../hooks/useResizeHandleReveal'
 import { useStickToBottom } from '../../../../hooks/useStickToBottom'
+import { useViewport } from '../../../../hooks/useViewport'
 import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import { ColumnResizeHandle } from '../../../primitives/ColumnResizeHandle'
@@ -111,8 +113,14 @@ export const ThreadReplyPanel = ({
   const root = rootQuery.data?.message ?? null
   const replies = useMemo(() => repliesQuery.data ?? [], [repliesQuery.data])
   const [alsoSendToChannel, setAlsoSendToChannel] = useState(false)
-  const [isHandleRevealed, setIsHandleRevealed] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
+  const { capabilities: { coarsePointer } } = useViewport()
+  const {
+    hideHandle,
+    isHandleRevealed,
+    revealHandle,
+    scheduleHandleHide,
+  } = useResizeHandleReveal(coarsePointer)
   const resizeCleanup = useRef<(() => void) | null>(null)
   useEffect(() => () => resizeCleanup.current?.(), [])
 
@@ -207,7 +215,7 @@ export const ThreadReplyPanel = ({
     if (event.button !== 0) return
 
     event.preventDefault()
-    setIsHandleRevealed(true)
+    revealHandle()
     setIsResizing(true)
     const startX = event.clientX
     const startWidth = panelWidth
@@ -242,6 +250,8 @@ export const ThreadReplyPanel = ({
       if (!cancelled) flush()
       persistPanelWidth()
       setIsResizing(false)
+      if (cancelled) hideHandle()
+      else scheduleHandleHide()
       resizeCleanup.current = null
     }
     const cancel = () => {
@@ -310,12 +320,12 @@ export const ThreadReplyPanel = ({
             isResizing ? 'is-resizing' : '',
             isHandleRevealed ? 'is-revealed' : '',
           ].join(' ')}
-          onBlur={() => !isResizing && setIsHandleRevealed(false)}
-          onFocus={() => setIsHandleRevealed(true)}
+          onBlur={() => !isResizing && hideHandle()}
+          onFocus={revealHandle}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={startResize}
-          onPointerEnter={() => setIsHandleRevealed(true)}
-          onPointerLeave={() => !isResizing && setIsHandleRevealed(false)}
+          onPointerEnter={revealHandle}
+          onPointerLeave={() => !isResizing && !coarsePointer && hideHandle()}
           role="separator"
           tabIndex={0}
         >
