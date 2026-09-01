@@ -95,6 +95,22 @@ attempt it observed. In a web browser, returning with Back cancels the pending
 attempt instead of reopening the provider; a restored browser page also
 reconciles its session again so it cannot remain at **Loading workspace…**.
 
+### The desktop window is Nessie's own chrome
+
+macOS keeps its overlay title bar and the OS traffic lights, and the admin only
+reserves their 68 px seat in the top bar. Windows and Linux run undecorated, so
+the admin draws the window itself: `DesktopWindowFrame`
+(`admin/src/components/desktop/DesktopWindowFrame.tsx`) mounts above the router
+— the sign-in screen included — and adds a top drag strip behind the top bar's
+own drag zones, minimize / maximize-restore / close at the top right, and 8 px
+invisible resize grips on the edges and corners. F11 toggles fullscreen on both;
+Ctrl+Q closes the Linux window (Windows keeps the OS's Alt+F4). Linux runs a
+transparent window, so the admin paints its own 12 px corners and a soft shadow
+into a 12 px gutter and drops both when maximized or fullscreen; Windows lets the
+OS draw the shadow and, on Windows 11, the rounded corners. The platform reaches
+the admin through `window.__nessieDesktopPlatform`, published by the shell before
+any admin code runs — never from the user agent.
+
 ### Desktop notifications
 
 The desktop app uses the same authenticated realtime message controller as the
@@ -762,6 +778,29 @@ pnpm --filter @nessie/desktop exec tauri build
 ```
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
+
+This is an unsigned development build. There is no signed Windows release
+pipeline yet, the executor companion refuses every platform but macOS, and a
+second launch currently drops the `nessie://` sign-in callback. The design for
+the signed release, the frameless custom window chrome, the Executors page's
+availability cards, the desktop app enabled as an executor, and the standalone
+Nessie Executor service with its tray icon is
+[docs/plans/2026-09-01-windows-desktop-parity.md](plans/2026-09-01-windows-desktop-parity.md);
+the install, replacement, log-collection, and signature-verification steps
+land here with that work.
+
+## Linux Desktop
+
+Not yet buildable as a release. The shell compiles its single-instance plugin
+only for macOS and Windows and the executor companion refuses Linux. The
+delivery design — Ubuntu 26.04 x86_64 `.deb` as the supported install,
+AppImage as an evaluator artifact for the shell only, the shared frameless
+window/notification/sign-in contract, the desktop app enabled as an executor,
+the standalone `nessie-executor` daemon as a lingering systemd user service,
+and the diagnosable failure modes — is
+[docs/plans/2026-09-01-linux-desktop-delivery.md](plans/2026-09-01-linux-desktop-delivery.md);
+the install, upgrade, removal, daemon, and diagnosis steps land here with that
+work.
 
 ## Status And Caveats
 
