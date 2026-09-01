@@ -242,7 +242,10 @@ the section whose sidebar they sit beside); `/agents` 1, `/agents/:id` 2,
 `/agents/designer[/:id]` 2 as a Flow, `/agents/workflow-designer` 2 as a Flow,
 `/agents/{workflows,triggers,tools,executors}` 1 with their column stages as
 nested details; `/settings/*` 1, `/settings/statuses/:id` 2; `/ops` 1,
-`/ops/usage` 2; `/dashboards` stays 1 under Knowledge.
+`/ops/usage` 2; `/dashboards` stays 1 under Knowledge. A row may declare
+`parent: 'origin'` for a Detail reachable from every section (`/alerts`,
+`/feedback`): Back pops to the previous in-app entry when the ledger has one,
+else replaces with the section root.
 
 State-driven stages (knowledge folder/document/history/editor, column-browser
 columns, workflow installation/run, integrations product, executors selection,
@@ -369,7 +372,7 @@ form.
 | Projects | `/projects` | project | (none by route) | Overview / Board / Backlog / Insights / Docs / Executors / Settings | task create/edit | members dialog, project menus, create/edit/delete project, iteration and column confirms, archive-done menu |
 | Dashboards | — | `/dashboards` | `/dashboards/:id`; add-widget panel; versions panel (nested stages on `single`, side panels on `split`) | edit mode (a mode toggle with its own Back that discards the draft) | — | — |
 | Knowledge | `/knowledge-base` | space, product view | folder, document / file, history, editor (nested stages); zip peek | Full / Column / Tree, needs-review filter | — | attachments drawer, space settings, create space, file version upload, notes card and composer, wikilink confirm and suggestions, drop overlays |
-| Agents | Admin | `/agents`, `/agents/:id` | sub-agent (a Detail whose parent is the agent, so Back returns to it) | Edit / To-dos / Activity / Sub-agents / Tools / Messages / Documents | designer, workflow designer | design-assistant drawer, avatar quick edit + cropper, model combobox, to-do editors, workflow node menus, `AgentDetailDrawer` (dead code, delete) |
+| Agents | Admin | `/agents`, `/agents/:id` | sub-agent (a Detail whose parent is the agent, so Back returns to it) | Edit / To-dos / Activity / Sub-agents / Tools / Messages / Documents | designer, workflow designer | design-assistant drawer, agent quick-view drawer (`AgentDetailDrawer`, mounted from the shell), avatar quick edit + cropper, model combobox, to-do editors, workflow node menus |
 | Automation | Admin | workflows, triggers, tools, executors | template → installation → run; failed-runs and drafts columns; trigger detail; tool detail; executor selection, access change, promotion | trigger status filter, tool source filter, executor tabs | trigger editor | import, delete confirms, inspector disclosures |
 | Apps | Admin | `/apps` | `/apps/:slug` | Overview / Capabilities / Accounts / Agents; All / Installed | connect (dialog on `split`, screen on `single`) | custom app, secret, remove, disconnect confirms |
 | Settings + ops | `/settings` | every settings page, `/audit`, `/approvals`, `/alerts`, `/tokens`, `/policy`, `/ops`, `/feedback`, integrations | status detail, `/ops/usage`, integration product | Colours / Text size | logo and photo croppers, session debug | create secret, emoji picker, billing cancellation dialogs, connection expanders |
@@ -418,17 +421,40 @@ level. Commit and push per step.
    `docs/plans/2026-08-13-responsive-coherence.md` Phase 5 marked delivered by
    this plan; this file moves to `docs/done/` when built.
 
-## 7. Decisions to confirm before step 3
+## 7. Decisions (made 2026-09-01, on usability, safety and stability)
 
-These change behaviour a person can see, so they are named rather than assumed:
+These change behaviour a person can see, so they are recorded with the reason:
 
-- **Project sections stop being history entries.** Today Back walks
-  Board → Docs → Settings; after step 7 Back leaves the project, as it does for
-  every other tab host. Assumed yes, for consistency.
-- **`/alerts` and `/feedback` live under Admin.** Their Back reads "Back to
-  Admin" and the drawer shows the admin nav. Assumed yes.
-- **Dialogs get a 150 ms fade.** Today they are instant everywhere. Assumed
-  yes, on the same curve, no scale.
-- **iPad loses the native back/forward swipe.** The web stack owns the edge
-  gesture in the detail column instead. Assumed yes; it already does on phones.
-- **`AgentDetailDrawer` is deleted.** No call site references it. Assumed yes.
+- **Project sections stop being history entries.** Back leaves the project,
+  as it does for every other tab host; the URL still names the section, so
+  links and refresh keep working. One rule for all fifteen strips beats a
+  special case nobody can predict, and it removes the only place where Back
+  could loop through seven entries before leaving a screen.
+- **`/alerts` and `/feedback` are Details whose parent is their origin.** They
+  are reached from the bell, the account menu and push notifications, from
+  any section. Their registry row declares `parent: 'origin'`: Back pops to
+  the previous in-app entry when one exists, and falls back to the Admin root
+  on a cold deep link. Landing someone on Admin after they tapped a mention
+  from Channels would be the surprise; the ledger already knows where they
+  were. Their drawer shows the Admin nav, which is where both are listed.
+- **Dialogs get a 150 ms fade and 4 px rise, no scale.** Reduced motion makes
+  it 0 ms through the same path. Dismissal (Escape, scrim, close) is never
+  gated on the animation, so a person can always close a dialog instantly.
+- **iPad and large-phone landscape turn the native back/forward swipe off.**
+  The native gesture is a WebView-wide switch and cannot be scoped to the
+  list column, and two owners of one edge gesture is the exact failure phones
+  already fixed. The web stack owns the edge swipe in the detail column; the
+  iPad toolbar's Back/Forward buttons keep cross-section history reachable.
+- **`AgentDetailDrawer` stays.** The census row calling it dead was wrong: it
+  is mounted from `AdminShellLayout.tsx:348` and opened by `selectAgent` from
+  `ChannelMessageRow`. It is the agent quick view over a conversation; it
+  converges on the shared `Drawer` primitive, registers with Back, and keeps
+  reusing `AgentDetailTabs` so the drawer and `/agents/:id` cannot drift.
+- **Tab state lives in a URL search param written with `replace`.** Linkable
+  and refresh-safe, never a history entry, one model everywhere. Component-
+  only tab state is migrated; nothing new may introduce it.
+- **Safety floor for every step.** No step removes a Back path before its
+  replacement is in place; `overflow: clip` ships first and alone so the
+  bounce fix cannot be entangled with a refactor regression; each step lands
+  with its rewritten tests and a Playwright pass at phone, tablet and desktop
+  widths before the next begins.
