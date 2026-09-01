@@ -754,14 +754,35 @@ pnpm build:device:android
 
 ## Windows Desktop
 
-Run the build on a Windows machine:
+Build the normal Windows shell on a Windows machine. This release has no
+console subsystem, so opening Nessie from Start or from the installer does not
+leave a terminal window behind.
 
-```sh
-pnpm install
-pnpm --filter @nessie/desktop exec tauri build
+```powershell
+pnpm install --frozen-lockfile
+pnpm --filter @nessie/api prisma:generate
+pnpm --filter @nessie/schemas build
+pnpm --filter @nessie/runtime build
+pnpm --dir desktop run tauri:build -- --bundles nsis
 ```
 
-Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
+The preparation script bundles the exact local Node runtime, its licence, and
+an integrity manifest before Tauri packages the application. If the installed
+Node distribution omits its licence file, the script retrieves the official
+licence for that exact Node version; a missing or malformed licence still fails
+the build.
+
+The NSIS installer is written below
+`desktop/src-tauri/target/release/bundle/nsis/`. Install it on the target
+Windows device and launch **Nessie** from Start. Tauri's Windows configuration
+also supports WiX when an operator requests `--bundles msi`.
+
+An unsigned build is a desktop-shell test build only: it retains hosted
+workspace access, browser SSO/deep links, notifications, and single-instance
+behaviour, but deliberately refuses local executor pairing and daemon control.
+Do not work around that refusal. A production executor release requires a
+Windows Authenticode signature and a pinned publisher identity as specified in
+the [Windows desktop parity plan](plans/2026-09-01-windows-desktop-parity.md).
 
 ## Status And Caveats
 
