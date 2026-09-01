@@ -224,6 +224,29 @@ rather than mistaking Nessie for an origin-policy editor. The guest creates a fr
 each VM and rejects one preseeded by the COW workspace, so the browser starts
 without workspace-provided cookies, extensions, or other ambient state.
 
+### Connected Chrome tabs (local foundation; not advertised yet)
+
+`browser.connected.open`, `browser.connected.observe`, and
+`browser.connected.act` are a distinct `connected_browser` executor profile.
+They are not an alternate configuration of the guest browser: a connected tab
+may carry the person's existing login, while the guest browser always starts
+with an empty profile. The local daemon source contains the typed
+native-messaging contract and MV3 extension assets, but the companion refuses
+to advertise these operations until the server can prove an interactive private
+originating run and record owner-only disclosure provenance. This keeps the
+foundation inert instead of exposing an incomplete signed-in-browser path.
+
+When that server gate is complete, a person—not an agent—selects one visible
+tab and approves its exact HTTPS origin ceiling and ten-minute lease. The
+native bridge accepts only replay-fenced typed observations and closed
+navigate/click/type/press/scroll actions; it is never a generic DevTools/CDP
+proxy. JavaScript, selectors, DOM/HTML, cookies, storage, clipboard, downloads,
+uploads, raw extension frames, and profile paths are denied. Password, passkey,
+MFA, payment, browser-permission, and file-upload controls are neither
+observed nor actionable. Every observation is owner-scoped before model
+ingestion; tab loss, extension disconnect, origin transition, daemon fence,
+Stop, revocation, and local expiry detach immediately.
+
 On connection, the daemon sends a `hello` frame:
 
 ```json

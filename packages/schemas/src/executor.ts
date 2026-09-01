@@ -90,7 +90,13 @@ export const ExecutorStatusSchema = z.enum([
 ])
 export type ExecutorStatus = z.infer<typeof ExecutorStatusSchema>
 
-export const ExecutorProfileSchema = z.enum(['workspace_sandbox', 'coding_session'])
+export const ExecutorProfileSchema = z.enum([
+  'workspace_sandbox',
+  'coding_session',
+  // A separately fenced session for a person-approved tab in their own Chrome.
+  // It must never be mistaken for the fresh-profile VM browser.
+  'connected_browser',
+])
 export type ExecutorProfile = z.infer<typeof ExecutorProfileSchema>
 
 export const ExecutorOperationKeySchema = z.enum([
@@ -101,6 +107,9 @@ export const ExecutorOperationKeySchema = z.enum([
   'browser.open',
   'browser.observe',
   'browser.act',
+  'browser.connected.open',
+  'browser.connected.observe',
+  'browser.connected.act',
   'workspace.review',
   'workspace.promote',
   'sandbox.stop',
@@ -127,6 +136,12 @@ export const IMPLEMENTED_EXECUTOR_OPERATION_KEYS = [
   'browser.open',
   'browser.observe',
   'browser.act',
+  // The daemon has a local implementation, but the control plane must not
+  // advertise this bundle until it can prove the originating run is private
+  // and attach the owner-only disclosure basis for every observation.
+  'browser.connected.open',
+  'browser.connected.observe',
+  'browser.connected.act',
   'coding.launch',
   'coding.observe',
   'workspace.review',
@@ -222,6 +237,18 @@ export const ExecutorBrowserActArgumentsSchema = z.discriminatedUnion('action', 
   z.object({ action: z.literal('scroll'), nodeId: ExecutorBrowserNodeIdSchema.optional(), deltaY: z.number().int().min(-10_000).max(10_000).refine((value) => value !== 0) }).strict(),
 ])
 export type ExecutorBrowserActArguments = z.infer<typeof ExecutorBrowserActArgumentsSchema>
+
+/**
+ * Connected Chrome accepts the same closed verb grammar as the isolated
+ * browser. In particular it never accepts a tab id, selector, DevTools method,
+ * script, profile name, or an extension-provided capability.
+ */
+export const ExecutorConnectedBrowserOpenArgumentsSchema = ExecutorBrowserOpenArgumentsSchema
+export type ExecutorConnectedBrowserOpenArguments = z.infer<typeof ExecutorConnectedBrowserOpenArgumentsSchema>
+export const ExecutorConnectedBrowserObserveArgumentsSchema = ExecutorBrowserObserveArgumentsSchema
+export type ExecutorConnectedBrowserObserveArguments = z.infer<typeof ExecutorConnectedBrowserObserveArgumentsSchema>
+export const ExecutorConnectedBrowserActArgumentsSchema = ExecutorBrowserActArgumentsSchema
+export type ExecutorConnectedBrowserActArguments = z.infer<typeof ExecutorConnectedBrowserActArgumentsSchema>
 
 const commandString = (maximum: number) => z.string().max(maximum).refine(
   (value) => !value.includes('\u0000'),
@@ -553,6 +580,24 @@ export const ExecutorRunLaunchRequestSchema = z.object({
         message: 'Browser runs are exactly browser.open, browser.observe, browser.act, and sandbox.stop.',
       })
     }
+    const connectedBrowserBundle: ImplementedExecutorOperationKey[] = [
+      'browser.connected.open',
+      'browser.connected.observe',
+      'browser.connected.act',
+      'sandbox.stop',
+    ]
+    const connectedBrowserRequested = value.includes('browser.connected.open')
+      || value.includes('browser.connected.observe')
+      || value.includes('browser.connected.act')
+    if (connectedBrowserRequested && (
+      value.length !== connectedBrowserBundle.length
+      || connectedBrowserBundle.some((operationKey) => !value.includes(operationKey))
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Connected browser runs are exactly browser.connected.open, browser.connected.observe, browser.connected.act, and sandbox.stop.',
+      })
+    }
     const codingBundle: ImplementedExecutorOperationKey[] = [
       'coding.launch',
       'coding.observe',
@@ -567,13 +612,13 @@ export const ExecutorRunLaunchRequestSchema = z.object({
     ]
     const commandRequested = value.includes('command.run')
     if (
-      (browserRequested && codingRequested)
-      || (browserRequested && commandRequested)
+      (browserRequested && (codingRequested || commandRequested || connectedBrowserRequested))
+      || (connectedBrowserRequested && (codingRequested || commandRequested))
       || (codingRequested && commandRequested)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Browser, coding, and command operations cannot share one executor run.',
+        message: 'Isolated browser, connected browser, coding, and command operations cannot share one executor run.',
       })
     }
     if (codingRequested && (

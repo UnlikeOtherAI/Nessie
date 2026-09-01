@@ -158,6 +158,15 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
       configureExecutorLocalPolicy(stateDir, state, ['browser.open', 'browser.observe', 'browser.act']),
       /Configure the owner-only browser VM and allowed origins/,
     )
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, state, [
+        'browser.connected.open',
+        'browser.connected.observe',
+        'browser.connected.act',
+        'sandbox.stop',
+      ]),
+      /private-run disclosure gate/,
+    )
 
     const configured = await configureExecutorBrowserSandbox(stateDir, state, {
       allowedOrigins: ['https://console.example.test', 'https://app.example.test'],

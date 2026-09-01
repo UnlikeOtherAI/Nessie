@@ -13,6 +13,8 @@ import {
   ExecutorDaemonChallengeResponseSchema,
   ExecutorDaemonClaimRequestSchema,
   ExecutorBrowserActArgumentsSchema,
+  ExecutorConnectedBrowserActArgumentsSchema,
+  ExecutorConnectedBrowserOpenArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
   ExecutorCommandRunArgumentsSchema,
@@ -214,6 +216,18 @@ test('browser arguments cannot smuggle a selector, script, or unapproved action'
   assert.equal(ExecutorBrowserActArgumentsSchema.safeParse({ action: 'scroll', deltaY: 0 }).success, false)
 })
 
+test('connected browser arguments keep the same closed browser grammar', () => {
+  assert.equal(ExecutorConnectedBrowserOpenArgumentsSchema.safeParse({
+    tabId: 'chosen-by-agent',
+    url: 'https://app.example.test/guide',
+  }).success, false)
+  assert.equal(ExecutorConnectedBrowserActArgumentsSchema.safeParse({
+    action: 'click',
+    nodeId: 3,
+    selector: '#save',
+  }).success, false)
+})
+
 test('command arguments are shell-free and remain under the COW workspace', () => {
   assert.deepEqual(
     ExecutorCommandRunArgumentsSchema.parse({
@@ -299,6 +313,13 @@ test('a direct executor run names an agent, opaque choice, and an exact operatio
     ExecutorRunLaunchRequestSchema.safeParse({
       ...request,
       operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
+    }).success,
+    true,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['browser.connected.open', 'browser.connected.observe', 'browser.connected.act', 'sandbox.stop'],
     }).success,
     true,
   )

@@ -7,6 +7,9 @@ import {
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
+  ExecutorConnectedBrowserActArgumentsSchema,
+  ExecutorConnectedBrowserObserveArgumentsSchema,
+  ExecutorConnectedBrowserOpenArgumentsSchema,
   ExecutorCommandRunArgumentsSchema,
   ExecutorCodingLaunchArgumentsSchema,
   ExecutorCodingObserveArgumentsSchema,
@@ -21,6 +24,7 @@ import {
   createExecutorBrowserSessionManager,
   type ExecutorBrowserSessionManager,
 } from './browser-session-manager.js'
+import type { ExecutorConnectedBrowserSessionManager } from './connected-browser-session-manager.js'
 import {
   createExecutorCodingSessionManager,
   type ExecutorCodingSessionManager,
@@ -137,6 +141,7 @@ export const executeExecutorCommand = async (
   command: ExecutorCommandEnvelope,
   dependencies: {
     browserSessions?: ExecutorBrowserSessionManager
+    connectedBrowserSessions?: ExecutorConnectedBrowserSessionManager
     commandSessions?: ExecutorCommandSessionManager
     codingSessions?: ExecutorCodingSessionManager
   } = {},
@@ -237,6 +242,24 @@ export const executeExecutorCommand = async (
       ? dependencies.browserSessions.act(command, runId.data)
       : { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
   }
+  if (command.operationKey === 'browser.connected.open') {
+    if (!ExecutorConnectedBrowserOpenArgumentsSchema.safeParse(command.payload.args).success) return { code: 'EXECUTOR_CONNECTED_BROWSER_DENIED', success: false }
+    return dependencies.connectedBrowserSessions
+      ? dependencies.connectedBrowserSessions.open(command, runId.data)
+      : { code: 'EXECUTOR_CONNECTED_BROWSER_UNAVAILABLE', success: false }
+  }
+  if (command.operationKey === 'browser.connected.observe') {
+    if (!ExecutorConnectedBrowserObserveArgumentsSchema.safeParse(command.payload.args).success) return { code: 'EXECUTOR_CONNECTED_BROWSER_DENIED', success: false }
+    return dependencies.connectedBrowserSessions
+      ? dependencies.connectedBrowserSessions.observe(command, runId.data)
+      : { code: 'EXECUTOR_CONNECTED_BROWSER_UNAVAILABLE', success: false }
+  }
+  if (command.operationKey === 'browser.connected.act') {
+    if (!ExecutorConnectedBrowserActArgumentsSchema.safeParse(command.payload.args).success) return { code: 'EXECUTOR_CONNECTED_BROWSER_DENIED', success: false }
+    return dependencies.connectedBrowserSessions
+      ? dependencies.connectedBrowserSessions.act(command, runId.data)
+      : { code: 'EXECUTOR_CONNECTED_BROWSER_UNAVAILABLE', success: false }
+  }
   if (command.operationKey === 'command.run') {
     if (!ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args).success) {
       return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
@@ -265,6 +288,7 @@ export const executeExecutorCommand = async (
   if (command.operationKey === 'sandbox.stop') {
     try {
       await dependencies.browserSessions?.stop(runId.data)
+      await dependencies.connectedBrowserSessions?.stop(runId.data)
       await dependencies.commandSessions?.stop(runId.data)
       await dependencies.codingSessions?.stop(runId.data)
       return {

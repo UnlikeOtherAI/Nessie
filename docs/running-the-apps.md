@@ -68,6 +68,15 @@ license in the bundle; use the package scripts below rather than invoking the
 Tauri binary directly, so the companion cannot launch a stale or missing
 executor runtime.
 
+## Connected Chrome tab foundation
+
+`executor/chrome-extension/` contains the signed-release source for Nessie's
+MV3 extension and `native-host.template.json` documents its pinned native host
+manifest. Do not load the template with a development extension id or point it
+at an arbitrary executable. The connected-tab operations are intentionally not
+configurable or advertised yet: the server-side private-run and disclosure gate
+must land first, so no signed-in browser session can be invoked prematurely.
+
 In dev, the companion intentionally pairs only with the local API at
 `http://127.0.0.1:5454`. It cannot pair an unsigned development app with the
 production API. Production executor pairing, local workspace selection, daemon

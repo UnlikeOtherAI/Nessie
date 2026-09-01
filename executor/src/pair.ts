@@ -42,6 +42,14 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
 export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe', 'browser.act'] as const
+// Do not advertise the connected-Chrome daemon backend until the API/worker
+// proves an interactive owner-private run and records observation provenance.
+// Keeping this deny here makes an incomplete control-plane integration inert.
+const CONNECTED_BROWSER_OPERATION_KEYS = [
+  'browser.connected.open',
+  'browser.connected.observe',
+  'browser.connected.act',
+] as const
 export const CODING_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
 export const COMMAND_OPERATION_KEY = 'command.run' as const
 
@@ -96,6 +104,9 @@ const configuredOperationKeys = (
     !ImplementedExecutorOperationKeySchema.safeParse(operationKey).success
   ))) {
     throw new Error('Only implemented workspace, command, browser, and coding operations may be configured.')
+  }
+  if (CONNECTED_BROWSER_OPERATION_KEYS.some((operationKey) => requested.has(operationKey))) {
+    throw new Error('Connected Chrome is not yet available until the private-run disclosure gate is installed.')
   }
   const requestedBrowserOperations = BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
   if (requestedBrowserOperations.length > 0 && requestedBrowserOperations.length !== BROWSER_OPERATION_KEYS.length) {
