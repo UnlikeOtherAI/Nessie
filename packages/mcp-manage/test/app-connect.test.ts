@@ -33,6 +33,7 @@ import {
   type AppConnectContext,
 } from '../src/apps/app-connect.js'
 import { deriveConnectionStatus } from '../src/apps/app-connections.js'
+import type { OAuthDiscoveryOptions } from '../src/oauth-discovery.js'
 
 /**
  * The universal Connect flow.
@@ -129,6 +130,8 @@ type StubOptions = {
   appSource?: string
   /** What a failed probe learns the server wants; never a real network call. */
   discoverAuthMethod?: 'none' | 'bearer' | 'api_key' | 'oauth2'
+  /** Dynamic OAuth's already-injected discovery transport. */
+  oauthDiscovery?: OAuthDiscoveryOptions
 }
 
 type Stub = {
@@ -136,13 +139,14 @@ type Stub = {
   ctx: AppConnectContext
   created: Record<string, unknown>[]
   deleted: string[]
+  discoveryUrls: string[]
   updates: Record<string, unknown>[]
   /** The instance row as it stands now, after everything the flow wrote. */
   connection: () => McpInstanceRow | null
 }
 
 const makeStub = (options: StubOptions = {}): Stub => {
-  const entry = options.entry ?? catalogEntry()
+  let entry = options.entry ?? catalogEntry()
   // Mutable, because `refreshInstance` re-reads the row after a failed probe to
   // report the lifecycle state the failure just wrote. A stub that answered the
   // pre-update row would hide exactly that behaviour.
@@ -151,6 +155,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
   const catalogWrites: Record<string, unknown>[] = []
   const created: Record<string, unknown>[] = []
   const deleted: string[] = []
+  const discoveryUrls: string[] = []
   const updates: Record<string, unknown>[] = []
 
   const toolRegistry = {
@@ -169,14 +174,17 @@ const makeStub = (options: StubOptions = {}): Stub => {
     return current
   }
 
-  const discoverEndpoint = async (url: string) => ({
-    input: url,
-    ok: true,
-    attempts: [],
-    proposal: options.discoverAuthMethod
-      ? { url, transport: 'http' as const, authMethod: options.discoverAuthMethod, toolNames: [], note: null }
-      : null,
-  })
+  const discoverEndpoint = async (url: string) => {
+    discoveryUrls.push(url)
+    return {
+      input: url,
+      ok: true,
+      attempts: [],
+      proposal: options.discoverAuthMethod
+        ? { url, transport: 'http' as const, authMethod: options.discoverAuthMethod, toolNames: [], note: null }
+        : null,
+    }
+  }
 
   const prisma = {
     mcpCatalogEntry: {
@@ -192,6 +200,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
       // What `learnAuthFromServer` persists when a server proves it wants OAuth.
       update: async (args: { data: Record<string, unknown> }) => {
         catalogWrites.push(args.data)
+        entry = { ...entry, ...args.data } as McpCatalogEntryRow
         return entry
       },
       // The endpoint-lock sweep (`findApplicableLock`); nothing is locked here.
@@ -223,6 +232,11 @@ const makeStub = (options: StubOptions = {}): Stub => {
     channelMember: { findMany: async () => [] },
     projectMember: { findMany: async () => [] },
     mcpOAuthState: { create: async () => ({}), deleteMany: async () => ({ count: 0 }) },
+    mcpOAuthClient: {
+      findUnique: async () => null,
+      upsert: async (args: { create: { clientId: string; clientSecretRef: string | null } }) =>
+        ({ clientId: args.create.clientId, clientSecretRef: args.create.clientSecretRef }),
+    },
     $transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> =>
       fn({
         mcpServerInstance: {
@@ -235,6 +249,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
   return {
     created,
     deleted,
+    discoveryUrls,
     updates,
     catalogWrites,
     connection: () => current,
@@ -244,6 +259,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
       oauth: {
         callbackUrl: 'https://93.184.216.34/api/mcp/oauth/callback',
         stateStore: createInMemoryStateStore(),
+        discovery: options.oauthDiscovery,
       },
       managerFactory: managerFactory(options.probe ?? {}),
       discoverEndpoint: discoverEndpoint as never,
@@ -520,30 +536,54 @@ test('a connection that is not this organisation’s is simply not found', async
   )
 })
 
-test('a probe that fails on an ingested row asks the server what it wants', async () => {
-  // The defect this replaces: GitLab's official MCP server answers 401 with an
-  // RFC 9728 pointer to its OAuth metadata — a working server stating its terms
-  // — and the store reported "we couldn't reach the server", because
-  // `authMethod` on an ingested row is the ingest default rather than anybody's
-  // statement. That was the answer for 4,685 of 5,548 catalogue rows.
-  //
-  // Asserted here: the discovery is made and its answer persisted, so the next
-  // person is told what will happen before clicking and `startOAuth`'s own
-  // guard passes. Completing the OAuth flow is that module's contract, not
-  // this one's, so it is not restaged here.
-  const { ctx, catalogWrites } = makeStub({
+test('a failed registry probe discovers OAuth through its catalog endpoint', async () => {
+  const endpoint = 'https://mcp.linear.app/mcp'
+  const authorizationServer = 'https://auth.linear.test'
+  const resolveHost = async () => ['93.184.216.34']
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input)
+    if ((init?.method ?? 'GET') === 'POST' && url === endpoint) {
+      return new Response('', { status: 401, headers: { 'www-authenticate': 'Bearer' } })
+    }
+    if (url === 'https://mcp.linear.app/.well-known/oauth-protected-resource/mcp') {
+      return new Response(JSON.stringify({ authorization_servers: [authorizationServer] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (url === 'https://auth.linear.test/.well-known/oauth-authorization-server') {
+      return new Response(JSON.stringify({
+        authorization_endpoint: `${authorizationServer}/authorize`,
+        token_endpoint: `${authorizationServer}/token`,
+        registration_endpoint: `${authorizationServer}/register`,
+        code_challenge_methods_supported: ['S256'],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    if (init?.method === 'POST' && url === `${authorizationServer}/register`) {
+      return new Response(JSON.stringify({ client_id: 'linear-test-client' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }) as typeof fetch
+  const { ctx, catalogWrites, discoveryUrls } = makeStub({
+    entry: catalogEntry({ defaultTransportConfig: { transport: 'http', url: endpoint } }),
     appSource: 'mcp_registry',
     discoverAuthMethod: 'oauth2',
-    probe: { failWith: 'connect ECONNREFUSED https://gitlab.com/api/v4/mcp' },
+    oauthDiscovery: { fetchImpl, resolveHost },
+    probe: { failWith: 'HTTP 401' },
     role: 'owner',
   })
-  await runConnectHandshake(
-    ctx,
-    { id: 'entry-1', label: 'GitLab', authMethod: 'none' },
-    // The endpoint the failed probe used is what discovery interrogates, so a
-    // fixture with an empty transport has nothing to ask.
-    instanceRow({ transportConfig: { transport: 'http', url: 'https://gitlab.com/api/v4/mcp' } }),
-  ).catch(() => undefined)
+  ctx.oauth.resolveHost = resolveHost
+  const outcome = await runConnectHandshake(ctx, {
+    id: 'entry-1',
+    label: 'Linear',
+    authMethod: 'none',
+    defaultTransportConfig: { transport: 'http', url: endpoint },
+  }, instanceRow())
+  assert.equal(outcome.status, 'authorize')
+  assert.deepEqual(discoveryUrls, [endpoint])
   assert.deepEqual(catalogWrites, [{ authConfig: { method: 'oauth2' }, authMethod: 'oauth2' }])
 })
 

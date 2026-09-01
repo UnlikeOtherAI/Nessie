@@ -9,6 +9,7 @@ import type {
 
 import type { ManagerFactory } from '../mcp-instance-probe.js'
 import type { OAuthStateStore, SecretStore } from '../mcp-oauth.js'
+import type { OAuthDiscoveryOptions } from '../oauth-discovery.js'
 import type { McpUrlSafetyOptions } from '../mcp-security.js'
 import type { SecretResolver } from '../secret-resolver.js'
 import type { discoverMcpEndpoint } from '../discovery.js'
@@ -28,6 +29,7 @@ export type AppConnectContext = {
     callbackUrl: string
     stateStore?: OAuthStateStore
     secretStore?: SecretStore
+    discovery?: OAuthDiscoveryOptions
     resolveHost?: McpUrlSafetyOptions['resolveHost']
   }
   secretResolver?: SecretResolver

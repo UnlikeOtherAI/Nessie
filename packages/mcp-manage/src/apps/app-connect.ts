@@ -10,6 +10,7 @@ import {
   getInstance,
   type McpInstanceRow,
 } from '../mcp-instances.js'
+import { resolveInstanceTransport } from '../mcp-instance-probe.js'
 import { canStartOAuthForInstance } from '../mcp-oauth-completion.js'
 import { startOAuth } from '../mcp-oauth.js'
 import { discoverMcpEndpoint } from '../discovery.js'
@@ -101,17 +102,32 @@ const resolveCallerCredential = async (
  * the custom-server path. They differ only in how they arrived at an instance,
  * which is why this is one function rather than three similar ones.
  */
+type ConnectCatalogEntry = Pick<McpCatalogEntryRow, 'id' | 'label' | 'authMethod'> & {
+  /** Present on catalogue rows; optional for focused callers of this exported helper. */
+  defaultTransportConfig?: unknown
+}
+
 /**
- * The endpoint an instance actually talks to, or null when it carries none.
- *
- * Read from the instance's own transport rather than the catalogue, because
- * that is the address the failing probe used.
+ * The effective remote endpoint a probe used, or null when the resolved
+ * transport is local. This deliberately follows `resolveInstanceTransport`,
+ * so an App Store instance with no override retains its catalogue default.
  */
-const instanceEndpointUrl = (instance: McpInstanceRow): string | null => {
-  const config = instance.transportConfig
-  if (!config || typeof config !== 'object' || Array.isArray(config)) return null
-  const url = (config as Record<string, unknown>).url
-  return typeof url === 'string' && url.length > 0 ? url : null
+const instanceEndpointUrl = (
+  instance: McpInstanceRow,
+  catalogEntry: Pick<ConnectCatalogEntry, 'defaultTransportConfig'>,
+): string | null => {
+  try {
+    const transport = resolveInstanceTransport(instance, {
+      defaultTransportConfig: catalogEntry.defaultTransportConfig ?? {},
+    })
+    return transport.transport === 'http' || transport.transport === 'sse'
+      ? transport.url
+      : null
+  } catch {
+    // The failed probe already records malformed transport configuration; an
+    // auth follow-up must not replace that outcome with a second error.
+    return null
+  }
 }
 
 /**
@@ -134,7 +150,7 @@ const instanceEndpointUrl = (instance: McpInstanceRow): string | null => {
  */
 const learnAuthFromServer = async (
   ctx: AppConnectContext,
-  entry: Pick<McpCatalogEntryRow, 'id' | 'authMethod'>,
+  entry: Pick<ConnectCatalogEntry, 'id' | 'authMethod' | 'defaultTransportConfig'>,
   instance: McpInstanceRow,
 ): Promise<'oauth2' | 'secret' | null> => {
   // A human-authored entry already states its auth; only a defaulted one is
@@ -147,7 +163,7 @@ const learnAuthFromServer = async (
     where: { id: entry.id },
   })
   if (row?.appSource !== 'mcp_registry') return null
-  const endpoint = instanceEndpointUrl(instance)
+  const endpoint = instanceEndpointUrl(instance, entry)
   if (!endpoint) return null
 
   // Injected so a unit test never dials a real host; production takes the
@@ -184,7 +200,7 @@ const learnAuthFromServer = async (
 
 export const runConnectHandshake = async (
   ctx: AppConnectContext,
-  entry: Pick<McpCatalogEntryRow, 'id' | 'label' | 'authMethod'>,
+  entry: ConnectCatalogEntry,
   instance: McpInstanceRow,
   options: { reauthorize?: boolean } = {},
 ): Promise<AppConnectOutcome> => {
@@ -219,6 +235,7 @@ export const runConnectHandshake = async (
         instanceId: instance.id,
         actorContext: ctx.actorContext,
         callbackUrl: ctx.oauth.callbackUrl,
+        discovery: ctx.oauth.discovery,
         resolveHost: ctx.oauth.resolveHost,
       })
       return {
