@@ -4,6 +4,7 @@ import {
   nativeBackScript,
   nativeSelectTabScript,
   shouldConsumeNativeBack,
+  shouldInstallNativeBackHandler,
 } from './native-phone-navigation'
 
 // The native tab bar drives the admin's shared select/reselect ledger when the
@@ -58,4 +59,13 @@ test('nativeBackScript is a no-op until the bridge publishes __nessieNativeBack'
 test('shouldConsumeNativeBack mirrors the admin back-state exactly', () => {
   assert.equal(shouldConsumeNativeBack(true), true)
   assert.equal(shouldConsumeNativeBack(false), false)
+})
+
+// An Android tablet must get the hardware Back listener exactly like an
+// Android phone — it is not tied to the iOS-only back/forward WebView gesture
+// prop, which happens to read `true` past the tablet breakpoint on Android
+// too even though it has no effect there. iOS never installs the listener.
+test('shouldInstallNativeBackHandler installs on every Android form factor, including tablets', () => {
+  assert.equal(shouldInstallNativeBackHandler(true), true) // Android phone AND Android tablet alike
+  assert.equal(shouldInstallNativeBackHandler(false), false) // iOS (phone, iPad, large-phone landscape)
 })

@@ -10,6 +10,15 @@
 // multi-column threshold, matching the admin's tablet breakpoint. It is never
 // keyed off the OS — an Android phone is as much a phone as an iPhone, and an
 // iPhone in landscape still shows the single-column phone layout.
+//
+// The result feeds the `allowsBackForwardNavigationGestures` WebView prop,
+// which iOS reads and Android silently ignores. Do not read this value to
+// decide whether Android's hardware Back listener installs — that is
+// `shouldInstallNativeBackHandler` in native-phone-navigation.ts, unconditional
+// on Android. The two were wrongly coupled before: this function already
+// answers `true` for an Android tablet (past the same 600dp threshold), which
+// used to gate the hardware Back listener off entirely even though the prop
+// it actually controls does nothing on Android.
 export const PHONE_TABLET_BREAKPOINT_DP = 600
 
 export const allowsNativeBackForwardGestures = ({

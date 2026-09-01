@@ -328,6 +328,9 @@ importers:
       expo-dev-client:
         specifier: ~55.0.40
         version: 55.0.40(expo@55.0.31)
+      expo-haptics:
+        specifier: ~55.0.18
+        version: 55.0.18(expo@55.0.31)
       expo-notifications:
         specifier: ~55.0.27
         version: 55.0.27(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
@@ -4425,6 +4428,11 @@ packages:
       expo: '*'
       react: '*'
       react-native: '*'
+
+  expo-haptics@55.0.18:
+    resolution: {integrity: sha512-bEH0bf5bBGn7U2eTZVdiXBUk4vTfNGbfv9/9PCYLg3gL7L/WE2g8WKs2vYg1B4/BDSucyO8prZofH3IgvLJojQ==}
+    peerDependencies:
+      expo: '*'
 
   expo-json-utils@55.0.2:
     resolution: {integrity: sha512-QJMOZOPOG7CTnKcrdVaiummn2va1MCO56z++eyWkDv3GBRODldM6MFMDf/jTREWthFc2Nxo6TuyWRrEV9S6n/Q==}
@@ -11276,6 +11284,10 @@ snapshots:
       fontfaceobserver: 2.3.0
       react: 19.2.4
       react-native: 0.83.10(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4)
+
+  expo-haptics@55.0.18(expo@55.0.31):
+    dependencies:
+      expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-dom@19.2.4(react@19.2.4))(react-native-webview@13.16.0(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4))(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
 
   expo-json-utils@55.0.2: {}
 

@@ -1,3 +1,6 @@
+/** The `nessie:haptic` bridge message's coarse feedback kinds. */
+export type HapticKind = 'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error'
+
 /** Messages emitted by the hosted admin across the persistent WebView bridge. */
 export type NativeShellMessage = {
   accent?: string
@@ -8,6 +11,7 @@ export type NativeShellMessage = {
   canBack?: boolean
   canForward?: boolean
   hasBackDepth?: boolean
+  haptic?: HapticKind
   channels?: number
   color?: string
   headerSurface?: string

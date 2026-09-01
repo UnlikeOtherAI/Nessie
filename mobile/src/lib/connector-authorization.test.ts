@@ -7,6 +7,7 @@ import {
   openConnectorAuthorizationUrl,
 } from './connector-authorization'
 import { handleNativeShellMessage } from './native-shell-message-handler'
+import type { NativeShellMessage } from './native-shell-message'
 
 test('connector authorization accepts only a credential-free HTTPS URL', () => {
   assert.equal(isConnectorAuthorizationUrl('https://idp.example/authorize?state=one'), true)
@@ -40,6 +41,7 @@ test('the narrow bridge message launches connector authorization, never a call l
     runScript: () => undefined,
     setCurrentPath: () => undefined,
     setIndex: () => undefined,
+    triggerHaptic: () => undefined,
   }
   const message = {
     authorizationUrl: 'https://idp.example/authorize?state=one',
@@ -52,6 +54,46 @@ test('the narrow bridge message launches connector authorization, never a call l
   assert.deepEqual(connectorUrls, ['https://idp.example/authorize?state=one'])
   assert.deepEqual(externalUrls, [])
   assert.deepEqual(externalAuthUrls, [])
+})
+
+test('the haptic bridge message routes to the native trigger, never a connector or call URL', () => {
+  const connectorUrls: string[] = []
+  const externalUrls: string[] = []
+  const hapticKinds: string[] = []
+  const input = {
+    acknowledgeExternalAuthDelivery: () => undefined,
+    acknowledgePushPath: () => false,
+    currentPath: null,
+    currentPathRef: { current: null },
+    dismissNativeMenus: () => undefined,
+    dismissNotifications: () => undefined,
+    dispatchPresentation: () => undefined,
+    ensureNativePushRegistration: () => undefined,
+    flushExternalAuthDelivery: () => undefined,
+    markBooted: () => undefined,
+    noteBackState: () => undefined,
+    openConnectorAuthorization: (url: string) => connectorUrls.push(url),
+    openExternalUrl: (url: string) => externalUrls.push(url),
+    reconcileNativeAttention: async () => undefined,
+    replayPendingPushPath: () => null,
+    runExternalAuth: async () => undefined,
+    runScript: () => undefined,
+    setCurrentPath: () => undefined,
+    setIndex: () => undefined,
+    triggerHaptic: (kind: string) => hapticKinds.push(kind),
+  }
+
+  handleNativeShellMessage({ type: 'nessie:haptic', haptic: 'warning' }, input)
+
+  assert.deepEqual(hapticKinds, ['warning'])
+  assert.deepEqual(connectorUrls, [])
+  assert.deepEqual(externalUrls, [])
+
+  // An unknown kind is not the haptic message at all — it falls through
+  // rather than reaching the native trigger with a value expo-haptics cannot map.
+  const unknownKind = { type: 'nessie:haptic', haptic: 'extreme' } as unknown as NativeShellMessage
+  handleNativeShellMessage(unknownKind, input)
+  assert.deepEqual(hapticKinds, ['warning'])
 })
 
 test('the native shell opens only a validated connector authorization URL', async () => {
