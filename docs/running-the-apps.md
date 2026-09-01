@@ -768,7 +768,8 @@ Install the Tauri Linux build requirements, then build both distributables:
 ```sh
 sudo apt-get update
 sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
-  libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+  libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+  desktop-file-utils
 pnpm install
 pnpm --filter @nessie/desktop run tauri:build:linux
 ```
@@ -782,6 +783,10 @@ directly when a system package is not appropriate.
 For development, start `pnpm dev` at the repository root, then run
 `pnpm --filter @nessie/desktop dev` from the Linux environment. Under WSL, this
 requires WSLg; it opens the Nessie window on the Windows desktop.
+
+On first launch, Nessie registers itself as the current user's `nessie://`
+handler. This lets the browser return an SSO callback to the already-running
+single instance without a system-wide association or administrator access.
 
 ## Status And Caveats
 
