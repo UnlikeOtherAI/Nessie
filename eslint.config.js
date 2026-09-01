@@ -35,6 +35,22 @@ export default [
     },
   },
   {
+    // The navigation transition suite is plain ESM JavaScript (it drives
+    // playwright-core directly, with no build step), so the TypeScript block
+    // above does not reach it. Give it the same length and dead-code rules
+    // the rest of the repo is held to — `pnpm --filter @nessie/admin lint`
+    // covers `e2e` for exactly this reason.
+    files: ['admin/e2e/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    },
+    rules: {
+      'max-len': ['error', { code: 120, ignoreStrings: true, ignoreTemplateLiterals: true }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
     // Public-origin admission rule (docs/plans/2026-08-13-security-boundary-hardening.md,
     // Workstream 5 / Phase 0 item 5): every server-minted absolute URL (OAuth
     // callback, dynamic client registration redirect) must derive its origin
