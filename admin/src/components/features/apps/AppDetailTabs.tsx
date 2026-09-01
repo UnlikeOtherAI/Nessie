@@ -50,8 +50,8 @@ export const AppDetailTabs = ({
   )
 
   return (
-    <div className="grid gap-5">
-      <div className="flex items-center">
+    <div className="grid min-w-0 gap-5">
+      <div className="flex min-w-0 max-w-full items-center">
         <TabBar
           ariaLabel="App sections"
           idPrefix={TAB_ID_PREFIX}
@@ -63,6 +63,7 @@ export const AppDetailTabs = ({
 
       <div
         aria-labelledby={`${TAB_ID_PREFIX}-tab-${activeTab}`}
+        className="min-w-0"
         id={`${TAB_ID_PREFIX}-tabpanel-${activeTab}`}
         role="tabpanel"
       >

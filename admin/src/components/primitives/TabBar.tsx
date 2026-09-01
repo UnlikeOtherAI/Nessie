@@ -76,8 +76,11 @@ export const TabBar = <T extends string>({
 
   // Layout effect so the pill is already under the selected item on first paint
   // (that first placement is deliberately un-animated — see `Pill.animate`).
+  // A compact screen may need to scroll this shared strip; keep the selected
+  // control wholly visible rather than leaving its label clipped at an edge.
   useLayoutEffect(() => {
     measure()
+    itemRefs.current.get(value)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [items, measure])
 
   // Labels carry counts that change without the row resizing, so watch the

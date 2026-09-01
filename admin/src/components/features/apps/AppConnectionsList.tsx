@@ -43,8 +43,8 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
   }
 
   return (
-    <div className="grid gap-3" data-testid="app-connections">
-      <ul className="grid gap-2">
+    <div className="grid min-w-0 gap-3" data-testid="app-connections">
+      <ul className="grid min-w-0 gap-2">
         {app.connections.map((connection) => {
           const pill = connectionStatusPill(connection.status)
           const connectedLabel = connectionConnectedLabel(connection, now)
@@ -52,15 +52,15 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
             <li
               className={[
                 'rounded-[var(--radius-md)] border border-[color:var(--sep)]',
-                'bg-[color:var(--panel-soft)] px-4 py-3',
+                'min-w-0 bg-[color:var(--panel-soft)] px-4 py-3',
               ].join(' ')}
               key={connection.id}
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm font-medium text-[color:var(--tx)]">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--tx)]">
                   {connection.displayName}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                   <Pill tone={pill.tone}>{pill.label}</Pill>
                   {connection.canDisconnect ? (
                     <button

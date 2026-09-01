@@ -86,9 +86,9 @@ export const AppDetailPage = () => {
 
   if (!app) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         {header}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 pb-8">
           {isPending ? (
             <AppDetailSkeleton />
           ) : (
@@ -120,7 +120,7 @@ export const AppDetailPage = () => {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
       {header}
       {/*
         Full-bleed to match /apps and the agents detail page. The reading
@@ -129,8 +129,8 @@ export const AppDetailPage = () => {
         which also has to hold a capability table and an accounts list that
         genuinely want the width.
       */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid w-full gap-6 px-4 pb-10 sm:px-6 lg:px-8">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="grid min-w-0 w-full gap-6 px-4 pb-10 sm:px-6 lg:px-8">
           <AppDetailHero
             app={app}
             onConnect={() => setConnectOpen(true)}

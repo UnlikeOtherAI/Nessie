@@ -64,7 +64,7 @@ export const AppDetailHero = ({
       ].join(' ')}
       data-testid="app-detail-hero"
     >
-      <div className="flex gap-4 sm:gap-5">
+      <div className="flex min-w-0 gap-4 sm:gap-5">
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="hero" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
