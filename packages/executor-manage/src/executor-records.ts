@@ -7,6 +7,7 @@ import {
 } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
+  ExecutorProfile,
   ExecutorScope,
 } from '@nessie/schemas'
 
@@ -29,7 +30,7 @@ type ExecutorRow = {
   scopeKind: 'private' | 'project' | 'organization'
   pairingOwnerUserId: string
   label: string
-  profiles: Array<'workspace_sandbox' | 'coding_session'>
+  profiles: ExecutorProfile[]
   platformFacts: unknown
   machineKeyFingerprint: string | null
   status: 'pending_pairing' | 'online' | 'offline' | 'paused' | 'draining' | 'revoked' | 'error'
@@ -44,7 +45,7 @@ export type ExecutorRecord = {
   id: string
   scope: ExecutorScope
   label: string
-  profiles: Array<'workspace_sandbox' | 'coding_session'>
+  profiles: ExecutorProfile[]
   platformFacts: Record<string, unknown>
   machineKeyFingerprint?: string
   status: ExecutorRow['status']
@@ -72,7 +73,7 @@ export type ExecutorAccessView = {
   descriptorRevisions?: Array<{
     localPolicyDigest: string
     operationKeys: string[]
-    profiles: Array<'workspace_sandbox' | 'coding_session'>
+    profiles: ExecutorProfile[]
     reviewStatus: 'pending_review' | 'active' | 'disabled'
     revision: number
   }>
@@ -90,7 +91,7 @@ export type ExecutorAccessView = {
     createdAt: string
     id: string
     originChannelId?: string
-    profile: 'workspace_sandbox' | 'coding_session'
+    profile: ExecutorProfile
     runId?: string
     status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed'
     updatedAt: string

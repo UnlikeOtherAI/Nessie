@@ -116,6 +116,13 @@ test('capability descriptors enforce the initial supported platform and known op
   assert.equal(
     ExecutorCapabilityDescriptorSchema.safeParse({
       ...descriptor,
+      profiles: ['connected_browser'],
+    }).success,
+    true,
+  )
+  assert.equal(
+    ExecutorCapabilityDescriptorSchema.safeParse({
+      ...descriptor,
       platform: { architecture: 'x64', os: 'linux', osMajorVersion: 6 },
     }).success,
     false,

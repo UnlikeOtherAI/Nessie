@@ -17,7 +17,14 @@ test('logical executor tools expose exactly the implemented operation set', () =
   assert.equal(executorLogicalToolId('file.read'), 'executor.file.read')
   assert.equal(executorLogicalToolId('command.run'), 'executor.command.run')
   assert.equal(executorLogicalToolId('browser.act'), 'executor.browser.act')
+  assert.equal(executorLogicalToolId('browser.connected.act'), 'executor.browser.connected.act')
   assert.equal(executorLogicalToolId('workspace.review'), 'executor.workspace.review')
+  assert.deepEqual(
+    tools
+      .filter((tool) => tool.key.startsWith('browser.connected.'))
+      .map((tool) => tool.label),
+    ['Open connected browser', 'Observe connected browser', 'Act in connected browser'],
+  )
   const unavailableOperations = [
     'coding.attach',
     'coding.prompt',
