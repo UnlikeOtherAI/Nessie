@@ -785,6 +785,8 @@ On every request:
 - `POST /api/auth/refresh` (identity comes from the httpOnly refresh cookie, not a Bearer token)
 - `DELETE /api/auth/session` (logout; exact signed Bearer `{sub, sid}`
   revocation, with the ambient cookie ignored)
+- `GET /api/mcp/oauth/callback` (provider redirect; it consumes a single-use,
+  server-stored OAuth state token and has its own per-IP rate limit)
 
 Mark public routes with a Fastify route option:
 
