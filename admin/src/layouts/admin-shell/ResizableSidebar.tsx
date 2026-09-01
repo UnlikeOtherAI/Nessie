@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ColumnResizeHandle } from '../../components/primitives/ColumnResizeHandle'
 import { getCookie, setCookie } from '../../lib/storage'
 
 const SIDEBAR_WIDTH_COOKIE = 'sidebarWidthPercent'
@@ -201,6 +202,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
           )}
           className={[
             'resizable-sidebar-control',
+            'column-resize-control',
             isResizing ? 'is-resizing' : '',
             isHandleRevealed ? 'is-revealed' : '',
           ].filter(Boolean).join(' ')}
@@ -213,11 +215,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
           role="separator"
           tabIndex={0}
         >
-          <span aria-hidden="true" className="resizable-sidebar-handle">
-            <span />
-            <span />
-            <span />
-          </span>
+          <ColumnResizeHandle />
         </div>
       ) : null}
     </div>

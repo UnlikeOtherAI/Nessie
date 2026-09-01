@@ -36,3 +36,23 @@ test('the large-phone landscape sidebar is fixed and exposes no resize control',
   assert.match(source, /fixed\s*\? `\$\{DEFAULT_SIDEBAR_WIDTH_PX\}px`/)
   assert.match(source, /\{!fixed \? \(/)
 })
+
+test('the sidebar and reply-thread dividers use one shared resize pill', () => {
+  const sidebar = readFileSync(
+    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
+    'utf8',
+  )
+  const threadPanel = readFileSync(
+    fileURLToPath(new URL('../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx', import.meta.url)),
+    'utf8',
+  )
+  const resizeHandle = readFileSync(
+    fileURLToPath(new URL('../src/components/primitives/ColumnResizeHandle.tsx', import.meta.url)),
+    'utf8',
+  )
+
+  assert.match(sidebar, /<ColumnResizeHandle \/>/)
+  assert.match(threadPanel, /<ColumnResizeHandle \/>/)
+  assert.match(threadPanel, /thread-panel-resize-control/)
+  assert.match(resizeHandle, /className="column-resize-handle"/)
+})
