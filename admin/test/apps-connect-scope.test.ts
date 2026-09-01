@@ -96,6 +96,17 @@ const { AppConnectDialog } = await import('../src/components/features/apps/AppCo
 type ConnectCall = { body: unknown; path: string }
 
 const installDom = () => {
+  const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+    dom.window.HTMLElement.prototype,
+    'scrollIntoView',
+  )
+  if (scrollIntoViewDescriptor === undefined) {
+    Object.defineProperty(dom.window.HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: () => undefined,
+      writable: true,
+    })
+  }
   const values = {
     document: dom.window.document,
     Element: dom.window.Element,
@@ -117,6 +128,15 @@ const installDom = () => {
     Object.defineProperty(globalThis, key, { configurable: true, value, writable: true })
   }
   return () => {
+    if (scrollIntoViewDescriptor) {
+      Object.defineProperty(
+        dom.window.HTMLElement.prototype,
+        'scrollIntoView',
+        scrollIntoViewDescriptor,
+      )
+    } else {
+      Reflect.deleteProperty(dom.window.HTMLElement.prototype, 'scrollIntoView')
+    }
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor)
       else Reflect.deleteProperty(globalThis, key)
