@@ -14,7 +14,6 @@ type UserMenuTriggerProps = {
   onLogout: () => void
   placement?: UserMenuPopoverPlacement
   ringColor?: string
-  showFeedbackLink?: boolean
 }
 
 type NativePhoneAccountWindow = Window & {
@@ -31,7 +30,6 @@ export const UserMenuTrigger = ({
   onLogout,
   placement = 'rail',
   ringColor = 'var(--rail)',
-  showFeedbackLink = false,
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
   const { focusModeEnabled, toggleFocusMode, updating: focusModeUpdating } = useFocusMode()
@@ -109,7 +107,6 @@ export const UserMenuTrigger = ({
           onClose={close}
           onLogout={onLogout}
           placement={placement}
-          showFeedbackLink={showFeedbackLink}
           token={token}
           user={me.user}
         />

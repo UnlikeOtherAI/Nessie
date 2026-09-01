@@ -4,6 +4,7 @@ import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeUser } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { DebugTokenButton } from '../../components/shared/DebugTokenButton'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
@@ -24,7 +25,6 @@ type UserMenuPopoverProps = {
   onClose: () => void
   onLogout: () => void
   placement?: UserMenuPopoverPlacement
-  showFeedbackLink?: boolean
 }
 
 const rowClassName = [
@@ -44,7 +44,6 @@ export const UserMenuPopover = ({
   onClose,
   onLogout,
   placement = 'rail',
-  showFeedbackLink = false,
 }: UserMenuPopoverProps) => {
   const { focusModeEnabled } = useFocusMode()
   const [position, setPosition] = useState<MenuPosition | null>(null)
@@ -122,19 +121,21 @@ export const UserMenuPopover = ({
 
         <div className="my-1 h-px bg-[color:var(--sep)]" />
 
+        <Link className={rowClassName} onClick={onClose} to="/feedback">
+          <span>Feedback</span>
+          <FontAwesomeIcon
+            className="h-3.5 w-3.5 text-[color:var(--tx3)]"
+            icon={faCircleQuestion}
+          />
+        </Link>
+        <DebugTokenButton variant="menu" />
+
+        <div className="my-1 h-px bg-[color:var(--sep)]" />
+
         <Link className={rowClassName} onClick={onClose} to="/settings/profile">
           <span>Account settings</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
         </Link>
-        {showFeedbackLink ? (
-          <Link className={rowClassName} onClick={onClose} to="/feedback">
-            <span>Help &amp; feedback</span>
-            <FontAwesomeIcon
-              className="h-3.5 w-3.5 text-[color:var(--tx3)]"
-              icon={faCircleQuestion}
-            />
-          </Link>
-        ) : null}
         <button
           className={rowClassName}
           onClick={() => {

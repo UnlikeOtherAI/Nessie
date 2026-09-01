@@ -46,11 +46,11 @@ const readCookies = (): Record<string, string> => {
   return entries
 }
 
-// A rail debug affordance: dumps the signed-in session (token + decoded claims,
-// plus every localStorage and cookie value) as pretty JSON so it can be copied
-// and handed to an assistant for debugging "what I see".
+// Dumps the signed-in session (token + decoded claims, plus every localStorage
+// and cookie value) as pretty JSON so it can be copied and handed to an
+// assistant for debugging "what I see".
 type DebugTokenButtonProps = {
-  variant?: 'rail' | 'sidebar'
+  variant?: 'rail' | 'menu'
 }
 
 export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) => {
@@ -98,8 +98,11 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
       <button
         aria-label="Open session debug"
         className={[
-          variant === 'sidebar'
-            ? 'admin-sb-item border-0 bg-transparent'
+          variant === 'menu'
+            ? [
+                'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left',
+                'text-sm text-[color:var(--tx)] transition-colors hover:bg-[color:var(--overlay-weak)]',
+              ].join(' ')
             : 'admin-rail-btn mb-[22px] border-0 bg-transparent',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
         ].join(' ')}
@@ -107,16 +110,21 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
         title="Session debug"
         type="button"
       >
-        {variant === 'sidebar' ? (
-          <SessionDebugIcon />
+        {variant === 'menu' ? (
+          <>
+            <span>Debug</span>
+            <span className="flex h-3.5 w-3.5 items-center justify-center text-[color:var(--tx3)]">
+              <SessionDebugIcon />
+            </span>
+          </>
         ) : (
-          <span className="admin-rail-btn-icon">
-            <SessionDebugIcon />
-          </span>
+          <>
+            <span className="admin-rail-btn-icon">
+              <SessionDebugIcon />
+            </span>
+            <span className="admin-rail-btn-label">Debug</span>
+          </>
         )}
-        <span className={variant === 'sidebar' ? 'min-w-0 flex-1 truncate' : 'admin-rail-btn-label'}>
-          {variant === 'sidebar' ? 'Session debug' : 'Debug'}
-        </span>
       </button>
 
       <SessionDebugDialog

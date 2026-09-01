@@ -32,5 +32,5 @@ export const HeaderAccountMenu = () => {
 
   if (!accountMenu?.showHeaderAccountMenu) return null
 
-  return <UserMenuTrigger onLogout={accountMenu.onLogout} placement="topbar" showFeedbackLink />
+  return <UserMenuTrigger onLogout={accountMenu.onLogout} placement="topbar" />
 }

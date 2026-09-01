@@ -166,12 +166,12 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger\s+nativeShellBridge/)
-  assert.match(shell, /showFeedbackLink/)
   assert.match(account, /__nessieToggleAccountMenu/)
   assert.match(account, /__nessieToggleFocusMode/)
-  assert.match(account, /showFeedbackLink\?: boolean/)
   assert.match(accountPopover, /to="\/feedback"/)
-  assert.match(accountPopover, /Help &amp; feedback/)
+  assert.match(accountPopover, /<span>Feedback<\/span>/)
+  assert.match(accountPopover, /<DebugTokenButton variant="menu" \/>/)
+  assert.doesNotMatch(account, /showFeedbackLink/)
   assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
   assert.match(account, /userFocusMode: focusModeEnabled/)
@@ -233,37 +233,36 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
 })
 
-test('the account popover keeps one boundary between status controls and account actions', () => {
+test('the account popover places Feedback and Debug between status and account actions', () => {
   const popover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
   const trigger = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
 
   assert.doesNotMatch(popover, /MeAuth|providerLabel|account\)\}/)
   assert.doesNotMatch(trigger, /auth=\{me\.auth\}/)
-  const statusToAccountActions = [
-    '<StatusSection onClose=\\{onClose\\} />',
-    '<div className="my-1 h-px bg-\\[color:var\\(--sep\\)\\]" />',
-    '<Link className=\\{rowClassName\\} onClick=\\{onClose\\} to="\\/settings\\/profile">',
-  ].join('\\s*')
+  const status = popover.indexOf('<StatusSection onClose={onClose} />')
+  const feedback = popover.indexOf('to="/feedback"')
+  const debug = popover.indexOf('<DebugTokenButton variant="menu" />')
+  const accountSettings = popover.indexOf('to="/settings/profile"')
+
+  assert.ok(status < feedback)
+  assert.ok(feedback < debug)
+  assert.ok(debug < accountSettings)
   assert.match(
-    popover,
-    new RegExp(statusToAccountActions),
+    popover.slice(debug, accountSettings),
+    /<div className="my-1 h-px bg-\[color:var\(--sep\)\]" \/>/,
   )
 })
 
-test('the native Admin actions offer session debugging above a cache-busting full refresh', () => {
+test('the native Admin actions retain the cache-busting full refresh', () => {
   const adminNav = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
-  const debugButton = readSource('../src/components/shared/DebugTokenButton.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
   // The boot-recovery state machine moved into its own hook; App.tsx wires the
   // `nessie:full-refresh` message to it.
   const bootRecovery = readSource('../../mobile/src/lib/use-native-boot-recovery.ts')
 
   assert.match(adminNav, /isReactNativeWebView\(\) \? \(/)
-  assert.match(adminNav, /<DebugTokenButton variant="sidebar" \/>/)
   assert.match(adminNav, /onClick=\{requestNativeFullRefresh\}/)
-  assert.ok(adminNav.indexOf('<DebugTokenButton variant="sidebar" />') < adminNav.indexOf('Full refresh'))
-  assert.match(debugButton, /variant\?: 'rail' \| 'sidebar'/)
-  assert.match(debugButton, /Session debug/)
+  assert.doesNotMatch(adminNav, /DebugTokenButton/)
   assert.match(adminNav, /Full refresh/)
   assert.match(nativeApp, /msg.type === 'nessie:full-refresh'/)
   assert.match(nativeApp, /bootRecovery\.fullRefreshWebView\(\)/)
@@ -296,7 +295,7 @@ test('Safari and Android browser tab roots reuse the mobile workspace, recents, 
   assert.match(header, /<WorkspaceSwitcher variant="mobile-header" \/>/)
   assert.match(header, /<RecentChannelsControl/)
   assert.match(header, /<UserMenuTrigger/)
-  assert.match(header, /showFeedbackLink/)
+  assert.doesNotMatch(header, /showFeedbackLink/)
   assert.match(workspace, /variant\?: 'mobile-header' \| 'native-bridge' \| 'rail'/)
 })
 

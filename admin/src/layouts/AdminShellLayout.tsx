@@ -323,7 +323,6 @@ const AuthenticatedAdminShellLayout = () => {
                     nativeShellBridge
                     onLogout={shell.logoutAndRedirect}
                     placement="topbar"
-                    showFeedbackLink
                   />
                 ) : null}
                 {nativePhoneApp ? (

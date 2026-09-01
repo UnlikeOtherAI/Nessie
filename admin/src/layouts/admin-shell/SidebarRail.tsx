@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useViewport } from '../../hooks/useViewport';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
@@ -90,29 +89,6 @@ export const SidebarRail = ({
       <div className="flex w-full shrink-0 flex-col items-center">
         <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
 
-        <Link
-          className={`admin-rail-btn ${pathname.startsWith('/feedback') ? 'active' : ''}`}
-          to="/feedback"
-        >
-          <span className="admin-rail-btn-icon">
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="m3 11 18-5v12L3 14v-3z" strokeLinecap="round" strokeLinejoin="round" />
-              <path
-                d="M11.6 16.8a3 3 0 1 1-5.8-1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <span className="admin-rail-btn-label">Feedback</span>
-        </Link>
-
         <button
           aria-describedby={focusTooltipOpen ? 'focus-mode-tooltip' : undefined}
           aria-label={focusTooltipTitle}
@@ -142,8 +118,6 @@ export const SidebarRail = ({
           open={focusTooltipOpen}
           title={focusTooltipTitle}
         />
-
-        <DebugTokenButton />
 
         <CreateMenuTrigger
           onCreateChannel={onCreateChannel}

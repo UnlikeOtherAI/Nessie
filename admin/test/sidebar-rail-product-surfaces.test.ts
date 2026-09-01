@@ -33,12 +33,14 @@ test('the Create control uses the same desktop rail tooltip as Focus', () => {
   assert.match(rail, /id="focus-mode-tooltip"/)
 })
 
-test('the whole rail keeps Feedback beside Focus and scrolls when space is tight', () => {
+test('the whole rail keeps Focus beside creation and scrolls when space is tight', () => {
   const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
 
   assert.match(rail, /flex h-full w-\[65px\] flex-col items-center overflow-x-hidden overflow-y-auto/)
   assert.match(rail, /<nav aria-label="Main navigation" className="w-full shrink-0">/)
-  assert.ok(rail.indexOf('>Feedback</span>') < rail.indexOf('>Focus</span>'))
+  assert.doesNotMatch(rail, /to="\/feedback"/)
+  assert.doesNotMatch(rail, /DebugTokenButton/)
+  assert.ok(rail.indexOf('>Focus</span>') < rail.indexOf('<CreateMenuTrigger'))
 })
 
 test('the Focus tooltip dismisses itself after five seconds on touch devices', () => {
