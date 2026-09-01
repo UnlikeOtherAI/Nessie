@@ -27,6 +27,11 @@ duplicate any of them.
 
 ### Slice 1 — shared contracts and no-behaviour-change refactor
 
+Partial implementation (2026-09-01): the durable
+`AgentAppConnectionRequest` data model and strict first-party
+`AppSetupCardSchema` contract are in place. No request tool, route, card UI,
+OAuth flow, or automatic connection action is exposed by that foundation.
+
 - Add the dedicated organization early-access column,
   `/settings/organization#early-access` switch, live-owner-only dedicated
   endpoint, read-only member DTO field, API/worker gate and disabled-state

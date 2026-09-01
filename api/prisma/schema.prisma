@@ -612,6 +612,30 @@ enum McpServerLifecycleState {
   error
 }
 
+/// The concrete connection store selected by an app-connection request. This
+/// stays separate from app catalogue delivery: the request may have selected a
+/// backend before its matching connection record exists.
+enum AgentAppConnectionBackend {
+  mcp
+  comms_google
+}
+
+/// Durable lifecycle of a person-approved app connection proposed in chat.
+/// Executor setup has its own typed state machine and must not add states here.
+enum AgentAppConnectionRequestStatus {
+  offered
+  connecting
+  needs_secret
+  selecting_resources
+  awaiting_scope_upgrade
+  awaiting_grant
+  ready
+  failed
+  cancelled
+  expired
+  superseded
+}
+
 enum McpCredentialPrincipalType {
   user
   agent
@@ -970,6 +994,7 @@ model User {
   createdAgentTodoTemplates           AgentTodoTemplate[]             @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                   AgentTodo[]                     @relation("AgentTodoCreatedBy")
   startedDemonstrations               Demonstration[]                 @relation("DemonstrationStartedBy")
+  agentAppConnectionRequests          AgentAppConnectionRequest[]
   avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -1122,6 +1147,7 @@ model Organization {
   productIntegrationRuns ProductIntegrationRun[]
   productWebhookSecrets  ProductWebhookSecret[]
   secrets                Secret[]
+  agentAppConnectionRequests AgentAppConnectionRequest[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1532,6 +1558,7 @@ model Thread {
   pushSurfacePresences     UserPushSurfacePresence[]
   agentTodos               AgentTodo[]
   demonstrations           Demonstration[]
+  agentAppConnectionRequests AgentAppConnectionRequest[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1835,6 +1862,8 @@ model Message {
   userAlerts               UserAlert[]
   threadFollows            MessageThreadFollow[]
   productIntegrationRuns   ProductIntegrationRun[]
+  appConnectionRequestCards AgentAppConnectionRequest[] @relation("AgentAppConnectionRequestCardMessage")
+  originAppConnectionRequests AgentAppConnectionRequest[] @relation("AgentAppConnectionRequestOriginTriggerMessage")
   triggeredRuns            Run[]                          @relation("RunTriggerMessage")
   workflowRunOrigins       WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
   workflowRunReplyRoots    WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
@@ -2069,6 +2098,7 @@ model Agent {
   todos                          AgentTodo[]                     @relation("AgentTodoAgent")
   demonstrations                 Demonstration[]                 @relation("AgentDemonstrations")
   demonstrationSteps             DemonstrationStep[]             @relation("AgentDemonstrationSteps")
+  appConnectionRequests          AgentAppConnectionRequest[]
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
   // SET NULL blanks every referencing column, which would wipe the agent's
@@ -2280,6 +2310,8 @@ model Run {
   proposedAgentTodoTemplates     AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
   activeAgentTodos               AgentTodo[]                     @relation("AgentTodoActiveRun")
   demonstrationSteps             DemonstrationStep[]
+  originAppConnectionRequests    AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
+  continuationForAppConnectionRequest AgentAppConnectionRequest? @relation("AgentAppConnectionRequestContinuationRun")
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -2287,6 +2319,62 @@ model Run {
   @@index([restartOfRunId])
   @@index([continuationOfRunId])
   @@map("runs")
+}
+
+/// Durable state for a user-approved app connection proposed by an agent in a
+/// conversation. The corresponding assistant message stores only this row's
+/// opaque id; it never becomes mutable connection authority.
+model AgentAppConnectionRequest {
+  id                         String                          @id @default(uuid()) @db.Uuid
+  organizationId             String                          @map("organization_id") @db.Uuid
+  threadId                   String                          @map("thread_id") @db.Uuid
+  messageId                  String                          @unique @map("message_id") @db.Uuid
+  originRunId                String                          @map("origin_run_id") @db.Uuid
+  originTriggerMessageId     String?                         @map("origin_trigger_message_id") @db.Uuid
+  agentId                    String                          @map("agent_id") @db.Uuid
+  requestedByUserId          String                          @map("requested_by_user_id") @db.Uuid
+  candidateCatalogEntryIds   String[]                        @map("candidate_catalog_entry_ids") @db.Uuid
+  selectedCatalogEntryId     String?                         @map("selected_catalog_entry_id") @db.Uuid
+  connectionBackend          AgentAppConnectionBackend?      @map("connection_backend")
+  mcpInstanceId              String?                         @map("mcp_instance_id") @db.Uuid
+  commsConnectionId          String?                         @map("comms_connection_id") @db.Uuid
+  scopeType                  McpServerScopeType?             @map("scope_type")
+  scopeId                    String?                         @map("scope_id") @db.Uuid
+  status                     AgentAppConnectionRequestStatus @default(offered)
+  // Server-derived ids, trust label, known capability keys, target agent and
+  // scope only. URLs and credentials never enter this immutable consent record.
+  consentSnapshot            Json                            @map("consent_snapshot")
+  failureCode                String?                         @map("failure_code")
+  // A lookup aid only: the final status-transition transaction remains the
+  // one-shot guard because PostgreSQL allows multiple NULLs in this key.
+  continuationRunId          String?                         @unique @map("continuation_run_id") @db.Uuid
+  offerCooldownUntil         DateTime                        @map("offer_cooldown_until")
+  connectAttemptRevision     Int                             @default(0) @map("connect_attempt_revision")
+  returnedAt                 DateTime?                       @map("returned_at")
+  returnRevision             Int                             @default(0) @map("return_revision")
+  returnClaimedBySessionId   String?                         @map("return_claimed_by_session_id")
+  returnClaimLeaseExpiresAt  DateTime?                       @map("return_claim_lease_expires_at")
+  expiresAt                  DateTime                        @map("expires_at")
+  createdAt                  DateTime                        @default(now()) @map("created_at")
+  updatedAt                  DateTime                        @updatedAt @map("updated_at")
+  completedAt                DateTime?                       @map("completed_at")
+
+  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  thread                Thread             @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message               Message            @relation("AgentAppConnectionRequestCardMessage", fields: [messageId], references: [id], onDelete: Cascade)
+  originRun             Run                @relation("AgentAppConnectionRequestOriginRun", fields: [originRunId], references: [id], onDelete: Cascade)
+  originTriggerMessage  Message?           @relation("AgentAppConnectionRequestOriginTriggerMessage", fields: [originTriggerMessageId], references: [id], onDelete: SetNull)
+  agent                 Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  requestedByUser       User               @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  selectedCatalogEntry  McpCatalogEntry?   @relation(fields: [selectedCatalogEntryId], references: [id], onDelete: SetNull)
+  mcpInstance           McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
+  commsConnection       CommsConnection?   @relation(fields: [commsConnectionId], references: [id], onDelete: SetNull)
+  continuationRun       Run?               @relation("AgentAppConnectionRequestContinuationRun", fields: [continuationRunId], references: [id], onDelete: SetNull)
+
+  @@index([requestedByUserId, agentId, threadId, createdAt(sort: Desc)], map: "app_conn_req_requester_agent_thread_created_idx")
+  @@index([organizationId, status, expiresAt], map: "app_conn_req_organization_status_expires_idx")
+  @@index([requestedByUserId, returnedAt], map: "app_conn_req_requester_returned_idx")
+  @@map("agent_app_connection_requests")
 }
 
 // Durable work-state saved when a run stops at a policy ceiling (explicit run
@@ -3262,6 +3350,7 @@ model McpCatalogEntry {
   instances          McpServerInstance[]
   integratedProducts IntegratedProduct[]
   health             McpServerHealth?
+  appConnectionRequests AgentAppConnectionRequest[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner in
@@ -3354,6 +3443,7 @@ model McpServerInstance {
   credentialOverrides    McpServerCredentialOverride[]
   toolRegistryEntries    ToolRegistryEntry[]
   productIntegrationRuns ProductIntegrationRun[]
+  appConnectionRequests  AgentAppConnectionRequest[]
   organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([catalogEntryId, scopeType, scopeId])
@@ -5114,6 +5204,7 @@ model CommsConnection {
   syncJobs      CommsSyncJob[]
   events        CommsEvent[]
   subscriptions CommsSubscription[]
+  appConnectionRequests AgentAppConnectionRequest[]
   organization  Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, ownerUserId, provider, externalTenantId, externalUserId])
