@@ -130,7 +130,7 @@ Rules:
   - "project" scope → only agents bound to that project
   - "team" scope → only agents bound to that team
   - "channel" scope → only agents in that channel
-  - "user" scope → only one specific user's agents
+  - "user" scope → only runs whose effective requesting user is that user
 
 By default, placement visibility follows that hierarchy. Additional explicit grants or bindings are a union on top of placement. Do not treat all visibility as inheritance-only; shared resources may also be made visible through binding rows.
 
@@ -139,7 +139,9 @@ Example:
   - All organization-scoped servers (e.g., "GitHub" for the whole org)
   - All team-scoped servers for the sales team (e.g., "Salesforce" for sales)
   - All channel-scoped servers for #sales-team (e.g., "HubSpot" for that channel)
-  - NOT personal servers belonging to individual users
+  - NOT a personal server belonging to another user; a shared agent can only
+    use a user's server while acting for that same user and with its explicit
+    capability grant
   - NOT servers scoped to other teams/channels
 ```
 
@@ -211,14 +213,15 @@ instance project as `active` immediately (and drift re-activates rather than
 re-flagging): the installer is the only person whose runs can ever reach those
 tools, so an org-owner review gate would only break the "paste a link, start
 using it" flow. The worker enforces the reach rule at toolset assembly
-(`worker/src/run/mcp-toolset.ts`): user-scope instances surface **only** in
-the installing user's delegated personal-assistant runs — never in shared
-agents' channels; org/system instances surface to every run in the org; and
-team/project/channel instances follow the run's context. An explicit per-agent
-`toolPolicy` verdict may only NARROW that reach: a `false` verdict hides a tool
-that scope would expose, while a `true` verdict exposes a tool only when the
-install scope already reaches the run — install scope is a hard ceiling that
-policy can never broaden.
+(`worker/src/run/mcp-toolset.ts`): user-scope instances surface only while the
+run's live effective user is the installer. A shared agent may use one only
+with its normal explicit tool grant; a run for anyone else never receives the
+tool or resolves the credential. Org/system instances surface to every run in
+the org; team/project/channel instances follow the run's context. An explicit
+per-agent `toolPolicy` verdict may only NARROW that reach: a `false` verdict
+hides a tool that scope would expose, while a `true` verdict exposes a tool
+only when the install scope already reaches the run — install scope is a hard
+ceiling that policy can never broaden.
 
 ### Connector Library & Link Discovery
 
@@ -1240,13 +1243,26 @@ Resolution order:
 6. Organization-specific credential
 7. Connector/server default credential
 
-Step 7 has an owner rule: for a `user`-scoped instance the caller's effective
-user must equal the instance's scope id before the installer's stored
-credential is used — when it does not, resolution fails closed
-(`MCP_CREDENTIAL_USER_SCOPE_MISMATCH`) rather than spending the installer's
-secret on someone else's run. Probes (test/refresh/healthcheck) always resolve
-as a concrete probe user, so an owner or admin may manage a user-scoped
-instance but never probe it with the installer's credential.
+The install scope is a hard ceiling, checked **before** the override chain: for
+a `user`-scoped instance the caller's effective user must equal the instance's
+scope id before any credential can be considered. A shared agent may therefore
+use that person's connection only while acting for that same person and only
+when its normal capability policy permits it. A different person gets no tool
+and no credential resolution (`MCP_CREDENTIAL_USER_SCOPE_MISMATCH`).
+
+OAuth completion always writes a user credential (a user-scope instance
+credential or a user override on a shared instance); it never creates a shared
+OAuth default. When a tool consumes such a credential, the run records that
+user scope as disclosure provenance, so any reply derived from its output is
+visible only to that person even if the agent lives in a shared channel.
+
+API-key connections have a separate, explicit choice. The default is a
+personal user override; an authorized scope manager may choose **shared** only
+for an `api_key` connector, which stores an instance default usable by everyone
+who can reach that connection. OAuth, bearer and other personal tokens cannot
+be promoted to shared credentials. Probes (test/refresh/healthcheck) always
+resolve as a concrete probe user, so an owner or admin may manage a
+user-scoped instance but never probe it with the installer's credential.
 
 Example: GitHub MCP server is org-scoped, but each developer has their own PAT. The org installs GitHub MCP once, and each user adds their own credential override. When an agent acts on behalf of user A, it uses user A's PAT. When acting on behalf of user B, it uses user B's PAT.
 

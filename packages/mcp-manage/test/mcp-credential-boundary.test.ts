@@ -7,6 +7,7 @@ import {
   McpCredentialError,
   MCP_CREDENTIAL_ERROR_CODES,
   resolveCredentialRef,
+  resolveCredentialRefWithSource,
   upsertOverride,
 } from '../src/mcp-credentials.js'
 
@@ -80,7 +81,8 @@ test('a user-scoped instance credential never resolves for a run acting as anoth
   }
 })
 
-test('a user-scope mismatch never hides an explicit grant to another principal', async () => {
+test('a user-scope mismatch fails before consulting any override', async () => {
+  let overrideLookups = 0
   const prisma = {
     mcpServerInstance: {
       findUnique: async () => ({
@@ -98,22 +100,49 @@ test('a user-scope mismatch never hides an explicit grant to another principal',
             principalId: string
           }
         }
+      }) => {
+        void where
+        overrideLookups += 1
+        return { credentialRef: 'secret_agent_grant' }
+      },
+    },
+  } as unknown as PrismaClient
+
+  await assert.rejects(
+    resolveCredentialRef(prisma, 'instance-1', {
+      userId: 'user-2',
+      agentId: 'agent-1',
+    }),
+    (error: unknown) =>
+      error instanceof McpCredentialError
+      && error.code === MCP_CREDENTIAL_ERROR_CODES.USER_SCOPE_MISMATCH,
+  )
+  assert.equal(overrideLookups, 0)
+})
+
+test('resolution reports whether an opaque ref came from the user or shared scope', async () => {
+  const prisma = {
+    mcpServerInstance: {
+      findUnique: async () => ({
+        id: 'instance-1',
+        credentialRef: 'secret_shared',
+        scopeType: 'organization',
+        scopeId: 'org-1',
+      }),
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async ({ where }: {
+        where: { instanceId_principalType_principalId: { principalType: string } }
       }) =>
-        where.instanceId_principalType_principalId.principalType === 'agent'
-          ? { credentialRef: 'secret_agent_grant' }
+        where.instanceId_principalType_principalId.principalType === 'user'
+          ? { credentialRef: 'secret_personal' }
           : null,
     },
   } as unknown as PrismaClient
 
-  // An agent-level override is an explicit grant by a privileged actor, not a
-  // leak of the installer's secret: it resolves even when the run's effective
-  // user is not the installer.
-  assert.equal(
-    await resolveCredentialRef(prisma, 'instance-1', {
-      userId: 'user-2',
-      agentId: 'agent-1',
-    }),
-    'secret_agent_grant',
+  assert.deepEqual(
+    await resolveCredentialRefWithSource(prisma, 'instance-1', { userId: 'user-1' }),
+    { credentialRef: 'secret_personal', source: 'user_override' },
   )
 })
 

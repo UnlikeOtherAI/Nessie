@@ -25,11 +25,10 @@ import { isOwnerRole } from '../mcp-catalog.js'
  *
  * - A run's team/project come from the channel it happens in, so an agent's
  *   reach is the set of channels it is bound to.
- * - A user-scoped install reaches only the installing user's delegated
- *   personal-assistant runs. There is one system-managed personal assistant
- *   per organisation, and `listInstancesVisibleToUser` only ever returns the
- *   caller's own user-scope rows, so a visible user-scope install means "your
- *   assistant, in your own runs".
+ * - A user-scoped install reaches runs requested by the installing user. The
+ *   detail response is already scoped to that viewer, so a shared agent with
+ *   an explicit grant is reachable here too — but only in that viewer's run;
+ *   the worker re-checks the live effective user before it exposes a tool.
  */
 
 export type AppAccessInstance = {
@@ -79,6 +78,7 @@ const requiresExplicitGrant = (metadata: unknown): boolean =>
 const scopeReachesAgent = (
   instance: AppAccessInstance,
   agent: AccessAgent,
+  effectiveUserId: string,
 ): boolean => {
   switch (instance.scopeType) {
     case 'system':
@@ -91,7 +91,7 @@ const scopeReachesAgent = (
     case 'channel':
       return agent.bindings.some((b) => b.channel.id === instance.scopeId)
     case 'user':
-      return agent.agentKind === 'personal_assistant'
+      return instance.scopeId === effectiveUserId
   }
 }
 
@@ -99,15 +99,20 @@ const agentCanUseApp = (
   agent: AccessAgent,
   instances: readonly AppAccessInstance[],
   rowsByInstance: Map<string, AppAccessRegistryRow[]>,
+  effectiveUserId: string,
 ): boolean =>
   instances.some((instance) => {
-    if (!scopeReachesAgent(instance, agent)) return false
+    if (!scopeReachesAgent(instance, agent, effectiveUserId)) return false
     return (rowsByInstance.get(instance.id) ?? []).some((row) => {
       const verdict = policyVerdict(agent.toolPolicy, row.id)
-      // An explicit-grant tool is OFF until granted; everything else is on
-      // unless denied. Neither ever escapes the install scope checked above.
+      // Explicit-grant tools default on for the PA, and default off for shared
+      // agents. A user-scoped shared-agent call also requires that normal
+      // explicit allow; the scope above is the viewer's live-user ceiling.
+      if (instance.scopeType === 'user' && agent.agentKind === 'shared' && verdict !== true) {
+        return false
+      }
       return requiresExplicitGrant(row.metadata)
-        ? verdict === true
+        ? verdict === true || (agent.agentKind === 'personal_assistant' && verdict !== false)
         : verdict !== false
     })
   })
@@ -218,7 +223,8 @@ export const listAgentsWithAppAccess = async (
   })
 
   return agents
-    .filter((agent) => agentCanUseApp(agent, instances, rowsByInstance))
+    .filter((agent) =>
+      agentCanUseApp(agent, instances, rowsByInstance, actorContext.actor.actorId))
     .map((agent) => ({
       agentId: agent.id,
       name: agent.name,

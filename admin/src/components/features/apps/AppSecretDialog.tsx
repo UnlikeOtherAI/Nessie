@@ -1,25 +1,29 @@
 import { useRef, useState, type FormEvent } from 'react'
 
 import { useSetAppConnectionSecret } from '../../../facades/apps/connect-hooks'
+import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 
 type AppSecretDialogProps = {
+  canShare: boolean
   connectionId: string | null
   onClose: () => void
   onSaved: () => void
 }
 
 /** Collects a pending app connection's key without exposing it after submit. */
-export const AppSecretDialog = ({ connectionId, onClose, onSaved }: AppSecretDialogProps) => {
+export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: AppSecretDialogProps) => {
   const secretRef = useRef<HTMLInputElement>(null)
   const setSecret = useSetAppConnectionSecret()
   const [secret, setSecretValue] = useState('')
+  const [credentialScope, setCredentialScope] = useState<'personal' | 'shared'>('personal')
   const [error, setError] = useState<string | null>(null)
 
   const close = () => {
     if (setSecret.isPending) return
     setError(null)
     setSecretValue('')
+    setCredentialScope('personal')
     onClose()
   }
 
@@ -35,7 +39,11 @@ export const AppSecretDialog = ({ connectionId, onClose, onSaved }: AppSecretDia
     setError(null)
     setSecretValue('')
     try {
-      await setSecret.mutateAsync({ connectionId, secret: value })
+      await setSecret.mutateAsync({
+        connectionId,
+        secret: value,
+        shared: credentialScope === 'shared',
+      })
       onSaved()
       close()
     } catch (caught) {
@@ -53,6 +61,31 @@ export const AppSecretDialog = ({ connectionId, onClose, onSaved }: AppSecretDia
       title="Add an API key"
     >
       <form className="grid gap-4" onSubmit={submit}>
+        {canShare ? (
+          <fieldset className="grid gap-1.5">
+            <legend className="text-sm font-medium text-[color:var(--tx)]">Who can use this key?</legend>
+            <TabBar
+              ariaLabel="Choose API key access"
+              items={[
+                { label: 'Personal key', testId: 'app-key-personal', value: 'personal' },
+                { label: 'Shared key', testId: 'app-key-shared', value: 'shared' },
+              ]}
+              onChange={setCredentialScope}
+              role="radiogroup"
+              size="sm"
+              value={credentialScope}
+            />
+            <p className="text-sm text-[color:var(--tx2)]">
+              {credentialScope === 'shared'
+                ? 'Everyone who can use this connection may use this API key.'
+                : 'Only runs acting for you can use this API key.'}
+            </p>
+          </fieldset>
+        ) : (
+          <p className="text-sm text-[color:var(--tx2)]">
+            This personal key is available only in runs acting for you.
+          </p>
+        )}
         <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-secret">
           API key or token
           <input

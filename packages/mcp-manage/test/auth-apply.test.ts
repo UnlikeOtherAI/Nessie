@@ -49,6 +49,18 @@ test('api_key auth uses the configured header name and prefix', () => {
   )
 })
 
+test('basic auth encodes the credential as an Authorization header', () => {
+  const applied = applyAuthSecretToTransport(
+    httpTransport,
+    { method: 'basic' },
+    'alicia:correct-horse-battery-staple',
+  )
+  assert.equal(
+    applied.transport === 'http' ? applied.headers?.Authorization : undefined,
+    'Basic YWxpY2lhOmNvcnJlY3QtaG9yc2UtYmF0dGVyeS1zdGFwbGU=',
+  )
+})
+
 test('unparseable auth config falls back to bearer semantics', () => {
   const applied = applyAuthSecretToTransport(httpTransport, { nonsense: true }, 'tok-3')
   assert.equal(

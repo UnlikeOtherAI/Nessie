@@ -159,10 +159,10 @@ export const useSetAppConnectionSecret = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { connectionId: string; secret: string }) =>
+    mutationFn: (input: { connectionId: string; secret: string; shared: boolean }) =>
       apiClient.post<{ placement: string }>(`/api/mcp/instances/${input.connectionId}/secret`, {
         secret: input.secret,
-        shared: false,
+        shared: input.shared,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })

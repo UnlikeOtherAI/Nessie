@@ -34,6 +34,7 @@ const registryRow = (input: {
       name: input.managed ? 'deep-water' : 'private-research',
       visibility: input.managed ? 'public' : 'private',
       integratedProducts: input.managed ? [{ slug: 'deep-water' }] : [],
+      authMethod: 'none',
       authConfig: { method: 'none' },
       defaultTransportConfig: {
         transport: 'http',
@@ -150,11 +151,16 @@ test('exposed names do not depend on the order Postgres returns rows in', async 
   }
 })
 
-test('private collision cannot take the reserved name when DeepWater is ungranted', async () => {
+test('personal-assistant defaults do not let a private collision take DeepWater\'s reserved name', async () => {
   const toolset = await build(null)
   assert.deepEqual(
     toolset.entries.map((entry) => entry.exposedName),
-    ['mcp_research_start_2', 'mcp_research_status_2', 'mcp_research_start_3'],
+    [
+      'mcp_research_start',
+      'mcp_research_start_2',
+      'mcp_research_status_2',
+      'mcp_research_start_3',
+    ],
   )
 })
 

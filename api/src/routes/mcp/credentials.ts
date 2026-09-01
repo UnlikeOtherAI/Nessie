@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
+  getCatalogEntry,
   getInstance,
   isManagedIntegrationInstance,
   MCP_INSTANCE_ERROR_CODES,
@@ -101,6 +102,33 @@ export const registerMcpCredentialRoutes = (
         'INTEGRATION_MANAGED_CREDENTIAL',
         'This first-party connector uses its dedicated app API key and signed '
         + 'SSO caller identity; it does not accept credential overrides.',
+      )
+      return reply
+    }
+
+    const catalogEntry = await getCatalogEntry(
+      prisma,
+      actorContext.tenant.organizationId,
+      instance.catalogEntryId,
+    )
+    if (!catalogEntry) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND, 'Catalog entry not found')
+      return reply
+    }
+    // OAuth and other personal tokens are a delegation made by the person who
+    // authenticated them. Even an owner cannot attach one to an agent, channel,
+    // or another person through this low-level override route. The OAuth
+    // completion flow follows the same rule by writing the signing-in user's
+    // override itself. API keys are the one deliberate shared-credential form.
+    if (
+      catalogEntry.authMethod !== 'api_key'
+      && (body.principalType !== 'user' || body.principalId !== actorContext.actor.actorId)
+    ) {
+      sendApiError(
+        reply,
+        403,
+        MCP_CREDENTIAL_ERROR_CODES.PERSONAL_CREDENTIAL_PRINCIPAL_FORBIDDEN,
+        'OAuth and personal tokens can only be stored for the person who authenticated them.',
       )
       return reply
     }

@@ -313,10 +313,22 @@ export const runConnectorSetSecretTool = async (
     instance.scopeType,
     instance.scopeId,
   )
+  const catalogEntry = await context.prisma.mcpCatalogEntry.findFirst({
+    where: { id: instance.catalogEntryId, organizationId: ctx.organizationId },
+    select: { authMethod: true },
+  })
+  if (!catalogEntry) {
+    return {
+      inputSummary,
+      outputPreview: 'Connector catalog entry not found.',
+      toolName: 'connector_set_secret',
+    }
+  }
   const { placement } = await storeInstanceSecret(context.prisma, secrets.store, {
     instance,
     userId: ctx.userId,
     access: ctx.access,
+    authMethod: catalogEntry.authMethod,
     secret: secretValue,
     shared: input.shared,
   })

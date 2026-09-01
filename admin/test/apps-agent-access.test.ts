@@ -261,6 +261,49 @@ test('a half-granted app reads as partial rather than rounding to on', () => {
   assert.equal(list.rows[0]?.summary, 'Can use 1 of 2 capabilities')
 })
 
+test('the personal assistant receives in-scope app capabilities by default', () => {
+  const list = buildAgentAccessList({
+    agentsWithAccess: [{ agentId: 'pa-1', name: 'Personal Assistant', role: 'Assistant' }],
+    control: controlFor([
+      tool({ id: 'linear-1', policyKey: 'linear-1' }),
+      tool({ id: 'linear-2', policyKey: 'linear-2' }),
+    ]),
+    targets: [target({
+      agentKind: 'personal_assistant',
+      id: 'pa-1',
+      name: 'Personal Assistant',
+    })],
+  })
+
+  assert.equal(list.rows[0]?.state, 'granted')
+  assert.equal(list.rows[0]?.summary, 'Can use all 2 capabilities')
+  assert.equal(list.rows[0]?.note, null)
+})
+
+test('the personal assistant shows its in-scope explicit-grant default as access', () => {
+  const list = buildAgentAccessList({
+    agentsWithAccess: [{ agentId: 'agent-1', name: 'Personal Assistant', role: 'Assistant' }],
+    control: controlFor([tool()]),
+    targets: [target({ agentKind: 'personal_assistant', name: 'Personal Assistant' })],
+  })
+
+  assert.equal(list.rows[0]?.state, 'granted')
+  assert.equal(list.rows[0]?.hasAccess, true)
+  assert.equal(list.rows[0]?.note, null)
+  assert.equal(list.rows[0]?.summary, 'Can use the one capability')
+})
+
+test('a granted shared agent with the caller\'s personal account has no false scope warning', () => {
+  const list = buildAgentAccessList({
+    agentsWithAccess: [{ agentId: 'agent-1', name: 'Research', role: 'Researcher' }],
+    control: controlFor([tool()]),
+    targets: [target({ toolPolicy: { 'entry-1': true } })],
+  })
+
+  assert.equal(list.rows[0]?.hasAccess, true)
+  assert.equal(list.rows[0]?.note, null)
+})
+
 test('an ungranted row counts the capabilities it reaches without a grant', () => {
   const list = buildAgentAccessList({
     agentsWithAccess: [{ agentId: 'agent-1', name: 'Research', role: 'Researcher' }],

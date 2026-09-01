@@ -13,6 +13,7 @@ import {
 import {
   appConnectScopeCopy,
   buildAppConnectScope,
+  canShareAppConnectionKey,
   type AppConnectScopeChoice,
 } from './app-connect-scope'
 import { AppSecretDialog } from './AppSecretDialog'
@@ -192,6 +193,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
         )}
       </Dialog>
       <AppSecretDialog
+        canShare={canShareAppConnectionKey(app.authMethod, scopeChoice)}
         connectionId={secretConnectionId}
         onClose={() => setSecretConnectionId(null)}
         onSaved={() => {

@@ -11,8 +11,11 @@ import {
   isManagedDeepWaterCatalog,
   type McpToolPolicy,
 } from './mcp-toolset.js'
+import { createConsumedSourceSink } from './execute/disclosure-basis.js'
 
 type RowSeed = {
+  authConfig?: unknown
+  authMethod?: 'api_key' | 'bearer' | 'basic' | 'oauth2' | 'none'
   catalogName?: string
   catalogVisibility?: string
   integratedProductSlugs?: string[]
@@ -28,6 +31,7 @@ const makePrisma = (
   rows: RowSeed[],
   options: {
     credentialOverrideRef?: string
+    credentialOverrideUserId?: string
     onConnectorUsage?: () => void
     onCredentialOverrideLookup?: () => void
   } = {},
@@ -60,7 +64,8 @@ const makePrisma = (
               integratedProducts: (row.integratedProductSlugs ?? []).map(
                 (slug) => ({ slug }),
               ),
-              authConfig: { method: 'none' },
+              authMethod: row.authMethod ?? 'none',
+              authConfig: row.authConfig ?? { method: 'none' },
               defaultTransportConfig: {
                 transport: 'http',
                 url: 'https://mcp.example.com/mcp',
@@ -70,15 +75,25 @@ const makePrisma = (
         })),
     },
     mcpServerInstance: {
-      findUnique: async ({ where }: { where: { id: string } }) => ({
-        id: where.id,
-        credentialRef: null,
-      }),
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const row = rows.find((candidate) => `inst-${candidate.id}` === where.id)
+        return {
+          id: where.id,
+          credentialRef: row?.credentialRef ?? null,
+          scopeId: row?.scopeId ?? 'org-1',
+          scopeType: row?.scopeType ?? 'organization',
+        }
+      },
     },
     mcpServerCredentialOverride: {
-      findUnique: async () => {
+      findUnique: async ({ where }: {
+        where: { instanceId_principalType_principalId: { principalId: string } }
+      }) => {
         options.onCredentialOverrideLookup?.()
         return options.credentialOverrideRef
+          && (!options.credentialOverrideUserId
+            || where.instanceId_principalType_principalId.principalId
+              === options.credentialOverrideUserId)
           ? { credentialRef: options.credentialOverrideRef }
           : null
       },
@@ -145,47 +160,166 @@ test('org-scope instances expose tools to every run in the org', async () => {
   assert.deepEqual(names, ['org_tool'])
 })
 
-test('user-scope instances expose tools only to the installing user\'s PA runs', async () => {
+test('user-scope connections follow the effective user, with shared-agent policy still required', async () => {
   const rows: RowSeed[] = [
-    { id: 'r1', toolName: 'my_tool', scopeType: 'user', scopeId: 'user-1' },
+    {
+      authConfig: { method: 'oauth2' },
+      authMethod: 'oauth2',
+      credentialRef: 'secret_user_1',
+      id: 'r1',
+      requiresExplicitGrant: true,
+      toolName: 'my_tool',
+      scopeType: 'user',
+      scopeId: 'user-1',
+    },
   ]
+  // The owner's PA has the in-scope default.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), ['my_tool'])
   // Another user's PA run: hidden.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'personal_assistant', effectiveUserId: 'user-2' }),
     [],
   )
-  // A shared agent run for the same user: hidden (channel members could drive it).
+  // A shared agent run still needs its normal explicit tool grant.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
-})
-
-test('an explicit policy allow never broadens a user-scope install past its ceiling', async () => {
-  const rows: RowSeed[] = [
-    { id: 'r1', toolName: 'my_tool', scopeType: 'user', scopeId: 'user-1' },
-  ]
-  // Install scope is a hard ceiling: an explicit per-agent allow on a SHARED
-  // agent must not surface the connector (channel members could drive it).
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
-    [],
+    ['my_tool'],
   )
-  // Nor may it surface the connector in ANOTHER user's PA run.
+  // That grant never carries user-1's OAuth connection into user-2's run.
   assert.deepEqual(
     await exposedNames(rows, {
-      agentKind: 'personal_assistant',
+      agentKind: 'shared',
       effectiveUserId: 'user-2',
       toolPolicy: { r1: true },
     }),
     [],
   )
-  // An explicit allow inside the install scope still exposes it.
+})
+
+test('an explicit policy allow never broadens an explicit-grant user-scope install past its ceiling', async () => {
+  const rows: RowSeed[] = [
+    {
+      id: 'r1',
+      toolName: 'my_tool',
+      scopeType: 'user',
+      scopeId: 'user-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  // Install scope is a hard ceiling: an explicit per-agent allow never reaches
+  // another effective user.
   assert.deepEqual(
-    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { r1: true } }),
+    await exposedNames(rows, {
+      agentKind: 'shared',
+      effectiveUserId: 'user-2',
+      toolPolicy: { r1: true },
+    }),
+    [],
+  )
+  // An explicit allow inside the install scope exposes it to the shared agent.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
     ['my_tool'],
   )
   // An explicit deny inside the install scope still hides it.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { r1: false } }),
+    [],
+  )
+})
+
+test('a shared OAuth connection is not advertised without the effective user\'s own credential', async () => {
+  const rows: RowSeed[] = [{
+    authConfig: { method: 'oauth2' },
+    authMethod: 'oauth2',
+    id: 'oauth',
+    requiresExplicitGrant: true,
+    scopeId: 'org-1',
+    scopeType: 'organization',
+    toolName: 'private_calendar',
+  }]
+  const buildFor = (effectiveUserId: string) =>
+    buildMcpToolset(
+      makePrisma(rows, {
+        credentialOverrideRef: 'secret_user_1_oauth',
+        credentialOverrideUserId: 'user-1',
+      }),
+      'org-1',
+      { oauth: true },
+      actorContext({ effectiveUserId }),
+      { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
+      { organizationId: 'org-1', actorId: 'agent-1' },
+    )
+
+  assert.deepEqual(
+    (await buildFor('user-1')).entries.map((entry) => entry.originalToolName),
+    ['private_calendar'],
+  )
+  assert.deepEqual((await buildFor('user-2')).entries, [])
+})
+
+test('credential-backed MCP output records the user scope only for personal credentials', async () => {
+  const dispatchMcpTool = async () => ({ output: 'private provider result', raw: null, success: true })
+  const buildWith = async (row: RowSeed, options: {
+    credentialOverrideRef?: string
+    credentialOverrideUserId?: string
+  } = {}) => {
+    const consumedSources = createConsumedSourceSink()
+    const toolset = await buildMcpToolset(
+      makePrisma([row], options),
+      'org-1',
+      { [row.id]: true },
+      actorContext(),
+      { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
+      { organizationId: 'org-1', actorId: 'agent-1' },
+      { consumedSources, dispatchMcpTool },
+    )
+    const entry = toolset.entries[0]
+    assert.ok(entry)
+    // A delegate view calls the same dispatch closure as the main loop.
+    await toolset.createView().dispatch(entry.exposedName, {})
+    return consumedSources.list()
+  }
+
+  const oauth = { authConfig: { method: 'oauth2' }, authMethod: 'oauth2' as const }
+  assert.deepEqual(
+    await buildWith({
+      ...oauth,
+      credentialRef: 'secret_user_scope',
+      id: 'user-scope',
+      requiresExplicitGrant: true,
+      scopeId: 'user-1',
+      scopeType: 'user',
+      toolName: 'personal_drive',
+    }),
+    [{ scopeId: 'user-1', scopeType: 'user' }],
+  )
+  assert.deepEqual(
+    await buildWith(
+      {
+        ...oauth,
+        id: 'user-override',
+        requiresExplicitGrant: true,
+        scopeId: 'org-1',
+        scopeType: 'organization',
+        toolName: 'personal_calendar',
+      },
+      { credentialOverrideRef: 'secret_user_override', credentialOverrideUserId: 'user-1' },
+    ),
+    [{ scopeId: 'user-1', scopeType: 'user' }],
+  )
+  assert.deepEqual(
+    await buildWith({
+      authConfig: { headerName: 'X-API-Key', method: 'api_key', valuePrefix: '' },
+      authMethod: 'api_key',
+      credentialRef: 'secret_explicitly_shared',
+      id: 'shared-key',
+      requiresExplicitGrant: true,
+      scopeId: 'org-1',
+      scopeType: 'organization',
+      toolName: 'shared_search',
+    }),
     [],
   )
 })
@@ -203,10 +337,14 @@ test('team and channel scopes follow the run context', async () => {
   ])
 })
 
-test('explicit-grant DeepWater tools are OFF by default and need an explicit allow', async () => {
+test('managed DeepWater tools default to the PA and stay explicit for shared agents', async () => {
   const rows: RowSeed[] = [
     {
+      catalogName: 'deep-water',
+      catalogVisibility: 'public',
+      credentialRef: 'LEDGER_PROXY_TOKEN',
       id: 'dw',
+      integratedProductSlugs: ['deep-water'],
       toolName: 'research_start',
       scopeType: 'team',
       scopeId: 'team-1',
@@ -214,20 +352,19 @@ test('explicit-grant DeepWater tools are OFF by default and need an explicit all
     },
   ]
   assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
-  assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), [])
-  // Exposed ONLY with an explicit allow (shared agent).
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), ['research_start'])
+  // The shared agent still needs an explicit allow.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: true } }),
     ['research_start'],
   )
-  // Exposed with an explicit allow (personal assistant) too.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: true } }),
     ['research_start'],
   )
   // An explicit deny still hides it.
   assert.deepEqual(
-    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: false } }),
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: false } }),
     [],
   )
 })

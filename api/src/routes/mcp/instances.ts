@@ -2,6 +2,7 @@ import {
   canManageInstanceScope,
   createInstance,
   deleteInstance,
+  getCatalogEntry,
   getInstance,
   healthcheckInstance,
   isOwnerRole,
@@ -381,14 +382,30 @@ export const registerMcpInstanceRoutes = (
       }
     }
 
-    const result = await storeInstanceSecret(prisma, ctx.mcpSecretStore, {
-      instance,
-      userId: actorContext.actor.actorId,
-      access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
-      secret: body.secret,
-      shared: body.shared,
-    })
-    return createApiResponse({ placement: result.placement })
+    const catalogEntry = await getCatalogEntry(
+      prisma,
+      actorContext.tenant.organizationId,
+      instance.catalogEntryId,
+    )
+    if (!catalogEntry) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND, 'Catalog entry not found')
+      return reply
+    }
+
+    try {
+      const result = await storeInstanceSecret(prisma, ctx.mcpSecretStore, {
+        instance,
+        userId: actorContext.actor.actorId,
+        access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
+        authMethod: catalogEntry.authMethod,
+        secret: body.secret,
+        shared: body.shared,
+      })
+      return createApiResponse({ placement: result.placement })
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.delete('/api/mcp/instances/:instanceId', async (request, reply) => {

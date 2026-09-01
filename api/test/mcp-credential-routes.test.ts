@@ -29,6 +29,7 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     createdAt: Date
     updatedAt: Date
   }> = []
+  let authMethod: 'api_key' | 'oauth2' = 'api_key'
   const prisma = {
     mcpServerInstance: {
       findFirst: async (args: { where: { catalogEntry?: unknown } }) =>
@@ -37,9 +38,13 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
           : {
               id: INSTANCE_ID,
               organizationId: ORGANIZATION_ID,
+              catalogEntryId: '44444444-4444-4444-8444-444444444444',
               scopeType: 'user',
               scopeId: USER_ID,
             },
+    },
+    mcpCatalogEntry: {
+      findFirst: async () => ({ authMethod }),
     },
     mcpServerCredentialOverride: {
       findMany: async () => overrides,
@@ -137,6 +142,25 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     assert.equal(saved.body.includes(plaintext), false)
     assert.equal(saved.body.includes('secret_mcp_server_minted'), false)
     assert.equal('credentialRef' in saved.json().data, false)
+
+    // A raw OAuth token cannot be assigned to a shared principal by an owner;
+    // OAuth completion is user-bound and the generic route has the same fence.
+    authMethod = 'oauth2'
+    const oauthForAgent = await app.inject({
+      method: 'PUT',
+      url: `/api/mcp/instances/${INSTANCE_ID}/credentials`,
+      payload: {
+        principalType: 'agent',
+        principalId: '55555555-5555-4555-8555-555555555555',
+        secret: 'personal-oauth-token',
+      },
+    })
+    assert.equal(oauthForAgent.statusCode, 403, oauthForAgent.body)
+    assert.equal(
+      oauthForAgent.json().error.code,
+      'MCP_PERSONAL_CREDENTIAL_PRINCIPAL_FORBIDDEN',
+    )
+    assert.deepEqual(storedSecrets, [plaintext])
 
     const listed = await app.inject({
       method: 'GET',

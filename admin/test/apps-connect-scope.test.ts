@@ -8,6 +8,7 @@ import { JSDOM } from 'jsdom'
 import {
   appConnectScopeCopy,
   buildAppConnectScope,
+  canShareAppConnectionKey,
 } from '../src/components/features/apps/app-connect-scope.js'
 import { channelKeys } from '../src/lib/query-keys.js'
 import type { ChannelRecord } from '../src/lib/api-client.js'
@@ -74,6 +75,13 @@ test('personal remains the default scope and a channel needs an explicit id', ()
     appConnectScopeCopy('channel', channel.label),
     'A separate connection will be created for Customer support. You will add your own credential; only agents acting in that channel can use this connection.',
   )
+})
+
+test('only a non-personal API-key connection offers a shared key', () => {
+  assert.equal(canShareAppConnectionKey('api_key', 'channel'), true)
+  assert.equal(canShareAppConnectionKey('api_key', 'user'), false)
+  assert.equal(canShareAppConnectionKey('oauth2', 'channel'), false)
+  assert.equal(canShareAppConnectionKey('bearer', 'channel'), false)
 })
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {

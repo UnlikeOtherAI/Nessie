@@ -287,11 +287,14 @@ const managedRow = (
   control: { open: readonly AppAccessTool[]; tools: readonly AppAccessTool[] },
   accessible: ReadonlySet<string>,
 ): AgentAccessRow => {
-  const grantedCount = control.tools.filter(
-    (tool) => target.toolPolicy[tool.policyKey] === true,
+  // The PA is the person's standing delegate: an app capability it can reach
+  // is on unless explicitly denied. Shared agents remain opt-in per capability.
+  // The server uses the same distinction when it reports actual reachability.
+  const grantedCount = control.tools.filter((tool) =>
+    target.agentKind === 'personal_assistant'
+      ? target.toolPolicy[tool.policyKey] !== false
+      : target.toolPolicy[tool.policyKey] === true,
   ).length
-  // An explicit-grant row is off until granted; a row that needs no grant is on
-  // unless denied. The same two rules `agentCanUseApp` applies on the server.
   const openUsableCount = control.open.filter(
     (tool) => target.toolPolicy[tool.policyKey] !== false,
   ).length

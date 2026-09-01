@@ -200,6 +200,7 @@ export const prepareRunExecution = async (
         runId: context.run.id,
       }),
       {
+        consumedSources: context.consumedSources,
         deepWaterHandoffGuard: input.deepWaterHandoffGuard,
         ledgerIdentity: deps.ledgerIdentity,
         secretResolver: deps.mcpSecrets?.resolver,
