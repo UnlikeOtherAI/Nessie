@@ -213,6 +213,45 @@ test('a stopped browser session exposes no residual browser or stop tool', async
   assert.deepEqual(toolset.descriptors, [])
 })
 
+test('a connected browser session cannot surface through the isolated browser bundle', async () => {
+  const session = {
+    id: '00000000-0000-4000-8000-000000000009',
+    profile: 'connected_browser' as const,
+    status: 'pending' as const,
+  }
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { id: '00000000-0000-4000-8000-000000000005', operationKey: 'browser.open', session },
+        { id: '00000000-0000-4000-8000-000000000006', operationKey: 'browser.observe', session },
+        { id: '00000000-0000-4000-8000-000000000008', operationKey: 'browser.act', session },
+        { id: '00000000-0000-4000-8000-000000000007', operationKey: 'sandbox.stop', session },
+      ],
+    },
+    toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: {
+      'executor.browser.act': true,
+      'executor.browser.observe': true,
+      'executor.browser.open': true,
+      'executor.sandbox.stop': true,
+    },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+
+  assert.deepEqual(toolset.descriptors, [])
+})
+
 test('command operations require their isolated review-and-stop bundle and an explicit grant', async () => {
   const session = {
     id: '00000000-0000-4000-8000-000000000015',

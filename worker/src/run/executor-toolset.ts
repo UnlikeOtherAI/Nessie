@@ -7,6 +7,7 @@ import {
   executorLogicalToolDefinitions,
   waitForExecutorCommandResult,
 } from '@nessie/executor-manage'
+import type { ExecutorProfile } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
@@ -27,7 +28,7 @@ type ExecutorEntry = {
   bindingId: string
   operationKey: string
   sessionId: string | null
-  sessionProfile: 'coding_session' | 'workspace_sandbox' | null
+  sessionProfile: ExecutorProfile | null
   toolName: string
 }
 
@@ -287,6 +288,10 @@ export const buildExecutorToolset = async (
     && commandSessionLive,
   )
   const entries = bindings.flatMap((binding): ExecutorEntry[] => {
+    // Connected-browser operations stay unavailable until their private-run
+    // disclosure gate lands. In particular, their session must never be
+    // exposed through an isolated browser, coding, or command entry.
+    if (binding.session?.profile === 'connected_browser') return []
     const browserSessionBinding = binding.operationKey === 'browser.open'
       || binding.operationKey === 'browser.observe'
       || binding.operationKey === 'browser.act'
