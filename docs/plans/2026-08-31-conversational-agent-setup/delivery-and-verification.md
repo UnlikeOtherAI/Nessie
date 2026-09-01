@@ -32,6 +32,13 @@ Partial implementation (2026-09-01): the durable
 `AppSetupCardSchema` contract are in place. No request tool, route, card UI,
 OAuth flow, or automatic connection action is exposed by that foundation.
 
+The owner-controlled early-access prerequisite is also in place: every
+organization starts disabled, its summary exposes the read-only state, and
+only a live organization owner can change it at
+`/settings/organization#early-access`. The request tool and every connection
+action remain unimplemented and unavailable while the remaining slices are
+built.
+
 - Add the dedicated organization early-access column,
   `/settings/organization#early-access` switch, live-owner-only dedicated
   endpoint, read-only member DTO field, API/worker gate and disabled-state

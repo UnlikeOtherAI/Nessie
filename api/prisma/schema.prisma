@@ -1121,6 +1121,9 @@ model Organization {
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
   stripImageMetadata     Boolean                 @default(true) @map("strip_image_metadata")
+  // Narrow, product-specific early-access gate for conversational agent setup.
+  // It is organization configuration, not UOA-owned identity or hierarchy.
+  conversationalSetupEnabled Boolean             @default(false) @map("conversational_setup_enabled")
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt @map("updated_at")
   logoAttachment         Attachment?             @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
