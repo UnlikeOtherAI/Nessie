@@ -33,8 +33,12 @@ export const openConnectorAuthorizationUrl = (url: string, openUrl: OpenUrl): bo
     console.warn('[mobile] blocked invalid connector authorization URL')
     return false
   }
-  void openUrl(url).catch(() => {
+  try {
+    void openUrl(url).catch(() => {
+      console.warn('[mobile] could not open connector authorization URL')
+    })
+  } catch {
     console.warn('[mobile] could not open connector authorization URL')
-  })
+  }
   return true
 }
