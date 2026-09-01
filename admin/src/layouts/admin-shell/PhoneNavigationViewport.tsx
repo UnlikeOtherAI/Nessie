@@ -25,7 +25,12 @@ import {
   dropPhoneNavigationEntriesAboveCurrent,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
-import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import {
+  dimAt,
+  NAV_MOTION,
+  runStackTransition,
+  type StackTransitionRun,
+} from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
 import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
@@ -319,6 +324,9 @@ export const PhoneNavigationViewport = ({
     const inertLayer = isBottom || Boolean(transition && isTop)
     const classes = ['phone-navigation-screen']
     let style: React.CSSProperties | undefined
+    // The finger drives the revealed layer's scrim inline, like its
+    // transform; a scripted transition animates it from the same poses.
+    let dimStyle: React.CSSProperties | undefined
 
     if (isTop) {
       if (transition) {
@@ -349,8 +357,9 @@ export const PhoneNavigationViewport = ({
         )
       } else {
         classes.push('phone-navigation-screen--underlay')
-        if (gestureUnderlayTravel !== null) {
+        if (gestureUnderlayTravel !== null && gesture.progress !== null) {
           style = { transform: `translate3d(${gestureUnderlayTravel}, 0, 0)` }
+          dimStyle = { opacity: dimAt(gesture.progress) }
         }
       }
     }
@@ -367,6 +376,12 @@ export const PhoneNavigationViewport = ({
         style={style}
       >
         <NavigationScreen payload={entry.payload} />
+        <div
+          aria-hidden
+          className="phone-navigation-dim"
+          data-phone-navigation-dim
+          style={dimStyle}
+        />
       </div>
     )
   }

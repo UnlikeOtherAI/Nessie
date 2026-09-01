@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  DIM_SELECTOR,
+  dimAt,
   NAV_MOTION,
   runStackTransition,
   stackDurationMs,
@@ -54,6 +56,43 @@ test('the route push and the swipe settle read the same duration and curve', () 
   assert.ok(y2 !== undefined && y2 >= 0 && y2 <= 1)
 })
 
+test('the revealed layer is dimmed under a resting top layer and clear once it is away', () => {
+  assert.equal(stackPoses('forward', 1).dim.from, '0.000')
+  assert.equal(stackPoses('forward', 1).dim.to, '1.000')
+  assert.equal(stackPoses('back', 0).dim.from, '1.000')
+  assert.equal(stackPoses('back', 0).dim.to, '0.000')
+  assert.equal(dimAt(0.25), '0.750')
+  assert.equal(DIM_SELECTOR, ':scope > [data-phone-navigation-dim]')
+})
+
+test('the dim child of the bottom layer animates opacity with the slide and cancels with it', () => {
+  const calls: Array<{ property: string; from: string; to: string }> = []
+  let cancelled = 0
+  const fakeAnimate = (keyframes: Array<Record<string, string>>) => {
+    const [first, last] = keyframes
+    const property = Object.keys(first ?? {})[0] ?? ''
+    calls.push({ property, from: first?.[property] ?? '', to: last?.[property] ?? '' })
+    return { onfinish: null, cancel: () => { cancelled += 1 } }
+  }
+  const dim = { animate: fakeAnimate }
+  const bottom = {
+    animate: fakeAnimate,
+    querySelector: (selector: string) => (selector === DIM_SELECTOR ? dim : null),
+  }
+  const top = { animate: fakeAnimate }
+  const run = runStackTransition({
+    top: top as unknown as Element,
+    bottom: bottom as unknown as Element,
+    direction: 'back',
+    progress: 0.4,
+    reducedMotion: false,
+  })
+  assert.deepEqual(calls.map((call) => call.property), ['transform', 'transform', 'opacity'])
+  assert.deepEqual(calls[2], { property: 'opacity', from: '0.600', to: '0.000' })
+  run.cancel()
+  assert.equal(cancelled, 3)
+})
+
 test('without a Web Animations API the transition commits immediately', async () => {
   const run = runStackTransition({
     top: null,
@@ -74,7 +113,7 @@ test('with an animation timeline the run finishes when the top layer finishes an
   }
   const top = make()
   const bottom = make()
-  const layer = (fake: Fake) => ({ animate: () => fake }) as unknown as Element
+  const layer = (fake: Fake) => ({ animate: () => fake, querySelector: () => null }) as unknown as Element
   const run = runStackTransition({
     top: layer(top),
     bottom: layer(bottom),

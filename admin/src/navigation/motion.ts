@@ -31,6 +31,9 @@ export type StackDirection = 'forward' | 'back'
 export type StackPoses = {
   top: { from: string; to: string }
   bottom: { from: string; to: string }
+  // Opacity of the scrim over the lower layer: fully present while the top
+  // layer rests over it, gone once the top layer is fully away.
+  dim: { from: string; to: string }
 }
 
 const percent = (value: number): string => `${(value * 100).toFixed(2)}%`
@@ -42,12 +45,22 @@ const percent = (value: number): string => `${(value * 100).toFixed(2)}%`
 const topAt = (progress: number): string => `translate3d(${percent(progress)}, 0, 0)`
 const bottomAt = (progress: number): string =>
   `translate3d(${percent(-(1 - progress) * NAV_MOTION.parallax)}, 0, 0)`
+// The revealed layer sits under a scrim that lifts as the top layer leaves,
+// so the slide reads as a card coming off a dimmed page rather than two
+// pages of equal weight crossing. The scrim's colour is the theme's
+// --scrim; this is only how much of it shows.
+export const dimAt = (progress: number): string => (1 - progress).toFixed(3)
+
+// The scrim is the lower layer's own child, so the poses and the gesture
+// address it through the layer rather than a second query in each caller.
+export const DIM_SELECTOR = ':scope > [data-phone-navigation-dim]'
 
 export const stackPoses = (direction: StackDirection, progress: number): StackPoses => {
   const target = direction === 'forward' ? 0 : 1
   return {
     top: { from: topAt(progress), to: topAt(target) },
     bottom: { from: bottomAt(progress), to: bottomAt(target) },
+    dim: { from: dimAt(progress), to: dimAt(target) },
   }
 }
 
@@ -93,13 +106,14 @@ type Animatable = Element & {
 
 const animateLayer = (
   element: Element | null,
+  property: 'transform' | 'opacity',
   from: string,
   to: string,
   durationMs: number,
 ): Animation | null => {
   const target = element as Animatable | null
   if (!target || typeof target.animate !== 'function') return null
-  return target.animate([{ transform: from }, { transform: to }], {
+  return target.animate([{ [property]: from }, { [property]: to }], {
     duration: durationMs,
     easing: NAV_MOTION.easing,
     // Hold the end pose until the caller has committed the matching static
@@ -119,8 +133,15 @@ export const runStackTransition = ({
   const start = progress ?? (direction === 'forward' ? 1 : 0)
   const poses = stackPoses(direction, start)
   const durationMs = stackDurationMs(direction, start, reducedMotion)
-  const topRun = animateLayer(top, poses.top.from, poses.top.to, durationMs)
-  const bottomRun = animateLayer(bottom, poses.bottom.from, poses.bottom.to, durationMs)
+  const topRun = animateLayer(top, 'transform', poses.top.from, poses.top.to, durationMs)
+  const bottomRun = animateLayer(bottom, 'transform', poses.bottom.from, poses.bottom.to, durationMs)
+  const dimRun = animateLayer(
+    bottom?.querySelector(DIM_SELECTOR) ?? null,
+    'opacity',
+    poses.dim.from,
+    poses.dim.to,
+    durationMs,
+  )
   const owner = topRun ?? bottomRun
 
   const finished = new Promise<void>((resolve) => {
@@ -139,6 +160,7 @@ export const runStackTransition = ({
     cancel: () => {
       topRun?.cancel()
       bottomRun?.cancel()
+      dimRun?.cancel()
     },
   }
 }

@@ -277,6 +277,11 @@ test('navigation motion is scripted from static poses, never a CSS keyframe', ()
   // The poses a layer rests in; the travel between them is runStackTransition.
   assert.match(styles, /\.phone-navigation-screen--forward-ready \{[\s\S]*?transform: translate3d\(100%, 0, 0\)/)
   assert.match(styles, /\.phone-navigation-screen--underlay \{[\s\S]*?calc\(-1 \* var\(--nav-parallax\)\)/)
+  // The revealed layer's scrim: present at rest under a top layer, absent
+  // otherwise; the travel between is runStackTransition's opacity lane.
+  assert.match(styles, /\.phone-navigation-dim \{[\s\S]*?pointer-events: none;[\s\S]*?opacity: 0;/)
+  assert.match(styles, /\.phone-navigation-screen--underlay > \.phone-navigation-dim \{\s*opacity: 1;/)
+  assert.match(styles, /\.phone-navigation-screen--forward-out > \.phone-navigation-dim \{\s*opacity: 1;/)
   assert.equal((styles.match(/@keyframes phone-navigation-/g) ?? []).length, 0)
   assert.doesNotMatch(styles, /\.phone-navigation-screen[^{]*\{[^}]*animation/)
 

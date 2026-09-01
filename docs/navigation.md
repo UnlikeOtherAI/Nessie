@@ -114,9 +114,23 @@ authenticated shell; the name follows in a later rename). It owns:
   the landscape rotation redirect all use it.
 - **`useStackSettled()`** tells a screen when its slide has landed.
 
+- **`RedirectRoute`** (`navigation/RedirectRoute.tsx`) is the only
+  route-level redirect: it replaces and forwards `location.state`, so a
+  notification deep link or a return address that lands on a retired path
+  (`/work`, `/chats`, `/settings/tools`, …) arrives intact. `router.tsx`
+  never renders a bare `<Navigate>`
+  (`admin/test/navigation-redirect-route.test.ts`).
+- **The revealed layer is dimmed.** Every screen carries one
+  `[data-phone-navigation-dim]` child, a `--scrim`-coloured overlay that is
+  fully present while another screen rests over it and gone once that screen
+  is away. `stackPoses().dim` gives its opacity, `runStackTransition` animates
+  it on the bottom layer beside the transform, and the edge swipe drives it
+  inline with the finger — the same three callers, the same numbers, so a
+  push, a pop and a released swipe dim identically.
+
 Planned in this step: `BackButton` as the single glyph in every header on
-every layout; `state` forwarded through the `<Navigate>` redirects; the
-gesture finish (velocity settle is built; dimming and haptics follow).
+every layout; a haptic on the swipe commit (with the mobile shell's haptics
+bridge).
 
 Route classification still lives in
 `admin/src/layouts/admin-shell/phone-navigation.ts` until the registry
