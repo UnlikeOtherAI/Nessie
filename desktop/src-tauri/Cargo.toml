@@ -29,3 +29,17 @@ tauri-plugin-opener = "2.5.4"
 # instance's onOpenUrl listeners, which is how the `nessie://` sign-in callback
 # reaches an already open app on Windows and Linux.
 tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }
+
+# Only the Win32 surfaces the executor companion needs: Authenticode
+# verification with the signer certificate behind it (the Catalog and Sip
+# features are what expose the WTHelper chain readers), and the process handle
+# that answers whether a prior daemon is still tearing down.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  "Win32_Security_Cryptography_Catalog",
+  "Win32_Security_Cryptography_Sip",
+  "Win32_Security_WinTrust",
+  "Win32_System_Threading",
+] }

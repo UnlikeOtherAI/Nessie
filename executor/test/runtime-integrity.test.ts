@@ -29,6 +29,7 @@ const rootOwnedEntry = (overrides: Partial<ExecutorRuntimeEntryFacts> = {}): Exe
 const manifestText = (overrides: Record<string, unknown> = {}): string => JSON.stringify({
   executorBundleSha256: sha256(BUNDLE_BYTES),
   format: 1,
+  nodeExecutable: 'node',
   nodeSha256: sha256(NODE_BYTES),
   nodeVersion: '22.22.2',
   ...overrides,
@@ -157,6 +158,75 @@ test('an altered binary, an altered bundle, and an unsupported manifest are refu
   assert.equal(
     refusal(packagedFacts({ manifestText: undefined })),
     'the packaged runtime manifest is unreadable',
+  )
+})
+
+test('the Node file name comes from the manifest, never from the verifying host', () => {
+  // A Windows package inspected on any host must verify as itself, so the
+  // POSIX-named binary is absent here and `node.exe` carries the bytes.
+  const posix = packagedFacts()
+  const windowsFiles = { ...posix.files, 'node.exe': rootOwnedEntry({ mode: 0o100755 }) }
+  delete windowsFiles.node
+  const windows = {
+    ...posix,
+    digests: { 'nessie-executor.cjs': sha256(BUNDLE_BYTES), 'node.exe': sha256(NODE_BYTES) },
+    files: windowsFiles,
+    manifestText: manifestText({ nodeExecutable: 'node.exe' }),
+    platform: 'win32' as NodeJS.Platform,
+  }
+  assert.deepEqual(verifyExecutorRuntime(windows), { ok: true })
+
+  // The same package read as if it were POSIX-shaped: the manifest, not the
+  // host, decides, so a `node.exe` package whose binary is missing is refused
+  // by name rather than silently verifying some other file.
+  assert.equal(
+    refusal({ ...windows, files: posix.files }),
+    'node.exe is missing from the packaged runtime',
+  )
+})
+
+test('a manifest that names no supported Node executable is refused', () => {
+  for (const nodeExecutable of [undefined, '', 'node.bin', '../node', 'NODE', 'node.exe ']) {
+    assert.equal(
+      refusal(packagedFacts({ manifestText: manifestText({ nodeExecutable }) })),
+      'the packaged runtime manifest names no supported Node executable',
+      `nodeExecutable ${JSON.stringify(nodeExecutable)} must be refused`,
+    )
+  }
+})
+
+test('a declared native helper is verified, and a half-declared one is refused', () => {
+  const HELPER_BYTES = 'native-helper'
+  const facts = packagedFacts()
+  const withHelper = {
+    ...facts,
+    digests: { ...facts.digests, 'nessie-executor-native': sha256(HELPER_BYTES) },
+    files: { ...facts.files, 'nessie-executor-native': rootOwnedEntry({ mode: 0o100755 }) },
+    manifestText: manifestText({
+      nativeHelper: 'nessie-executor-native',
+      nativeHelperSha256: sha256(HELPER_BYTES),
+    }),
+  }
+  assert.deepEqual(verifyExecutorRuntime(withHelper), { ok: true })
+
+  assert.equal(
+    refusal({ ...withHelper, digests: { ...withHelper.digests, 'nessie-executor-native': sha256('swapped') } }),
+    'the packaged native helper does not match the runtime manifest',
+  )
+  assert.equal(
+    refusal(packagedFacts({ manifestText: manifestText({ nativeHelper: 'nessie-executor-native' }) })),
+    'the packaged runtime manifest describes its native helper incompletely',
+  )
+  assert.equal(
+    refusal(packagedFacts({
+      manifestText: manifestText({ nativeHelper: '../sh', nativeHelperSha256: sha256(HELPER_BYTES) }),
+    })),
+    'the packaged runtime manifest describes its native helper incompletely',
+  )
+  const missingHelper = { ...withHelper, files: facts.files }
+  assert.equal(
+    refusal(missingHelper),
+    'nessie-executor-native is missing from the packaged runtime',
   )
 })
 
