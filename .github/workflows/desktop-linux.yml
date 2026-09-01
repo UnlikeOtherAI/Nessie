@@ -1,0 +1,163 @@
+name: Desktop (Linux)
+
+# Builds the Linux desktop artifacts and the standalone executor package, then
+# proves they install: a build that is never installed is not a delivery.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+
+concurrency:
+  group: desktop-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and install smoke
+    # The OLDEST supported Ubuntu is the build host, deliberately. Both packages
+    # link against the host's glibc, libstdc++ and WebKitGTK: a package built on
+    # a newer release refuses to install on an older one (unsatisfiable
+    # dependencies), while one built on the oldest supported release installs on
+    # every newer one. 24.04 LTS is also the oldest release carrying
+    # libwebkit2gtk-4.1, which the Tauri shell requires.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tauri build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # The packaged executor runtime is a copy of the build host's Node, so
+          # the host must run the version the bundle targets.
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: desktop-linux-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-linux-cargo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve release version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "NESSIE_EXECUTOR_VERSION=${GITHUB_REF_NAME#desktop-v}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Shell tests
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Build desktop bundles
+        run: pnpm --filter @nessie/desktop tauri:build -- --bundles deb,appimage
+
+      - name: Build the standalone executor package
+        run: node executor/packaging/linux/build-deb.mjs
+
+      - name: Collect artifacts and checksums
+        run: |
+          mkdir -p artifacts
+          cp desktop/src-tauri/target/release/bundle/deb/*.deb artifacts/
+          cp desktop/src-tauri/target/release/bundle/appimage/*.AppImage artifacts/
+          cp dist/nessie-executor_*.deb artifacts/
+          cd artifacts
+          sha256sum ./*.deb ./*.AppImage > SHA256SUMS
+          cat SHA256SUMS
+
+      # Repository signing of the apt metadata is out of scope here: the release
+      # key's custody is not yet written down. When it is, the step signs the
+      # `Release` file with the private key held in the `NESSIE_APT_SIGNING_KEY`
+      # secret (and its passphrase in `NESSIE_APT_SIGNING_KEY_PASSPHRASE`) before
+      # the artifacts are published.
+      # - name: Sign apt repository metadata
+      #   run: scripts/sign-apt-release.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+
+      - name: Install both packages
+        run: |
+          sudo apt-get install --yes ./artifacts/*.deb
+          dpkg-query --list | grep --extended-regexp 'nessie'
+
+      - name: The nessie:// scheme reaches the desktop entry
+        run: |
+          set -euo pipefail
+          entry="$(grep --files-with-matches --recursive 'x-scheme-handler/nessie' /usr/share/applications)"
+          echo "desktop entry declaring the scheme: ${entry}"
+          # `xdg-mime query default` reads the XDG default lists, which a fresh
+          # headless runner has none of; the association written by the package's
+          # update-desktop-database trigger is what proves the registration, and
+          # that is what a desktop session turns into the default.
+          xdg-mime query default x-scheme-handler/nessie || true
+          grep 'x-scheme-handler/nessie' /usr/share/applications/mimeinfo.cache
+
+      - name: Installed files are root-owned
+        run: |
+          set -euo pipefail
+          for path in \
+            /usr/lib/nessie-executor/node \
+            /usr/lib/nessie-executor/nessie-executor.cjs \
+            /usr/lib/nessie-executor/manifest.json \
+            /usr/lib/nessie-executor/NODE_LICENSE \
+            /usr/bin/nessie-executor \
+            /usr/lib/systemd/user/nessie-executor@.service; do
+            owner="$(stat -c '%U' "${path}")"
+            echo "${path} ${owner} $(stat -c '%a' "${path}")"
+            [ "${owner}" = "root" ]
+          done
+
+      - name: The executor command answers
+        run: nessie-executor status
+
+      - name: The app opens a window
+        run: |
+          set -euo pipefail
+          sudo apt-get install --yes xvfb xdotool
+          entry="$(grep --files-with-matches --recursive 'x-scheme-handler/nessie' /usr/share/applications)"
+          command="$(grep --max-count=1 '^Exec=' "${entry}" | cut --delimiter='=' --fields=2- | cut --delimiter=' ' --fields=1)"
+          echo "launching ${command}"
+          export DISPLAY=:99
+          xvfb-run --server-num=99 --server-args='-screen 0 1280x800x24' "${command}" &
+          wrapper=$!
+          sleep 10
+          # Alive after ten seconds, and owning a window: a shell that starts and
+          # dies immediately would otherwise pass as a build success.
+          kill -0 "${wrapper}"
+          pgrep --full "${command}" > /dev/null
+          xdotool search --name Nessie
+          kill "${wrapper}"
