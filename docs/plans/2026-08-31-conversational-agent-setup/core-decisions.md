@@ -6,22 +6,19 @@ See the [overview](overview.md) and [delivery and verification](delivery-and-ver
 
 ### Release gate: one product setting, not an imaginary flag service
 
-There is no organization feature-flag framework today. Add the narrow,
-product-specific `Organization.conversationalSetupEnabled Boolean @default(false)`
-column and an owner-only **Conversational agent setup (Early access)** switch at
-`/settings/organization#early-access`. A dedicated
-`PUT /api/organizations/current/features/conversational-setup` endpoint accepts
-only that Boolean and re-reads a live owner membership; it does not reuse the
-existing owner-or-admin organization patch route. Existing organization/me
-summary DTOs expose the Boolean read-only to every member so a disabled doorway
-can explain the real state without widening mutation authority. This is Nessie
-product configuration, not UOA-owned identity or hierarchy, and the endpoint
-cannot read or write any UOA-owned field. The API checks the live value before
-exposing request tools, creating/finalizing setup requests, or enabling the
-native setup action; the worker also checks it while building the toolset. A
-disabled card renders the stable owner doorway rather than disappearing. Do not
-add a generic flag table or hide the only control in an operator CLI for this
-launch.
+There is no organization feature-flag framework today. Add the narrow, product-specific
+`Organization.conversationalSetupEnabled Boolean @default(false)` column and an owner-only
+**Conversational agent setup (Early access)** switch at `/settings/organization#early-access`,
+backed by a dedicated `PUT /api/organizations/current/features/conversational-setup` endpoint
+that accepts only that Boolean and re-reads a live owner membership rather than reusing the
+existing owner-or-admin organization patch route. Existing organization/me summary DTOs expose
+the Boolean read-only to every member so a disabled doorway can explain the real state without
+widening mutation authority. This is Nessie product configuration, not UOA-owned identity or
+hierarchy, and the endpoint cannot read or write any UOA-owned field. The API checks the live
+value before exposing request tools, creating/finalizing setup requests, or enabling the native
+setup action; the worker also checks it while building the toolset. A disabled card renders the
+stable owner doorway rather than disappearing, with no generic flag table or operator-CLI-only
+control for this launch.
 
 ### 1. Ordinary agents receive request tools, not connector-admin tools
 
@@ -43,19 +40,17 @@ the durable grant remains keyed to the two real registry tools. This makes the
 author's intent explicit and prevents every workspace agent from being able to
 spam setup cards by default.
 
-This path replaces the PA’s mutation-oriented connector journey too. Before
-the organization setting can be enabled anywhere, remove `connector_install`,
-`connector_authorize`, `connector_set_secret`, and `connector_uninstall` from
-the PA toolset: today they can mutate before a human confirmation, return an
-authorization URL through model output, accept a secret in chat, create an
-instance without `requiresExplicitToolGrant`, or remove one without the Apps
-management surface. Keeping them callable would preserve a complete bypass
-beside the safer flow. Existing connections keep running; install, reconnect,
-secret and removal actions move through authenticated Apps/card actions. Until
-that removal lands, startup refuses to expose or enable the new setting for any
-agent. A registry assertion makes the legacy mutation set and the safe request
-set globally mutually exclusive; they never coexist live for ordinary agents
-or the PA.
+This path replaces the PA’s mutation-oriented connector journey too. Before the organization
+setting can be enabled anywhere, remove `connector_install`, `connector_authorize`,
+`connector_set_secret`, and `connector_uninstall` from the PA toolset: today they can mutate
+before a human confirmation, return an authorization URL through model output, accept a secret
+in chat, create an instance without `requiresExplicitToolGrant`, or remove one without the Apps
+management surface — keeping them callable would preserve a complete bypass beside the safer
+flow. Existing connections keep running; install, reconnect, secret and removal actions move
+through authenticated Apps/card actions. Until that removal lands, startup refuses to expose or
+enable the new setting for any agent. A registry assertion makes the legacy mutation set and the
+safe request set globally mutually exclusive; they never coexist live for ordinary agents or the
+PA.
 
 The handler requires all of the following structural facts:
 
@@ -122,12 +117,10 @@ once a connection is attached; the Gmail path cannot masquerade a
 `CommsConnection` id as an MCP instance id. Viewer DTOs expose neither relation
 id—the request id is the browser’s opaque handle.
 
-An advisory lock on `(requestedByUserId, agentId, threadId)` enforces one
-non-terminal request for that tuple and checks the latest row’s
-`offerCooldownUntil` before inserting. A newer legitimate proposal supersedes
-the old row after the bounded cooldown; a repeated model call inside it returns
-the existing card without another message. The cooldown therefore has durable,
-race-safe state rather than existing only in a worker process.
+An advisory lock on `(requestedByUserId, agentId, threadId)` enforces one non-terminal request
+for that tuple and checks the latest row’s `offerCooldownUntil` before inserting. A newer
+legitimate proposal supersedes the old row after the bounded cooldown; a repeated model call
+inside it returns the existing card without another message.
 
 The assistant message stores only:
 
@@ -141,23 +134,20 @@ The assistant message stores only:
 }
 ```
 
-Define this pointer as a new first-party `AppSetupCardSchema`. It is deliberately
-separate from the existing `IntegrationUiCardSchema`: that generic schema is
-also populated by external agents, accepts externally supplied links, and must
-remain display-only. It must not acquire install, authorization, secret, grant,
-retry, or continuation mutations. `ChannelMessageRow` dispatches the new typed
-card to `AppSetupCard`, so the one message renderer continues to cover channel
-feeds, replies, inbox and drawer views without creating a second conversation
-surface.
+Define this pointer as a new first-party `AppSetupCardSchema`, deliberately separate from the
+existing `IntegrationUiCardSchema`: that generic schema is also populated by external agents,
+accepts externally supplied links, and must remain display-only. It must not acquire install,
+authorization, secret, grant, retry, or continuation mutations. `ChannelMessageRow` dispatches
+the new typed card to `AppSetupCard`, so the one message renderer continues to cover channel
+feeds, replies, inbox and drawer views without creating a second conversation surface.
 
-The card fetches a viewer-scoped presenter for the live request. Other channel
-readers never receive the requested user's external identity, connection
-details, authorization state, or actionable controls. The target user receives
-the controls; an entitled non-target viewer receives a neutral read-only state.
-An actor-scoped `app.setup.updated` event invalidates/refetches that presenter;
-focus/visibility and ordinary REST rehydration are the fallback if realtime is
-missed. Do not use `message.updated` for per-user state and do not stamp live
-connection state into shared message metadata.
+The card fetches a viewer-scoped presenter for the live request. Other channel readers never
+receive the requested user's external identity, connection details, authorization state, or
+actionable controls; the target user receives the controls, while an entitled non-target viewer
+receives a neutral read-only state. An actor-scoped `app.setup.updated` event
+invalidates/refetches that presenter, with focus/visibility and ordinary REST rehydration as the
+fallback if realtime is missed. Do not use `message.updated` for per-user state and do not stamp
+live connection state into shared message metadata.
 
 Creation of request + card message is one transaction. The message inherits
 the run's consumed-source basis through the existing tool-message basis helper,
@@ -187,18 +177,16 @@ API whose service reuses the existing app and agent policy functions:
 - `POST /api/agent-app-connection-requests/:id/cancel` and `/retry` — bounded
   recovery actions; retry never reuses an expired OAuth URL.
 
-All mutations use compare-and-set transitions or a request-scoped advisory
-lock. Two clicks, two tabs, status polling, and a callback race can create at
-most one connection selection, one grant fan-out, and one continuation run.
-The response never persists or echoes the authorization URL outside the
-immediate authenticated `begin` response that launches it.
+All mutations use compare-and-set transitions or a request-scoped advisory lock. Two clicks,
+two tabs, status polling, and a callback race can create at most one connection selection, one
+grant fan-out, and one continuation run. The response never persists or echoes the authorization
+URL outside the immediate authenticated `begin` response that launches it.
 
-The request row also owns the server-resolved scope, retry inputs, selected
-candidate and return anchor. A cold retry must not depend on React hook memory
-or reconstruct authority from the message. Store the exact origin route shape
-(channel/thread/reply identifiers and message id), not an arbitrary URL, so the
-client can restore the same conversation and scroll/focus the same card without
-creating an open redirect.
+The request row also owns the server-resolved scope, retry inputs, selected candidate and
+return anchor. A cold retry must not depend on React hook memory or reconstruct authority from
+the message. Store the exact origin route shape (channel/thread/reply identifiers and message
+id), not an arbitrary URL, so the client can restore the same conversation and scroll/focus the
+same card without creating an open redirect.
 
 ### 4. Reuse one connect controller
 
@@ -214,66 +202,58 @@ launcher/reducer/marker/polling behaviour into a controller parameterized by:
 existing instance id, while the chat adapter uses only the setup request id and
 lets the server resolve the typed backing relation.
 
-`AppConnectDialog` keeps its `/api/apps/:slug/connect` adapter. The chat card
-uses the request endpoints above. Both keep the same `ConnectProgress`, popup
-launcher, focus/visibility reconciliation, timeout copy and retry rules. The
-current callback-message parser may remain only as a legacy optimization for a
-same-tab Apps flow that still retains an opener; it is not part of the new
-flow's correctness contract.
+`AppConnectDialog` keeps its `/api/apps/:slug/connect` adapter, and the chat card uses the
+request endpoints above; both keep the same `ConnectProgress`, popup launcher, focus/visibility
+reconciliation, timeout copy and retry rules. The current callback-message parser may remain
+only as a legacy optimization for a same-tab Apps flow that still retains an opener; it is not
+part of the new flow's correctness contract.
 
-`onReady` is origin-bound: the controller may finalize only when the opaque
-flow id resolves to the matching server request and structured origin. The
-OAuth callback consumes state, records `returnedAt` plus a monotonic
-`returnRevision`, and publishes the ordinary actor-scoped
-`app.setup.returned` invalidation; neither event nor browser marker is the
-authority. An Apps detail page or unrelated card may observe that the account
-connected but cannot resume a chat request.
+`onReady` is origin-bound: the controller may finalize only when the opaque flow id resolves to
+the matching server request and structured origin. The OAuth callback consumes state, records
+`returnedAt` plus a monotonic `returnRevision`, and publishes the ordinary actor-scoped
+`app.setup.returned` invalidation; neither event nor browser marker is the authority. An Apps
+detail page or unrelated card may observe that the account connected but cannot resume a chat
+request.
 
-A top-level signed-in return coordinator handles another Nessie tab or route.
-On launch, focus, visibility and actor event it calls a viewer-scoped endpoint
-that lists the actor's unclaimed returned flows. It CAS-claims one flow with
-`returnClaimedBySessionId` and a short `returnClaimLeaseExpiresAt`, loads the
-server-owned structured origin, and navigates to that conversation and card.
-The lease only prevents competing UI recovery work: finalization itself must
-CAS the matching `(status, returnRevision)` in the continuation transaction, so
-an expired/reclaimed lease cannot create a second run. Closing the claiming tab
-releases the flow by lease expiry; another tab can recover it. `sessionStorage`
-is only a same-tab latency optimization and is never the cross-tab source of
-truth.
+A top-level signed-in return coordinator handles another Nessie tab or route. On launch, focus,
+visibility and actor event it calls a viewer-scoped endpoint that lists the actor's unclaimed
+returned flows. It CAS-claims one flow with `returnClaimedBySessionId` and a short
+`returnClaimLeaseExpiresAt`, loads the server-owned structured origin, and navigates to that
+conversation and card. The lease only prevents competing UI recovery work: finalization itself
+must CAS the matching `(status, returnRevision)` in the continuation transaction, so an
+expired/reclaimed lease cannot create a second run. Closing the claiming tab releases the flow
+by lease expiry; another tab can recover it. `sessionStorage` is only a same-tab latency
+optimization and is never the cross-tab source of truth.
 
-Opening either UI is read-only. Fix the current `AppConnectDialog` auto-start so
-no probe, discovery, dynamic registration or other target network request occurs
-until the person passes the documented Community/Unknown trust interstitial and
-presses the labelled connect action. A route mount, card render or model proposal
-is never consent to contact a third-party endpoint.
+Opening either UI is read-only — a route mount, card render or model proposal is never consent
+to contact a third-party endpoint. Fix the current `AppConnectDialog` auto-start so no probe,
+discovery, dynamic registration or other target network request occurs until the person passes
+the documented Community/Unknown trust interstitial and presses the labelled connect action.
 
-The marker key must include the flow key, not just the app slug. Two cards for
-the same app in different threads must not resume or clear each other's OAuth
-state.
+The marker key must include the flow key, not just the app slug: two cards for the same app in
+different threads must not resume or clear each other's OAuth state.
 
-The client marker stores only the opaque flow key, adapter recovery reference,
-non-sensitive phase/retry facts and timestamps. The chat adapter’s recovery
-reference is the request id, never either backing connection id. It does not persist the
-authorization URL in `sessionStorage` as the current Apps marker does. A URL is
-used directly from the authenticated response while the page is live; reopening
-or cold recovery asks the server to mint a fresh short-lived authorization
-decision.
+The client marker stores only the opaque flow key, adapter recovery reference, non-sensitive
+phase/retry facts and timestamps. The chat adapter’s recovery reference is the request id,
+never either backing connection id, and it does not persist the authorization URL in
+`sessionStorage` as the current Apps marker does. A URL is used directly from the authenticated
+response while the page is live; reopening or cold recovery asks the server to mint a fresh
+short-lived authorization decision.
 
-The extracted controller therefore has an explicit URL-less resume path:
-`resume` accepts the opaque request reference and phase only, while
-`reopenAuthorization` asks its adapter for a fresh begin decision. The chat
-adapter must never inherit the Apps adapter's stored-URL reopen behaviour.
+The extracted controller therefore has an explicit URL-less resume path: `resume` accepts the
+opaque request reference and phase only, while `reopenAuthorization` asks its adapter for a
+fresh begin decision. The chat adapter must never inherit the Apps adapter's stored-URL reopen
+behaviour.
 
-The web launcher remains a centred, chromed popup with its opener severed before
-third-party navigation, so the new flow never depends on `postMessage`.
-Desktop/mobile launchers plug into the same interface using the platform system
-authentication session. A blocked popup always leaves an ordinary **Open
-sign-in** link in the card.
+The web launcher remains a centred, chromed popup with its opener severed before third-party
+navigation, so the new flow never depends on `postMessage`. Desktop/mobile launchers plug into
+the same interface using the platform system authentication session. A blocked popup always
+leaves an ordinary **Open sign-in** link in the card.
 
-Native return uses a server-configured deep/universal-link target carrying only
-an opaque flow id. It never accepts a caller-supplied return URL. Web and native
-return signals both restore the structured origin route and message anchor,
-then refetch the authoritative request; neither signal is proof of success.
+Native return uses a server-configured deep/universal-link target carrying only an opaque flow
+id and never accepts a caller-supplied return URL. Web and native return signals both restore
+the structured origin route and message anchor, then refetch the authoritative request; neither
+signal is proof of success.
 
 ### 5. Installing and granting remain two durable decisions
 
@@ -300,23 +280,20 @@ experience short without collapsing the security model:
   refetched from the server, following the existing Apps agent-access
   behaviour. Finalization waits until the required set is actually enabled.
 
-Resolve the existing split grant truth rather than adding a third system.
-`Agent.toolPolicy` remains the ordinary builtin enable/disable map. The existing
-`ToolGrant` table becomes canonical for every `requiresExplicitGrant` registry
-tool: an allowed agent grant stores the current descriptor fingerprint in its
-`config`, and the worker requires a live matching row before exposing or
-dispatching that tool. Migrate protected `Agent.toolPolicy=true` entries into
-fingerprinted `ToolGrant` rows, then stop reading/writing those protected keys as
-authority. Apps, Agent Tools and chat call one locked transactional bulk-grant
-service; they do not reuse the current client-side one-request-per-capability
-fan-out. Update `docs/tool-registry-spec.md` and the migration path in the same
-slice so no surface can disagree with runtime.
+Resolve the existing split grant truth rather than adding a third system. `Agent.toolPolicy`
+remains the ordinary builtin enable/disable map. The existing `ToolGrant` table becomes
+canonical for every `requiresExplicitGrant` registry tool: an allowed agent grant stores the
+current descriptor fingerprint in its `config`, and the worker requires a live matching row
+before exposing or dispatching that tool. Migrate protected `Agent.toolPolicy=true` entries into
+fingerprinted `ToolGrant` rows, then stop reading/writing those protected keys as authority.
+Apps, Agent Tools and chat call one locked transactional bulk-grant service rather than reusing
+the current client-side one-request-per-capability fan-out. Update `docs/tool-registry-spec.md`
+and the migration path in the same slice so no surface can disagree with runtime.
 
-This removes the current Personal Assistant implicit-allow exception in
-`isMcpRegistryRowExposed`; `agentKind === 'personal_assistant'` may not satisfy
-an explicit-grant check on its own. The worker's registry lookup must receive
-the matching live `ToolGrant` data, including its descriptor fingerprint, before
-it exposes either a PA or ordinary-agent connector tool.
+This removes the current Personal Assistant implicit-allow exception in `isMcpRegistryRowExposed`;
+`agentKind === 'personal_assistant'` may not satisfy an explicit-grant check on its own. The
+worker's registry lookup must receive the matching live `ToolGrant` data, including its
+descriptor fingerprint, before it exposes either a PA or ordinary-agent connector tool.
 
 ### 6. Scope is explicit and is a hard ceiling
 
@@ -330,15 +307,15 @@ does not silently infer authority from the ambient session team/project.
 | Workspace/shared agent in the current channel | Existing or new channel-scoped instance, with a per-user credential override when the provider identity is personal | Organization owner (and any existing role allowed by the mirrored app/agent routes) | Available only to that agent when running in the named channel and explicitly granted. |
 | Wider team/org use | Team/organization instance selected explicitly | Existing admin/owner scope rules | Available only inside that install scope and explicit agent grants. |
 
-The private-agent extension is safe only when all of these are re-read at run
-time: `visibility=private`, `ownerUserId=effectiveUserId`, owner membership is
-live, and the run is in the exact owner-only home DM or the agent's own trigger
-thread. An explicit policy allow can never bypass this scope predicate.
+The private-agent extension is safe only when all of these are re-read at run time:
+`visibility=private`, `ownerUserId=effectiveUserId`, owner membership is live, and the run is in
+the exact owner-only home DM or the agent's own trigger thread. An explicit policy allow can
+never bypass this scope predicate.
 
-`McpRunScopeContext` must carry the live facts required to enforce this—agent
-visibility, owner user id, exact home channel id and the trigger-thread
-identity—rather than trying to infer them from the old PA-presence boolean. The
-user-scope matcher accepts only that structural private-owner case.
+`McpRunScopeContext` must carry the live facts required to enforce this—agent visibility, owner
+user id, exact home channel id and the trigger-thread identity—rather than trying to infer them
+from the old PA-presence boolean. The user-scope matcher accepts only that structural
+private-owner case.
 
 For a shared agent, a member who lacks shared-install or agent-policy authority
 does not get a weaker chat shortcut. The card says who can complete the setup
@@ -347,15 +324,13 @@ personal connection the shared agent cannot use.
 
 ### 7. Continue automatically, without pretending the OAuth callback is a user
 
-The OAuth callback remains unauthenticated. Before it can stamp a setup request,
-both MCP and comms OAuth state records must bind the server-owned
-`(requestId, connectAttemptRevision, requestedByUserId)` at begin time. The
-callback consumes that one-shot bound state, exchanges the code, stores the
-token, probes, atomically stamps the matching request's
-`returnedAt`/`returnRevision`, publishes the actor-scoped return invalidation,
-and renders a constant close/return page. Those bounded return writes are
-routing facts, not signed-in authority; the callback does not claim a return
-lease, grant a tool or enqueue an agent run.
+The OAuth callback remains unauthenticated. Before it can stamp a setup request, both MCP and
+comms OAuth state records must bind the server-owned `(requestId, connectAttemptRevision,
+requestedByUserId)` at begin time. The callback consumes that one-shot bound state, exchanges
+the code, stores the token, probes, atomically stamps the matching request's
+`returnedAt`/`returnRevision`, publishes the actor-scoped return invalidation, and renders a
+constant close/return page. Those bounded return writes are routing facts, not signed-in
+authority; the callback does not claim a return lease, grant a tool or enqueue an agent run.
 
 On return, the signed-in Nessie client calls `finalize` with a fresh actor
 session. The service then re-checks:
@@ -370,15 +345,14 @@ session. The service then re-checks:
 - the exact projected policy keys and their grant state; and
 - that no continuation has already claimed this request.
 
-In one transaction it creates a hidden `system` message, claims or pends the
-normal `(agent, thread, principal)` run slot, creates the run/task when the slot
-is free, stores `continuationRunId`, and enqueues through the existing durable
-queue path. If the slot is busy, the hidden message enters
-`RunThreadPendingMessage` with a typed `app_connection_continuation` discriminator
-and request id. The ordinary drain uses that discriminator to invoke the same
-fresh-principal/live-membership revalidation before it starts the run; revocation
-between finalize and drain cancels the pending continuation with a named card
-state instead of re-injecting stale actor context.
+In one transaction it creates a hidden `system` message, claims or pends the normal `(agent,
+thread, principal)` run slot, creates the run/task when the slot is free, stores
+`continuationRunId`, and enqueues through the existing durable queue path. If the slot is busy,
+the hidden message enters `RunThreadPendingMessage` with a typed `app_connection_continuation`
+discriminator and request id. The ordinary drain uses that discriminator to invoke the same
+fresh-principal/live-membership revalidation before it starts the run; revocation between
+finalize and drain cancels the pending continuation with a named card state instead of
+re-injecting stale actor context.
 
 The hidden prompt is constant server copy, for example:
 
@@ -417,8 +391,8 @@ principalId
 instanceScopeType / instanceScopeId
 ```
 
-Before an MCP result reaches the model, `buildMcpToolset` records the narrowest
-source scopes in the run sink:
+Before an MCP result reaches the model, `buildMcpToolset` records the narrowest source scopes
+in the run sink:
 
 - a user credential or user-scoped default adds `user:<id>`;
 - an agent credential adds `agent:<id>`;
@@ -426,27 +400,26 @@ source scopes in the run sink:
 - the instance install scope remains a ceiling and is added when it is narrower
   than the credential principal.
 
-Pass the run sink into the MCP toolset just as builtin reads receive it. Add the
-scope before returning the tool result, so streaming restriction becomes
-monotone before the next model token. The existing reply basis, message/run
-stamping, search fail-closed rule, SSE restriction gate, and viewer predicates
-then protect connector-derived answers without a second disclosure system.
+Pass the run sink into the MCP toolset just as builtin reads receive it. Add the scope before
+returning the tool result, so streaming restriction becomes monotone before the next model
+token. The existing reply basis, message/run stamping, search fail-closed rule, SSE restriction
+gate, and viewer predicates then protect connector-derived answers without a second disclosure
+system.
 
-Shared-agent rollout also waits for arbitrary MCP side-effect containment.
-Remote annotations are only hints; an unknown/write-capable operation using a
-personal credential fails closed to an authenticated approval/policy decision
-bound to the effective user and destination. Read provenance alone does not make
-a cross-boundary external write safe.
+Shared-agent rollout also waits for arbitrary MCP side-effect containment. Remote annotations
+are only hints; an unknown/write-capable operation using a personal credential fails closed to
+an authenticated approval/policy decision bound to the effective user and destination — read
+provenance alone does not make a cross-boundary external write safe.
 
 ### 9. Connection health owns reauthorization
 
-Initial sign-in is not enough for a recurring agent. A revoked or unrefreshable
-credential must transition to a state with a remedy, persist a sanitized reason,
-and alert exactly once per transition.
+Initial sign-in is not enough for a recurring agent. A revoked or unrefreshable credential must
+transition to a state with a remedy, persist a sanitized reason, and alert exactly once per
+transition.
 
-For user-specific overrides, health is per credential principal rather than a
-global instance error; one person's revoked Linear token must not mark every
-user of a shared instance broken. Add or extend credential-health state with:
+For user-specific overrides, health is per credential principal rather than a global instance
+error — one person's revoked Linear token must not mark every user of a shared instance broken.
+Add or extend credential-health state with:
 
 - `active | needs_reauthorization | error`;
 - `healthRevision`;
@@ -454,18 +427,17 @@ user of a shared instance broken. Add or extend credential-health state with:
 - exactly-once `UserAlert` event key
   `mcp-credential:<instanceId>:<principalType>:<principalId>:<revision>`.
 
-The stale card and `/apps/:slug` both use the existing reconnect orchestration.
-Recovery is explicit and never happens merely because the person logged into
-Nessie. A recurring trigger whose required credential is not usable does not
-keep failing silently or post repeated apologies; it records the blocked run,
-leaves one durable alert, and resumes only after the user reconnects and the
-existing trigger/run authorization gates pass again.
+The stale card and `/apps/:slug` both use the existing reconnect orchestration. Recovery is
+explicit and never happens merely because the person logged into Nessie. A recurring trigger
+whose required credential is not usable does not keep failing silently or post repeated
+apologies; it records the blocked run, leaves one durable alert, and resumes only after the
+user reconnects and the existing trigger/run authorization gates pass again.
 
 ### 10. Close OAuth/token lifecycle gaps before exposing the chat doorway
 
-The new UX increases how often OAuth is invoked and cannot inherit known race or
-lifecycle ambiguity. Treat these as launch prerequisites in the shared OAuth
-implementation, not card-specific work:
+The new UX increases how often OAuth is invoked and cannot inherit known race or lifecycle
+ambiguity. Treat these as launch prerequisites in the shared OAuth implementation, not
+card-specific work:
 
 - Bind each one-shot state to request id, attempt id/revision, actor, instance,
   immutable issuer/authorization/token endpoints, client id, resource, requested
@@ -666,20 +638,17 @@ Give Gmail one product home while reusing existing components:
 
 Today this boundary is broken: the callback can enqueue connection-wide sync,
 `worker/src/control/comms-sync.ts` never loads `CommsResource.syncEnabled`, and
-`packages/comms-google/src/sync.ts` lists the mailbox with only an `after:`
-query. Resource toggles currently do not constrain imported Gmail events. This
-slice deliberately changes the existing communications-connector contract,
-not only the new card.
+`packages/comms-google/src/sync.ts` lists the mailbox with only an `after:` query, so resource
+toggles currently do not constrain imported Gmail events. This slice deliberately changes the
+existing communications-connector contract, not only the new card.
 
-Authorization alone does not start mailbox ingestion. After OAuth and a
-successful account probe, the card stays at **Choose what to import** until the
-person selects labels/resources and a bounded initial time window. Define a
-conservative product default (for example, the most recent 30 days), show it,
-allow the person to narrow it, and persist it in the connection sync config.
-Both backfill and incremental history processing enforce the selected resource
-set; selecting a resource is not merely display metadata. An empty selection
-imports nothing. A later selection change advances/reseeds the checkpoint
-without silently backfilling the whole mailbox.
+Authorization alone does not start mailbox ingestion. After OAuth and a successful account
+probe, the card stays at **Choose what to import** until the person selects labels/resources and
+a bounded initial time window. Define a conservative product default (for example, the most
+recent 30 days), show it, allow the person to narrow it, and persist it in the connection sync
+config. Both backfill and incremental history processing enforce the selected resource set
+rather than treating it as display metadata. An empty selection imports nothing. A later
+selection change advances/reseeds the checkpoint without silently backfilling the whole mailbox.
 
 Persist the selection contract rather than reconstructing it from whichever
 resources a worker happens to load. Add `selectionRevision Int @default(0)`,
@@ -835,13 +804,12 @@ Tauri companion bridge:
    failure records a sanitized `verification_failed` cause and creates no
    continuation; retry is an explicit card action after the named remedy.
 
-The current daemon is a child of Nessie Desktop and is stopped when the app
-quits. V1 therefore says **Available while Nessie Desktop is open**, treats app
-quit/crash as an ordinary offline transition, and offers a reopen remedy. Do
-not imply always-on background execution. A later always-on mode requires a
-separately designed, signed and updateable background helper with its own
-login-item consent, lifecycle, fencing and uninstall path; it is not smuggled
-into this launch.
+The current daemon is a child of Nessie Desktop and is stopped when the app quits. V1 therefore
+says **Available while Nessie Desktop is open**, treats app quit/crash as an ordinary offline
+transition, and offers a reopen remedy — never implying always-on background execution. A later
+always-on mode requires a separately designed, signed and updateable background helper with its
+own login-item consent, lifecycle, fencing and uninstall path; it is not smuggled into this
+launch.
 
 The native OS confirmations are part of the security boundary and remain even
 inside the smooth card flow. The webview may supply only existing bounded ids,
@@ -885,14 +853,13 @@ state, and the direct-distribution release checklist covers Developer ID
 signing, notarization, installer/download and safe updates for the companion
 resource pack.
 
-Distribution truth must be visible. The Mac App Store/TestFlight-style desktop
-build excludes the runtime and renders **Local execution requires the direct
-Nessie for Mac build** with the official doorway. Do not weaken its sandbox.
-The Windows Tauri shell can be built, but `runtime.rs` explicitly refuses
-release executor controls off macOS. Mark Windows execution **Parked — not
-supported**, hide/disable the setup action there, and open a later project only
-after a signed Windows companion has equivalent runtime integrity, private
-state/ACLs, workspace isolation, daemon fencing and native confirmation tests.
+Distribution truth must be visible. The Mac App Store/TestFlight-style desktop build excludes
+the runtime and renders **Local execution requires the direct Nessie for Mac build** with the
+official doorway, without weakening its sandbox. The Windows Tauri shell can be built, but
+`runtime.rs` explicitly refuses release executor controls off macOS. Mark Windows execution
+**Parked — not supported**, hide/disable the setup action there, and open a later project only
+after a signed Windows companion has equivalent runtime integrity, private state/ACLs, workspace
+isolation, daemon fencing and native confirmation tests.
 
 ## State machine
 
