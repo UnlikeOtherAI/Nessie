@@ -7,8 +7,8 @@ ourselves (no third-party push relay).
 ## Goals
 
 - Native **iOS** and **Android** apps (React Native / Expo).
-- Native **macOS** and **Windows** desktop apps (Tauri, wrapping the existing
-  `admin/` web build).
+- Native **macOS**, **Windows**, and **Linux** desktop apps (Tauri, wrapping
+  the existing `admin/` web build).
 - **Our own push server** — sends directly to APNs and FCM from a service we
   operate; no Expo Push, no third-party relay.
 - Reuse Nessie's non-visual core (API client, query hooks, auth, schemas)
@@ -18,8 +18,11 @@ ourselves (no third-party push relay).
 
 - Porting the existing `admin/` React-DOM components to React Native — the
   mobile UI is a fresh build (see "Tradeoff" below).
-- Linux desktop, Apple Watch / widgets, voice (the `macos/` voice app stays
-  separate).
+- A Linux port of the legacy `macos/` SwiftUI voice/orchestrator app; that app
+  remains a separate macOS-only product surface.
+- Linux package formats beyond the initial Ubuntu x86_64 `.deb` and AppImage
+  release targets.
+- Apple Watch / widgets and voice (the `macos/` voice app stays separate).
 - Offline-first sync. v1 is online-first with graceful reconnect.
 
 ## Locked decisions
@@ -30,7 +33,7 @@ ourselves (no third-party push relay).
 | Desktop | **Tauri** over the `admin/` web build | Tiny binaries, native OS notifications, reuse the web UI as-is |
 | Push | **Self-operated push server** → APNs + FCM directly | Full control, no per-message third-party dependency, multi-tenant routing |
 | Hosting | Push gateway is **central, operated by us** | APNs/FCM creds + the published app belong to us, not to each self-hosted org |
-| Platforms | iOS + Android + macOS + Windows | — |
+| Platforms | iOS + Android + macOS + Windows + Linux | Linux begins with Ubuntu x86_64 |
 
 ## The tradeoff we are accepting (RN vs a web wrapper)
 
@@ -54,7 +57,7 @@ packages/
   client-core/     NEW       api client + query hooks + auth, extracted from admin/
 admin/             (exists)  web UI  ──►  also the payload for the desktop shell
 mobile/            NEW       Expo (RN) app — iOS + Android
-desktop/           NEW       Tauri shell wrapping the admin web build — mac + win
+desktop/           NEW       Tauri shell wrapping the admin web build — mac + win + Linux
 api/               (exists)  + device-token registry endpoints
 worker/            (exists)  + push dispatch off the Postgres pubsub queue
 push-gateway/      NEW       standalone central service: APNs + FCM senders
@@ -297,8 +300,54 @@ simulator in CI — verified by `tsc --noEmit` + `expo export`).
 - Tauri shell loads the `admin/` production build (same artifact as web).
 - Native OS notifications from the SSE stream (Tauri notification API).
 - Deep-link / single-instance handling; tray; auto-update (Tauri updater).
-- Build targets: macOS (universal) + Windows (MSI/NSIS). Code-signing +
-  notarization (Apple) and Authenticode (Windows).
+- Build targets: macOS (universal), Windows (MSI/NSIS), and Linux (Ubuntu
+  x86_64 `.deb` + AppImage). Code-signing + notarization (Apple),
+  Authenticode (Windows), and checksums/signatures for Linux artifacts.
+
+### Linux desktop discovery scope (2026-09-01)
+
+Linux uses the existing `desktop/` Tauri shell and therefore the same `admin/`
+artifact, API contracts, SSE notification path, and `nessie://` callback as the
+other desktop shells. It does **not** add a Linux-specific UI or port the
+macOS-only SwiftUI voice/orchestrator app.
+
+The first supported release target is **Ubuntu x86_64**. The release artifacts
+will be a signed-checksum `.deb` for the supported package-managed install path
+and an AppImage for a portable direct-download path. RPM, Flatpak, Snap, AUR,
+other distributions, ARM, and automatic updates are follow-on decisions once
+the Ubuntu release path has passed smoke testing.
+
+The development host is the existing Ubuntu 26.04 WSL 2 / WSLg environment.
+It has Node 20.20.2, pnpm 9.15.9, WebKitGTK 4.1, and working X11/Wayland display
+variables, but no Rust toolchain. Before a first build, provision Rust and the
+Tauri Linux prerequisites for the distribution: `build-essential`, `curl`,
+`wget`, `file`, `libxdo-dev`, `libssl-dev`,
+`libayatana-appindicator3-dev`, and `librsvg2-dev` (plus the installed
+`libwebkit2gtk-4.1-dev`). Keep those host dependencies outside the repository.
+
+Implementation and release work is deliberately staged:
+
+1. **Linux development baseline** — install the missing host toolchain, run
+   `tauri dev` through WSLg against `pnpm dev`, and prove the WebKitGTK window
+   can load the local admin and complete a normal API request.
+2. **Cross-platform shell audit** — remove the current macOS/Windows-only
+   single-instance guard only after checking the plugin's Linux behavior; test
+   deep-link activation, notifications, title-bar behavior, and external URL
+   opening under WebKitGTK.
+3. **Packaging and install** — make Linux bundle targets explicit in
+   `tauri.conf.json`; build a `.deb` and AppImage on Ubuntu; install each in a
+   clean Ubuntu environment; verify launch, `nessie://` callback handling, and
+   native notification delivery.
+4. **Release quality** — add a Linux CI build that retains both artifacts,
+   publishes SHA-256 checksums and signatures, and runs an install/launch smoke
+   test. A signed package is not a substitute for an install-path smoke test.
+
+Linux support is ready for a release candidate only when the two artifacts are
+created from a lint-gated build, install and launch on the supported Ubuntu
+version, load the production admin bundle, authenticate through the browser and
+deep link, and display a native notification from the existing SSE path. A WSLg
+run validates development ergonomics but does not by itself replace a clean
+Ubuntu installation test.
 
 ## API / worker changes (per instance)
 
