@@ -14,6 +14,10 @@ export {
   runCallStartTool,
   runMeetingLinkCreateTool,
 } from './pa-tools/calls.js'
+export {
+  runAppConnectRequestTool,
+  runAppSearchTool,
+} from './pa-tools/app-setup.js'
 export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
 export {
   runChannelArchiveTool,

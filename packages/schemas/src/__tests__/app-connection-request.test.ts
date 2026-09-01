@@ -48,6 +48,7 @@ test('app setup presenter never carries account, instance or authorization field
       catalogEntryId: id,
       displayName: 'Linear',
       iconUrl: '/api/attachments/linear-icon',
+      shortDescription: 'Project planning and issue tracking.',
       trustLevel: 'verified',
     }],
     detail: null,

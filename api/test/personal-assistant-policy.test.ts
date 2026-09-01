@@ -55,6 +55,16 @@ const buildPrisma = () => {
         toolId: 'mcp:deep-water:research_start',
       }],
     },
+    toolGrant: {
+      // The PA bootstrap now reconciles descriptor-bound default grants after
+      // the legacy policy merge. Model the pre-existing direct grant so this
+      // test remains about preserving its policy, not creating one.
+      findMany: async () => [{
+        config: {},
+        state: 'allowed',
+        toolId: projectedId,
+      }],
+    },
   }
   const prisma = {
     $transaction: async <T>(action: (client: typeof tx) => Promise<T>) =>
@@ -80,7 +90,9 @@ test('bootstrap without config preserves current explicit policy under both lock
 
   await ensurePersonalAssistantAgent(state.prisma, organizationId)
 
-  assert.equal(state.lockCalls, 2)
+  // Bootstrap, the policy merge, and descriptor-grant reconciliation each
+  // take the shared policy lock before inspecting or mutating access.
+  assert.equal(state.lockCalls, 3)
   assert.equal(state.updateCalls, 1)
   assert.deepEqual(state.updatedPolicy, currentPolicy)
 })
