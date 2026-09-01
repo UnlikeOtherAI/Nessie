@@ -17,6 +17,7 @@ import {
   useUpdateStatus,
 } from '../../facades/statuses/hooks'
 import type { UserStatusRuleScope, UserStatusScheduleKind } from '../../lib/api-client'
+import { usePhoneLayout } from '../../lib/mobile-shell'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { SettingsPanel } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
@@ -32,6 +33,7 @@ import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
 export const StatusesPage = () => {
   const { statusId } = useParams()
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
   const { data: statuses = [] } = useStatuses()
   const { data: channels = [] } = useChannels()
   const { data: projects = [] } = useProjects()
@@ -74,10 +76,15 @@ export const StatusesPage = () => {
   const [ruleInstructions, setRuleInstructions] = useState('')
 
   useEffect(() => {
-    if (!statusId && statuses[0]) {
+    // A phone screen starts on the list: `/settings/statuses/:id` is a real
+    // pushed screen in the navigation stack (surface registry, depth 2), so
+    // auto-selecting the first status here would slide a detail in on arrival
+    // and then re-slide it on every Back — the reader could never leave.
+    // Wider layouts keep the convenience because the list stays beside it.
+    if (!phoneLayout && !statusId && statuses[0]) {
       navigate(`/settings/statuses/${statuses[0].id}`, { replace: true })
     }
-  }, [navigate, statusId, statuses])
+  }, [navigate, phoneLayout, statusId, statuses])
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 

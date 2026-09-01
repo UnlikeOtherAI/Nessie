@@ -147,11 +147,33 @@ test('keeps routes on the same screen from replaying a navigation transition', (
   )
 })
 
-test('does not animate cross-tab, compose, or unrelated routes', () => {
+test('does not animate cross-tab or unrelated routes', () => {
   assert.equal(getPhoneNavigationDirection('/channels', '/projects'), null)
-  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), null)
   assert.equal(getPhoneNavigationDirection('/projects', '/settings'), null)
-  assert.equal(getPhoneNavigationScreen('/channels/new'), null)
+  assert.equal(getPhoneNavigationDirection('/channels/chan_a', '/agents/agent_a'), null)
+  // Compose is a Flow inside Channels: it pushes over the root like any other
+  // depth-1 screen, and swaps in place beside a conversation.
+  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), 'forward')
+  assert.equal(getPhoneNavigationScreen('/channels/new')?.depth, 1)
+})
+
+test('pushes and pops the Agents family and the settings/ops nested details', () => {
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/agent_a'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/agents/agent_a', '/agents'), 'back')
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/designer/agent_a'), 'forward')
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses', '/settings/statuses/status_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses/status_a', '/settings/statuses'),
+    'back',
+  )
+  assert.equal(getPhoneNavigationDirection('/ops', '/ops/usage'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/ops/usage', '/ops'), 'back')
+  // /threads and /unread-messages sit one step inside Channels.
+  assert.equal(getPhoneNavigationDirection('/channels', '/threads'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/threads', '/channels'), 'back')
 })
 
 test('classifies channel project overviews before the generic channel pattern', () => {
@@ -203,8 +225,19 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     getPhoneNavigationBackTarget('/settings/security'),
     { label: 'Back to Admin', pathname: '/settings' },
   )
+  // Feedback and Alerts are reachable from every section, so their declared
+  // parent is Admin — where both are listed — and the ledger's real
+  // predecessor wins over it whenever there is one.
   assert.deepEqual(
     getPhoneNavigationBackTarget('/feedback'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/alerts'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/threads'),
     { label: 'Back to Channels', pathname: '/channels' },
   )
 })

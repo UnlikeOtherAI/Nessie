@@ -159,10 +159,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(shell, /useNativeLargePhoneLandscapeApp/)
   assert.match(shell, /ResizableSidebar fixed=\{nativeLargePhoneLandscape\}/)
   // The tab-root set (channels/projects/knowledge/settings/search) lives in
-  // the shared phone-navigation module so shell, tab bar, and Back agree.
+  // the surface registry so shell, tab bar, and Back agree.
   assert.match(shell, /isPhoneTabRoot,/)
-  const phoneNav = readSource('../src/layouts/admin-shell/phone-navigation.ts')
-  assert.ok(phoneNav.includes(String.raw`/^\/search$/`))
+  const surfaces = readSource('../src/navigation/surfaces.ts')
+  assert.ok(surfaces.includes(String.raw`/^\/search$/`))
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger\s+nativeShellBridge/)
