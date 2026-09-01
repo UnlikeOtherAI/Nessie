@@ -148,6 +148,9 @@ authenticated shell; the name follows in a later rename). It owns:
   entry is it, else replace), else nothing at a root. `performBack()`,
   `PhoneNavigationButton`, the edge swipe, `nessie:back-state` and Android
   hardware Back all go through it. An owner may register `swipeable: false`.
+  A `parent: 'origin'` screen (`/alerts`, `/feedback`, `/ops/usage`) pops to
+  the reader's real predecessor and its control says only "Back"; on a cold
+  link it replaces to the declared fallback and names it.
 - **History controls are not Back.** The top bar and the iPad toolbar walk
   the ledger across sections, which Back never does; they consult the
   registry first so they never pop a route under an open owner.

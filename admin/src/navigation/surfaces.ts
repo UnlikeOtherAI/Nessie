@@ -44,7 +44,6 @@ const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/apps' })
 const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/agents' })
 const toWorkflows = (): SurfaceParent => ({ label: 'Back to Workflows', pathname: '/agents/workflows' })
 const toStatuses = (): SurfaceParent => ({ label: 'Back to Statuses', pathname: '/settings/statuses' })
-const toOps = (): SurfaceParent => ({ label: 'Back to System health', pathname: '/ops' })
 
 // A route that only forwards to another one. It renders no screen, so it
 // declares nothing but its section — enough for the tab bar to stay lit for
@@ -388,8 +387,13 @@ export const SURFACES: Surface[] = [
     type: 'detail',
   },
   {
+    // Owner-only, listed on the Admin sidebar; `/ops` is super-admin-only
+    // and does not link here. Back pops to wherever the reader came from
+    // (Admin, or `/ops` for a super-admin) and falls back to Admin on a cold
+    // link — never to a page the owner cannot open.
     depth: 2,
-    parentOf: toOps,
+    parent: 'origin',
+    parentOf: toAdmin,
     pattern: /^\/ops\/usage$/,
     root: ADMIN_ROOT,
     section: 'admin',

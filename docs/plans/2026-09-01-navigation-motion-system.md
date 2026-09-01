@@ -297,7 +297,9 @@ the section whose sidebar they sit beside); `/agents` 1, `/agents/:id` 2,
 `/agents/designer[/:id]` 2 as a Flow, `/agents/workflow-designer` 2 as a Flow,
 `/agents/{workflows,triggers,tools,executors}` 1 with their column stages as
 nested details; `/settings/*` 1, `/settings/statuses/:id` 2; `/ops` 1,
-`/ops/usage` 2; `/dashboards` stays 1 under Knowledge. A row may declare
+`/ops/usage` 2 with `parent: 'origin'` and Admin as its fallback (decided at
+build: `/ops` is super-admin-only while usage is owner-only, so Back from a
+cold link must never land on a refusal); `/dashboards` stays 1 under Knowledge. A row may declare
 `parent: 'origin'` for a Detail reachable from every section (`/alerts`,
 `/feedback` — today in no nav and no prefix list, reached from the bell, the
 account menu and the iPad toolbar's help action): Back pops to the previous

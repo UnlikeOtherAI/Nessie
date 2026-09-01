@@ -359,10 +359,13 @@ test('the settings and ops nested details push instead of swapping in place', ()
   assert.equal(getPhoneNavigationScreen('/ops/usage')?.depth, 2)
   assert.equal(getPhoneNavigationDirection('/ops', '/ops/usage'), 'forward')
   assert.equal(getPhoneNavigationDirection('/ops/usage', '/ops'), 'back')
+  // Usage is owner-only and listed on Admin; /ops is super-admin-only, so a
+  // cold link falls back to Admin, and the ledger decides the real Back.
   assert.deepEqual(getPhoneNavigationBackTarget('/ops/usage'), {
-    label: 'Back to System health',
-    pathname: '/ops',
+    label: 'Back to Admin',
+    pathname: '/settings',
   })
+  assert.deepEqual(resolvePhoneNavigationBackAction('/ops/usage', '/ops'), { mode: 'pop', to: '/ops' })
 })
 
 // /threads and /unread-messages resolved to no screen at all: they rendered

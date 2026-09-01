@@ -59,6 +59,25 @@ test('route Back pops when the previous entry is the parent, else replaces', () 
   assert.equal(replaced?.to, '/channels')
 })
 
+test('an origin screen pops to the real predecessor and says only "Back"', () => {
+  const popped = resolveBack({
+    pathname: '/alerts',
+    owners: null,
+    ledger: ledgerOf(['/channels', '/channels/c1', '/alerts']),
+  })
+  assert.deepEqual(popped, { kind: 'route', label: 'Back', mode: 'pop', to: '/channels/c1', swipeable: true })
+
+  // A cold deep link falls back to the declared parent, and names it.
+  const cold = resolveBack({ pathname: '/alerts', owners: null, ledger: ledgerOf(['/alerts']) })
+  assert.deepEqual(cold, { kind: 'route', label: 'Back to Admin', mode: 'replace', to: '/settings', swipeable: true })
+
+  // Operational usage is owner-only and listed on Admin; /ops is
+  // super-admin-only, so it is never the fallback.
+  const usage = resolveBack({ pathname: '/ops/usage', owners: null, ledger: ledgerOf(['/settings', '/ops/usage']) })
+  assert.deepEqual(usage, { kind: 'route', label: 'Back', mode: 'pop', to: '/settings', swipeable: true })
+  assert.equal(resolveBack({ pathname: '/ops/usage', owners: null, ledger: null })?.to, '/settings')
+})
+
 test('a root has no Back action', () => {
   assert.equal(resolveBack({ pathname: '/channels', owners: null, ledger: ledgerOf(['/channels']) }), null)
   assert.equal(hasBackAction({ pathname: '/projects', owners: null, ledger: null }), false)
