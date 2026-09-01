@@ -223,7 +223,7 @@ the daemon's forced gateway — is what the new backends reproduce.
 
 | Host | Backend | Why | Transport |
 | --- | --- | --- | --- |
-| Linux | **Firecracker** micro-VM per session, under its `jailer`, run as the daemon's user | KVM-based, supports x86_64 and aarch64, boots a kernel with an `initrd_path`, and implements virtio-vsock by bridging guest `AF_VSOCK` ports to host Unix sockets — so the guest stays byte-identical to macOS and the daemon adds a Unix-socket transport beside its vsock one | Unix socket ↔ `AF_VSOCK`; no TAP device is ever created |
+| Linux | **Firecracker** micro-VM per session, run directly by the daemon (no `jailer`) | KVM-based, supports x86_64 and aarch64, boots a kernel with an `initrd_path`, and implements virtio-vsock by bridging guest `AF_VSOCK` ports to host Unix sockets, so the daemon adds a Unix-socket transport beside its vsock one | Unix socket ↔ `AF_VSOCK`; no TAP device is ever created |
 | Windows | **Hyper-V** Generation 2 VM per session | Hyper-V sockets: host `AF_HYPERV` with the VSOCK template service GUID, guest `AF_VSOCK` unchanged (guest kernel needs `CONFIG_HYPERV_VSOCKETS`). Generation 2 boots UEFI, so the guest ships as a VHDX built from the same kernel + initrd; no network adapter | `AF_HYPERV` ↔ `AF_VSOCK` |
 
 Firecracker requires read/write access to `/dev/kvm`; Hyper-V is available
@@ -234,6 +234,37 @@ advertises only the COW workspace bundle (`file.list`, `file.read`,
 desktop policy editor already controls and the only one that needs no guest.
 The availability card and the descriptor's `profiles` say so, and the remedy
 is named (`kvm` group; enable Hyper-V). Nothing pretends a sandbox exists.
+
+**The guest is one binary with two share strategies, not one shape.** The
+original phrasing here — that the guest "stays byte-identical to macOS" — held
+for boot, control and egress but not for the filesystem. `/work` and `/runtime`
+are virtiofs mounts, and **neither Firecracker nor Hyper-V implements
+virtio-fs**. Both shares are therefore re-expressed as raw ext4 images over
+virtio-block on every host but Apple's, built per session without root by
+`mke2fs -d`, attached in a fixed order that each image's ext4 label proves, and
+composed inside the guest as an overlay (`/work` = read-only workspace image
+under a writable draft image) so the paths a workload sees are unchanged. The
+guest picks its strategy from a `nessie.shares=block` kernel-command-line flag
+the host sets; absent means virtiofs, so the macOS boot contract is untouched.
+Because the host cannot read the draft image, the guest streams its changed
+files back over the existing vsock control channel, and `workspace.review` and
+promotion keep their exact contracts. Windows inherits all of this: the image
+builder and the guest's block strategy are hypervisor-generic, and Hyper-V has
+only to attach the same three images and set the same flag. Contract:
+[docs/executor-protocol/sandbox-forced-egress-and-credentials.md](../executor-protocol/sandbox-forced-egress-and-credentials.md)
+→ "Linux backend — Firecracker".
+
+**The jailer is a stated non-goal of this release.** Firecracker documents its
+jailer as running as root, and neither Linux supervisor is: the standalone
+package is a systemd *user* service and the desktop supervisor runs as the
+person. Rather than keep a code path nothing can execute, the backend runs
+Firecracker itself — the posture upstream's own getting-started guide uses —
+and takes its isolation from the absence of a network interface, an owner-only
+directory for every socket and image, and Firecracker's default seccomp filter,
+which is never disabled. Restoring the jailer needs a privileged launcher
+(a setuid helper or a system-level unit that builds the jail and hands the guest
+back to the person's account), and that is a separate reviewed change with its
+own threat model; it is not attempted here.
 
 ### Release integrity per host — an OS-held trust root, never a self-check
 
@@ -283,7 +314,8 @@ Flatpak, Snap, AUR, ARM, and other distributions remain follow-on decisions.
 The package installs the same runtime layout the desktop bundles
 (`/usr/lib/nessie-executor/{node,nessie-executor.cjs,manifest.json,NODE_LICENSE}`
 produced by the same `prepare-executor-runtime.mjs`, plus the Firecracker
-binary, its jailer, and the guest kernel/initrd/runtime bundle), a
+binary and the guest payload — `init`, the `build-initrd` builder, and the
+pinned guest kernel), a
 `/usr/bin/nessie-executor` launcher, and a systemd user unit template
 `nessie-executor@.service` whose `ExecStart` is
 `/usr/bin/nessie-executor serve --state-dir %h/.local/state/nessie-executor/%i`.
@@ -417,28 +449,47 @@ KVM-capable Linux runner; a runner without KVM must fail the job, not skip it.
 spawning moved behind one `GuestVmBackend` seam
 (`executor/src/guest-vm-backend.ts`) chosen from the descriptor's own
 `sandboxBackend`, with `virtualization_framework` keeping today's argv exactly
-and `executor/src/firecracker/` implementing the jailer, the four-call API
-sequence, the two guest-initiated vsock channels, graceful stop, and chroot
-cleanup. The guest builds for `linux/amd64` as well as `linux/arm64` — nothing
-in it was arch-specific, so the `_linux_arm64.go` files became `_linux.go` and
-`AF_VSOCK` is declared once (Go's syscall tables omit it on amd64). The
-standalone `.deb` ships Firecracker and its jailer pinned by version and by the
-upstream published SHA-256, plus the amd64 guest, with a `resources/manifest.json`
-of digests. `firecracker-conformance` in `.github/workflows/desktop-linux.yml`
-runs the backend suites on `[self-hosted, linux, kvm]` and fails when
-`/dev/kvm` is absent. Contract: `docs/executor-protocol/overview.md` §8 → "Linux
-backend — Firecracker".
+and `executor/src/firecracker/` implementing the process launch, the API
+configuration sequence, the two guest-initiated vsock channels, graceful stop,
+and session cleanup. The guest builds for `linux/amd64` as well as `linux/arm64`
+— nothing in it was arch-specific, so the `_linux_arm64.go` files became
+`_linux.go` and `AF_VSOCK` is declared once (Go's syscall tables omit it on
+amd64). The standalone `.deb` ships Firecracker pinned by version and by the
+upstream published SHA-256, the amd64 guest with its initrd builder, and the
+pinned guest kernel, with a `resources/manifest.json` of digests.
+`firecracker-conformance` in `.github/workflows/desktop-linux.yml` runs the
+backend, image, draft and artifact suites on `[self-hosted, linux, kvm]` and
+fails when `/dev/kvm` is absent. Contract:
+[docs/executor-protocol/sandbox-forced-egress-and-credentials.md](../executor-protocol/sandbox-forced-egress-and-credentials.md)
+→ "Linux backend — Firecracker".
 
-**Two design statements did not survive contact.** First, the table above says
-the guest "stays byte-identical to macOS", and it does for boot, control, and
-egress — but *not* for the filesystem: the guest mounts `/work` and `/runtime`
-as **virtiofs**, and Firecracker implements no virtio-fs device. Both shares
-must be re-expressed (block devices are the obvious candidate) before a Linux
-guest can actually boot with a workspace, and that change reaches the guest,
-`sandbox-workspace.ts`, and the workspace-review read-back together. Second,
-the plan assumed the daemon could run the jailer; Firecracker documents the
-jailer as running **as root**, so the backend refuses at session start when it
-is not, and the standalone package's supervisor has to supply that privilege.
+**Both gaps that first pass left are now closed.** The shares became block
+images: `mke2fs -d` builds a read-only runtime image, a read-only workspace
+image and an empty writable draft image per session without root, they are
+attached through `PUT /drives/{id}` in the order the guest reads
+`/dev/vd{a,b,c}` with each image's ext4 label proving that order, and the guest
+composes `/work` as an overlay over the last two so its paths are unchanged.
+Drafts return over the vsock control channel (`workspace.draft_scan` /
+`workspace.draft_read`, whiteouts and opaque directories included) into the
+overlay directory `sandbox-workspace.ts` already owns, so `workspace.review` and
+promotion keep their contracts; the host re-validates every guest-supplied path
+through the promotion path's own no-follow resolver. And the jailer is gone
+rather than kept unusable: the daemon runs Firecracker itself with default
+seccomp, gated on `/dev/kvm` access rather than on uid 0 (see the non-goal
+above). Two more pieces followed: `verifyPrivateGuestVmFile` now admits a
+root-owned artifact under `/usr/lib` or `/usr/share` as the second admissible
+provenance, because that is exactly what dpkg produces and what the Linux trust
+root claims; and the macOS-only initrd shell script gained a portable Go
+sibling, `executor/guest/cmd/build-initrd`, which writes a deterministic gzip
+newc cpio archive from a prebuilt guest init and ships in the `.deb` beside it,
+along with the pinned Firecracker CI 6.1 guest kernel. The `.deb` no longer
+ships the jailer.
+
+**Still unproven: a booted guest.** Everything above is covered host-side —
+including a real `mke2fs -d` image verified with `e2fsck` and `debugfs`, a draft
+fixture both the Go encoder and the host validator assert against, and an initrd
+built twice to the same digest and decoded back out — but no VM has started,
+because that needs `/dev/kvm`. `firecracker-conformance` is where it is proved.
 
 ### 5. Standalone package and desktop enablement
 

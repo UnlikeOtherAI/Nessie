@@ -61,10 +61,30 @@ export const firecrackerApiPut = async (
   })
 }
 
+export type FirecrackerDrive = {
+  driveId: string
+  imagePath: string
+  readOnly: boolean
+}
+
+/**
+ * docs/getting-started.md configures a drive with exactly these four fields.
+ * `is_root_device` is always false here: the guest boots from its initrd, and
+ * docs/initrd.md forbids a root device alongside `initrd_path`. The guest
+ * mounts these by device node in attach order (`GUEST_BLOCK_DEVICE_ORDER`).
+ */
+export const putFirecrackerDrive = (socketPath: string, drive: FirecrackerDrive): Promise<void> =>
+  firecrackerApiPut(socketPath, `/drives/${drive.driveId}`, {
+    drive_id: drive.driveId,
+    is_read_only: drive.readOnly,
+    is_root_device: false,
+    path_on_host: drive.imagePath,
+  })
+
 /**
  * The exact configuration sequence, in the order Firecracker requires: boot
- * source, machine configuration, and vsock must all precede `InstanceStart`,
- * and `InstanceStart` "can only be successfully called once"
+ * source, machine configuration, vsock and drives must all precede
+ * `InstanceStart`, and `InstanceStart` "can only be successfully called once"
  * (docs/api_requests/actions.md).
  *
  * There is deliberately no `PUT /network-interfaces` call. The guest gets no
@@ -75,6 +95,7 @@ export const configureFirecrackerMicroVm = async (
   socketPath: string,
   input: {
     bootArgs: string
+    drives: readonly FirecrackerDrive[]
     guestCid: number
     initrdPath: string
     kernelPath: string
@@ -104,6 +125,9 @@ export const configureFirecrackerMicroVm = async (
     guest_cid: input.guestCid,
     uds_path: input.udsPath,
   })
+  // Sequential, never concurrent: attach order is what names these devices
+  // inside the guest.
+  for (const drive of input.drives) await putFirecrackerDrive(socketPath, drive)
 }
 
 export const startFirecrackerInstance = (socketPath: string): Promise<void> =>
@@ -113,7 +137,7 @@ export const startFirecrackerInstance = (socketPath: string): Promise<void> =>
  * `SendCtrlAltDel` is documented as "[Intel and AMD only]"
  * (docs/api_requests/actions.md): it emulates an i8042 keyboard, which aarch64
  * micro-VMs do not have. It is therefore best-effort — the caller still waits
- * for the process to exit and kills the jailer tree on timeout.
+ * for the process to exit and kills the micro-VM on timeout.
  */
 export const sendFirecrackerCtrlAltDel = (socketPath: string): Promise<void> =>
   firecrackerApiPut(socketPath, '/actions', { action_type: 'SendCtrlAltDel' })

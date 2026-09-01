@@ -55,6 +55,13 @@ func runtimeRequested(commandLine string) bool {
 	return strings.Contains(" "+commandLine+" ", " nessie.runtime=1 ")
 }
 
+// Which share strategy the host configured. Absent means virtiofs, so the
+// macOS boot contract is byte-identical to the one that shipped: only a host
+// that cannot offer virtio-fs — Firecracker, and Hyper-V after it — says so.
+func blockSharesRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.shares=block ")
+}
+
 func validateEnvelope(envelope controlEnvelope) error {
 	if envelope.Version != guestControlVersion || envelope.RequestID == "" || len(envelope.Payload) > guestControlPayloadMaxBytes {
 		return errInvalidFrame

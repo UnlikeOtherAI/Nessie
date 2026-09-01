@@ -1,26 +1,28 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http'
-import { mkdir } from 'node:fs/promises'
+
 import { createConnection, type Socket } from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /**
- * A stand-in for `jailer` + `firecracker` + one booted guest. It is deliberately
- * built from the real transports the backend uses — an HTTP server on a Unix
- * socket and a Unix client speaking the guest's own frame format — so the test
- * exercises framing and sequencing rather than a mock's idea of them.
+ * A stand-in for `firecracker` plus one booted guest. It is deliberately built
+ * from the real transports the backend uses — an HTTP server on a Unix socket
+ * and a Unix client speaking the guest's own frame format — so the test
+ * exercises framing and sequencing rather than a mock's idea of them. There is
+ * no jailer to stand in for: the backend runs Firecracker itself.
  */
 export type FakeFirecracker = {
-  /** The jailer's `--chroot-base-dir`, which the backend chooses itself. */
-  chrootBaseDirectory: string
-  chrootDirectory: string
   child: ChildProcess
   /** Every `PUT` the backend issued, in order. */
   calls: Array<{ body: unknown; path: string }>
-  /** The jailer argv the backend built. */
-  jailerArgv: string[]
-  jailerPath: string
+  /** The console path the backend handed the child process. */
+  consolePath: string
+  /** The Firecracker argv the backend built. */
+  firecrackerArgv: string[]
+  firecrackerPath: string
+  /** The owner-only socket root the backend chose. */
+  socketDirectory: string
   stop: () => Promise<void>
 }
 
@@ -76,65 +78,61 @@ const speakAsGuest = (socket: Socket, token: string, respond: (request: unknown)
   })
 }
 
+export type FakeFirecrackerSpawner = (path: string, argv: string[], consolePath: string) => ChildProcess
+
 export const createFakeFirecracker = (input: {
   bootstrapToken: string
   /** Skip the guest's control connection, so `start` fails on readiness. */
   bootGuest?: boolean
   respond?: (request: unknown) => unknown
-  runtimeDirectory: string
-}): { fake: FakeFirecracker; spawnProcess: (path: string, argv: string[]) => ChildProcess } => {
+}): { fake: FakeFirecracker; spawnProcess: FakeFirecrackerSpawner } => {
   const calls: FakeFirecracker['calls'] = []
   let server: HttpServer | undefined
   let child: ChildProcess | undefined
   let guest: Socket | undefined
-  let chrootBaseDirectory = ''
-  let chrootDirectory = ''
-  let jailerArgv: string[] = []
-  let jailerPath = ''
+  let consolePath = ''
+  let firecrackerArgv: string[] = []
+  let firecrackerPath = ''
+  let socketDirectory = ''
   const respond = input.respond ?? (() => ({
     inspection: { browser: true, claude: false, codex: true, tmux: true },
     version: 1,
   }))
-  const spawnProcess = (path: string, argv: string[]): ChildProcess => {
-    jailerPath = path
-    jailerArgv = argv
-    const base = argv[argv.indexOf('--chroot-base-dir') + 1]!
-    chrootBaseDirectory = base
-    const id = argv[argv.indexOf('--id') + 1]!
-    const execFile = argv[argv.indexOf('--exec-file') + 1]!
-    chrootDirectory = join(base, execFile.split('/').pop()!, id, 'root')
+  const spawnProcess: FakeFirecrackerSpawner = (path, argv, console) => {
+    firecrackerPath = path
+    firecrackerArgv = argv
+    consolePath = console
+    const apiSocketPath = argv[argv.indexOf('--api-sock') + 1]!
+    socketDirectory = dirname(apiSocketPath)
     child = idleChild()
-    void (async () => {
-      // Exactly what the jailer does before exec'ing Firecracker: build the
-      // chroot, then let the jailed binary bind its API socket inside it.
-      await mkdir(chrootDirectory, { mode: 0o700, recursive: true })
-      const created = createServer((request, response) => {
-        void (async () => {
-          const raw = await readBody(request)
-          calls.push({ body: JSON.parse(raw) as unknown, path: request.url ?? '' })
-          const action = JSON.parse(raw) as { action_type?: string }
-          if (request.url === '/actions' && action.action_type === 'InstanceStart' && input.bootGuest !== false) {
-            guest = createConnection({ path: join(chrootDirectory, 'v.sock_49152') })
-            guest.once('connect', () => speakAsGuest(guest!, input.bootstrapToken, respond))
-            guest.once('error', () => undefined)
-          }
-          response.writeHead(204, { 'content-length': '0' })
-          response.end()
-        })()
-      })
-      created.on('error', () => undefined)
-      server = created
-      created.listen(join(chrootDirectory, 'firecracker.socket'))
-    })()
+    // Firecracker binds its own API socket in the owner-only directory the
+    // backend chose; there is no chroot to build first.
+    const created = createServer((request, response) => {
+      void (async () => {
+        const raw = await readBody(request)
+        calls.push({ body: JSON.parse(raw) as unknown, path: request.url ?? '' })
+        const action = JSON.parse(raw) as { action_type?: string }
+        if (request.url === '/actions' && action.action_type === 'InstanceStart' && input.bootGuest !== false) {
+          guest = createConnection({ path: join(socketDirectory, 'v.sock_49152') })
+          guest.once('connect', () => speakAsGuest(guest!, input.bootstrapToken, respond))
+          guest.once('error', () => undefined)
+        }
+        response.writeHead(204, { 'content-length': '0' })
+        response.end()
+      })()
+    })
+    created.on('error', () => undefined)
+    server = created
+    created.listen(apiSocketPath)
     return child
   }
   const fake: FakeFirecracker = {
     get calls() { return calls },
     get child() { return child! },
-    get chrootBaseDirectory() { return chrootBaseDirectory },
-    get chrootDirectory() { return chrootDirectory },
-    get jailerArgv() { return jailerArgv },
-    get jailerPath() { return jailerPath },
+    get consolePath() { return consolePath },
+    get firecrackerArgv() { return firecrackerArgv },
+    get firecrackerPath() { return firecrackerPath },
+    get socketDirectory() { return socketDirectory },
     stop: async () => {
       guest?.destroy()
       await new Promise<void>((resolvePromise) => {

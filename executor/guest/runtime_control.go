@@ -12,13 +12,16 @@ type runtimeControlRequest struct {
 	Action            string   `json:"action,omitempty"`
 	Agent             string   `json:"agent,omitempty"`
 	Args              []string `json:"args,omitempty"`
+	Cursor            int      `json:"cursor,omitempty"`
 	CWD               string   `json:"cwd,omitempty"`
 	DeltaY            int      `json:"deltaY,omitempty"`
 	IncludeScreenshot bool     `json:"includeScreenshot,omitempty"`
 	Key               string   `json:"key,omitempty"`
 	MaxResultBytes    int      `json:"maxResultBytes,omitempty"`
 	NodeID            *int     `json:"nodeId,omitempty"`
+	Offset            int64    `json:"offset,omitempty"`
 	Operation         string   `json:"operation"`
+	Path              string   `json:"path,omitempty"`
 	Program           string   `json:"program,omitempty"`
 	Prompt            string   `json:"prompt,omitempty"`
 	RuntimeSeconds    int      `json:"runtimeSeconds,omitempty"`
@@ -38,19 +41,24 @@ type runtimeController struct {
 	browser  *browserRuntime
 	command  *commandRuntime
 	coding   *codingRuntime
+	drafts   draftSource
 	manifest *runtimeManifest
 }
 
-func newRuntimeController(manifest *runtimeManifest) *runtimeController {
-	if manifest == nil {
+// A session can have a draft to report without carrying a runtime bundle — a
+// workspace-only guest still edits files — so the controller exists whenever
+// either does, and each capability stays independently absent.
+func newRuntimeController(manifest *runtimeManifest, drafts draftSource) *runtimeController {
+	if manifest == nil && drafts == nil {
 		return nil
 	}
-	return &runtimeController{
-		browser:  newBrowserRuntime(manifest),
-		command:  newCommandRuntime(manifest),
-		coding:   newCodingRuntime(manifest),
-		manifest: manifest,
+	controller := &runtimeController{drafts: drafts, manifest: manifest}
+	if manifest != nil {
+		controller.browser = newBrowserRuntime(manifest)
+		controller.command = newCommandRuntime(manifest)
+		controller.coding = newCodingRuntime(manifest)
 	}
+	return controller
 }
 
 func (controller *runtimeController) close() {
@@ -72,7 +80,23 @@ func decodeRuntimeControlRequest(payload []byte) (runtimeControlRequest, error) 
 	if request.Version != guestRuntimeControlVersion {
 		return runtimeControlRequest{}, errInvalidFrame
 	}
+	// The draft fields belong to the draft operations and to nothing else, so
+	// every other operation is checked once here rather than restating the
+	// three names in each case below.
+	if request.Operation != "workspace.draft_scan" && request.Operation != "workspace.draft_read" {
+		if request.Cursor != 0 || request.Offset != 0 || request.Path != "" {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+	}
 	switch request.Operation {
+	case "workspace.draft_scan":
+		if request.URL != "" || request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 || request.IncludeScreenshot || request.Path != "" || request.Offset != 0 || request.Cursor < 0 {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+	case "workspace.draft_read":
+		if request.URL != "" || request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || len(request.Args) != 0 || request.IncludeScreenshot || request.Cursor != 0 || request.Path == "" || len(request.Path) > draftPathMaxBytes || request.Offset < 0 || request.MaxResultBytes <= 0 || request.MaxResultBytes > draftReadMaxBytes {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
 	case "runtime.inspect", "coding.observe", "coding.close":
 		if request.URL != "" || request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 {
 			return runtimeControlRequest{}, errInvalidFrame
@@ -154,6 +178,34 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 	request, err := decodeRuntimeControlRequest(payload)
 	if err != nil || controller == nil {
 		return runtimeControlUnavailable()
+	}
+	if request.Operation == "workspace.draft_scan" {
+		if controller.drafts == nil {
+			return runtimeControlUnavailable()
+		}
+		scan, err := controller.drafts.scan(request.Cursor)
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := json.Marshal(scan)
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return result
+	}
+	if request.Operation == "workspace.draft_read" {
+		if controller.drafts == nil {
+			return runtimeControlUnavailable()
+		}
+		chunk, err := controller.drafts.read(request.Path, request.Offset, request.MaxResultBytes)
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := json.Marshal(chunk)
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return result
 	}
 	if request.Operation == "browser.open" {
 		if controller.browser == nil || controller.browser.open(request.URL) != nil {

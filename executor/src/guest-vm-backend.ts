@@ -21,7 +21,15 @@ export type ActiveGuestVmSessionProcess = {
   observeCodingSession: GuestVmControlClient['observeCodingSession']
   observeBrowser: GuestVmControlClient['observeBrowser']
   openBrowser: GuestVmControlClient['openBrowser']
+  /**
+   * Present only where the workspace reaches the guest as a block image the
+   * host cannot read. Under virtiofs the guest writes straight into the host's
+   * overlay directory, so there is nothing to stream back and the session must
+   * not pretend otherwise — its absence is the fact that the share is a share.
+   */
+  readDraft?: GuestVmControlClient['readDraft']
   runCommand: GuestVmControlClient['runCommand']
+  scanDrafts?: GuestVmControlClient['scanDrafts']
   stop: () => Promise<void>
 }
 
@@ -34,10 +42,10 @@ export type ActiveGuestVmSessionProcess = {
 export const GUEST_VM_RESOURCES: GuestVmResourceLimits = { memoryMiB: 4_096, vcpuCount: 2 }
 
 /**
- * A session id is a jailer id and therefore part of a Unix socket path, so it
- * is deliberately shorter than a UUID: 16 hex characters is 64 bits of
- * collision resistance across the handful of sessions one computer ever runs
- * at once, and 20 fewer characters of `sun_path`.
+ * A session id is part of a Unix socket path, so it is deliberately shorter
+ * than a UUID: 16 hex characters is 64 bits of collision resistance across the
+ * handful of sessions one computer ever runs at once, and 20 fewer characters
+ * of `sun_path`.
  */
 export const GUEST_VM_SESSION_ID_MAX_CHARS = 16
 
@@ -62,7 +70,7 @@ export type GuestVmBackendStartInput = {
   runtimeSnapshotPath: string
   /** Owner-only per-session scratch directory; a backend may nest inside it. */
   sessionDirectory: string
-  /** Unique per session: jailer ids and chroot paths are derived from it. */
+  /** Unique per session; socket paths and the micro-VM id derive from it. */
   sessionId: string
   /** The hypervisor front-end: the Swift helper on macOS, Firecracker on Linux. */
   vmHelperPath: string

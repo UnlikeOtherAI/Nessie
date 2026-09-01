@@ -9,6 +9,7 @@ import {
   RunIdSchema,
 } from '@nessie/schemas'
 
+import { flushSandboxDrafts } from './guest-draft-ingest.js'
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
 import {
   WorkspacePathError,
@@ -423,6 +424,10 @@ export const promotionManifestForSandbox = async (
 ): Promise<SandboxPromotionManifest> => {
   const paths = await sandboxPaths(stateDir, runId)
   await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
+  // A guest whose shares are block devices holds its edits in a draft image
+  // until they are streamed back. Reviewing before that flush would report a
+  // change set the person has already made and cannot see.
+  await flushSandboxDrafts(RunIdSchema.parse(runId))
   const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
   const [base, current] = await Promise.all([
     readBaseManifest(paths.baseManifest),

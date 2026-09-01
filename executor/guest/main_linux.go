@@ -87,56 +87,17 @@ func readBootstrapToken() ([]byte, error) {
 	return token, nil
 }
 
-func mountProc() error {
-	if err := os.Mkdir("/proc", 0o555); err != nil && !os.IsExist(err) {
-		return err
-	}
-	if err := syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, ""); err != nil && err != syscall.EBUSY {
-		return err
-	}
-	return nil
-}
-
-func mountGuestWorkspaceIfRequested() (bool, error) {
+// The command line is the one place the host states what this boot is, so it
+// is read once, after /proc exists, and passed down rather than re-read.
+func readGuestCommandLine() (string, error) {
 	if err := mountProc(); err != nil {
-		return false, err
+		return "", err
 	}
 	commandLine, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	if !workspaceRequested(string(commandLine)) {
-		return false, nil
-	}
-	if err := os.Mkdir("/work", 0o700); err != nil && !os.IsExist(err) {
-		return true, err
-	}
-	return true, syscall.Mount("nessie-cow", "/work", "virtiofs", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "")
-}
-
-func mountGuestRuntimeIfRequested() (*runtimeManifest, error) {
-	commandLine, err := os.ReadFile("/proc/cmdline")
-	if err != nil {
-		return nil, err
-	}
-	if !runtimeRequested(string(commandLine)) {
-		return nil, nil
-	}
-	manifestDigest, ok := runtimeManifestDigest(string(commandLine))
-	if !ok {
-		return nil, errInvalidFrame
-	}
-	if err := os.Mkdir("/runtime", 0o755); err != nil && !os.IsExist(err) {
-		return nil, err
-	}
-	if err := syscall.Mount("nessie-runtime", "/runtime", "virtiofs", syscall.MS_RDONLY|syscall.MS_NOSUID|syscall.MS_NODEV, ""); err != nil {
-		return nil, err
-	}
-	manifest, err := verifyMountedGuestRuntime(manifestDigest)
-	if err != nil {
-		return nil, err
-	}
-	return &manifest, nil
+	return string(commandLine), nil
 }
 
 func main() {
@@ -149,19 +110,19 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == commandConformanceProbeArgument {
 		os.Exit(runCommandConformanceProbe(os.Args[2:]))
 	}
-	workspaceAttached, err := mountGuestWorkspaceIfRequested()
+	commandLine, err := readGuestCommandLine()
 	if err != nil {
 		os.Exit(1)
 	}
-	runtimeManifest, err := mountGuestRuntimeIfRequested()
+	shares, runtimeManifest, err := mountGuestShares(commandLine)
 	if err != nil {
 		os.Exit(1)
 	}
-	identity, err := guestIdentityForWorkspace(workspaceAttached)
+	identity, err := guestIdentityForWorkspace(shares.workspaceAttached)
 	if err != nil {
 		os.Exit(1)
 	}
-	runtimeController := newRuntimeController(runtimeManifest)
+	runtimeController := newRuntimeController(runtimeManifest, newDraftReader(shares.draftRoot))
 	defer runtimeController.close()
 	if runtimeController != nil {
 		if runtimeController.coding != nil && prepareCodingRuntime(identity) != nil {
@@ -190,7 +151,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer connection.Close()
-	if egressRequestedFromProc() {
+	if egressRequested(commandLine) {
 		egressToken, err := deriveEgressToken(string(token))
 		if err != nil {
 			clearBytes(token)
