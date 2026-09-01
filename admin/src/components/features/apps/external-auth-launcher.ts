@@ -2,11 +2,10 @@
  * Where a provider sign-in is shown.
  *
  * One seam, because the answer differs per platform and the flow must not care:
- * the web opens a centred popup, and a native shell will hand the URL to
- * `ASWebAuthenticationSession` / Custom Tabs (the desktop and React-Native
- * branches already exist for login in `lib/external-auth.ts` `openAuthorizeUrl`,
- * which navigates the current page away — that is why connect cannot use it: the
- * detail page has to stay alive underneath, holding the flow).
+ * the web opens a centred popup, and a native shell hands the URL to its system
+ * browser. This is deliberately separate from the native login auth-session:
+ * a connector returns to Nessie's HTTPS callback, not to an app deep link, so
+ * the detail page has to stay alive underneath and observe its status on return.
  *
  * The contract is deliberately small. `open` returns null when the sign-in could
  * not be shown, and every caller must have an answer for that — on the web it is
@@ -45,6 +44,11 @@ export type AuthHandle = {
 
 export type ExternalAuthLauncher = {
   open: (url: string) => AuthHandle | null
+}
+
+/** The one native bridge capability the connector flow needs. */
+export type NativeConnectorAuthorizationHost = {
+  ReactNativeWebView?: { postMessage: (data: string) => void }
 }
 
 /**
@@ -145,6 +149,36 @@ export const createWindowAuthLauncher = (host: ExternalAuthHost): ExternalAuthLa
       close: () => popup.close(),
       focus: () => popup.focus(),
       isClosed: () => popup.closed,
+    }
+  },
+})
+
+/**
+ * The React Native implementation. The admin page does not navigate: it asks
+ * its persistent native shell to hand this one connector authorization URL to
+ * the operating system browser. The native boundary validates it again before
+ * launching, because this is intentionally not the generic call-link bridge.
+ */
+export const createNativeConnectorAuthorizationLauncher = (
+  host: NativeConnectorAuthorizationHost,
+): ExternalAuthLauncher => ({
+  open: (authorizationUrl) => {
+    try {
+      const bridge = host.ReactNativeWebView
+      if (!bridge) return null
+      bridge.postMessage(JSON.stringify({
+        authorizationUrl,
+        type: 'nessie:connector-authorization',
+      }))
+      // A system browser has no window handle for us to close or focus. It is
+      // still an opened launcher: the pending flow polls when the app returns.
+      return {
+        close: () => undefined,
+        focus: () => undefined,
+        isClosed: () => false,
+      }
+    } catch {
+      return null
     }
   },
 })

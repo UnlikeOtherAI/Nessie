@@ -247,6 +247,19 @@ not accepted from the hosted admin page. Other non-Nessie top-level origins are
 blocked rather than treated as generic external links, while embedded content
 continues to load normally.
 
+**Connector sign-in.** Connecting an OAuth app from the iPhone or iPad WebView
+does not use the native SSO `ASWebAuthenticationSession`: a connector provider
+returns to Nessie's HTTPS callback, not an app deep link. The hosted admin sends
+only the pending connector's authorization URL through the typed
+`nessie:connector-authorization` bridge. Before calling `Linking.openURL`, the
+native shell accepts only an absolute HTTPS URL with a host and no embedded
+credentials; this dynamic authorization capability is separate from the fixed
+allowlist for call links. The WebView remains on the configured Nessie admin
+origin while the operating system browser shows the provider. On app foreground,
+the shell explicitly notifies the pending Connect flow to re-fetch the app
+status, so the dialog renders **Connected** once Nessie's callback has finished.
+Browser web keeps its normal centred `window.open` connector popup.
+
 **Navigation bridge.** Neither tab surface hosts separate WebViews — each drives
 the single WebView via the postMessage bridge. Tapping a tab calls
 `window.__nessieNavigate(path)` in the SPA; the SPA reports route changes back as

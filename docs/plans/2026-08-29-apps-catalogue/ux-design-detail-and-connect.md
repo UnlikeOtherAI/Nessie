@@ -255,27 +255,28 @@ opening a dialog.
    this and try again."* After 120 s, auto-transition to AUTH_EXPIRED copy
    (below) with a retry button.
 
-### (c) Mobile
+### (c) React Native iPhone and iPad shell
 
-On viewports < md (and in the Tauri mobile shells), popups don't exist as
-windows; the flow becomes:
+Browser web keeps the centred popup in (b), at every viewport size. Only the
+React Native WebView shell takes this branch:
 
-1. Connect button performs the same start call, then hands the authorization
-   URL to the **system browser**: `ASWebAuthenticationSession` on iOS, Chrome
-   Custom Tabs on Android, plain `window.open(url, '_blank')` as the web/PWA
-   fallback. In the Tauri shell this is the OS browser via the shell opener.
-2. **In-page state while away:** the detail page persists a pending-connect
-   marker (`sessionStorage`, keyed by app slug + flow id) before leaving, and
-   renders the same waiting panel — so when the user task-switches back, the
-   page says "Waiting for {Provider}…" rather than looking idle.
-3. **Return.** The callback route redirects back to `/apps/:slug?connected=1`
-   (or the app-scheme deep link in the native shell). On mount, the detail
-   page consumes the marker + query param, refetches instance status, and
-   either flips to Connected, shows the inline error for the returned error
-   code, or — if neither param nor marker resolves (user just wandered back)
-   — clears the marker and returns to Idle after one status refetch.
-4. **App resumed from background** (`visibilitychange` → visible): trigger the
-   same status refetch. This single hook covers every "came back later" path.
+1. Connect performs the same start call, preserves the pending-connect marker,
+   and sends the dynamic authorization URL through the narrow
+   `nessie:connector-authorization` bridge. The shell validates a credential-free
+   absolute HTTPS URL and opens it with the operating system browser launcher.
+   This is **not** the generic allowlisted call-link bridge.
+2. The embedded WebView remains on the Nessie admin origin and keeps the same
+   waiting panel underneath the browser. Connector authorization does **not**
+   use `ASWebAuthenticationSession`: its redirect returns to Nessie's HTTPS
+   callback, not to an app deep link.
+3. The callback completes server-side. When the application becomes active, the
+   shell sends `nessie:native-app-foreground`; the pending flow immediately
+   re-fetches `/api/apps/:slug`. A matching `connected` account flips the dialog
+   and cached detail to **Connected**. This explicit signal is required because
+   WKWebView does not reliably emit `visibilitychange` while iOS backgrounds it.
+4. A reload or process eviction still resumes from the pending marker and does
+   the same status read. The normal web focus/visibility polling remains the
+   fallback for browser popups and ordinary task switching.
 
 ### Error surfaces — normalized copy
 
