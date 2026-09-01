@@ -23,7 +23,7 @@ type PolicyRule = {
 
 type PolicyRulesResponse = {
   data: PolicyRule[]
-  meta: { cursor: string | null; hasMore: boolean }
+  meta: { hasMore: boolean; nextCursor: string | null; prevCursor: string | null; total?: number }
 }
 
 export const PolicyPage = () => {

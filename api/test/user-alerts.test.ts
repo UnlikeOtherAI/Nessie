@@ -237,7 +237,7 @@ test('listUserAlerts returns only the caller org+user alerts with the unread cou
   assert.equal(result.data.unreadCount, 2)
   assert.ok(!result.data.alerts.some((alert) => alert.id === ALERT_FOREIGN))
   assert.equal(result.meta.hasMore, false)
-  assert.equal(result.meta.cursor, null)
+  assert.equal(result.meta.nextCursor, null)
 })
 
 test('listUserAlerts unread filter returns only unread alerts', async () => {
@@ -268,13 +268,13 @@ test('listUserAlerts paginates with a keyset cursor', async () => {
   })
   assert.equal(page1.data.alerts.length, 2)
   assert.equal(page1.meta.hasMore, true)
-  assert.ok(page1.meta.cursor)
+  assert.ok(page1.meta.nextCursor)
 
   const page2 = await listUserAlerts(store.client, {
     organizationId: 'org-1',
     userId: 'user-1',
     limit: 2,
-    cursor: page1.meta.cursor ?? undefined,
+    cursor: page1.meta.nextCursor ?? undefined,
   })
   assert.equal(page2.data.alerts.length, 1)
   assert.equal(page2.data.alerts[0]?.id, ALERT_3)

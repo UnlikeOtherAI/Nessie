@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { buildAccessibleChannelWhere } from '@nessie/workspace-admin'
-import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
 import type { ThreadActivityRecord } from '../contracts.js'
 import { resolveMessageViewer } from './disclosure-viewer.js'
@@ -15,13 +15,6 @@ const activityMessageInclude = {
 } satisfies Prisma.MessageInclude
 
 type ActivityMessage = Prisma.MessageGetPayload<{ include: typeof activityMessageInclude }>
-
-const parseCursor = (cursor: string | undefined): { createdAt: Date; id: string } | null => {
-  if (!cursor) return null
-  const [timestamp, id] = cursor.split('|')
-  const createdAt = timestamp ? new Date(timestamp) : null
-  return createdAt && !Number.isNaN(createdAt.getTime()) && id ? { createdAt, id } : null
-}
 
 const compareMessages = (left: ActivityMessage, right: ActivityMessage): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id)
@@ -57,14 +50,19 @@ export const listThreadActivity = async (
   },
 ): Promise<{
   data: { items: ThreadActivityRecord[]; unreadTotal: number }
-  meta: { cursor: string | null; hasMore: boolean }
+  meta: { hasMore: boolean; nextCursor: string | null; prevCursor: string | null }
 }> => {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
   const activeMembership = await prisma.organizationMember.findFirst({
     where: { organizationId: input.organizationId, userId: input.userId, deactivatedAt: null },
     select: { id: true },
   })
-  if (!activeMembership) return { data: { items: [], unreadTotal: 0 }, meta: { cursor: null, hasMore: false } }
+  if (!activeMembership) {
+    return {
+      data: { items: [], unreadTotal: 0 },
+      meta: { hasMore: false, nextCursor: null, prevCursor: null },
+    }
+  }
 
   const follows = await prisma.messageThreadFollow.findMany({
     where: {
@@ -148,24 +146,25 @@ export const listThreadActivity = async (
 
   records.sort((left, right) => compareMessages(right.sort, left.sort))
   const activity = input.unreadOnly ? records.filter((record) => record.unread) : records
-  const cursor = parseCursor(input.cursor)
+  const cursor = decodeKeysetCursor(input.cursor)
   const filtered = cursor
     ? activity.filter((record) =>
       compareMessages(record.sort, { ...record.sort, createdAt: cursor.createdAt, id: cursor.id }) < 0,
     )
     : activity
   const page = filtered.slice(0, limit)
+  const first = page.at(0)
   const last = page.at(-1)
+  const hasMore = filtered.length > limit
   return {
     data: {
       items: page.map(({ sort: _sort, ...record }) => record),
       unreadTotal: records.filter((record) => record.unread).length,
     },
     meta: {
-      cursor: filtered.length > limit && last
-        ? `${last.sort.createdAt.toISOString()}|${last.sort.id}`
-        : null,
-      hasMore: filtered.length > limit,
+      hasMore,
+      nextCursor: hasMore && last ? encodeKeysetCursor(last.sort) : null,
+      prevCursor: cursor && first ? encodeKeysetCursor(first.sort) : null,
     },
   }
 }

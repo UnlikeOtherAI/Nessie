@@ -10,8 +10,16 @@ export type SectionLabelElement = 'div' | 'h2' | 'span'
 /**
  * Named for the type scale each one renders, so the smaller name is the
  * smaller label: `xs` is 12px, `2xs` is 11px.
+ *
+ * `sm` is 12px at `0.16em`, added 2026-09-01. It is not a fourth taste: that
+ * exact string — `text-xs font-semibold uppercase tracking-[0.16em]
+ * text-[color:var(--tx3)]` — was hand-typed in 29 files, and three more files
+ * carried the same verbatim comment explaining that this component could not
+ * express the tracking they needed. It is the admin's most-shipped label and
+ * had no home; now it does. `xs` (0.2em) stays the default because that is
+ * what this component's existing 54 call sites render.
  */
-export type SectionLabelSize = '2xs' | 'xs'
+export type SectionLabelSize = '2xs' | 'sm' | 'xs'
 
 type SectionLabelProps = {
   as?: SectionLabelElement
@@ -22,6 +30,7 @@ type SectionLabelProps = {
 
 const sizeClasses: Record<SectionLabelSize, string> = {
   '2xs': 'text-[11px] tracking-[0.18em]',
+  sm: 'text-xs tracking-[0.16em]',
   xs: 'text-xs tracking-[0.2em]',
 }
 

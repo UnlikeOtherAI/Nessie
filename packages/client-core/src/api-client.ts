@@ -28,6 +28,14 @@ export class ApiClientError extends Error {
     message: string,
     readonly code: string | undefined,
     readonly status: number,
+    /**
+     * The error envelope's `details`. For a `VALIDATION_ERROR` this is Zod's
+     * `flatten()` — `{ formErrors, fieldErrors }` — which is what lets a form
+     * put the server's complaint on the field it is about instead of showing
+     * one sentence above everything. It was being parsed off the response and
+     * dropped here, so no client could reach it.
+     */
+    readonly details?: unknown,
   ) {
     super(message)
     this.name = 'ApiClientError'
@@ -43,7 +51,12 @@ const toApiError = async (response: Response): Promise<ApiClientError> => {
   try {
     const payload = JSON.parse(text) as ApiError
     if (payload.error?.message) {
-      return new ApiClientError(payload.error.message, payload.error.code, response.status)
+      return new ApiClientError(
+        payload.error.message,
+        payload.error.code,
+        response.status,
+        payload.error.details,
+      )
     }
   } catch {
     // Fall through to raw body.

@@ -210,8 +210,11 @@ const parseMessageCursor = (
 export type ListThreadMessagesPage = {
   data: ThreadMessageRecord[]
   meta: {
-    cursor: string | null
     hasMore: boolean
+    nextCursor: string | null
+    // Chat history only walks backwards (into older messages), so there is no
+    // forward cursor — always null, kept only to satisfy the one envelope.
+    prevCursor: null
   }
 }
 
@@ -346,8 +349,11 @@ export const listThreadMessages = async (
           !grantOnlyIds.has(row.id),
         )),
     meta: {
-      cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
       hasMore,
+      nextCursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
+      // Chat history only walks backwards (into older messages), so there is no
+      // forward cursor.
+      prevCursor: null,
     },
   }
 }

@@ -1,6 +1,16 @@
 import type { ReactNode } from 'react'
 
-export type NoticeTone = 'danger' | 'success' | 'warning'
+/**
+ * `info` and `neutral` were added on 2026-09-01. They are not decoration: the
+ * three-tone union was the stated reason five surfaces hand-rolled a banner
+ * rather than use this component — `ConnectProgress`'s `needs_secret` step,
+ * `ReviewPanel`'s accent strip, `PersonalAssistantSurface`'s config banner,
+ * `DeepWaterResearchLauncher`'s warning box, and the autosave "Saved" line the
+ * content system now owes every silently-saving control. `--info-*` is already
+ * declared by every theme; `neutral` reuses the overlay/`--tx2` pair that a
+ * quiet inline note ships with everywhere else.
+ */
+export type NoticeTone = 'danger' | 'info' | 'neutral' | 'success' | 'warning'
 
 export type NoticeSize = 'md' | 'sm'
 
@@ -14,6 +24,10 @@ export type NoticePadding = 'lg' | 'md'
  * `status` waits for a pause. Both need to sit on the banner element itself —
  * a wrapper would announce the wrong region — so the role is a prop rather
  * than something a call site can layer on.
+ *
+ * The content system's rule: a failure carries `role="alert"`, a success
+ * carries `role="status"`, and a banner that is merely context carries
+ * neither.
  */
 
 type NoticeProps = {
@@ -21,7 +35,7 @@ type NoticeProps = {
   className?: string
   padding?: NoticePadding
   radius?: NoticeRadius
-  role?: 'alert'
+  role?: 'alert' | 'status'
   size?: NoticeSize
   tone: NoticeTone
 }
@@ -29,6 +43,10 @@ type NoticeProps = {
 const toneClasses: Record<NoticeTone, string> = {
   danger:
     'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+  info:
+    'border-[color:var(--info-border)] bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
+  neutral:
+    'border-[color:var(--sep)] bg-[color:var(--overlay-weak)] text-[color:var(--tx2)]',
   success:
     'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
   warning:
