@@ -75,6 +75,8 @@ test('descriptor signatures bind the complete advertised local policy', () => {
     localPolicyDigest: `sha256:${'1'.repeat(64)}`,
     operationKeys: ['file.read'],
     platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+    sandboxBackend: 'virtualization_framework',
+    supervisor: 'desktop',
     profiles: ['workspace_sandbox'],
     protocolVersion: 1,
     revision: 2,

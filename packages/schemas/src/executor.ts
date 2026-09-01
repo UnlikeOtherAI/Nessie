@@ -9,6 +9,12 @@ import {
   TaskIdSchema,
   UserIdSchema,
 } from './ids.js'
+import {
+  ExecutorPlatformFactsSchema,
+  ExecutorPlatformSchema,
+  ExecutorSandboxBackendSchema,
+  ExecutorSupervisorSchema,
+} from './executor-platform.js'
 import { CHAT_MESSAGE_MAX_CHARS } from './messaging.js'
 import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
@@ -365,18 +371,25 @@ export type ExecutorAgentOperationGrant = z.infer<
   typeof ExecutorAgentOperationGrantSchema
 >
 
+/**
+ * Protocol version 1 still carries the widened host facts. `platform`,
+ * `supervisor`, and `sandboxBackend` are required, so a pre-widening descriptor
+ * cannot validate and a widened one cannot be mistaken for an older grammar:
+ * required fields already discriminate the two, and there has only ever been
+ * one producer train (the companion ships inside the desktop app or the
+ * executor package, never independently). A second version number would give
+ * no reader a decision it cannot already make. A stored descriptor from before
+ * the change fails closed, which is the right answer for a machine whose
+ * sandbox backend is unknown; its companion proposes a new revision.
+ */
 export const ExecutorCapabilityDescriptorSchema = z
   .object({
     protocolVersion: z.literal(1),
     revision: z.number().int().positive(),
     profiles: z.array(ExecutorProfileSchema).min(1).max(2),
-    platform: z
-      .object({
-        architecture: z.literal('arm64'),
-        os: z.literal('macos'),
-        osMajorVersion: z.number().int().min(15),
-      })
-      .strict(),
+    platform: ExecutorPlatformSchema,
+    supervisor: ExecutorSupervisorSchema,
+    sandboxBackend: ExecutorSandboxBackendSchema,
     operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
@@ -781,7 +794,10 @@ export const ExecutorRecordResponseSchema = z.object({
   scope: ExecutorScopeSchema,
   label: z.string().min(1),
   profiles: z.array(ExecutorProfileSchema),
-  platformFacts: z.record(z.string(), z.unknown()),
+  // Absent until the paired daemon submits its first descriptor. Read-only:
+  // the host states these facts under its own signature and no API caller can
+  // write them.
+  platformFacts: ExecutorPlatformFactsSchema.optional(),
   machineKeyFingerprint: z.string().optional(),
   status: ExecutorStatusSchema,
   authorizationRevision: z.number().int().positive(),

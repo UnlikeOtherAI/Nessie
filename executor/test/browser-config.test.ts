@@ -10,7 +10,17 @@ import {
   configureExecutorCodexSandbox,
   configureExecutorLocalPolicy,
 } from '../src/pair.js'
+import type { ExecutorHost } from '../src/host-platform.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+
+// The configure paths now ask the host what sandbox it can start, so these
+// policy tests pin a host with one instead of depending on the machine that
+// happens to run them.
+const sandboxHost: ExecutorHost = {
+  platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+  sandboxBackend: 'virtualization_framework',
+  supervisor: 'desktop',
+}
 
 const initialState = (workspaceRoot: string) => ({
   apiBaseUrl: 'https://api.example.test',
@@ -73,7 +83,7 @@ test('Codex configuration stores only an owner-private source path and a pinned 
       guestRuntimeBundlePath: runtimeBundlePath,
       kernelPath,
       vmHelperPath: helperPath,
-    })
+    }, sandboxHost)
     assert.deepEqual(configured.codexSandbox, {
       codexAuthProfilePath: await realpath(authProfilePath),
       guestInitrdBuilderPath: await realpath(builderPath),
@@ -151,11 +161,13 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
     const state = initialState(workspaceRoot)
     await saveExecutorState(stateDir, state)
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, state, ['browser.open']),
+      configureExecutorLocalPolicy(stateDir, state, ['browser.open'], undefined, sandboxHost),
       /browser\.open, browser\.observe, and browser\.act must be enabled together/,
     )
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, state, ['browser.open', 'browser.observe', 'browser.act']),
+      configureExecutorLocalPolicy(
+        stateDir, state, ['browser.open', 'browser.observe', 'browser.act'], undefined, sandboxHost,
+      ),
       /Configure the owner-only browser VM and allowed origins/,
     )
     await assert.rejects(
@@ -174,7 +186,7 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
       guestRuntimeBundlePath: runtimeBundlePath,
       kernelPath,
       vmHelperPath: helperPath,
-    })
+    }, sandboxHost)
     assert.deepEqual(configured.browserSandbox?.allowedOrigins, [
       'https://app.example.test',
       'https://console.example.test',
@@ -192,7 +204,9 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
     assert.equal(configured.descriptor.revision, 2)
     assert.deepEqual(await loadExecutorState(stateDir), configured)
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, configured, ['browser.open', 'browser.observe', 'browser.act']),
+      configureExecutorLocalPolicy(
+        stateDir, configured, ['browser.open', 'browser.observe', 'browser.act'], undefined, sandboxHost,
+      ),
       /require sandbox\.stop/,
     )
   } finally {
