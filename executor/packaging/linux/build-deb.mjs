@@ -8,8 +8,8 @@
 // itself: a self-attesting hash is not a trust root.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -24,6 +24,24 @@ const outputDirectory = resolve(repositoryDirectory, 'dist')
 
 const ARCHITECTURE = 'amd64'
 const INSTALL_PREFIX = 'usr/lib/nessie-executor'
+const RESOURCES = 'resources'
+
+// The Firecracker release is pinned by version AND by the SHA-256 its own
+// published `<asset>.sha256.txt` states, verified here before a byte is
+// unpacked — a pinned version alone trusts whoever can rewrite a release asset.
+// Upgrading means changing both constants together, in one commit, after
+// re-reading the upstream checksum file.
+const FIRECRACKER_VERSION = 'v1.16.1'
+const FIRECRACKER_ARCHIVE_SHA256 =
+  '382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6'
+const FIRECRACKER_MACHINE = 'x86_64'
+const FIRECRACKER_URL = 'https://github.com/firecracker-microvm/firecracker/releases/download/'
+  + `${FIRECRACKER_VERSION}/firecracker-${FIRECRACKER_VERSION}-${FIRECRACKER_MACHINE}.tgz`
+
+// The jailer must be the same version as the firecracker binary it execs
+// (Firecracker docs/jailer.md), so both come out of the one archive, and the
+// backend requires them to sit beside each other in this directory.
+const FIRECRACKER_BINARIES = ['firecracker', 'jailer']
 
 const packageVersion = async () => {
   const declared = process.env.NESSIE_EXECUTOR_VERSION
@@ -50,7 +68,8 @@ const control = (version) => [
   'Description: Nessie Executor standalone daemon',
   ' Runs a paired Nessie executor as a systemd user service, so a computer with',
   ' no Nessie desktop app can carry out sandboxed work for agents. Ships the',
-  ' executor command, its pinned Node runtime with a sha256 manifest, and the',
+  ' executor command, its pinned Node runtime with a sha256 manifest, the pinned',
+  ' Firecracker hypervisor with its jailer, the Linux guest init, and the',
   ' nessie-executor@.service template.',
   '',
 ].join('\n')
@@ -71,6 +90,78 @@ const LAUNCHER = [
 
 const sha256File = async (path) => createHash('sha256').update(await readFile(path)).digest('hex')
 
+/**
+ * Downloads and verifies the pinned Firecracker release, then lays its two
+ * binaries down under their unversioned names. dpkg makes them root-owned;
+ * 0755 keeps them readable and executable by the daemon's own user while only
+ * an administrator can replace them, which is what makes the packaged copy a
+ * trust root rather than a self-attestation.
+ */
+const stageFirecracker = async (destination) => {
+  await mkdir(destination, { mode: 0o755, recursive: true })
+  const archive = join(destination, 'firecracker-release.tgz')
+  const response = await fetch(FIRECRACKER_URL, { redirect: 'follow' })
+  if (!response.ok) {
+    throw new Error(`Downloading ${FIRECRACKER_URL} failed with HTTP ${response.status}.`)
+  }
+  await writeFile(archive, Buffer.from(await response.arrayBuffer()), { mode: 0o644 })
+  const digest = await sha256File(archive)
+  if (digest !== FIRECRACKER_ARCHIVE_SHA256) {
+    throw new Error(
+      `The Firecracker ${FIRECRACKER_VERSION} archive hashed ${digest}, not the pinned `
+      + `${FIRECRACKER_ARCHIVE_SHA256}. Refusing to package an unverified hypervisor.`,
+    )
+  }
+  const unpacked = join(destination, 'unpacked')
+  await mkdir(unpacked, { mode: 0o755, recursive: true })
+  await run('tar', ['--extract', '--gzip', '--file', archive, '--directory', unpacked])
+  const releaseDirectory = join(unpacked, `release-${FIRECRACKER_VERSION}-${FIRECRACKER_MACHINE}`)
+  for (const binary of FIRECRACKER_BINARIES) {
+    await copyFile(
+      join(releaseDirectory, `${binary}-${FIRECRACKER_VERSION}-${FIRECRACKER_MACHINE}`),
+      join(destination, binary),
+    )
+    await chmod(join(destination, binary), 0o755)
+  }
+  await copyFile(join(releaseDirectory, 'LICENSE'), join(destination, 'LICENSE'))
+  await chmod(join(destination, 'LICENSE'), 0o644)
+  await rm(archive, { force: true })
+  await rm(unpacked, { force: true, recursive: true })
+}
+
+/** The Go guest init, built for the architecture this package targets. */
+const stageGuest = async (destination) => {
+  await mkdir(destination, { mode: 0o755, recursive: true })
+  await run('go', ['build', '-trimpath', '-o', join(destination, 'init'), '.'], {
+    cwd: join(executorDirectory, 'guest'),
+    env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'linux' },
+  })
+  await chmod(join(destination, 'init'), 0o755)
+}
+
+/**
+ * One sha256 per shipped sandbox resource, so an integrity check can say which
+ * file changed rather than only that something did. `manifest.json` is excluded
+ * from its own listing.
+ */
+const resourceManifest = async (directory) => {
+  const files = []
+  const walk = async (current) => {
+    const entries = (await readdir(current, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+    for (const entry of entries) {
+      const path = join(current, entry.name)
+      if (entry.isDirectory()) {
+        await walk(path)
+      } else if (entry.isFile() && entry.name !== 'manifest.json') {
+        files.push({ path: relative(directory, path), sha256: await sha256File(path) })
+      }
+    }
+  }
+  await walk(directory)
+  return { files, firecrackerVersion: FIRECRACKER_VERSION, version: 1 }
+}
+
 const stage = async (stagingDirectory) => {
   await rm(stagingDirectory, { force: true, recursive: true })
   await mkdir(join(stagingDirectory, 'DEBIAN'), { mode: 0o755, recursive: true })
@@ -83,12 +174,19 @@ const stage = async (stagingDirectory) => {
   })
   await chmod(join(stagingDirectory, INSTALL_PREFIX), 0o755)
 
-  // Reserved placement for the sandbox artifacts the Firecracker backend will
-  // ship (firecracker, jailer, the guest kernel/initrd/runtime bundle). They
-  // are a later wave of the plan and no binary is added here; the directory
-  // exists so the install path, ownership rules, and documentation are already
-  // the ones those artifacts will land in.
-  await mkdir(join(stagingDirectory, INSTALL_PREFIX, 'resources'), { mode: 0o755, recursive: true })
+  // The sandbox artifacts the Firecracker backend resolves at session start:
+  // `resources/firecracker/{firecracker,jailer}` — the executor's stored
+  // `vmHelperPath` on Linux is the firecracker binary and the jailer is its
+  // sibling — plus the guest init the initrd is built from.
+  const resourcesDirectory = join(stagingDirectory, INSTALL_PREFIX, RESOURCES)
+  await mkdir(resourcesDirectory, { mode: 0o755, recursive: true })
+  await stageFirecracker(join(resourcesDirectory, 'firecracker'))
+  await stageGuest(join(resourcesDirectory, 'guest'))
+  await writeFile(
+    join(resourcesDirectory, 'manifest.json'),
+    `${JSON.stringify(await resourceManifest(resourcesDirectory), null, 2)}\n`,
+    { mode: 0o644 },
+  )
 
   await writeFile(join(stagingDirectory, 'usr/bin/nessie-executor'), LAUNCHER, { mode: 0o755 })
   await chmod(join(stagingDirectory, 'usr/bin/nessie-executor'), 0o755)

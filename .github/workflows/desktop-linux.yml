@@ -161,3 +161,115 @@ jobs:
           pgrep --full "${command}" > /dev/null
           xdotool search --name Nessie
           kill "${wrapper}"
+
+  firecracker-conformance:
+    name: Firecracker backend conformance
+    # GitHub-hosted runners have no /dev/kvm: nested virtualization is not
+    # offered on the standard images, so this job CANNOT run there. The `kvm`
+    # label is the deployment's obligation — a self-hosted Linux runner on
+    # bare metal or a nested-virtualization-capable instance, with the runner's
+    # user in the `kvm` group. Until such a runner is registered this job stays
+    # queued, which is the honest state; it must never be made to pass by
+    # skipping, because the command and coding profiles are advertised to
+    # agents on the strength of exactly this evidence.
+    runs-on: [self-hosted, linux, kvm]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: KVM is present and usable by this runner
+        run: |
+          set -euo pipefail
+          # A missing or unusable /dev/kvm FAILS the job. `detectExecutorHost`
+          # decides the Linux sandbox backend by opening this exact device for
+          # read and write, so anything less would advertise a sandbox the
+          # daemon would then refuse to start.
+          test -c /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+          grep --extended-regexp --count '^flags.*(vmx|svm)' /proc/cpuinfo
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: executor/guest/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
+      - name: The host reports the Firecracker backend
+        run: |
+          set -euo pipefail
+          node --import tsx -e "
+            import('./executor/src/host-platform.ts').then((module) => {
+              const host = module.detectExecutorHost()
+              console.log(JSON.stringify(host))
+              if (host.sandboxBackend !== 'firecracker') {
+                throw new Error('This runner has KVM but reports ' + host.sandboxBackend + '.')
+              }
+            })
+          "
+
+      - name: Guest builds and passes its own tests on both architectures
+        working-directory: executor/guest
+        run: |
+          set -euo pipefail
+          # `-o /dev/null`: a bare `go build ./...` writes the binary beside the
+          # sources under the module name and would overwrite the checked-in
+          # aarch64 guest artifact.
+          GOOS=linux GOARCH=amd64 go build -o /dev/null ./...
+          GOOS=linux GOARCH=arm64 go build -o /dev/null ./...
+          go vet ./...
+          go test ./...
+
+      - name: Firecracker backend conformance
+        working-directory: executor
+        # The suites that gate the command and coding profiles: the backend's
+        # jailer argv, its API configuration sequence, the vsock framing, and
+        # the guest control and forced-egress channels. A booted-guest run is
+        # added here once the Linux kernel and initrd artifacts land beside
+        # these binaries; see docs/executor-protocol.md §8.
+        run: node --test --import tsx 'test/firecracker-*.test.ts'
+
+      - name: The packaged hypervisor and jailer run on this host
+        run: |
+          set -euo pipefail
+          node executor/packaging/linux/build-deb.mjs
+          sudo apt-get install --yes ./dist/nessie-executor_*.deb
+          # Both binaries must be root-owned and executable: that ownership is
+          # the Linux trust root, and the jailer additionally needs to start as
+          # root to build a chroot (Firecracker docs/jailer.md).
+          for path in /usr/lib/nessie-executor/resources/firecracker/firecracker \
+                      /usr/lib/nessie-executor/resources/firecracker/jailer \
+                      /usr/lib/nessie-executor/resources/guest/init; do
+            [ "$(stat -c '%U' "${path}")" = "root" ]
+            [ "$(stat -c '%a' "${path}")" = "755" ]
+          done
+          /usr/lib/nessie-executor/resources/firecracker/firecracker --version
+          /usr/lib/nessie-executor/resources/firecracker/jailer --version
+          # The manifest records what was shipped; re-checking it here proves
+          # dpkg laid down the same bytes the build verified against the
+          # upstream published checksum.
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('/usr/lib/nessie-executor/resources')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          for entry in manifest['files']:
+              digest = hashlib.sha256((root / entry['path']).read_bytes()).hexdigest()
+              assert digest == entry['sha256'], entry['path']
+          print('resources manifest verified:', len(manifest['files']), 'files')
+          PY
