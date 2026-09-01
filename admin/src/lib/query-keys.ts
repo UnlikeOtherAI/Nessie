@@ -420,8 +420,9 @@ export const teamKeys = {
 }
 
 export const threadKeys = {
-  // The unread/activity projection across every thread, reset rather than
-  // invalidated by the read-marker writes that change it.
+  // The unread/activity projection across every thread. Read-marker writes
+  // patch their one cached card; other activity changes reset this key because
+  // they can move records across keyset page boundaries.
   activity: ['threads', 'activity'] as const,
   unreadDirectMessages: ['threads', 'unread-direct-messages'] as const,
   documentStream: (threadId: string | undefined, sessionId: string) =>

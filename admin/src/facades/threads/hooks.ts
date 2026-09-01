@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
@@ -17,6 +17,7 @@ import {
   runStreamConnectionLoop,
   type StreamAttemptOutcome,
 } from './stream-retry'
+import { markThreadActivityReadInCache, type ThreadActivityResponse } from './activity-hooks'
 import {
   appendThinkingEntry,
   reconcileThreadThinking,
@@ -105,15 +106,18 @@ export const useMarkThreadRead = () => {
       apiClient.post(`/api/threads/${input.threadId}/read`, input.rootMessageId
         ? { rootMessageId: input.rootMessageId, lastReadMessageId: input.lastReadMessageId }
         : {}),
-    onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: channelKeys.all })
-        void queryClient.resetQueries({ queryKey: threadKeys.activity })
-        void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
-      },
-      onError: () => {
-        void queryClient.invalidateQueries({ queryKey: channelKeys.all })
-        void queryClient.resetQueries({ queryKey: threadKeys.activity })
-        void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
+    onSuccess: (_result, input) => {
+      queryClient.setQueryData<InfiniteData<ThreadActivityResponse>>(
+        threadKeys.activity,
+        (cache) => markThreadActivityReadInCache(cache, input),
+      )
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.activity })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
     },
   })
 }

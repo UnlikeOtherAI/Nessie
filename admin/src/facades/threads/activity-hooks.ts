@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { threadKeys } from '../../lib/query-keys'
 import { useEventStream } from '../realtime/event-stream'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -15,11 +15,69 @@ export type ThreadActivity = {
   unread: boolean
 }
 
-type ThreadActivityResponse = {
+export type ThreadActivityResponse = {
   hasMore: boolean
   items: ThreadActivity[]
   nextCursor?: string
   unreadTotal: number
+}
+
+type ThreadActivityCache = InfiniteData<ThreadActivityResponse>
+
+// Keep the inbox mounted while a read marker is acknowledged. A query reset
+// clears every page and makes the scroll container jump before its refetch
+// completes; the marker only changes one card's unread treatment instead.
+export const markThreadActivityReadInCache = (
+  cache: ThreadActivityCache | undefined,
+  input: { rootMessageId?: string; threadId: string },
+): ThreadActivityCache | undefined => {
+  if (!cache?.pages.length || !input.rootMessageId) return cache
+
+  let markedUnreadCount = 0
+  const pagesWithReadState = cache.pages.map((page) => {
+    let pageChanged = false
+    const items = page.items.map((item) => {
+      if (
+        item.threadId !== input.threadId
+        || item.rootMessageId !== input.rootMessageId
+        || !item.unread
+      ) {
+        return item
+      }
+      pageChanged = true
+      markedUnreadCount += 1
+      return { ...item, unread: false }
+    })
+    return pageChanged ? { ...page, items } : page
+  })
+
+  if (markedUnreadCount === 0) return cache
+
+  return {
+    ...cache,
+    pages: pagesWithReadState.map((page) => ({
+      ...page,
+      unreadTotal: Math.max(0, page.unreadTotal - markedUnreadCount),
+    })),
+  }
+}
+
+const parseThreadReadEvent = (
+  frameData: string | undefined,
+): { rootMessageId: string; threadId: string } | null => {
+  if (!frameData) return null
+  try {
+    const envelope = JSON.parse(frameData) as unknown
+    if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) return null
+    const data = 'data' in envelope ? envelope.data : envelope
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return null
+    const { rootMessageId, threadId } = data as Record<string, unknown>
+    return typeof rootMessageId === 'string' && typeof threadId === 'string'
+      ? { rootMessageId, threadId }
+      : null
+  } catch {
+    return null
+  }
 }
 
 export const useThreadActivity = () => {
@@ -62,7 +120,6 @@ const ACTIVITY_EVENTS = new Set([
   'message.deleted',
   'message.reply',
   'message.reply.meta',
-  'thread.read',
 ])
 const UNREAD_DIRECT_MESSAGE_EVENTS = new Set([
   'message.deleted',
@@ -79,6 +136,18 @@ export const useThreadActivityEvents = (): void => {
     enabled: Boolean(token),
     onFrame: (frame) => {
       if (!frame.event) return
+      if (frame.event === 'thread.read') {
+        const read = parseThreadReadEvent(frame.data)
+        if (!read) return
+        const cached = queryClient.getQueryData<ThreadActivityCache>(threadKeys.activity)
+        const next = markThreadActivityReadInCache(cached, read)
+        if (next === cached) {
+          void queryClient.invalidateQueries({ queryKey: threadKeys.activity })
+        } else {
+          queryClient.setQueryData(threadKeys.activity, next)
+        }
+        return
+      }
       if (ACTIVITY_EVENTS.has(frame.event)) {
         // Pages are keyset slices. An activity change can move an item across a
         // saved boundary, so retain only page one before refetching rather than
