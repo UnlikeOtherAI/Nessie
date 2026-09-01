@@ -13,12 +13,20 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "lint": "eslint src --max-warnings 0",
-    "test": "node --test --import tsx 'test/**/*.test.ts' 'src/**/*.test.ts'",
+    "test": "pnpm run test:unit && pnpm run test:db",
+    "test:unit": "node --test --test-concurrency=4 --import tsx 'test/*.test.ts' 'src/**/*.test.ts'",
+    "test:db": "node --test --test-concurrency=1 --import tsx 'test/db/*.test.ts'",
+    "test:load": "tsx test-harness/load.ts",
+    "test:smoke": "tsx test-harness/smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/comms-connect": "workspace:*",
+    "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
+    "@nessie/dashboard": "workspace:*",
     "@nessie/db": "workspace:*",
+    "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
@@ -26,6 +34,7 @@
     "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
+    "@nessie/workspace-admin": "workspace:*",
     "@prisma/client": "^6.17.1",
     "cron-parser": "^5.5.0",
     "mammoth": "^1.12.0",
@@ -33,6 +42,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@nessie/mock-llm": "workspace:*",
     "@types/pdf-parse": "^1.1.5"
   }
 }

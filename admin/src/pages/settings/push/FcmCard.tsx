@@ -5,7 +5,7 @@ import {
   useTestPush,
   useUploadFcm,
 } from '../../../facades/platform-push/hooks'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { PushResultBanner, PushStatusRow } from './shared'
 
 type FcmCardProps = {
@@ -57,7 +57,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
 
   return (
     <section className="admin-card p-4">
-      <div className={sectionTitleClass}>Google (FCM)</div>
+      <SectionLabel>Google (FCM)</SectionLabel>
 
       {status?.configured && (
         <div className="mt-3 grid gap-1.5 rounded-md bg-[color:var(--main-hover)] p-3 text-sm">
@@ -93,7 +93,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Send test
+                Validate account
               </button>
               <button
                 className="admin-button admin-button-secondary"

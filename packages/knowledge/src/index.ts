@@ -19,6 +19,7 @@ export {
   readableSpaceIdsSqlForAgent,
   readableSpaceIdsSqlForViewer,
 } from './native-search-access.js'
+export { clampRecentLimit, listNativeRecentPages } from './native-recent-pages.js'
 export {
   groupFusedChunksByPage,
   searchNativePagesHybrid,
@@ -61,6 +62,19 @@ export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './c
 export { replaceKnowledgePageVersionChunks } from './native-chunks.js'
 export type { ChunkablePage } from './native-chunks.js'
 export {
+  ensureAgentDocsSpace,
+  ensureMyDocsSpace,
+  ensureProjectDocumentsSpace,
+  ensureTaskFolder,
+} from './provisioning.js'
+export type { EnsureSpaceResult, TaskFolderTask } from './provisioning.js'
+export {
+  KnowledgeInferenceOriginError,
+  requirePersistedKnowledgeOrigin,
+  resolvePersistedKnowledgeOrigin,
+} from './inference-origin.js'
+export type { PersistedKnowledgeOriginInput } from './inference-origin.js'
+export {
   htmlToPlainText,
   computeAnchor,
   relocateAnchor,
@@ -79,6 +93,7 @@ export type {
   CreatePageInput,
   CreateSpaceInput,
   KnowledgeAuthorType,
+  KnowledgePageKind,
   KnowledgePageRecord,
   KnowledgePageStatus,
   KnowledgePageTreeNode,
@@ -86,6 +101,7 @@ export type {
   KnowledgeProvider,
   KnowledgeProviderCapabilities,
   KnowledgeProviderKind,
+  KnowledgeRecentPageRecord,
   KnowledgeScopeInput,
   KnowledgeSearchHit,
   KnowledgeSearchPassage,
@@ -94,6 +110,7 @@ export type {
   KnowledgeVisibility,
   HybridSearchPagesInput,
   ListPagesInput,
+  ListRecentPagesInput,
   ListSpacesInput,
   MovePageInput,
   PublishPageInput,

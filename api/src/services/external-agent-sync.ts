@@ -1,15 +1,21 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { McpToolResult } from '@nessie/mcp-client'
 import {
   callInstanceTool,
   mapChatResultToUiCards,
-  resolveInstanceMcpTransport,
   type SecretResolver,
 } from '@nessie/mcp-manage'
+import {
+  DEEPSIGNAL_MCP_CREDENTIAL_REF,
+  type DeepSignalMcpIdentityService,
+  type LedgerAttribution,
+} from '@nessie/runtime'
 import type { IntegrationUiCard, McpTransportConfig } from '@nessie/schemas'
 
-import { ensureDefaultThread } from './channel-records.js'
+import { ensureDefaultThread } from '@nessie/workspace-admin'
+import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
 import { getExternalAgentProduct } from './external-agent.js'
+import { resolveUserScopedProductTransport } from './external-agent-instance.js'
+import { asArray, extractList, firstString, isRecord, readToolJson } from './mcp-tool-json.js'
 
 /**
  * External-agent history hydration (DeepSignal integration plan §6).
@@ -30,6 +36,7 @@ const HISTORY_LIMIT = 50
 export const EXTERNAL_AGENT_SYNC_ERROR_CODES = {
   NOT_EXTERNAL_AGENT: 'EXTERNAL_AGENT_SYNC_NOT_EXTERNAL_AGENT',
   UNKNOWN_PRODUCT: 'EXTERNAL_AGENT_SYNC_UNKNOWN_PRODUCT',
+  IDENTITY_UNAVAILABLE: 'EXTERNAL_AGENT_SYNC_IDENTITY_UNAVAILABLE',
   UPSTREAM_UNAVAILABLE: 'EXTERNAL_AGENT_SYNC_UPSTREAM_UNAVAILABLE',
 } as const
 
@@ -47,47 +54,6 @@ export class ExternalAgentSyncError extends Error {
 }
 
 export type ExternalAgentSyncResult = { imported: number; total: number }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-
-const firstString = (record: Record<string, unknown>, keys: string[]): string | null => {
-  for (const key of keys) {
-    const value = record[key]
-    if (typeof value === 'string' && value.trim().length > 0) return value
-  }
-  return null
-}
-
-const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : [])
-
-/** Coerce a tool result into a JS value: structured content, else parsed text. */
-const readToolJson = (result: McpToolResult): unknown => {
-  if (result.structuredContent) return result.structuredContent
-  const text = result.content
-    .flatMap((block) =>
-      isRecord(block) && typeof block.text === 'string' ? [block.text] : [],
-    )
-    .join('')
-    .trim()
-  if (text.length === 0) return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-/** Pull the list out of a tool payload that may be a bare array or a wrapper. */
-const extractList = (value: unknown, keys: string[]): unknown[] => {
-  if (Array.isArray(value)) return value
-  if (isRecord(value)) {
-    for (const key of keys) {
-      if (Array.isArray(value[key])) return value[key] as unknown[]
-    }
-  }
-  return []
-}
 
 type HistoryTurn = {
   id: string
@@ -146,6 +112,8 @@ const writeConversationId = async (
 }
 
 export type ExternalAgentSyncContext = {
+  attribution: LedgerAttribution
+  deepSignalIdentity: DeepSignalMcpIdentityService | null
   organizationId: string
   userId: string
   /** MCP tool caller seam (defaults to the shared one-shot dispatcher). */
@@ -153,6 +121,7 @@ export type ExternalAgentSyncContext = {
 }
 
 type ResolvedChannel = {
+  channelId: string
   slug: string
   transport: McpTransportConfig
   threadId: string
@@ -181,25 +150,20 @@ const resolveChannel = async (
     )
   }
 
-  const instance = await prisma.mcpServerInstance.findFirst({
-    where: {
-      organizationId: ctx.organizationId,
-      scopeType: 'user',
-      scopeId: ctx.userId,
-      catalogEntry: { name: slug, visibility: 'public' },
-    },
-    select: { id: true },
-  })
-  if (!instance) return null
-
-  const resolved = await resolveInstanceMcpTransport(
+  const transport = await resolveUserScopedProductTransport(
     prisma,
-    instance.id,
-    { userId: ctx.userId, channelId: channel.id, organizationId: ctx.organizationId },
+    {
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      slug,
+      channelId: channel.id,
+      ...(slug === 'deepsignal'
+        ? { managedCredentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF }
+        : {}),
+    },
     secretResolver,
   )
-  if (!resolved) return null
-  if (resolved.authMethod === 'oauth2' && resolved.lifecycleState !== 'active') return null
+  if (!transport) return null
 
   const threadId = await ensureDefaultThread(prisma, channel.id)
   const thread = await prisma.thread.findUnique({
@@ -212,20 +176,61 @@ const resolveChannel = async (
   })
 
   return {
+    channelId: channel.id,
     slug,
-    transport: resolved.transport,
+    transport,
     threadId,
     threadMetadata: thread?.metadata ?? null,
     agentId: binding?.agentId ?? null,
   }
 }
 
+type ResolvedToolCaller = (
+  toolName: string,
+  args: unknown,
+) => ReturnType<typeof callInstanceTool>
+
+const resolvedToolCaller = (
+  resolved: ResolvedChannel,
+  ctx: ExternalAgentSyncContext,
+): ResolvedToolCaller => {
+  if (resolved.slug !== 'deepsignal') {
+    const callTool = ctx.callTool ?? callInstanceTool
+    return (toolName, args) =>
+      callTool({ transport: resolved.transport, toolName, args })
+  }
+  if (!ctx.deepSignalIdentity) {
+    throw new ExternalAgentSyncError(
+      EXTERNAL_AGENT_SYNC_ERROR_CODES.IDENTITY_UNAVAILABLE,
+      'DeepSignal application identity is not configured.',
+    )
+  }
+  const identityService = ctx.deepSignalIdentity
+  const attribution: LedgerAttribution = {
+    ...ctx.attribution,
+    agentId: resolved.agentId,
+    channelId: resolved.channelId,
+    threadId: resolved.threadId,
+    systemComponent: 'api-deepsignal-history-sync',
+  }
+  return (toolName, args) =>
+    callDeepSignalMcpTool(
+      resolved.transport,
+      {
+        attribution,
+        identityService,
+        callTool: ctx.callTool,
+      },
+      toolName,
+      args,
+    )
+}
+
 /** Call `conversation_list` and return the most recent conversation id, or null. */
 const adoptLatestConversation = async (
-  callTool: typeof callInstanceTool,
-  transport: McpTransportConfig,
+  callTool: ResolvedToolCaller,
 ): Promise<string | null> => {
-  const result = await callTool({ transport, toolName: CONVERSATION_LIST_TOOL, args: {} })
+  const result = await callTool(CONVERSATION_LIST_TOOL, {})
   const conversations = extractList(readToolJson(result), ['conversations', 'items', 'data'])
   let best: { id: string; at: number } | null = null
   for (const raw of conversations) {
@@ -311,16 +316,16 @@ export const syncExternalAgentChannel = async (
   ctx: ExternalAgentSyncContext,
   secretResolver: SecretResolver,
 ): Promise<ExternalAgentSyncResult> => {
-  const callTool = ctx.callTool ?? callInstanceTool
   const resolved = await resolveChannel(prisma, ctx, channel, secretResolver)
   if (!resolved) return { imported: 0, total: 0 }
 
   try {
+    const callTool = resolvedToolCaller(resolved, ctx)
     let conversationId = readConversationId(resolved.threadMetadata, resolved.slug)
     if (!conversationId) {
       // The user may have chatted on the DeepSignal console before ever opening
       // the Nessie channel — adopt their most recent conversation.
-      conversationId = await adoptLatestConversation(callTool, resolved.transport)
+      conversationId = await adoptLatestConversation(callTool)
       if (!conversationId) return { imported: 0, total: 0 }
       await writeConversationId(
         prisma,
@@ -331,11 +336,10 @@ export const syncExternalAgentChannel = async (
       ).catch(() => undefined)
     }
 
-    const result = await callTool({
-      transport: resolved.transport,
-      toolName: CONVERSATION_HISTORY_TOOL,
-      args: { conversationId, limit: HISTORY_LIMIT },
-    })
+    const result = await callTool(
+      CONVERSATION_HISTORY_TOOL,
+      { conversationId, limit: HISTORY_LIMIT },
+    )
     const rawTurns = extractList(readToolJson(result), ['turns', 'history', 'items', 'messages'])
     const turns = rawTurns.flatMap((raw) => {
       const turn = parseTurn(raw)

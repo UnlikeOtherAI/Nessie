@@ -1,6 +1,7 @@
 import type { ToolCallEntry } from '@nessie/schemas';
 import { EmptyState } from '../../shared/EmptyState';
-import { StatusPill } from '../../primitives/StatusPill';
+import { Pill } from '../../primitives/Pill';
+import { SectionLabel } from '../../primitives/SectionLabel';
 
 type ToolExecutionLogProps = {
   entries: ToolCallEntry[];
@@ -27,9 +28,7 @@ const getTone = (success: boolean | undefined) => {
 
 export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
   <section className="grid gap-3">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-      Tool execution log
-    </div>
+    <SectionLabel>Tool execution log</SectionLabel>
     {entries.length === 0 ? (
       <EmptyState>No tool calls recorded for this agent yet.</EmptyState>
     ) : (
@@ -40,9 +39,9 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
         >
           <div className="flex items-center justify-between gap-3">
             <div className="font-mono text-sm text-[var(--thinking)]">{entry.toolName}</div>
-            <StatusPill tone={getTone(entry.success)}>
+            <Pill tone={getTone(entry.success)}>
               {entry.success === undefined ? 'running' : entry.success ? 'success' : 'failed'}
-            </StatusPill>
+            </Pill>
           </div>
           <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
             {entry.durationMs ? `${entry.durationMs} ms` : 'active'}

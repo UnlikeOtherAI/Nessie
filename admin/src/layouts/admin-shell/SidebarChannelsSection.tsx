@@ -1,16 +1,16 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { CreateChannelTarget } from './types';
 
 type SidebarChannelsSectionProps = {
   channelsCollapsed: boolean;
   currentChannelId?: string;
-  defaultProjectChannels: ChannelRecord[];
-  defaultProjectTeamId?: string;
   onNavigateChannel: (channelId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
+  standaloneChannels: ChannelRecord[];
   starredChannelIds: Set<string>;
   toggleChannelsCollapsed: () => void;
 };
@@ -18,11 +18,10 @@ type SidebarChannelsSectionProps = {
 export const SidebarChannelsSection = ({
   channelsCollapsed,
   currentChannelId,
-  defaultProjectChannels,
-  defaultProjectTeamId,
   onNavigateChannel,
   onOpenCreateChannel,
   onToggleStar,
+  standaloneChannels,
   starredChannelIds,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
@@ -32,7 +31,7 @@ export const SidebarChannelsSection = ({
         <button
           aria-label="Create channel"
           className="admin-sidebar-plus"
-          onClick={() => onOpenCreateChannel({ teamId: defaultProjectTeamId })}
+          onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
           type="button"
         >
           +
@@ -43,7 +42,7 @@ export const SidebarChannelsSection = ({
       onToggle={toggleChannelsCollapsed}
       title="Channels"
     >
-      {defaultProjectChannels.map((channel) => {
+      {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (
           <button
@@ -57,11 +56,11 @@ export const SidebarChannelsSection = ({
             type="button"
           >
             <span className={channelHashClassName}>#</span>
-            <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+            <GroupDmSidebarLabel label={channel.label} />
             {renderUnreadCount(channel.unreadCount)}
             <span
               className={[
-                'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
                 isStarredChannel
                   ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
                   : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',

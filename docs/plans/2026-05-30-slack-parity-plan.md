@@ -20,7 +20,7 @@ integrations). Each phase is independently shippable. Worktree-per-task is manda
 - Minimum complexity. No premature abstraction. Each schema change is additive
   (nullable columns / new tables); no destructive migrations.
 - Every phase: migration + `prisma:migrate:deploy`, rebuild worker/admin where
-  touched, kelpie-verify any UI, update `docs/functionality.md` for contract changes.
+  touched, Playwright-verify any UI, update `docs/functionality.md` for contract changes.
 
 ## Current foundations (already present — build on these)
 
@@ -33,7 +33,8 @@ integrations). Each phase is independently shippable. Worktree-per-task is manda
 - RBAC schema present but unenforced: `PolicyRule` / `PolicyBinding`
   (`schema.prisma:1675-1705`) + `POST /api/policy/check`.
 - Semantic memory search: `packages/memory` `match_thoughts` + `/api/thoughts/search`.
-- Calls: `Call` / `CallParticipant` (`schema.prisma:2053`) via Jitsi.
+- Calls: provider links plus durable ringing (`Call` / `CallInvite`); see
+  [the call-links and ringing plan](./2026-08-30-meet-call-links-and-ringing/overview.md).
 
 ---
 
@@ -205,10 +206,14 @@ larger phases.
   a recent-channels menu, a centered **command-palette search** (inline grouped
   results across channels/people/projects/messages/knowledge, reusing
   `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a persisted Text/Semantic mode
-  toggle for memory search, a workspace badge, and a help shortcut. Shared across
-  web, the iPad WebView shell (clears the status bar via
-  `env(safe-area-inset-top)`), and the Tauri desktop app, where it doubles as
-  the window title bar (traffic-light gap + drag region).
+  toggle for memory search, notifications, and a help shortcut. The desktop rail
+  owns the canonical account avatar/menu; rail-free mobile shells reuse that
+  exact control in their headers instead of showing a second workspace badge.
+  The bar is shared across web and the Tauri desktop app, where it doubles as
+  the window title bar (traffic-light gap + drag region). Native mobile shells
+  replace it with native navigation; the iPhone WebView applies
+  `env(safe-area-inset-top)` to page content so its mobile headers stay clear of
+  the status bar.
 - **Chat author identity (implemented 2026-06-12)**: thread messages now embed the
   real `author` (`displayName` + avatar sources), so every message renders the
   actual sender's name and avatar via `UserAvatar` (profile picture when one
@@ -241,7 +246,7 @@ larger phases.
   implemented in the global search Semantic mode via `/api/thoughts/search`).
   Message semantic search remains deferred until a message embedding pipeline
   exists.
-- **Auto meeting notes**: agent transcribes Jitsi call → posts action items to thread.
+- **Auto meeting notes**: agent transcribes a provider call → posts action items to thread.
 - **Agents-as-routers**: wire `MessageReaction` / `message.created` into event
   triggers so an agent watches a channel and routes/summarizes/escalates.
 - **Agent channel lookup (implemented 2026-06-12, hardened 2026-06-13)**:
@@ -267,6 +272,6 @@ larger phases.
 
 - Migration applied via `pnpm --filter @nessie/api prisma:migrate:deploy`.
 - Worker rebuilt (`pnpm --filter @nessie/worker build`) if worker touched; admin
-  rebuilt + kelpie-verified at `http://localhost:5555` if UI touched.
+  rebuilt + Playwright-verified at `http://localhost:5555` if UI touched.
 - `docs/functionality.md` updated for any contract change; this plan checked off.
 - Lint + tests green. Merge to `main` from worktree, then clean up the worktree.

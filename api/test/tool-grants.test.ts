@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   createGrant,
   deleteGrant,
+  listToolRegistry,
   TOOL_GRANT_ERROR_CODES,
   ToolGrantError,
 } from '../src/services/tool-grants.js'
@@ -94,6 +95,95 @@ const buildFakePrisma = (
 const ORG_A = '00000000-0000-4000-8000-00000000000a'
 const ORG_B = '00000000-0000-4000-8000-00000000000b'
 const ROLE_A = '00000000-0000-4000-8000-0000000000aa'
+
+const makeListedTool = (input: {
+  catalogName: string
+  catalogOrganizationId?: string | null
+  catalogVisibility?: 'private' | 'public'
+  id: string
+  productSlugs: string[]
+}) => ({
+  builtin: false,
+  bundleId: null,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  createdBy: 'system',
+  description: 'Projected research tool',
+  enabled: true,
+  handlerKind: 'mcp',
+  id: input.id,
+  inputSchema: {},
+  label: input.id,
+  mcpInstance: {
+    catalogEntry: {
+      integratedProducts: input.productSlugs.map((slug) => ({ slug })),
+      name: input.catalogName,
+      organizationId: input.catalogOrganizationId ?? null,
+      visibility: input.catalogVisibility ?? 'public',
+    },
+  },
+  mcpInstanceId: `instance-${input.id}`,
+  metadata: { requiresExplicitGrant: true },
+  organizationId: ORG_A,
+  outputSchema: null,
+  scopeKey: `org/${ORG_A}`,
+  source: 'mcp_remote',
+  status: 'active',
+  tags: [],
+  toolId: `mcp:deep-water:${input.id}`,
+  transport: 'mcp',
+  transportConfig: {},
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
+  version: '1.0.0',
+})
+
+test('listToolRegistry derives managed product identity by exact catalog membership', async () => {
+  let catalogSelect: Record<string, unknown> | undefined
+  const prisma = {
+    toolRegistryEntry: {
+      findMany: async (args: {
+        include: {
+          mcpInstance: {
+            select: {
+              catalogEntry: { select: Record<string, unknown> }
+            }
+          }
+        }
+      }) => {
+        catalogSelect = args.include.mcpInstance.select.catalogEntry.select
+        return [
+          makeListedTool({
+            catalogName: 'deep-water',
+            id: 'exact-match',
+            productSlugs: ['another-product', 'deep-water'],
+          }),
+          makeListedTool({
+            catalogName: 'deep-water',
+            id: 'missing-membership',
+            productSlugs: ['another-product'],
+          }),
+          makeListedTool({
+            catalogName: 'deep-water',
+            catalogVisibility: 'private',
+            id: 'private-catalog',
+            productSlugs: ['deep-water'],
+          }),
+        ]
+      },
+    },
+  } as unknown as PrismaClient
+
+  const tools = await listToolRegistry(prisma, ORG_A)
+
+  assert.equal(catalogSelect?.name, true)
+  assert.deepEqual(
+    tools.map((tool) => [tool.id, tool.managedProductSlug]),
+    [
+      ['exact-match', 'deep-water'],
+      ['missing-membership', null],
+      ['private-catalog', null],
+    ],
+  )
+})
 
 test('createGrant rejects when the tool belongs to a different org', async () => {
   const { prisma } = buildFakePrisma([

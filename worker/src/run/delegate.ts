@@ -4,19 +4,12 @@ import type {
   ProviderMessage,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
+import { runAgenticLoop } from './agentic-loop.js'
+import { DELEGATE_BUDGET } from './run-budget.js'
 import type { McpToolset } from './mcp-toolset.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
-
-const SUB_AGENT_BUDGET: BudgetLimits = {
-  maxIterations: 4,
-  maxToolCalls: 6,
-  maxWallclockMs: 60_000,
-  maxTokens: 20_000,
-  maxCostCents: 25,
-  toolTimeoutMs: 25_000,
-}
+import type { ToolActorContext, ToolAuthorizationDecision } from './execute/tool-authorization.js'
 
 const SUB_AGENT_SYSTEM_PROMPT = `You are a focused sub-agent dispatched by another agent to complete a single task using external tools (MCP).
 
@@ -27,21 +20,42 @@ Rules:
 - Do not ask follow-up questions. Make the best decision with the information you have.
 - You cannot delegate further. Stop when you have an answer or when no progress is possible.`
 
+export type DelegateToolResultCapture = {
+  output: string
+  success: boolean
+  toolName: string
+}
+
 export type DelegateRunner = (
   messages: ProviderMessage[],
   tools: ToolSchemaDescriptor[],
+  captured?: { toolResults: DelegateToolResultCapture[] },
 ) => Promise<InferenceResult>
 
 export type DelegateExecuteContext = {
   mcpToolset: McpToolset
+  /** The sub-agent's own MCP view, created by the caller. */
+  mcpView: ReturnType<McpToolset['createView']>
   /** Bound to call runInferenceGraph with sub-agent-specific tools each turn. */
   runInference: DelegateRunner
+  /**
+   * The same pre-dispatch authorization gate the main loop runs, rebuilt for
+   * the actual nested tool name: a sub-agent's builtin or MCP call is
+   * authorized as itself, never under the outer `delegate` tool's context.
+   */
+  authorizeSubAgentTool: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => Promise<ToolAuthorizationDecision>
   /** Builtin tool executor for non-MCP tools (excluding `delegate` to prevent recursion). */
-  executeBuiltinTool: (toolName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
+  executeBuiltinTool: (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+    toolActorContext: ToolActorContext,
+  ) => Promise<AgenticToolResult>
   /** Builtin descriptors the sub-agent is allowed to call (already filtered to exclude `delegate`). */
   builtinDescriptors: ToolSchemaDescriptor[]
-  /** Builtin tool IDs the sub-agent is allowed to call (excluding `delegate`). */
-  allowedBuiltinIds: Set<string>
 }
 
 export type DelegateResult = AgenticToolResult & {
@@ -84,9 +98,10 @@ export const runDelegate = async (
     }
   }
 
-  // Sub-agents get their own MCP view: in deferred mode they search/load
-  // schemas independently without mutating the parent agent's tool list.
-  const mcpView = ctx.mcpToolset.createView()
+  // The sub-agent gets its own MCP view (created by the caller): in deferred
+  // mode it searches/loads schemas independently without mutating the parent
+  // agent's tool list.
+  const mcpView = ctx.mcpView
   const tools: ToolSchemaDescriptor[] = [
     ...mcpView.descriptors,
     ...ctx.builtinDescriptors,
@@ -107,7 +122,7 @@ export const runDelegate = async (
   const mcpExposedNames = mcpView.handledNames
 
   const loopResult = await runAgenticLoop({
-    budget: SUB_AGENT_BUDGET,
+    budget: DELEGATE_BUDGET,
     callbacks: {
       onIterationStart: async () => undefined,
       onToolCallStart: async () => undefined,
@@ -115,7 +130,7 @@ export const runDelegate = async (
       onTextDelta: async () => undefined,
       onBudgetExhausted: async () => undefined,
     },
-    executeTool: async (toolName, toolArgs) => {
+    executeTool: async (toolName, toolArgs, toolCallId) => {
       if (toolName === 'delegate') {
         return {
           inputSummary: summarizeToolInput(toolArgs),
@@ -123,11 +138,24 @@ export const runDelegate = async (
           success: false,
         }
       }
-      if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, toolArgs)
+      // Gate before dispatch: the sub-agent's builtins and MCP calls pass the
+      // same registry/policy/approval evaluation as the main loop, with the
+      // authorization context rebuilt for this nested tool name.
+      const authorization = await ctx.authorizeSubAgentTool(toolName, toolArgs)
+      if (authorization.decision !== 'allow') {
+        return authorization.decision === 'deny'
+          ? authorization.result
+          : {
+            inputSummary: summarizeToolInput(toolArgs),
+            output: 'This nested tool call requires approval from the main run.',
+            success: false,
+          }
       }
-      if (ctx.allowedBuiltinIds.has(toolName)) {
-        return ctx.executeBuiltinTool(toolName, toolArgs)
+      if (mcpExposedNames.has(toolName)) {
+        return mcpView.dispatch(toolName, toolArgs, toolCallId)
+      }
+      if (ctx.builtinDescriptors.some((descriptor) => descriptor.toolName === toolName)) {
+        return ctx.executeBuiltinTool(toolName, toolArgs, toolCallId, authorization.toolActorContext)
       }
       return {
         inputSummary: summarizeToolInput(toolArgs),
@@ -136,8 +164,19 @@ export const runDelegate = async (
       }
     },
     initialMessages: buildInitialMessages(task, hint),
-    runInference: (messages) =>
-      ctx.runInference(messages, [...mcpView.descriptors, ...ctx.builtinDescriptors]),
+    runInference: (messages, captured) =>
+      ctx.runInference(
+        messages,
+        [...mcpView.descriptors, ...ctx.builtinDescriptors],
+        captured && {
+          toolResults: captured.toolResults.map((toolResult) => ({
+            output: toolResult.output,
+            success: toolResult.success,
+            toolName: toolResult.toolName ?? '',
+          })),
+        },
+      ),
+    toolTimeoutError: ctx.mcpToolset.timeoutErrorFor,
     tools,
   })
 

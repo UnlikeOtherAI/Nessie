@@ -1,30 +1,62 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   BuildMeProjectHandoffRequest,
   ChannelRecord,
   DeepTestReviewHandoffRequest,
+  DeepWaterAgentAccessResponse,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
   IntegratedProductResponse,
   IntegrationPluginManifest,
+  SetDeepWaterAgentAccessRequest,
   SetProductTeamEnablementRequest,
   ThreadMessageRecord,
   ThreadRecord,
 } from '../../lib/api-client'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  channelKeys,
+  deepWaterAgentAccessKey,
+  deepWaterAgentAccessKeyPrefix,
+  deepWaterResearchRunsKey,
+  deepWaterResearchRunsKeyPrefix,
+  integratedProductsKey,
+  integratedProductsKeyPrefix,
+  integrationManifestKey,
+  mcpKeys,
+  threadKeys,
+  toolPolicyTargetsKeyPrefix,
+  type IntegrationQueryScope,
+} from '../../lib/query-keys'
+import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
-export const integratedProductsKey = ['integrations', 'products'] as const
-export const deepWaterResearchRunsKey =
-  ['integrations', 'products', 'deep-water', 'research-runs'] as const
-export const integrationManifestKey = (productSlug?: string) =>
-  ['integrations', 'manifest', productSlug ?? 'none'] as const
+const useIntegrationQueryScope = (): IntegrationQueryScope | null => {
+  const { me } = useAuthSession()
+  const isOwner = useIsOwner()
+  return me
+    ? {
+        isOwner,
+        organizationId: me.context.organizationId,
+        teamId: me.context.teamId,
+        userId: me.user.id,
+      }
+    : null
+}
 
 export const useIntegratedProducts = () => {
   const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
 
   return useQuery<IntegratedProductResponse[]>({
-    queryKey: integratedProductsKey,
+    queryKey: scope
+      ? integratedProductsKey(scope)
+      : [...integratedProductsKeyPrefix, 'signed-out'],
     queryFn: () => apiClient.get('/api/integrations/products'),
+    enabled: scope !== null,
   })
 }
 
@@ -38,24 +70,103 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
   })
 }
 
+// Function-first identity + conversation starters for an external-agent DM,
+// sourced entirely from the product's plugin manifest so a second external agent
+// needs no code change here. The external-agent channel carries no product slug,
+// but its label is the product name, so we resolve the product (and thus its
+// manifest) by matching on that — the same join the sidebar uses.
+export type ExternalAgentIdentity = {
+  productSlug: string
+  name: string
+  description: string | null
+  iconGlyph: string | null
+  conversationStarters: string[]
+}
+
+export const useExternalAgentIdentity = (
+  channel: ChannelRecord | null | undefined,
+): ExternalAgentIdentity | null => {
+  const isExternal = isExternalAgentChannel(channel)
+  const productsQuery = useIntegratedProducts()
+  const product = isExternal
+    ? productsQuery.data?.find((entry) => entry.name === channel?.label)
+    : undefined
+  const manifestQuery = useIntegrationPluginManifest(product?.slug)
+
+  return useMemo(() => {
+    if (!isExternal || !product || !manifestQuery.data) {
+      return null
+    }
+    const manifest = manifestQuery.data
+    const chat = manifest.surfaces.find(
+      (surface): surface is ChatAssistantSurface => surface.type === 'chat_assistant',
+    )
+    return {
+      productSlug: product.slug,
+      name: chat?.label ?? product.name,
+      description: chat?.description ?? (product.summary || null),
+      iconGlyph: chat?.iconGlyph ?? null,
+      conversationStarters: manifest.conversationStarters ?? [],
+    }
+  }, [isExternal, product, manifestQuery.data])
+}
+
 export const useDeepWaterResearchRuns = () => {
   const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
 
   return useQuery<DeepWaterResearchRunRecord[]>({
-    queryKey: deepWaterResearchRunsKey,
+    queryKey: scope
+      ? deepWaterResearchRunsKey(scope)
+      : [...deepWaterResearchRunsKeyPrefix, 'signed-out'],
     queryFn: () => apiClient.get('/api/integrations/products/deep-water/research-runs'),
+    enabled: scope !== null,
+  })
+}
+
+export const useDeepWaterAgentAccess = (enabled = true) => {
+  const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
+
+  return useQuery<DeepWaterAgentAccessResponse>({
+    queryKey: scope
+      ? deepWaterAgentAccessKey(scope)
+      : [...deepWaterAgentAccessKeyPrefix, 'signed-out'],
+    queryFn: () =>
+      apiClient.get('/api/integrations/products/deep-water/agent-access'),
+    enabled: enabled && scope !== null,
+  })
+}
+
+export const useSetDeepWaterAgentAccess = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: SetDeepWaterAgentAccessRequest) =>
+      apiClient.patch<DeepWaterAgentAccessResponse>(
+        '/api/integrations/products/deep-water/agent-access',
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: deepWaterAgentAccessKeyPrefix,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: toolPolicyTargetsKeyPrefix,
+      })
+    },
   })
 }
 
 // Response shapes for the external-agent activation endpoints
 // (`api/src/routes/integrations/external-agent.ts`). These aren't part of
 // `@nessie/schemas` yet — they're validated at the route boundary — so they're
-// typed locally here rather than widening the shared client-core surface for two
-// fields.
+// typed locally here rather than widening the shared client-core surface for
+// this small response.
 export type ActivateExternalAgentProductResponse = {
   channelId: string
   instanceId: string
-  authorizeUrl?: string
 }
 
 export type DeactivateExternalAgentProductResponse = {
@@ -63,10 +174,8 @@ export type DeactivateExternalAgentProductResponse = {
   instanceId: string | null
 }
 
-// Per-user activation is idempotent on the backend: calling it again after a
-// fresh OAuth sign-in resolves the now-active instance and flips the account
-// link to `linked` without reopening the provider tab, so the same mutation
-// both starts and confirms sign-in.
+// Per-user activation is idempotent on the backend and reuses the UOA identity
+// already linked by Nessie's own SSO session.
 export const useActivateExternalAgentProduct = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -77,8 +186,10 @@ export const useActivateExternalAgentProduct = () => {
         `/api/integrations/products/${productSlug}/activate`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -93,8 +204,10 @@ export const useDeactivateExternalAgentProduct = () => {
         `/api/integrations/products/${productSlug}/deactivate`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -117,7 +230,7 @@ export const useSyncExternalAgentChannel = () => {
     onSuccess: (result, input) => {
       if (result.imported > 0 && input.threadId) {
         void queryClient.invalidateQueries({
-          queryKey: ['threads', input.threadId, 'messages'],
+          queryKey: threadKeys.messages(input.threadId),
         })
       }
     },
@@ -137,10 +250,20 @@ export const useSetProductTeamEnablement = () => {
         { enabled: input.enabled },
       ),
     onSuccess: (product) => {
-      queryClient.setQueryData<IntegratedProductResponse[]>(
-        integratedProductsKey,
-        (current) => current?.map((item) => (item.slug === product.slug ? product : item)),
-      )
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
+      if (product.slug === 'deep-water') {
+        void queryClient.invalidateQueries({
+          queryKey: deepWaterAgentAccessKeyPrefix,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: toolPolicyTargetsKeyPrefix,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: mcpKeys.tools,
+        })
+      }
     },
   })
 }
@@ -169,18 +292,15 @@ export const useLaunchDeepWaterResearch = () => {
         input,
       ),
     onSuccess: (response) => {
-      queryClient.setQueryData<DeepWaterResearchRunRecord[]>(
-        deepWaterResearchRunsKey,
-        (current) => {
-          const withoutRun = current?.filter((run) => run.id !== response.run.id) ?? []
-          return [response.run, ...withoutRun].slice(0, 10)
-        },
-      )
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: deepWaterResearchRunsKey })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: deepWaterResearchRunsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })
@@ -197,10 +317,12 @@ export const usePrepareDeepTestReview = () => {
         input,
       ),
     onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })
@@ -217,10 +339,12 @@ export const usePrepareBuildMeProjectHandoff = () => {
         input,
       ),
     onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })

@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildNextScheduledRunAt } from '@nessie/runtime'
+import { buildNextScheduledRunAt, isOneOffConfig } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
-import { queueTriggerRun, queueWorkflowTriggerRun } from './trigger-run.js'
+import {
+  emptySkipReferenceTime,
+  hasPendingThreadWork,
+  recordEmptyFireSkip,
+  triggerOptsIntoEmptySkip,
+} from './trigger-empty-skip.js'
+import { queueTriggerRun } from './trigger-run.js'
+import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
 const DEFAULT_SCHEDULER_RETRY_DELAY_MS = 60_000
@@ -69,12 +76,36 @@ const claimDueScheduledTriggers = async (
   )
 }
 
+/**
+ * Next fire time plus the status the row should carry afterwards.
+ *
+ * `buildNextScheduledRunAt` returns null for two different reasons, and they
+ * must not look the same on the row: a one-off has simply done its job, while
+ * a recurring schedule that returned null has reached its `until` and lapsed.
+ * Leaving the latter `active` with no next run would be a silent zombie —
+ * indistinguishable from a broken config. Pausing it is reversible: extend the
+ * end date and resume.
+ */
+const settleRecurringClaim = (input: {
+  config: unknown
+  from: Date
+  now: Date
+  type: Parameters<typeof buildNextScheduledRunAt>[0]['type']
+}): { nextRunAt: Date | null; status: 'active' | 'paused' } => {
+  const nextRunAt = buildNextScheduledRunAt(input)
+  return {
+    nextRunAt,
+    status:
+      nextRunAt === null && !isOneOffConfig(input.config) ? 'paused' : 'active',
+  }
+}
+
 const finalizeScheduledTriggerClaim = async (
   prisma: PrismaClient,
   input: {
     claimId: string
     nextRunAt: Date | null
-    status?: 'active' | 'error'
+    status?: 'active' | 'error' | 'paused'
     triggerId: string
   },
 ): Promise<void> => {
@@ -119,7 +150,9 @@ export const sweepDueScheduledTriggers = async (
           teamId: true,
         },
       },
+      createdAt: true,
       id: true,
+      lastFiredAt: true,
       workflowInstallation: {
         select: {
           active: true,
@@ -168,16 +201,23 @@ export const sweepDueScheduledTriggers = async (
 
         await finalizeScheduledTriggerClaim(prisma, {
           claimId: trigger.schedulerClaimId,
-          nextRunAt: buildNextScheduledRunAt({
+          ...settleRecurringClaim({
             config: trigger.config,
             from: trigger.nextRunAt,
             now,
             type: trigger.type,
           }),
-          status: 'active',
           triggerId: trigger.id,
         })
-      } catch {
+      } catch (error) {
+        console.error(
+          '[worker.trigger-sweep] workflow dispatch failed',
+          JSON.stringify({
+            nextRunAt: trigger.nextRunAt.toISOString(),
+            triggerId: trigger.id,
+          }),
+          error,
+        )
         await finalizeScheduledTriggerClaim(prisma, {
           claimId: trigger.schedulerClaimId,
           nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
@@ -207,14 +247,58 @@ export const sweepDueScheduledTriggers = async (
       continue
     }
 
+    const targetChannelId = trigger.targetChannelId
+    const targetThreadId = trigger.targetThreadId
+    const agentId = trigger.agentId
+    const agent = relation.agent
+    const dedupeKey = `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`
+
     try {
-      const targetChannelId = trigger.targetChannelId
-      const targetThreadId = trigger.targetThreadId
-      const agentId = trigger.agentId
-      const agent = relation.agent
+      // Empty-fire skip: an opted-in schedule whose target thread has seen no
+      // new work since the last run records a `skipped` delivery and advances
+      // the schedule without enqueueing a run, so it never burns tokens on a
+      // no-op. Triggers that do not opt in, or whose thread has any pending
+      // work, always run — emptiness is never assumed.
+      //
+      // Inside the per-trigger try, because a throw here used to escape the
+      // loop entirely: the remaining claimed triggers were never dispatched and
+      // their claims were left to expire, so one bad row stalled the whole
+      // batch for a lease period.
+      if (
+        triggerOptsIntoEmptySkip(trigger.config)
+        && !(await hasPendingThreadWork(prisma, {
+          agentId,
+          since: emptySkipReferenceTime({
+            createdAt: relation.createdAt,
+            lastFiredAt: relation.lastFiredAt,
+          }),
+          threadId: targetThreadId,
+        }))
+      ) {
+        await recordEmptyFireSkip(prisma, {
+          dedupeKey,
+          payload: {
+            reason: 'empty_work_source',
+            scheduledFor: trigger.nextRunAt.toISOString(),
+          },
+          source: 'scheduler',
+          triggerId: trigger.id,
+        })
+        await finalizeScheduledTriggerClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          ...settleRecurringClaim({
+            config: trigger.config,
+            from: trigger.nextRunAt,
+            now,
+            type: trigger.type,
+          }),
+          triggerId: trigger.id,
+        })
+        continue
+      }
 
       await queueTriggerRun(prisma, {
-        dedupeKey: `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`,
+        dedupeKey,
         payload: {
           scheduledFor: trigger.nextRunAt.toISOString(),
           triggerId: trigger.id,
@@ -233,16 +317,29 @@ export const sweepDueScheduledTriggers = async (
 
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
-        nextRunAt: buildNextScheduledRunAt({
+        ...settleRecurringClaim({
           config: trigger.config,
           from: trigger.nextRunAt,
           now,
           type: trigger.type,
         }),
-        status: 'active',
         triggerId: trigger.id,
       })
-    } catch {
+    } catch (error) {
+      // Never silently. A bare `catch {}` here meant a trigger that threw
+      // before its delivery row existed retried every 60s forever with no log,
+      // no delivery, and no counter — invisible by construction. A classified
+      // failure (identity, target) has already recorded its own health and is
+      // no longer claimable; anything else is genuinely transient and retries.
+      console.error(
+        '[worker.trigger-sweep] dispatch failed',
+        JSON.stringify({
+          nextRunAt: trigger.nextRunAt.toISOString(),
+          triggerId: trigger.id,
+          type: trigger.type,
+        }),
+        error,
+      )
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
         nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),

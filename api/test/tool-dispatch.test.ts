@@ -125,15 +125,20 @@ test('planToolDispatch passes registry lookup for global tools regardless of cal
 /**
  * Regression coverage for task #17: the dispatcher must default to a
  * `NullSecretResolver` so opaque `secret_*` credentialRefs never silently
- * resolve to `null` via the old `EnvSecretResolver` env-var lookup. The
- * dispatch must reach the transport with `secret: null`, not blow up earlier.
+ * resolve through the old `EnvSecretResolver` env-var lookup. An
+ * auth-requiring dispatch must then refuse the call before it reaches a
+ * transport without a secret.
  */
 type McpInstanceFixture = {
   id: string
   credentialRef: string | null
   lifecycleState: string
   transportConfig: unknown
-  catalogEntry: { defaultTransportConfig: unknown }
+  catalogEntry: {
+    authMethod: string
+    authConfig: unknown
+    defaultTransportConfig: unknown
+  }
 }
 
 const buildMcpPrisma = (options: {
@@ -196,8 +201,7 @@ const MCP_TRANSPORT_CONFIG = {
 }
 
 test(
-  'planToolDispatch defaults to NullSecretResolver: opaque credentialRef returns secret: null '
-    + 'instead of leaking through EnvSecretResolver',
+  'planToolDispatch refuses an auth-requiring MCP call when its credential cannot resolve',
   async () => {
     // Set the env var that EnvSecretResolver WOULD have read if we had not
     // switched the default. If the default ever regresses to EnvSecretResolver,
@@ -222,29 +226,72 @@ test(
             credentialRef: 'secret_opaque_ref',
             lifecycleState: 'active',
             transportConfig: {},
-            catalogEntry: { defaultTransportConfig: {} },
+            catalogEntry: {
+              authMethod: 'oauth2',
+              authConfig: { method: 'oauth2' },
+              defaultTransportConfig: {},
+            },
           },
         ],
         grantAllowed: true,
       })
 
-      const plan = await planToolDispatch(prisma, 'tool-mcp', {
-        organizationId: ORG_A,
-        principals: { roleIds: ['role-1'] },
-        credentialContext: {},
-      })
-
-      assert.equal(plan.transport, 'mcp')
-      if (plan.transport !== 'mcp') throw new Error('unreachable')
-      // The dispatcher must explicitly produce `null` (not `undefined`) for an
-      // opaque ref when no resolver is injected; misconfigured deployments now
-      // fail loudly at the transport instead of silently dispatching null.
-      assert.strictEqual(plan.secret, null)
+      await assert.rejects(
+        () => planToolDispatch(prisma, 'tool-mcp', {
+          organizationId: ORG_A,
+          principals: { roleIds: ['role-1'] },
+          credentialContext: {},
+        }),
+        (error: unknown) =>
+          error instanceof ToolDispatchError
+          && error.code === TOOL_DISPATCH_ERROR_CODES.SECRET_UNAVAILABLE,
+      )
     } finally {
       delete process.env['secret_opaque_ref']
     }
   },
 )
+
+test('planToolDispatch refuses an auth-requiring HTTP call when its credential cannot resolve', async () => {
+  const prisma = buildMcpPrisma({
+    registry: [
+      {
+        id: 'tool-http',
+        organizationId: ORG_A,
+        enabled: true,
+        status: 'active',
+        transport: 'http',
+        transportConfig: { transport: 'http', endpointId: 'endpoint-1' },
+        mcpInstanceId: INSTANCE_ID,
+      },
+    ],
+    instances: [
+      {
+        id: INSTANCE_ID,
+        credentialRef: 'secret_opaque_ref',
+        lifecycleState: 'active',
+        transportConfig: {},
+        catalogEntry: {
+          authMethod: 'oauth2',
+          authConfig: { method: 'oauth2' },
+          defaultTransportConfig: {},
+        },
+      },
+    ],
+    grantAllowed: true,
+  })
+
+  await assert.rejects(
+    () => planToolDispatch(prisma, 'tool-http', {
+      organizationId: ORG_A,
+      principals: { roleIds: ['role-1'] },
+      credentialContext: {},
+    }),
+    (error: unknown) =>
+      error instanceof ToolDispatchError
+      && error.code === TOOL_DISPATCH_ERROR_CODES.SECRET_UNAVAILABLE,
+  )
+})
 
 test('planToolDispatch rejects MCP instances configured for stdio execution', async () => {
   const prisma = buildMcpPrisma({
@@ -265,7 +312,11 @@ test('planToolDispatch rejects MCP instances configured for stdio execution', as
         credentialRef: null,
         lifecycleState: 'active',
         transportConfig: { transport: 'stdio', command: 'node' },
-        catalogEntry: { defaultTransportConfig: {} },
+        catalogEntry: {
+          authMethod: 'none',
+          authConfig: { method: 'none' },
+          defaultTransportConfig: {},
+        },
       },
     ],
     grantAllowed: true,
@@ -304,7 +355,11 @@ test(
           credentialRef: 'secret_opaque_ref',
           lifecycleState: 'active',
           transportConfig: {},
-          catalogEntry: { defaultTransportConfig: {} },
+          catalogEntry: {
+            authMethod: 'api_key',
+            authConfig: { method: 'api_key', headerName: 'X-API-Key', valuePrefix: '' },
+            defaultTransportConfig: {},
+          },
         },
       ],
       grantAllowed: true,

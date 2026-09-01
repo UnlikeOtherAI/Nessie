@@ -1,16 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  humanizeEmailLocalPart,
-  isEmailLikeDisplayName,
-  resolveIdentityDisplayName,
-  resolveStoredDisplayName,
-} from '../src/services/identity-display.js'
-
-test('humanizeEmailLocalPart derives a readable name from an email address', () => {
-  assert.equal(humanizeEmailLocalPart('ada.lovelace@example.com'), 'Ada Lovelace')
-})
+import { resolveIdentityDisplayName } from '../src/services/identity-display.js'
 
 test('resolveIdentityDisplayName prefers a provider name', () => {
   assert.equal(
@@ -19,32 +10,24 @@ test('resolveIdentityDisplayName prefers a provider name', () => {
   )
 })
 
-test('resolveIdentityDisplayName replaces raw email candidates with a readable fallback', () => {
+test('resolveIdentityDisplayName reports no name rather than inventing one', () => {
+  // Nessie no longer manufactures "Ada Lovelace" from the address: the profile
+  // belongs to the provider, so an absent claim stays absent and the caller
+  // leaves the mirror alone (or names a brand-new row by its email address).
   assert.equal(
-    resolveIdentityDisplayName('ada.lovelace@example.com', ['ada.lovelace@example.com']),
-    'Ada Lovelace',
+    resolveIdentityDisplayName('ada.lovelace@example.com', [undefined, '   ']),
+    undefined,
   )
 })
 
-test('resolveIdentityDisplayName skips alternate email-shaped candidates', () => {
+test('resolveIdentityDisplayName ignores a candidate that just echoes the email', () => {
+  assert.equal(
+    resolveIdentityDisplayName('ada.lovelace@example.com', ['Ada.Lovelace@Example.com']),
+    undefined,
+  )
+  // A different address is still an assertion about the person, so it is kept.
   assert.equal(
     resolveIdentityDisplayName('ada.lovelace@example.com', ['ada@users.example.com']),
-    'Ada Lovelace',
-  )
-})
-
-test('isEmailLikeDisplayName detects display names that should not be shown in chat', () => {
-  assert.equal(isEmailLikeDisplayName('ada@example.com'), true)
-  assert.equal(isEmailLikeDisplayName('Ada Lovelace'), false)
-})
-
-test('resolveStoredDisplayName repairs legacy email-shaped rows', () => {
-  assert.equal(
-    resolveStoredDisplayName('ada.lovelace@example.com', 'ada.lovelace@example.com'),
-    'Ada Lovelace',
-  )
-  assert.equal(
-    resolveStoredDisplayName('ada.lovelace@example.com', 'Ada L.'),
-    'Ada L.',
+    'ada@users.example.com',
   )
 })

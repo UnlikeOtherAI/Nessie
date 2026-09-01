@@ -5,6 +5,8 @@ type WorkflowStepDefinition = {
   input?: Record<string, unknown>
   title?: string
   type: string
+  // W16: step-level predicate.
+  when?: string
 }
 
 type WorkflowGraph = {
@@ -72,7 +74,7 @@ export const ensureWorkflowStepRuns = async (
     steps: WorkflowGraph['steps']
     workflowRunId: string
   },
-): Promise<void> =>
+): Promise<{ alreadyMaterialized: boolean }> =>
   withTransaction(prisma, async (tx) => {
     await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(
@@ -105,6 +107,59 @@ export const ensureWorkflowStepRuns = async (
         },
       })
     }
+
+    return { alreadyMaterialized: existing.length > 0 }
+  })
+
+// Repairs a drifted run snapshot in place, under the same advisory lock
+// ensureWorkflowStepRuns takes, so a repair cannot interleave with step-row
+// creation. Used when a run's frozen graph no longer matches its materialized
+// step rows — possible only for runs snapshotted while suspended by the
+// backfill migration (pre-snapshot rows executing from the live template have
+// graph_snapshot NULL and take the fallback path, never this one).
+export const reconcileWorkflowRunGraphSnapshot = async (
+  prisma: PrismaLike,
+  input: {
+    graph: WorkflowGraph
+    workflowRunId: string
+  },
+): Promise<void> =>
+  withTransaction(prisma, async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${input.workflowRunId}),
+        hashtext('workflow_steps')
+      )
+    `
+
+    const stepRuns = await tx.workflowStepRun.findMany({
+      where: { workflowRunId: input.workflowRunId },
+      orderBy: { sequence: 'asc' },
+      select: { id: true, sequence: true },
+    })
+
+    await tx.workflowRun.update({
+      where: { id: input.workflowRunId },
+      data: { graphSnapshot: input.graph as unknown as Prisma.InputJsonValue },
+    })
+
+    // Step rows keep their sequence slots so execution order is untouched;
+    // only identity (key/type/title) is re-derived from the drifted template
+    // they were actually materialized from.
+    for (const stepRun of stepRuns) {
+      const step = input.graph.steps[stepRun.sequence]
+      if (!step) {
+        continue
+      }
+      await tx.workflowStepRun.update({
+        where: { id: stepRun.id },
+        data: {
+          stepKey: step.id,
+          stepType: step.type,
+          title: (step.title?.trim() || step.id).slice(0, 120),
+        },
+      })
+    }
   })
 
 export const loadWorkflowGraph = async (
@@ -114,19 +169,27 @@ export const loadWorkflowGraph = async (
   graph: WorkflowGraph
   installation: {
     channelId: string | null
+    concurrency: unknown
     config: unknown
     id: string
+    pinnedGraphJson: unknown
     projectId: string | null
     resolvedBindings: unknown
     teamId: string | null
     workflowTemplateId: string
     workflowTemplateVersion: number
+    workflowTemplate: { name?: string | null } | null
   }
   run: {
+    attempt: number
     id: string
     installationId: string
     input: unknown
     organizationId: string
+    originChannelId: string | null
+    originMessageId: string | null
+    originThreadId: string | null
+    replyRootMessageId: string | null
     startedByActorId: string
     startedByActorType: string
     status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
@@ -135,18 +198,26 @@ export const loadWorkflowGraph = async (
   const workflowRun = await prisma.workflowRun.findUnique({
     where: { id: workflowRunId },
     select: {
+      attempt: true,
       id: true,
+      graphSnapshot: true,
       installationId: true,
       input: true,
       organizationId: true,
+      originChannelId: true,
+      originMessageId: true,
+      originThreadId: true,
+      replyRootMessageId: true,
       startedByActorId: true,
       startedByActorType: true,
       status: true,
       installation: {
         select: {
           channelId: true,
+          concurrency: true,
           config: true,
           id: true,
+          pinnedGraphJson: true,
           projectId: true,
           resolvedBindings: true,
           teamId: true,
@@ -155,6 +226,7 @@ export const loadWorkflowGraph = async (
           workflowTemplate: {
             select: {
               graphJson: true,
+              name: true,
             },
           },
         },
@@ -166,11 +238,16 @@ export const loadWorkflowGraph = async (
     return null
   }
 
+  // A run executes the graph snapshot frozen at its creation, so a template
+  // edit mid-flight cannot rewrite what it runs. Rows created before snapshots
+  // existed (graph_snapshot NULL) fall back to the template's current graph —
+  // that is the graph they have been executing against all along.
+  const snapshotCandidate = workflowRun.graphSnapshot ?? workflowRun.installation.workflowTemplate.graphJson
   const graphJson =
-    workflowRun.installation.workflowTemplate.graphJson &&
-    typeof workflowRun.installation.workflowTemplate.graphJson === 'object' &&
-    !Array.isArray(workflowRun.installation.workflowTemplate.graphJson)
-      ? workflowRun.installation.workflowTemplate.graphJson
+    snapshotCandidate &&
+    typeof snapshotCandidate === 'object' &&
+    !Array.isArray(snapshotCandidate)
+      ? snapshotCandidate
       : {}
 
   const rawSteps = (graphJson as Record<string, unknown>)['steps']
@@ -189,6 +266,7 @@ export const loadWorkflowGraph = async (
           id: record['id'],
           type: record['type'],
           title: typeof record['title'] === 'string' ? record['title'] : undefined,
+          when: typeof record['when'] === 'string' ? record['when'] : undefined,
           input:
             record['input'] && typeof record['input'] === 'object' && !Array.isArray(record['input'])
               ? (record['input'] as Record<string, unknown>)
@@ -202,19 +280,27 @@ export const loadWorkflowGraph = async (
     graph,
     installation: {
       channelId: workflowRun.installation.channelId,
+      concurrency: workflowRun.installation.concurrency,
       config: workflowRun.installation.config,
       id: workflowRun.installation.id,
+      pinnedGraphJson: workflowRun.installation.pinnedGraphJson,
       projectId: workflowRun.installation.projectId,
       resolvedBindings: workflowRun.installation.resolvedBindings,
       teamId: workflowRun.installation.teamId,
       workflowTemplateId: workflowRun.installation.workflowTemplateId,
       workflowTemplateVersion: workflowRun.installation.workflowTemplateVersion,
+      workflowTemplate: { name: workflowRun.installation.workflowTemplate.name },
     },
     run: {
+      attempt: workflowRun.attempt,
       id: workflowRun.id,
       installationId: workflowRun.installationId,
       input: workflowRun.input,
       organizationId: workflowRun.organizationId,
+      originChannelId: workflowRun.originChannelId,
+      originMessageId: workflowRun.originMessageId,
+      originThreadId: workflowRun.originThreadId,
+      replyRootMessageId: workflowRun.replyRootMessageId,
       startedByActorId: workflowRun.startedByActorId,
       startedByActorType: workflowRun.startedByActorType,
       status: workflowRun.status,
@@ -244,19 +330,81 @@ export const markWorkflowRunStarted = async (
   })
 }
 
+// W6 lease discipline: an actively-worked step (tool_call, the only kind the
+// executor runs in-process today) is claimed with a lease and heartbeated while
+// it works; a crash leaves an expired lease the reaper can reclaim. Suspended
+// steps (agent_task, environment_launch) hold NO lease — they are waiting on an
+// external continuation — and carry a deadline instead. The reaper sweeps
+// either condition; a lease-only sweep would never reclaim the likeliest hangs.
+export const WORKFLOW_STEP_LEASE_MS = 120_000
+export const WORKFLOW_STEP_LEASE_HEARTBEAT_MS = 30_000
+export const WORKFLOW_STEP_SUSPEND_DEADLINE_MS = 24 * 60 * 60 * 1000
+
+const normalizeTimeoutMs = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null
+
+export const claimWorkflowStepLease = async (
+  prisma: PrismaLike,
+  input: {
+    leaseMs?: number
+    ownerId: string
+    stepRunId: string
+  },
+): Promise<void> => {
+  const leaseMs = input.leaseMs ?? WORKFLOW_STEP_LEASE_MS
+  await prisma.workflowStepRun.updateMany({
+    where: { id: input.stepRunId, status: 'running' },
+    data: {
+      leaseOwnerId: input.ownerId,
+      leaseExpiresAt: new Date(Date.now() + leaseMs),
+    },
+  })
+}
+
+// Renews the lease while the step is actively worked; guarded on the owner so a
+// reclaimed step's heartbeat cannot steal the lease back from the reaper.
+export const heartbeatWorkflowStepLease = async (
+  prisma: PrismaLike,
+  input: {
+    leaseMs?: number
+    ownerId: string
+    stepRunId: string
+  },
+): Promise<void> => {
+  const leaseMs = input.leaseMs ?? WORKFLOW_STEP_LEASE_MS
+  await prisma.workflowStepRun.updateMany({
+    where: {
+      id: input.stepRunId,
+      leaseOwnerId: input.ownerId,
+      status: 'running',
+    },
+    data: { leaseExpiresAt: new Date(Date.now() + leaseMs) },
+  })
+}
+
 export const markWorkflowStepRunStarted = async (
   prisma: PrismaLike,
   input: {
     input?: Record<string, unknown>
+    leaseOwnerId?: string | null
     output?: Record<string, unknown>
     stepRunId: string
   },
 ): Promise<void> => {
+  const now = new Date()
+  const timeoutMs = normalizeTimeoutMs(input.input?.['timeoutMs'])
   await prisma.workflowStepRun.update({
     where: { id: input.stepRunId },
     data: {
       status: 'running',
-      startedAt: new Date(),
+      startedAt: now,
+      ...(input.leaseOwnerId
+        ? {
+            leaseOwnerId: input.leaseOwnerId,
+            leaseExpiresAt: new Date(now.getTime() + WORKFLOW_STEP_LEASE_MS),
+          }
+        : {}),
+      ...(timeoutMs !== null ? { deadlineAt: new Date(now.getTime() + timeoutMs) } : {}),
       ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
       ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
     },
@@ -286,11 +434,18 @@ export const markWorkflowStepRunQueued = async (
       select: { startedAt: true },
     })
 
+    const timeoutMs = normalizeTimeoutMs(input.input?.['timeoutMs'])
     await tx.workflowStepRun.update({
       where: { id: workflowStepRunId },
       data: {
         status: 'running',
         startedAt: now,
+        // Suspended step: no worker is working it, so any lease is cleared and
+        // the reaper watches its deadline instead (default 24h; a step-level
+        // timeoutMs overrides).
+        leaseOwnerId: null,
+        leaseExpiresAt: null,
+        deadlineAt: new Date(now.getTime() + (timeoutMs ?? WORKFLOW_STEP_SUSPEND_DEADLINE_MS)),
         ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
         ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
       },
@@ -333,6 +488,18 @@ export const attachWorkflowStepRunArtifacts = async (
   })
 }
 
+export type WorkflowStepFinishResult = {
+  applied: boolean
+  continueWorkflow: boolean
+  workflowRunCompleted: boolean
+}
+
+const NO_OP_STEP_FINISH: WorkflowStepFinishResult = {
+  applied: false,
+  continueWorkflow: false,
+  workflowRunCompleted: false,
+}
+
 export const markWorkflowStepRunFinished = async (
   prisma: PrismaLike,
   input: {
@@ -342,12 +509,9 @@ export const markWorkflowStepRunFinished = async (
     summary?: string
     workflowRunId?: string | null
   },
-): Promise<{ continueWorkflow: boolean; workflowRunCompleted: boolean }> => {
+): Promise<WorkflowStepFinishResult> => {
   if (!input.workflowRunId || !input.stepRunId) {
-    return {
-      continueWorkflow: false,
-      workflowRunCompleted: false,
-    }
+    return NO_OP_STEP_FINISH
   }
   const workflowRunId = input.workflowRunId
   const stepRunId = input.stepRunId
@@ -361,10 +525,7 @@ export const markWorkflowStepRunFinished = async (
       },
     })
     if (!existing || existing.workflowRunId !== workflowRunId) {
-      return {
-        continueWorkflow: false,
-        workflowRunCompleted: false,
-      }
+      return NO_OP_STEP_FINISH
     }
 
     const mergedOutput = mergeStepRunOutput(existing.output, input.output)
@@ -384,18 +545,15 @@ export const markWorkflowStepRunFinished = async (
       success: input.success,
     })
 
-    await tx.workflowStepRun.update({
-      where: { id: stepRunId },
-      data: {
-        status: transition.nextStepStatus,
-        output: mergedOutput as Prisma.InputJsonValue,
-        errorMessage: input.success ? null : input.summary,
-        finishedAt: new Date(),
+    // Guarded on a non-terminal run status: a cancelled run (or one already
+    // terminalized by a sibling step failure) is not resurrected by a late
+    // child completion. The step row is left untouched in that case — it was
+    // already moved to its final state by whichever transition won.
+    const runUpdate = await tx.workflowRun.updateMany({
+      where: {
+        id: workflowRunId,
+        status: { in: ['pending', 'running'] },
       },
-    })
-
-    await tx.workflowRun.update({
-      where: { id: workflowRunId },
       data: {
         status: transition.nextRunStatus,
         summary: input.summary,
@@ -404,8 +562,41 @@ export const markWorkflowStepRunFinished = async (
           : {}),
       },
     })
+    if (runUpdate.count === 0) {
+      return NO_OP_STEP_FINISH
+    }
+
+    await tx.workflowStepRun.update({
+      where: { id: stepRunId },
+      data: {
+        status: transition.nextStepStatus,
+        output: mergedOutput as Prisma.InputJsonValue,
+        errorMessage: input.success ? null : input.summary,
+        finishedAt: new Date(),
+        leaseOwnerId: null,
+        leaseExpiresAt: null,
+        deadlineAt: null,
+      },
+    })
+
+    // A failed step terminalizes the run: anything still pending or blocked
+    // is never going to execute, so mark it skipped rather than leaving it
+    // reading as "still coming".
+    if (transition.nextRunStatus === 'failed') {
+      await tx.workflowStepRun.updateMany({
+        where: {
+          workflowRunId,
+          status: { in: ['pending', 'blocked'] },
+        },
+        data: {
+          status: 'skipped',
+          finishedAt: new Date(),
+        },
+      })
+    }
 
     return {
+      applied: true,
       continueWorkflow: transition.continueWorkflow,
       workflowRunCompleted: transition.workflowRunCompleted,
     }
@@ -420,15 +611,63 @@ export const markWorkflowRunFinished = async (
     summary?: string
     workflowRunId: string
   },
-): Promise<void> => {
-  await prisma.workflowRun.update({
-    where: { id: input.workflowRunId },
+): Promise<{ applied: boolean }> => {
+  // Same non-terminal guard as the step finish: a concurrent cancel wins and
+  // the loser reports `applied: false` so its caller emits no terminal event.
+  const result = await prisma.workflowRun.updateMany({
+    where: {
+      id: input.workflowRunId,
+      status: { in: ['pending', 'running'] },
+    },
     data: {
       status: input.success ? 'completed' : 'failed',
       output: (input.output ?? {}) as Prisma.InputJsonValue,
       summary: input.summary,
       errorMessage: input.success ? null : input.summary,
       finishedAt: new Date(),
+    },
+  })
+  return { applied: result.count > 0 }
+}
+
+// W16: a falsy `when:` guard skips the step without touching the run. The
+// transition is guarded on a still-pending step so a concurrent
+// terminalization (cancel, sibling failure) never has its outcome rewritten.
+export const markWorkflowStepRunSkipped = async (
+  prisma: PrismaLike,
+  input: {
+    stepRunId: string
+    summary?: string
+  },
+): Promise<void> => {
+  await prisma.workflowStepRun.updateMany({
+    where: {
+      id: input.stepRunId,
+      status: 'pending',
+    },
+    data: {
+      errorMessage: input.summary,
+      finishedAt: new Date(),
+      status: 'skipped',
+    },
+  })
+}
+
+// W18: every executor dispatch after the first bumps the run's attempt
+// counter, so a retried step's state_put writer identity differs from the
+// crashed attempt it repeats. Guarded on a non-terminal run so a bump never
+// resurrects or follows a terminalized one.
+export const bumpWorkflowRunAttempt = async (
+  prisma: PrismaLike,
+  workflowRunId: string,
+): Promise<void> => {
+  await prisma.workflowRun.updateMany({
+    where: {
+      id: workflowRunId,
+      status: { in: ['pending', 'running'] },
+    },
+    data: {
+      attempt: { increment: 1 },
     },
   })
 }

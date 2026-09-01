@@ -3,41 +3,20 @@ import {
   ChannelIdSchema,
   OrganizationIdSchema,
   ProjectIdSchema,
-  SystemChannelTypeSchema,
   TeamIdSchema,
-  ThreadIdSchema,
   UserIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
-export const ChannelRecordSchema = z.object({
-  id: ChannelIdSchema,
-  label: NonEmptyStringSchema,
-  slug: z.string().nullish(),
-  type: z.enum(['standard', 'dm']),
-  systemChannelType: SystemChannelTypeSchema.optional(),
-  dmUserId: UserIdSchema.nullish(),
-  visibility: z.enum(['public', 'protected', 'private']),
-  organizationId: OrganizationIdSchema,
-  projectId: ProjectIdSchema,
-  projectName: NonEmptyStringSchema,
-  teamId: TeamIdSchema,
-  teamName: NonEmptyStringSchema,
-  defaultThreadId: ThreadIdSchema,
-  unreadCount: z.number().int().nonnegative(),
-  // sp-channels: channel lifecycle fields
-  topic: z.string().nullish(),
-  description: z.string().nullish(),
-  archivedAt: TimestampSchema.nullish(),
-  memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
-  // Whether the caller has muted notifications for this channel (per-member).
-  muted: z.boolean().optional(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
+// The channel record is produced by `@nessie/workspace-admin`, which the worker
+// also uses, so its schema lives in `@nessie/schemas`.
+export {
+  ChannelRecordSchema,
+  type ChannelRecord,
+  type PersonalAssistantPresenceParticipant,
+} from '@nessie/schemas'
 
 // sp-channels: body for PATCH /api/channels/:channelId
 export const UpdateChannelBodySchema = z
@@ -58,6 +37,8 @@ export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
 export const ProjectRecordSchema = z.object({
   id: ProjectIdSchema,
   name: NonEmptyStringSchema,
+  avatarEmoji: z.string().min(1).max(32).nullable(),
+  avatarAttachmentId: z.string().uuid().nullable(),
   organizationId: OrganizationIdSchema,
   memberCount: z.number().int().nonnegative(),
   teamCount: z.number().int().nonnegative().optional(),
@@ -81,15 +62,29 @@ export const CallParticipantRecordSchema = z.object({
   leftAt: TimestampSchema.nullable(),
 })
 
+export const CallInviteRecordSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  state: z.enum(['ringing', 'accepted', 'declined', 'missed', 'cancelled']),
+  respondedAt: TimestampSchema.nullable(),
+})
+
 export const CallRecordSchema = z.object({
   id: z.string().uuid(),
   channelId: ChannelIdSchema,
-  roomId: z.string(),
-  status: z.enum(['active', 'ended']),
+  channelName: z.string(),
+  roomId: z.string().nullable(),
+  provider: z.enum(['google_meet', 'jitsi', 'microsoft_teams', 'jitsi_embedded']),
+  meetingUri: z.string().url().nullable(),
+  status: z.enum(['ringing', 'active', 'ended', 'missed', 'declined', 'cancelled']),
   startedById: UserIdSchema,
+  startedByDisplayName: z.string(),
   startedAt: TimestampSchema,
+  ringExpiresAt: TimestampSchema.nullable(),
   endedAt: TimestampSchema.nullable(),
+  revision: z.number().int().nonnegative(),
   participants: z.array(CallParticipantRecordSchema),
+  invites: z.array(CallInviteRecordSchema),
 })
 export type CallRecord = z.infer<typeof CallRecordSchema>
 
@@ -97,16 +92,32 @@ export const EmptyBodySchema = z.object({})
 
 export const CreateChannelBodySchema = z.object({
   label: NonEmptyStringSchema,
+  // An organization-wide channel is explicitly requested by the standalone
+  // Channels surface. Omitting it preserves the existing current-team default
+  // for project-scoped creation and personal-assistant tools.
+  scope: z.enum(['standalone']).optional(),
   teamId: TeamIdSchema.optional(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })
 
 export const UpdateProjectBodySchema = z.object({
-  name: NonEmptyStringSchema,
-})
+  name: NonEmptyStringSchema.optional(),
+  avatarEmoji: z.string().trim().min(1).max(32).nullable().optional(),
+  avatarAttachmentId: z.string().uuid().nullable().optional(),
+}).refine(
+  (body) => body.name !== undefined || body.avatarEmoji !== undefined || body.avatarAttachmentId !== undefined,
+  { message: 'At least one project field is required' },
+)
 
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
+})
+
+// POST always uses the caller as the PA principal. DELETE accepts a principal
+// only so a channel manager can remove another member's already-consented
+// presence; a member may still remove only their own.
+export const DeletePersonalAssistantPresenceBodySchema = z.object({
+  principalUserId: UserIdSchema.optional(),
 })
 
 export const StartChannelConversationBodySchema = z

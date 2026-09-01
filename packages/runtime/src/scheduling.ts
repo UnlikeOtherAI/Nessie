@@ -1,5 +1,9 @@
 import { CronExpressionParser } from 'cron-parser'
-import type { AgentTriggerType } from '@nessie/schemas'
+import {
+  ScheduledTriggerLaunchOriginSchema,
+  type AgentTriggerType,
+  type ScheduledTriggerLaunchOrigin,
+} from '@nessie/schemas'
 
 // Single source of truth for schedule config parsing + next-run math, shared by
 // the API trigger service and the worker scheduler so the two can never drift.
@@ -86,6 +90,22 @@ export const computeNextCronRunAt = (input: {
 export const isOneOffConfig = (config: unknown): boolean =>
   isJsonRecord(config) && config['mode'] === 'once'
 
+/**
+ * Optional end of a recurring schedule ("watch this until 9am tomorrow").
+ *
+ * A temporary watch — an incident window, a migration, an overnight soak — is
+ * a normal shape, and without this every recurring trigger runs forever and
+ * has to be remembered and paused by hand. Invalid or absent reads as "no
+ * end", so a malformed value can never silently stop a schedule.
+ */
+export const parseScheduleUntil = (config: unknown): Date | null => {
+  if (!isJsonRecord(config)) return null
+  const raw = config['until']
+  if (typeof raw !== 'string') return null
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export const buildNextScheduledRunAt = (input: {
   config: unknown
   from: Date
@@ -99,7 +119,10 @@ export const buildNextScheduledRunAt = (input: {
   }
 
   if (input.type === 'scheduled') {
-    return computeNextCronRunAt({ config: input.config, currentDate: input.from })
+    return withinScheduleEnd(
+      computeNextCronRunAt({ config: input.config, currentDate: input.from }),
+      input.config,
+    )
   }
 
   if (input.type !== 'interval') {
@@ -112,7 +135,21 @@ export const buildNextScheduledRunAt = (input: {
   }
 
   const base = input.from.getTime() > input.now.getTime() ? input.from : input.now
-  return new Date(base.getTime() + intervalMinutes * 60_000)
+  return withinScheduleEnd(
+    new Date(base.getTime() + intervalMinutes * 60_000),
+    input.config,
+  )
+}
+
+/**
+ * Drop a computed fire time that falls past the schedule's end. Returning null
+ * is the existing stop signal: it clears `next_run_at`, and the scheduler's
+ * claim query requires that column to be non-null.
+ */
+const withinScheduleEnd = (next: Date | null, config: unknown): Date | null => {
+  if (!next) return null
+  const until = parseScheduleUntil(config)
+  return until && next.getTime() > until.getTime() ? null : next
 }
 
 /**
@@ -134,12 +171,18 @@ export const computeInitialScheduleRunAt = (input: {
   }
 
   if (input.type === 'scheduled') {
-    return computeNextCronRunAt({ config: input.config, currentDate: input.now })
+    return withinScheduleEnd(
+      computeNextCronRunAt({ config: input.config, currentDate: input.now }),
+      input.config,
+    )
   }
 
   if (input.type === 'interval') {
     const intervalMinutes = parseIntervalMinutes(input.config)
-    return intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null
+    return withinScheduleEnd(
+      intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null,
+      input.config,
+    )
   }
 
   return null
@@ -168,6 +211,22 @@ export const extractTriggerEffectiveUserId = (config: unknown): string | null =>
 }
 
 /**
+ * The immutable authenticated tenancy selected when a user creates a schedule.
+ * Legacy configs deliberately return null: their original team cannot be
+ * recovered safely from a system-owned agent or the eventual target channel.
+ */
+export const extractTriggerLaunchOrigin = (
+  config: unknown,
+): ScheduledTriggerLaunchOrigin | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+
+  const parsed = ScheduledTriggerLaunchOriginSchema.safeParse(config['launchOrigin'])
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * Build the seed message that drives a trigger-fired run. An explicit instruction
  * (from `prompt` or `config.prompt`) is used verbatim plus a memory nudge so the
  * agent does exactly what was asked and records findings; otherwise a generic
@@ -185,13 +244,30 @@ export const buildTriggerPrompt = (input: {
     return `${instruction}\n\n${MEMORY_NUDGE}`
   }
 
-  const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
+  // Model-facing only: the kickoff message is `system`, so it drives the run
+  // but is never rendered in the channel. Phrased without an article because
+  // the trigger type is interpolated ("A interval trigger" was the old bug).
+  const prefix = `Trigger fired: ${input.triggerType} (source: ${input.source}).`
   if (input.payload === undefined) {
     return `${prefix}\n\nNo payload was provided.`
   }
 
   return `${prefix}\n\nPayload:\n${JSON.stringify(input.payload, null, 2)}`
 }
+
+/**
+ * Capped exponential backoff: `baseMs * 2^attempt`, never above `capMs`.
+ *
+ * Only the curve is shared. The base, the cap, and any clamp on `attempt`
+ * itself stay with the caller: they are that domain's retry policy, and a
+ * clamped exponent is a different decision from a capped result — folding them
+ * together here would hide which one a call site actually meant.
+ */
+export const exponentialBackoffMs = (input: {
+  attempt: number
+  baseMs: number
+  capMs: number
+}): number => Math.min(input.baseMs * 2 ** input.attempt, input.capMs)
 
 // --- sp-webhook: trigger-delivery retry/backoff policy -----------------------
 // Single source of truth for delivery retry math, shared by the API dispatch
@@ -206,9 +282,10 @@ export const computeNextRetryAt = (
   retryCount: number,
   from: Date = new Date(),
 ): Date => {
-  const backoff = Math.min(
-    DELIVERY_RETRY_BASE_MS * 2 ** Math.max(0, retryCount),
-    DELIVERY_RETRY_MAX_BACKOFF_MS,
-  )
+  const backoff = exponentialBackoffMs({
+    attempt: Math.max(0, retryCount),
+    baseMs: DELIVERY_RETRY_BASE_MS,
+    capMs: DELIVERY_RETRY_MAX_BACKOFF_MS,
+  })
   return new Date(from.getTime() + backoff)
 }

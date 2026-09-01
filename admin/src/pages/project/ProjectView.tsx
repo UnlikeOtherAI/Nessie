@@ -1,23 +1,27 @@
-import { Link, useLocation, useParams } from 'react-router-dom'
-import { ProjectOverviewPlaceholder } from '../../components/features/projects/ProjectOverviewPlaceholder'
-import { NewTaskButton } from '../../components/kanban/NewTaskButton'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
+import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
+import { TaskDialog } from '../../components/kanban/TaskDialog'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
+import { useAttentionSummary } from '../../facades/alerts/hooks'
+import { useState } from 'react'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
+import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
+import { ProjectExecutorsTab } from './ProjectExecutorsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 export const ProjectView = () => {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const { data: board } = useProjectBoard(projectId)
+  const { data: attention } = useAttentionSummary()
 
   if (!projectId) return null
 
@@ -25,79 +29,90 @@ export const ProjectView = () => {
   const isScrum = board?.style === 'scrum'
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const tab = location.pathname.endsWith('/settings')
     ? 'settings'
-    : location.pathname.endsWith('/backlog')
-      ? 'backlog'
-      : location.pathname.endsWith('/insights')
-        ? 'insights'
-        : location.pathname.endsWith('/board')
-          ? 'board'
-          : 'overview'
+    : location.pathname.endsWith('/docs')
+      ? 'docs'
+      : location.pathname.endsWith('/backlog')
+        ? 'backlog'
+    : location.pathname.endsWith('/insights')
+      ? 'insights'
+      : location.pathname.endsWith('/executors')
+        ? 'executors'
+          : location.pathname.endsWith('/board')
+            ? 'board'
+            : 'overview'
 
+  const assignedWorkCount = attention?.assignedWork.projects[projectId] ?? 0
+  const knowledgeCount = attention?.knowledge.projects[projectId] ?? 0
+  const withCount = (label: string, count: number): string => count > 0 ? `${label} (${count})` : label
   const tabs = [
     { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
-    { id: 'board', label: 'Board', to: `/projects/${projectId}/board` },
+    { id: 'board', label: withCount('Board', assignedWorkCount), to: `/projects/${projectId}/board` },
     ...(isScrum
       ? [
           { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
           { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
         ]
       : []),
+    { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
+    { id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
+  ]
+  const activeTab = tabs.find((item) => item.id === tab)
+  const headerActions: PageHeaderAction[] = [
+    {
+      id: 'project-section',
+      items: tabs.map((item) => ({
+        checked: item.id === tab,
+        id: item.id,
+        label: item.label,
+        onSelect: () => void navigate(item.to),
+      })),
+      kind: 'menu',
+      label: activeTab?.label ?? 'Section',
+      priority: 80,
+      title: 'Choose project section',
+    },
+    ...(tab === 'board'
+      ? [{
+          id: 'new-task',
+          label: 'New task',
+          onSelect: () => setTaskDialogOpen(true),
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction]
+      : []),
   ]
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>{project?.name ?? 'Project'}</div>
-        <nav className="flex gap-1">
-          {tabs.map((item) => (
-            <Link
-              key={item.id}
-              className={[
-                'rounded-md px-2.5 py-1 text-xs font-semibold',
-                tab === item.id
-                  ? 'bg-[color:var(--overlay)] text-[color:var(--tx)]'
-                  : 'text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
-              ].join(' ')}
-              to={item.to}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-3">
-          {board ? (
-            <span className="text-xs text-[color:var(--tx3)]">
-              {board.style === 'scrum' ? 'Scrum' : 'Kanban'}
-            </span>
-          ) : null}
-          {tab === 'board' ? (
-            <div>
-              <NewTaskButton
-                iterationId={isScrum ? activeIteration?.id : undefined}
-                projectId={projectId}
-              />
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <ProjectPageHeader actions={headerActions} project={project} titleTone="page" />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (
           <ProjectSettingsPage projectId={projectId} />
+        ) : tab === 'docs' ? (
+          <ProjectDocsTab projectId={projectId} />
         ) : tab === 'backlog' ? (
           <ProjectBacklogTab projectId={projectId} />
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
+        ) : tab === 'executors' ? (
+          <ProjectExecutorsTab projectId={projectId} />
         ) : tab === 'overview' ? (
-          <ProjectOverviewPlaceholder projectName={project?.name ?? 'Project'} />
+          <ProjectDashboard projectId={projectId} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}
       </div>
+      <TaskDialog
+        iterationId={isScrum ? activeIteration?.id : undefined}
+        onClose={() => setTaskDialogOpen(false)}
+        open={taskDialogOpen}
+        projectId={projectId}
+      />
     </section>
   )
 }

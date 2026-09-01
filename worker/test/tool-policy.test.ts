@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { BuiltinToolDefinition } from '@nessie/runtime'
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  CALL_START_TOOL_ID,
+  MEETING_LINK_CREATE_TOOL_ID,
+  type BuiltinToolDefinition,
+} from '@nessie/runtime'
 import { authorizeToolCall, resolveAgentTools } from '../src/run/tool-policy.js'
 
 const definitions = [
   {
     description: 'Search the web.',
     id: 'web_search',
+    summary: 'Search the web.',
     label: 'Web search',
     parameters: { properties: {}, type: 'object' },
     safe: true,
@@ -14,6 +20,7 @@ const definitions = [
   {
     description: 'Spawn a delegated agent.',
     id: 'spawn_subtask',
+    summary: 'Spawn a delegated agent.',
     label: 'Spawn subtask',
     parameters: { properties: {}, type: 'object' },
     safe: false,
@@ -21,6 +28,7 @@ const definitions = [
   {
     description: 'Send a message as the current user.',
     id: 'send_message',
+    summary: 'Send a message as the current user.',
     label: 'Send message',
     parameters: { properties: {}, type: 'object' },
     personalAssistantOnly: true,
@@ -82,6 +90,39 @@ test('resolveAgentTools grants personal-assistant-only tools to the personal ass
   assert.deepEqual([...resolved.allowedIds].sort(), ['send_message', 'web_search'])
 })
 
+test('a PA presence withholds owner-scoped reads and communication mutations', () => {
+  const presenceDefinitions = [
+    ...definitions,
+    ...['workspace_search', 'kb_search', 'message_edit', 'message_delete', 'react'].map((id) => ({
+      description: id,
+      id,
+      label: id,
+      parameters: { properties: {}, type: 'object' as const },
+      safe: false,
+    })),
+  ] satisfies BuiltinToolDefinition[]
+  const resolved = resolveAgentTools(
+    new Set(presenceDefinitions.map((tool) => tool.id)),
+    presenceDefinitions,
+    null,
+    null,
+    'personal_assistant',
+    { isPersonalAssistantPresence: true },
+  )
+
+  for (const withheld of [
+    'send_message',
+    'workspace_search',
+    'kb_search',
+    'message_edit',
+    'message_delete',
+    'react',
+  ]) {
+    assert.equal(resolved.allowedIds.has(withheld), false, `${withheld} must be withheld`)
+  }
+  assert.equal(resolved.allowedIds.has('web_search'), true)
+})
+
 test('authorizeToolCall reports structured denial reasons', () => {
   assert.deepEqual(
     authorizeToolCall('web_search', new Set(['web_search']), definitions, { web_search: false }, null, 'shared'),
@@ -110,4 +151,27 @@ test('authorizeToolCall denies act-as-user tools to a shared agent but allows th
     authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'personal_assistant'),
     { allowed: true },
   )
+})
+
+test('meeting link and call start tools are PA-only without an explicit grant', () => {
+  const callToolIds = [CALL_START_TOOL_ID, MEETING_LINK_CREATE_TOOL_ID]
+  const callTools = BUILTIN_TOOL_DEFINITIONS.filter((tool) => callToolIds.includes(tool.id))
+  const shared = resolveAgentTools(
+    new Set(callToolIds),
+    BUILTIN_TOOL_DEFINITIONS,
+    null,
+    null,
+    'shared',
+  )
+
+  assert.deepEqual(callTools.map((tool) => tool.id).sort(), callToolIds.sort())
+  for (const tool of callTools) {
+    assert.equal(tool.personalAssistantOnly, true)
+    assert.notEqual(tool.requiresExplicitGrant, true)
+    assert.deepEqual(
+      authorizeToolCall(tool.id, new Set([tool.id]), BUILTIN_TOOL_DEFINITIONS, null, null, 'shared'),
+      { allowed: false, reason: 'personal_assistant_only' },
+    )
+    assert.ok(!shared.descriptors.some((descriptor) => descriptor.toolName === tool.id))
+  }
 })

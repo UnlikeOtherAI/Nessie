@@ -1,9 +1,20 @@
-import type { AgentRecord, ChannelRecord, PersonalAssistantStateResponse } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  PersonalAssistantStateResponse,
+} from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import {
+  useAddPersonalAssistantPresence,
+  useRemovePersonalAssistantPresence,
+} from '../../../facades/personal-assistant/hooks'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { AgentInfoCard } from '../agents/AgentInfoCard'
+import { CurrentPersonalAssistantRow } from '../../shared/channel-members/MemberAgentRow'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
-import { formatClock, runsCardClass, type ChannelTab } from './channel-helpers'
+import { ChannelAutomationsPanel } from './ChannelAutomationsPanel'
+import type { ChannelTab } from './channel-helpers'
 
 interface ChannelTabPanelsProps {
   visibleActiveTab: ChannelTab
@@ -11,12 +22,11 @@ interface ChannelTabPanelsProps {
   isPersonalAssistantConversation: boolean
   activeChannel: ChannelRecord | null
   boundAgents: AgentRecord[]
-  scopedAgents: AgentRecord[]
-  toolsCount: number
-  pendingMessagesCount: number
   personalAssistantAgent: AgentRecord | null
   personalAssistantChannel: ChannelRecord | null
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
+  personalAssistantPresences: PersonalAssistantPresenceParticipant[]
+  currentUserId: string
   onSelectAgent: (agentId: string) => void
   onCreateAgent: () => void
 }
@@ -38,24 +48,34 @@ export const ChannelTabPanels = ({
   isPersonalAssistantConversation,
   activeChannel,
   boundAgents,
-  scopedAgents,
-  toolsCount,
-  pendingMessagesCount,
   personalAssistantAgent,
   personalAssistantChannel,
   personalAssistantState,
+  personalAssistantPresences,
+  currentUserId,
   onSelectAgent,
   onCreateAgent,
-}: ChannelTabPanelsProps) => (
-  <>
+}: ChannelTabPanelsProps) => {
+  const addPersonalAssistant = useAddPersonalAssistantPresence()
+  const removePersonalAssistant = useRemovePersonalAssistantPresence()
+  const canManagePersonalAssistantPresence = Boolean(
+    activeChannel && !activeChannel.systemChannelType && !isPersonalAssistantConversation,
+  )
+  const hasMyPersonalAssistant = personalAssistantPresences.some(
+    (presence) => presence.principalUserId === currentUserId,
+  )
+
+  return (
+    <>
+    {visibleActiveTab === 'automations' && activeChannel ? (
+      <ChannelAutomationsPanel channelId={activeChannel.id} />
+    ) : null}
     {visibleActiveTab === 'files' ? (
       <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="admin-card p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                Conversation files
-              </div>
+              <SectionLabel>Conversation files</SectionLabel>
               <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
                 Files shared in this {isConversationSurface ? 'conversation' : 'channel'} will
                 live here instead of getting mixed into runs or agent controls.
@@ -92,9 +112,7 @@ export const ChannelTabPanels = ({
         </section>
 
         <aside className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Scope
-          </div>
+          <SectionLabel>Scope</SectionLabel>
           <div className="mt-4 grid gap-3 text-sm">
             <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
               <div className="text-[color:var(--tx3)]">Surface</div>
@@ -119,105 +137,18 @@ export const ChannelTabPanels = ({
       </div>
     ) : null}
 
-    {visibleActiveTab === 'info' ? (
-      <div className="p-5">
-        {isPersonalAssistantConversation ? (
-          <PersonalAssistantConfigBanner
-            agent={personalAssistantAgent}
-            channel={personalAssistantChannel}
-            configSummary={personalAssistantState?.configSummary}
-          />
-        ) : boundAgents.length > 0 ? (
-          <div className="grid gap-3">
-            {boundAgents.map((agent) => (
-              <AgentInfoCard agent={agent} key={agent.id} />
-            ))}
-          </div>
-        ) : (
-          <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-            No agents are bound to this channel.
-          </div>
-        )}
-      </div>
-    ) : null}
-
-    {visibleActiveTab === 'runs' ? (
-      <div className="grid gap-4 p-5 lg:grid-cols-2">
-        <section className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Active runs
-          </div>
-          <div className="mt-4 grid gap-3">
-            {scopedAgents.length > 0 ? (
-              scopedAgents.map((agent) => (
-                <button
-                  key={agent.id}
-                  className={runsCardClass}
-                  onClick={() => onSelectAgent(agent.id)}
-                  type="button"
-                >
-                  <PanelAgentAvatar agent={agent} className="mt-0.5" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-[var(--tx)]">
-                        {agent.name}
-                      </span>
-                      <span
-                        className={[
-                          'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
-                          'uppercase tracking-[0.16em] text-[color:var(--tx3)]',
-                        ].join(' ')}
-                      >
-                        {agent.status}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-sm text-[color:var(--tx2)]">
-                      {agent.currentToolName ?? 'Idle'}
-                    </div>
-                    <div className="mt-2 text-xs text-[color:var(--tx3)]">
-                      Last activity {formatClock(agent.lastActivityAt)}
-                    </div>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="text-sm text-[color:var(--tx3)]">
-                No agent runs in this channel yet.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Workspace signals
-          </div>
-          <div className="mt-4 grid gap-3 text-sm">
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Safe tools</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {toolsCount}
-              </div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Streaming messages</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {pendingMessagesCount}
-              </div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Bound agents</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {boundAgents.length}
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    ) : null}
-
     {visibleActiveTab === 'agents' ? (
       <div className="grid gap-4 p-5 lg:grid-cols-2">
+        {isPersonalAssistantConversation ? (
+          <div className="lg:col-span-2">
+            <PersonalAssistantConfigBanner
+              agent={personalAssistantAgent}
+              channel={personalAssistantChannel}
+              configSummary={personalAssistantState?.configSummary}
+            />
+          </div>
+        ) : null}
+
         {boundAgents.length > 0 ? (
           boundAgents.map((agent) => (
             <article key={agent.id} className="admin-card p-4">
@@ -248,17 +179,50 @@ export const ChannelTabPanels = ({
               </div>
             </article>
           ))
-        ) : (
+        ) : personalAssistantPresences.length === 0 ? (
           <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
             No agents are bound to this channel yet. Use the admin page to create or
             bind one.
           </div>
-        )}
+        ) : null}
+
+        {personalAssistantPresences.length > 0 || canManagePersonalAssistantPresence ? (
+          <article className="admin-card p-4">
+            <SectionLabel>Personal Assistant presences</SectionLabel>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
+              Each presence is a colleague's assistant in this channel, without exposing
+              its private configuration.
+            </p>
+            <div className="mt-3 grid gap-1">
+              {personalAssistantPresences.map((presence) => (
+                <CurrentPersonalAssistantRow
+                  currentUserId={currentUserId}
+                  key={presence.id}
+                  presence={presence}
+                  removePending={removePersonalAssistant.isPending}
+                  onRemove={() => {
+                    if (activeChannel) removePersonalAssistant.mutate(activeChannel.id)
+                  }}
+                />
+              ))}
+            </div>
+            {canManagePersonalAssistantPresence && !hasMyPersonalAssistant ? (
+              <button
+                className="admin-button admin-button-secondary mt-3"
+                disabled={addPersonalAssistant.isPending}
+                onClick={() => {
+                  if (activeChannel) addPersonalAssistant.mutate(activeChannel.id)
+                }}
+                type="button"
+              >
+                {addPersonalAssistant.isPending ? 'Adding…' : 'Add my assistant'}
+              </button>
+            ) : null}
+          </article>
+        ) : null}
 
         <div className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Manage agents
-          </div>
+          <SectionLabel>Manage agents</SectionLabel>
           <p className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
             Create new agents, bind them to channels, and inspect tool access from the
             admin route.
@@ -273,5 +237,6 @@ export const ChannelTabPanels = ({
         </div>
       </div>
     ) : null}
-  </>
-)
+    </>
+  )
+}

@@ -21,6 +21,8 @@ type AttachmentRow = {
   id: string
   organizationId: string
   messageId: string | null
+  knowledgePageId?: string | null
+  uploaderId?: string | null
   kind: string
 }
 
@@ -48,7 +50,9 @@ const makeAgent = (avatarAttachmentId: string | null) => ({
   surfacePolicy: 'shared' as const,
   systemManaged: false,
   systemPrompt: null,
+  todosEnabled: false,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  visibility: 'workspace' as const,
 })
 
 const makeApp = (attachments: AttachmentRow[]) => {
@@ -66,6 +70,8 @@ const makeApp = (attachments: AttachmentRow[]) => {
         savedAvatarAttachmentId = data.avatarAttachmentId
         return makeAgent(savedAvatarAttachmentId)
       },
+      count: async ({ where }: { where: { avatarAttachmentId: string } }) =>
+        savedAvatarAttachmentId === where.avatarAttachmentId ? 1 : 0,
     },
     attachment: {
       findUnique: async ({ where }: { where: { id: string } }) =>
@@ -76,6 +82,11 @@ const makeApp = (attachments: AttachmentRow[]) => {
     knowledgePageVersion: {
       findFirst: async () => null,
     },
+    // A not-yet-published upload is readable only by its uploader, so the
+    // published-asset lookups all miss for these fixtures.
+    user: { count: async () => 0 },
+    organization: { count: async () => 0 },
+    feedback: { count: async () => 0 },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })
@@ -93,7 +104,7 @@ const makeApp = (attachments: AttachmentRow[]) => {
 
 test('PATCH /api/agents/:agentId/avatar sets an accessible image attachment', async () => {
   const { app, getSavedAvatar } = makeApp([
-    { id: imageAttachmentId, organizationId, messageId: null, kind: 'image' },
+    { id: imageAttachmentId, organizationId, messageId: null, uploaderId: userId, kind: 'image' },
   ])
 
   try {
@@ -113,7 +124,7 @@ test('PATCH /api/agents/:agentId/avatar sets an accessible image attachment', as
 
 test('PATCH /api/agents/:agentId/avatar rejects non-image attachments', async () => {
   const { app, getSavedAvatar } = makeApp([
-    { id: textAttachmentId, organizationId, messageId: null, kind: 'text' },
+    { id: textAttachmentId, organizationId, messageId: null, uploaderId: userId, kind: 'text' },
   ])
 
   try {
@@ -136,6 +147,7 @@ test('PATCH /api/agents/:agentId/avatar rejects attachments outside the organiza
       id: otherOrgAttachmentId,
       organizationId: otherOrganizationId,
       messageId: null,
+      uploaderId: userId,
       kind: 'image',
     },
   ])

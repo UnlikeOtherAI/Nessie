@@ -1,10 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  AgentToolPolicyTargetSchema,
+  SetAgentToolPolicyEntryRequestSchema,
+  SetToolRegistryStatusRequestSchema,
+  SetToolRegistryStatusResponseSchema,
   ToolGrantStateSchema,
   ToolRegistryEntryStatusSchema,
   ToolRegistrySourceSchema,
 } from '@nessie/schemas'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -16,8 +20,16 @@ import {
   type ToolGrantRow,
   type ToolRegistryRow,
 } from '../../services/tool-grants.js'
-import { fromPrismaToolGrantSource } from '@nessie/mcp-manage'
+import {
+  fromPrismaToolGrantSource,
+  setToolRegistryEntriesStatus,
+} from '@nessie/mcp-manage'
+import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
 import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
+import {
+  listAgentToolPolicyTargets,
+} from '../../services/agent-tool-policy.js'
+import { setAgentToolPolicyForRegistryEntry } from '../../services/agent-tool-policy-registry.js'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -52,6 +64,11 @@ export const CreateGrantBodySchema = z
       path: ['roleId'],
     },
   )
+
+const ToolPolicyParamsSchema = z.object({
+  agentId: z.string().uuid(),
+  toolRegistryEntryId: z.string().uuid(),
+})
 
 /**
  * Tool registry entry with its associated grants attached. The admin
@@ -103,6 +120,30 @@ export const attachGrantsToRegistryEntries = async (
   }))
 }
 
+const isExecutorManagedTool = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  toolRegistryEntryId: string,
+): Promise<boolean> => Boolean(await prisma.toolRegistryEntry.findFirst({
+  where: {
+    id: toolRegistryEntryId,
+    OR: [{ organizationId }],
+    source: 'executor',
+  },
+  select: { id: true },
+}))
+
+const rejectExecutorManagedTool = (
+  reply: FastifyReply,
+): void => {
+  sendApiError(
+    reply,
+    409,
+    'EXECUTOR_LOGICAL_TOOL_MANAGED',
+    'Executor logical tools are managed from the Executors access controls.',
+  )
+}
+
 export const registerMcpToolsRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
@@ -137,7 +178,10 @@ export const registerMcpToolsRoutes = (
     // Builtin tools are upserted into the registry on demand; ensure they exist
     // so the canonical /agents/tools surface always lists them (the legacy
     // /api/tools path is no longer guaranteed to run first).
-    await ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId)
+    await Promise.all([
+      ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId),
+      ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId),
+    ])
 
     const tools = await listToolRegistry(prisma, actorContext.tenant.organizationId, {
       status: statusParsed?.success ? statusParsed.data : undefined,
@@ -148,6 +192,106 @@ export const registerMcpToolsRoutes = (
     return createApiResponse(withGrants)
   })
 
+  /**
+   * Owner review verdict on discovered MCP tools.
+   *
+   * Registered before the `:toolRegistryEntryId` routes below because
+   * `status` would otherwise be a candidate id segment. Bulk by design: one
+   * connector routinely projects dozens of tools, so approving them one HTTP
+   * call at a time is not a usable surface. Ids are explicit — the body can
+   * never say "approve everything matching my filter", because the reviewer
+   * must have had each destructive tool on screen to approve it.
+   */
+  app.post('/api/mcp/tools/status', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = parseInput(SetToolRegistryStatusRequestSchema, request.body, reply)
+    if (!body) return reply
+
+    if ((await prisma.toolRegistryEntry.count({
+      where: {
+        id: { in: body.toolRegistryEntryIds },
+        organizationId: actorContext.tenant.organizationId,
+        source: 'executor',
+      },
+    })) > 0) {
+      rejectExecutorManagedTool(reply)
+      return reply
+    }
+
+    try {
+      const result = await setToolRegistryEntriesStatus(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        status: body.status,
+        toolRegistryEntryIds: body.toolRegistryEntryIds,
+      })
+      return createApiResponse(SetToolRegistryStatusResponseSchema.parse(result))
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.get('/api/mcp/tools/policy-targets', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const targets = await listAgentToolPolicyTargets(
+      prisma,
+      actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
+    )
+    return createApiResponse(AgentToolPolicyTargetSchema.array().parse(targets))
+  })
+
+  app.patch(
+    '/api/mcp/tools/:toolRegistryEntryId/policy-targets/:agentId',
+    async (request, reply) => {
+      const actorContext = requireActorContext(request, reply)
+      if (!actorContext) return reply
+      if (!requireOwner(actorContext, reply)) return reply
+
+      const body = parseInput(
+        SetAgentToolPolicyEntryRequestSchema,
+        request.body,
+        reply,
+      )
+      if (!body) return reply
+      const params = parseInput(
+        ToolPolicyParamsSchema,
+        request.params,
+        reply,
+        'params',
+      )
+      if (!params) return reply
+
+      if (await isExecutorManagedTool(
+        prisma,
+        actorContext.tenant.organizationId,
+        params.toolRegistryEntryId,
+      )) {
+        rejectExecutorManagedTool(reply)
+        return reply
+      }
+
+      try {
+        const target = await setAgentToolPolicyForRegistryEntry(prisma, {
+          agentId: params.agentId,
+          enabled: body.enabled,
+          organizationId: actorContext.tenant.organizationId,
+          toolRegistryEntryId: params.toolRegistryEntryId,
+        })
+        return createApiResponse(AgentToolPolicyTargetSchema.parse(target))
+      } catch (error) {
+        if (sendMcpError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
   app.post('/api/mcp/tools/:toolRegistryEntryId/grants', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -156,6 +300,10 @@ export const registerMcpToolsRoutes = (
     const { toolRegistryEntryId } = request.params as { toolRegistryEntryId: string }
     const body = parseInput(CreateGrantBodySchema, request.body, reply)
     if (!body) return reply
+    if (await isExecutorManagedTool(prisma, actorContext.tenant.organizationId, toolRegistryEntryId)) {
+      rejectExecutorManagedTool(reply)
+      return reply
+    }
 
     try {
       const grant = await createGrant(prisma, {
@@ -183,6 +331,10 @@ export const registerMcpToolsRoutes = (
       const { toolRegistryEntryId, grantId } = request.params as {
         toolRegistryEntryId: string
         grantId: string
+      }
+      if (await isExecutorManagedTool(prisma, actorContext.tenant.organizationId, toolRegistryEntryId)) {
+        rejectExecutorManagedTool(reply)
+        return reply
       }
       const deleted = await deleteGrant(
         prisma,

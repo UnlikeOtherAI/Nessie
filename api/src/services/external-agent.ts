@@ -1,7 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread } from './channel-records.js'
-import { loadChannelTeamProject } from './channel-slugs.js'
+import { ensureDefaultThread, loadChannelTeamProject } from '@nessie/workspace-admin'
 
 /**
  * External-agent conversation surface bootstrap.
@@ -43,6 +42,7 @@ export type ExternalAgentBootstrapInput = {
   product: ExternalAgentProduct
   teamId: string
   userId: string
+  workspaceId: string
 }
 
 export type ExternalAgentBootstrapResult = {
@@ -152,11 +152,12 @@ export const ensureExternalAgent = async (
     return parseAgentId(agent.id)
   })
 
-const externalAgentDmKey = (
-  product: ExternalAgentProduct,
+export const externalAgentDmKey = (
+  productSlug: string,
   organizationId: string,
   userId: string,
-): string => `extagent:${product.slug}:${organizationId}:${userId}`
+  workspaceId: string,
+): string => `extagent:${productSlug}:${organizationId}:${userId}:${workspaceId}`
 
 const setSoleMember = async (
   prisma: PrismaClient,
@@ -180,9 +181,21 @@ export const ensureExternalAgentChannel = async (
     product: ExternalAgentProduct
     teamId: string
     userId: string
+    workspaceId: string
   },
 ): Promise<string> => {
-  const dmKey = externalAgentDmKey(input.product, input.organizationId, input.userId)
+  const dmKey = externalAgentDmKey(
+    input.product.slug,
+    input.organizationId,
+    input.userId,
+    input.workspaceId,
+  )
+  const legacyDmKey =
+    `extagent:${input.product.slug}:${input.organizationId}:${input.userId}`
+  await prisma.channel.updateMany({
+    where: { dmKey: legacyDmKey, archivedAt: null },
+    data: { archivedAt: new Date() },
+  })
   const teamProject = await loadChannelTeamProject(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
@@ -236,10 +249,9 @@ export const ensureExternalAgentBinding = async (
   prisma: PrismaClient,
   input: { agentId: string; channelId: string },
 ): Promise<void> => {
-  await prisma.agentBinding.upsert({
-    where: { agentId_channelId: { agentId: input.agentId, channelId: input.channelId } },
-    create: { agentId: input.agentId, channelId: input.channelId },
-    update: {},
+  await prisma.agentBinding.createMany({
+    data: [{ agentId: input.agentId, channelId: input.channelId }],
+    skipDuplicates: true,
   })
 }
 
@@ -257,6 +269,7 @@ export const ensureExternalAgentBootstrap = async (
     product: input.product,
     teamId: systemTeamId,
     userId: input.userId,
+    workspaceId: input.workspaceId,
   })
   const threadId = await ensureDefaultThread(prisma, channelId)
   await ensureExternalAgentBinding(prisma, { agentId, channelId })

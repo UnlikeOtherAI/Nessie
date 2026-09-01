@@ -1,12 +1,42 @@
-import type { Dispatch, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
-import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type { Dispatch, KeyboardEvent, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
+import type {
+  AgentRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
+import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
 import { MessageAttachments } from '../../shared/MessageAttachments'
+import type { AttachmentRecord } from '../../../lib/uploads'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageActions } from './ChannelMessageActions'
-import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
+import type { ResolveReactorName } from './ReactionPills'
+import {
+  formatClock,
+  getDisplayName,
+  type ChannelAgentParticipant,
+  type MessageUserIdentity,
+} from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
+import {
+  EmbeddedWidget,
+  readMessageEmbedIds,
+} from '../dashboards/EmbeddedWidget'
+import { CommsConnectCard } from './CommsConnectCard'
+import { MessageMarkdown } from './MessageMarkdown'
+import { MarkdownEditInput } from './MarkdownEditInput'
+import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
+import { DocumentRefChip } from './DocumentRefChip'
+import { RunStopContinue } from './RunStopContinue'
+import { TodoProgressCard } from './TodoProgressCard'
+import { WorkflowRunCard } from './WorkflowRunCard'
+import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
+import {
+  getReplyBroadcastRootId,
+  type ThreadParticipant,
+} from './thread-panel/thread-panel-helpers'
+import { readWatchStatusSummary } from '../../../facades/channels/watch-status'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -28,14 +58,13 @@ const SpeechBubbleIcon = () => (
 export const StatusBadge = ({ presence }: { presence: PresenceView | null }) => {
   const emoji = presence?.statusEmoji ?? null
   const label = presence?.statusLabel ?? null
+  if (emoji) {
+    return <UserStatusEmoji statusEmoji={emoji} statusLabel={label} />
+  }
+
   return (
     <span className="admin-status-badge">
-      <span className="admin-status-badge-icon">{emoji ?? <SpeechBubbleIcon />}</span>
-      {label ? (
-        <span className="admin-tooltip" role="tooltip">
-          {label}
-        </span>
-      ) : null}
+      <span className="admin-status-badge-icon"><SpeechBubbleIcon /></span>
     </span>
   )
 }
@@ -48,19 +77,40 @@ interface ChannelMessageRowProps {
   meAvatar: AvatarSources
   token: string | null
   assistantFallbackName: string
+  personalAssistantPresence: PersonalAssistantPresenceParticipant | null
   isDedicatedAgentConversation: boolean
+  // A first-class external-agent turn (DeepSignal, ...) renders its narrated
+  // activities as a collapsed plan/timeline; other surfaces render flat cards.
+  isExternalAgentConversation: boolean
   renderContent: (text: string) => ReactNode
   editingMessageId: string | null
   editingContent: string
   updatePending: boolean
   onStartEdit: (messageId: string, content: string) => void
+  /**
+   * Answer the acknowledgement card on a reply that used restricted sources.
+   * Optional: the info drawers render read-only message lists where sharing is
+   * not the surface, so they omit it and the card shows without its controls.
+   */
+  shareRestrictedMessage?: (
+    messageId: string,
+    input: { kind: 'message' | 'scope'; duration: DisclosureDuration },
+  ) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
-  onSelectAgent?: (agent: AgentRecord) => void
+  // Opens the reply-thread panel for this message's root (#233). When absent
+  // the row renders no thread affordances at all.
+  onOpenThread?: (rootMessageId: string) => void
+  // Opens the full-size viewer. Owned by the feed, not by this row: a modal
+  // rendered here would inherit the row's stacking/overflow ancestors.
+  onOpenAttachment?: (attachment: AttachmentRecord) => void
+  onSelectAgent?: (agent: ChannelAgentParticipant) => void
   onSelectUser?: (user: MessageUserIdentity) => void
+  resolveReactorName: ResolveReactorName
+  resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
   getPresence: (userId: string | null | undefined) => PresenceView | null
   activeActionMessageId: string | null
   setActiveActionMessageId: Dispatch<SetStateAction<string | null>>
@@ -79,31 +129,58 @@ export const ChannelMessageRow = ({
   meAvatar,
   token,
   assistantFallbackName,
+  personalAssistantPresence,
   isDedicatedAgentConversation,
+  isExternalAgentConversation,
   renderContent,
   editingMessageId,
   editingContent,
   updatePending,
   onStartEdit,
+  shareRestrictedMessage,
   onChangeEditingContent,
   onSubmitEdit,
   onCancelEdit,
   onAddReaction,
   onConfirmDelete,
+  onOpenThread,
+  onOpenAttachment,
   onSelectAgent,
   onSelectUser,
+  resolveReactorName,
+  resolveThreadParticipant,
   getPresence,
   activeActionMessageId,
   setActiveActionMessageId,
   lastPointerDownAt,
 }: ChannelMessageRowProps) => {
-  const displayName = getDisplayName(message, meDisplayName, agentMap, assistantFallbackName)
+  const watchStatus = readWatchStatusSummary(message.metadata)
+  const displayName = getDisplayName(
+    message,
+    meDisplayName,
+    agentMap,
+    assistantFallbackName,
+    personalAssistantPresence?.displayName,
+  )
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
   const isEditingMessage = editingMessageId === message.id
+  // Replies open their root's thread; roots open their own.
+  const threadRootMessageId = message.rootMessageId ?? message.id
+  const broadcastRootId = getReplyBroadcastRootId(message.metadata)
+  const openThread =
+    onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
   const messageAgent =
-    message.role === 'assistant' && onSelectAgent
+    message.role === 'assistant' && onSelectAgent && !personalAssistantPresence
       ? agentMap.get(message.agentId ?? '') ?? null
       : null
+  const assistantAvatar = personalAssistantPresence
+    ? {
+        avatarAttachmentId: personalAssistantPresence.avatarAttachmentId,
+        id: personalAssistantPresence.agentId,
+        name: personalAssistantPresence.displayName,
+        role: 'Personal Assistant',
+      }
+    : agentMap.get(message.agentId ?? '')
   const authorIdentity =
     message.role === 'user' && message.userId && onSelectUser
       ? {
@@ -112,8 +189,6 @@ export const ChannelMessageRow = ({
           avatarUrl: message.author?.avatarUrl
             ?? (message.userId === meUserId ? meAvatar.avatarUrl : undefined),
           displayName,
-          gravatarUrl: message.author?.gravatarUrl
-            ?? (message.userId === meUserId ? meAvatar.gravatarUrl : undefined),
           id: message.userId,
         }
       : null
@@ -129,6 +204,25 @@ export const ChannelMessageRow = ({
       onSelectAgent?.(messageAgent)
     }
   }
+  const selectPersonalAssistant = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (personalAssistantPresence) {
+      onSelectAgent?.(personalAssistantPresence)
+    }
+  }
+  // Slack-style shortcut: `t` opens the thread for the focused message (or its
+  // root, when the focused row is itself a reply).
+  const openThreadOnKey = (event: KeyboardEvent<HTMLElement>) => {
+    if ((event.key !== 't' && event.key !== 'T') || !onOpenThread) {
+      return
+    }
+    const target = event.target as HTMLElement
+    if (target.closest('input, textarea, [contenteditable="true"]')) {
+      return
+    }
+    event.preventDefault()
+    onOpenThread(threadRootMessageId)
+  }
 
   return (
     <article
@@ -137,20 +231,30 @@ export const ChannelMessageRow = ({
       aria-label={`Message from ${displayName}`}
       className="admin-msg-row relative py-1"
       data-actions-open={activeActionMessageId === message.id}
-      onClick={() =>
+      onClick={() => {
         setActiveActionMessageId((current) => (current === message.id ? null : message.id))
-      }
+      }}
       onFocus={() => {
         if (Date.now() - lastPointerDownAt.current > 500) {
           setActiveActionMessageId(message.id)
         }
       }}
+      onKeyDown={openThreadOnKey}
       onPointerDown={() => {
         lastPointerDownAt.current = Date.now()
       }}
       tabIndex={0}
     >
-      {messageAgent ? (
+      {personalAssistantPresence ? (
+        <button
+          aria-label={`Open ${displayName}`}
+          className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          onClick={selectPersonalAssistant}
+          type="button"
+        >
+          <ChannelAgentGlyph agent={assistantAvatar} token={token} />
+        </button>
+      ) : messageAgent ? (
         <button
           aria-label={`Open ${displayName}`}
           className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
@@ -160,7 +264,7 @@ export const ChannelMessageRow = ({
           <ChannelAgentGlyph agent={messageAgent} token={token} />
         </button>
       ) : message.role === 'assistant' ? (
-        <ChannelAgentGlyph agent={agentMap.get(message.agentId ?? '')} token={token} />
+        <ChannelAgentGlyph agent={assistantAvatar} token={token} />
       ) : authorIdentity ? (
         <button
           aria-label={`Open ${displayName}`}
@@ -172,9 +276,9 @@ export const ChannelMessageRow = ({
             avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
             avatarUrl={message.author?.avatarUrl ?? undefined}
             displayName={displayName}
-            gravatarUrl={message.author?.gravatarUrl ?? undefined}
             size={36}
             token={token}
+            userId={message.author?.id}
           />
         </button>
       ) : (
@@ -182,17 +286,17 @@ export const ChannelMessageRow = ({
           avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
           avatarUrl={message.author?.avatarUrl ?? undefined}
           displayName={displayName}
-          gravatarUrl={message.author?.gravatarUrl ?? undefined}
           size={36}
           token={token}
+          userId={message.author?.id}
         />
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          {messageAgent || authorIdentity ? (
+          {personalAssistantPresence || messageAgent || authorIdentity ? (
             <button
               className="min-w-0 text-left text-sm font-bold text-[var(--tx)] hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              onClick={messageAgent ? selectAgent : selectAuthor}
+              onClick={personalAssistantPresence ? selectPersonalAssistant : messageAgent ? selectAgent : selectAuthor}
               type="button"
             >
               {displayName}
@@ -212,13 +316,20 @@ export const ChannelMessageRow = ({
                 'text-[11px] font-semibold text-[var(--thinking)]',
               ].join(' ')}
             >
-              agent
+              {personalAssistantPresence ? 'PA' : 'agent'}
             </span>
           ) : null}
           <span className="text-xs text-[color:var(--tx3)]">
             {formatClock(message.createdAt)}
           </span>
-          {message.editedAt ? (
+          {watchStatus ? (
+            // A recurring watch keeps one status line and edits it in place, so
+            // "(edited)" would be misleading — the useful facts are how many
+            // times it has run and when it last did.
+            <span className="text-xs text-[color:var(--tx3)]">
+              {`checked ${watchStatus.runCount}× · last ${formatClock(watchStatus.lastRunAt)}`}
+            </span>
+          ) : message.editedAt ? (
             <span className="text-xs italic text-[color:var(--tx3)]">(edited)</span>
           ) : null}
         </div>
@@ -231,21 +342,11 @@ export const ChannelMessageRow = ({
         >
           {isEditingMessage ? (
             <div className="flex flex-col gap-2">
-              <textarea
-                autoFocus
-                className="admin-input w-full resize-y text-sm"
-                onChange={(event) => onChangeEditingContent(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    onSubmitEdit(message.id)
-                  }
-                  if (event.key === 'Escape') {
-                    onCancelEdit()
-                  }
-                }}
-                rows={2}
+              <MarkdownEditInput
                 value={editingContent}
+                onCancel={onCancelEdit}
+                onChange={onChangeEditingContent}
+                onSubmit={() => onSubmitEdit(message.id)}
               />
               <div className="flex items-center gap-2">
                 <button
@@ -265,13 +366,95 @@ export const ChannelMessageRow = ({
                 </button>
               </div>
             </div>
+          ) : message.restricted ? (
+            <RestrictedMessageCard
+              allowStanding={false}
+              messageId={message.id}
+              mode="withheld"
+              onShare={async () => undefined}
+            />
           ) : (
-            <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-              {renderContent(message.content)}
-            </p>
+            <>
+              <MessageMarkdown renderInlineText={renderContent}>
+                {message.content}
+              </MessageMarkdown>
+              {message.restrictedSources && shareRestrictedMessage ? (
+                <div className="mt-2">
+                  <RestrictedMessageCard
+                    allowStanding={message.canShareStanding ?? false}
+                    messageId={message.id}
+                    mode="shareable"
+                    onShare={(input) => shareRestrictedMessage(message.id, input)}
+                  />
+                </div>
+              ) : null}
+            </>
           )}
-          {!isEditingMessage ? <MessageUiCards metadata={message.metadata} /> : null}
-          <MessageAttachments messageId={message.id} />
+          {!isEditingMessage ? (
+            <MessageUiCards
+              isExternalAgent={
+                isExternalAgentConversation && message.role === 'assistant'
+              }
+              metadata={message.metadata}
+            />
+          ) : null}
+          {/* Dashboard widgets quoted into the conversation. Each resolves by
+              embed id, so the server decides visibility per viewer. */}
+          {!isEditingMessage
+            ? readMessageEmbedIds(message.metadata).map((embedId) => (
+              <div className="mt-2" key={embedId}>
+                <EmbeddedWidget embedId={embedId} surface="message" />
+              </div>
+            ))
+            : null}
+          {!isEditingMessage ? (
+            <CommsConnectCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <TodoProgressCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <DocumentRefChip metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <WorkflowRunCard metadata={message.metadata} />
+          ) : null}
+          {/* Mount only when the message actually has files. The count comes
+              from the message contract; when it is absent (an optimistic or
+              realtime-seeded row) we still mount, so a real attachment is
+              never hidden by a missing count. */}
+          {(message.attachmentCount ?? 1) > 0 ? (
+            <MessageAttachments messageId={message.id} onOpenAttachment={onOpenAttachment} />
+          ) : null}
+          {broadcastRootId && onOpenThread ? (
+            <button
+              className={[
+                'mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5',
+                'bg-[var(--accent-soft)] text-[11px] font-semibold text-[var(--thinking)]',
+                'transition-colors hover:bg-[color:var(--main-hover)]',
+              ].join(' ')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenThread(broadcastRootId)
+              }}
+              type="button"
+            >
+              from a thread
+            </button>
+          ) : null}
+          {!message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
+            <ReplySummaryBar
+              lastReplyAt={message.lastReplyAt ?? null}
+              participantIds={message.replyParticipantIds ?? []}
+              replyCount={message.replyCount ?? 0}
+              resolveParticipant={resolveThreadParticipant ?? (() => null)}
+              token={token}
+              onOpen={() => onOpenThread(message.id)}
+            />
+          ) : null}
           {!isEditingMessage ? (
             <ChannelMessageActions
               canDelete={canManageOwnMessage}
@@ -280,8 +463,10 @@ export const ChannelMessageRow = ({
               currentUserId={meUserId}
               messageId={message.id}
               reactions={message.reactions ?? []}
+              resolveReactorName={resolveReactorName}
               onAddReaction={onAddReaction}
               onConfirmDelete={onConfirmDelete}
+              onReply={openThread}
               onStartEdit={onStartEdit}
             />
           ) : null}

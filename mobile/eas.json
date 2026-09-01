@@ -8,19 +8,26 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "device": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ADMIN_URL": "https://app.nessie.works"
+      }
+    },
     "preview": {
-      "distribution": "internal"
+      "extends": "device"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": false
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "TODO-apple-id",
-        "ascAppId": "TODO-app-store-connect-app-id",
-        "appleTeamId": "TODO-apple-team-id"
+        "appleId": "ondrej.rafaj@me.com",
+        "ascAppId": "6801440183",
+        "appleTeamId": "59S95D279D"
       }
     }
   }

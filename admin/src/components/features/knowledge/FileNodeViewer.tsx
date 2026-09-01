@@ -8,20 +8,31 @@ import {
 } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
-import { iconForFilename, isZipFilename, previewKindForFilename } from './file-icons'
+import {
+  iconForFilename,
+  isMarkdownFilename,
+  isZipFilename,
+  previewKindForFilename,
+} from './file-icons'
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type FileNodeViewerProps = {
+  canWrite: boolean
   page: KnowledgePageRecord
-  onBack: () => void
+  // On a phone the workspace owns the doorway through the local-back
+  // registry and passes no onBack; wider layouts keep the pane's own Back.
+  onBack?: () => void
   onOpenHistory: () => void
   onUploadVersion: () => void
   onToggleAttachments: () => void
 }
 
 export const FileNodeViewer = ({
+  canWrite,
   page,
   onBack,
   onOpenHistory,
@@ -31,6 +42,11 @@ export const FileNodeViewer = ({
   const { token } = useAuthSession()
   const version = page.latestVersion
   const previewKind = previewKindForFilename(page.title)
+  // A `.md` file node is a document that happens to be stored as a file — a
+  // streamed document saves exactly this way — so it renders as markdown
+  // through the message renderer (not TipTap, which owns *editing* documents).
+  // Remote images are never fetched: the bytes may be model-authored.
+  const markdownPreview = previewKind === 'text' && isMarkdownFilename(page.title)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
   // never render as executable HTML in the same-origin iframe. Image previews
@@ -57,44 +73,42 @@ export const FileNodeViewer = ({
     previewKind === 'text' && downloadPath ? downloadPath : null,
     token,
   )
+  const headerActions: PageHeaderAction[] = [
+    {
+      icon: faPaperclip,
+      id: 'attachments',
+      label: 'Attachments',
+      onSelect: onToggleAttachments,
+      priority: 60,
+    },
+    {
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 50,
+    },
+    ...(canWrite
+      ? [{
+          id: 'upload-version',
+          label: 'Upload new version',
+          onSelect: onUploadVersion,
+          priority: 40,
+        } satisfies PageHeaderAction]
+      : []),
+    {
+      disabled: !downloadPath,
+      icon: faDownload,
+      id: 'download',
+      label: 'Download',
+      onSelect: () => downloadPath && void downloadAuthedPath(downloadPath, page.title, token),
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   return (
     <KnowledgePane
-      actions={
-        <>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onToggleAttachments}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faPaperclip} />
-            Attachments
-          </button>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onOpenHistory}
-            type="button"
-          >
-            History
-          </button>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onUploadVersion}
-            type="button"
-          >
-            Upload new version
-          </button>
-          <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
-            disabled={!downloadPath}
-            onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faDownload} />
-            Download
-          </button>
-        </>
-      }
+      actions={headerActions}
       onBack={onBack}
       title={page.title}
     >
@@ -128,6 +142,9 @@ export const FileNodeViewer = ({
               // previewUrl's blob MIME is pinned to application/pdf (above), so a
               // file with an attacker-controlled content-type (e.g. text/html
               // named "x.pdf") renders as a failed PDF, never executable HTML.
+              // Deliberately NOT sandboxed: any `sandbox` attribute stops
+              // Chrome's PDF viewer from loading a blob: URL at all (verified),
+              // and the MIME pin already closes the script-execution path.
               src={previewUrl}
               title={page.title}
             />
@@ -145,6 +162,26 @@ export const FileNodeViewer = ({
                 Your browser can’t play this audio — use Download.
               </audio>
             </div>
+          ) : markdownPreview ? (
+            textPreview.loading ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
+            ) : textPreview.error || textPreview.text === null ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Preview unavailable.</p>
+            ) : (
+              <div
+                className="max-h-[70vh] overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4"
+                data-testid="markdown-file-preview"
+              >
+                <MessageMarkdown allowRemoteImages={false} renderInlineText={(text) => text}>
+                  {textPreview.text}
+                </MessageMarkdown>
+                {textPreview.truncated ? (
+                  <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                    …truncated — download to see the rest.
+                  </p>
+                ) : null}
+              </div>
+            )
           ) : previewKind === 'text' ? (
             textPreview.loading ? (
               <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
@@ -174,7 +211,7 @@ export const FileNodeViewer = ({
                 No inline preview for this file type.
               </p>
               <button
-                className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
                 type="button"
               >
@@ -184,7 +221,7 @@ export const FileNodeViewer = ({
           )}
         </div>
 
-        <CommentsSection pageId={page.id} />
+        <CommentsSection canResolve={canWrite} pageId={page.id} />
       </div>
     </KnowledgePane>
   )

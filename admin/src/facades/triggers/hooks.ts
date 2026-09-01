@@ -3,13 +3,14 @@ import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
 } from '../../lib/api-client'
+import { agentKeys, runKeys, triggerKeys, workflowKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useTriggers = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerRecord[]>({
-    queryKey: ['triggers'],
+    queryKey: triggerKeys.all,
     queryFn: () => apiClient.get('/api/triggers'),
     enabled,
   })
@@ -19,7 +20,7 @@ export const useAgentTriggers = (agentId?: string, enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerRecord[]>({
-    queryKey: ['agents', agentId, 'triggers'],
+    queryKey: agentKeys.triggers(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/triggers`),
     enabled: enabled && Boolean(agentId),
   })
@@ -29,7 +30,7 @@ export const useTriggerHistory = (triggerId?: string, limit = 10) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerDeliveryRecord[]>({
-    queryKey: ['triggers', triggerId, 'history', limit],
+    queryKey: triggerKeys.history(triggerId, limit),
     queryFn: () => apiClient.get(`/api/triggers/${triggerId}/history?limit=${limit}`),
     enabled: Boolean(triggerId),
   })
@@ -62,10 +63,10 @@ export const useCreateAgentTrigger = () => {
         targetThreadId: input.targetThreadId,
       }),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
       void queryClient.invalidateQueries({
-        queryKey: ['agents', variables.agentId, 'triggers'],
+        queryKey: agentKeys.triggers(variables.agentId),
       })
     },
   })
@@ -78,8 +79,8 @@ export const usePauseTrigger = () => {
   return useMutation({
     mutationFn: (triggerId: string) => apiClient.post(`/api/triggers/${triggerId}/pause`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -91,8 +92,31 @@ export const useResumeTrigger = () => {
   return useMutation({
     mutationFn: (triggerId: string) => apiClient.post(`/api/triggers/${triggerId}/resume`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+    },
+  })
+}
+
+/**
+ * Put a schedule back to work after its captured identity stopped verifying.
+ *
+ * `takeOver` is the owner's explicit "run this as me instead"; without it the
+ * server refuses to re-point a schedule at a different workspace, because that
+ * would move its billing attribution as a side effect of a repair click.
+ */
+export const useReauthorizeTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { takeOver?: boolean; triggerId: string }) =>
+      apiClient.post(`/api/triggers/${input.triggerId}/reauthorize`, {
+        ...(input.takeOver === undefined ? {} : { takeOver: input.takeOver }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -117,9 +141,9 @@ export const useUpdateTrigger = () => {
       return apiClient.put<AgentTriggerRecord>(`/api/triggers/${triggerId}`, body)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
-      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
     },
   })
 }
@@ -131,8 +155,8 @@ export const useDeleteTrigger = () => {
   return useMutation({
     mutationFn: (triggerId: string) => apiClient.delete(`/api/triggers/${triggerId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -163,9 +187,9 @@ export const useCreateWorkflowInstallationTrigger = () => {
         },
       ),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-installations', variables.installationId, 'triggers'],
+        queryKey: workflowKeys.installationTriggers(variables.installationId),
       })
     },
   })
@@ -183,9 +207,9 @@ export const useFireTrigger = () => {
         prompt: input.prompt,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
-      void queryClient.invalidateQueries({ queryKey: ['runs'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: runKeys.all })
     },
   })
 }

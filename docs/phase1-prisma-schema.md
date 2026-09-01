@@ -399,7 +399,7 @@ model ToolCall {
 
 ## 4) Bootstrap seed data
 
-On first bootstrap (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a), the API creates these deterministic records:
+On first bootstrap (see [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) section 4.3a), the API creates these deterministic records:
 
 | Entity | Deterministic ID | Name |
 | --- | --- | --- |
@@ -422,5 +422,5 @@ The bootstrap user is created with a real UUID (not deterministic) and bound int
 
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) — enum values must match `AgentStatus`, `RunStatus`, `TaskStatus`
 - [hosted-app-architecture.md](./hosted-app-architecture.md) — queue_jobs SQL schema
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) — bootstrap flow
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) — bootstrap flow
 - [implementation-phases.md](./implementation-phases.md) — Phase 1 entity list

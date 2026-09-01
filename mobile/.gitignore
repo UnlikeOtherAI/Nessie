@@ -1,5 +1,6 @@
 # Expo / RN native projects are generated via `expo prebuild`.
 node_modules/
+.gems/
 .expo/
 dist/
 ios/

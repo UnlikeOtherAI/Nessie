@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.km.nessie",
+  "version": "0.1.1",
+  "bundle": {
+    "resources": [],
+    "macOS": {
+      "bundleVersion": "1",
+      "entitlements": "./Entitlements.appstore.plist",
+      "files": {
+        "embedded.provisionprofile": "./appstore/embedded.provisionprofile"
+      }
+    }
+  }
+}

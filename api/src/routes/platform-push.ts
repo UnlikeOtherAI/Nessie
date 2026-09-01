@@ -22,8 +22,8 @@ import {
 
 /**
  * Platform-scoped, super-admin-only push-credentials surface
- * (`/api/platform/push/*`). Backs the central push gateway's Apple/Google
- * credentials. Secret bytes are write-only — never returned by any handler.
+ * (`/api/platform/push/*`). Backs Nessie's direct APNs/FCM delivery service.
+ * Secret bytes are write-only — never returned by any handler.
  *
  * Plan: `docs/plans/2026-06-07-native-apps-and-push.md` → "Push credentials —
  * super-user upload".
@@ -222,9 +222,21 @@ export const registerPlatformPushRoutes = (
     const body = parseInput(PushTestRequestSchema, request.body ?? {}, reply)
     if (!body) return reply
 
+    const device = body.provider === 'apns'
+      ? await prisma.deviceToken.findFirst({
+          where: {
+            organizationId: actorContext.tenant.organizationId,
+            userId: actorContext.actor.actorId,
+            platform: 'ios',
+            inactiveAt: null,
+          },
+          orderBy: { lastSeenAt: 'desc' },
+        })
+      : null
     const result = await service.test({
       provider: body.provider,
-      deviceToken: body.deviceToken,
+      deviceToken: device?.token,
+      apnsEnvironment: device?.apnsEnvironment ?? undefined,
     })
     await emitAuditEvent(prisma, {
       actorContext,

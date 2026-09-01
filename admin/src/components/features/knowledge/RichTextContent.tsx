@@ -10,10 +10,12 @@ import {
 import { WikilinkCreateConfirm } from './wikilink/WikilinkCreateConfirm'
 import { useWikilinkNavigation } from './wikilink/use-wikilink-navigation'
 import { Wikilink } from './wikilink/wikilink-node'
+import { WidgetEmbedReading } from './widget-embed/WidgetEmbedView'
 
 export type SelectionPoint = { top: number; left: number }
 
 type RichTextContentProps = {
+  canCreate?: boolean
   html: string
   notes?: NoteAnchorInput[]
   onNoteHover?: (id: string) => void
@@ -26,6 +28,7 @@ type RichTextContentProps = {
 // are supplied it also paints inline highlights and reports hover / new-selection
 // so the reader can anchor comments to a passage.
 export const RichTextContent = ({
+  canCreate = true,
   html,
   notes,
   onNoteHover,
@@ -39,6 +42,8 @@ export const RichTextContent = ({
       StarterKit.configure({ link: { openOnClick: true } }),
       NoteHighlight.configure({ notes: notes ?? [] }),
       Wikilink,
+      // Renders the real widget; the editor shows a chip instead.
+      WidgetEmbedReading,
     ],
     immediatelyRender: false,
   })
@@ -107,7 +112,7 @@ export const RichTextContent = ({
       return
     }
     const unresolvedEl = target.closest('[data-kb-unresolved-title]')
-    if (unresolvedEl) {
+    if (canCreate && unresolvedEl) {
       const title = unresolvedEl.getAttribute('data-kb-unresolved-title')
       if (title) {
         const rect = unresolvedEl.getBoundingClientRect()
@@ -119,7 +124,7 @@ export const RichTextContent = ({
   return (
     <div onClick={handleClick} onFocus={handleFocus} onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
       <EditorContent editor={editor} />
-      {confirmCreate ? (
+      {canCreate && confirmCreate ? (
         <WikilinkCreateConfirm
           at={confirmCreate.at}
           onCancel={cancelCreate}

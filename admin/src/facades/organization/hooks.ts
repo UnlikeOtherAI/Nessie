@@ -1,10 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { OrganizationSummary } from '../../lib/api-client'
+import { organizationKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-const organizationKeys = {
-  current: ['organization', 'current'] as const,
-}
 
 export const useCurrentOrganization = () => {
   const apiClient = useApiClient()

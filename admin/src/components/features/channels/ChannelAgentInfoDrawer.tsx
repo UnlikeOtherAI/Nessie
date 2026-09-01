@@ -1,29 +1,26 @@
-import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type FormEvent,
-  type ReactNode,
-} from 'react'
+import { useCallback, useMemo, type FormEvent, type ReactNode } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
-import type { AgentRecord, ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
+import type { PendingStreamMessage } from '../../../facades/threads/thinking'
 import { OversizePasteDialog } from '../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
-import {
-  buildFeedItems,
-  type PendingStreamMessage,
-} from './channel-helpers'
+import { buildFeedItems, type ChannelAgentParticipant } from './channel-helpers'
+import { useStickToBottom } from '../../../hooks/useStickToBottom'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import type { AvatarSources } from '../../primitives/UserAvatar'
 
 type ChannelAgentInfoDrawerProps = {
   activeChannel: ChannelRecord | null
-  agent: AgentRecord | null
+  agent: ChannelAgentParticipant | null
   agents: AgentRecord[]
   meAvatar: AvatarSources
   meDisplayName: string
@@ -86,6 +83,11 @@ const buildAddressedMessage = (rawText: string, agent: AgentRecord): string => {
 const channelLabel = (channel: ChannelRecord): string =>
   channel.type === 'dm' ? channel.label : `#${channel.label}`
 
+const isPersonalAssistantPresence = (
+  participant: ChannelAgentParticipant,
+): participant is PersonalAssistantPresenceParticipant =>
+  'isPersonalAssistant' in participant
+
 export const ChannelAgentInfoDrawer = ({
   activeChannel,
   agent,
@@ -101,7 +103,6 @@ export const ChannelAgentInfoDrawer = ({
   threadMessages,
   token,
 }: ChannelAgentInfoDrawerProps) => {
-  const scrollRef = useRef<HTMLDivElement | null>(null)
   const {
     message,
     setMessage,
@@ -110,6 +111,9 @@ export const ChannelAgentInfoDrawer = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
+    attachments,
+    insertEmoji,
     sendText,
     sendAsFile,
     pendingAgentInvites,
@@ -127,6 +131,7 @@ export const ChannelAgentInfoDrawer = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -138,31 +143,34 @@ export const ChannelAgentInfoDrawer = ({
     () => new Map(agents.map((entry) => [entry.id, entry])),
     [agents],
   )
+  const selectedAgentRecord = agent && !isPersonalAssistantPresence(agent) ? agent : null
   const agentMessages = useMemo(
     () =>
-      agent
+      selectedAgentRecord
         ? threadMessages.filter(
             (entry) =>
-              entry.agentId === agent.id ||
-              (entry.role === 'user' && mentionsAgent(entry, agent)),
+              entry.agentId === selectedAgentRecord.id ||
+              (entry.role === 'user' && mentionsAgent(entry, selectedAgentRecord)),
           )
         : [],
-    [agent, threadMessages],
+    [selectedAgentRecord, threadMessages],
   )
   const agentPendingMessages = useMemo(
-    () => (agent ? pendingMessages.filter((entry) => entry.agentId === agent.id) : []),
-    [agent, pendingMessages],
+    () => selectedAgentRecord
+      ? pendingMessages.filter((entry) => entry.agentId === selectedAgentRecord.id)
+      : [],
+    [selectedAgentRecord, pendingMessages],
   )
   const feedItems = useMemo(() => buildFeedItems(agentMessages), [agentMessages])
 
   const sendAddressedText = useCallback(
     async (rawText: string) => {
-      if (!agent) {
+      if (!selectedAgentRecord) {
         return
       }
-      await sendText(buildAddressedMessage(rawText, agent))
+      await sendText(buildAddressedMessage(rawText, selectedAgentRecord))
     },
-    [agent, sendText],
+    [selectedAgentRecord, sendText],
   )
 
   const sendAddressedForm = useCallback(
@@ -175,16 +183,62 @@ export const ChannelAgentInfoDrawer = ({
     [mentionRef, message, sendAddressedText],
   )
 
-  useLayoutEffect(() => {
-    const container = scrollRef.current
-    if (!container) {
-      return
-    }
-    container.scrollTop = container.scrollHeight
-  }, [agent?.id, feedItems.length, optimisticMessages.length, agentPendingMessages.length])
+  // Same stick-to-bottom behaviour as the channel feed: opens on the newest
+  // message and follows rows that keep growing (media, thinking tickers).
+  const drawerScroll = useStickToBottom(agent?.id)
 
   if (!agent || !activeChannel) {
     return null
+  }
+
+  if (isPersonalAssistantPresence(agent)) {
+    const assistantAvatar = {
+      avatarAttachmentId: agent.avatarAttachmentId,
+      id: agent.agentId,
+      name: agent.displayName,
+      role: 'Personal Assistant',
+    }
+    return (
+      <>
+        <button
+          aria-label="Close personal assistant participant"
+          className="fixed inset-0 z-40 bg-[var(--scrim-strong)]"
+          onClick={onClose}
+          type="button"
+        />
+        <aside
+          aria-label={`${agent.displayName} participant`}
+          className={[
+            'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
+            'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
+            'shadow-[0_32px_80px_var(--scrim-strong)]',
+          ].join(' ')}
+        >
+          <header className="flex items-start justify-between gap-3 border-b border-[color:var(--sep)] px-5 pb-4 pt-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <ChannelAgentGlyph agent={assistantAvatar} size="lg" token={token} />
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
+                  {agent.displayName}
+                </h2>
+                <div className="text-xs text-[color:var(--tx3)]">Personal Assistant</div>
+              </div>
+            </div>
+            <button
+              className="admin-button admin-button-secondary h-9"
+              onClick={onClose}
+              type="button"
+            >
+              Close
+            </button>
+          </header>
+          <div className="p-5 text-sm leading-6 text-[color:var(--tx2)]">
+            This assistant is present in this channel. Its settings, tools, and activity
+            remain private to its owner.
+          </div>
+        </aside>
+      </>
+    )
   }
 
   const providerModel = [agent.provider, agent.model].filter(Boolean).join(' / ')
@@ -200,7 +254,7 @@ export const ChannelAgentInfoDrawer = ({
       <aside
         aria-label={`${agent.name} info`}
         className={[
-          'fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
+          'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
           'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
           'shadow-[0_32px_80px_var(--scrim-strong)]',
         ].join(' ')}
@@ -217,6 +271,10 @@ export const ChannelAgentInfoDrawer = ({
                   {agent.role}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                  {/* Not a `Pill`: this chip inherits the row's text-[11px], and
+                      `Pill` has no size that leaves the font size to the parent —
+                      size="sm" would pin it to 10px while the provider/model span
+                      beside it stays at 11px. */}
                   <span className="rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                     {agent.status}
                   </span>
@@ -229,7 +287,7 @@ export const ChannelAgentInfoDrawer = ({
               </div>
             </div>
             <button
-              className="admin-button admin-button-secondary h-9 px-3"
+              className="admin-button admin-button-secondary h-9"
               onClick={onClose}
               type="button"
             >
@@ -242,7 +300,7 @@ export const ChannelAgentInfoDrawer = ({
             </p>
           ) : null}
           <button
-            className="admin-button admin-button-secondary mt-4 h-8 px-3 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact mt-4 h-8"
             onClick={() => onOpenActivity(agent.id)}
             type="button"
           >
@@ -253,44 +311,56 @@ export const ChannelAgentInfoDrawer = ({
         <div
           className="min-h-0 flex-1 overflow-y-auto py-2"
           data-testid="agent-info-drawer-messages"
-          ref={scrollRef}
+          ref={drawerScroll.containerRef}
         >
-          <ChannelMessageFeed
-            agentById={agentMap}
-            agentMap={agentMap}
-            editingContent={editingContent}
-            editingMessageId={editingMessageId}
-            feedItems={feedItems}
-            isPersonalAssistantConversation={false}
-            meAvatar={meAvatar}
-            meDisplayName={meDisplayName}
-            meUserId={meUserId}
-            optimisticMessages={optimisticMessages}
-            pendingMessages={agentPendingMessages}
-            renderContent={renderContent}
-            token={token}
-            updatePending={updatePending}
-            onAddReaction={addReaction}
-            onCancelEdit={cancelEdit}
-            onChangeEditingContent={changeEditingContent}
-            onConfirmDelete={confirmDelete}
-            onStartEdit={startEdit}
-            onSubmitEdit={(messageId) => void submitEdit(messageId)}
-          />
+          <div ref={drawerScroll.contentRef}>
+            <ChannelMessageFeed
+              agentById={agentMap}
+              agentMap={agentMap}
+              editingContent={editingContent}
+              editingMessageId={editingMessageId}
+              feedItems={feedItems}
+              isPersonalAssistantConversation={false}
+              meAvatar={meAvatar}
+              meDisplayName={meDisplayName}
+              meUserId={meUserId}
+              optimisticMessages={optimisticMessages}
+              pendingMessages={agentPendingMessages}
+              renderContent={renderContent}
+              threadId={activeChannel.defaultThreadId}
+              token={token}
+              updatePending={updatePending}
+              onAddReaction={addReaction}
+              onCancelEdit={cancelEdit}
+              onChangeEditingContent={changeEditingContent}
+              onConfirmDelete={confirmDelete}
+              onStartEdit={startEdit}
+              onSubmitEdit={(messageId) => void submitEdit(messageId)}
+            />
+          </div>
         </div>
 
         <ChannelComposer
+          attachments={attachments}
           isSendPending={isSendPending}
+          sendError={sendError}
           mentionEntities={mentionEntities}
           mentionRef={mentionRef}
           message={message}
           placeholder={`Message @${agent.name} in ${channelLabel(activeChannel)}`}
           onChangeMessage={setMessage}
           onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+          onInsertEmoji={insertEmoji}
           onInsertHashSign={() => mentionRef.current?.insertHashSign()}
           onOversizePaste={(paste) => setOversizePaste(paste)}
-          onSubmitForm={(event) => void sendAddressedForm(event)}
-          onSubmitText={(text) => void sendAddressedText(text)}
+          onSubmitForm={(event) => {
+            drawerScroll.pinToBottom()
+            void sendAddressedForm(event)
+          }}
+          onSubmitText={(text) => {
+            drawerScroll.pinToBottom()
+            void sendAddressedText(text)
+          }}
           pendingAgentInvites={pendingAgentInvites}
           invitingAgentId={invitingAgentId}
           inviteErrors={inviteErrors}
@@ -298,6 +368,8 @@ export const ChannelAgentInfoDrawer = ({
           onDismissPendingAgent={dismissPendingAgent}
         />
       </aside>
+
+      {deleteConfirm}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

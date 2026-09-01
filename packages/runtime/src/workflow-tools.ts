@@ -8,6 +8,7 @@ export const buildWorkflowToolDefinitions = (
   webFetchToolDefinition,
   {
     id: 'state_get',
+    summary: 'Read a workflow installation checkpoint value.',
     label: 'State Get',
     description:
       'Load the current value for a workflow checkpoint key stored for the workflow installation.',
@@ -28,6 +29,7 @@ export const buildWorkflowToolDefinitions = (
   },
   {
     id: 'state_put',
+    summary: 'Store a workflow installation checkpoint value.',
     label: 'State Put',
     description:
       'Persist a value for a workflow checkpoint key stored for the workflow installation.',
@@ -41,13 +43,45 @@ export const buildWorkflowToolDefinitions = (
         value: {
           description: 'The value to store for the checkpoint',
         },
+        expectedVersion: {
+          type: 'number',
+          description:
+            'Compare-and-set: the version returned by state_get/change_detect. The write fails when the stored version has moved on.',
+        },
       },
       required: ['key', 'value'],
     },
     safe: true,
   },
   {
+    id: 'message_send',
+    summary: 'Post a deterministic workflow message to a channel.',
+    label: 'Message Send',
+    description:
+      'Post a deterministic message to a channel — no agent run involved. Defaults to the workflow installation channel.',
+    parameters: {
+      type: 'object',
+      properties: {
+        body: {
+          type: 'string',
+          description: 'The message body to post (may contain {{…}} bindings)',
+        },
+        channelId: {
+          type: 'string',
+          description: 'Optional target channel; defaults to the installation channel',
+        },
+        threadId: {
+          type: 'string',
+          description: 'Optional target thread inside the channel',
+        },
+      },
+      required: ['body'],
+    },
+    safe: true,
+  },
+  {
     id: 'change_detect',
+    summary: 'Compare a value with its saved workflow checkpoint.',
     label: 'Change Detect',
     description:
       'Compare a current value with the stored checkpoint and report whether it changed.',
@@ -63,29 +97,6 @@ export const buildWorkflowToolDefinitions = (
         },
       },
       required: ['key', 'value'],
-    },
-    safe: true,
-  },
-  {
-    id: 'delegate',
-    label: 'Delegate to External-Tools Sub-agent',
-    description:
-      'Hand a task to a sub-agent that has access to external (MCP) tools. The sub-agent runs a tight loop with those tools and returns a concise answer. Use this for any task that requires real outside lookups (web search, third-party APIs, file systems, etc.) — do not pretend to know things you cannot fetch yourself.',
-    parameters: {
-      type: 'object',
-      properties: {
-        task: {
-          type: 'string',
-          description:
-            'A self-contained task description for the sub-agent. Include any relevant context — the sub-agent only sees this string, not the rest of your conversation.',
-        },
-        hint: {
-          type: 'string',
-          description:
-            'Optional hint about which tool category to favor (e.g. "web search", "filesystem", "github").',
-        },
-      },
-      required: ['task'],
     },
     safe: true,
   },

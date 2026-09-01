@@ -18,7 +18,7 @@ The target experience:
 - users sign in once through UOA and can see which sibling products are linked;
 - team/workspace owners enable sibling products once for the active team, then
   users inherit access through shared SSO;
-- Nessie shows the sibling products in the left rail as launchable integrations;
+- Nessie shows sibling products in Settings as launchable integrations;
 - each product can also be installed as a Nessie plugin/capability bundle;
 - Nessie agents can use each product through approved MCP tools;
 - Deep Water research can be run natively from Nessie and its reports, sources,
@@ -35,7 +35,8 @@ The target experience:
 Relevant existing foundations:
 
 - authenticated product UI in `admin/`;
-- top-level rail navigation driven by `admin/src/layouts/admin-shell/nav-items.tsx`;
+- Settings navigation driven by
+  `admin/src/layouts/admin-shell/AdminSidebarNav.tsx`;
 - project boards and Kanban under `/projects`;
 - Knowledge spaces and pages in `packages/knowledge`;
 - all blob storage through `@nessie/runtime` `FileService`;
@@ -186,31 +187,26 @@ Current team-enable slice:
 The product registry powers the ESC UI. The MCP catalog powers agent tools.
 They can point to the same product, but they are not the same object.
 
-### 2. ESC Rail Surface
+### 2. ESC Settings Surface
 
-Add a new top-level rail section: **Integrations**.
+Expose **Integrations** from the Account section of Settings. It opens
+`/settings/integrations`; the former `/integrations` URL redirects there so
+existing bookmarks continue to work.
 
-Desktop placement: left rail, near the top, before or after Projects. It opens
-`/integrations`.
-
-Mobile/native placement: do not add a sixth permanent tab until product review;
-put Integrations under Admin or expose it from the workspace menu initially.
-
-`/integrations` should have three layers:
+`/settings/integrations` should have three layers:
 
 - installed products: launch cards for Deep Water, DeepTest, and buildme.live;
 - plugin/library state: installed, needs setup, active, paused, error;
 - account state: linked through UOA, needs product auth, local-only, or admin
   setup required.
 
-Do not put plugin configuration inside the left rail itself. The rail only
-launches the section; product cards and detail pages own configuration.
+Product cards and detail pages own configuration.
 
 Current Nessie slice:
 
-- `/integrations` is a full-width shell route with no secondary channel sidebar;
-- desktop rail exposes Integrations between Projects and Knowledge;
-- mobile web does not add Integrations as a sixth permanent tab;
+- `/settings/integrations` is an Admin-shell route with the Settings sidebar;
+- desktop and mobile web expose Integrations through Settings rather than as a
+  permanent top-level destination;
 - the page renders registry-backed product rows, manifest details, native page
   intent, chat cards, custom controls, agent/MCP access, artifacts, and next
   setup step.
@@ -221,35 +217,94 @@ Current Nessie slice:
   installation summary for each MCP-backed product, preferring team scope and
   then falling back to organization/system scope. The ESC page shows that agent
   connector state and deep-links to the matching MCP catalog entry.
-- When an MCP-backed product has no shared connector installed, ESC now links
-  directly to `/mcp-app-store?catalogEntryId=...&action=install`, and the MCP
-  store opens its validated install dialog for that catalog entry. Install
-  scope, credential refs, duplicate checks, probing, and tool approval stay in
-  the existing MCP install path rather than being duplicated inside ESC.
-- `GET /api/integrations/products` also includes a month-to-date connector
-  usage summary for each product. For MCP-backed products, usage is read from
-  `connector_usage_events.connector_id = mcp_server_instances.id`; future native
-  wrappers can also tag rows with `metadata.productSlug`. ESC renders calls,
-  units, spend, last activity, and failures without introducing a second
-  accounting path.
+- When an MCP-backed product has no shared connector installed, ESC links to
+  `/apps`, where the app connection flow owns the next action. Connection
+  checks and capability discovery remain in the existing MCP services rather
+  than being duplicated inside ESC.
+- **2026-07-21 correction:** `GET /api/integrations/products` no longer queries
+  or returns connector-usage summaries. Product setup pages contain no local
+  calls, units, spend, or failure totals. Nessie's local operational telemetry
+  is owner-only at `/ops/usage`; customer credits and service totals come only
+  from UOA at `/tokens`.
 - Deep Water now has a native ESC launcher gated by team enablement and an
-  active shared MCP connector. `POST
+  active shared MCP connector. **Enabling Deep Water for a team now provisions
+  that connector automatically:** `PATCH
+  /api/integrations/products/deep-water/team-enablement` (owner-only) creates a
+  team-scoped, tool-projecting `McpServerInstance` from the `deep-water` catalog
+  entry and projects the plugin manifest's `research_*` tools into
+  `ToolRegistryEntry` as `active` (surfaced to agent runs as `mcp_research_*`);
+  disabling deactivates and removes it. Because the install is team-scoped it
+  reaches **every** agent run inside the team — personal assistant and shared
+  agents alike — so the tools are grantable to any permitted agent through its
+  per-agent tool policy (default off). Deep Water now routes exclusively through
+  Ledger's bearer-authenticated MCP adapter. `LEDGER_PROXY_TOKEN` is Nessie's
+  dedicated, product-bound Ledger app API key; it authenticates Nessie as the
+  calling app, while a signed UOA delegation plus Nessie
+  org/team/user/agent/run context assigns the job and raw usage to the verified
+  caller. Each sibling product must use its own app API key, and webhook signing
+  secrets remain separate callback credentials. Personal credential overrides
+  are forbidden. Ledger owns research
+  isolation, budget enforcement, audit, and raw usage metering while the
+  deterministic tool contract still comes from the plugin manifest. `POST
   /api/integrations/products/deep-water/research-launch` creates or loads the
   user's Personal Assistant DM, posts a server-built launch message carrying a
-  `deep_research` `uiCards` card, and enqueues the PA so it can call the
-  approved Deep Water MCP tools (`mcp_research_create`, then
-  `mcp_research_get`). This gives the UI a real launch path without bypassing
-  MCP approval/grants. Nessie now also creates a durable
+  `deep_research` `uiCards` card, creates one PA run/task, and enqueues
+  `run.execute` in the same transaction so it can call the approved Ledger MCP
+  tools (`mcp_research_start`, then
+  `mcp_research_status` and `mcp_research_report`). This gives the UI a real
+  launch path without a model engagement decision interpreting research text
+  as chat mentions, and without bypassing MCP approval/grants or Ledger
+  accounting. Ordinary chat remains on model-based engagement. Nessie
+  now also creates a durable
   `product_integration_runs` projection for each Deep Water launch and exposes
   recent active-team runs through `GET
-  /api/integrations/products/deep-water/research-runs`. The PA can now call the
-  PA-only `deep_water_run_update` builtin after approved Deep Water MCP calls to
-  project external run id, status, source count, cost, report URL, and Knowledge
-  draft page id into that durable record. Terminal PA write-back now reconciles
-  reported run cost into `connector_usage_events` exactly once per Deep Water
-  run, so the ESC month-to-date usage panel can include the completed external
-  research spend. Autonomous polling and Knowledge import jobs remain Phase 2
-  work.
+  /api/integrations/products/deep-water/research-runs`. Any granted agent —
+  personal assistant or shared — can call the `deep_water_run_update` builtin
+  after Deep Water MCP calls to project external run id, status, and
+  Knowledge draft page id into that durable record. The guarded worker captures
+  report URL and source count directly from authenticated Ledger start/report
+  responses, so the agent cannot invent or replace either field.
+  At the worker dispatch boundary, server-authored DeepWater message metadata
+  identifies the exact durable run id; the lookup also requires the message,
+  organization, team, and thread. Messages without the marker are unguarded,
+  while an invalid marker or missing/mismatched row fails closed. The exact run
+  atomically stores the first `research_start` provider tool-call id and exact
+  arguments before transport. A still-clean Product run moves to `failed` only
+  for a validated Ledger-local pre-start rejection (`invalid_request` 400/401,
+  `budget_exceeded` 402, or `forbidden` 403), or for Nessie's own budget block
+  while the row remains truly queued, uncorrelated, and undispatched. Conflicts,
+  upstream rejections, 5xx, malformed
+  errors or malformed successful tickets, throws, timeouts, and uncertain claim
+  or ticket writes abort the Nessie run for queue retry; the retry reuses the
+  exact saved id and arguments. A matching structured `rs_...` `id`/`job_id`
+  ticket plus exact Ledger status is persisted before success is returned and
+  can be replayed locally after a crash. Managed DeepWater reserves the
+  canonical five `mcp_research_*` names against private connector collisions.
+  Same-batch status/report/cancel calls
+  are pinned to that ticket, while `research_list` and delegation stay blocked
+  for the launch turn. Run-update/Knowledge calls stay gated until exact result delivery and
+  throughout an abandoned timeout attempt. The invocation-specific delivery
+  token is acknowledged only after connector telemetry, tool-end recording,
+  and message incorporation, keeping failure-persistence and post-ticket
+  delivery timeouts fatal. Ordinary
+  setup/inference/callback failures are promoted while unresolved. A budget
+  block settles only an uncorrelated queued Product row before the Nessie run
+  becomes terminal; correlated work stays recovery-safe, and an exact late
+  definitive rejection may settle correlated `needs_setup`. Missing, duplicate,
+  malformed, omitted-start, or otherwise unresolved handoff state fails closed;
+  final retry exhaustion moves exact clean candidates to `needs_setup` while
+  preserving rows with external/dispatch/report/Knowledge evidence. A late
+  validated ticket can still attach after final recovery, clear the stale
+  recovery detail, preserve its exact Ledger status, and keep the Product run
+  `running` until mandatory terminal reconciliation, avoiding orphaned or
+  prematurely unblocked provider work. Fatal tools retain paired end events and all started same-batch
+  wrappers settle before retry. Ordinary DeepWater calls outside product launch
+  handoffs are unchanged.
+  Terminal write-back records one cost-free operational
+  `connector_usage_events` row with authenticated source units. Ledger's
+  DeepWater contract exposes no commercial amount; UOA rates raw metering and
+  supplies the customer statement. Autonomous polling and Knowledge import jobs
+  remain Phase 2 work.
 - DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
   an active shared MCP connector. `POST
   /api/integrations/products/deeptest/security-handoff` accepts only controlled
@@ -321,7 +376,7 @@ agents should emit:
       "status": "running",
       "summary": "Collecting sources",
       "fields": [{ "label": "Budget", "value": "$4.00 cap" }],
-      "actions": [{ "label": "Open run", "href": "/integrations", "variant": "primary" }]
+      "actions": [{ "label": "Open run", "href": "/settings/integrations", "variant": "primary" }]
     }
   ]
 }
@@ -331,30 +386,66 @@ The supported card kinds are currently `integration`, `deep_research`,
 `security_review`, and `project_board`. The supported statuses are `idle`,
 `queued`, `running`, `needs_setup`, `completed`, `failed`, and `warning`.
 
+Cards may also use the `open_deep_water_research_launcher` action type when
+`productSlug` is exactly `deep-water`. Its optional bounded `preset` follows
+the Deep Water launcher controls (including title, prompt, depth, source
+coverage, destination, and output language). Admin validates the action before
+opening the native launcher and always leaves the user in control of the final
+submit; a card can prefill a research plan but can never start metered work on
+its own. Existing `href` actions remain ordinary `link` actions.
+
 Cards are not a storage layer. Finished reports, source bundles, security
 reports, screenshots, and PDFs must still become Knowledge/FileService artifacts
 when they need to persist beyond the conversation.
 
 Current Deep Water launcher slice:
 
+- The Integrations product detail is divided into **Test run**, **My runs**,
+  and **Settings** tabs. Launch controls, durable run history, readiness,
+  grants, team configuration, and product information therefore no longer
+  compete in one long panel.
 - ESC renders Deep Water controls for title, prompt, depth, chapter detail,
   output tier, language, search quality, recency, section count, searches per
-  pillar, and artifact destination.
-- The launch DTO mirrors Deep Water's MCP-safe allow-list. It intentionally does
-  not expose `budget_usd`, `total_search_budget`, or model-routing knobs because
-  Deep Water's OAuth MCP server rejects those for agent-callable launches.
-- The launch message asks the PA to import the completed report as a Knowledge
-  draft and request publication when `artifactDestination=knowledge_draft`.
+  pillar, and artifact destination. It includes reviewable Quick briefing,
+  Balanced research, Evidence review, and Long-form analysis templates, plus a
+  complete ISO 639-1 language dropdown rather than a free-text language field.
+- The same reviewed launcher is available from the chat composer and from a
+  validated Deep Water chat-card action, so a conversation can provide a
+  structured preset for every control without duplicating the launch flow.
+- Ledger's MCP start contract accepts only `query`, optional `context`, depth
+  `light|standard|deep|heavy`, and recency `any|recent`. The handoff maps
+  `thesis|dissertation` to `heavy`, maps every non-`any` launcher recency to
+  `recent`, and carries chapter/output/language/search/section controls inside
+  the optional context string rather than sending unsupported top-level args.
+- When `artifactDestination=knowledge_draft`, the launch message requires the
+  PA to persist the terminal Ledger status first. Only after
+  that mandatory write-back succeeds may it call `kb_list` without arguments,
+  select an accessible writable `spaceId` returned by that call, and pass that
+  exact id to `kb_draft_write` before requesting publication. It explicitly
+  forbids guessed, invented, or unlisted space ids. The Knowledge tool call is
+  intentionally bounded to a concise report/source summary and Ledger job id
+  instead of copying an unbounded report through model-generated arguments.
+  Content generated by the PA remains agent-authored even though space access
+  is delegated through the owning user, so the PA can submit its own draft for
+  human review without gaining permission to submit a human-authored draft.
+  Once the page exists, a second idempotent run update attaches its page id
+  without changing terminal state.
 - ESC now shows recent Deep Water launch records from Nessie's durable
   `product_integration_runs` projection, including status, launch options,
   PA chat destination, report link, Knowledge draft link, status detail, and
-  source/cost fields when the PA writes them back.
-- Automatic progress polling, cost reconciliation, and import without PA
+  provenance-marked report/source fields after the guarded worker captures
+  Ledger responses. DeepWater amounts are absent; UOA alone renders commercial
+  totals through the customer statement.
+- Automatic progress polling and import without PA
   mediation still belong to the Phase 2 completion wrapper. The current
-  write-back path is explicit PA bookkeeping around the approved MCP flow, not
-  an independent background worker. Terminal PA write-back now does reconcile
-  the reported cost into Nessie's connector usage ledger with an idempotent
-  per-run marker.
+  completion path combines guarded worker capture during approved MCP calls
+  with explicit granted-agent bookkeeping for status/Knowledge; it is not
+  an independent background worker. The launch handoff starts the Ledger job,
+  persists `running`, optionally checks status once, and ends the bounded agent
+  turn; a later user/status turn checks once more and fetches the report only
+  after completion. It never busy-polls a roughly 20-minute job. Terminal
+  granted-agent write-back records cost-free operational call/source telemetry
+  with an idempotent per-run marker.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
   target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
@@ -418,7 +509,7 @@ Current Nessie slice:
 - manifests are API-versioned as `integrations.nessie.io/v1`;
 - `GET /api/integrations/products/:productSlug/manifest` returns the selected
   manifest for authenticated users;
-- the `/integrations` product detail page renders install modes, MCP/catalog
+- the `/settings/integrations` product detail page renders install modes, MCP/catalog
   intent, declared tools, available UI surfaces, and privacy/import policy;
 - the manifest is intentionally product-level. Tool execution still requires
   MCP catalog installation, tool discovery/projection, admin approval, and
@@ -441,13 +532,13 @@ Manifest skeleton:
   "kind": "NessieIntegrationPlugin",
   "manifestRef": "first-party/deep-water",
   "productSlug": "deep-water",
-  "install": [{ "mode": "remote_mcp_oauth", "availability": "both" }],
+  "install": [{ "mode": "api_key", "availability": "both" }],
   "mcp": {
     "catalogTemplate": {
       "name": "deep-water",
       "protocol": "http",
-      "authMethod": "oauth2",
-      "transport": { "transport": "http", "urlEnv": "DEEP_WATER_MCP_URL" }
+      "authMethod": "bearer",
+      "transport": { "transport": "http", "urlEnv": "LEDGER_DEEPWATER_MCP_URL" }
     },
     "toolBundleRef": "first-party/deep-water-tools",
     "tools": []
@@ -486,6 +577,13 @@ catalog/tool registry:
 Nessie agents must not hold product API keys in prompts. Credentials resolve
 through the existing secret/credential chain and dispatch plan.
 
+First-party team-enabled products (Deep Water) auto-provision this path: the
+owner's `team-enablement` toggle stands in for the manual install + admin
+approve steps, so the team-scoped instance's projected tools are marked
+`active` (grantable) at enable time. Per-agent grant stays the real gate and
+defaults off. Third-party/user connectors keep the full `pending_review` +
+admin-approve flow.
+
 ### 7. Durable Artifacts
 
 Deep research and security outputs should not live only as chat text.
@@ -506,19 +604,22 @@ Use the existing ledgers:
 
 - model/provider calls stay in `token_ledger_events`;
 - product/API operations stay in `connector_usage_events`;
-- Deep Water imported job cost should become connector usage rows through the
-  existing connector enum (`mcp`, `http`, or `other`) plus a product slug /
-  connector id in metadata, not a new enum value per product;
+- Deep Water connector rows contain operational calls and authenticated source
+  units only. They carry no cost, price, charge, tariff, or currency; UOA rates
+  Ledger's raw metering and supplies customer totals;
 - DeepTest content-free metering should remain content-free and should not
   include target labels, URLs, repo names, findings, prompts, or reports.
 
 The ESC product detail page should show:
 
-- month-to-date calls/spend for that product; **implemented from
-  `connector_usage_events` for selected MCP instances and product-tagged rows**
 - current health;
 - recent job/review history;
 - which agents can use it.
+
+It must not show or receive a product usage summary. Owner-only operational
+calls, units, failures, and estimates are grouped on `/ops/usage`; every
+customer balance and connected-service total is rendered from UOA on `/tokens`,
+never from a product-side calculation.
 
 ## Product-Specific Integration Paths
 
@@ -648,14 +749,14 @@ Acceptance:
 
 - Create this plan in Nessie.
 - Create matching product-link/account-linking plan in UOA.
-- Create a Deep Water plugin manifest spec and confirm OAuth/MCP setup.
+- Create a Deep Water plugin manifest spec and confirm Ledger bearer MCP setup.
 - Create a DeepTest plugin manifest spec that preserves local privacy.
 - Create a BuildMe project-board API contract document before native board work.
 
 ### Phase 1: ESC Shell In Nessie
 
-- Add `Integrations` top-level route and rail item. **Implemented in current
-  slice.**
+- Add `Integrations` to Settings navigation. **Implemented in current slice;
+  the original top-level route now redirects to `/settings/integrations`.**
 - Add `integrated_products` and `product_account_links` schema. **Implemented
   in current slice.**
 - Seed first-party product rows for Deep Water, DeepTest, and buildme.live.
@@ -679,7 +780,8 @@ Acceptance:
   beyond the file-size guardrail.**
 - Add health checks for link-only products and MCP-backed products. **MCP
   installation readiness is surfaced; active product health polling remains
-  pending. Month-to-date connector usage/cost is surfaced in ESC.**
+  pending. Product usage/cost is intentionally absent from ESC and belongs on
+  UOA's `/tokens` customer view or Nessie's owner-only `/ops/usage` view.**
 
 ### Phase 2: Deep Water Native Plugin
 
@@ -691,17 +793,19 @@ Acceptance:
   installations.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs. **Initial durable launch
-  projection is implemented in `product_integration_runs`; PA write-back can
-  now update status/cost/source/report fields; autonomous polling/completion
-  reconciliation remains pending.**
+  projection is implemented in `product_integration_runs`; granted-agent
+  write-back can update status/Knowledge fields, while the guarded worker
+  captures report URL and source count from authenticated Ledger responses;
+  autonomous polling/completion reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
-- Add connector usage ledger rows for job cost.
-  **Implemented for terminal PA write-back with reported cost; autonomous
-  background reconciliation remains pending.**
-- Add UI panels for research history, report link, sources, and spend.
-  **Recent launch history, report links, Knowledge draft links, source counts,
-  and final spend projection are implemented when the PA writes them back;
-  source review remains pending.**
+- Add connector usage ledger rows for operational job telemetry.
+  **Implemented for terminal granted-agent write-back without commercial
+  amount fields; autonomous background reconciliation remains pending.**
+- Add UI panels for research history, report link, and sources.
+  **Recent launch history, report links, Knowledge draft links, and source
+  counts are implemented; the guarded worker supplies trusted report metadata
+  and granted-agent write-back supplies terminal status/Knowledge metadata.
+  UOA's customer statement is the only commercial surface.**
 
 ### Phase 3: DeepTest Link-Out And MCP
 
@@ -761,13 +865,14 @@ Acceptance:
 ## Definition Of Done For The Whole Goal
 
 - One UOA login can carry a user across Nessie and the sibling products.
-- Nessie's left rail exposes Integrations/ESC.
-- Each sibling product is visible in ESC with status, launch, setup, and usage.
+- Nessie's Settings navigation exposes Integrations/ESC.
+- Each sibling product is visible in ESC with status, launch, and setup; usage
+  stays on the appropriate UOA customer or owner-only operational surface.
 - Each product has an installable plugin path for open-source Nessie.
 - Every agent-callable product action is available through approved MCP/tool
   registry grants.
-- Deep Water research can be launched from Nessie, monitored, costed, and saved
-  into Nessie Knowledge.
+- Deep Water research can be launched from Nessie, monitored, and saved into
+  Nessie Knowledge, while UOA supplies its customer-commercial totals.
 - DeepTest can be launched or called without violating its local/privacy
   contract.
 - BuildMe can be linked out, and later its project board can be paired as an

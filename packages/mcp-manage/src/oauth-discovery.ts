@@ -2,7 +2,11 @@ import crypto from 'node:crypto'
 
 import { z } from 'zod'
 
-import { assertMcpUrlSafe, type McpUrlSafetyOptions } from './mcp-security.js'
+import {
+  assertMcpUrlSafe,
+  pinnedMcpFetch,
+  type McpUrlSafetyOptions,
+} from './mcp-security.js'
 
 /**
  * MCP-spec OAuth discovery (authorization spec 2025-06-18):
@@ -31,6 +35,12 @@ export type OAuthServerConfig = {
   registrationEndpoint: string | null
   scopesSupported: string[]
   supportsS256: boolean
+  /**
+   * The server advertises `client_id_metadata_document_supported` — it will
+   * dereference a URL used as `client_id`. Never assumed: to a server that has
+   * not published this, a URL is just an unknown client.
+   */
+  supportsClientIdMetadataDocument: boolean
   /**
    * `metadata` when the server genuinely publishes RFC 9728/8414 documents;
    * `fallback` when only the spec's legacy default endpoints were assumed.
@@ -61,6 +71,7 @@ const AuthServerMetadataSchema = z.object({
   registration_endpoint: z.string().optional(),
   scopes_supported: z.array(z.string()).optional(),
   code_challenge_methods_supported: z.array(z.string()).optional(),
+  client_id_metadata_document_supported: z.boolean().optional(),
 })
 
 const safeFetchJson = async (
@@ -73,7 +84,7 @@ const safeFetchJson = async (
   } catch {
     return null
   }
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   try {
     const response = await fetchImpl(url, {
       ...init,
@@ -111,7 +122,7 @@ const fetchChallengeHeader = async (
   } catch {
     return null
   }
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   try {
     const response = await fetchImpl(serverUrl, {
       method: 'POST',
@@ -163,7 +174,12 @@ const loadAuthServerMetadata = async (
   return null
 }
 
-const canonicalResource = (serverUrl: string): string => {
+/**
+ * The RFC 8707 `resource` indicator for an MCP server: its URL without query
+ * or fragment. Exported because the static OAuth path needs the same value and
+ * two spellings of "canonical" would bind tokens to two different resources.
+ */
+export const canonicalResource = (serverUrl: string): string => {
   const url = new URL(serverUrl)
   url.hash = ''
   url.search = ''
@@ -237,6 +253,8 @@ export const discoverOAuthServerConfig = async (
         supportsS256:
           metadata.code_challenge_methods_supported?.includes('S256')
           ?? true,
+        supportsClientIdMetadataDocument:
+          metadata.client_id_metadata_document_supported === true,
         metadataSource: 'metadata',
       }
     }
@@ -254,6 +272,9 @@ export const discoverOAuthServerConfig = async (
       registrationEndpoint: `${server.origin}/register`,
       scopesSupported: prmScopes,
       supportsS256: true,
+      // Nothing was published, so nothing is advertised — a guessed CIMD
+      // client_id would just be an unknown client at the authorize endpoint.
+      supportsClientIdMetadataDocument: false,
       metadataSource: 'fallback',
     }
   }
@@ -270,6 +291,10 @@ export type DynamicClientRegistration = {
 
 export class OAuthDiscoveryError extends Error {
   override readonly name = 'OAuthDiscoveryError'
+
+  constructor(message: string, public readonly status?: number) {
+    super(message)
+  }
 }
 
 export const registerDynamicClient = async (
@@ -283,7 +308,7 @@ export const registerDynamicClient = async (
   await assertMcpUrlSafe(input.registrationEndpoint, {
     resolveHost: options.resolveHost,
   })
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   const response = await fetchImpl(input.registrationEndpoint, {
     method: 'POST',
     redirect: 'manual',
@@ -302,6 +327,7 @@ export const registerDynamicClient = async (
     await response.body?.cancel().catch(() => undefined)
     throw new OAuthDiscoveryError(
       `Dynamic client registration failed: HTTP ${response.status}`,
+      response.status,
     )
   }
   const payload = (await response.json()) as Record<string, unknown>

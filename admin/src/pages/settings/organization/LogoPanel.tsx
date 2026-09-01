@@ -7,7 +7,7 @@ import { getInitials } from '../../../lib/avatar'
 import { uploadAttachment, useAuthedObjectUrl } from '../../../lib/uploads'
 import { CircleImageCropper } from '../../../components/shared/CircleImageCropper'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -58,7 +58,7 @@ export const LogoPanel = () => {
   if (isLoading || !organization) {
     return (
       <section className="admin-card max-w-3xl p-4">
-        <div className={sectionTitleClass}>Logo</div>
+        <SectionLabel>Logo</SectionLabel>
         <div className="mt-2 text-sm text-[color:var(--tx2)]">Loading…</div>
       </section>
     )
@@ -66,7 +66,7 @@ export const LogoPanel = () => {
 
   return (
     <section className="admin-card max-w-3xl p-4">
-      <div className={sectionTitleClass}>Logo</div>
+      <SectionLabel>Logo</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         A round logo for {organization.name}, shown in the sidebar and on the sign-in screen.
       </div>

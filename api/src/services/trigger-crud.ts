@@ -1,5 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
+import {
+  buildAgentVisibilityWhere,
+  acquireAgentTodoAgentLock,
+  createAgentTrigger,
+  mergeTriggerConfigPreservingIdentity,
+  stripServerOwnedTriggerConfig,
+  validateTodoTemplateTriggerConfig,
+} from '@nessie/workspace-admin'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
@@ -15,8 +23,13 @@ import {
   normalizeNextRunAt,
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
+  TRIGGER_ADMIN_AUDIENCE,
   type WorkflowTriggerPrismaLike,
 } from './trigger-shared.js'
+
+// Trigger creation is shared with the worker (the assistant's
+// `agent_trigger_create` tool); the route keeps importing it from here.
+export { createAgentTrigger }
 
 export const listAgentTriggers = async (
   prisma: PrismaClient,
@@ -27,18 +40,20 @@ export const listAgentTriggers = async (
     orderBy: [{ createdAt: 'asc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const listOrganizationTriggers = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
     where: {
       OR: [
         {
           agent: {
+            AND: [buildAgentVisibilityWhere({ organizationId, userId })],
             agentKind: { in: ['shared', 'personal_assistant'] },
             OR: [
               { organizationId },
@@ -62,7 +77,7 @@ export const listOrganizationTriggers = async (
     orderBy: [{ createdAt: 'desc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const listWorkflowInstallationTriggers = async (
@@ -74,7 +89,11 @@ export const listWorkflowInstallationTriggers = async (
     orderBy: [{ createdAt: 'asc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  // Deliberately NOT the admin audience: this route gates on
+  // `canActorReadWorkflowInstallation` (entitlement to read the installation),
+  // not on org ownership, so it is reachable by members who may not hold the
+  // webhook intake credential. The key is revealed at creation instead.
+  return triggers.map((trigger) => mapTriggerRecord(trigger))
 }
 
 export const listScheduledTriggers = async (
@@ -83,6 +102,7 @@ export const listScheduledTriggers = async (
     dueBefore?: Date
     limit: number
     organizationId: string
+    userId: string
   },
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
@@ -90,6 +110,10 @@ export const listScheduledTriggers = async (
       OR: [
         {
           agent: {
+            AND: [buildAgentVisibilityWhere({
+              organizationId: input.organizationId,
+              userId: input.userId,
+            })],
             organizationId: input.organizationId,
             agentKind: { in: ['shared', 'personal_assistant'] },
           },
@@ -117,72 +141,7 @@ export const listScheduledTriggers = async (
     take: input.limit,
   })
 
-  return triggers.map(mapTriggerRecord)
-}
-
-export const createAgentTrigger = async (
-  prisma: PrismaClient,
-  agentId: string,
-  input: {
-    config?: Record<string, unknown>
-    description?: string
-    enabled?: boolean
-    name?: string
-    nextRunAt?: string
-    targetChannelId?: string
-    targetThreadId?: string
-    type: AgentTriggerType
-  },
-): Promise<AgentTriggerRecord | null> => {
-  const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
-
-  const normalizedNextRunAt = normalizeNextRunAt({
-    config: normalizedConfig,
-    nextRunAt: input.nextRunAt,
-    type: input.type,
-  })
-  if (SCHEDULER_TRIGGER_TYPES.includes(input.type) && !normalizedNextRunAt) {
-    return null
-  }
-
-  const agent = await prisma.agent.findUnique({
-    where: { id: agentId },
-    select: {
-      id: true,
-      agentKind: true,
-    },
-  })
-
-  if (!agent || agent.agentKind === 'personal_assistant') {
-    return null
-  }
-
-  const target = await resolveExecutionTarget(prisma, agentId, {
-    targetChannelId: input.targetChannelId,
-    targetThreadId: input.targetThreadId,
-  })
-  if (!target) {
-    return null
-  }
-
-  const trigger = await prisma.agentTrigger.create({
-    data: {
-      agentId,
-      type: input.type,
-      enabled: input.enabled ?? true,
-      status: input.enabled === false ? 'paused' : 'active',
-      name: input.name,
-      description: input.description,
-      config: normalizedConfig as Prisma.InputJsonValue,
-      nextRunAt: normalizedNextRunAt ?? undefined,
-      targetChannelId: target.channelId,
-      targetThreadId: target.threadId,
-    },
-  })
-
-  return mapTriggerRecord(trigger)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const createWorkflowTrigger = async (
@@ -197,9 +156,10 @@ export const createWorkflowTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
+    ? ensureWebhookConfig(clientConfig)
+    : clientConfig
 
   const normalizedNextRunAt = normalizeNextRunAt({
     config: normalizedConfig,
@@ -231,7 +191,7 @@ export const createWorkflowTrigger = async (
     },
   })
 
-  return mapTriggerRecord(trigger)
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }
 
 export const getAgentTrigger = async (
@@ -309,10 +269,7 @@ export const updateAgentTrigger = async (
   const nextConfig =
     input.config === undefined
       ? existing.config
-      : {
-          ...(isJsonRecord(existing.config) ? existing.config : {}),
-          ...input.config,
-        }
+      : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
   const normalizedConfig =
     existing.type === 'webhook' ? ensureWebhookConfig(nextConfig) : nextConfig
   const shouldPersistConfig =
@@ -359,7 +316,7 @@ export const updateAgentTrigger = async (
     return null
   }
 
-  const trigger = await prisma.agentTrigger.update({
+  const update = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({
     where: { id: triggerId },
     data: {
       name: input.name === undefined ? undefined : input.name,
@@ -378,8 +335,24 @@ export const updateAgentTrigger = async (
       nextRunAt: normalizedNextRunAt,
     },
   })
+  const config = isJsonRecord(normalizedConfig) ? normalizedConfig : {}
+  const shouldValidateTodoTemplate = Object.hasOwn(config, 'todoTemplateId')
+    && (input.config !== undefined || input.enabled === true)
+  const trigger = shouldValidateTodoTemplate && existing.agentId
+    ? await prisma.$transaction(async (tx) => {
+        await acquireAgentTodoAgentLock(tx, existing.agentId!)
+        if (!await validateTodoTemplateTriggerConfig(tx, existing.agentId!, config)) {
+          return null
+        }
+        return update(tx)
+      })
+    : shouldValidateTodoTemplate
+      ? null
+    : await update(prisma)
 
-  return mapTriggerRecord(trigger)
+  if (!trigger) return null
+
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }
 
 export const deleteAgentTrigger = async (
@@ -409,14 +382,59 @@ export const pauseAgentTrigger = async (
     status: 'paused',
   })
 
+/**
+ * Resume a paused trigger.
+ *
+ * A schedule can be paused two ways: by a person, which leaves `next_run_at`
+ * intact, or by reaching its `config.until`, which cleared it. Flipping status
+ * alone would revive the second kind as `active` with no next run — enabled to
+ * look at, silently dead forever — so a scheduler-type trigger with no armed
+ * next run is re-armed here. If its end is still in the past there is nothing
+ * to arm and it stays paused, which is the honest answer: extend the end first.
+ */
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
   triggerId: string,
-): Promise<AgentTriggerRecord | null> =>
-  updateAgentTrigger(prisma, triggerId, {
+): Promise<AgentTriggerRecord | null> => {
+  const existing = await prisma.agentTrigger.findUnique({
+    select: { config: true, nextRunAt: true, type: true },
+    where: { id: triggerId },
+  })
+  if (!existing) return null
+
+  const needsRearm =
+    existing.nextRunAt === null
+    && SCHEDULER_TRIGGER_TYPES.includes(existing.type as AgentTriggerType)
+  const rearmed = needsRearm
+    ? normalizeNextRunAt({
+        config: (existing.config ?? {}) as Record<string, unknown>,
+        type: existing.type as AgentTriggerType,
+      })
+    : undefined
+
+  if (needsRearm && !rearmed) {
+    return mapTriggerRecord(
+      await prisma.agentTrigger.findUniqueOrThrow({ where: { id: triggerId } }),
+      TRIGGER_ADMIN_AUDIENCE,
+    )
+  }
+
+  // Clear the stale verdict. Health records why the machine last refused to
+  // run this schedule; resuming is the operator asserting they want it running
+  // again, so carrying the old reason forward would leave the page explaining a
+  // failure that is no longer current. The next fire re-derives it — and if the
+  // cause is still there, that counts as a fresh transition and alerts again.
+  await prisma.agentTrigger.update({
+    data: { healthDetail: null, healthReason: null },
+    where: { id: triggerId },
+  })
+
+  return updateAgentTrigger(prisma, triggerId, {
     enabled: true,
     status: 'active',
+    ...(rearmed ? { nextRunAt: rearmed.toISOString() } : {}),
   })
+}
 
 export const listAgentTriggerDeliveries = async (
   prisma: PrismaClient,
@@ -427,7 +445,7 @@ export const listAgentTriggerDeliveries = async (
     where: { triggerId },
     include: {
       run: {
-        select: { id: true },
+        select: { id: true, status: true },
       },
     },
     orderBy: [{ createdAt: 'desc' }],

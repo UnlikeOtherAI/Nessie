@@ -4,6 +4,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
+import type { AppConfig } from '../../lib/server-context.js'
+import type { RateLimiter } from '../../services/rate-limit.js'
 import {
   McpCatalogError,
   MCP_CATALOG_ERROR_CODES,
@@ -13,11 +15,17 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   McpOAuthError,
   MCP_OAUTH_ERROR_CODES,
+  McpToolReviewError,
+  type McpUrlSafetyOptions,
   type OAuthStateStore,
   type SecretResolver,
   type SecretStore,
 } from '@nessie/mcp-manage'
 import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-grants.js'
+import {
+  AGENT_TOOL_POLICY_ERROR_CODES,
+  AgentToolPolicyError,
+} from '../../services/agent-tool-policy.js'
 
 /**
  * Shared types + helpers for the per-topic MCP sub-registrars.
@@ -30,6 +38,17 @@ import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-gran
 
 export type McpRouteHelpers = {
   prisma: PrismaClient
+  /** Test seam: DNS resolution override for OAuth URL safety checks. */
+  oauthResolveHost?: McpUrlSafetyOptions['resolveHost']
+  /**
+   * API config (rate-limit thresholds) + the brute-force limiter used by the
+   * OAuth handshake and credential-write sub-registrars. Optional so existing
+   * unit fixtures stay minimal; production wiring in index.ts always sets
+   * them, and registerMcpRoutes falls back to defaults + a fail-open in-memory
+   * limiter when absent.
+   */
+  config?: AppConfig
+  rateLimiter?: RateLimiter
   requireActorContext: (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -68,12 +87,20 @@ export type McpRouteHelpers = {
  */
 export type McpSubRegistrarContext = {
   prisma: PrismaClient
+  config: AppConfig
+  rateLimiter: RateLimiter
   requireActorContext: McpRouteHelpers['requireActorContext']
   requireOwner: McpRouteHelpers['requireOwner']
   oauthSecretStore: SecretStore
   secretResolver: SecretResolver
   mcpSecretStore: SecretStore
   oauthStateStore?: OAuthStateStore
+  /**
+   * DNS resolver override for the OAuth SSRF guard. Tests inject a fixed
+   * public-IP answer so the handshake never touches the network; production
+   * leaves this unset (system DNS via `@nessie/runtime`).
+   */
+  oauthResolveHost?: McpUrlSafetyOptions['resolveHost']
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())
@@ -84,6 +111,18 @@ export const JsonRecordSchema = z.record(z.string(), z.unknown())
  * re-throw to surface as a 500 via the Fastify error handler).
  */
 export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
+  if (error instanceof AgentToolPolicyError) {
+    const status =
+      error.code === AGENT_TOOL_POLICY_ERROR_CODES.AGENT_NOT_FOUND
+        || error.code === AGENT_TOOL_POLICY_ERROR_CODES.TOOL_NOT_FOUND
+        ? 404
+        : error.code === AGENT_TOOL_POLICY_ERROR_CODES.ACTIVE_RUNS
+          || error.code === AGENT_TOOL_POLICY_ERROR_CODES.DEPENDENCY_REQUIRED
+          ? 409
+        : 400
+    sendApiError(reply, status, error.code, error.message)
+    return true
+  }
   if (error instanceof McpCatalogError) {
     const status =
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND
@@ -110,11 +149,19 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
         : error.code === MCP_INSTANCE_ERROR_CODES.LOCKED
           ? 403
           : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
+              || error.code === MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION
           ? 409
           : error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED
             ? 502
             : 400
     sendApiError(reply, status, error.code, error.message)
+    return true
+  }
+  // An id that resolves to nothing reviewable is a 404 over the set: review is
+  // all-or-nothing, so a caller must never read a 200 as "the rows I listed
+  // are approved" when some of them were silently skipped.
+  if (error instanceof McpToolReviewError) {
+    sendApiError(reply, 404, error.code, error.message)
     return true
   }
   if (error instanceof McpCredentialError) {

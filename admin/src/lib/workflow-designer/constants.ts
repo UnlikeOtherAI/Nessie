@@ -7,15 +7,8 @@ export const toolbarButtonClass = [
   'hover:bg-[#f4eff8]',
 ].join(' ')
 
-export const menuItemClass = [
-  'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left',
-  'text-[#433349] transition-colors hover:bg-[#f4eff8]',
-].join(' ')
-
 export const sectionLabelClass =
   'px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]'
-
-export const dividerClass = 'my-1 border-t border-black/8'
 
 export const canvasClass = [
   'relative flex-1 overflow-hidden bg-white select-none',
@@ -53,6 +46,12 @@ export const nodeThemes: Record<
     fill: '#f8fcff',
     label: 'Tool',
   },
+  transform: {
+    badgeBackground: '#e9f7ef',
+    border: '#1d8a52',
+    fill: '#f6fcf9',
+    label: 'Transform',
+  },
   trigger: {
     badgeBackground: '#fff1df',
     border: '#d97706',
@@ -60,6 +59,21 @@ export const nodeThemes: Record<
     label: 'Trigger',
   },
 }
+
+// W17: executable STEP TYPES with a registered worker executor — mirrors
+// `WORKFLOW_STEP_TYPES` in api/src/services/workflow-validation.ts, which carries the
+// same executor-registration rule. Drift fails the same way W12's tool list
+// drift does: an authoring surface advertising a capability that can only
+// fail at run time.
+export const WORKFLOW_EXECUTABLE_STEP_TYPES = new Set([
+  'agent',
+  'agent_task',
+  'environment_launch',
+  'message_send',
+  'tool',
+  'tool_call',
+  'transform',
+])
 
 export const WORKFLOW_TRIGGER_TYPE_LABELS = {
   event: 'Event trigger',
@@ -69,8 +83,13 @@ export const WORKFLOW_TRIGGER_TYPE_LABELS = {
   webhook: 'Webhook trigger',
 } as const
 
+// W12: the one executable tool list is `WORKFLOW_TOOL_IDS` in
+// @nessie/runtime; this mirrors it for the canvas, which cannot import that
+// package. `admin/test/workflow-tool-allowlist.test.ts` fails the moment the
+// two drift apart, so they are not "agreeing by coincidence".
 export const WORKFLOW_TOOL_NODE_IDS = new Set([
   'change_detect',
+  'message_send',
   'state_get',
   'state_put',
   'web_fetch',

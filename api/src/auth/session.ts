@@ -1,5 +1,9 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import type { AuthProviderResponseType } from '@nessie/schemas'
+import {
+  UoaSessionIdentitySchema,
+  type AuthProviderResponseType,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
 
 export type SessionTokenClaims = {
   exp: number
@@ -12,6 +16,13 @@ export type SessionTokenClaims = {
   sid: string
   sub: string
   team: string
+  // Server-issued generation for native device registration context changes.
+  pv?: string
+  // `User.tokenVersion` at issue time. A mismatch on verify means this token was
+  // revoked (logout, forced sign-out), so it is rejected before its TTL expires.
+  // Distinct from `uoaIdentity.uoaTokenVersion`, which is UOA's own epoch.
+  tv?: number
+  uoaIdentity?: UoaSessionIdentity
 }
 
 export type SessionTokenInput = Omit<SessionTokenClaims, 'exp' | 'iat' | 'sid'>
@@ -54,9 +65,23 @@ export const issueSessionToken = (
   }
 }
 
-export const verifySessionToken = (
+/**
+ * True when this token predates the user's current revocation generation.
+ *
+ * A user-wide forced sign-out bumps `User.tokenVersion`; every access token
+ * minted at an older generation must stop working immediately. Exact-session
+ * logout is enforced separately by the live refresh-session `sid` check.
+ * Tokens issued before this claim carry no `tv` and read as generation 0.
+ */
+export const isSessionTokenRevoked = (
+  claims: Pick<SessionTokenClaims, 'tv'>,
+  currentTokenVersion: number,
+): boolean => (claims.tv ?? 0) !== currentTokenVersion
+
+const verifySessionTokenValue = (
   token: string,
   secret: string,
+  allowExpired: boolean,
 ): VerificationResult => {
   const [header, payload, signature] = token.split('.')
 
@@ -77,8 +102,17 @@ export const verifySessionToken = (
 
   try {
     const claims = JSON.parse(decodeBase64Url(payload)) as SessionTokenClaims
-    if (claims.exp <= Math.floor(Date.now() / 1000)) {
+    if (!allowExpired && claims.exp <= Math.floor(Date.now() / 1000)) {
       return { ok: false, code: 'TOKEN_EXPIRED', message: 'Session expired' }
+    }
+    if (
+      claims.uoaIdentity !== undefined
+      && (
+        claims.providerType !== 'uoa'
+        || !UoaSessionIdentitySchema.safeParse(claims.uoaIdentity).success
+      )
+    ) {
+      return { ok: false, code: 'TOKEN_INVALID', message: 'Invalid session token' }
     }
 
     return { ok: true, claims }
@@ -86,3 +120,14 @@ export const verifySessionToken = (
     return { ok: false, code: 'TOKEN_INVALID', message: 'Invalid session token' }
   }
 }
+
+export const verifySessionToken = (
+  token: string,
+  secret: string,
+): VerificationResult => verifySessionTokenValue(token, secret, false)
+
+/** Logout authenticates an exact old session even after its access TTL ends. */
+export const verifySessionTokenForLogout = (
+  token: string,
+  secret: string,
+): VerificationResult => verifySessionTokenValue(token, secret, true)

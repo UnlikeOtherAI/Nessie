@@ -2,8 +2,23 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { BUILTIN_TOOL_IDS, WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import { buildGcloudRunJobArgs } from '../src/control/execution.js'
 import { executeWorkflowBuiltinTool } from '../src/run/tools.js'
+
+const workflowActorContext = {
+  actor: {
+    actorId: '00000000-0000-0000-0000-000000000002',
+    actorType: 'user',
+  },
+  tenant: {
+    organizationId: '00000000-0000-0000-0000-000000000001',
+    teamId: '00000000-0000-0000-0000-000000000003',
+  },
+  actionContext: {
+    requestId: 'workflow-test',
+  },
+} as unknown as AuthorizedActionContext
 
 const makeStateKey = (installationId: string, key: string): string =>
   `${installationId}:${key}`
@@ -164,6 +179,8 @@ test('executeWorkflowBuiltinTool persists workflow state and increments versions
       },
     },
     {
+      actorContext: workflowActorContext,
+      ledgerIdentity: null,
       organizationId: '00000000-0000-0000-0000-000000000001',
       prisma: prisma as never,
       workflowInstallationId: '00000000-0000-0000-0000-000000000010',
@@ -183,6 +200,8 @@ test('executeWorkflowBuiltinTool persists workflow state and increments versions
       },
     },
     {
+      actorContext: workflowActorContext,
+      ledgerIdentity: null,
       organizationId: '00000000-0000-0000-0000-000000000001',
       prisma: prisma as never,
       workflowInstallationId: '00000000-0000-0000-0000-000000000010',
@@ -202,6 +221,8 @@ test('executeWorkflowBuiltinTool persists workflow state and increments versions
       key: 'cursor',
     },
     {
+      actorContext: workflowActorContext,
+      ledgerIdentity: null,
       organizationId: '00000000-0000-0000-0000-000000000001',
       prisma: prisma as never,
       workflowInstallationId: '00000000-0000-0000-0000-000000000010',
@@ -226,6 +247,8 @@ test('executeWorkflowBuiltinTool returns workflow failure when web_fetch hits SS
       url: 'http://localhost/whatever',
     },
     {
+      actorContext: workflowActorContext,
+      ledgerIdentity: null,
       organizationId: '00000000-0000-0000-0000-000000000001',
       prisma: prisma as never,
       workflowInstallationId: '00000000-0000-0000-0000-000000000030',
@@ -283,6 +306,8 @@ test('executeWorkflowBuiltinTool detects changes against stored workflow state',
       },
     },
     {
+      actorContext: workflowActorContext,
+      ledgerIdentity: null,
       organizationId: '00000000-0000-0000-0000-000000000001',
       prisma: prisma as never,
       workflowInstallationId: '00000000-0000-0000-0000-000000000020',

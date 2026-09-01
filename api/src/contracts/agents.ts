@@ -1,43 +1,30 @@
 import {
-  AgentIdSchema,
-  AgentStatusSchema,
+  AgentAvatarBackgroundColorSchema,
+  AgentEffortSchema,
+  AgentRecordSchema,
+  AgentRunLimitsSchema,
+  AgentVisibilitySchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
-  RunIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { ThreadRecordSchema } from './messaging.js'
-import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
+import { NonEmptyStringSchema } from './shared.js'
 import { ChannelRecordSchema } from './workspace.js'
 
-export const AgentRecordSchema = z.object({
-  id: AgentIdSchema,
-  name: NonEmptyStringSchema,
-  role: NonEmptyStringSchema,
-  status: AgentStatusSchema,
-  agentKind: z.enum(['shared', 'personal_assistant']).optional(),
-  systemManaged: z.boolean().optional(),
-  surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
-  delegationMode: z.enum(['none', 'act_as_requesting_user']).optional(),
-  currentRunId: RunIdSchema.optional(),
-  currentToolName: z.string().optional(),
-  currentToolStartedAt: TimestampSchema.optional(),
-  lastActivityAt: TimestampSchema,
-  systemPrompt: z.string().optional(),
-  parentAgentId: AgentIdSchema.nullish(),
-  provider: z.string().optional(),
-  model: z.string().optional(),
-  toolPolicy: z.record(z.string(), z.boolean()).optional(),
-  avatarAttachmentId: z.string().uuid().nullish(),
-  routingProfileId: z.string().uuid().optional(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-  channelIds: z.array(ChannelIdSchema),
-})
-export type AgentRecord = z.infer<typeof AgentRecordSchema>
+export { AgentModelOptionSchema } from '@nessie/schemas'
 
+// The agent record is produced by `@nessie/workspace-admin`, which the worker
+// also uses, so its schema lives in `@nessie/schemas`.
+export { type AgentRecord } from '@nessie/schemas'
+export { AgentRecordSchema }
+
+// `runLimits` is an ordinary agent-edit field (existing authorization, not a
+// protected tool-policy key): omit it to leave the stored value untouched, send
+// an object to replace it, send `null` to clear every explicit limit.
 export const CreateAgentBodySchema = z.object({
+  avatarAttachmentId: z.string().uuid().optional(),
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
@@ -46,23 +33,67 @@ export const CreateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  effort: AgentEffortSchema.optional(),
+  runLimits: AgentRunLimitsSchema.nullish(),
+  visibility: AgentVisibilitySchema.optional(),
+  todosEnabled: z.boolean().optional(),
 })
 
 export const UpdateAgentBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
+  /**
+   * Reassign stewardship. `null` returns the agent to the unowned pool.
+   *
+   * Gated by the route's existing `requireOwner` — deliberately NOT widened to
+   * let an agent's own steward transfer it, because this endpoint also mutates
+   * the system prompt, tool policy and run limits, and one gate cannot serve
+   * both without handing every steward those powers too.
+   *
+   * No acceptance step: today ownership decides visibility and attribution
+   * only. When escalation delivery ships, ownership becomes its first rung and
+   * a transfer starts routing interruptions to the recipient — at which point
+   * this needs a pending-transfer state before it can stay unilateral. See
+   * docs/plans/2026-08-29-people-and-their-agents.md.
+   */
+  ownerUserId: z.string().uuid().nullish(),
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  effort: AgentEffortSchema.optional(),
+  runLimits: AgentRunLimitsSchema.nullish(),
+  todosEnabled: z.boolean().optional(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({
   avatarAttachmentId: z.string().uuid().nullable(),
+  avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),
+})
+
+// The image is stored as a normal private attachment. It becomes visible to
+// the wider workspace only after the owner confirms it as the agent's avatar.
+export const GeneratedAgentAvatarSchema = z.object({
+  avatarAttachmentId: z.string().uuid(),
+  avatarBackgroundColor: AgentAvatarBackgroundColorSchema,
+})
+
+// Draft fields are accepted for regeneration so the preview can reflect edits
+// still open in Agent Designer. They never update the agent themselves.
+export const GenerateAgentAvatarBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  role: NonEmptyStringSchema.optional(),
+  systemPrompt: z.string().optional(),
+  // Free-text guidance the person typed for this generation ("a friendly robot
+  // in a hard hat"). Optional; the prompt writer appends it to the agent's
+  // purpose within the fixed safety constraints.
+  instructions: z.string().max(1_000).optional(),
 })
 
 export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
+  /** Original @mention to replay after a successful invitation. */
+  triggerMessageId: z.string().uuid().optional(),
 })
 
 export const PersonalAssistantStateResponseSchema = z.object({

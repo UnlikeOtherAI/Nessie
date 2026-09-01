@@ -2,7 +2,7 @@ import type {
   ToolRegistryEntryStatus,
   ToolRegistrySource,
 } from '@nessie/schemas'
-import { SegmentedControl } from '../../primitives/SegmentedControl'
+import { TabBar } from '../../primitives/TabBar'
 
 /**
  * Tool list filters. Source is the primary mental model ("where does this
@@ -47,16 +47,19 @@ export const ToolFilterBar = ({
   tagOptions,
 }: ToolFilterBarProps) => (
   <div className="grid gap-2">
-    <SegmentedControl<SourceSegment>
+    <TabBar<SourceSegment>
       ariaLabel="Filter by source"
+      fullWidth
+      items={SOURCE_OPTIONS}
       onChange={(next) => onSourceChange(next === 'all' ? undefined : next)}
-      options={SOURCE_OPTIONS}
+      role="radiogroup"
+      size="sm"
       value={source ?? 'all'}
     />
     <div className="flex gap-2">
       <select
         aria-label="Filter by status"
-        className="admin-input flex-1 py-1.5 text-xs"
+        className="admin-input admin-input-compact flex-1"
         onChange={(event) =>
           onStatusChange(
             event.target.value === ''
@@ -75,7 +78,7 @@ export const ToolFilterBar = ({
       {tagOptions.length > 0 ? (
         <select
           aria-label="Filter by tag"
-          className="admin-input flex-1 py-1.5 text-xs"
+          className="admin-input admin-input-compact flex-1"
           onChange={(event) => onTagChange(event.target.value || undefined)}
           value={tag ?? ''}
         >

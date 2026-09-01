@@ -2,8 +2,14 @@ import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
+import { assertNotLastOwner } from './organization-owner-lock.js'
+import { revokeUserRefreshFamilies } from './refresh-session-management.js'
+import {
+  AUTH_LOCK_TRANSACTION_OPTIONS,
+  lockUserSessions,
+} from './user-session-lock.js'
 import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
+import { pausePrivateAgentsForDeactivatedOwner } from './private-agent-lifecycle.js'
 
 const mapUserRecord = (record: {
   avatarUrl: string | null
@@ -26,7 +32,6 @@ const mapUserRecord = (record: {
   activeStatus: resolveActiveStatus(record.statuses),
   avatarUrl: record.avatarUrl ?? undefined,
   avatarAttachmentId: record.avatarAttachmentId ?? undefined,
-  gravatarUrl: buildGravatarUrl(record.email),
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 })
@@ -130,40 +135,6 @@ export const getOrganizationMembership = async (
     select: { role: true, deactivatedAt: true },
   })
 
-// Sentinel thrown by the membership mutators when a change would remove the last
-// active owner; routes translate it to a 400 LAST_OWNER.
-export const LAST_OWNER_ERROR = 'LAST_OWNER'
-
-// Lock the org's active-owner rows FOR UPDATE and return their user ids. Called
-// inside the same transaction as an ownership-reducing write so two concurrent
-// owner-removals serialize on these rows — the second blocks until the first
-// commits, then re-reads the reduced set — preventing a race that would strand
-// the org with zero active owners.
-const lockActiveOwnerUserIds = async (
-  tx: Prisma.TransactionClient,
-  organizationId: string,
-): Promise<string[]> => {
-  const rows = await tx.$queryRaw<Array<{ user_id: string }>>`
-    SELECT user_id FROM organization_members
-    WHERE organization_id = ${organizationId}::uuid
-      AND role = 'owner' AND deactivated_at IS NULL
-    FOR UPDATE`
-  return rows.map((row) => row.user_id)
-}
-
-// Throw LAST_OWNER_ERROR if removing `userId` from active ownership (via demotion
-// or deactivation) would leave the org with no active owner.
-const assertNotLastOwner = async (
-  tx: Prisma.TransactionClient,
-  organizationId: string,
-  userId: string,
-): Promise<void> => {
-  const ownerIds = await lockActiveOwnerUserIds(tx, organizationId)
-  if (ownerIds.includes(userId) && ownerIds.length <= 1) {
-    throw new Error(LAST_OWNER_ERROR)
-  }
-}
-
 export const updateOrganizationMemberRole = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; role: MemberRole },
@@ -190,9 +161,25 @@ export const updateOrganizationMemberRole = async (
 // org the user belongs to — acceptable for a security-sensitive action.
 export const setOrganizationMemberDeactivated = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string; deactivated: boolean },
+  input: {
+    actorUserId: string
+    organizationId: string
+    requestId: string
+    userId: string
+    deactivated: boolean
+  },
 ): Promise<void> => {
   await prisma.$transaction(async (transaction) => {
+    await lockUserSessions(transaction, input.userId)
+    const membership = await transaction.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+        },
+      },
+      select: { deactivatedAt: true },
+    })
     if (input.deactivated) {
       await assertNotLastOwner(transaction, input.organizationId, input.userId)
     }
@@ -202,14 +189,30 @@ export const setOrganizationMemberDeactivated = async (
       },
       data: { deactivatedAt: input.deactivated ? new Date() : null },
     })
-
-    if (input.deactivated) {
-      await transaction.refreshToken.updateMany({
-        where: { userId: input.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    if (input.deactivated && membership?.deactivatedAt === null) {
+      await pausePrivateAgentsForDeactivatedOwner(transaction, input)
+      // A PA presence is consent for this live organization member only. Keep
+      // the invariant true at rest rather than merely excluding old rows while
+      // assembling engagement candidates.
+      await transaction.agentBinding.deleteMany({
+        where: {
+          principalUserId: input.userId,
+          channel: { organizationId: input.organizationId },
+        },
       })
     }
-  })
+
+    if (input.deactivated) {
+      await revokeUserRefreshFamilies(transaction, {
+        userId: input.userId,
+      })
+      // Channel memberships and device tokens remain as audit/device history,
+      // but an inactive member must not retain an in-app suppression target.
+      await transaction.userPushSurfacePresence.deleteMany({
+        where: { userId: input.userId },
+      })
+    }
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 export const createUserForOrganization = async (

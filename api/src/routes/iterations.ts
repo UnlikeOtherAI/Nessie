@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
+import type { AuthorizedActionContext } from '@nessie/schemas'
+
 import {
   CreateIterationBodySchema,
   IterationRecordSchema,
@@ -17,13 +19,18 @@ import {
 import type { RouteDeps } from './types.js'
 
 export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, requireActorContext, requireOwner, isProjectAccessibleToActor } = deps
 
-  const loadProject = async (projectId: string, organizationId: string) =>
-    prisma.project.findFirst({
-      where: { id: projectId, organizationId },
+  // Single seam for every iteration route: a project is only loadable by an
+  // org owner or a member of that project, so another team's iterations and
+  // delivery insights are not readable org-wide.
+  const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
       select: { id: true, organizationId: true },
     })
+  }
 
   // Resolve an iteration to the project it belongs to, scoped to the org.
   const loadIterationProject = async (iterationId: string, organizationId: string) =>
@@ -37,7 +44,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -52,7 +59,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -68,7 +75,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply

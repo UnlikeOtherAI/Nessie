@@ -41,6 +41,50 @@ const mapIteration = (iteration: Iteration, stats: IterationStats): IterationRec
 const withStats = async (prisma: PrismaClient, iteration: Iteration): Promise<IterationRecord> =>
   mapIteration(iteration, await iterationStats(prisma, iteration.id))
 
+/**
+ * Stats for a whole set of iterations in two grouped queries instead of two
+ * aggregates per iteration. A project with twenty iterations issued forty
+ * round-trips to render one board header.
+ */
+const statsByIteration = async (
+  prisma: PrismaClient,
+  iterationIds: string[],
+): Promise<Map<string, IterationStats>> => {
+  const stats = new Map<string, IterationStats>(
+    iterationIds.map((id) => [id, { taskCount: 0, pointsDone: 0, pointsTotal: 0 }]),
+  )
+  if (iterationIds.length === 0) return stats
+
+  const [totals, done] = await Promise.all([
+    prisma.task.groupBy({
+      by: ['iterationId'],
+      where: { iterationId: { in: iterationIds } },
+      _sum: { storyPoints: true },
+      _count: { _all: true },
+    }),
+    prisma.task.groupBy({
+      by: ['iterationId'],
+      where: { iterationId: { in: iterationIds }, status: 'done' },
+      _sum: { storyPoints: true },
+    }),
+  ])
+
+  for (const row of totals) {
+    if (!row.iterationId) continue
+    const entry = stats.get(row.iterationId)
+    if (!entry) continue
+    entry.taskCount = row._count._all
+    entry.pointsTotal = row._sum.storyPoints ?? 0
+  }
+  for (const row of done) {
+    if (!row.iterationId) continue
+    const entry = stats.get(row.iterationId)
+    if (!entry) continue
+    entry.pointsDone = row._sum.storyPoints ?? 0
+  }
+  return stats
+}
+
 export const listIterations = async (
   prisma: PrismaClient,
   projectId: string,
@@ -49,7 +93,13 @@ export const listIterations = async (
     where: { projectId },
     orderBy: { position: 'asc' },
   })
-  return Promise.all(iterations.map((iteration) => withStats(prisma, iteration)))
+  const stats = await statsByIteration(prisma, iterations.map((iteration) => iteration.id))
+  return iterations.map((iteration) =>
+    mapIteration(
+      iteration,
+      stats.get(iteration.id) ?? { taskCount: 0, pointsDone: 0, pointsTotal: 0 },
+    ),
+  )
 }
 
 export const createIteration = async (

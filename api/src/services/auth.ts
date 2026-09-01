@@ -12,14 +12,19 @@ import {
 } from '@nessie/schemas'
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
-import { resolveStoredDisplayName } from './identity-display.js'
+import {
+  deriveUoaWorkspaceDirectoryFromTeams,
+  readUoaWorkspaceDirectory,
+} from './uoa-directory-cache.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
 const LOCAL_AUTH_PROVIDER_LABEL = 'Email and password'
 
 const UOA_DEFAULT_BASE_URL = 'https://authentication.unlikeotherai.com'
+
+const resolveUoaBaseUrl = (): string =>
+  (process.env.UOA_BASE_URL ?? UOA_DEFAULT_BASE_URL).replace(/\/$/, '')
 
 // The public-facing URL of the authenticator behind a provider, shown in the
 // profile. OIDC/custom carry it in config; UOA's lives in the UOA_BASE_URL env
@@ -29,7 +34,7 @@ const resolveProviderUrl = (provider: AuthProviderConfig): string | undefined =>
     return provider.issuerUrl
   }
   if (provider.type === 'uoa') {
-    return (process.env.UOA_BASE_URL ?? UOA_DEFAULT_BASE_URL).replace(/\/$/, '')
+    return resolveUoaBaseUrl()
   }
   return undefined
 }
@@ -79,6 +84,8 @@ export const createActorContextFromClaims = (
   actionContext: {
     requestId: crypto.randomUUID(),
     sessionId: claims.sid,
+    pushRegistrationVersion: claims.pv ?? '0',
+    ...(claims.uoaIdentity ? { uoaIdentity: claims.uoaIdentity } : {}),
   },
 })
 
@@ -86,50 +93,173 @@ export const loadUserMemberships = async (
   prisma: PrismaClient,
   userId: string,
 ): Promise<MeMembership[]> => {
-  const orgMembers = await prisma.organizationMember.findMany({
-    where: { userId },
-    include: {
-      organization: { select: { id: true, name: true } },
-    },
-  })
+  // Three flat queries grouped in memory rather than a nested loop: this runs on
+  // every /auth/me, and the previous shape issued one project query per
+  // organisation plus one team query per project.
+  const [orgMembers, projectMembers, teamMembers] = await Promise.all([
+    prisma.organizationMember.findMany({
+      where: { userId },
+      include: { organization: { select: { id: true, name: true } } },
+    }),
+    prisma.projectMember.findMany({
+      where: { userId },
+      include: { project: { select: { id: true, name: true, organizationId: true } } },
+    }),
+    prisma.teamMember.findMany({
+      where: { userId },
+      include: { team: { select: { id: true, name: true, projectId: true } } },
+    }),
+  ])
 
-  const memberships: MeMembership[] = []
-  for (const om of orgMembers) {
-    const projectMembers = await prisma.projectMember.findMany({
-      where: { userId, project: { organizationId: om.organizationId } },
-      include: {
-        project: { select: { id: true, name: true } },
-      },
-    })
-
-    const projects = await Promise.all(
-      projectMembers.map(async (pm) => {
-        const teamMembers = await prisma.teamMember.findMany({
-          where: { userId, team: { projectId: pm.projectId } },
-          include: {
-            team: { select: { id: true, name: true } },
-          },
-        })
-        return {
-          projectId: parseProjectId(pm.project.id),
-          projectName: pm.project.name,
-          teams: teamMembers.map((tm) => ({
-            teamId: parseTeamId(tm.team.id),
-            teamName: tm.team.name,
-          })),
-        }
-      }),
-    )
-
-    memberships.push({
-      organizationId: parseOrganizationId(om.organization.id),
-      organizationName: om.organization.name,
-      role: om.role,
-      projects,
-    })
+  type MeTeam = MeMembership['projects'][number]['teams'][number]
+  const teamsByProject = new Map<string, MeTeam[]>()
+  for (const tm of teamMembers) {
+    const list = teamsByProject.get(tm.team.projectId) ?? []
+    list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
+    teamsByProject.set(tm.team.projectId, list)
   }
 
-  return memberships
+  const projectsByOrganization = new Map<string, MeMembership['projects']>()
+  for (const pm of projectMembers) {
+    const list = projectsByOrganization.get(pm.project.organizationId) ?? []
+    list.push({
+      projectId: parseProjectId(pm.project.id),
+      projectName: pm.project.name,
+      teams: teamsByProject.get(pm.projectId) ?? [],
+    })
+    projectsByOrganization.set(pm.project.organizationId, list)
+  }
+
+  return orgMembers.map((om) => ({
+    organizationId: parseOrganizationId(om.organization.id),
+    organizationName: om.organization.name,
+    role: om.role,
+    projects: projectsByOrganization.get(om.organizationId) ?? [],
+  }))
+}
+
+const parseHttpUrl = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  try {
+    const url = new URL(value.trim())
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+      ? url.toString()
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const uoaWorkspaceAvatarImageUrl = (teamId: string, value: unknown): string | undefined => {
+  const supplied = parseHttpUrl(value)
+  const fallbackBase = supplied ? undefined : parseHttpUrl(resolveUoaBaseUrl())
+  if (!supplied && !fallbackBase) return undefined
+
+  const url = new URL(
+    supplied ?? `/teams/${encodeURIComponent(teamId)}/avatar`,
+    fallbackBase,
+  )
+  // This supported UOA image parameter gives sessions created before avatar URLs were added a
+  // deterministic URL and avoids reusing a browser-cached pre-embedding-policy response.
+  url.searchParams.set('size', '128')
+  return url.toString()
+}
+
+const uoaWorkspaceDirectoryFromEntries = (
+  entries: readonly unknown[],
+  activeTeamId: string | undefined,
+): MeResponse['uoaWorkspaces'] => {
+  const workspaces = entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const values = entry as Record<string, unknown>
+    const organizationId = typeof values.organizationId === 'string' ? values.organizationId.trim() : ''
+    const teamId = typeof values.teamId === 'string' ? values.teamId.trim() : ''
+    const label = typeof values.label === 'string' ? values.label.trim() : ''
+    const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
+    if (!organizationId || !teamId || !label) return []
+    const avatarImageUrl = uoaWorkspaceAvatarImageUrl(teamId, values.avatarImageUrl)
+    return [{
+      organizationId,
+      teamId,
+      ...(avatarImageUrl ? { avatarImageUrl } : {}),
+      label,
+      ...(orgName ? { orgName } : {}),
+      active: teamId === activeTeamId,
+    }]
+  })
+  return workspaces.length > 0 ? workspaces : undefined
+}
+
+// UOA's directory identifies workspaces with the external team id used for
+// login. The avatar relay intentionally accepts only a local Team id and checks
+// a live TeamMember row, so add that id only for workspaces this person can
+// already reach in Nessie. This keeps every picker image entitlement-scoped.
+const addWorkspaceAvatarTeamIds = async (
+  prisma: PrismaClient,
+  userId: string,
+  workspaces: NonNullable<MeResponse['uoaWorkspaces']>,
+): Promise<MeResponse['uoaWorkspaces']> => {
+  const externalWorkspaceIds = [...new Set(workspaces.map((workspace) => workspace.teamId))]
+  const teams = await prisma.team.findMany({
+    where: {
+      externalWorkspaceId: { in: externalWorkspaceIds },
+      members: { some: { userId } },
+    },
+    select: {
+      externalOrgId: true,
+      externalWorkspaceId: true,
+      id: true,
+      project: { select: { organization: { select: { name: true } } } },
+    },
+  })
+  const localTeams = new Map(
+    teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
+      ? [[`${team.externalOrgId}:${team.externalWorkspaceId}`, {
+          avatarTeamId: parseTeamId(team.id),
+          orgName: team.project.organization.name,
+        }] as const]
+      : []),
+  )
+
+  return workspaces.map((workspace) => {
+    const localTeam = localTeams.get(`${workspace.organizationId}:${workspace.teamId}`)
+    if (!localTeam) return workspace
+    return {
+      ...workspace,
+      avatarTeamId: localTeam.avatarTeamId,
+      ...(workspace.orgName ? {} : { orgName: localTeam.orgName }),
+    }
+  })
+}
+
+// UOA owns the directory, so Nessie holds it only in the bounded in-memory
+// cache written at login and at every UOA token rotation. A cold cache (fresh
+// process, or another replica that has not rotated this session yet) degrades
+// to the local Team → UOA workspace mapping rather than to nothing, so the
+// switcher keeps working until the next rotation restores the real thing.
+const loadUoaWorkspaceDirectory = async (
+  prisma: PrismaClient,
+  userId: string,
+  claims: SessionTokenClaims,
+): Promise<{
+  uoaPendingInvites: MeResponse['uoaPendingInvites']
+  uoaWorkspaces: MeResponse['uoaWorkspaces']
+}> => {
+  if (claims.providerType !== 'uoa') {
+    return { uoaPendingInvites: undefined, uoaWorkspaces: undefined }
+  }
+  const directory = readUoaWorkspaceDirectory(userId)
+    ?? await deriveUoaWorkspaceDirectoryFromTeams(prisma, userId)
+  const workspaces = uoaWorkspaceDirectoryFromEntries(
+    directory.entries,
+    claims.uoaIdentity?.teamId,
+  )
+  return {
+    uoaPendingInvites: directory.pendingInvites,
+    uoaWorkspaces: workspaces
+      ? await addWorkspaceAvatarTeamIds(prisma, userId, workspaces)
+      : undefined,
+  }
 }
 
 export const buildMeResponse = async (
@@ -138,15 +268,16 @@ export const buildMeResponse = async (
   claims: SessionTokenClaims,
   config: NessieConfig,
 ): Promise<MeResponse> => {
-  const displayName = resolveStoredDisplayName(user.email, user.displayName)
-  if (displayName !== user.displayName) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { displayName },
-    })
-  }
-
-  const memberships = await loadUserMemberships(prisma, user.id)
+  // The profile is read straight off the mirror. This used to manufacture a
+  // display name from the email local part and persist it on every call, which
+  // made Nessie a second profile authority; the mirror is now re-synced from
+  // the provider's verified claims at login/switch/refresh instead
+  // (`uoa-profile-mirror.ts`), and a row still named by its email address
+  // renders that way until the provider supplies a name.
+  const [memberships, uoaDirectory] = await Promise.all([
+    loadUserMemberships(prisma, user.id),
+    loadUoaWorkspaceDirectory(prisma, user.id, claims),
+  ])
 
   // Surface the live per-org role for the active context org so the admin's
   // client-side gating matches the server's now-authoritative role check
@@ -162,10 +293,9 @@ export const buildMeResponse = async (
     user: {
       id: parseUserId(user.id),
       email: user.email,
-      displayName,
+      displayName: user.displayName,
       avatarUrl: user.avatarUrl ?? undefined,
       avatarAttachmentId: user.avatarAttachmentId ?? undefined,
-      gravatarUrl: buildGravatarUrl(user.email),
       pronouns: user.pronouns ?? undefined,
       roleIds: activeRole ? [activeRole] : claims.roles,
       superAdmin: user.superAdmin,
@@ -189,5 +319,11 @@ export const buildMeResponse = async (
       autoRedirectToSso: config.auth.autoRedirectToSso,
     },
     memberships,
+    ...(uoaDirectory.uoaWorkspaces
+      ? { uoaWorkspaces: uoaDirectory.uoaWorkspaces }
+      : {}),
+    ...(uoaDirectory.uoaPendingInvites !== undefined
+      ? { uoaPendingInvites: uoaDirectory.uoaPendingInvites }
+      : {}),
   }
 }

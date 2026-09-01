@@ -1,85 +1,86 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, type ReactNode } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import type {
-  DeepWaterResearchDepth,
+  DeepWaterAgentAccessTarget,
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import {
+  useDeepWaterAgentAccess,
   useDeepWaterResearchRuns,
-  useLaunchDeepWaterResearch,
+  useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
+import { Pill, type PillTone } from '../../primitives/Pill'
+import { TabBar } from '../../primitives/TabBar'
+import { useIsOwner } from '../../shared/OwnerGate'
+import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 
-const depthOptions: Array<{ label: string; value: DeepWaterResearchDepth }> = [
-  { label: 'Light', value: 'light' },
-  { label: 'Standard', value: 'standard' },
-  { label: 'Deep', value: 'deep' },
-  { label: 'Heavy', value: 'heavy' },
-  { label: 'Thesis', value: 'thesis' },
-  { label: 'Dissertation', value: 'dissertation' },
+type DeepWaterTab = 'run' | 'runs' | 'settings'
+
+const tabs: ReadonlyArray<{ label: string; value: DeepWaterTab }> = [
+  { label: 'Test run', value: 'run' },
+  { label: 'My runs', value: 'runs' },
+  { label: 'Settings', value: 'settings' },
 ]
 
-const readinessClass = (ready: boolean): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    ready
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  ].join(' ')
+const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
 
-const money = (amount: number, currency: string): string =>
-  new Intl.NumberFormat(undefined, {
-    currency,
-    maximumFractionDigits: 2,
-    style: 'currency',
-  }).format(amount)
+const accessTargetLabel = (target: DeepWaterAgentAccessTarget): string =>
+  target.agentKind === 'personal_assistant' ? 'Personal Assistant' : target.name
 
-const boundedInt = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, Math.trunc(Number.isFinite(value) ? value : min)))
+const launchReadinessMessage = ({
+  connectorReady,
+  personalAssistantReady,
+  teamReady,
+}: {
+  connectorReady: boolean
+  personalAssistantReady: boolean
+  teamReady: boolean
+}): string | undefined => {
+  if (!teamReady) return 'An organization owner must enable Deep Water for this team first.'
+  if (!connectorReady) return 'The team’s Ledger MCP connector is not active yet.'
+  if (!personalAssistantReady) {
+    return 'An organization owner must grant the Personal Assistant all six Deep Water tools.'
+  }
+  return undefined
+}
 
+type DeepWaterResearchPanelProps = {
+  product: IntegratedProductResponse
+  settingsContent: ReactNode
+}
+
+// The product detail used to combine launch controls, history, permissions, and
+// setup in one long section. Keep their data/hooks together, but present each
+// task on its own tab so operators can understand the workflow at a glance.
 export const DeepWaterResearchPanel = ({
   product,
-}: {
-  product: IntegratedProductResponse
-}) => {
+  settingsContent,
+}: DeepWaterResearchPanelProps) => {
   const navigate = useNavigate()
-  const launch = useLaunchDeepWaterResearch()
+  const isOwner = useIsOwner()
+  const [activeTab, setActiveTab] = useState<DeepWaterTab>('run')
   const runsQuery = useDeepWaterResearchRuns()
-  const [title, setTitle] = useState('')
-  const [query, setQuery] = useState('')
-  const [depth, setDepth] = useState<DeepWaterResearchDepth>('standard')
-  const [chapterDepth, setChapterDepth] = useState('standard')
-  const [outputTier, setOutputTier] = useState('full')
-  const [outputLanguage, setOutputLanguage] = useState('en')
-  const [searchQuality, setSearchQuality] = useState('standard')
-  const [recency, setRecency] = useState('any')
-  const [sections, setSections] = useState(8)
-  const [searchesPerPillar, setSearchesPerPillar] = useState(4)
-  const [artifactDestination, setArtifactDestination] = useState('knowledge_draft')
+  const accessQuery = useDeepWaterAgentAccess()
+  const setAgentAccess = useSetDeepWaterAgentAccess()
   const teamReady = product.teamEnablement?.enabled === true
   const connectorReady = product.mcpInstallation?.lifecycleState === 'active'
-  const ready = teamReady && connectorReady
-  const canSubmit = ready && query.trim().length > 0 && !launch.isPending
-  const lastUsed = product.usageSummary.lastUsedAt
-    ? new Date(product.usageSummary.lastUsedAt).toLocaleString()
-    : 'No usage yet'
+  const personalAssistantReady = accessQuery.data?.personalAssistant?.enabled === true
+  const canLaunch = teamReady && connectorReady && personalAssistantReady
+  const accessTargets = [
+    ...(accessQuery.data?.personalAssistant ? [accessQuery.data.personalAssistant] : []),
+    ...(accessQuery.data?.sharedAgents ?? []),
+  ]
 
-  const submit = async () => {
-    if (!canSubmit) return
-    const response = await launch.mutateAsync({
-      artifactDestination: artifactDestination as 'knowledge_draft' | 'chat_only',
-      chapterDepth: chapterDepth as 'brief' | 'standard' | 'detailed' | 'exhaustive',
-      depth,
-      outputLanguage: outputLanguage.trim() || 'en',
-      outputTier: outputTier as 'summary' | 'full',
-      query: query.trim(),
-      recency: recency as 'any' | 'day' | 'week' | 'month' | 'year',
-      searchQuality: searchQuality as 'standard' | 'premium',
-      searchesPerPillar: boundedInt(searchesPerPillar, 1, 20),
-      sections: boundedInt(sections, 3, 20),
-      title: title.trim() || undefined,
-    })
-    navigate(`/channels/${response.channel.id}`)
+  const changeAccess = (
+    target: DeepWaterAgentAccessTarget | null,
+    enabled: boolean,
+  ) => {
+    if (target?.agentKind === 'shared') {
+      setAgentAccess.mutate({ agentId: target.agentId, enabled, target: 'agent' })
+      return
+    }
+    setAgentAccess.mutate({ enabled, target: 'personal_assistant' })
   }
 
   return (
@@ -87,187 +88,213 @@ export const DeepWaterResearchPanel = ({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Deep Water research</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <span className={readinessClass(teamReady)}>
-              {teamReady ? 'Team enabled' : 'Team disabled'}
-            </span>
-            <span className={readinessClass(connectorReady)}>
-              {connectorReady ? 'MCP active' : 'MCP setup required'}
-            </span>
-            <span className={readinessClass(product.accountLink?.status === 'linked')}>
-              {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
-            </span>
-          </div>
+          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+            Start research, follow your team’s durable runs, and manage access separately.
+          </p>
         </div>
-        <div className="rounded border border-[var(--sep)] px-3 py-2 text-right">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Month to date</div>
-          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
-            {money(product.usageSummary.totalCost, product.usageSummary.currency)}
-          </div>
-          <div className="text-xs text-[var(--tx3)]">{product.usageSummary.totalCalls} calls</div>
-        </div>
+        <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
+          Team credits and customer totals
+        </Link>
       </div>
 
-      <DeepWaterRunHistory
-        loading={runsQuery.isLoading}
-        runs={runsQuery.data ?? []}
-      />
-
-      <div className="mt-4 grid gap-3">
-        <label className="grid gap-1 text-sm">
-          <span className="font-semibold text-[var(--tx2)]">Title</span>
-          <input
-            className="admin-input"
-            maxLength={200}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Optional"
-            value={title}
-          />
-        </label>
-
-        <label className="grid gap-1 text-sm">
-          <span className="font-semibold text-[var(--tx2)]">Research prompt</span>
-          <textarea
-            className="admin-input min-h-28 resize-y"
-            maxLength={5000}
-            onChange={(event) => setQuery(event.target.value)}
-            value={query}
-          />
-        </label>
-
-        <div>
-          <div className="mb-2 text-sm font-semibold text-[var(--tx2)]">Depth</div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {depthOptions.map((option) => (
-              <button
-                className={[
-                  'h-9 rounded border px-2 text-xs font-semibold',
-                  depth === option.value
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--thinking)]'
-                    : 'border-[var(--sep)] text-[var(--tx2)] hover:bg-[var(--overlay)]',
-                ].join(' ')}
-                key={option.value}
-                onClick={() => setDepth(option.value)}
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Chapter detail</span>
-            <select
-              className="admin-input"
-              onChange={(event) => setChapterDepth(event.target.value)}
-              value={chapterDepth}
-            >
-              <option value="brief">Brief</option>
-              <option value="standard">Standard</option>
-              <option value="detailed">Detailed</option>
-              <option value="exhaustive">Exhaustive</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Output</span>
-            <select
-              className="admin-input"
-              onChange={(event) => setOutputTier(event.target.value)}
-              value={outputTier}
-            >
-              <option value="full">Full report</option>
-              <option value="summary">Summary</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Search quality</span>
-            <select
-              className="admin-input"
-              onChange={(event) => setSearchQuality(event.target.value)}
-              value={searchQuality}
-            >
-              <option value="standard">Standard</option>
-              <option value="premium">Premium</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Recency</span>
-            <select
-              className="admin-input"
-              onChange={(event) => setRecency(event.target.value)}
-              value={recency}
-            >
-              <option value="any">Any</option>
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-              <option value="year">Year</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Sections</span>
-            <input
-              className="admin-input"
-              max={20}
-              min={3}
-              onChange={(event) => setSections(Number(event.target.value))}
-              type="number"
-              value={sections}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Searches per pillar</span>
-            <input
-              className="admin-input"
-              max={20}
-              min={1}
-              onChange={(event) => setSearchesPerPillar(Number(event.target.value))}
-              type="number"
-              value={searchesPerPillar}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Language</span>
-            <input
-              className="admin-input"
-              maxLength={12}
-              onChange={(event) => setOutputLanguage(event.target.value)}
-              value={outputLanguage}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Destination</span>
-            <select
-              className="admin-input"
-              onChange={(event) => setArtifactDestination(event.target.value)}
-              value={artifactDestination}
-            >
-              <option value="knowledge_draft">Knowledge draft</option>
-              <option value="chat_only">Chat only</option>
-            </select>
-          </label>
-        </div>
+      <div className="mt-4">
+        <TabBar
+          ariaLabel="Deep Water sections"
+          idPrefix="integration"
+          items={tabs}
+          onChange={setActiveTab}
+          value={activeTab}
+        />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sep)] pt-3">
-        <div className="text-xs text-[var(--tx3)]">
-          Last activity: {lastUsed}
-        </div>
-        <button
-          className="admin-button admin-button-primary"
-          disabled={!canSubmit}
-          onClick={() => void submit()}
-          type="button"
+      {activeTab === 'run' ? (
+        <div
+          aria-labelledby="integration-tab-run"
+          className="mt-4"
+          id="integration-tabpanel-run"
+          role="tabpanel"
         >
-          {launch.isPending ? 'Starting...' : 'Run research'}
-        </button>
-      </div>
-      {launch.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
-          {launch.error instanceof Error ? launch.error.message : 'Could not start research.'}
-        </p>
+          <div className="mb-4 rounded border border-[var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-sm leading-6 text-[var(--tx2)]">
+            This starts a real Deep Water research job. Pick Light, Standard or Heavy to
+            assume the settings, or Custom to review every value before submitting.
+          </div>
+          <DeepWaterResearchLauncher
+            canLaunch={canLaunch}
+            onLaunched={(response) => navigate(`/channels/${response.channel.id}`)}
+            readinessMessage={
+              accessQuery.isLoading
+                ? 'Checking Deep Water access…'
+                : launchReadinessMessage({ connectorReady, personalAssistantReady, teamReady })
+            }
+          />
+        </div>
+      ) : null}
+
+      {activeTab === 'runs' ? (
+        <div
+          aria-labelledby="integration-tab-runs"
+          id="integration-tabpanel-runs"
+          role="tabpanel"
+        >
+          <DeepWaterRunHistory loading={runsQuery.isLoading} runs={runsQuery.data ?? []} />
+        </div>
+      ) : null}
+
+      {activeTab === 'settings' ? (
+        <div
+          aria-labelledby="integration-tab-settings"
+          className="mt-4 grid gap-4"
+          id="integration-tabpanel-settings"
+          role="tabpanel"
+        >
+          <section className="rounded border border-[var(--sep)] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-[var(--tx)]">Research readiness</h4>
+                <p className="mt-1 text-xs leading-5 text-[var(--tx3)]">
+                  The Personal Assistant needs all six explicit Deep Water grants before it can
+                  start a research job.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(teamReady)}
+                  uppercase={false}
+                >
+                  {teamReady ? 'Team enabled' : 'Team disabled'}
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(connectorReady)}
+                  uppercase={false}
+                >
+                  {connectorReady ? 'MCP active' : 'MCP setup required'}
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(product.accountLink?.status === 'linked')}
+                  uppercase={false}
+                >
+                  {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(personalAssistantReady)}
+                  uppercase={false}
+                >
+                  {personalAssistantReady ? 'Personal Assistant granted' : 'Agent grant required'}
+                </Pill>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded border border-[var(--sep)] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-[var(--tx)]">Agent access</h4>
+                <p className="mt-1 text-xs leading-5 text-[var(--tx3)]">
+                  Grants are explicit, per agent, and remain subject to team and user tenancy.
+                </p>
+              </div>
+              {isOwner ? (
+                <Link
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  to={`/agents/tools?deepWaterInstance=${product.mcpInstallation?.id ?? ''}`}
+                >
+                  Manage individual tools
+                </Link>
+              ) : null}
+            </div>
+
+            {/* Not QueryState: text-xs, left-aligned, sitting above the list
+                as a note rather than replacing it. */}
+            {accessQuery.isLoading ? (
+              <div className="mt-3 text-xs text-[var(--tx3)]">Checking agent access…</div>
+            ) : accessQuery.isError ? (
+              <div className="mt-3 text-xs text-[var(--danger-text)]">
+                Could not check agent access.{' '}
+                <button className="underline" onClick={() => void accessQuery.refetch()} type="button">
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 divide-y divide-[var(--sep)] overflow-hidden rounded border border-[var(--sep)]">
+                {accessTargets.map((target) => {
+                  const canRevoke = target.revocableGrantCount > 0
+                  const pending = setAgentAccess.isPending && (
+                    setAgentAccess.variables?.target === 'personal_assistant'
+                      ? target.agentKind === 'personal_assistant'
+                      : setAgentAccess.variables?.agentId === target.agentId
+                  )
+                  return (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2" key={target.agentId}>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-[var(--tx)]">
+                          {accessTargetLabel(target)}
+                        </div>
+                        <div className="text-xs text-[var(--tx3)]">
+                          {target.grantedToolCount}/{target.requiredToolCount} tools granted
+                        </div>
+                      </div>
+                      {isOwner ? (
+                        <button
+                          className={[
+                            'admin-button admin-button-compact',
+                            canRevoke ? 'admin-button-secondary' : 'admin-button-primary',
+                          ].join(' ')}
+                          disabled={pending || (!canRevoke && accessQuery.data?.configured !== true)}
+                          onClick={() => changeAccess(target, !canRevoke)}
+                          type="button"
+                        >
+                          {pending ? 'Saving…' : canRevoke ? 'Revoke all' : 'Grant all'}
+                        </button>
+                      ) : null}
+                    </div>
+                  )
+                })}
+                {!accessQuery.data?.personalAssistant && isOwner ? (
+                  <div className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div>
+                      <div className="text-sm font-medium text-[var(--tx)]">Personal Assistant</div>
+                      <div className="text-xs text-[var(--tx3)]">Set up and grant all six tools</div>
+                    </div>
+                    <button
+                      className="admin-button admin-button-primary admin-button-compact"
+                      disabled={setAgentAccess.isPending || accessQuery.data?.configured !== true}
+                      onClick={() => changeAccess(null, true)}
+                      type="button"
+                    >
+                      {setAgentAccess.isPending ? 'Saving…' : 'Set up & grant'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+            {!isOwner && !personalAssistantReady ? (
+              <p className="mt-2 text-xs text-[var(--tx3)]">
+                An organization owner must grant Deep Water to the Personal Assistant.
+              </p>
+            ) : null}
+            {setAgentAccess.isError ? (
+              <p className="mt-2 text-xs text-[var(--danger-text)]">
+                {setAgentAccess.error instanceof Error
+                  ? setAgentAccess.error.message
+                  : 'Could not change agent access.'}
+              </p>
+            ) : null}
+          </section>
+
+          {settingsContent}
+        </div>
       ) : null}
     </section>
   )

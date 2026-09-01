@@ -1,4 +1,4 @@
-# MCP App Store — publishing, approval, and personal connectors
+# Apps catalogue — publishing, approval, and personal connectors
 
 Status: implemented (2026-05-30)
 
@@ -11,12 +11,22 @@ so the catalog behaves like an app store:
   scope without any review.
 - **Submit for the public store** — the owner submits a connector for public
   listing. Visibility flips to `public` and status moves to `pending_approval`.
-- **Superuser approval** — "superuser" is the existing `owner` role (no new auth
-  concept). An owner reviews the queue and `approve`s (→ `published`, store-wide)
-  or `reject`s (→ `private` `rejected` draft with a reason, freeing the public
+- **Super-admin approval** — the reviewer is `User.superAdmin`, the instance-wide
+  administrator. They review the queue and `approve` (→ `published`, store-wide)
+  or `reject` (→ `private` `rejected` draft with a reason, freeing the public
   name so the author can revise and resubmit).
-- **Install** — anyone can install a `published` connector. Non-superusers may
-  only install/manage at their own `user` scope; superusers install at any scope.
+  **Amended 2026-08-16:** this was originally the per-organisation `owner` role
+  ("no new auth concept"), which was defensible only while a Nessie instance
+  held one flattened shared organisation. Under per-UOA-org tenancy publishing
+  puts a connector in front of *every* organisation on the deployment, so it is
+  instance administration and names the role that means that. Same reasoning for
+  the `queue`/`all` management views and for mutating an instance-global
+  (`organizationId: null`) catalog row — `canManageEntry`. An org `owner` still
+  manages their own organisation's entries and install scopes unchanged.
+- **Install** — anyone can install a `published` connector. Members may
+  only install/manage at their own `user` scope; org owners install at any scope
+  within their organisation (unchanged — install scope is organisation-scoped,
+  not instance-wide).
 
 ## Data model
 
@@ -31,7 +41,8 @@ Uniqueness moves from the old `([organizationId, name])` composite to two
 partial unique indexes (a single key cannot express both rules):
 
 - public names are unique store-wide: `UNIQUE (name) WHERE visibility='public'`;
-- private names are unique per owner: `UNIQUE (owner_user_id, name) WHERE visibility='private'`.
+- private names are unique per owner and organisation:
+  `UNIQUE (organization_id, owner_user_id, name) WHERE visibility='private'`.
 
 Migrations: `20260530120000_mcp_catalog_status_review_states` (enum ADD VALUEs,
 isolated because Postgres can't add and use an enum value in one transaction),
@@ -52,9 +63,8 @@ public:   draft|rejected --submit--> pending_approval --approve--> published
   (submit/approve/reject).
 - Routes: `api/src/routes/mcp/catalog.ts` (`/submit`, `/approve`, `/reject`,
   `?view=store|mine|queue|all`) and `instances.ts` (own-scope install gate).
-- Admin: `McpAppStorePage` (Store / My connectors / Approval queue tabs),
-  `AddServerWizard` (private vs submit-for-review), `CatalogDetailPanel`,
-  `RejectDialog`.
+- User surface: `/apps` for discovery and user-scoped connection. Catalogue
+  review remains available to trusted API and personal-assistant callers.
 - Seed: `api/src/db/seed-connectors.ts` seeds the public store with Context7
   (`pnpm --filter @nessie/api seed:connectors`).
 

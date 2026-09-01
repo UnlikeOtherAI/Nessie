@@ -1,11 +1,19 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { IntegratedProductResponse } from '@nessie/schemas'
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import { syncExternalOrganizationNames } from './external-organization.js'
+import {
+  resolveExternalWorkspaceSelection,
+  type ExternalAuthWorkspace,
+} from './identity-display.js'
 import {
   mapProductRow,
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
+import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
+import type { UoaWorkspaceDirectory } from './uoa-session.js'
+import { syncWorkspaceInviteAlerts } from './workspace-invite-alerts.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
   organizationId: string
@@ -16,7 +24,9 @@ type ProductOwner = {
 type UoaProductAccountLinkSyncInput = ProductOwner & {
   email: string
   externalSubject: string | undefined
+  uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
+  workspaceDirectory?: UoaWorkspaceDirectory
 }
 
 type ProductSlugRow = {
@@ -25,46 +35,65 @@ type ProductSlugRow = {
 
 const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
 
-const uoaLinkMetadata = (workspace?: ExternalAuthWorkspace): Prisma.InputJsonObject => {
+const uoaLinkMetadata = (
+  workspace?: ExternalAuthWorkspace,
+): Prisma.InputJsonObject => {
   const metadata = {
     provider: 'uoa',
     teamIds: workspace?.teamIds ?? [],
     teamRoles: workspace?.teamRoles ?? {},
   }
-  return workspace?.orgRole ? { ...metadata, orgRole: workspace.orgRole } : metadata
+  return {
+    ...metadata,
+    ...(workspace?.orgRole ? { orgRole: workspace.orgRole } : {}),
+  }
 }
 
 export const syncUoaProductAccountLinks = async (
   prisma: PrismaClient,
   input: UoaProductAccountLinkSyncInput,
 ): Promise<void> => {
+  if (
+    !input.externalSubject
+    || input.uoaTokenVersion === undefined
+    || !Number.isSafeInteger(input.uoaTokenVersion)
+    || input.uoaTokenVersion < 0
+  ) {
+    throw new Error('UnlikeOtherAI account-link sync requires an exact credential epoch.')
+  }
   const products = await prisma.$queryRaw<ProductSlugRow[]>(Prisma.sql`
     SELECT "slug"
     FROM "integrated_products"
     WHERE "plugin_manifest_ref" LIKE ${`${FIRST_PARTY_PLUGIN_MANIFEST_PREFIX}%`}
       AND "auth_mode"::text IN ('uoa_sso', 'oauth_mcp', 'local_mcp')
+    ORDER BY "slug" ASC
   `)
-  if (products.length === 0) {
-    return
+  if (!products.some((product) => product.slug === 'nessie')) {
+    throw new Error(
+      'The first-party Nessie account-link product is not provisioned.',
+    )
   }
 
   const now = new Date()
   const metadata = uoaLinkMetadata(input.workspace)
-  const externalAccountId = input.externalSubject ?? input.email
-  const activeOrgId = input.workspace?.activeOrgId ?? input.workspace?.orgId ?? null
-  const activeTeamId = input.workspace?.activeTeamId ?? null
+  const externalAccountId = input.externalSubject
+  const {
+    organizationId: activeOrgId,
+    teamId: activeTeamId,
+  } = resolveExternalWorkspaceSelection(input.workspace)
   const metadataJson = JSON.stringify(metadata)
-  const uoaSub = input.externalSubject ?? null
+  const uoaSub = input.externalSubject
 
-  await prisma.$transaction(
-    products.map((product) =>
-      prisma.$executeRaw(Prisma.sql`
+  await prisma.$transaction(async (tx) => {
+    for (const product of products) {
+      const updated = await tx.$executeRaw(Prisma.sql`
         INSERT INTO "product_account_links" (
           "id",
           "organization_id",
           "user_id",
           "product_slug",
           "uoa_sub",
+          "uoa_token_version",
           "external_account_id",
           "active_org_id",
           "active_team_id",
@@ -80,6 +109,7 @@ export const syncUoaProductAccountLinks = async (
           CAST(${input.userId} AS uuid),
           ${product.slug},
           ${uoaSub},
+          ${input.uoaTokenVersion ?? null},
           ${externalAccountId},
           ${activeOrgId},
           ${activeTeamId},
@@ -91,16 +121,56 @@ export const syncUoaProductAccountLinks = async (
         )
         ON CONFLICT ("organization_id", "user_id", "product_slug") DO UPDATE SET
           "uoa_sub" = EXCLUDED."uoa_sub",
+          "uoa_token_version" = EXCLUDED."uoa_token_version",
           "external_account_id" = EXCLUDED."external_account_id",
           "active_org_id" = EXCLUDED."active_org_id",
           "active_team_id" = EXCLUDED."active_team_id",
           "status" = EXCLUDED."status",
           "last_verified_at" = EXCLUDED."last_verified_at",
-          "metadata_json" = EXCLUDED."metadata_json",
+          -- Merge rather than replace so unrelated per-product metadata written
+          -- elsewhere (integration link state) survives a login.
+          "metadata_json" = "product_account_links"."metadata_json" || EXCLUDED."metadata_json",
           "updated_at" = CURRENT_TIMESTAMP
-      `),
-    ),
-  )
+        WHERE (
+          "product_account_links"."uoa_sub" IS NULL
+          OR "product_account_links"."uoa_sub" = EXCLUDED."uoa_sub"
+        )
+          AND (
+            "product_account_links"."uoa_token_version" IS NULL
+            OR "product_account_links"."uoa_token_version"
+              <= EXCLUDED."uoa_token_version"
+          )
+      `)
+      if (updated !== 1) {
+        throw new Error(
+          'UnlikeOtherAI account-link state advanced while this login was completing.',
+        )
+      }
+    }
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
+
+  // The directory UOA returned with this login is display-only, UOA-owned data:
+  // it goes to the bounded in-memory cache, never into the link row.
+  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
+  if (input.workspaceDirectory) {
+    try {
+      await syncWorkspaceInviteAlerts(prisma, {
+        organizationId: input.organizationId,
+        pendingInvites: input.workspaceDirectory.pendingInvites,
+        userId: input.userId,
+      })
+    } catch (error) {
+      console.warn('[uoa] workspace invitation alert sync failed after login', error)
+    }
+  }
+  // `Organization.name` is a non-authoritative mirror of UOA's `orgName`
+  // (per-UOA-org model): refresh it wherever the verified directory arrives.
+  // Display data — a failure must never fail the login.
+  try {
+    await syncExternalOrganizationNames(prisma, input.workspaceDirectory?.entries)
+  } catch {
+    // Intentionally ignored — see above.
+  }
 }
 
 /**
@@ -149,26 +219,16 @@ const teamEnablementMetadata = (): Prisma.InputJsonObject => ({
 })
 
 export const setProductTeamEnablement = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, '$queryRaw'>,
   input: ProductOwner & { enabled: boolean; productSlug: string },
 ): Promise<ProductTeamEnablementRow | null> => {
-  if (!input.teamId) {
+  if (!input.teamId || input.productSlug === 'nessie') {
     return null
   }
 
   const metadataJson = JSON.stringify(teamEnablementMetadata())
   const rows = await prisma.$queryRaw<ProductTeamEnablementRow[]>(Prisma.sql`
-    WITH account_link AS (
-      SELECT
-        "active_org_id",
-        "active_team_id"
-      FROM "product_account_links"
-      WHERE "organization_id" = CAST(${input.organizationId} AS uuid)
-        AND "user_id" = CAST(${input.userId} AS uuid)
-        AND "product_slug" = ${input.productSlug}
-      LIMIT 1
-    ),
-    upserted AS (
+    WITH upserted AS (
       INSERT INTO "product_team_enablements" (
         "id",
         "organization_id",
@@ -188,8 +248,8 @@ export const setProductTeamEnablement = async (
         CAST(${input.teamId} AS uuid),
         p."slug",
         ${input.enabled},
-        account_link."active_org_id",
-        account_link."active_team_id",
+        t."external_org_id",
+        t."external_workspace_id",
         CAST(${input.userId} AS uuid),
         CAST(${metadataJson} AS jsonb),
         CURRENT_TIMESTAMP,
@@ -200,12 +260,25 @@ export const setProductTeamEnablement = async (
       JOIN "projects" pr
         ON pr."id" = t."project_id"
         AND pr."organization_id" = CAST(${input.organizationId} AS uuid)
-      LEFT JOIN account_link ON TRUE
       WHERE p."slug" = ${input.productSlug}
+        AND p."slug" <> 'nessie'
+        AND (
+          ${!input.enabled}
+          OR (
+            t."external_org_id" IS NOT NULL
+            AND t."external_workspace_id" IS NOT NULL
+          )
+        )
       ON CONFLICT ("organization_id", "team_id", "product_slug") DO UPDATE SET
         "enabled" = EXCLUDED."enabled",
-        "external_org_id" = EXCLUDED."external_org_id",
-        "external_team_id" = EXCLUDED."external_team_id",
+        "external_org_id" = COALESCE(
+          EXCLUDED."external_org_id",
+          "product_team_enablements"."external_org_id"
+        ),
+        "external_team_id" = COALESCE(
+          EXCLUDED."external_team_id",
+          "product_team_enablements"."external_team_id"
+        ),
         "configured_by_user_id" = EXCLUDED."configured_by_user_id",
         "metadata_json" = EXCLUDED."metadata_json",
         "updated_at" = CURRENT_TIMESTAMP
@@ -232,8 +305,6 @@ export const listIntegratedProducts = async (
   prisma: PrismaClient,
   owner: ProductOwner,
 ): Promise<IntegratedProductResponse[]> => {
-  const now = new Date()
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const rows = await prisma.$queryRaw<IntegratedProductRow[]>(Prisma.sql`
     SELECT
       p.id::text AS id,
@@ -285,16 +356,7 @@ export const listIntegratedProducts = async (
       mcp_instance.last_error AS mcp_instance_last_error,
       mcp_instance.tool_count AS mcp_instance_tool_count,
       mcp_instance.created_at AS mcp_instance_created_at,
-      mcp_instance.updated_at AS mcp_instance_updated_at,
-      product_usage.month_start AS product_usage_month_start,
-      product_usage.total_calls AS product_usage_total_calls,
-      product_usage.total_units AS product_usage_total_units,
-      product_usage.total_cost AS product_usage_total_cost,
-      product_usage.currency AS product_usage_currency,
-      product_usage.last_used_at AS product_usage_last_used_at,
-      product_usage.last_operation AS product_usage_last_operation,
-      product_usage.success_count AS product_usage_success_count,
-      product_usage.failure_count AS product_usage_failure_count
+      mcp_instance.updated_at AS mcp_instance_updated_at
     FROM integrated_products p
     LEFT JOIN product_account_links pal
       ON pal.product_slug = p.slug
@@ -353,39 +415,7 @@ export const listIntegratedProducts = async (
         msi.updated_at DESC
       LIMIT 1
     ) mcp_instance ON TRUE
-    LEFT JOIN LATERAL (
-      SELECT
-        CAST(${monthStart} AS timestamptz) AS month_start,
-        COALESCE(SUM(cue.calls), 0) AS total_calls,
-        COALESCE(SUM(cue.units), 0) AS total_units,
-        COALESCE(SUM(cue.cost_amount), 0) AS total_cost,
-        COALESCE(
-          (
-            ARRAY_AGG(cue.cost_currency ORDER BY cue.occurred_at DESC)
-            FILTER (WHERE cue.cost_currency IS NOT NULL)
-          )[1],
-          'USD'
-        ) AS currency,
-        MAX(cue.occurred_at) AS last_used_at,
-        (
-          ARRAY_AGG(cue.operation ORDER BY cue.occurred_at DESC)
-          FILTER (WHERE cue.operation IS NOT NULL)
-        )[1] AS last_operation,
-        COALESCE(SUM(CASE WHEN cue.success IS TRUE THEN 1 ELSE 0 END), 0) AS success_count,
-        COALESCE(SUM(CASE WHEN cue.success IS FALSE THEN 1 ELSE 0 END), 0) AS failure_count
-      FROM connector_usage_events cue
-      WHERE cue.organization_id = CAST(${owner.organizationId} AS uuid)
-        AND cue.occurred_at >= CAST(${monthStart} AS timestamptz)
-        AND (
-          (
-            mcp_instance.id IS NOT NULL
-            AND cue.connector_id = mcp_instance.id
-          )
-          OR cue.metadata->>'productSlug' = p.slug
-          OR cue.metadata->>'product_slug' = p.slug
-          OR cue.metadata->>'product' = p.slug
-        )
-    ) product_usage ON TRUE
+    WHERE p.slug <> 'nessie'
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

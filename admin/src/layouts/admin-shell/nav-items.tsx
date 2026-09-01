@@ -7,13 +7,21 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/settings',
   '/agents',
   '/workflows',
-  '/mcp-app-store',
+  // `/apps/:slug` belongs to the same section as its list.
+  '/apps',
   '/approvals',
   '/audit',
   '/tokens',
   '/policy',
   '/ops',
 ];
+
+// Strip query/hash and trailing slashes so route-family checks compare the
+// semantic pathname only (a tab root with ?state stays its root screen).
+export const normalizeAdminPathname = (pathname: string): string => {
+  const normalized = (pathname.split(/[?#]/, 1)[0] ?? '/').replace(/\/+$/, '');
+  return normalized || '/';
+};
 
 export const matchesAdminRoute = (pathname: string): boolean =>
   ADMIN_ROUTE_PREFIXES.some(
@@ -23,7 +31,6 @@ export const matchesAdminRoute = (pathname: string): boolean =>
 export type NavSectionId =
   | 'channels'
   | 'projects'
-  | 'integrations'
   | 'knowledge'
   | 'admin'
   | 'search';
@@ -86,15 +93,6 @@ const KnowledgeIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   </svg>
 );
 
-const IntegrationsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
-  <svg className={className} {...svgProps}>
-    <path d="M8 7h4a3 3 0 010 6H8" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M16 17h-4a3 3 0 010-6h4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 7h3M18 17h3" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M6 4v6M18 14v6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 const AdminIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg className={className} {...svgProps}>
     <path
@@ -134,18 +132,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ProjectsIcon,
   },
   {
-    id: 'integrations',
-    label: 'Integrations',
-    to: '/integrations',
-    isActive: (pathname) => pathname.startsWith('/integrations'),
-    icon: IntegrationsIcon,
-    showInMobileTab: false,
-  },
-  {
     id: 'knowledge',
     label: 'Knowledge',
     to: '/knowledge-base',
-    isActive: (pathname) => pathname.startsWith('/knowledge-base'),
+    // Dashboards live inside Knowledge rather than owning a first-column
+    // section, so the Knowledge entry stays lit while you are in one.
+    isActive: (pathname) =>
+      pathname.startsWith('/knowledge-base') || pathname.startsWith('/dashboards'),
     icon: KnowledgeIcon,
   },
   {

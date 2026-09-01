@@ -43,6 +43,242 @@ Root app layout:
 
 ## 2) Process startup and runtime surface
 
+### 2.0 Live first-party DeepSignal boundary (`api/` + `worker/`)
+
+- Per-user activation creates one integration-managed `external_mcp` DM and a
+  user-scoped instance pinned to the deployment secret reference
+  `DEEPSIGNAL_MCP_APP_KEY`; generic install/OAuth/lifecycle/secret paths cannot
+  mutate it. Only the canonical product-linked public catalog can back the
+  instance, and outbound app-key requests are pinned to
+  `https://api.deepsignal.live`.
+- Initial and follow-up chat, history hydration, and proactive insight digests
+  retain the DeepSignal-issued `dsk_` bearer and independently add
+  exact-scope UOA delegation plus fresh signed user/org/team/agent/run/request/
+  tool-call provenance. Missing hosted configuration, incomplete identity, or
+  a stale generic credential, stale identity header, or cross-role key reuse
+  fails closed without Nessie inference.
+- Activation reuses the user's existing linked UOA subject and active workspace;
+  there is no secondary DeepSignal OAuth tab. The webhook HMAC secret is a
+  separate per-org credential and cannot reuse an app key.
+- The live routes are
+  `POST /api/integrations/products/deepsignal/activate`,
+  `POST .../deactivate`, `POST /api/channels/:channelId/external-sync`, and
+  `POST /api/integrations/deepsignal/events`.
+
+### 2.0a Live first-party DeepWater grant boundary
+
+- Team enablement installs the five Ledger-backed `research_*` projections;
+  `deep_water_run_update` is the sixth required registry entry. All six remain
+  default-off for every agent until that agent's exact `toolPolicy` key is
+  `true`; install scope and tenancy are still required after a grant.
+- Owners manage individual explicit entries on `/agents/tools` through
+  `GET /api/mcp/tools/policy-targets` and targeted per-entry `PATCH` requests.
+  This minimal target list includes the Personal Assistant without widening the
+  normal `/api/agents` response or exposing private assistant bindings/activity.
+  Each write merges one key under a database lock, preserving all unrelated
+  allow and deny entries. DeepWater projections lock team transition first and
+  re-read the current projection before taking the agent lock.
+- `GET/PATCH /api/integrations/products/deep-water/agent-access` reports and
+  changes the complete six-entry bundle for the Personal Assistant or shared
+  agents. The launcher disables research until its PA has 6/6 and the launch
+  API repeats the check under team-then-policy locks before persisting a run.
+  The updater counts only while its registry entry is enabled and active, so a
+  stale policy allow cannot authorize a launch the worker cannot finish.
+- Generic agent create/edit cannot write protected grants or server provenance;
+  stale edits preserve current protected values, while clones and spawned
+  subtask children strip them. PA bootstrap config cannot inject them, generic
+  agent responses redact provenance markers, and Agent Designer directs owners
+  to Tools/Integrations. Generic shared-agent creation, listing, parent
+  selection, hierarchy/status/activity/realtime reads, and channel binding are
+  scoped to the exact active organization.
+  The updater cannot be switched off individually while a DeepWater
+  bundle/projection depends on it. Its row remains known to cleanup while
+  disabled, so revocation clears the old allow before a later registry re-enable.
+- Disabling the team integration returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a
+  run is queued, running, or awaiting setup. Cancel/recover it or wait for a
+  terminal result before retrying. Admin integration caches are scoped by
+  user/org/team/privilege, including DeepSignal signal digests.
+  Mutation completions invalidate those scoped families instead of writing a
+  response through mutable render scope, so switching workspace mid-request
+  cannot place the old response in the new workspace cache.
+  Bundle or individual lifecycle revocation also returns 409 for those
+  nonterminal states; no force-revoke path can strand Ledger work. Handoff
+  message, run attachment, PA run/task, and direct `run.execute` enqueue commit
+  atomically; product handoffs bypass chat engagement decisions while ordinary
+  chat routing is unchanged. Duplicate enqueue conflicts roll back the
+  duplicate unit, and realtime is post-commit/non-fatal. Ambiguous null-id work
+  still blocks disable because Ledger dispatch may be in flight. Agent access
+  remains visible after disable so retained bundle provenance can be revoked.
+  Its individual-tools link stays in exact DeepWater mode after teardown: with
+  no current instance it shows only the canonical updater, never the full
+  registry.
+
+### 2.0b Live SSO-authored billing and credits interface
+
+- UOA supplies the complete display-ready statement, shared-team credits,
+  recurring add-ons, and customer-action models. Nessie only checks the active
+  linked workspace, validates the shared public protocol, renders it, and
+  proxies its frozen actions.
+- API validation and admin view-model types come directly from the public
+  MIT-licensed `@unlikeotherai/billing-statement-protocol` 1.2.0 workspace
+  vendored byte-for-byte from UOA commit
+  `698765f`. Root lint verifies the pinned
+  SHA-256 manifest, preventing a Nessie-specific billing contract fork.
+- The statement uses protocol V2 and one exact Ledger
+  `metering-portfolio-v1` `group_by=user` snapshot. UOA supplies the complete
+  connected-service totals, origins, per-user shares, and display copy from
+  that same snapshot; Nessie performs no cross-service aggregation or share
+  calculation. The frozen customer-action protocol remains V1.
+- Every active team member can read the same selected-team credit balance.
+  The headline is remaining credits, followed by pending, added, and used
+  credits for the current period, a connected-service breakdown, recent credit
+  activity, and automatic top-up status. UOA fixes the conversion at 1,000
+  credits per US$1 and returns every amount and label ready to display; Nessie
+  never converts money, tokens, provider cost, or raw Ledger units into credits.
+  Billing managers receive named user and payment-management detail. Ordinary
+  members receive their own usage plus anonymous other-member and unattributed
+  totals. Their pending-payment amount and funding policy are absent, and their
+  automatic top-up view contains only UOA's payment-method status plus a notice
+  that detailed settings are managed by billing managers; they receive no
+  payment details or mutation actions.
+- Manual top-ups, automatic top-up setup/update/disable/recovery, and recurring
+  add-on subscribe/cancel actions are manager-only frozen UOA actions. Products
+  do not persist a balance, payment method, consent, subscription, add-on, or
+  top-up state. The same UOA team credit account is therefore visible from
+  Nessie and every other connected product without a product-local balance.
+- Upgrade, portal, cancellation preview, and cancellation confirmation stay on
+  Nessie's own pages but carry only UOA-authored paths, bodies, display copy,
+  choices, and opaque tokens. No tariff, total, access, or cancellation decision
+  is calculated locally.
+- Exact UOA Checkout return markers on `/` preserve their full query while
+  routing to Credits & Billing. That customer surface contains only UOA-authored
+  credits, add-ons, statements, and actions; Nessie-local token, connector,
+  file, budget, pricing, cost, and projection telemetry lives on the separate
+  owner-only `/ops/usage` page. The credits page displays a neutral notice and
+  refetches UOA's canonical statement, credits, and recurring add-ons; invalid
+  or duplicate markers retain the normal Channels landing behavior and cause
+  no billing action.
+
+### 2.0c Live personal-assistant workspace provisioning boundary
+
+- Five PA-only builtins let the assistant set a workspace up the way its owner
+  can by clicking: `agent_list`, `channel_create`, `agent_create`,
+  `agent_bind_channel`, and
+  `agent_trigger_create` (`worker/src/run/pa-tools/provisioning.ts`). Each calls
+  the same service function as its REST route and reproduces that route's
+  authorization exactly — no weaker, no stronger.
+- `agent_list` (`GET /api/agents` → `listAgentsForUser`) is the read the two
+  id-taking tools depend on: an owner clicking picks the agent from a list, so
+  without it the assistant could only bind or schedule an agent it had created
+  in the same conversation. It is `safe: true`, scoped by entitlement (owner:
+  every non-system agent including unbound ones; anybody else: agents bound to
+  channels they can see — never narrowed by the session's project/team), and
+  returns only what the caller needs to act: name, role, `agentId`, and the
+  channels the agent is bound to. An optional `query` narrows that
+  already-authorized list by name or role.
+- The admin **Agents page** (`/agents`) groups the same entitlement-scoped list
+  into three tabs — **Personal** (`agentKind === 'personal_assistant'`), **Team**
+  (ordinary shared agents), and **Global** (system-provided `systemManaged`
+  agents, read-only) — over a paginated, zebra-striped table. Selecting a row
+  opens its detail surface, the single doorway for the integrated designer and
+  Design Assistant (`admin/src/components/features/agents/AgentsList.tsx`).
+  The scope is derived from `agentKind`/`systemManaged`, not a stored column. To
+  populate the Personal and Global tabs, `GET /api/agents` accepts `?scope=all`,
+  which includes the read-only system tier under the *same* channel-visibility
+  filter (`listAgentsForUser(..., includeSystemManaged)`); every other caller,
+  the `agent_list` tool included, omits the param and gets the unchanged
+  non-system list.
+- `agent_list`, `channel_create` (`POST /api/channels`) and `agent_create`
+  (`POST /api/agents`)
+  are open to any active member, because those routes carry only
+  `requireActorContext`. `agent_bind_channel`
+  (`POST /api/agents/:agentId/bindings`) requires channel membership, refuses a
+  `personal_assistant` system channel, requires owner, and then passes
+  `checkPolicy(…, 'agent', 'bind', …)`. `agent_trigger_create`
+  (`POST /api/agents/:agentId/triggers`) requires owner plus an accessible
+  agent, parses the route's own `CreateAgentTriggerBodySchema`, and stamps
+  `launchOrigin` (creator + UOA workspace) on scheduled and interval triggers;
+  a signing deployment refuses a schedule with no UOA identity.
+- `agent_create` cannot escalate: its schema exposes no
+  `agentKind`/`systemManaged`/`surfacePolicy`/`delegationMode`/`parentAgentId`,
+  and `assertGenericAgentToolPolicyInput` refuses every `requiresExplicitGrant`
+  key and DeepWater provenance marker, so an agent authored from chat can never
+  arrive with research already granted. There is no assistant tool for agent
+  update, agent delete, or tool-policy targets; those stay owner UI actions.
+- The acting user's role is re-read from the live `OrganizationMember` row on
+  every call, and a deactivated membership is refused — the run's
+  `actorContext` is an enqueue-time snapshot, while the API re-resolves the role
+  per request. Owner-gated tools remain visible to non-owners and refuse in
+  words, naming who can perform the action.
+- The shared implementations live in `@nessie/workspace-admin`, consumed by both
+  the API routes and the worker; `api/src/services/*` re-exports them so route
+  code is unchanged.
+
+#### 2.0c.1 Agent to-do tracking API
+
+- Per-agent to-do templates and materialized checklist instances are available
+  under `/api/agents/:agentId/todo-templates*` and
+  `/api/agents/:agentId/todos*`. Every route inherits
+  `isAgentAccessibleToActor`; inaccessible agents return `AGENT_NOT_FOUND`, and
+  an accessible agent with `todosEnabled = false` returns
+  `AGENT_TODOS_DISABLED`.
+- Template writes are owner-only configuration. Any entitled active member may
+  create an instance; only its creator, an organization owner, or the agent's
+  steward may tick or cancel it. Templates pin a version and copy ordered steps
+  into each instance, so later edits cannot rewrite work already in progress.
+- Step updates serialize on a per-to-do transaction advisory lock, record the
+  structural actor and timestamp, and derive completion when every step is
+  `completed`, `skipped`, or `failed`. Failures remain visible but do not leave
+  an otherwise terminal checklist open. An agent cannot overwrite a terminal
+  status set by a person; a person may correct any step. Cancelling never
+  changes the linked run.
+- An active template can repeat through an ordinary agent trigger with
+  `config.todoTemplateId`; the To-dos tab is the owner-facing creation and
+  repair doorway. The shared trigger write validates that the template is
+  active, belongs to that agent, and that to-dos remain enabled. An enabled
+  referencing trigger blocks archival (`TODO_TEMPLATE_IN_USE`) and disabling
+  to-dos (`AGENT_TODOS_IN_USE`); pausing it is the explicit repair path.
+- A scheduled fire carries template provenance through the existing pending
+  queue. The run that adopts the thread slot creates one pinned instance per
+  distinct template (so coalesced duplicate fires make one checklist), while
+  unfinished prior instances remain facts for the model rather than being
+  rolled over, cancelled, or automatically adopted. A template that disappears
+  before adoption moves its trigger to the existing owner-alerted `error`
+  health state exactly once.
+
+### 2.0d Policy-gated tool approvals
+
+- A `requiresApproval` tool policy is a true execution pause, not a model-visible
+  denial. The worker creates one approval request per `(runId, toolCallId)`,
+  checkpoints the run with `reason: 'approval_required'`, stamps its
+  disclosure basis on the waiting notice, and transitions the run, task, and
+  agent to `waiting_approval`, `awaiting_approval`, and `waiting_approval`.
+- Approving creates exactly one continuation run through the same
+  claim-once checkpoint pattern as manual continuation. The continuation
+  restores the original actor context and can dispatch only the approved tool
+  with the approved canonical arguments: the opaque continuation token is
+  verified against its approval row, organization, direct run lineage, tool
+  name, and argument hash, then consumed at dispatch. The token and the full
+  resume state are server-only and never appear in approval responses.
+- Rejecting, expiry, and cancellation terminalize the waiting run, update the
+  durable approval-gate notice, leave the checkpoint unconsumed for an
+  ordinary follow-up, and release the thread slot. Review-model triage remains
+  a later phase; this path is human approval only.
+
+### 2.0e Channel scopes
+
+- A channel belongs either to a visible project or to the organisation's
+  standalone **Channels** section. Project channels always render beneath their
+  project; standalone channels never impersonate a project or a UOA workspace.
+- The database keeps standalone channels in one hidden, system-managed channel
+  root per organisation because a channel requires a project and team foreign
+  key. That root is an internal container, not a second copy of UOA's
+  organisation or workspace hierarchy, and it is excluded from project APIs and
+  navigation.
+- Slugs are unique within their owning project. Therefore `#general` may exist
+  once in the standalone section and once in each project; the channel creation
+  surface selects the scope explicitly.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.
@@ -578,11 +814,18 @@ Parity matrix:
 | history delete | `DELETE /history` | `history.delete` | `/history delete` | actorContext | no | yes | implemented-target-only |
 | message submit (stream) | `POST /chat` | `message.submit` | `/message submit` | actorContext | conditional | yes | implemented-partial |
 | message submit sync | `POST /chat/sync` | `message.submit_sync` | `/message submit --sync` | actorContext | conditional | yes | blocked (route shadow) |
-| conversation start | `POST /api/channels/conversations` then `POST /api/threads/{threadId}/messages` | N/A | N/A (sidebar compose icon -> `/channels/new`) | organization membership; agent recipients require owner | no | no | implemented (admin compose page autocompletes people and agents, opens a single-user DM or single-agent DM for one recipient, and creates a private standard channel for mixed or multi-recipient chats after the first message) |
-| message reaction | `POST /api/threads/{threadId}/messages/{messageId}/reactions` + realtime `message.reaction` | N/A | N/A (message row action toolbar) | channel membership | no | no | implemented (REST admin surface; users can tap/click a message row to add thumbs-up or themed emoji reactions, tap/click their existing reaction to remove it, and see their own reactions highlighted; skin tone preference is stored in an admin cookie) |
+| conversation start | `POST /api/channels/conversations` then `POST /api/threads/{threadId}/messages` | N/A | N/A (sidebar compose icon -> `/channels/new`; agent `@mentions` -> their direct-message conversation) | organization membership; agent recipients require owner | no | no | implemented (the recipient-addressed composer opens as a focused full-screen task with Close on phone and an accessible modal sheet over the retained Channels workspace on tablet/desktop; Close returns to the initiating internal route or `/channels` for a direct link, while a successful send replaces the composer with the new conversation. An agent `@mention` resolves or creates its one-to-one DM and opens it ready for a message. The composer autocompletes people and agents, opens a single-user DM or single-agent DM for one recipient, and creates a stable group DM for mixed or multi-recipient chats after the first message. Group DMs appear in Direct messages, never in Projects or Channels.) |
+| unread direct-message inbox | GET /api/direct-messages/unread | N/A | N/A (Channels sidebar → **Unread messages**, rendered directly beneath **Threads** only while at least one DM is unread) | acting user’s entitled DM channels plus the standard read-time disclosure predicate | no | no | implemented (one row per unread direct-message channel, ordered by its latest unread message and carrying a compact preview, relative time, and unread count. A row opens its DM; the route uses the existing channel/read and per-reply conversation cursors, never a second unread store. Deleted and disclosure-restricted messages remain navigable but render an honest placeholder rather than content.) |
+| thread activity inbox | `GET /api/threads/activity` (`?unread=true` narrows to unread followed reply conversations) | N/A | N/A (Threads → **Unread only** in the page header) | acting user’s followed, entitled reply conversations plus the standard read-time disclosure predicate | no | no | implemented (the page header’s toggle is persisted only in device-local browser storage, never in account preferences; it queries the server-side unread projection so it covers the full inbox rather than just the loaded cards. Marking a thread read updates the visible card or removes it from the unread-only list without resetting the page.) |
+| message reaction | `POST /api/threads/{threadId}/messages/{messageId}/reactions` + realtime `message.reaction` | N/A | N/A (message row action toolbar) | channel membership | no | no | implemented (REST admin surface; users can tap/click a message row to copy it from the first action, add themed emoji reactions, reply in a thread, and edit/delete their own messages; tapping an existing reaction removes it, while hovering, keyboard-focusing, or long-pressing a reaction pill shows who reacted (member/agent display names). Skin tone preference is stored in an admin cookie; the same picker opens from the composer smiley button to insert emoji into a draft at the caret. On phone layouts the composer picker does not focus its search field when opening, so the keyboard cannot cover the picker; tapping Search still opens it when needed.) |
+| message file attachments | `POST /api/uploads` (multipart part `file`, ≤ 25 MiB, stored through the FileService chokepoint: EXIF strip, storage accounting, quota gate), `GET /api/messages/{messageId}/attachments`, `GET /api/attachments/{id}` (inline for raster images/PDF, download otherwise; `private, max-age=1y, immutable` + a strong `ETag` over id+size, `If-None-Match` answered 304 — attachment bytes are immutable, so the browser cache serves repeat renders off the network), `GET /api/attachments/{id}/thumbnail` (small WebP preview, same ACL and caching as the original, 404 when the file has none so the client falls back), `DELETE /api/attachments/{id}` (discards the uploader's own still-unlinked staged upload, including its `-bytes` accounting event; refuses anything referenced by a message, KB page, logo, avatar, or feedback item), `POST /api/threads/{threadId}/messages` with `attachmentIds` (max 10, linked only to the sender's own still-unlinked uploads; `content` is optional when at least one attachment is present — attachment-only posts store empty content, and an attachment-only reply broadcast via "Also send to #channel" carries a fallback copy line) | N/A | N/A (composer paperclip with multi-file picker; staged chips with per-file upload progress, inline errors, and remove; drag-and-drop onto the main chat column or onto the reply-thread panel in all three panel modes; tapping an inline preview opens a full-size viewer over the app — original bytes, Escape/backdrop close, focus trap, body scroll lock, download action, PDFs in an iframe with the blob MIME pinned; works from the feed, the reply panel, and the info drawers) | channel/thread membership for send and message-attachment reads; uploader-scoped upload/discard | no | no | implemented (admin composer + REST; the feed renders the **thumbnail**, lazily, never the full-resolution original — a 11.6 MB photo paints from a 42 KB preview — and files with no preview keep the download chip. Previews are generated at the FileService chokepoint: inline for raster images from the bytes the EXIF strip already buffers, and via the `attachment.thumbnail` worker job for PDFs (first page, PDFium/WASM), animated/exotic images, oversized images, and orgs opted out of stripping; `thumbnailStatus` is pending/ready/unavailable and failures are never fatal. Thumbnails are quota-gated with the original, carry their own `store.thumbnail`/`delete.thumbnail` usage events, and are freed by the same `FileService.delete` as the original. Attachments stored before this existed have no thumbnail and are not backfilled. `ThreadMessageRecord.attachmentCount` lets the feed skip the per-message attachment fetch entirely for messages with no files. Oversize files are rejected client-side before any network call and server-side with 413 `FILE_TOO_LARGE`; storage-quota exhaustion surfaces 507 `STORAGE_QUOTA_EXCEEDED` inline on the staged chip) |
+| message reply threads | `POST /api/threads/{threadId}/messages` with `rootMessageId` (+ `alsoSendToChannel`), `GET /api/threads/{threadId}/messages?rootMessageId=...`, `GET /api/threads/{threadId}/messages/{messageId}`, `PUT /api/threads/{threadId}/messages/{messageId}/follow` + realtime `message.reply` / `message.reply.meta` | N/A | N/A (message row "Reply in thread" action or `T`; right-hand thread panel at `/channels/{id}/threads/{id}/replies/{rootId}`) | inherits container thread/channel visibility (no separate ACL) | no | no | implemented (Slack-parity side conversations one level deep off any top-level message: collapsed reply-summary bar with participant avatars/count/last-reply time under roots, resizable third-pane thread panel with pinned root and full composer including "Also send to #channel" broadcast copies, deep-linkable route, pushed full-screen below 900px; per-root materialized replyCount/lastReplyAt/participant ids maintained transactionally; MessageThreadFollow auto-follows on participate, while the chat presents no manual follow or unfollow control; the header's left-side Back button returns to the channel; agent runs reply into the triggering message's reply thread by default while product handoffs stay top-level; reply-unread badges and the Threads inbox are #212/#213) |
+| agent thought process (thinking bubbles) | `GET /api/threads/{threadId}/thinking` (live runs of the thread with their reply anchor, tail log, and `lastChunkId`), `GET /api/threads/{threadId}/runs/{runId}/thinking` (full log: last 500 entries with a `truncated` flag) + realtime `stream.start` (`rootMessageId`), `stream.reasoning`, `stream.thinking.tool` | N/A | N/A (dashed thinking bubble at the bottom of the surface the reply will land on; tap/click opens the full thought-process dialog) | same gate as the thread SSE stream (thread/channel visibility); the run must belong to that thread | no | no | implemented (backend; the worker's per-run thought recorder persists coalesced visible reasoning and one line per tool call to `run_thinking_chunks` and publishes each flush with its chunk id, so the live bubble is lossy but the record is not; `stream.*` is never replayed from the SSE backlog, so mid-run joiners bootstrap over REST and dedupe by `chunkId`; chunk ids are BigInt columns serialized as strings) |
+| model-judged reply placement | `POST /api/threads/{threadId}/messages` (orchestration side effect; replayed by `POST /api/runs/{runId}/restart`) | N/A | N/A (reply lands in the trigger's reply thread or in the main channel window) | channel membership | no | no | implemented (the engagement-decision model call also returns `replyPlacement` — `thread` when the answer belongs to the asker's exchange, `channel` when it is a standalone contribution to the room, defaulting to `thread` — stored on `Run.replyPlacement`; @mentions and Personal Assistant DMs stamp `thread` structurally with no model call; resolution precedence is DeepWater handoff/external agent → top-level, then an already-in-thread trigger → that root, then a `channel` judgement → top-level, else the trigger message; the resolved anchor is persisted on `Run.replyRootMessageId` for REST readers) |
 | message author profile + quick DM | `POST /api/dm/{userId}` then `GET/POST /api/threads/{threadId}/messages` | N/A | N/A (tap/click a non-DM message author's avatar/name, including your own, or tap yourself in the DM list) | organization membership + DM channel membership | no | no | implemented (admin chat opens a right-side user info drawer that reuses the channel feed/composer against the DM thread; the sidebar keeps the signed-in user available as a one-member self-DM target; disabled when already viewing that DM) |
 | message agent profile + quick mention | `GET/POST /api/threads/{threadId}/messages` | N/A | N/A (tap/click an agent-authored message avatar or name) | channel membership + agent visibility | no | no | implemented (admin chat opens a right-side agent info drawer that reuses the channel feed/composer for the current thread, filters to the selected agent exchange, and addresses quick prompts with `@agent`; disabled in the Personal Assistant DM) |
-| user, agent, and channel favourites | `GET /api/favorites`, `PUT/DELETE /api/favorites/{targetType}/{targetId}` | N/A | N/A (star beside the admin chat title and Starred sidebar section) | actor's org + visible channel/person/agent target | no | no | implemented (REST admin surface; the chat title star persists per signed-in user for channels, one-to-one DMs including self-DM, and the Personal Assistant agent, then renders matching entries in the admin Starred sidebar) |
+| user, agent, and channel favourites | `GET /api/favorites`, `PUT/DELETE /api/favorites/{targetType}/{targetId}` | N/A | N/A (star beside the admin chat title and Starred sidebar section) | actor's org + visible channel/person/agent target | no | no | implemented (REST admin surface; the chat title star persists per signed-in user for channels, one-to-one DMs including self-DM, and the Personal Assistant agent. A favourite is rendered only in Starred—not duplicated in its original Channels, Projects, or Direct messages location—and the starred PA follows the active DM route.) |
+| user alerts (mentions) | `GET /api/alerts` (cursor + `unread` filter, response carries `unreadCount`), `POST /api/alerts/read` (`ids` or `all`), realtime `alert.created`/`alert.read` | N/A | N/A (top-bar alerts bell with unread badge + dropdown; full list at `/alerts`) | actor's org + own user id (alerts are private to their recipient) | no | no | implemented (a direct @mention writes a durable `mention` `UserAlert` row per mentioned user in the message-create transaction — self-mentions skipped, broadcast mentions create no rows, agent-authored mentions identical; mute suppresses the push but never the row; mentioned users get `<author> mentioned you in <channel>` push framing; dropdown/page rows deep-link into the channel with message highlight; `alert.read` syncs read state across devices) |
 | mcp list | `GET /mcp` | `mcp.tools.list` | N/A | actorContext | no | yes | implemented |
 | mcp call | `POST /mcp` | MCP JSON-RPC router | N/A | actorContext | no | yes | implemented |
 | service checks | `GET /healthz`, `GET /readyz` | `system.healthz`, `system.readyz` | N/A | actorContext | no | yes | target-only |
@@ -591,9 +834,16 @@ Parity matrix:
 | project members | `GET/POST /api/projects/{projectId}/members`, `DELETE /api/projects/{projectId}/members/{userId}` | `project.members.add`, `project.members.remove` | `/project members add/remove` | project policy (owner) | yes | yes | implemented (REST admin surface) |
 | user statuses | `GET/POST/PATCH/DELETE /api/statuses`, `POST /api/statuses/{statusId}/activate`, `DELETE /api/statuses/active`, status schedule/rule subroutes | `status.*` | `/status set` | self-user policy | no | no | implemented (REST admin surface; contact-rule dispatch not wired) |
 | presence | `GET /api/presence` (org-wide live state + active-status emoji map), `PUT /api/presence/me` (manual Active/Away override; `null` reverts to auto), `POST /api/presence/heartbeat` (client liveness + activity) | N/A | N/A (account menu → Availability) | actor's org (read); self (write) | no | no | implemented (REST admin surface) — three states online/away/offline; offline when the heartbeat goes stale, away when idle >5 min / tab hidden / manual, else online. Polled by the admin to badge every human avatar; the signed-in user's own dot is derived locally for instant feedback. |
-| organisation appearance | `GET/PATCH /api/organizations/current` (set/clear round logo via `logoAttachmentId`), `GET /api/brand/logo` (public, single-org instance) | `org.get`, `org.logo.update` | N/A (Settings → Appearance → Logo) | actor's org; PATCH requires owner/admin | no | yes | implemented (REST admin surface) |
-| user profile photo | `PATCH /api/auth/me/avatar` (set/clear custom avatar via `avatarAttachmentId`; bytes uploaded via `POST /api/uploads`); `GET /api/auth/me` resolves precedence `avatarAttachmentId` (custom) → `avatarUrl` (provider/Google `picture`) → `gravatarUrl` (email, `d=404`) → initials | `auth.me` (self) | N/A (Settings → Profile → Profile photo); avatar menu in the rail | actor's own | no | yes | implemented (REST admin surface) |
-| agent avatar | `PATCH /api/agents/{agentId}/avatar` (set/clear custom avatar via `avatarAttachmentId`; bytes uploaded via `POST /api/uploads`); agent records expose `avatarAttachmentId` and clients fall back to the generated agent glyph | N/A | N/A (Settings → Agents → Edit agent → Agent avatar) | actor's org + agent visibility; system-managed agents require owner | no | no | implemented (REST admin surface) |
+| organisation appearance | `GET/PATCH /api/organizations/current` (set/clear round logo via `logoAttachmentId`), `GET /api/brand/logo` (public — serves the logo of the organisation the **instance operator** designated as the sign-in brand, `Organization.instanceBrand`, set out of band by `nessie set-instance-brand`; none designated or no logo uploaded → 404 and the static Nessie mark). It is not inferred from the instance holding one organisation any more: that silently stopped working under per-UOA-org tenancy and let one tenant's admins own everybody's login screen | `org.get`, `org.logo.update` | N/A (Settings → Appearance → Logo; the instance designation is CLI-only, see `docs/deployment.md`) | actor's org; PATCH requires owner/admin and cannot set the instance designation | no | yes | implemented (REST admin surface) |
+| active workspace switch | Local sessions: `POST /api/auth/switch-context` with the exact local organisation/project/team. Renewable UOA sessions: `POST /api/auth/uoa/workspace` with the external organisation/team, authorized and re-signed through UOA's explicit refresh-family workspace-switch grant. Both require the current bearer plus matching HttpOnly refresh cookie and return a replacement access session/cookie. Refresh and switching share one client mutation coordinator; every replacement session that changes user or organisation/project/team cancels and clears tenant query caches before the new token renders, including ordinary refresh after another tab switches. | N/A | N/A (shared desktop/iPad/phone workspace menu; a selected row shows progress; ambiguous response loss reconciles through ordinary refresh and treats the recovered target as success, while definitive target refusal names the retained workspace) | exact live local membership or UOA-verified product policy + organisation/team membership + target 2FA assurance | no | no | implemented (existing workspaces switch in-app; **Add a workspace** still opens hosted UOA) |
+| user profile photo | **UOA session:** `PUT /api/auth/me/avatar/uoa` (multipart part `file`, PNG/JPEG/WebP ≤ 1 MiB, relayed to UOA `PUT /domain/users/{uoaSub}/avatar`) and `DELETE /api/auth/me/avatar/uoa` (idempotent clear); the subject is always the acting user's own `User.uoaSub`, resolved server-side and never taken from the request. **No-UOA deployment:** `PATCH /api/auth/me/avatar` (set/clear a local attachment via `avatarAttachmentId`; bytes uploaded via `POST /api/uploads`) — refused for a UOA session with `403 PROFILE_MANAGED_BY_SSO`, because UOA owns that profile and a local upload would override the picture it holds. Clients resolve the precedence `GET /api/users/{userId}/avatar` (UnlikeOtherAI) → `avatarAttachmentId` (local upload) → `avatarUrl` (provider/Google `picture`) → initials; **Gravatar was removed from the chain and from every API record** | `auth.me` (self) | N/A (Settings → Profile → Profile photo — one panel that routes to the relay or the local attachment by session provider); avatar menu in the rail; every human avatar in the admin | actor's own (write) | no | yes | implemented (REST admin surface) |
+| UnlikeOtherAI avatar relay | `GET /api/users/{userId}/avatar` — image bytes for any member of the caller's organisation, relayed from UOA `GET /domain/users/{uoaSub}/avatar` with the domain-hash bearer (UOA's own precedence: uploaded → proxied provider picture → generated SVG). The subject comes from `ProductAccountLink` (`productSlug = nessie`) scoped to the caller's organisation, which is also the tenancy gate. Unlinked user or unconfigured UOA → cacheable `404` (clients fall through to the next source: the local upload, then the provider picture, then initials); unreachable/unusable upstream → `502`. Relays only `image/png\|jpeg\|webp\|svg+xml`, with `nosniff`, `content-security-policy: default-src 'none'` and `cache-control: private, max-age=300`. No new environment variables — reuses `UOA_DOMAIN` + `UOA_CLIENT_SECRET` | N/A | N/A (rendered by every `UserAvatar`) | any actor in the target's organisation | no | no | implemented (REST admin surface) |
+| workspace (company) avatar | `GET/PUT/DELETE /api/workspace/avatar` plus read-only `GET /api/teams/{teamId}/avatar` — the company image UOA holds for a workspace, relayed to UOA `/domain/teams/{externalWorkspaceId}/avatar` with the domain-hash bearer (UOA precedence: uploaded → proxied team `iconUrl` → generated SVG). `PUT` takes multipart part `file` (PNG/JPEG/WebP ≤ 1 MiB, magic-byte validated by UOA); `DELETE` is idempotent. Current-workspace reads and mutations resolve the actor's **session** team through their organisation and accept no team id. UOA's authenticated `/org/me` directory supplies a public, always-resolving `avatarImageUrl` for every workspace the caller may enter; UOA's public image route is rate-limited and non-enumerating, and Nessie resolves relative URLs against the configured UOA origin before storing them. `/auth/me` also reconstructs that public URL from the external team id for sessions created before UOA added the directory field, and pins `size=128` so clients do not reuse a cached response from before cross-origin embedding was enabled. The switcher uses the existing membership-scoped relay where a local `avatarTeamId` exists (preserving immediate cache-busting after edits), otherwise the public UOA URL, and finally initials. It groups teams under their owning organisation by stable organisation id on desktop, iPad, and phone. **The domain hash is full system trust and UOA's `/domain/*` mutations apply no role check — Nessie's owner/admin gate on `PUT`/`DELETE` is the only authorization.** Same relay hardening as the user avatar. No new environment variables | N/A | N/A (Settings → Organization → General → Workspace avatar; the shared workspace switcher shows every authorized UOA picture under its organisation) | read: current workspace actor or signed-in member of the requested team; write: organisation owner/admin | no | no | implemented (REST admin surface) |
+| workspace roster (UOA) | `GET /api/workspace/members` — the people in the actor's UOA workspace, joined live from UOA `GET /org/organisations/{externalOrgId}/teams/{externalTeamId}` (team roles) and `GET /org/organisations/{externalOrgId}/members?status=all` (names, emails, lifecycle status). Nothing is persisted: UOA owns human identity and membership. Members are named by their **UOA subject**, never a local user id or an email row. Calls run in UOA **backend mode** — the domain-hash bearer alone, `X-UOA-Access-Token` omitted entirely (a blank header is `401 MISSING_ACCESS_TOKEN`), enabled by `org_features.backend_org_management: true` in the signed config JWT. A team with no `externalWorkspaceId`/`externalOrgId`, or a deployment without UOA, answers `404 WORKSPACE_NOT_LINKED` — there is never a fall back to local rows. No new environment variables | N/A | N/A (Settings → Organization → Members, on a UOA session) | any member of the workspace | no | no | implemented (REST admin surface) |
+| workspace member avatar (UOA) | `GET /api/workspace/members/{uoaSub}/avatar` — the picture UOA holds for one person in the actor's workspace roster, relayed from UOA `GET /domain/users/{uoaSub}/avatar` with the domain-hash bearer. It exists because a roster row is named only by a UOA subject: the organisation-scoped relay `GET /api/users/{userId}/avatar` is keyed on a Nessie user id, and a roster member may have no local row at all. **The requested subject is checked against the workspace's own roster before any avatar call**, using the same `GET /api/workspace/members` read (briefly cached in-memory per workspace, ~30 s, so one page load asks UOA once rather than once per row) — without that check the full-trust domain-hash path would hand any member the picture of anybody in the whole UOA domain. A subject outside the roster and a subject UOA has no image for are the same cacheable `404 AVATAR_NOT_FOUND`, so nothing is learned about foreign subjects; an unlinked team or a deployment without UOA is `404 WORKSPACE_NOT_LINKED`; an unreadable roster is `502 UOA_DIRECTORY_UNAVAILABLE` and an unreachable avatar endpoint `502 UOA_AVATAR_UNAVAILABLE` — never a silent miss. Same relay hardening as the other avatar routes (content-type allowlist, `nosniff`, `content-security-policy: default-src 'none'`, `cache-control: private, max-age=300` on hit and miss alike). The roster renders it through the shared `UserAvatar`, falling back to initials. No new environment variables | N/A | N/A (Settings → Organization → Members, on a UOA session) | any member of the workspace (identical to the roster read) | no | no | implemented (REST admin surface) |
+| workspace membership mutations (UOA) | `PUT /api/workspace/members/{uoaSub}/role` (`{role: admin\|member}` → UOA `PUT .../teams/{teamId}/members/{userId}` `{team_role}`), `DELETE /api/workspace/members/{uoaSub}` (UOA soft-remove + team session revocation), `POST /api/workspace/members/{uoaSub}/deactivate\|reactivate` (organisation-level in UOA; UOA refuses to deactivate an owner). **Backend mode has no acting user, so UOA applies no role check and records `actor_user_id: null` / `uoa_actor.via = domain_backend` — Nessie's owner/admin gate is the only authorization**, the same rule as the workspace avatar relay. Upstream 4xx → `WORKSPACE_MEMBERS_REJECTED`, transport/5xx/malformed body → `502 UOA_DIRECTORY_UNAVAILABLE` | N/A | N/A (Settings → Organization → Members) | organisation owner/admin | no | no | implemented (REST admin surface) |
+| workspace invitations (UOA) | `GET /api/workspace/invitations` (UOA `GET .../teams/{teamId}/invitations`), `POST /api/workspace/invitations` (`{invites:[{email,name?,teamRole?}]}` → UOA's trusted-backend bulk invite; the response carries UOA's per-email verdict `invited\|resent_existing\|already_member\|existing_user\|conflict`), `POST /api/workspace/invitations/{inviteId}/resend` (refreshes UOA's 30-day expiry), `POST /api/workspace/invitations/{inviteId}/revoke` (withdraws an invitation that was already sent → UOA `DELETE .../teams/{teamId}/invitations/{inviteId}`; **idempotent** — revoking twice is still `200`, an invitation that has already been accepted is `409 INVITATION_ALREADY_ACCEPTED` because removing the member is a different decision, an unknown or foreign invite id is a generic `404`, and a `200` whose body is not `{ok:true}` is `502 UOA_DIRECTORY_UNAVAILABLE` rather than a silent revoke), `POST /api/workspace/invitations/{inviteId}/approve\|deny` (UOA's member-initiated-invite review queue; deny is the stop verb for an invitation that was never sent, revoke for one that was). **Acceptance is hosted by UOA**: Nessie never mints, stores, or renders an invitation token, and has no accept flow. Invite emails are PII, so the list is owner/admin only — matching UOA's own gate. Shareable invite links (`.../invite-links`) are deliberately not surfaced | N/A | N/A (Settings → Organization → Members → Invite to workspace / Pending invitations) | organisation owner/admin | no | no | implemented (REST admin surface) |
+| agent avatar | `POST /api/agents` accepts an optional uploaded `avatarAttachmentId`; when omitted it creates a prompt from the agent's name/role/purpose and sends it through Ledger to OpenAI `gpt-image-2`, storing the resulting PNG through the standard FileService attachment path (local filesystem now, S3 when configured). New-user provisioning also bootstraps the organization-managed Personal Assistant's private DM and creates that assistant's first original, role-appropriate headshot; later users keep the established assistant avatar. A transient prompt/image failure never blocks account provisioning or sign-in; the next sign-in or PA bootstrap retries while no avatar is stored. `POST /api/agents/{agentId}/avatar/generate` creates a private preview, and the owner explicitly confirms it through `PATCH /api/agents/{agentId}/avatar`; uploads use `POST /api/uploads`. The generate body also accepts optional free-text `instructions` — the person's own description of the look they want ("a friendly robot in a hard hat") — which the prompt writer honours within the fixed safety constraints (single original subject, no text/logos, the exact pastel background); with no `instructions` the model defaults to a fictional human headshot, and selects a machine only where the role and purpose establish a non-human machine. Records expose both the attachment id and a persisted random pastel background colour, rendered behind every profile headshot. Editing an agent surfaces one avatar card whose pencil opens a single modal — a larger preview, an optional prompt with **Generate with AI**, **Upload** (crop), **Remove image**, and a top-right close — the same `AgentAvatarQuickEdit` the detail header uses. | N/A | N/A (Agents → open agent → Edit tab → avatar pencil → prompt + Generate with AI / Upload / Remove; Agents → New agent → Agent avatar; Direct messages → Personal Assistant) | creation: authenticated actor; generation/replacement: owner with exact-org agent visibility; attachment: actor-visible same-org image | no | no | implemented (REST admin surface; the avatar pencil is only rendered for owners, while the server repeats the owner check and shows an in-place spinner while generation is pending) |
 | feedback | `GET/POST /api/feedback` (compose w/ optional attachment; mirrored to a GitHub issue when `NESSIE_GITHUB_TOKEN` is set) | `feedback.list`, `feedback.create` | N/A (Feedback section) | actor's own (org + user scoped) | no | yes | implemented (REST admin surface) |
 | channel lifecycle | `POST /channels` | `project.channels.create`, `project.channels.update`, `project.channels.members.search` | `/channel create` | project/channel policy | yes | yes | blocked |
 | agent catalog | `GET/POST /agents` | `agent.register`, `agent.update`, `agent.retire`, `agent.restore`, `agent.delete`, `agent.bind`, `agent.unbind` | `/agent register` | project/team/channel policy | yes | yes | blocked |
@@ -606,7 +856,9 @@ Parity matrix:
 | project safety | `POST /projects/{projectId}/safety/preflight`, `.../degrade`, `.../restore`, `.../archive`, `.../restore`, `.../delete` | `project.safety.preflight`, `project.safety.degrade`, `project.safety.restore`, `project.archive`, `project.delete` | `/project safety` | governance + project-state policy | yes | yes | blocked |
 | step-up verification | `POST /verification/challenges/*`, `GET/POST /verification/factors*` | `verification.challenge.start`, `verification.challenge.verify`, `verification.challenge.resend`, `verification.challenge.cancel`, `verification.factor.enroll`, `verification.factor.verify`, `verification.factor.revoke`, `verification.factor.list` | `/verify`, `/verify enroll` | high-risk action policy | conditional | yes | blocked |
 | language + translation | `GET/PATCH /orgs/{orgId}/language`, `GET/PATCH /users/{userId}/language`, `PATCH /threads/{threadId}/language`, `PATCH /sessions/{sessionId}/language`, `POST /translation/preview` | `translation.org.get`, `translation.org.update`, `translation.user.get`, `translation.user.update`, `translation.thread.update`, `translation.session.update`, `translation.preview` | `/language set`, `/translate preview` | org/user/thread/session policy | org default change: yes | yes | blocked |
-| token, connector, and file usage ledger + pricing | `GET /api/ledger/tokens/summary`, `GET /api/ledger/connectors/summary`, `GET /api/ledger/files/summary`, `GET/POST /api/ledger/tokens/pricing`, `DELETE /api/ledger/tokens/pricing/{profileId}`, `GET /api/ledger/tokens/monthly-estimate` | `ledger.tokens.summary.get`, `ledger.connectors.summary.get`, `ledger.files.summary.get`, `ledger.tokens.pricing.list`, `ledger.tokens.pricing.upsert`, `ledger.tokens.pricing.delete`, `ledger.tokens.monthly_estimate.get` | `/ledger tokens`, `/ledger pricing` | owner policy; pricing override is owner-only | pricing override: yes | yes | implemented-partial (REST admin surface; file summary reports current stored bytes plus upload/download transfer bytes) |
+| customer commercial billing and credits surface | `GET /api/billing/credits`, `GET /api/billing/recurring-addons`, manager-only credit top-up/automatic-top-up and recurring-add-on mutation routes, `GET /api/billing/statement`, `POST /api/billing/actions/upgrade`, `POST /api/billing/actions/portal`, `POST /api/billing/cancellation/preview`, `POST /api/billing/cancellation/confirm`; direct SSO exchange internally calls UOA `/billing/v1/service-access/confirm` | N/A | Credits & billing (`/tokens`) | credit/add-on reads: every active-team member; statement and mutations: active-team owner/admin; exact UOA workspace and UOA membership/manager re-check | every commercial mutation is a frozen UOA action: yes | yes | implemented (Nessie has no tariff, rating, credit balance, payment, top-up, add-on, statement, or cancellation-decision state. A dedicated UOA app key plus fresh 45-second RS256 actor assertion fetches UOA's display-ready models. The UI puts remaining credits first, then pending/added/used credits, service/user usage, recent activity, and automatic top-up state; 1,000 credits equal US$1. Managers receive payment controls and named-user detail, while members receive a privacy-safe read-only projection. The same selected-team balance is shared across products. Nessie performs no billing, credit conversion, aggregation, or share calculations. Frozen actions are fixed-allowlisted and proxied with UOA's exact body/token/idempotency key/choice; UOA alone checks authority, direct access, and indirect Ledger use. The page contains no Nessie-local cost, pricing, projection, token, connector, file, or budget panel; those owner-only operational controls live at `/ops/usage`. Direct-access evidence is recorded only after a successful direct Nessie SSO exchange and before local session issuance; UOA confirmation failure blocks login, while connector/agent/DeepWater paths never record it.) |
+| builtin web search metering | Ledger `POST /v1/serper/search` | `web_search` | Agent and workflow tool execution | agent tool grant/policy; exact signed user/org/team/agent/run/tool-call provenance | no | yes | implemented (Nessie's product-bound Ledger key authenticates the app; Ledger injects Serper credentials and owns raw search metering. Agent, delegated sub-agent, and workflow paths fail closed without signing identity and have no direct Serper-key fallback. Nessie connector rows are operational telemetry only.) |
+| token, connector, and file usage ledger + pricing | `GET /api/ledger/tokens/summary`, `GET /api/ledger/connectors/summary`, `GET /api/ledger/files/summary`, `GET /api/ledger/runs/timing`, `GET /api/ledger/tokens/by-outcome`, `GET/POST /api/ledger/tokens/pricing`, `DELETE /api/ledger/tokens/pricing/{profileId}`, `GET /api/ledger/tokens/monthly-estimate` | `ledger.tokens.summary.get`, `ledger.connectors.summary.get`, `ledger.files.summary.get`, `ledger.runs.timing.get`, `ledger.tokens.by_outcome.get`, `ledger.tokens.pricing.list`, `ledger.tokens.pricing.upsert`, `ledger.tokens.pricing.delete`, `ledger.tokens.monthly_estimate.get` | owner-only Operational usage (`/ops/usage`); `/ledger tokens`, `/ledger pricing` | owner policy; pricing override is owner-only | pricing override: yes | yes | implemented-partial (REST admin surface; file summary reports current stored bytes plus upload/download transfer bytes; `runs/timing` returns recent per-run wall-clock stage latency from worker `run.timing` events — queue wait / inference / tool, no cost; `tokens/by-outcome` splits local token spend by run outcome (completed/failed/cancelled/…) so failed-run spend is attributable; the budget gate also pushes once-per-period threshold/blocked alerts to owners + scope managers (`budget.alert-dispatch`); local operational calculations are visually and navigationally separate from Credits & billing) |
 | knowledge base | `POST /knowledge-base/*` | `knowledge_base.link`, `knowledge_base.search`, `knowledge_base.read`, `knowledge_base.search_summary`, `knowledge_base.reindex`, `knowledge_base.projects.share` | `/knowledge search` | project/team/channel policy | read: no; write/share: yes | yes | blocked |
 | CLI tool imports | `POST /tools/import` | `tool.import` (cli/unified toolset manifest), `tool.update` | `/tool import` | project + role + tool policy | yes for unmanaged tools | yes | blocked |
 
@@ -698,6 +950,20 @@ type ControlCommandDefinition = {
 - Add first-class **channels** and **channel membership**.
   - every thread can be scoped to a channel,
   - each channel carries default responder policy and permissions.
+- The admin channel feed renders every human and agent post as safe
+  GitHub-flavoured Markdown, including inline backtick code and fenced code
+  blocks. Triple-backtick blocks may begin within a chat line and preserve
+  their internal newlines. A fence the author never closed is closed at render
+  time, so a chat line such as ` ```is it done? ` posts as a code block
+  containing those words instead of an empty block; a lone language tag on the
+  opening line still reads as a language.
+- The composer and message editor style code ranges live and conceal the
+  backticks once a delimiter pair wraps something, so the snippet reads the way
+  it will post. An empty pair keeps its backticks visible. A concealed
+  delimiter is atomic: one arrow press crosses it, one delete removes it whole,
+  and typing beside it stays outside the snippet. Shift+Enter inserts a soft
+  line break at the caret, inside a code block or in prose. Mentions remain
+  interactive in prose and stay literal inside code.
 - Add a hidden **organizer** for each scope:
   - sees all inbound messages,
   - resolves implicit mentions,
@@ -959,7 +1225,7 @@ type ControlCommandDefinition = {
   - missing dependency detection,
   - degraded mode explanation when optional services are absent.
 - Cross-link:
-  - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md).
+  - [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md).
 
 ## 13.6) Secret storage and retrieval (encrypted, scoped, policy-gated)
 
@@ -1131,6 +1397,74 @@ A dispatch that fails transiently is recorded as a `failed` delivery with
 `retry_count` / `next_retry_at`; the worker retry poller re-attempts due
 deliveries with exponential backoff (30s × 2^n, capped at 30 min, up to 5 retries)
 before exhausting them.
+
+#### What a trigger fire looks like in the channel
+
+A fire creates a kickoff `Message` that drives the run, and the agent then
+answers. Two structural facts govern how that reads to a person:
+
+- **The kickoff is `role: 'system'`.** It is an internal directive — generated
+  text like `Trigger fired: interval (source: scheduler).` plus the payload
+  JSON, or an operator's saved prompt plus the memory nudge — so it is
+  excluded from the channel feed and from later model context, while the row
+  itself persists for audit and for restart replay (which loads it by id and
+  never checks role). The run still receives it as its prompt through
+  `payload.messageId`. Rendering it as a `user` message previously attributed
+  it to the trigger's owner, who wrote none of it, and filled monitoring
+  channels with plumbing. Human-facing provenance is the Triggers page
+  delivery log.
+- **The run is stamped `replyPlacement: 'channel'`.** A trigger fire is a
+  standalone contribution to the room, not an answer owed to the kickoff, so
+  the agent posts top-level where an alert belongs. Stamped structurally from
+  the fact that it is a trigger run — never judged from message content.
+
+#### When a scheduled run fails, the channel does not hear about it
+
+An interactive turn that fails posts the error, because a person is waiting for
+an answer. An unattended run — schedule, interval, webhook — does not: nobody
+asked, and a broken integration would otherwise turn its own alert channel into
+a repeating apology (a 15-minute sweep that could not reach its provider wrote
+the same "I could not complete that request" four times an hour, burying the
+findings the channel existed for).
+
+The failure is not hidden, it is moved to where the owner looks: the run is
+`failed`, the worker logs it, and the Triggers page delivery row now shows the
+**run's** outcome next to the delivery's. Those are different questions — a
+fire that dispatched fine and then failed mid-run still reads
+`status: 'delivered'`, which is why a red "run failed" chip had to be added
+before the channel message could be taken away.
+
+#### Giving a recurring schedule an end
+
+A recurring trigger (interval or cron) may carry `until` in its config — an
+ISO-8601 instant after which it stops. This is the shape of a temporary watch:
+an incident window, a migration, an overnight soak. Without it every schedule
+ran forever and had to be remembered and paused by hand.
+
+Enforcement reuses the existing stop signal rather than adding one: a computed
+fire time past `until` becomes `null`, which clears `next_run_at`, and the
+scheduler only claims rows where that column is set
+(`parseScheduleUntil` + the `withinScheduleEnd` guard in
+`packages/runtime/src/scheduling.ts`). The API's own arming path
+(`normalizeNextRunAt`, `api/src/services/trigger-shared.ts`) applies the same
+guard, because it does not go through the worker's initial-arm function — a
+schedule submitted with an end already past must not arm and fire once.
+
+A lapsed recurring trigger is set to **paused**, not left `active` with no next
+run, which would be a zombie indistinguishable from a broken config. Pause is
+already the product's reversible stop state, so resuming works — and
+`resumeAgentTrigger` re-arms a scheduler-type trigger whose `next_run_at` is
+null, or leaves it paused when the end is still in the past. A malformed
+`until` reads as "no end" so a bad value can never silently stop a schedule.
+Set it in the trigger editor's optional **Stop after** field.
+
+These two are one change and must stay paired: a hidden kickoff with the
+default thread placement would anchor every reply under an invisible root and
+drop it out of the feed. Both the direct claim path
+(`worker/src/control/trigger-run.ts`), the API webhook-intake path
+(`api/src/services/trigger-dispatch.ts`), and the batched pending-drain path
+(`packages/db/src/thread-serialization.ts`, which derives placement from the
+pending row's `triggerId`) apply them.
 
 ### Human Input suspension model
 

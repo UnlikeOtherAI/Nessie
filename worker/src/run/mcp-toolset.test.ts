@@ -4,22 +4,38 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { buildMcpToolset, type McpToolPolicy } from './mcp-toolset.js'
-
-/**
- * Scope-exposure rules for the MCP toolset: which instances' tools a given
- * run can see. Uses a mocked Prisma — no MCP traffic is exchanged (dispatch is
- * not invoked).
- */
+import { DeepWaterHandoffInvariantError } from './deepwater-handoff-guard.js'
+import {
+  addDeepWaterIdentityHeaders,
+  buildMcpToolset,
+  isManagedDeepWaterCatalog,
+  type McpToolPolicy,
+} from './mcp-toolset.js'
+import { createConsumedSourceSink } from './execute/disclosure-basis.js'
 
 type RowSeed = {
+  authConfig?: unknown
+  authMethod?: 'api_key' | 'bearer' | 'basic' | 'oauth2' | 'none'
+  catalogName?: string
+  catalogVisibility?: string
+  integratedProductSlugs?: string[]
+  credentialRef?: string | null
   id: string
   toolName: string
   scopeType: string
   scopeId: string
+  requiresExplicitGrant?: boolean
 }
 
-const makePrisma = (rows: RowSeed[]): PrismaClient => {
+const makePrisma = (
+  rows: RowSeed[],
+  options: {
+    credentialOverrideRef?: string
+    credentialOverrideUserId?: string
+    onConnectorUsage?: () => void
+    onCredentialOverrideLookup?: () => void
+  } = {},
+): PrismaClient => {
   return {
     toolRegistryEntry: {
       findMany: async () =>
@@ -34,14 +50,22 @@ const makePrisma = (rows: RowSeed[]): PrismaClient => {
             serverId: `inst-${row.id}`,
             toolName: row.toolName,
           },
+          metadata: row.requiresExplicitGrant ? { requiresExplicitGrant: true } : {},
           mcpInstanceId: `inst-${row.id}`,
           mcpInstance: {
-            credentialRef: null,
+            credentialRef: row.credentialRef ?? null,
             scopeType: row.scopeType,
             scopeId: row.scopeId,
             transportConfig: {},
             catalogEntry: {
-              authConfig: { method: 'none' },
+              label: row.catalogName ?? 'Example',
+              name: row.catalogName ?? 'example',
+              visibility: row.catalogVisibility ?? 'private',
+              integratedProducts: (row.integratedProductSlugs ?? []).map(
+                (slug) => ({ slug }),
+              ),
+              authMethod: row.authMethod ?? 'none',
+              authConfig: row.authConfig ?? { method: 'none' },
               defaultTransportConfig: {
                 transport: 'http',
                 url: 'https://mcp.example.com/mcp',
@@ -51,13 +75,38 @@ const makePrisma = (rows: RowSeed[]): PrismaClient => {
         })),
     },
     mcpServerInstance: {
-      findUnique: async ({ where }: { where: { id: string } }) => ({
-        id: where.id,
-        credentialRef: null,
-      }),
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const row = rows.find((candidate) => `inst-${candidate.id}` === where.id)
+        return {
+          id: where.id,
+          credentialRef: row?.credentialRef ?? null,
+          scopeId: row?.scopeId ?? 'org-1',
+          scopeType: row?.scopeType ?? 'organization',
+          catalogEntry: {
+            authMethod: row?.authMethod ?? 'none',
+            authConfig: row?.authConfig ?? { method: 'none' },
+          },
+        }
+      },
     },
     mcpServerCredentialOverride: {
-      findUnique: async () => null,
+      findUnique: async ({ where }: {
+        where: { instanceId_principalType_principalId: { principalId: string } }
+      }) => {
+        options.onCredentialOverrideLookup?.()
+        return options.credentialOverrideRef
+          && (!options.credentialOverrideUserId
+            || where.instanceId_principalType_principalId.principalId
+              === options.credentialOverrideUserId)
+          ? { credentialRef: options.credentialOverrideRef }
+          : null
+      },
+    },
+    connectorUsageEvent: {
+      create: async () => {
+        options.onConnectorUsage?.()
+        return {}
+      },
     },
   } as unknown as PrismaClient
 }
@@ -86,19 +135,25 @@ const exposedNames = async (
     toolPolicy?: McpToolPolicy
     effectiveUserId?: string | null
     channelId?: string
+    teamId?: string | null
+    secretResolver?: { resolve(ref: string): Promise<string | null> }
   } = {},
 ): Promise<string[]> => {
   const toolset = await buildMcpToolset(
     makePrisma(rows),
     'org-1',
     options.toolPolicy ?? null,
-    actorContext({ effectiveUserId: options.effectiveUserId }),
+    actorContext({
+      effectiveUserId: options.effectiveUserId,
+      teamId: options.teamId,
+    }),
     {
       agentId: 'agent-1',
       agentKind: options.agentKind ?? 'personal_assistant',
       channelId: options.channelId ?? 'channel-1',
     },
     { organizationId: 'org-1', actorId: 'agent-1' },
+    { secretResolver: options.secretResolver ?? { resolve: async () => 'test-secret' } },
   )
   return toolset.entries.map((entry) => entry.originalToolName)
 }
@@ -111,18 +166,191 @@ test('org-scope instances expose tools to every run in the org', async () => {
   assert.deepEqual(names, ['org_tool'])
 })
 
-test('user-scope instances expose tools only to the installing user\'s PA runs', async () => {
+test('user-scope connections follow the effective user, with shared-agent policy still required', async () => {
   const rows: RowSeed[] = [
-    { id: 'r1', toolName: 'my_tool', scopeType: 'user', scopeId: 'user-1' },
+    {
+      authConfig: { method: 'oauth2' },
+      authMethod: 'oauth2',
+      credentialRef: 'secret_user_1',
+      id: 'r1',
+      requiresExplicitGrant: true,
+      toolName: 'my_tool',
+      scopeType: 'user',
+      scopeId: 'user-1',
+    },
   ]
+  // The owner's PA has the in-scope default.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), ['my_tool'])
   // Another user's PA run: hidden.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'personal_assistant', effectiveUserId: 'user-2' }),
     [],
   )
-  // A shared agent run for the same user: hidden (channel members could drive it).
+  // A shared agent run still needs its normal explicit tool grant.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
+    ['my_tool'],
+  )
+  // That grant never carries user-1's OAuth connection into user-2's run.
+  assert.deepEqual(
+    await exposedNames(rows, {
+      agentKind: 'shared',
+      effectiveUserId: 'user-2',
+      toolPolicy: { r1: true },
+    }),
+    [],
+  )
+})
+
+test('an auth-requiring connection is hidden when its stored secret cannot resolve', async () => {
+  const names = await exposedNames([
+    {
+      authConfig: { method: 'oauth2' },
+      authMethod: 'oauth2',
+      credentialRef: 'secret_stale',
+      id: 'r1',
+      scopeId: 'user-1',
+      scopeType: 'user',
+      toolName: 'calendar',
+    },
+  ], {
+    secretResolver: { resolve: async () => null },
+  })
+
+  assert.deepEqual(names, [])
+})
+
+test('an explicit policy allow never broadens an explicit-grant user-scope install past its ceiling', async () => {
+  const rows: RowSeed[] = [
+    {
+      id: 'r1',
+      toolName: 'my_tool',
+      scopeType: 'user',
+      scopeId: 'user-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  // Install scope is a hard ceiling: an explicit per-agent allow never reaches
+  // another effective user.
+  assert.deepEqual(
+    await exposedNames(rows, {
+      agentKind: 'shared',
+      effectiveUserId: 'user-2',
+      toolPolicy: { r1: true },
+    }),
+    [],
+  )
+  // An explicit allow inside the install scope exposes it to the shared agent.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
+    ['my_tool'],
+  )
+  // An explicit deny inside the install scope still hides it.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { r1: false } }),
+    [],
+  )
+})
+
+test('a shared OAuth connection is not advertised without the effective user\'s own credential', async () => {
+  const rows: RowSeed[] = [{
+    authConfig: { method: 'oauth2' },
+    authMethod: 'oauth2',
+    id: 'oauth',
+    requiresExplicitGrant: true,
+    scopeId: 'org-1',
+    scopeType: 'organization',
+    toolName: 'private_calendar',
+  }]
+  const buildFor = (effectiveUserId: string) =>
+    buildMcpToolset(
+      makePrisma(rows, {
+        credentialOverrideRef: 'secret_user_1_oauth',
+        credentialOverrideUserId: 'user-1',
+      }),
+      'org-1',
+      { oauth: true },
+      actorContext({ effectiveUserId }),
+      { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
+      { organizationId: 'org-1', actorId: 'agent-1' },
+      { secretResolver: { resolve: async () => 'test-secret' } },
+    )
+
+  assert.deepEqual(
+    (await buildFor('user-1')).entries.map((entry) => entry.originalToolName),
+    ['private_calendar'],
+  )
+  assert.deepEqual((await buildFor('user-2')).entries, [])
+})
+
+test('credential-backed MCP output records the user scope only for personal credentials', async () => {
+  const dispatchMcpTool = async () => ({ output: 'private provider result', raw: null, success: true })
+  const buildWith = async (row: RowSeed, options: {
+    credentialOverrideRef?: string
+    credentialOverrideUserId?: string
+  } = {}) => {
+    const consumedSources = createConsumedSourceSink()
+    const toolset = await buildMcpToolset(
+      makePrisma([row], options),
+      'org-1',
+      { [row.id]: true },
+      actorContext(),
+      { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
+      { organizationId: 'org-1', actorId: 'agent-1' },
+      {
+        consumedSources,
+        dispatchMcpTool,
+        secretResolver: { resolve: async () => 'test-secret' },
+      },
+    )
+    const entry = toolset.entries[0]
+    assert.ok(entry)
+    // A delegate view calls the same dispatch closure as the main loop.
+    await toolset.createView().dispatch(entry.exposedName, {})
+    return consumedSources.list()
+  }
+
+  const oauth = { authConfig: { method: 'oauth2' }, authMethod: 'oauth2' as const }
+  assert.deepEqual(
+    await buildWith({
+      ...oauth,
+      credentialRef: 'secret_user_scope',
+      id: 'user-scope',
+      requiresExplicitGrant: true,
+      scopeId: 'user-1',
+      scopeType: 'user',
+      toolName: 'personal_drive',
+    }),
+    [{ scopeId: 'user-1', scopeType: 'user' }],
+  )
+  assert.deepEqual(
+    await buildWith(
+      {
+        ...oauth,
+        id: 'user-override',
+        requiresExplicitGrant: true,
+        scopeId: 'org-1',
+        scopeType: 'organization',
+        toolName: 'personal_calendar',
+      },
+      { credentialOverrideRef: 'secret_user_override', credentialOverrideUserId: 'user-1' },
+    ),
+    [{ scopeId: 'user-1', scopeType: 'user' }],
+  )
+  assert.deepEqual(
+    await buildWith({
+      authConfig: { headerName: 'X-API-Key', method: 'api_key', valuePrefix: '' },
+      authMethod: 'api_key',
+      credentialRef: 'secret_explicitly_shared',
+      id: 'shared-key',
+      requiresExplicitGrant: true,
+      scopeId: 'org-1',
+      scopeType: 'organization',
+      toolName: 'shared_search',
+    }),
+    [],
+  )
 })
 
 test('team and channel scopes follow the run context', async () => {
@@ -138,16 +366,311 @@ test('team and channel scopes follow the run context', async () => {
   ])
 })
 
-test('an explicit per-agent policy verdict overrides scope defaults both ways', async () => {
+test('managed DeepWater tools default to the PA and stay explicit for shared agents', async () => {
+  const rows: RowSeed[] = [
+    {
+      catalogName: 'deep-water',
+      catalogVisibility: 'public',
+      credentialRef: 'LEDGER_PROXY_TOKEN',
+      id: 'dw',
+      integratedProductSlugs: ['deep-water'],
+      toolName: 'research_start',
+      scopeType: 'team',
+      scopeId: 'team-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), ['research_start'])
+  // The shared agent still needs an explicit allow.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: true } }),
+    ['research_start'],
+  )
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: true } }),
+    ['research_start'],
+  )
+  // An explicit deny still hides it.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: false } }),
+    [],
+  )
+})
+
+test('an explicit grant never lets a personal assistant cross a team boundary', async () => {
+  const rows: RowSeed[] = [
+    {
+      id: 'dw',
+      toolName: 'research_start',
+      scopeType: 'team',
+      scopeId: 'team-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  assert.deepEqual(
+    await exposedNames(rows, {
+      agentKind: 'personal_assistant',
+      teamId: 'team-2',
+      toolPolicy: { dw: true },
+    }),
+    [],
+  )
+})
+
+test('managed DeepWater resolves only Nessie\'s product-bound Ledger app API key', async () => {
+  const resolvedRefs: string[] = []
+  let overrideLookups = 0
+  const toolset = await buildMcpToolset(
+    makePrisma(
+      [
+        {
+          catalogName: 'deep-water',
+          catalogVisibility: 'public',
+          integratedProductSlugs: ['deep-water'],
+          credentialRef: 'LEDGER_PROXY_TOKEN',
+          id: 'dw',
+          toolName: 'research_start',
+          scopeType: 'team',
+          scopeId: 'team-1',
+          requiresExplicitGrant: true,
+        },
+      ],
+      {
+        credentialOverrideRef: 'direct-provider-user-key',
+        onCredentialOverrideLookup: () => {
+          overrideLookups += 1
+        },
+      },
+    ),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    {
+      agentId: 'agent-1',
+      agentKind: 'personal_assistant',
+      channelId: 'channel-1',
+    },
+    {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    {
+      secretResolver: {
+        resolve: async (ref) => {
+          resolvedRefs.push(ref)
+          return 'nessie-ledger-app-api-key'
+        },
+      },
+    },
+  )
+  assert.deepEqual(resolvedRefs, ['LEDGER_PROXY_TOKEN'])
+  assert.equal(overrideLookups, 0)
+  assert.deepEqual(
+    toolset.entries.map((entry) => entry.originalToolName),
+    ['research_start'],
+  )
+})
+
+test('private same-name catalogs are not treated as managed DeepWater', () => {
+  assert.equal(
+    isManagedDeepWaterCatalog({
+      integratedProducts: [],
+      name: 'deep-water',
+      visibility: 'private',
+    }),
+    false,
+  )
+  assert.equal(
+    isManagedDeepWaterCatalog({
+      integratedProducts: [{ slug: 'deep-water' }],
+      name: 'deep-water',
+      visibility: 'public',
+    }),
+    true,
+  )
+})
+
+test('DeepWater keeps the product app key separate from signed caller identity', async () => {
+  const calls: unknown[] = []
+  const transport = await addDeepWaterIdentityHeaders(
+    {
+      transport: 'http',
+      url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+      headers: {
+        Authorization: 'Bearer nessie-ledger-app-api-key',
+        'X-Existing': 'yes',
+      },
+    },
+    {
+      requestHeaders: async (input, options) => {
+        calls.push({ input, options })
+        return {
+          'X-Nessie-Context': 'nessie-context',
+          'X-UOA-Delegation': 'uoa-delegation',
+        }
+      },
+    },
+    {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    '00000000-0000-4000-8000-000000000004',
+  )
+  assert.deepEqual(calls, [{
+    input: {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    options: {
+      requireUoaIdentity: true,
+      toolCallId: '00000000-0000-4000-8000-000000000004',
+    },
+  }])
+  assert.deepEqual(
+    transport.transport === 'http' ? transport.headers : null,
+    {
+      Authorization: 'Bearer nessie-ledger-app-api-key',
+      'X-Existing': 'yes',
+      'X-Nessie-Context': 'nessie-context',
+      'X-UOA-Delegation': 'uoa-delegation',
+    },
+  )
+})
+
+test('DeepWater rejects dispatch identity without a stable provider tool-call id', async () => {
+  await assert.rejects(
+    addDeepWaterIdentityHeaders(
+      {
+        transport: 'http',
+        url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+        headers: { Authorization: 'Bearer nessie-ledger-app-api-key' },
+      },
+      {
+        requestHeaders: async () => ({}),
+      },
+      {
+        organizationId: 'org-1',
+        teamId: 'team-1',
+        userId: 'user-1',
+        agentId: 'agent-1',
+        runId: 'run-1',
+        actorId: 'agent-1',
+      },
+      '',
+    ),
+    /LEDGER_TOOL_CALL_ID_REQUIRED/,
+  )
+})
+
+test('suppressed handoff calls do not record connector usage without a transport dispatch', async () => {
+  let usageEvents = 0
+  const toolset = await buildMcpToolset(
+    makePrisma(
+      [{
+        catalogName: 'deep-water',
+        catalogVisibility: 'public',
+        integratedProductSlugs: ['deep-water'],
+        id: 'dw',
+        toolName: 'research_status',
+        scopeType: 'team',
+        scopeId: 'team-1',
+        requiresExplicitGrant: true,
+      }],
+      { onConnectorUsage: () => { usageEvents += 1 } },
+    ),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    { agentId: 'agent-1', agentKind: 'personal_assistant', channelId: 'channel-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
+    {
+      deepWaterHandoffGuard: {
+        assertCompletion: () => undefined,
+        dispatchDeepWater: async () => ({
+          deliveryToken: null,
+          result: { output: 'suppressed', raw: null, success: false },
+          transportInvoked: false,
+        }),
+        markDelivered: () => undefined,
+        suppressBuiltin: async () => false,
+        timeoutErrorFor: () => null,
+      },
+    },
+  )
+
+  const result = await toolset.dispatch('mcp_research_status', { id: 'rs_ticket' }, 'call-2')
+  assert.equal(result.success, false)
+  assert.equal(result.output, 'suppressed')
+  assert.equal(usageEvents, 0)
+})
+
+test('pre-transport fatal handoff errors do not record connector usage', async () => {
+  let usageEvents = 0
+  const toolset = await buildMcpToolset(
+    makePrisma(
+      [{
+        catalogName: 'deep-water',
+        catalogVisibility: 'public',
+        integratedProductSlugs: ['deep-water'],
+        id: 'dw',
+        toolName: 'research_start',
+        scopeType: 'team',
+        scopeId: 'team-1',
+        requiresExplicitGrant: true,
+      }],
+      { onConnectorUsage: () => { usageEvents += 1 } },
+    ),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    { agentId: 'agent-1', agentKind: 'personal_assistant', channelId: 'channel-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
+    {
+      deepWaterHandoffGuard: {
+        assertCompletion: () => undefined,
+        dispatchDeepWater: async () => {
+          throw new DeepWaterHandoffInvariantError('handoff-run-1')
+        },
+        markDelivered: () => undefined,
+        suppressBuiltin: async () => false,
+        timeoutErrorFor: () => null,
+      },
+    },
+  )
+
+  await assert.rejects(
+    toolset.dispatch('mcp_research_start', { query: 'test' }, 'call-1'),
+    DeepWaterHandoffInvariantError,
+  )
+  assert.equal(usageEvents, 0)
+})
+
+test('explicit per-agent policy narrows exposure; an allow never lifts the install-scope ceiling', async () => {
   const rows: RowSeed[] = [
     { id: 'allow-me', toolName: 'far_tool', scopeType: 'channel', scopeId: 'channel-9' },
     { id: 'deny-me', toolName: 'org_tool', scopeType: 'organization', scopeId: 'org-1' },
   ]
+  // Explicit allow CANNOT broaden exposure past install scope (channel-9 is
+  // not this run's channel), while explicit deny still narrows it.
   const names = await exposedNames(rows, {
     agentKind: 'shared',
     toolPolicy: { 'allow-me': true, 'deny-me': false },
   })
-  assert.deepEqual(names, ['far_tool'])
+  assert.deepEqual(names, [])
+  // In scope, the explicit allow exposes the channel tool.
+  const inScope = await exposedNames(rows, {
+    agentKind: 'shared',
+    channelId: 'channel-9',
+    toolPolicy: { 'allow-me': true, 'deny-me': false },
+  })
+  assert.deepEqual(inScope, ['far_tool'])
 })
 
 test('toolset picks deferred mode above the inline limit', async () => {
@@ -167,7 +690,6 @@ test('toolset picks deferred mode above the inline limit', async () => {
       { organizationId: 'org-1', actorId: 'agent-1' },
       { inlineToolLimit },
     )
-
   const inline = await buildWith(10)
   assert.equal(inline.mode, 'inline')
   const inlineView = inline.createView()

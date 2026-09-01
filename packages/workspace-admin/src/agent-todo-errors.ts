@@ -1,0 +1,46 @@
+export const AGENT_TODO_ERROR_CODES = {
+  CANCELLED: 'AGENT_TODO_CANCELLED',
+  HUMAN_TERMINAL_STATUS: 'AGENT_TODO_HUMAN_TERMINAL_STATUS',
+  NOT_CANCELLABLE: 'AGENT_TODO_NOT_CANCELLABLE',
+  NOT_FOUND: 'AGENT_TODO_NOT_FOUND',
+  RUN_ALREADY_HAS_TODO: 'AGENT_TODO_RUN_ALREADY_HAS_TODO',
+  STEP_NOT_FOUND: 'AGENT_TODO_STEP_NOT_FOUND',
+  TODO_CLAIMED: 'AGENT_TODO_CLAIMED',
+  TODO_UNAVAILABLE: 'AGENT_TODO_UNAVAILABLE',
+  TEMPLATE_CHANGED: 'AGENT_TODO_TEMPLATE_CHANGED',
+  TEMPLATE_NOT_FOUND: 'AGENT_TODO_TEMPLATE_NOT_FOUND',
+  TEMPLATE_UNAVAILABLE: 'AGENT_TODO_TEMPLATE_UNAVAILABLE',
+  TEMPLATE_IN_USE: 'TODO_TEMPLATE_IN_USE',
+} as const
+
+export type AgentTodoErrorCode =
+  (typeof AGENT_TODO_ERROR_CODES)[keyof typeof AGENT_TODO_ERROR_CODES]
+
+export class AgentTodoError extends Error {
+  override readonly name = 'AgentTodoError'
+
+  constructor(
+    public readonly code: AgentTodoErrorCode,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/**
+ * A trigger configuration passed validation when it was saved, but its active
+ * template disappeared before the queued run could adopt it. This is a
+ * classified health failure, not a retryable delivery error.
+ */
+export class AgentTodoScheduledConfigError extends Error {
+  readonly isReauthorizable = false
+  readonly reason = 'todo_template_invalid'
+
+  constructor(
+    templateId: string,
+    readonly triggerId: string,
+  ) {
+    super(`its to-do template ${templateId} is no longer active for this agent`)
+    this.name = 'AgentTodoScheduledConfigError'
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import {
@@ -6,6 +6,7 @@ import {
   useHistoryNav,
   useRecordRecentChannelVisits,
 } from './topbar-navigation'
+import { useTransientMenu } from './TransientMenuContext'
 
 type NativeToolbarAction = 'back' | 'forward' | 'history' | 'help'
 
@@ -31,14 +32,14 @@ export const NativeIPadToolbarBridge = () => {
   const navigate = useNavigate()
   const menuRef = useRef<HTMLDivElement>(null)
   const { goBack, goForward, canBack, canForward } = useHistoryNav()
-  const [recentOpen, setRecentOpen] = useState(false)
+  const { close, isOpen: recentOpen, toggle } = useTransientMenu()
 
   useRecordRecentChannelVisits()
 
   useEffect(() => {
     if (!recentOpen) return undefined
     const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setRecentOpen(false)
+      if (!menuRef.current?.contains(event.target as Node)) close()
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('touchstart', onPointerDown)
@@ -46,7 +47,7 @@ export const NativeIPadToolbarBridge = () => {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('touchstart', onPointerDown)
     }
-  }, [recentOpen])
+  }, [close, recentOpen])
 
   useEffect(() => {
     if (!isReactNativeWebView()) return undefined
@@ -57,16 +58,16 @@ export const NativeIPadToolbarBridge = () => {
       } else if (action === 'forward') {
         goForward()
       } else if (action === 'history') {
-        setRecentOpen((open) => !open)
+        toggle()
       } else if (action === 'help') {
-        setRecentOpen(false)
+        close()
         navigate('/feedback')
       }
     }
     return () => {
       delete target.__nessieToolbarAction
     }
-  }, [goBack, goForward, navigate])
+  }, [close, goBack, goForward, navigate, toggle])
 
   useEffect(() => {
     postToolbarState(canBack, canForward, recentOpen)
@@ -76,7 +77,7 @@ export const NativeIPadToolbarBridge = () => {
     <div className="fixed right-3 top-3 z-[70]" ref={menuRef}>
       <RecentChannelsMenu
         className="admin-topbar-menu"
-        onSelect={() => setRecentOpen(false)}
+        onSelect={close}
         style={{ left: 'auto', minWidth: 240, position: 'static' }}
       />
     </div>

@@ -1,11 +1,12 @@
 import { Prisma } from '@prisma/client'
 import {
   EnvSecretResolver,
+  applyMcpRequestIdentity,
   failedCard,
   mapChatResultToUiCards,
   needsSetupCard,
+  mcpTransportAudience,
   parseChatToolResult,
-  resolveInstanceMcpTransport,
   type SecretResolver,
 } from '@nessie/mcp-manage'
 import {
@@ -23,11 +24,14 @@ import {
 
 import { dispatchTool, type ToolDispatchResult } from './tool-dispatch.js'
 import {
-  readConversationId,
   tagInboundUserMessage,
   withThreadLock,
   writeConversationId,
 } from './external-conversation-store.js'
+import {
+  resolveExternalConversationTarget,
+  type ExternalTarget,
+} from './external-conversation-target.js'
 import {
   claimRunForExecution,
   setAgentStatus,
@@ -41,6 +45,7 @@ import {
   publishRunUpdated,
   publishTaskUpdated,
 } from './execute/realtime.js'
+import { enqueueInteractiveReplyPush } from './execute/reply-push.js'
 import { buildScopes } from './execute/scopes.js'
 import type { ExecutionDependencies, RunContext } from './execute/types.js'
 
@@ -56,6 +61,7 @@ import type { ExecutionDependencies, RunContext } from './execute/types.js'
  */
 
 const CHAT_TOOL_NAME = 'chat'
+const DEEPSIGNAL_SLUG = 'deepsignal'
 
 /** MCP tool caller seam — injected in tests, defaults to the shared dispatcher. */
 export type ExternalChatCaller = (input: {
@@ -92,115 +98,6 @@ type ExternalTurnOutcome = {
   agentStatus: 'idle' | 'error'
 }
 
-const effectiveUserIdOf = (payload: RunExecuteJobPayload): string | null =>
-  payload.actorContext.actionContext.effectiveUserId
-  ?? (payload.actorContext.actor.actorType === 'user'
-    ? payload.actorContext.actor.actorId
-    : null)
-
-/** dmKey shape: `extagent:<slug>:<orgId>:<userId>`. */
-const productSlugFromDmKey = (dmKey: string | null): string | null => {
-  if (!dmKey) return null
-  const parts = dmKey.split(':')
-  return parts[0] === 'extagent' && parts[1] ? parts[1] : null
-}
-
-type ExternalTarget = {
-  slug: string
-  label: string
-  instanceId: string
-  transport: McpTransportConfig
-  conversationId: string | null
-  threadMetadata: unknown
-}
-
-type TargetResolution =
-  | { kind: 'ready'; target: ExternalTarget }
-  | { kind: 'needs_setup'; slug: string; label: string; summary: string }
-
-const resolveTarget = async (
-  deps: ExecutionDependencies,
-  payload: RunExecuteJobPayload,
-  context: RunContext,
-  secretResolver: SecretResolver,
-): Promise<TargetResolution | null> => {
-  const channel = await deps.prisma.channel.findUnique({
-    where: { id: context.channel.id },
-    select: { dmKey: true, label: true },
-  })
-  const slug = productSlugFromDmKey(channel?.dmKey ?? null)
-  if (!slug) {
-    return null
-  }
-  const label = channel?.label?.trim() || slug
-  const userId = effectiveUserIdOf(payload)
-  if (!userId) {
-    return { kind: 'needs_setup', slug, label, summary: 'No signed-in user for this conversation.' }
-  }
-
-  const instance = await deps.prisma.mcpServerInstance.findFirst({
-    where: {
-      organizationId: context.channel.organizationId,
-      scopeType: 'user',
-      scopeId: userId,
-      catalogEntry: { name: slug, visibility: 'public' },
-    },
-    select: { id: true },
-  })
-  if (!instance) {
-    return {
-      kind: 'needs_setup',
-      slug,
-      label,
-      summary: `${label} is not connected for your account yet. Activate it to start chatting.`,
-    }
-  }
-
-  const resolved = await resolveInstanceMcpTransport(
-    deps.prisma,
-    instance.id,
-    {
-      userId,
-      channelId: context.channel.id,
-      organizationId: context.channel.organizationId,
-    },
-    secretResolver,
-  )
-  if (!resolved) {
-    return {
-      kind: 'needs_setup',
-      slug,
-      label,
-      summary: `${label} is not connected for your account yet. Activate it to start chatting.`,
-    }
-  }
-  if (resolved.authMethod === 'oauth2' && resolved.lifecycleState !== 'active') {
-    return {
-      kind: 'needs_setup',
-      slug,
-      label,
-      summary: `Sign in to ${label} to finish connecting your account.`,
-    }
-  }
-
-  const thread = await deps.prisma.thread.findUnique({
-    where: { id: context.run.threadId },
-    select: { metadata: true },
-  })
-
-  return {
-    kind: 'ready',
-    target: {
-      slug,
-      label,
-      instanceId: instance.id,
-      transport: resolved.transport,
-      conversationId: readConversationId(thread?.metadata, slug),
-      threadMetadata: thread?.metadata ?? null,
-    },
-  }
-}
-
 const dispatchTurn = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -232,16 +129,44 @@ const dispatchTurn = async (
         latencyMs: Date.now() - startedAt,
       },
     }).catch(() => {
-      // best-effort billing capture
+      // Best-effort operational usage capture.
     })
 
   let result: ToolDispatchResult
   try {
-    result = await callChat({ transport: target.transport, args })
+    let transport = target.transport
+    if (target.slug === DEEPSIGNAL_SLUG) {
+      if (!deps.deepSignalMcpIdentity) {
+        throw new Error('DeepSignal application identity is not configured.')
+      }
+      const identityHeaders = await deps.deepSignalMcpIdentity.requestHeaders(
+        attribution,
+        {
+          audience: mcpTransportAudience(transport),
+          toolCallId: `${context.run.id}:${CHAT_TOOL_NAME}`,
+        },
+      )
+      transport = applyMcpRequestIdentity(transport, identityHeaders)
+    }
+    result = await callChat({ transport, args })
   } catch (error) {
     await recordUsage(false)
     const message = error instanceof Error ? error.message : String(error)
     if (looksLikeAuthError(message)) {
+      if (target.slug === DEEPSIGNAL_SLUG) {
+        return {
+          content: `${target.label} rejected Nessie's application credential.`,
+          uiCards: [
+            failedCard(
+              target.slug,
+              target.label,
+              'The product application key must be repaired by an administrator.',
+            ),
+          ],
+          runStatus: 'failed',
+          agentStatus: 'error',
+        }
+      }
       return {
         content: `Your ${target.label} sign-in has expired. Reconnect ${target.label} to continue.`,
         uiCards: [needsSetupCard(target.slug, target.label, 'Reconnect to refresh your access.')],
@@ -261,6 +186,20 @@ const dispatchTurn = async (
 
   if (!result.success) {
     if (looksLikeAuthError(result.output)) {
+      if (target.slug === DEEPSIGNAL_SLUG) {
+        return {
+          content: `${target.label} rejected Nessie's application credential.`,
+          uiCards: [
+            failedCard(
+              target.slug,
+              target.label,
+              'The product application key must be repaired by an administrator.',
+            ),
+          ],
+          runStatus: 'failed',
+          agentStatus: 'error',
+        }
+      }
       return {
         content: `Your ${target.label} sign-in has expired. Reconnect ${target.label} to continue.`,
         uiCards: [needsSetupCard(target.slug, target.label, 'Reconnect to refresh your access.')],
@@ -314,8 +253,10 @@ const dispatchTurn = async (
 
 const finalizeTurn = async (
   deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
   context: RunContext,
   outcome: ExternalTurnOutcome,
+  onMessageCreated?: () => void,
 ): Promise<void> => {
   const metadata: Record<string, unknown> = { uiCards: outcome.uiCards }
   if (outcome.external) {
@@ -331,6 +272,14 @@ const finalizeTurn = async (
       threadId: context.run.threadId,
     },
   })
+  // From this point onward an outer error handler must repair terminal state,
+  // not write a second fallback message. The run-scoped push idempotency key
+  // is a second guard against duplicate delivery during that repair.
+  onMessageCreated?.()
+  // Queue as soon as the reply is durable. Realtime and lifecycle effects may
+  // still fail afterwards; a notification must not be lost because the outer
+  // repair deliberately avoids writing a duplicate fallback message.
+  await enqueueInteractiveReplyPush(deps, payload, context, message)
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
@@ -344,7 +293,6 @@ const finalizeTurn = async (
     messageId: message.id,
     role: 'assistant',
   })
-
   await updateRunStatus(deps.prisma, context.run.id, outcome.runStatus)
   await updateTaskStatus(deps.prisma, context.task.id, outcome.runStatus === 'completed' ? 'done' : 'failed')
   await setAgentStatus(deps.prisma, context.agent.id, outcome.agentStatus)
@@ -382,6 +330,11 @@ export const runExternalConversation = async (
 
   const secretResolver = options.secretResolver ?? deps.mcpSecrets?.resolver ?? defaultSecretResolver
   const callChat = options.callChat ?? defaultCallChat
+  let terminalMessageCreated = false
+  const finalize = (outcome: ExternalTurnOutcome): Promise<void> =>
+    finalizeTurn(deps, payload, context, outcome, () => {
+      terminalMessageCreated = true
+    })
 
   try {
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
@@ -394,6 +347,9 @@ export const runExternalConversation = async (
     })
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
+      // External-agent turns are always top-level: their message flow is
+      // proxied verbatim and never threads under the trigger.
+      rootMessageId: null,
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })
@@ -405,11 +361,16 @@ export const runExternalConversation = async (
     // Serialize per thread so a concurrent first turn's conversationId write is
     // observed here rather than each turn minting a fresh DeepSignal conversation.
     await withThreadLock(context.run.threadId, async () => {
-      const resolution = await resolveTarget(deps, payload, context, secretResolver)
+      const resolution = await resolveExternalConversationTarget(
+        deps,
+        payload,
+        context,
+        secretResolver,
+      )
       if (!resolution) {
         // Not actually an external-agent channel — end the run cleanly rather than
         // silently doing nothing (the branch should never be taken, but be safe).
-        await finalizeTurn(deps, context, {
+        await finalize({
           content: 'This conversation is not connected to an external agent.',
           uiCards: [],
           runStatus: 'failed',
@@ -419,7 +380,7 @@ export const runExternalConversation = async (
       }
 
       if (resolution.kind === 'needs_setup') {
-        await finalizeTurn(deps, context, {
+        await finalize({
           content: resolution.summary,
           uiCards: [needsSetupCard(resolution.slug, resolution.label, resolution.summary)],
           runStatus: 'completed',
@@ -436,13 +397,20 @@ export const runExternalConversation = async (
         prompt,
         callChat,
       )
-      await finalizeTurn(deps, context, outcome)
+      await finalize(outcome)
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[worker] external conversation run ${context.run.id} failed`, message)
+    if (terminalMessageCreated) {
+      // `finalize` persisted the reply before a later realtime/status side
+      // effect failed. Do not turn that one reply into a second in-channel
+      // error; repair the durable terminal run state instead.
+      await updateRunStatus(deps.prisma, context.run.id, 'failed').catch(() => undefined)
+      return
+    }
     // Terminal failure without rethrow: no retry loop, no inference fallback.
-    await finalizeTurn(deps, context, {
+    await finalize({
       content: 'I hit an unexpected error handling this request.',
       uiCards: [],
       runStatus: 'failed',

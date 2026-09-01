@@ -16,6 +16,15 @@ export type AttachmentRecord = {
   width?: number
   height?: number
   createdAt: string
+  // Small WebP preview at /api/attachments/:id/thumbnail. Absent for
+  // attachments stored before thumbnails existed (never backfilled) and for
+  // kinds with no preview — render the original or a download chip instead.
+  hasThumbnail?: boolean
+  thumbnailStatus?: 'pending' | 'ready' | 'unavailable'
+  thumbnailMime?: string
+  thumbnailSizeBytes?: string
+  thumbnailWidth?: number
+  thumbnailHeight?: number
 }
 
 // Multipart upload helper. The shared JSON ApiClient cannot send FormData, so
@@ -47,8 +56,53 @@ export const uploadAttachment = async (
   return payload.data
 }
 
+// Multipart PUT of an UnlikeOtherAI-hosted avatar — the workspace ("company")
+// picture or the signed-in person's own profile photo. Like uploadAttachment
+// this bypasses the JSON ApiClient because it cannot send FormData; unlike it,
+// the bytes are relayed straight to UnlikeOtherAI and never stored by Nessie.
+const uploadRelayedAvatar = async (
+  path: string,
+  file: File,
+  token: string | null,
+): Promise<void> => {
+  const form = new FormData()
+  form.append('file', file)
+
+  const headers = new Headers()
+  if (token) {
+    headers.set('authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(`${getBaseUrl()}${path}`, {
+    body: form,
+    headers,
+    method: 'PUT',
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null
+    throw new Error(
+      payload?.error?.message || `${response.status} ${response.statusText}`,
+    )
+  }
+}
+
+export const uploadWorkspaceAvatar = (file: File, token: string | null): Promise<void> =>
+  uploadRelayedAvatar('/api/workspace/avatar', file, token)
+
+/** Replace the signed-in person's UnlikeOtherAI-hosted profile photo. */
+export const uploadMyUoaAvatar = (file: File, token: string | null): Promise<void> =>
+  uploadRelayedAvatar('/api/auth/me/avatar/uoa', file, token)
+
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`
+
+// Paths (not absolute URLs) for the authed-fetch hooks below.
+export const attachmentPath = (id: string): string => `/api/attachments/${id}`
+export const attachmentThumbnailPath = (id: string): string =>
+  `/api/attachments/${id}/thumbnail`
 
 // Fetch a download path with the bearer token and expose it as an object URL so
 // authenticated previews work (a bare <img>/<iframe> src cannot send an auth
@@ -84,7 +138,14 @@ export const useAuthedObjectUrlFromPath = (
       .catch(() => setUrl(null))
     return () => {
       revoked = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+        // Clear the state with the URL it points at. Without this, a dep
+        // change (most often the 30-minute token rotation) leaves every
+        // <img>/<iframe> pointing at a just-revoked blob until the refetch
+        // lands, which renders as a broken image.
+        setUrl(null)
+      }
     }
   }, [path, token, mimeOverride])
   return url

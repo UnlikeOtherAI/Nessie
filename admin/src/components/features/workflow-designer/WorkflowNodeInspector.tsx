@@ -1,10 +1,21 @@
-import { nodeThemes, sectionLabelClass } from '../../../lib/workflow-designer/constants'
+import { Link } from 'react-router-dom'
+
+import {
+  nodeThemes,
+  sectionLabelClass,
+  WORKFLOW_TRIGGER_TYPE_LABELS,
+} from '../../../lib/workflow-designer/constants'
 import type { WorkflowCanvasNode } from '../../../lib/workflow-designer/types'
-import type { ChannelRecord, WorkflowStepRunRecord } from '../../../lib/api-client'
+import type {
+  ChannelRecord,
+  WorkflowStepRunRecord,
+  WorkflowStepSamplesRecord,
+} from '../../../lib/api-client'
+import { WorkflowSamplePicker } from './WorkflowSamplePicker'
 
 /**
  * Node inspector. Known node types edit through structured fields (channel
- * picker, prompt, cron, tool arguments); the raw JSON stays available under
+ * picker, prompt, tool arguments); the raw JSON stays available under
  * an "Advanced" disclosure for binding expressions and unusual keys.
  * Configuration the runtime will reject (agent step without a channel, tool
  * step without its main argument) is flagged inline while designing, not
@@ -25,6 +36,7 @@ type WorkflowNodeInspectorProps = {
   selectedNodeConfigDraft: string
   selectedNodeConfigError: string | null
   selectedNodeStepRun?: WorkflowStepRunRecord
+  selectedNodeStepSamples?: WorkflowStepSamplesRecord | null
   selectedNodeUpstreamSteps: WorkflowCanvasNode[]
   onLabelChange: (value: string) => void
   onSourceChange: (sourceId: string) => void
@@ -172,53 +184,56 @@ const NodeConfigFields = ({
     )
   }
 
-  const triggerType = readString(config, 'type') || node.sourceId
-  if (triggerType === 'scheduled') {
+  if (node.type === 'transform') {
+    // W17: expression + optional source. The sample picker below renders
+    // the upstream tree and live preview — the §5 shape awareness.
+    const missingExpression = !readString(config, 'expression')
     return (
       <div className="grid gap-3">
         <TextField
-          label="Cron expression"
-          onChange={(value) => onConfigPatch({ cron: value })}
-          placeholder="0 9 * * 1-5"
-          value={readString(config, 'cron')}
+          label="Expression (JMESPath)"
+          multiline
+          onChange={(value) => onConfigPatch({ expression: value })}
+          placeholder="steps.fetch.output.result.items[].{name: title}"
+          value={readString(config, 'expression')}
         />
         <TextField
-          label="Timezone"
-          onChange={(value) => onConfigPatch({ timezone: value })}
-          placeholder="Europe/London"
-          value={readString(config, 'timezone')}
+          label="Source (optional — defaults to the full context)"
+          onChange={(value) => onConfigPatch({ source: value })}
+          placeholder="{{steps.<id>.output}}"
+          value={readString(config, 'source')}
         />
+        {missingExpression ? (
+          <div className={warningClass}>
+            “Expression” is required — the save will fail without it.
+          </div>
+        ) : null}
       </div>
     )
   }
-  if (triggerType === 'interval') {
-    return (
-      <label className="grid gap-1.5">
-        <span className={fieldLabelClass}>Every N minutes</span>
-        <input
-          className={inspectorInputClass}
-          min={1}
-          onChange={(event) => {
-            const parsed = Number.parseInt(event.target.value, 10)
-            onConfigPatch({
-              interval_minutes: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
-            })
-          }}
-          type="number"
-          value={
-            typeof config.interval_minutes === 'number' ? config.interval_minutes : ''
-          }
-        />
-      </label>
-    )
-  }
+
+  // W13: the canvas trigger node is an entry marker only. Cron, timezone
+  // and interval config typed here NEVER became a real schedule — the
+  // Triggers page is the one trigger authoring surface, so the inspector
+  // points there instead of collecting config it would silently drop.
+  const triggerType = readString(config, 'type') || node.sourceId
+  const triggerLabel =
+    WORKFLOW_TRIGGER_TYPE_LABELS[
+      triggerType as keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS
+    ] ?? 'Trigger'
   return (
-    <div className="text-xs leading-5 text-[var(--muted)]">
-      {triggerType === 'webhook'
-        ? 'Installing this workflow creates a webhook trigger; the endpoint and API key appear on the installation.'
-        : triggerType === 'event'
-          ? 'Fires on internal system events; configure event names in the advanced JSON.'
-          : 'Fires only when a run is started manually.'}
+    <div className="grid gap-3 text-xs leading-5 text-[var(--muted)]">
+      <p>
+        “{node.label}” marks where a {triggerLabel.toLowerCase()} starts this
+        workflow. Schedules, webhooks and events are created on the
+        installation — nothing typed on the canvas becomes a real trigger.
+      </p>
+      <Link
+        className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:underline"
+        to="/agents/triggers"
+      >
+        Manage triggers
+      </Link>
     </div>
   )
 }
@@ -231,6 +246,7 @@ export const WorkflowNodeInspector = ({
   selectedNodeConfigDraft,
   selectedNodeConfigError,
   selectedNodeStepRun,
+  selectedNodeStepSamples,
   selectedNodeUpstreamSteps,
   onLabelChange,
   onSourceChange,
@@ -288,7 +304,9 @@ export const WorkflowNodeInspector = ({
                   ? 'Agent'
                   : selectedNode.type === 'tool'
                     ? 'Tool'
-                    : 'Trigger type'}
+                    : selectedNode.type === 'transform'
+                      ? 'Transform'
+                      : 'Trigger type'}
               </span>
               <select
                 className={inspectorInputClass}
@@ -317,6 +335,18 @@ export const WorkflowNodeInspector = ({
               node={selectedNode}
               onConfigPatch={onConfigPatch}
             />
+
+            {selectedNode.type === 'transform' ? (
+              <WorkflowSamplePicker
+                expression={readString(config, 'expression')}
+                onInsert={(inserted) => onConfigPatch({ expression: inserted })}
+                samples={selectedNodeStepSamples}
+                upstreamStepIds={selectedNodeUpstreamSteps.map((step) => ({
+                  id: step.id,
+                  label: step.label,
+                }))}
+              />
+            ) : null}
 
             {selectedNodeStepRun ? (
               <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">

@@ -4,10 +4,13 @@ import { createApiClient } from '../lib/api-client'
 import { useAuthSession } from './AuthSessionProvider'
 
 export const ApiClientProvider = ({ children }: PropsWithChildren) => {
-  const { token, refreshAccessToken } = useAuthSession()
+  const { token, refreshAccessToken, sessionMode } = useAuthSession()
   const client = useMemo(
-    () => createApiClient(token, refreshAccessToken),
-    [token, refreshAccessToken],
+    () => createApiClient(
+      token,
+      () => refreshAccessToken({ mode: sessionMode, token }),
+    ),
+    [refreshAccessToken, sessionMode, token],
   )
 
   return <CoreApiClientProvider client={client}>{children}</CoreApiClientProvider>

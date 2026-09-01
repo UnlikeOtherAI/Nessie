@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../../../lib/api-client'
+import type { PillTone } from '../../primitives/Pill'
 
 type ProductMcpInstallation = NonNullable<IntegratedProductResponse['mcpInstallation']>
 
@@ -25,42 +26,26 @@ export const mcpConnectorLabel = (product: IntegratedProductResponse): string =>
   return `MCP ${lifecycleLabels[product.mcpInstallation.lifecycleState] ?? 'Unknown'}`
 }
 
-export const mcpConnectorClass = (product: IntegratedProductResponse): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px]',
-    !product.mcpCatalogEntryId
-      ? 'bg-[var(--overlay)] text-[var(--tx2)]'
-      : product.mcpInstallation?.lifecycleState === 'active'
-        ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-        : product.mcpInstallation
-          ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-          : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+export const mcpConnectorTone = (product: IntegratedProductResponse): PillTone => {
+  if (!product.mcpCatalogEntryId || !product.mcpInstallation) return 'muted'
+  return product.mcpInstallation.lifecycleState === 'active' ? 'success' : 'warning'
+}
 
-export const mcpCatalogHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId
-    ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}`
-    : '/mcp-app-store'
-
-export const mcpInstallHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId
-    ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}&action=install`
-    : '/mcp-app-store'
+/** Apps is the one destination for finding or connecting a product's app. */
+export const appsHref = (_product: IntegratedProductResponse): string => '/apps'
 
 const mcpActionHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId && !product.mcpInstallation
-    ? mcpInstallHref(product)
-    : mcpCatalogHref(product)
+  appsHref(product)
 
 const mcpActionLabel = (product: IntegratedProductResponse): string =>
   product.mcpCatalogEntryId && !product.mcpInstallation
-    ? 'Install connector'
-    : 'MCP store'
+    ? 'Connect app'
+    : 'Open apps'
 
 const mcpActionClass = (product: IntegratedProductResponse): string =>
   product.mcpCatalogEntryId && !product.mcpInstallation
-    ? 'admin-button admin-button-primary text-xs'
-    : 'admin-button admin-button-secondary text-xs'
+    ? 'admin-button admin-button-primary admin-button-compact'
+    : 'admin-button admin-button-secondary admin-button-compact'
 
 export const AgentConnectorSection = ({
   product,

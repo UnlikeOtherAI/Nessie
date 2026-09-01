@@ -33,10 +33,15 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Sync source to host
-        # No --delete: never risk removing the host-only .env or Postgres volume
-        # metadata. The host .env is also explicitly excluded.
+        # Mirror the tree with --delete so files REMOVED from the repo don't
+        # linger on the host and get compiled into the image. Without it, the
+        # mcp-manage extraction left stale api/src/services/mcp-*.ts on the host,
+        # which broke every Docker build (tsc errors in files no longer in git).
+        # rsync never deletes excluded paths, so the host-only Nessie and
+        # Infisical environment files are safe. Postgres/MinIO data live in
+        # named Docker volumes outside this tree.
         run: |
-          rsync -az \
+          rsync -az --delete \
             --exclude '.git' \
             --exclude '**/node_modules' \
             --exclude '**/dist' \
@@ -45,9 +50,43 @@ jobs:
             --exclude '*.tsbuildinfo' \
             --exclude '/*.png' \
             --exclude '/admin/*.png' \
+            --exclude '.env' \
             --exclude 'infrastructure/compose/.env' \
+            --exclude 'infrastructure/compose/.env.infisical' \
             -e "ssh -i ~/.ssh/id_ed25519" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/nessie/"
+
+      - name: Configure Nessie Ledger application key
+        env:
+          LEDGER_PROXY_TOKEN: ${{ secrets.LEDGER_PROXY_TOKEN }}
+        run: |
+          test -n "$LEDGER_PROXY_TOKEN"
+          printf '%s\n' "$LEDGER_PROXY_TOKEN" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-ledger-app-key.sh'
+
+      - name: Configure Nessie UOA billing credentials
+        env:
+          UOA_BILLING_APP_KEY_NESSIE: ${{ secrets.UOA_BILLING_APP_KEY_NESSIE }}
+          UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE: ${{ secrets.UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE }}
+        run: |
+          test -n "$UOA_BILLING_APP_KEY_NESSIE"
+          test -n "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
+          node infrastructure/compose/validate-uoa-billing-credentials.mjs
+          printf '%s\n%s\n' \
+            "$UOA_BILLING_APP_KEY_NESSIE" \
+            "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-uoa-billing-credentials.sh'
+
+      - name: Configure Nessie DeepSignal application key
+        env:
+          DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}
+        run: |
+          test -n "$DEEPSIGNAL_MCP_APP_KEY"
+          printf '%s\n' "$DEEPSIGNAL_MCP_APP_KEY" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
 
       - name: Rebuild & redeploy
         run: |

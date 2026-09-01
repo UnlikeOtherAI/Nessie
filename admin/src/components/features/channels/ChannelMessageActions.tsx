@@ -1,7 +1,6 @@
 import {
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -9,16 +8,17 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
+  faCheck,
+  faCopy,
   faFaceSmile,
   faPen,
-  faThumbsUp,
+  faReply,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
-
-const THUMBS_UP = '\u{1F44D}'
+import { ReactionPills, type ResolveReactorName } from './ReactionPills'
 
 type ChannelMessageActionsProps = {
   canDelete: boolean
@@ -27,8 +27,10 @@ type ChannelMessageActionsProps = {
   currentUserId: string
   messageId: string
   reactions: MessageReaction[]
+  resolveReactorName: ResolveReactorName
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  onReply?: () => void
   onStartEdit: (messageId: string, content: string) => void
 }
 
@@ -48,30 +50,17 @@ export const ChannelMessageActions = ({
   currentUserId,
   messageId,
   reactions,
+  resolveReactorName,
   onAddReaction,
   onConfirmDelete,
+  onReply,
   onStartEdit,
 }: ChannelMessageActionsProps) => {
   const pickerId = useId()
   const pickerRef = useRef<HTMLDivElement>(null)
+  const copiedTimer = useRef<number | null>(null)
+  const [copied, setCopied] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const reactionSummary = useMemo(() => {
-    const counts = new Map<
-      string,
-      { count: number; emoji: string; reactedByMe: boolean }
-    >()
-    for (const reaction of reactions) {
-      const summary = counts.get(reaction.emoji) ?? {
-        count: 0,
-        emoji: reaction.emoji,
-        reactedByMe: false,
-      }
-      summary.count += 1
-      summary.reactedByMe ||= reaction.userId === currentUserId
-      counts.set(reaction.emoji, summary)
-    }
-    return Array.from(counts.values())
-  }, [currentUserId, reactions])
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -88,6 +77,15 @@ export const ChannelMessageActions = ({
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
   }, [pickerOpen])
 
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) {
+        window.clearTimeout(copiedTimer.current)
+      }
+    },
+    [],
+  )
+
   const addReaction = (emoji: string) => {
     onAddReaction(messageId, emoji)
     setPickerOpen(false)
@@ -100,34 +98,29 @@ export const ChannelMessageActions = ({
     }
   }
 
+  const copyMessage = () => {
+    void navigator.clipboard.writeText(content).then(
+      () => {
+        setCopied(true)
+        if (copiedTimer.current !== null) {
+          window.clearTimeout(copiedTimer.current)
+        }
+        copiedTimer.current = window.setTimeout(() => {
+          setCopied(false)
+        }, 1400)
+      },
+      () => undefined,
+    )
+  }
+
   return (
     <>
-      {reactionSummary.length > 0 ? (
-        <div className="mt-1 flex flex-wrap gap-1" onClick={stopRowToggle}>
-          {reactionSummary.map(({ count, emoji, reactedByMe }) => {
-            const label = reactedByMe
-              ? `Remove ${emoji} reaction`
-              : `Add ${emoji} reaction`
-
-            return (
-              <button
-                key={emoji}
-                aria-label={label}
-                aria-pressed={reactedByMe}
-                className={
-                  reactedByMe ? 'reaction-pill reaction-pill-active' : 'reaction-pill'
-                }
-                onClick={() => addReaction(emoji)}
-                title={label}
-                type="button"
-              >
-                {emoji}
-                {count > 1 ? ` ${count}` : ''}
-              </button>
-            )
-          })}
-        </div>
-      ) : null}
+      <ReactionPills
+        currentUserId={currentUserId}
+        reactions={reactions}
+        resolveReactorName={resolveReactorName}
+        onToggle={addReaction}
+      />
 
       <div
         className="admin-msg-actions"
@@ -137,13 +130,13 @@ export const ChannelMessageActions = ({
         onPointerDown={stopRowToggle}
       >
         <button
-          aria-label="Add thumbs up reaction"
+          aria-label={copied ? 'Message copied' : 'Copy message'}
           className="admin-msg-action-button"
-          onClick={() => addReaction(THUMBS_UP)}
-          title="Add thumbs up reaction"
+          onClick={copyMessage}
+          title={copied ? 'Copied' : 'Copy message'}
           type="button"
         >
-          <FontAwesomeIcon icon={faThumbsUp} />
+          <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
         </button>
         <div className="relative" ref={pickerRef}>
           <button
@@ -164,6 +157,17 @@ export const ChannelMessageActions = ({
             </div>
           ) : null}
         </div>
+        {onReply ? (
+          <button
+            aria-label="Reply in thread"
+            className="admin-msg-action-button"
+            onClick={onReply}
+            title="Reply in thread"
+            type="button"
+          >
+            <FontAwesomeIcon icon={faReply} />
+          </button>
+        ) : null}
         {canEdit ? (
           <button
             aria-label="Edit message"

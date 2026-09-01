@@ -4,11 +4,18 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Pill } from '../../primitives/Pill'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 
 type PersonalAssistantSidebarEntryProps = {
   active?: boolean
+  agent?: AgentRecord | null
   bootstrapping?: boolean
   onClick: () => void
+  onToggleStar: () => void
+  starred?: boolean
+  token: string | null
   unreadCount?: number
 }
 
@@ -21,14 +28,6 @@ type PersonalAssistantConfigBannerProps = {
 const assistantGlyphClassName =
   'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
   'bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--thinking)]'
-
-const badgeClassName =
-  'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
-  'text-[color:var(--tx3)]'
-
-const pillClassName =
-  'rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] ' +
-  'px-2 py-0.5 text-[10px] font-semibold text-[var(--thinking)]'
 
 const assistantPills = (
   agent?: AgentRecord | null,
@@ -67,50 +66,77 @@ const assistantPills = (
 
 export const PersonalAssistantSidebarEntry = ({
   active = false,
+  agent,
   bootstrapping = false,
   onClick,
+  onToggleStar,
+  starred = false,
+  token,
   unreadCount = 0,
-}: PersonalAssistantSidebarEntryProps) => (
-  <button
-    className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
-    onClick={onClick}
-    type="button"
-  >
-    <div className={assistantGlyphClassName}>
-      <svg
-        fill="none"
-        height="10"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-        viewBox="0 0 24 24"
-        width="10"
-      >
-        <path d="M12 3v5" />
-        <path d="M9 8h6" />
-        <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
-      </svg>
-    </div>
-    <span className="min-w-0 flex-1 truncate text-current">
-      Personal Assistant
-    </span>
-    <span className={badgeClassName}>PA</span>
-    {bootstrapping ? (
-      <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
-    ) : unreadCount > 0 ? (
-      <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
-        {unreadCount}
+}: PersonalAssistantSidebarEntryProps) => {
+  return (
+    <button
+      className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
+      onClick={onClick}
+      type="button"
+    >
+      {agent ? (
+        <AgentAvatar agent={agent} size="xs" token={token} />
+      ) : (
+        <div className={assistantGlyphClassName}>
+          <svg
+            fill="none"
+            height="10"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="10"
+          >
+            <path d="M12 3v5" />
+            <path d="M9 8h6" />
+            <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
+          </svg>
+        </div>
+      )}
+      <span className="min-w-0 flex-1 truncate text-current">
+        Personal Assistant
       </span>
-    ) : null}
-  </button>
-)
+      {bootstrapping ? (
+        <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
+      ) : unreadCount > 0 ? (
+        <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
+          {unreadCount}
+        </span>
+      ) : null}
+      {agent ? (
+        <span
+          className={[
+            'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+            starred
+              ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
+              : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+          ].join(' ')}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleStar()
+          }}
+        >
+          {starred ? '★' : '☆'}
+        </span>
+      ) : null}
+    </button>
+  )
+}
 
 export const PersonalAssistantConfigBanner = ({
   agent,
   channel,
   configSummary,
 }: PersonalAssistantConfigBannerProps) => {
+  const { token } = useAuthSession()
+
   if (!isPersonalAssistantChannel(channel)) {
     return null
   }
@@ -120,15 +146,15 @@ export const PersonalAssistantConfigBanner = ({
   return (
     <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-lg">
-          ⚡
-        </div>
+        <AgentAvatar agent={agent} size="md" token={token} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-[var(--tx)]">
               {agent?.name ?? 'Personal Assistant'}
             </span>
-            <span className={badgeClassName}>system managed</span>
+            <Pill radius="chip" size="sm" tone="muted">
+              system managed
+            </Pill>
           </div>
           <p className="mt-1 text-xs leading-5 text-[color:var(--tx2)]">
             This DM stays private to you. Admin-managed settings can shape behavior,
@@ -137,9 +163,16 @@ export const PersonalAssistantConfigBanner = ({
           {pills.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {pills.map((pill) => (
-                <span className={pillClassName} key={pill}>
+                <Pill
+                  className="border border-[var(--accent)] font-semibold"
+                  key={pill}
+                  radius="capsule"
+                  size="sm"
+                  tone="accent"
+                  uppercase={false}
+                >
                   {pill}
-                </span>
+                </Pill>
               ))}
             </div>
           )}

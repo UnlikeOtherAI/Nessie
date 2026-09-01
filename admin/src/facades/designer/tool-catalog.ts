@@ -13,6 +13,11 @@ import { useTools } from '../tools/hooks'
  *   - MCP/connector tools are keyed by their registry entry uuid and are
  *     denied unless the policy sets them to `true`.
  *
+ * The exception is a builtin flagged `requiresExplicitGrant` (e.g.
+ * `deep_water_run_update`): like a connector it is OFF by default and needs an
+ * explicit `true` in the policy — so it uses the connector (allow-mode) policy
+ * shape even though it is a builtin.
+ *
  * This hook merges the builtin descriptor feed (`/api/tools`, any actor) with
  * the connector registry (`/api/mcp/tools`, owner only) into one option list
  * carrying the correct policy key and default per tool.
@@ -26,6 +31,12 @@ export type DesignerToolOption = {
   kind: 'builtin' | 'mcp'
   /** Effective state when the agent's policy does not mention the key. */
   defaultEnabled: boolean
+  /**
+   * When true the policy records an explicit allow (`true`) to enable and omits
+   * the key to disable — the connector/allow-mode shape. Connector tools and
+   * explicit-grant builtins use this; ordinary builtins use deny-mode.
+   */
+  allowMode: boolean
   group: string
 }
 
@@ -73,19 +84,33 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
 
   const options = useMemo<DesignerToolOption[]>(() => {
     const builtin: DesignerToolOption[] = (builtinQuery.data ?? [])
-      .filter((tool) => tool.builtin !== false && tool.enabled !== false)
+      .filter(
+        (tool) =>
+          tool.builtin !== false
+          && tool.enabled !== false
+          && tool.requiresExplicitGrant !== true,
+      )
       .map((tool) => ({
         key: tool.id,
         label: tool.label,
         description: tool.description,
         kind: 'builtin' as const,
-        defaultEnabled: true,
+        // Explicit-grant builtins are off by default and grant via an explicit
+        // allow, exactly like connectors.
+        defaultEnabled: !tool.requiresExplicitGrant,
+        allowMode: tool.requiresExplicitGrant === true,
         group: groupForBuiltin(tool.id),
       }))
 
-    const connectors: DesignerToolOption[] = (registryQuery.data ?? [])
+    const connectors: DesignerToolOption[] = (
+      includeConnectors ? registryQuery.data ?? [] : []
+    )
       .filter(
-        (tool) => !tool.builtin && tool.enabled && tool.status === 'active',
+        (tool) =>
+          !tool.builtin
+          && tool.enabled
+          && tool.status === 'active'
+          && !tool.requiresExplicitGrant,
       )
       .map((tool) => ({
         key: tool.id,
@@ -93,11 +118,12 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
         description: tool.description,
         kind: 'mcp' as const,
         defaultEnabled: false,
+        allowMode: true,
         group: 'Connectors (MCP)',
       }))
 
     return [...builtin, ...connectors]
-  }, [builtinQuery.data, registryQuery.data])
+  }, [builtinQuery.data, includeConnectors, registryQuery.data])
 
   const groups = useMemo<DesignerToolGroup[]>(() => {
     const byName = new Map<string, DesignerToolOption[]>()
@@ -134,8 +160,10 @@ export const isToolEnabled = (
 ): boolean => policy[tool.key] ?? tool.defaultEnabled
 
 /**
- * Build the sparse `toolPolicy` payload the worker expects: builtin tools are
- * recorded only when denied, connector tools only when allowed.
+ * Build the sparse `toolPolicy` payload the worker expects. Allow-mode tools
+ * (connectors + explicit-grant builtins) are recorded only when enabled (as an
+ * explicit `true`); ordinary deny-mode builtins are recorded only when disabled
+ * (as an explicit `false`).
  */
 export const buildToolPolicy = (
   options: DesignerToolOption[],
@@ -144,11 +172,10 @@ export const buildToolPolicy = (
   const policy: Record<string, boolean> = {}
   for (const tool of options) {
     const enabled = toolState[tool.key] ?? tool.defaultEnabled
-    if (tool.kind === 'builtin' && !enabled) {
+    if (tool.allowMode) {
+      if (enabled) policy[tool.key] = true
+    } else if (!enabled) {
       policy[tool.key] = false
-    }
-    if (tool.kind === 'mcp' && enabled) {
-      policy[tool.key] = true
     }
   }
   return policy

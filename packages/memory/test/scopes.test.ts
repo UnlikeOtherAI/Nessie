@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Pool } from 'pg'
-import { resolveAccessibleScopes } from '../src/scopes.js'
+import {
+  constrainScopesToDestination,
+  resolveAccessibleScopes,
+  type AccessibleScopes,
+  type DestinationScopeChain,
+} from '../src/scopes.js'
 
 type QueryResult = { rowCount?: number | null; rows: Record<string, unknown>[] }
 
@@ -186,4 +191,126 @@ test('autonomous is bound by the agent configured scope, with no user-private', 
   assert.ok(pairs.some(([t, i]) => t === 'project' && i === 'proj-2'))
   assert.ok(pairs.some(([t, i]) => t === 'organization' && i === ORG))
   assert.ok(!pairs.some(([t]) => t === 'user'))
+})
+
+// --- Containment: constrainScopesToDestination -------------------------------
+// A run recalls only what its destination room already implies, so cross-scope
+// material never enters the run at all. See
+// docs/plans/2026-08-11-disclosure-boundaries-build.md.
+
+const DESTINATION: DestinationScopeChain = {
+  organizationId: ORG,
+  projectId: 'project-1',
+  teamId: 'team-1',
+  channelId: 'channel-1',
+}
+
+const scopesOf = (
+  pairs: Array<[string, string]>,
+  channelIds: string[] = [],
+): AccessibleScopes => ({
+  audienceTypes: pairs.map(([type]) => type),
+  audienceIds: pairs.map(([, id]) => id),
+  channelIds,
+})
+
+const pairsOf = (result: AccessibleScopes): Array<[string, string]> =>
+  result.audienceTypes.map((type, index) => [type, result.audienceIds[index] ?? ''])
+
+test('containment keeps every scope the destination chain implies', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([
+      ['organization', ORG],
+      ['project', 'project-1'],
+      ['team', 'team-1'],
+      ['channel', 'channel-1'],
+    ]),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [
+    ['organization', ORG],
+    ['project', 'project-1'],
+    ['team', 'team-1'],
+    ['channel', 'channel-1'],
+  ])
+})
+
+test('containment drops another project, team, and channel', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([
+      ['project', 'project-2'],
+      ['team', 'team-2'],
+      ['channel', 'channel-2'],
+      ['organization', ORG],
+    ]),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [['organization', ORG]])
+})
+
+test('containment drops user-private scopes, which no destination implies', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([
+      ['user', USER],
+      ['channel', 'channel-1'],
+    ]),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [['channel', 'channel-1']])
+})
+
+test('containment never admits a foreign organization', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([['organization', 'other-org']]),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [])
+})
+
+test('containment compares the (type, id) pair, not the id alone', () => {
+  // A project whose id equals the destination team's id must not be admitted.
+  const result = constrainScopesToDestination(
+    scopesOf([['project', 'team-1']]),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [])
+})
+
+test('containment narrows conversation search to the destination channel', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([['channel', 'channel-1']], ['channel-1', 'channel-2', 'channel-3']),
+    DESTINATION,
+  )
+
+  assert.deepEqual(result.channelIds, ['channel-1'])
+})
+
+test('containment leaves an empty reach empty', () => {
+  const result = constrainScopesToDestination(scopesOf([]), DESTINATION)
+
+  assert.deepEqual(pairsOf(result), [])
+  assert.deepEqual(result.channelIds, [])
+})
+
+test('containment keeps audienceTypes and audienceIds index-aligned', () => {
+  const result = constrainScopesToDestination(
+    scopesOf([
+      ['project', 'project-2'],
+      ['team', 'team-1'],
+      ['channel', 'channel-2'],
+      ['organization', ORG],
+    ]),
+    DESTINATION,
+  )
+
+  assert.equal(result.audienceTypes.length, result.audienceIds.length)
+  assert.deepEqual(pairsOf(result), [
+    ['team', 'team-1'],
+    ['organization', ORG],
+  ])
 })

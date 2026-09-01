@@ -4,7 +4,7 @@ import type {
   ProjectRecord,
   TeamRecord,
 } from '../../lib/api-client'
-import { DEFAULT_BOOTSTRAP_PROJECT_ID, type SidebarProject } from './types'
+import type { SidebarProject } from './types'
 
 type UseSidebarTreeArgs = {
   channels: ChannelRecord[]
@@ -18,119 +18,102 @@ type UseSidebarTreeArgs = {
  * Builds the derived sidebar project/channel tree and the lookup maps the
  * shell uses to render its navigation.
  */
-export const useSidebarTree = ({
+export const buildSidebarTree = ({
   channels,
   projects,
   starredChannelIds,
   starredProjectIds,
   teams,
 }: UseSidebarTreeArgs) => {
-  const standardChannels = useMemo(
-    () => channels.filter((channel) => channel.type !== 'dm'),
-    [channels],
-  )
+  const standardChannels = channels.filter((channel) => channel.type !== 'dm')
+  const standaloneChannels = standardChannels.filter((channel) => channel.scope === 'standalone')
+  const projectChannels = standardChannels.filter((channel) => channel.scope !== 'standalone')
+  const channelsByProject = new Map<string, ChannelRecord[]>()
+  const sourceProjectsById = new Map<string, ProjectRecord>()
 
-  const sidebarProjects = useMemo<SidebarProject[]>(() => {
-    const channelsByProject = new Map<string, ChannelRecord[]>()
-    const projectById = new Map<string, ProjectRecord>()
+  for (const project of projects) {
+    sourceProjectsById.set(project.id, project)
+  }
 
-    for (const project of projects) {
-      projectById.set(project.id, project)
+  for (const channel of projectChannels) {
+    const projectChannels = channelsByProject.get(channel.projectId) ?? []
+    projectChannels.push(channel)
+    channelsByProject.set(channel.projectId, projectChannels)
+
+    if (!sourceProjectsById.has(channel.projectId)) {
+      sourceProjectsById.set(channel.projectId, {
+        avatarAttachmentId: null,
+        avatarEmoji: null,
+        createdAt: channel.createdAt,
+        id: channel.projectId,
+        memberCount: 0,
+        name: channel.projectName,
+        organizationId: channel.organizationId,
+      })
     }
+  }
 
-    for (const channel of standardChannels) {
-      const projectChannels = channelsByProject.get(channel.projectId) ?? []
-      projectChannels.push(channel)
-      channelsByProject.set(channel.projectId, projectChannels)
+  const sidebarProjects: SidebarProject[] = Array.from(sourceProjectsById.values())
+    .map((project) => ({
+      ...project,
+      channels: (channelsByProject.get(project.id) ?? [])
+        .slice()
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    }))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  const channelById = new Map(channels.map((channel) => [channel.id, channel]))
+  const projectById = new Map(sidebarProjects.map((project) => [project.id, project]))
+  const teamIdByProjectId = new Map<string, string>()
 
-      if (!projectById.has(channel.projectId)) {
-        projectById.set(channel.projectId, {
-          createdAt: channel.createdAt,
-          id: channel.projectId,
-          memberCount: 0,
-          name: channel.projectName,
-          organizationId: channel.organizationId,
-        })
-      }
+  for (const team of teams) {
+    if (!teamIdByProjectId.has(team.projectId)) {
+      teamIdByProjectId.set(team.projectId, team.id)
     }
+  }
 
-    return Array.from(projectById.values())
-      .map((project) => ({
-        ...project,
-        channels: (channelsByProject.get(project.id) ?? [])
-          .slice()
-          .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-      }))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-  }, [projects, standardChannels])
-
-  const channelById = useMemo(
-    () => new Map(channels.map((channel) => [channel.id, channel])),
-    [channels],
-  )
-
-  const projectById = useMemo(
-    () => new Map(sidebarProjects.map((project) => [project.id, project])),
-    [sidebarProjects],
-  )
-
-  const teamIdByProjectId = useMemo(() => {
-    const result = new Map<string, string>()
-
-    for (const team of teams) {
-      if (!result.has(team.projectId)) {
-        result.set(team.projectId, team.id)
-      }
+  for (const channel of projectChannels) {
+    if (!teamIdByProjectId.has(channel.projectId)) {
+      teamIdByProjectId.set(channel.projectId, channel.teamId)
     }
+  }
 
-    for (const channel of standardChannels) {
-      if (!result.has(channel.projectId)) {
-        result.set(channel.projectId, channel.teamId)
-      }
-    }
-
-    return result
-  }, [standardChannels, teams])
-
-  const defaultProjectChannels = useMemo(
-    () =>
-      sidebarProjects.find((project) => project.id === DEFAULT_BOOTSTRAP_PROJECT_ID)?.channels.filter(
-        (channel) => !starredChannelIds.has(channel.id),
-      ) ?? [],
-    [sidebarProjects, starredChannelIds],
+  // Standalone channels live in one hidden, system-owned project per
+  // organization. They are deliberately rendered here rather than under that
+  // implementation container; every other channel remains under its real
+  // project, including the active UOA workspace.
+  const visibleStandaloneChannels = standaloneChannels.filter(
+    (channel) => !starredChannelIds.has(channel.id),
   )
-
-  const defaultProjectTeamId = useMemo(
-    () =>
-      teamIdByProjectId.get(DEFAULT_BOOTSTRAP_PROJECT_ID)
-      ?? standardChannels.find((channel) => channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID)
-        ?.teamId,
-    [standardChannels, teamIdByProjectId],
-  )
-
-  const visibleSidebarProjects = useMemo(
-    () =>
-      sidebarProjects
-        .filter(
-          (project) =>
-            project.id !== DEFAULT_BOOTSTRAP_PROJECT_ID && !starredProjectIds.has(project.id),
-        )
-        .map((project) => ({
-          ...project,
-          channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
-        }))
-        .filter((project) => project.channels.length > 0 || projectById.get(project.id)?.channels.length === 0),
-    [projectById, sidebarProjects, starredChannelIds, starredProjectIds],
-  )
+  const visibleSidebarProjects = sidebarProjects
+    .filter((project) => !starredProjectIds.has(project.id))
+    .map((project) => ({
+      ...project,
+      channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
+    }))
+    .filter(
+      (project) =>
+        project.channels.length > 0
+        || projectById.get(project.id)?.channels.length === 0,
+    )
 
   return {
     channelById,
-    defaultProjectChannels,
-    defaultProjectTeamId,
     projectById,
     sidebarProjects,
     standardChannels,
     teamIdByProjectId,
     visibleSidebarProjects,
+    standaloneChannels: visibleStandaloneChannels,
   }
 }
+
+export const useSidebarTree = (args: UseSidebarTreeArgs) => useMemo(
+  () => buildSidebarTree(args),
+  [
+    args.channels,
+    args.projects,
+    args.starredChannelIds,
+    args.starredProjectIds,
+    args.teams,
+  ],
+)

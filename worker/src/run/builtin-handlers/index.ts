@@ -19,6 +19,7 @@ export {
 export {
   runWebSearch,
   WebSearchError,
+  type WebSearchOptions,
   type WebSearchOutput,
   type WebSearchResult,
 } from './web-search.js'

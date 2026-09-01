@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserRecord } from '../../lib/api-client'
+import { userKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useUsers = (enabled = true) => {
@@ -7,7 +8,7 @@ export const useUsers = (enabled = true) => {
 
   return useQuery<UserRecord[]>({
     enabled,
-    queryKey: ['users'],
+    queryKey: userKeys.all,
     queryFn: () => apiClient.get('/api/users'),
   })
 }
@@ -25,7 +26,7 @@ export const useCreateUser = () => {
       role?: string
     }) => apiClient.post<UserRecord>('/api/users', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
     },
   })
 }
@@ -38,7 +39,7 @@ export const useUpdateUserRole = () => {
     mutationFn: (input: { userId: string; role: string }) =>
       apiClient.patch<UserRecord>(`/api/users/${input.userId}`, { role: input.role }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
     },
   })
 }
@@ -54,7 +55,7 @@ export const useSetUserDeactivated = () => {
         {},
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
     },
   })
 }

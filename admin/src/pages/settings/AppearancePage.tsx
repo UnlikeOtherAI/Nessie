@@ -1,13 +1,14 @@
 import { useState } from 'react'
+import { TabBar } from '../../components/primitives/TabBar'
 import { ColoursPanel } from './appearance/ColoursPanel'
 import { TypePanel } from './appearance/TypePanel'
 import { SettingsPanel } from './settings-shared'
 
 type AppearanceTab = 'colours' | 'type'
 
-const TABS: ReadonlyArray<{ id: AppearanceTab; label: string }> = [
-  { id: 'colours', label: 'Colours' },
-  { id: 'type', label: 'Text size' },
+const TABS: ReadonlyArray<{ label: string; value: AppearanceTab }> = [
+  { label: 'Colours', value: 'colours' },
+  { label: 'Text size', value: 'type' },
 ]
 
 const PANELS: Record<AppearanceTab, () => React.JSX.Element> = {
@@ -21,17 +22,13 @@ export const AppearancePage = () => {
 
   return (
     <SettingsPanel eyebrow="Account" title="Appearance">
-      <div className="-mt-1 mb-4 flex items-center border-b border-[color:var(--sep)]">
-        {TABS.map((tab) => (
-          <button
-            className={`admin-tab ${activeTab === tab.id ? 'active' : ''}`}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="-mt-1 mb-4 flex items-center">
+        <TabBar
+          ariaLabel="Appearance sections"
+          items={TABS}
+          onChange={setActiveTab}
+          value={activeTab}
+        />
       </div>
 
       <ActivePanel />

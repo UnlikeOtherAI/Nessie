@@ -1,11 +1,35 @@
 import type { FastifyInstance } from 'fastify'
+import {
+  CallLinkProviderSchema,
+  isCallLinkProviderConfigured,
+  type CallLinkProvider,
+} from '@nessie/workspace-admin'
+import { z } from 'zod'
 
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
+const UpdateTeamSettingsBodySchema = z.object({
+  callProvider: CallLinkProviderSchema,
+}).strict()
+
+const configuredCallProviders = (): Record<CallLinkProvider, boolean> => ({
+  google_meet: isCallLinkProviderConfigured('google_meet'),
+  jitsi: isCallLinkProviderConfigured('jitsi'),
+  microsoft_teams: isCallLinkProviderConfigured('microsoft_teams'),
+})
+
 export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+  const {
+    config,
+    prisma,
+    requireActorContext,
+    requireOwner,
+    resolveMembershipRole,
+    MEMBERSHIP_ROLES,
+  } = deps
 
   app.get('/api/teams', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -26,7 +50,11 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       orderBy: { createdAt: 'asc' },
     })
 
+    const callProviderAvailability = configuredCallProviders()
+
     return createApiResponse(teams.map((t) => ({
+      callProvider: t.callProvider as CallLinkProvider,
+      callProviderAvailability,
       id: t.id,
       name: t.name,
       projectId: t.projectId,
@@ -46,8 +74,14 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
-    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+    const project = await prisma.project.findFirst({
+      where: {
+        channelRoot: false,
+        id: body.projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+    })
+    if (!project) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
       return reply
     }
@@ -71,6 +105,8 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({
+      callProvider: team.callProvider as CallLinkProvider,
+      callProviderAvailability: configuredCallProviders(),
       id: team.id,
       name: team.name,
       projectId: team.projectId,
@@ -82,6 +118,7 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { teamId } = request.params as { teamId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
@@ -100,8 +137,26 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       where: { id: teamId },
       include: { project: true },
     })
-    if (!team || team.project.organizationId !== actorContext.tenant.organizationId) {
+    if (
+      !team
+      || team.systemManaged
+      || team.project.channelRoot
+      || team.project.organizationId !== actorContext.tenant.organizationId
+    ) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+      return reply
+    }
+
+    // `userId` is raw request body. Confirm it belongs to this organisation so a
+    // foreign-tenant id cannot be written into the membership table.
+    const targetIsOrgMember = await prisma.organizationMember.count({
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        userId: body.userId,
+      },
+    })
+    if (targetIsOrgMember === 0) {
+      sendApiError(reply, 404, 'USER_NOT_FOUND', 'User is not a member of this organization')
       return reply
     }
 
@@ -114,5 +169,47 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  app.patch('/api/teams/:teamId/settings', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const roles = actorContext.actor.roles ?? []
+    if (!roles.includes('owner') && !roles.includes('admin')) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
+      return reply
+    }
+
+    const body = parseInput(UpdateTeamSettingsBodySchema, request.body, reply)
+    if (!body) return reply
+    if (!isCallLinkProviderConfigured(body.callProvider)) {
+      sendApiError(
+        reply,
+        409,
+        'PROVIDER_NOT_CONFIGURED',
+        `The ${body.callProvider} call provider is not configured`,
+      )
+      return reply
+    }
+
+    const { teamId } = request.params as { teamId: string }
+    const team = await prisma.team.findFirst({
+      where: {
+        id: teamId,
+        project: { organizationId: actorContext.tenant.organizationId },
+      },
+      select: { id: true },
+    })
+    if (!team) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+      return reply
+    }
+
+    const updated = await prisma.team.update({
+      where: { id: team.id },
+      data: { callProvider: body.callProvider },
+      select: { id: true, callProvider: true },
+    })
+    return createApiResponse(updated)
   })
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { computeReplyBasis, createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import {
   clampKbSearchLimit,
   runKbListTool,
@@ -65,9 +66,11 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 
 type SpaceFixtureOverrides = Partial<{
   id: string
+  userId: string | null
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   teamId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  ownerAgentId: string | null
 }>
 
 const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
@@ -82,10 +85,11 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   teamId: overrides.teamId ?? null,
   channelId: null,
   threadId: null,
-  userId: null,
+  userId: overrides.userId ?? null,
   visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
+  ownerAgentId: overrides.ownerAgentId ?? null,
   createdBy: 'user-1',
   deletedAt: null,
   createdAt: now,
@@ -95,13 +99,35 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
 type FakePrismaOptions = {
   page?: ReturnType<typeof buildPageRow> | null
   space?: ReturnType<typeof buildSpaceRow> | null
+  agents?: Array<{ id: string; organizationId: string; parentAgentId: string | null }>
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
+  parentAgentId?: string | null
   onQueryRaw?: (query: { sql: string }) => void
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
+  const agents = options.agents ?? [
+    { id: 'agent-1', organizationId: 'org-1', parentAgentId: null },
+  ]
   const prisma = {
+    agent: {
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        const agent = agents.find(
+          (candidate) => candidate.id === args.where.id && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
+        return {
+          parentAgentId: agent.parentAgentId,
+          bindings: options.agentBindings ?? [],
+          knowledgeSpaceMemberships: options.agentSpaceMemberships ?? [],
+        }
+      },
+      findMany: async () => [],
+    },
+    projectMember: { findMany: async () => [] },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -109,12 +135,6 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
       findMany: async () => (options.space ? [options.space] : []),
-    },
-    agentBinding: {
-      findMany: async () => options.agentBindings ?? [],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => options.agentSpaceMemberships ?? [],
     },
     $queryRaw: async (query: { sql: string }) => {
       options.onQueryRaw?.(query)
@@ -229,6 +249,41 @@ test('kb_page_read returns the page body when the agent is allowed to read it', 
   assert.match(result.outputPreview, /Restart the service, then check logs\./)
 })
 
+test('kb_page_read lets a subtask child read its parent agent\'s space only', async () => {
+  const page = buildPageRow({ body: '<p>Parent-owned working notes.</p>' })
+  const space = buildSpaceRow({ visibility: 'private', ownerAgentId: 'agent-parent' })
+  const agents = [
+    { id: 'agent-child', organizationId: 'org-1', parentAgentId: 'agent-parent' },
+    { id: 'agent-unrelated', organizationId: 'org-1', parentAgentId: null },
+    // The same child id in another organization proves the fake honours the
+    // organization predicate as well as the id predicate.
+    { id: 'agent-child', organizationId: 'org-other', parentAgentId: null },
+  ]
+  const prisma = buildFakePrisma({ agents, page, space })
+  const childContext = makeContext(prisma, {
+    agentId: 'agent-child',
+    actorContext: {
+      actor: { actorId: 'agent-child', actorType: 'agent', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+  const unrelatedContext = makeContext(prisma, {
+    agentId: 'agent-unrelated',
+    actorContext: {
+      actor: { actorId: 'agent-unrelated', actorType: 'agent', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+
+  const childResult = await runKbPageReadTool(childContext, { pageId: 'page-1' })
+  const unrelatedResult = await runKbPageReadTool(unrelatedContext, { pageId: 'page-1' })
+
+  assert.match(childResult.outputPreview, /Parent-owned working notes\./)
+  assert.equal(unrelatedResult.outputPreview, 'You do not have access to this knowledge page.')
+})
+
 test('kb_search passes taskId through to the hybrid search as a chunk filter', async () => {
   const queries: Array<{ sql: string }> = []
   const prisma = buildFakePrisma({ onQueryRaw: (query) => queries.push(query) })
@@ -287,4 +342,29 @@ test('kb_list denies access to a space the agent cannot read', async () => {
 
   assert.equal(result.toolName, 'kb_list')
   assert.equal(result.outputPreview, 'You do not have access to this knowledge space.')
+})
+
+test('a bare kb_list catalogue leaves a following shared-channel reply unrestricted', async () => {
+  const consumedSources = createConsumedSourceSink()
+  const space = buildSpaceRow({ userId: 'user-1', visibility: 'private' })
+  const prisma = buildFakePrisma({ space })
+  const context = makeContext(prisma, {
+    actorContext: {
+      actor: { actorId: 'user-1', actorType: 'user', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+    consumedSources,
+  })
+
+  const result = await runKbListTool(context, {})
+
+  assert.match(result.outputPreview, /Engineering/)
+  assert.deepEqual(consumedSources.list(), [])
+  assert.deepEqual(computeReplyBasis(consumedSources.list(), {
+    channelId: 'channel-1',
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    teamId: 'team-1',
+  }, ['agent-1']), [])
 })

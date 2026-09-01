@@ -4,6 +4,7 @@ import { AppProvider } from './providers/AppProvider'
 import { installBuildFreshnessCheck } from './lib/build-freshness'
 import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
+import { serviceWorkerUrl } from './lib/web-push'
 import './styles.css'
 
 // Webview-shell behaviours (no-ops in regular browsers): Cmd/Ctrl+R refresh and
@@ -11,6 +12,13 @@ import './styles.css'
 installReloadShortcut()
 disableWebviewZoom()
 installBuildFreshnessCheck()
+// Register the service worker (web push + notification clicks). Guarded for
+// browsers / webviews without service-worker support; failures are non-fatal.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(serviceWorkerUrl()).catch(() => undefined)
+  })
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

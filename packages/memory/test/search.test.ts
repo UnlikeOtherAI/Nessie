@@ -117,6 +117,7 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
 
 test('searchAndLogThoughtsInScopes queries the multi-scope function and logs scope-less recalls', async () => {
   const queries: { params: unknown[] | undefined; sql: string }[] = []
+  let embeddingUsage: unknown = null
 
   const pool = createPoolStub((sql, params) => {
     queries.push({ params, sql })
@@ -169,6 +170,17 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
       audienceIds: ['66666666-6666-6666-6666-666666666666', '88888888-8888-8888-8888-888888888888'],
       audienceTypes: ['channel', 'team'],
       channelId: '66666666-6666-6666-6666-666666666666',
+      projectId: '33333333-3333-4333-8333-333333333334',
+      teamId: '33333333-3333-4333-8333-333333333335',
+      threadId: '33333333-3333-4333-8333-333333333336',
+      taskId: '33333333-3333-4333-8333-333333333337',
+      runId: '33333333-3333-4333-8333-333333333338',
+      agentId: '99999999-9999-9999-9999-999999999999',
+      agentKind: 'personal_assistant',
+      actorId: '99999999-9999-9999-9999-999999999999',
+      actorType: 'agent',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
       organizationId: '33333333-3333-3333-3333-333333333333',
       query: 'When does the beta ship?',
       runningAgentId: '99999999-9999-9999-9999-999999999999',
@@ -176,7 +188,10 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
     },
     {
       modelClient: {
-        embed: async () => [0.25, 0.5, 0.75],
+        embed: async (_text, options) => {
+          embeddingUsage = options?.usage
+          return [0.25, 0.5, 0.75]
+        },
       },
       pool,
     },
@@ -184,6 +199,23 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
 
   assert.equal(results.length, 1)
   assert.equal(results[0]?.recallId, '22222222-2222-2222-2222-222222222222')
+  assert.deepEqual(embeddingUsage, {
+    organizationId: '33333333-3333-3333-3333-333333333333',
+    userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    projectId: '33333333-3333-4333-8333-333333333334',
+    teamId: '33333333-3333-4333-8333-333333333335',
+    channelId: '66666666-6666-6666-6666-666666666666',
+    sessionId: null,
+    threadId: '33333333-3333-4333-8333-333333333336',
+    taskId: '33333333-3333-4333-8333-333333333337',
+    runId: '33333333-3333-4333-8333-333333333338',
+    agentId: '99999999-9999-9999-9999-999999999999',
+    agentKind: 'personal_assistant',
+    actorId: '99999999-9999-9999-9999-999999999999',
+    actorType: 'agent',
+    requestId: 'request-1',
+    correlationId: 'correlation-1',
+  })
 
   // The multi-scope function receives the zipped audience arrays + running agent.
   assert.ok(

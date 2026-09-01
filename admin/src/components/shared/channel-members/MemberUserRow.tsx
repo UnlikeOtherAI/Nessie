@@ -1,21 +1,31 @@
 import type { UserRecord } from '../../../lib/api-client'
 import { AvatarBadges } from '../../primitives/AvatarBadges'
+import { Pill } from '../../primitives/Pill'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { CloseIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
 
+export type MemberUser = Pick<
+  UserRecord,
+  'id' | 'displayName' | 'email' | 'avatarAttachmentId' | 'avatarUrl'
+>
+
 type CurrentUserRowProps = {
-  user: UserRecord
+  canRemove?: boolean
+  removeLabel: string
+  user: MemberUser
   currentUserId: string
   removePending: boolean
   onRemove: (userId: string) => void
 }
 
-/** A user who is already a member of the channel. */
+/** A user who is already a member of the active channel or project. */
 export const CurrentUserRow = ({
+  canRemove = true,
   user,
   currentUserId,
+  removeLabel,
   removePending,
   onRemove,
 }: CurrentUserRowProps) => {
@@ -27,9 +37,9 @@ export const CurrentUserRow = ({
         avatarAttachmentId={user.avatarAttachmentId ?? undefined}
         avatarUrl={user.avatarUrl ?? undefined}
         displayName={user.displayName}
-        gravatarUrl={user.gravatarUrl ?? undefined}
         size={32}
         token={token}
+        userId={user.id}
       />
     </AvatarBadges>
     <div className="min-w-0 flex-1">
@@ -43,20 +53,13 @@ export const CurrentUserRow = ({
         {user.email}
       </div>
     </div>
-    <span
-      className={[
-        'rounded bg-[color:var(--overlay-weak)] px-1.5 py-0.5 text-[10px] uppercase',
-        'tracking-[0.12em] text-[color:var(--tx3)]',
-      ].join(' ')}
-    >
-      user
-    </span>
-    {user.id !== currentUserId && (
+    <Pill radius="chip" size="sm">user</Pill>
+    {canRemove && user.id !== currentUserId && (
       <button
         className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}
         disabled={removePending}
         onClick={() => onRemove(user.id)}
-        title="Remove from channel"
+        title={removeLabel}
         type="button"
       >
         <CloseIcon className="h-3.5 w-3.5" />
@@ -67,12 +70,12 @@ export const CurrentUserRow = ({
 }
 
 type AvailableUserRowProps = {
-  user: UserRecord
+  user: MemberUser
   addPending: boolean
   onAdd: (userId: string) => void
 }
 
-/** A user who can be added to the channel. */
+/** A user who can be added to the active channel or project. */
 export const AvailableUserRow = ({
   user,
   addPending,
@@ -87,9 +90,9 @@ export const AvailableUserRow = ({
         avatarUrl={user.avatarUrl ?? undefined}
         className="opacity-60"
         displayName={user.displayName}
-        gravatarUrl={user.gravatarUrl ?? undefined}
         size={32}
         token={token}
+        userId={user.id}
       />
     </AvatarBadges>
     <div className="min-w-0 flex-1">

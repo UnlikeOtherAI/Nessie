@@ -13,6 +13,7 @@ test('toPrismaToolRegistrySource translates kebab-case to snake_case', () => {
   assert.equal(toPrismaToolRegistrySource('custom'), 'custom')
   assert.equal(toPrismaToolRegistrySource('mcp-remote'), 'mcp_remote')
   assert.equal(toPrismaToolRegistrySource('interactive-session'), 'interactive_session')
+  assert.equal(toPrismaToolRegistrySource('executor'), 'executor')
 })
 
 test('fromPrismaToolRegistrySource translates snake_case back to kebab-case', () => {
@@ -20,6 +21,7 @@ test('fromPrismaToolRegistrySource translates snake_case back to kebab-case', ()
   assert.equal(fromPrismaToolRegistrySource('custom'), 'custom')
   assert.equal(fromPrismaToolRegistrySource('mcp_remote'), 'mcp-remote')
   assert.equal(fromPrismaToolRegistrySource('interactive_session'), 'interactive-session')
+  assert.equal(fromPrismaToolRegistrySource('executor'), 'executor')
 })
 
 test('fromPrismaToolRegistrySource throws on unknown value', () => {

@@ -12,15 +12,21 @@ import {
   type SpaceViewer,
   type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
-import { KNOWLEDGE_EMBED_TOPIC } from '@nessie/schemas'
+import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
+  KnowledgeSpaceResponse,
   PolicyAction,
   PolicyDecision,
   PolicyResourceType,
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { createKnowledgePublicationAttention } from '../services/push-attention.js'
+import {
+  enterKnowledgeInferenceActorContext,
+  requireApiKnowledgeInferenceOrigin,
+} from '../services/knowledge-inference-origin.js'
 import { checkPolicy } from '../services/policy.js'
 import type { RouteDeps } from './types.js'
 
@@ -47,13 +53,31 @@ export const visibilityReason = (
 const pageVersionRef = (page: KnowledgePageRecord): string | null =>
   page.publishedVersion?.id ?? page.latestVersion?.id ?? page.publishedVersionId
 
+export const canManageKnowledgeSpaceAccess = (
+  space: Pick<KnowledgeSpaceRecord, 'createdBy'>,
+  actorContext: AuthorizedActionContext,
+): boolean =>
+  actorContext.actor.actorType === 'service'
+  || actorContext.actor.roles?.includes('owner') === true
+  || actorContext.actor.actorId === space.createdBy
+
 export const attachSpaceEnvelope = (
   space: KnowledgeSpaceRecord,
   decision: PolicyDecision,
   viewer: SpaceViewer,
-) => ({
+  actorContext: AuthorizedActionContext,
+): KnowledgeSpaceResponse => KnowledgeSpaceResponseSchema.parse({
   ...space,
+  // ownerAgentId is landing in the domain record + native mapper on the
+  // sibling implementation branch. Keep the API contract exact in this
+  // independently buildable branch; the value becomes live automatically
+  // when that mapper supplies it.
+  ownerAgentId:
+    'ownerAgentId' in space && typeof space.ownerAgentId === 'string'
+      ? space.ownerAgentId
+      : null,
   canWrite: canWriteSpace(space, viewer),
+  canManageAccess: canManageKnowledgeSpaceAccess(space, actorContext),
   policyChainTrace: policyTrace(decision),
   sourceRef: buildSpaceSourceRef(space.id),
   visibilityReason: visibilityReason(space, decision),
@@ -119,11 +143,19 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     // Enqueued inside the save transaction: the job becomes visible only when
     // the version + chunk rows commit, and a failed enqueue rolls the save back.
     onVersionChunksReplaced: async (tx, event) => {
+      const origin = await requireApiKnowledgeInferenceOrigin(
+        tx,
+        event,
+        'knowledge-indexer',
+      )
       await enqueueQueueJob(tx, {
         idempotencyKey: `kb-embed:${event.pageId}:${event.versionId}`,
-        payload: event,
+        payload: { ...event, origin },
         topic: KNOWLEDGE_EMBED_TOPIC,
       })
+    },
+    onPagePublished: async (tx, event) => {
+      await createKnowledgePublicationAttention(tx, event)
     },
   })
 
@@ -131,6 +163,10 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   // 'service') is a bypass viewer — there is no third first-class principal
   // kind in the knowledge base's access model.
   const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
+    // The provider's transactional version hook runs later in the same request
+    // chain. Preserve the authenticated team/user here so a project-scoped,
+    // teamless space still produces an attributable durable embedding job.
+    enterKnowledgeInferenceActorContext(actorContext)
     const { actorType, actorId } = actorContext.actor
     const principal: SpaceViewerPrincipal =
       actorType === 'user' || actorType === 'agent'

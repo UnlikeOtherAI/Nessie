@@ -62,6 +62,8 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 type SpaceFixtureOverrides = Partial<{
   id: string
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
+  ownerAgentId: string | null
 }>
 
 const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
@@ -77,9 +79,10 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   channelId: null,
   threadId: null,
   userId: null,
-  visibility: 'organization',
+  visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
+  ownerAgentId: overrides.ownerAgentId ?? null,
   createdBy: 'user-1',
   deletedAt: null,
   createdAt: now,
@@ -88,16 +91,94 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
 
 type ApprovalRow = { id: string; context: Record<string, unknown> | null }
 
+type AgentFixture = {
+  id: string
+  organizationId: string
+  ownerMembershipActive: boolean
+  ownerUserId: string | null
+  parentAgentId: string | null
+  systemManaged: boolean
+}
+
 type FakePrismaOptions = {
   page?: ReturnType<typeof buildPageRow> | null
   space?: ReturnType<typeof buildSpaceRow> | null
+  agents?: AgentFixture[]
   pendingApprovals?: ApprovalRow[]
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
+  const agents = options.agents ?? [
+    {
+      id: 'agent-1',
+      organizationId: 'org-1',
+      ownerMembershipActive: true,
+      ownerUserId: 'user-1',
+      parentAgentId: null,
+      systemManaged: false,
+    },
+  ]
   const approvalCreateCalls: unknown[] = []
   const createPageCalls: Array<Record<string, unknown>> = []
+  const createVersionCalls: Array<Record<string, unknown>> = []
   const prisma = {
+    agent: {
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        const agent = agents.find(
+          (candidate) => candidate.id === args.where.id && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
+        return {
+          parentAgentId: agent.parentAgentId,
+          bindings: [{
+            channelId: 'channel-1',
+            channel: { teamId: 'team-1', projectId: 'project-1' },
+          }],
+          knowledgeSpaceMemberships: [],
+        }
+      },
+      findMany: async (args: {
+        select: { id?: boolean }
+        where: {
+          organizationId?: string
+          systemManaged?: boolean
+          AND?: Array<{
+            OR?: Array<{
+              ownerMembership?: { deactivatedAt?: null }
+              ownerUserId?: string
+              parentAgentId?: null
+            }>
+          }>
+          OR?: Array<{
+            ownerMembership?: { deactivatedAt?: null }
+            ownerUserId?: string
+            parentAgentId?: null
+          }>
+        }
+      }) => {
+        const ownerFilters = [
+          ...(args.where.OR ?? []),
+          ...(args.where.AND?.flatMap((condition) => condition.OR ?? []) ?? []),
+        ].filter(
+          (candidate) => candidate.ownerUserId !== undefined,
+        )
+        return agents
+          .filter(
+            (agent) =>
+              agent.organizationId === args.where.organizationId
+              && (args.where.systemManaged === undefined || agent.systemManaged === args.where.systemManaged)
+              && ownerFilters.some(
+                (filter) =>
+                  agent.ownerUserId === filter.ownerUserId
+                  && (!filter.ownerMembership || agent.ownerMembershipActive)
+                  && (filter.parentAgentId === undefined || agent.parentAgentId === filter.parentAgentId),
+              ),
+          )
+          .map((agent) => ({ ...(args.select.id ? { id: agent.id } : {}) }))
+      },
+    },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -111,30 +192,27 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     },
     knowledgePageVersion: {
       findFirst: async () => options.page?.versions[0] ?? null,
-      create: async () => options.page?.versions[0] ?? {
-        id: 'version-1',
-        pageId: options.page?.id ?? 'page-new',
-        versionNumber: 1,
-        body: '<p>hi</p>',
-        bodyRef: null,
-        attachmentId: null,
-        authorType: 'agent',
-        authorId: 'agent-1',
-        changeComment: null,
-        createdAt: now,
+      create: async (args: { data: Record<string, unknown> }) => {
+        createVersionCalls.push(args.data)
+        return options.page?.versions[0] ?? {
+          id: 'version-1',
+          pageId: options.page?.id ?? 'page-new',
+          versionNumber: 1,
+          body: '<p>hi</p>',
+          bodyRef: null,
+          attachmentId: null,
+          authorType: 'agent',
+          authorId: 'agent-1',
+          changeComment: null,
+          createdAt: now,
+        }
       },
     },
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
     },
-    agentBinding: {
-      // The agent is org-bound in every fixture below, so org-visibility
-      // spaces are always in reach — the tests isolate the write-gate under
-      // test, not read-reach.
-      findMany: async () => [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => [],
+    projectMember: {
+      findMany: async () => [{ projectId: 'project-1' }],
     },
     approvalRequest: {
       findMany: async () => options.pendingApprovals ?? [],
@@ -157,6 +235,7 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'],
     approvalCreateCalls,
     createPageCalls,
+    createVersionCalls,
   }
 }
 
@@ -169,13 +248,20 @@ const makeContext = (
     agentKind: 'shared',
     actorContext: {
       actor: { actorId: 'agent-1', actorType: 'agent', roles: [] },
-      actionContext: {},
-      tenant: { organizationId: 'org-1' },
+      actionContext: {
+        requestId: 'request-1',
+      },
+      tenant: { organizationId: 'org-1', teamId: 'team-1' },
     },
     channel: { id: 'channel-1', organizationId: 'org-1', systemChannelType: null },
     prisma,
     realtimeTransport: {} as BuiltinToolRuntimeContext['realtimeTransport'],
-    run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
+    run: {
+      id: 'run-1',
+      messageId: 'message-1',
+      originatingUserId: 'user-1',
+      threadId: 'thread-1',
+    },
     ...overrides,
   }) as unknown as BuiltinToolRuntimeContext
 
@@ -273,6 +359,48 @@ test('kb_draft_write defaults taskId to null on a new page when not supplied', a
 
   assert.equal(createPageCalls.length, 1)
   assert.equal(createPageCalls[0]?.['taskId'], null)
+})
+
+test('a delegating personal assistant writes with user access but agent authorship', async () => {
+  const page = buildPageRow({ id: 'page-new', title: 'Delegated notes', authorType: 'agent' })
+  const space = buildSpaceRow({ visibility: 'private', ownerAgentId: 'agent-1' })
+  const { prisma, createPageCalls, createVersionCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma, {
+    agentKind: 'personal_assistant',
+    actorContext: {
+      actor: { actorId: 'agent-1', actorType: 'agent', roles: [] },
+      actionContext: {
+        effectiveUserId: 'user-1',
+        requestId: 'request-1',
+      },
+      tenant: { organizationId: 'org-1', teamId: 'team-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+
+  await runKbDraftWriteTool(context, {
+    spaceId: 'space-1',
+    title: 'Delegated notes',
+    body: '<p>Generated by the PA.</p>',
+  })
+
+  assert.equal(createPageCalls.length, 1)
+  assert.equal(createPageCalls[0]?.['createdBy'], 'agent-1')
+  assert.equal(createVersionCalls.length, 1)
+  assert.equal(createVersionCalls[0]?.['authorType'], 'agent')
+  assert.equal(createVersionCalls[0]?.['authorId'], 'agent-1')
+})
+
+test('kb_publish_request rejects a human-authored draft', async () => {
+  const page = buildPageRow({ status: 'draft', authorType: 'user' })
+  const space = buildSpaceRow()
+  const { prisma, approvalCreateCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  await assert.rejects(
+    () => runKbPublishRequestTool(context, { pageId: 'page-1' }),
+    /Only agent-authored drafts/,
+  )
+  assert.equal(approvalCreateCalls.length, 0)
 })
 
 test('kb_publish_request returns the existing pending approval instead of creating a duplicate', async () => {

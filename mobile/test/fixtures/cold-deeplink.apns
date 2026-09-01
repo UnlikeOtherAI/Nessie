@@ -1,0 +1,17 @@
+{
+  "aps": {
+    "alert": {
+      "title": "Hardware Watch",
+      "subtitle": "# tech-issues",
+      "body": "Cold launch destination received."
+    },
+    "sound": "default"
+  },
+  "body": {
+    "channelId": "7786605b-1316-4a7a-8e8b-58b4a05e19b6",
+    "threadId": "31e71af1-29de-4cfe-8459-430d78dff174",
+    "messageId": "337fd516-d496-4337-b7d4-4c38ebf13baf",
+    "rootMessageId": "337fd516-d496-4337-b7d4-4c38ebf13baf",
+    "url": "/channels/7786605b-1316-4a7a-8e8b-58b4a05e19b6/threads/31e71af1-29de-4cfe-8459-430d78dff174/replies/337fd516-d496-4337-b7d4-4c38ebf13baf"
+  }
+}

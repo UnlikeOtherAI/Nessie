@@ -1,11 +1,13 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AgentRecord } from '../contracts.js'
+import type { AgentAvatarBackgroundColor } from '@nessie/schemas'
 import { mapAgentRecord } from './agents.js'
 
 export const updateAgentAvatar = async (
   prisma: PrismaClient,
   agentId: string,
   avatarAttachmentId: string | null,
+  avatarBackgroundColor?: AgentAvatarBackgroundColor,
 ): Promise<AgentRecord | null> => {
   const existing = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -17,7 +19,10 @@ export const updateAgentAvatar = async (
 
   const agent = await prisma.agent.update({
     where: { id: agentId },
-    data: { avatarAttachmentId },
+    data: {
+      avatarAttachmentId,
+      ...(avatarBackgroundColor !== undefined ? { avatarBackgroundColor } : {}),
+    },
     include: {
       bindings: {
         orderBy: { createdAt: 'asc' },

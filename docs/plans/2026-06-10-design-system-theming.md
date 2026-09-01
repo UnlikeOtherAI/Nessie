@@ -137,7 +137,7 @@ ambiguous, leave a `/* TODO theme: <reason> */` and keep the closest token.
   Touches NO feature `.tsx` colors.
 - **B — sweep `components/` (non-features)** — shared UI/components (~26 files).
 - **C — sweep `components/features/`** — agents, workflow-designer/-tools,
-  workflows, channels, knowledge, mcp-app-store, personal-assistant, triggers,
+  workflows, channels, knowledge, personal-assistant, triggers,
   budgets (~64 files).
 - **D — sweep `pages/`** (33) + **`layouts/`** (11).
 - **E — sweep `notifications.css` + any remaining `.css` + stragglers** and a
@@ -153,7 +153,7 @@ partition; keep `tsc --noEmit` + `eslint --max-warnings 0` + `vite build` green.
   `styles.css` only).
 - No Tailwind named-color utilities remain in `admin/src/**.tsx`.
 - Switching `data-theme` between nebula/midnight/daylight re-themes the whole UI
-  with no orphaned colors (verified with kelpie screenshots of each theme on a
+  with no orphaned colors (verified with Playwright screenshots of each theme on a
   few representative pages).
 - Typecheck + lint + build green; default theme is visually identical to today.
 
@@ -163,7 +163,7 @@ Done across 5 parallel worktrees, merged to `main` (held from prod until the
 review pass clears). Verified: admin `tsc --noEmit` + `eslint --max-warnings 0`
 + `vite build` all green; audit greps return **0** raw hex in `.tsx`, **0** raw
 hex in `.css` outside `styles.css`, **0** Tailwind named-color utilities in
-`.tsx`. Kelpie screenshots confirm all three themes render: nebula (default,
+`.tsx`. Playwright screenshots confirm all three themes render: nebula (default,
 unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
 - Tokens + theme blocks: `admin/src/styles.css` (`:root` = nebula, plus
@@ -178,8 +178,12 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
   opens `appearance/CircleLogoCropper.tsx` (square stage, masked edges, circular
   crop, pan/zoom → 512×512 circular PNG); the crop uploads via `/api/uploads`
   and is set as the org's `logoAttachmentId` (`facades/organization/hooks.ts`).
-  The logo replaces the workspace mark in `SidebarRail` and brands the login
-  screen via the public `GET /api/brand/logo`.
+  The logo replaces the workspace mark in `SidebarRail`, and brands the login
+  screen via the public `GET /api/brand/logo` **only for the organisation the
+  instance operator designated** (`Organization.instanceBrand`, set by
+  `nessie set-instance-brand`; see `docs/deployment.md` → "Branding the sign-in
+  screen"). The unauthenticated screen is instance state, so no org admin can
+  claim it by uploading a logo.
 - Review pass: remaining component CSS and `.ts` style-helper color escapes are
   tokenized; `admin/index.html` applies the saved theme before first paint;
   dark/light `color-scheme` is set per theme; daylight and sandstone
@@ -191,8 +195,8 @@ union + `THEMES` list in `ThemeProvider.tsx`, and add the matching UOA palette
 id to `SsoThemeSchema` / `UOA_SIGN_IN_THEMES`. No component edits — that's the
 point.
 
-**Open items for review:** (a) the live in-app switch was not kelpie-verified
-(kelpie's synthetic events don't drive a controlled radio; each theme's
+**Open items for review:** (a) the live in-app switch was not Playwright-verified
+(Playwright's synthetic events don't drive a controlled radio; each theme's
 *rendering* was verified by forcing the initial theme) — the
 controlled-radio→`onChange`→`setTheme` path is standard React; confirm with a
 real click. (b) `--executing`/`--thinking` legacy tokens vs the new `--success`
@@ -243,6 +247,85 @@ tokenized `::selection`.
   because the IdP page can't read our CSS vars.
 
 **Verified**: admin/api `tsc` + `eslint --max-warnings 0` + `vite build`, web +
-mobile `tsc`/build, desktop `cargo check` — all green. Kelpie: 11 cards +
+mobile `tsc`/build, desktop `cargo check` — all green. Playwright: 11 cards +
 swatches render; daylight, sandstone, and high-contrast render correctly; server
 theme hydrates on reload.
+
+## Control sizing lives in `styles.css`, not at the call site (2026-07-26)
+
+`styles.css` declares its component classes **unlayered**, while Tailwind's
+utilities land in the `utilities` cascade layer. Unlayered rules beat every
+layer, so a Tailwind utility can never override a property that a component
+class already sets: `className="admin-input h-8 w-auto py-0 text-sm"` kept
+`.admin-input`'s `width: 100%` and `padding: 10px 12px` and only `h-8` applied
+— a 32px box with 22px of padding and border, which sliced the `<select>`
+label in half. That was the Settings → Members role dropdown.
+
+Rules for compact inline controls:
+
+- Size them with **`admin-input-compact` / `admin-button-compact`**, not with
+  Tailwind padding, width, or font-size utilities. Both modifiers resolve to the
+  same 30px box, so a select and a button align in one row.
+- Both are written as two-class selectors (`.admin-input.admin-input-compact`)
+  so they win regardless of where they sit relative to their base class — within
+  one unlayered stylesheet, single-class modifiers are decided by source order.
+- Only override a property Tailwind can actually reach. Height, margin, and flex
+  utilities work on these controls; padding, width, and font-size do not.
+
+## Which utilities reach a control, and which are inert (2026-07-27)
+
+Measured, not reasoned: each token below was rendered with and without the base
+class against the real compiled stylesheet and the full computed style diffed.
+A token is inert whenever the unlayered rules already claim that property —
+either the component class itself or the `button, input, select, textarea {
+font: inherit }` reset, which claims **font-family, font-size, font-weight and
+line-height** for every control.
+
+| | `.admin-input` | `.admin-button` |
+| --- | --- | --- |
+| **Inert** | `p-*` `px-*` `py-*`, `w-*`, `text-xs\|sm\|…`, `font-mono`, `font-*` weight, `leading-*`, `rounded-*`, `border*`, `resize-y`, `ml-auto` | `p-*` `px-*` `py-*`, `text-xs\|sm\|…`, `font-*` weight, `leading-*`, `rounded-*`, `flex` `inline-flex` `items-*` `justify-*` |
+| **Works** | `h-*`, `max-w-*`, `min-w-*`, `min-h-*`, `flex-1`, `mt-*`, `gap-*`, `opacity-*`, `text-center\|left`, `resize-none` (on `<textarea>`) | `h-*`, `w-*`, `min-w-*`, `mt-*`, `gap-*`, `shrink-0`, and `border*` when no `-primary`/`-secondary` variant is present |
+
+Two traps worth naming:
+
+- **`ml-auto` on an `.admin-input` does nothing** — `width: 100%` leaves no free
+  space for the auto margin. To right-align a sized field, put the width and the
+  margin on a wrapper (`<div class="ml-auto w-48">`) and leave the control bare.
+- **`resize-*` depends on the element.** Tailwind's preflight already sets
+  `resize: vertical` on `<textarea>`, so `resize-y` is redundant but
+  `resize-none` is load-bearing. On `<input>` both are inert.
+
+### Modifiers
+
+`admin-input-compact` / `admin-button-compact` (30px box), plus:
+
+- **`admin-button-danger`** — tints a destructive action with `--danger-text`.
+  Needed because a variant class sets `color`, so
+  `text-[color:var(--danger-text)]` at the call site never applied.
+- **`admin-input-mono`** — `--font-family-mono` for webhook URLs, tokens and
+  JSON payloads. Needed because the `font: inherit` reset claims font-family, so
+  `font-mono` at the call site never applied.
+- `.admin-button-primary` carries no border while `.admin-button-secondary`
+  carries 1px, so the compact rule adds a transparent border to primary. Without
+  it the two differ by 2px and break the shared 30px box. **The same 2px
+  mismatch still exists at the default size (37px vs 39px)** — equalising it
+  would move every primary button in the app, so it is left alone deliberately.
+
+### Why not `@layer components`
+
+Wrapping the component classes in `@layer components` would let utilities win as
+authors expect, and was evaluated by building that stylesheet and re-measuring.
+It was rejected:
+
+- It is not scoped to the four properties in question. The unlayered app CSS is
+  ~44 KB; layering it re-prioritises `color`, `background`, `border` and
+  `border-radius` on every `.admin-*` class at once, so the blast radius is the
+  whole admin, not the call sites carrying padding utilities.
+- Measured effects included inputs collapsing 44px → 26px and a story-points
+  field dropping from full-width to 48px — untested intent that no one has ever
+  seen rendered.
+- It would not even be a complete fix on its own: font-size on inputs is claimed
+  by the `font: inherit` element reset, which is a separate unlayered rule.
+
+The adopted direction is the modifier one: call sites state intent through a
+modifier, and inert utilities are removed rather than left as decoration.

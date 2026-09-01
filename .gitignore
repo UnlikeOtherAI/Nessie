@@ -11,11 +11,26 @@ macos/.build/
 macos/**/xcshareddata/
 .playwright-mcp/
 *.png
+# EAS uses this ignore file when creating its upload archive. The mobile icons
+# are release inputs and must reach Expo Prebuild.
+!mobile/assets/*.png
+# The public site ships these as build inputs (Dockerfile.web copies web/) and
+# the README embeds the same files, so they are release artifacts, not scratch.
+!web/public/**/*.png
 tmp/
 coverage/
 *.tsbuildinfo
 .nessie/
 simulation/state/
 
+# The pinned billing package emits these only during an ad-hoc source typecheck.
+# Its committed/public artifacts live under dist; source siblings are disposable.
+packages/billing-statement-protocol/src/*.js
+
 # Git worktrees (per project convention, never committed)
 .worktrees/
+executor/native/target/
+executor/vm/.build/
+
+# Provisioning profiles are release inputs, never repository content.
+desktop/src-tauri/appstore/

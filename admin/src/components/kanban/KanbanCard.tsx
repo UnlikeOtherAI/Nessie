@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../facades/tasks/hooks'
+import { Pill } from '../primitives/Pill'
 import { statusLabel } from './kanban-config'
 import { PRIORITY_LABEL, PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
 
@@ -17,7 +18,6 @@ type KanbanCardProps = {
   onPulseEnd?: () => void
 }
 
-const chip = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold'
 const MAX_EXCERPT_CHARS = 180
 
 const buildCardExcerpt = (value: string | null | undefined): string | null => {
@@ -38,9 +38,9 @@ const KanbanCardContent = ({
   return (
     <>
       {showProject && projectName ? (
-        <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
+        <Pill className="justify-self-start" size="sm">
           {projectName}
-        </span>
+        </Pill>
       ) : null}
 
       <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
@@ -58,28 +58,26 @@ const KanbanCardContent = ({
           icon={faSignal}
           title={`${PRIORITY_LABEL[task.priority]} priority`}
         />
-        <span className={`${chip} max-w-[11rem] truncate bg-[color:var(--overlay)] text-[color:var(--tx2)]`}>
+        <Pill
+          className="max-w-[11rem] gap-1 truncate font-semibold"
+          size="sm"
+          uppercase={false}
+        >
           {task.assigneeName ?? 'Unassigned'}
-        </span>
+        </Pill>
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">
             {task.dueDate ? (
-              <span
-                className={[
-                  chip,
-                  isOverdue(task.dueDate)
-                    ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
-                    : 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
-                ].join(' ')}
+              <Pill
+                className="gap-1 font-semibold"
+                size="sm"
+                tone={isOverdue(task.dueDate) ? 'danger' : 'muted'}
+                uppercase={false}
               >
                 {formatDueDate(task.dueDate)}
-              </span>
+              </Pill>
             ) : null}
-            {archived ? (
-              <span className={`${chip} bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-                {statusLabel(task.status)}
-              </span>
-            ) : null}
+            {archived ? <Pill size="sm">{statusLabel(task.status)}</Pill> : null}
           </span>
         ) : null}
       </div>

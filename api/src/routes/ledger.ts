@@ -20,9 +20,14 @@ import {
   getConnectorUsageSummary,
   getFileUsageSummary,
   getMonthlyEstimate,
+  getRunOutcomeUsageSummary,
   getTokenUsageSummary,
   listPricingProfiles,
 } from '../services/token-ledger.js'
+import {
+  clampRunTimingLimit,
+  getRecentRunTimings,
+} from '../services/run-timing-summary.js'
 import type { RouteDeps } from './types.js'
 
 export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -40,12 +45,48 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       channelId: query['channelId'],
       runId: query['runId'],
       agentId: query['agentId'],
+      userId: query['userId'],
       actorId: query['actorId'],
       provider: query['provider'],
       model: query['model'],
       from: query['from'],
       to: query['to'],
       groupBy: query['groupBy'],
+    })
+
+    return createApiResponse(summary)
+  })
+
+  // Owner-only run stage-latency diagnostics: recent per-run wall-clock
+  // breakdowns (queue wait / inference / tool) from worker `run.timing` events.
+  // Wall-clock only — no cost data (that stays with Ledger/UOA).
+  app.get('/api/ledger/runs/timing', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const rows = await getRecentRunTimings(
+      prisma,
+      actorContext.tenant.organizationId,
+      clampRunTimingLimit(query['limit']),
+    )
+
+    return createApiResponse({ runs: rows })
+  })
+
+  // Owner-only: local token spend split by run outcome (completed/failed/
+  // cancelled/…), so failed-run spend is visible and attributable. Local ops
+  // telemetry only — never UOA customer credits.
+  app.get('/api/ledger/tokens/by-outcome', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const summary = await getRunOutcomeUsageSummary(prisma, actorContext.tenant.organizationId, {
+      from: query['from'],
+      to: query['to'],
     })
 
     return createApiResponse(summary)
@@ -60,6 +101,7 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const summary = await getConnectorUsageSummary(prisma, actorContext.tenant.organizationId, {
       connectorType: query['connectorType'],
       agentId: query['agentId'],
+      userId: query['userId'],
       channelId: query['channelId'],
       connectorId: query['connectorId'],
       from: query['from'],

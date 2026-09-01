@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { useOptionalAuthSession } from '../../../../providers/AuthSessionProvider'
 import {
   useCreateComment,
   useKnowledgeAnnotations,
@@ -13,13 +13,18 @@ import { useAnnotationAuthors } from './useAnnotationAuthors'
 // list of comments, newest first. Notes (text-anchored) are rendered inline in
 // the reader, not here.
 export const CommentsSection = ({
+  canResolve,
   composerRef,
   pageId,
 }: {
+  // Resolving/reopening changes shared page state and requires write access.
+  // Creating, replying, reacting, and editing one's own comment require only
+  // the read access already established by the containing page.
+  canResolve: boolean
   composerRef?: RefObject<HTMLTextAreaElement | null>
   pageId: string
 }) => {
-  const { me } = useAuthSession()
+  const me = useOptionalAuthSession()?.me ?? null
   const { data: comments = [] } = useKnowledgeAnnotations(pageId, 'comment')
   const createComment = useCreateComment(pageId)
   const actions = useAnnotationActions(pageId)
@@ -27,6 +32,7 @@ export const CommentsSection = ({
 
   return (
     <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
+      {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
       <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
         Comments
       </h2>
@@ -48,6 +54,7 @@ export const CommentsSection = ({
               actions={actions}
               annotation={comment}
               authorLabel={authorLabel}
+              canResolve={canResolve}
               currentUserId={me?.user.id}
               key={comment.id}
             />

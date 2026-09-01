@@ -13,8 +13,32 @@ test('first-party integration manifests cover the sibling products', () => {
   )
 
   const deepWater = getIntegrationPluginManifest('deep-water')
-  assert.equal(deepWater?.mcp.catalogTemplate?.authMethod, 'oauth2')
+  assert.equal(deepWater?.mcp.catalogTemplate?.authMethod, 'bearer')
+  assert.equal(
+    deepWater?.mcp.catalogTemplate?.transport.urlEnv,
+    'LEDGER_DEEPWATER_MCP_URL',
+  )
+  assert.deepEqual(
+    deepWater?.mcp.tools.map((tool) => tool.name),
+    [
+      'research_start',
+      'research_status',
+      'research_report',
+      'research_list',
+      'research_cancel',
+    ],
+  )
+  assert.deepEqual(
+    (deepWater?.mcp.tools.find((tool) => tool.name === 'research_start')
+      ?.inputSchema as { required?: string[] } | undefined)?.required,
+    ['query'],
+  )
   assert.equal(deepWater?.install.some((entry) => entry.requiredForAgentUse), true)
+  const deepWaterSetup = deepWater?.install[0]?.setup ?? ''
+  assert.match(deepWaterSetup, /dedicated Ledger app API key/)
+  assert.match(deepWaterSetup, /signed SSO identity is delegated independently/)
+  assert.match(deepWaterSetup, /webhook signing secrets separate/)
+  assert.doesNotMatch(deepWaterSetup, /shared service (token|credential)/)
 
   const deepTest = getIntegrationPluginManifest('deeptest')
   assert.equal(deepTest?.mcp.tools[0]?.privacyTier, 'local_only')
@@ -45,12 +69,12 @@ test('first-party integration manifests cover the sibling products', () => {
   )
 
   const deepSignal = getIntegrationPluginManifest('deepsignal')
-  assert.equal(deepSignal?.mcp.catalogTemplate?.authMethod, 'oauth2')
+  assert.equal(deepSignal?.mcp.catalogTemplate?.authMethod, 'bearer')
   assert.equal(
     deepSignal?.mcp.catalogTemplate?.transport.url,
     'https://api.deepsignal.live/mcp',
   )
-  assert.equal(deepSignal?.install[0]?.mode, 'remote_mcp_oauth')
+  assert.equal(deepSignal?.install[0]?.mode, 'hosted_preinstall')
   assert.equal(deepSignal?.install.some((entry) => entry.requiredForAgentUse), true)
   assert.deepEqual(
     deepSignal?.mcp.tools.map((tool) => tool.name),
@@ -67,4 +91,30 @@ test('first-party integration manifests cover the sibling products', () => {
     deepSignal?.privacy.prohibitedByDefault.includes('Nessie inference on DeepSignal turns'),
     true,
   )
+})
+
+test('deepsignal and deep-water declare surface-registry surfaces', () => {
+  const deepSignal = getIntegrationPluginManifest('deepsignal')
+  const chat = deepSignal?.surfaces.find((surface) => surface.type === 'chat_assistant')
+  assert.ok(chat, 'deepsignal declares a chat_assistant surface')
+  assert.equal(chat?.type === 'chat_assistant' ? chat.channelKind : null, 'external_agent')
+  assert.equal(chat?.type === 'chat_assistant' ? chat.productSlug : null, 'deepsignal')
+  assert.equal(chat?.requires.linked, true)
+  assert.equal(chat?.requires.capability, 'external_agent')
+
+  assert.equal(
+    deepSignal?.surfaces.some((surface) => surface.type === 'nav_page'),
+    false,
+    'products cannot add custom left-rail pages',
+  )
+
+  const deepWater = getIntegrationPluginManifest('deep-water')
+  const research = deepWater?.surfaces.find((surface) => surface.type === 'documents_section')
+  assert.ok(research, 'deep-water declares a Research documents_section')
+  assert.equal(research?.type === 'documents_section' ? research.view : null, 'deep-water-research')
+  assert.equal(research?.requires.connectorActive, true)
+
+  // Products without declared surfaces stay empty (additive/optional).
+  assert.deepEqual(getIntegrationPluginManifest('deeptest')?.surfaces, [])
+  assert.deepEqual(getIntegrationPluginManifest('buildme')?.surfaces, [])
 })

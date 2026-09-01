@@ -1,0 +1,26 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "development",
+  "description": "Development-only permissions for the local Nessie Desktop window",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://localhost:5455/**"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-badge-count",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "deep-link:default",
+    "opener:allow-open-url",
+    "opener:default",
+    "notification:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
+  ]
+}

@@ -5,6 +5,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 // both kinds. Backed by the same access-checked service the REST API uses.
 export const KB_COMMENTS_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comments_list',
+  summary: 'List comments and notes on an accessible knowledge page.',
   label: 'KB Comments List',
   description:
     'List the comments and notes on a knowledge-base page you can read. Returns ' +
@@ -27,6 +28,7 @@ export const KB_COMMENTS_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_add',
+  summary: 'Add a page-level comment to a knowledge page.',
   label: 'KB Comment Add',
   description:
     'Post a page-level comment on a knowledge-base page (shown in the discussion ' +
@@ -44,6 +46,7 @@ export const KB_COMMENT_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_REPLY_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_reply',
+  summary: 'Reply to a knowledge-page comment or note.',
   label: 'KB Comment Reply',
   description:
     'Reply to an existing comment or note. Pass the id of the top-level item ' +
@@ -61,6 +64,7 @@ export const KB_COMMENT_REPLY_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_RESOLVE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_resolve',
+  summary: 'Resolve or reopen a knowledge-page comment or note.',
   label: 'KB Comment Resolve',
   description:
     'Resolve or reopen a comment or note thread. Defaults to resolving; pass ' +
@@ -82,6 +86,7 @@ export const KB_COMMENT_RESOLVE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_NOTE_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_note_add',
+  summary: 'Add an inline note anchored to a knowledge-page passage.',
   label: 'KB Note Add',
   description:
     'Add an inline note anchored to a passage of a knowledge-base page. Provide ' +

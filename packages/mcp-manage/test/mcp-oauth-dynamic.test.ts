@@ -5,6 +5,8 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  MCP_OAUTH_ERROR_CODES,
+  McpOAuthError,
   completeOAuth,
   createInMemoryStateStore,
   startOAuth,
@@ -63,6 +65,7 @@ type PrismaCapture = {
 const makePrisma = (options: {
   instance?: McpInstanceRow
   existingClient?: { clientId: string; clientSecretRef: string | null; redirectUris: string[] } | null
+  managedCatalog?: boolean
 }): { prisma: PrismaClient; capture: PrismaCapture } => {
   const capture: PrismaCapture = {
     clientUpserts: [],
@@ -78,7 +81,16 @@ const makePrisma = (options: {
       },
     },
     mcpCatalogEntry: {
-      findFirst: async () => dynamicCatalogEntry,
+      findFirst: async () =>
+        options.managedCatalog
+          ? {
+              ...dynamicCatalogEntry,
+              integratedProducts: [{ slug: 'deepsignal' }],
+              name: 'deepsignal',
+              organizationId: null,
+              visibility: 'public',
+            }
+          : dynamicCatalogEntry,
     },
     mcpOAuthClient: {
       findUnique: async () => options.existingClient ?? null,
@@ -97,7 +109,7 @@ const makePrisma = (options: {
   return { prisma, capture }
 }
 
-const discoveryFetch = (): typeof fetch =>
+const discoveryFetch = (registrationStatus = 201): typeof fetch =>
   (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
@@ -129,7 +141,7 @@ const discoveryFetch = (): typeof fetch =>
     }
     if (method === 'POST' && url === `${AS}/register`) {
       return new Response(JSON.stringify({ client_id: 'dyn-client-1' }), {
-        status: 201,
+        status: registrationStatus,
         headers: { 'content-type': 'application/json' },
       })
     }
@@ -201,6 +213,53 @@ test('startOAuth dynamic mode reuses an existing registered client for the same 
   })
   const url = new URL(result.authorizationUrl)
   assert.equal(url.searchParams.get('client_id'), 'existing-client')
+  assert.equal(capture.clientUpserts.length, 0)
+})
+
+test('startOAuth reports when a provider declines dynamic client registration', async () => {
+  const { prisma, capture } = makePrisma({})
+
+  await assert.rejects(
+    startOAuth({
+      prisma,
+      store: createInMemoryStateStore(),
+      instanceId: 'instance-1',
+      actorContext,
+      callbackUrl: 'https://api.example/api/mcp/oauth/callback',
+      discovery: { fetchImpl: discoveryFetch(403) },
+    }),
+    (error: unknown) =>
+      error instanceof McpOAuthError
+      && error.code === MCP_OAUTH_ERROR_CODES.CLIENT_APPROVAL_REQUIRED,
+  )
+
+  assert.equal(capture.clientUpserts.length, 0)
+})
+
+test('startOAuth refuses a managed first-party product before discovery', async () => {
+  const { prisma, capture } = makePrisma({ managedCatalog: true })
+  let discovered = false
+
+  await assert.rejects(
+    startOAuth({
+      prisma,
+      store: createInMemoryStateStore(),
+      instanceId: 'instance-1',
+      actorContext,
+      callbackUrl: 'https://api.example/api/mcp/oauth/callback',
+      discovery: {
+        fetchImpl: (async () => {
+          discovered = true
+          throw new Error('managed OAuth must not reach discovery')
+        }) as typeof fetch,
+      },
+    }),
+    (error: unknown) =>
+      error instanceof McpOAuthError
+      && error.code === MCP_OAUTH_ERROR_CODES.NOT_OAUTH2,
+  )
+
+  assert.equal(discovered, false)
   assert.equal(capture.clientUpserts.length, 0)
 })
 

@@ -1,68 +1,66 @@
 import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
-import type { AgentDesignerActions, AgentFormState } from './useAgentDesigner'
+import type { AgentModelOption } from '../../../../lib/api-client'
+import { Link } from 'react-router-dom'
+import type {
+  AgentDesignerActions,
+  AgentEffortValue,
+  AgentFormState,
+} from './useAgentDesigner'
+import { ModelCombobox } from './ModelCombobox'
+import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { ToolPicker } from './ToolPicker'
+import { Switch } from '../../../primitives/Switch'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
+  canManageExplicitTools: boolean
+  canManageTodos: boolean
+  modelOptions: AgentModelOption[]
+  modelOptionsError?: string
+  modelsLoading: boolean
   parentAgentName?: string
+  // Tools live on the agent detail page's Tools tab for an existing agent; the
+  // designer only shows the picker while creating one (no Tools tab yet).
+  showTools?: boolean
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
   toolsLoading: boolean
+  visibilityReadOnly?: boolean
 }
-
-const PROVIDERS = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Anthropic', value: 'anthropic' },
-  { label: 'MiniMax', value: 'minimax' },
-  { label: 'Kimi (for coding)', value: 'kimi' },
-  { label: 'Ollama', value: 'ollama' },
-  { label: 'Custom', value: 'custom' },
-]
-
-type ModelGroup = { label: string; models: { label: string; value: string }[] }
-
-const OPENAI_MODEL_GROUPS: ModelGroup[] = [
-  {
-    label: 'GPT-5 Series',
-    models: [
-      { value: 'gpt-5', label: 'gpt-5' },
-      { value: 'gpt-5-mini', label: 'gpt-5-mini' },
-      { value: 'gpt-5-nano', label: 'gpt-5-nano' },
-    ],
-  },
-]
-
-const ANTHROPIC_MODEL_GROUPS: ModelGroup[] = [
-  {
-    label: 'Claude 4',
-    models: [
-      { value: 'claude-opus-4-6', label: 'claude-opus-4-6' },
-      { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
-    ],
-  },
-  {
-    label: 'Claude 3.5 / 3.7',
-    models: [
-      { value: 'claude-3-7-sonnet-20250219', label: 'claude-3-7-sonnet' },
-      { value: 'claude-3-5-sonnet-20241022', label: 'claude-3-5-sonnet' },
-      { value: 'claude-3-5-haiku-20241022', label: 'claude-3-5-haiku' },
-    ],
-  },
-]
 
 const fieldLabelClass = [
   'text-xs font-semibold uppercase',
   'tracking-[0.16em] text-[color:var(--tx3)]',
 ].join(' ')
 
+// Reasoning effort maps only to the provider's `reasoning_effort` — how hard
+// the model thinks per turn. Spend ceilings live in the Run limits fieldset.
+const EFFORTS: { hint: string; label: string; value: string }[] = [
+  { value: 'low', label: 'Low', hint: 'quick, shallow reasoning' },
+  { value: 'medium', label: 'Medium', hint: 'balanced — default' },
+  { value: 'high', label: 'High', hint: 'thorough multi-step reasoning' },
+  { value: 'xhigh', label: 'Ultra', hint: 'deepest reasoning the model offers' },
+]
+
 export const AgentDesignerForm = ({
   actions,
+  canManageExplicitTools,
+  canManageTodos,
+  modelOptions,
+  modelOptionsError,
+  modelsLoading,
   parentAgentName,
+  showTools = true,
   state,
   toolGroups,
   toolsLoading,
+  visibilityReadOnly = false,
 }: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
+  const selectedModel = modelOptions.find(
+    (option) => option.model === state.model && option.provider === state.provider,
+  )
+  const hasUnavailableSelection = Boolean(state.model && state.provider && !selectedModel)
 
   return (
     <div className="grid gap-5">
@@ -110,69 +108,127 @@ export const AgentDesignerForm = ({
         />
       </div>
 
-      {/* Provider & Model */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="agent-provider">
-            Provider
-          </label>
-          <select
-            className="admin-input"
-            id="agent-provider"
-            onChange={(e) => actions.setProvider(e.target.value)}
-            value={state.provider}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+      <div className="grid gap-1.5" id="agent-visibility">
+        <div className={fieldLabelClass}>Visibility</div>
+        {visibilityReadOnly ? (
+          <>
+            <p className="text-sm text-[color:var(--tx2)]">
+              {state.visibility === 'private' ? 'Only visible to you' : 'Workspace-visible'}
+            </p>
+            <p className="text-xs text-[color:var(--tx3)]">
+              Visibility is set when an agent is created and cannot be changed.
+            </p>
+          </>
+        ) : (
+          <>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--sep)] p-3 hover:bg-[color:var(--main-hover)]">
+              <input
+                checked={state.visibility === 'private'}
+                className="mt-0.5"
+                onChange={(event) => actions.setVisibility(
+                  event.target.checked ? 'private' : 'workspace',
+                )}
+                type="checkbox"
+              />
+              <span className="grid gap-1">
+                <span className="text-sm font-medium text-[color:var(--tx)]">Only visible to me</span>
+                <span className="text-xs text-[color:var(--tx3)]">
+                  {state.visibility === 'private'
+                    ? 'Private — only you can see it.'
+                    : 'Workspace-visible — people in this workspace can find it.'}
+                </span>
+              </span>
+            </label>
+            <p className="text-xs text-[color:var(--tx3)]">
+              A private agent cannot be added to any project, channel, or conversation, and only you can see it.
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Ledger-authorized model */}
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="agent-model">
+          Model
+        </label>
+        <ModelCombobox
+          disabled={modelsLoading || modelOptions.length === 0}
+          emptyLabel="No models match that search"
+          highlighted={isStreaming('model')}
+          id="agent-model"
+          onSelect={actions.setModelSelection}
+          options={modelOptions}
+          placeholder={modelsLoading ? 'Loading Ledger models…' : 'Search models…'}
+          value={selectedModel ?? null}
+        />
+        {hasUnavailableSelection ? (
+          <p className="text-xs text-[color:var(--tx3)]">
+            Current model ({state.model}) is no longer available — select a replacement.
+          </p>
+        ) : null}
+        {selectedModel ? (
+          <p className="text-xs text-[color:var(--tx3)]">
+            {selectedModel.description
+              ?? `Runs through Ledger’s ${selectedModel.providerDisplayName} service.`}
+          </p>
+        ) : null}
+        {modelOptionsError ? (
+          <p className="text-xs text-[color:var(--danger)]" role="alert">
+            {modelOptionsError}
+          </p>
+        ) : null}
+      </div>
+
+      {/* Reasoning effort */}
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="agent-effort">
+          Reasoning effort
+        </label>
+        <select
+          className="admin-input"
+          id="agent-effort"
+          onChange={(e) => actions.setEffort(e.target.value as AgentEffortValue)}
+          value={state.effort}
+        >
+          {EFFORTS.map((e) => (
+            <option key={e.value} value={e.value}>
+              {`${e.label} — ${e.hint}`}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-[color:var(--tx3)]">
+          How hard the model thinks — does not limit what a run may spend.
+        </p>
+      </div>
+
+      {/* Run limits */}
+      <RunLimitsFieldset
+        labelClassName={fieldLabelClass}
+        onChange={actions.setRunLimit}
+        value={state.runLimits}
+      />
+
+      <div className="flex items-start justify-between gap-4 rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4">
+        <div className="min-w-0">
+          <div className={fieldLabelClass}>To-dos</div>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+            Give this agent reusable checklists it can work through.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+            Step instructions are visible to everyone who can see this agent. Do not put secrets in them.
+          </p>
+          {!canManageTodos ? (
+            <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+              Only organization owners can enable or disable to-dos.
+            </p>
+          ) : null}
         </div>
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="agent-model">
-            Model
-          </label>
-          {state.provider === 'openai' || state.provider === 'anthropic' ? (
-            <select
-              className={[
-                'admin-input',
-                isStreaming('model')
-                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-                  : '',
-              ].join(' ')}
-              id="agent-model"
-              onChange={(e) => actions.setModel(e.target.value)}
-              value={state.model}
-            >
-              {(state.provider === 'openai' ? OPENAI_MODEL_GROUPS : ANTHROPIC_MODEL_GROUPS).map(
-                (group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.models.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ),
-              )}
-            </select>
-          ) : (
-            <input
-              autoComplete="off"
-              className={[
-                'admin-input',
-                isStreaming('model')
-                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-                  : '',
-              ].join(' ')}
-              id="agent-model"
-              onChange={(e) => actions.setModel(e.target.value)}
-              placeholder="e.g. llama3.2"
-              value={state.model}
-            />
-          )}
-        </div>
+        <Switch
+          checked={state.todosEnabled}
+          disabled={!canManageTodos}
+          label="Enable to-dos for this agent"
+          onChange={actions.setTodosEnabled}
+        />
       </div>
 
       {/* System prompt */}
@@ -183,7 +239,7 @@ export const AgentDesignerForm = ({
         <textarea
           autoComplete="off"
           className={[
-            'admin-input resize-none font-mono text-xs leading-relaxed',
+            'admin-input admin-input-compact admin-input-mono resize-none',
             isStreaming('systemPrompt')
               ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
               : '',
@@ -196,20 +252,41 @@ export const AgentDesignerForm = ({
         />
       </div>
 
-      {/* Tools */}
-      <div className="grid gap-1.5">
-        <div className={fieldLabelClass}>Tools</div>
-        <p className="text-xs text-[color:var(--tx3)]">
-          Built-in tools are on by default; connector (MCP) tools must be
-          switched on per agent.
-        </p>
-        <ToolPicker
-          groups={toolGroups}
-          isLoading={toolsLoading}
-          onToggle={actions.toggleTool}
-          toolState={state.tools}
-        />
-      </div>
+      {/* Tools — only while creating. An existing agent's tools are managed on
+          the detail page's Tools tab. */}
+      {showTools ? (
+        <div className="grid gap-1.5">
+          <div className={fieldLabelClass}>Tools</div>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Built-in tools are on by default; connector (MCP) tools must be
+            switched on per agent.
+          </p>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Explicit-grant tools are protected from Agent Designer edits.{' '}
+            {canManageExplicitTools ? (
+              <>
+                Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
+                {' '}or{' '}
+                <Link className="underline" to="/settings/integrations">
+                  Integrations
+                </Link>.
+              </>
+            ) : (
+              'An organization owner manages them in Tools or Integrations.'
+            )}
+          </p>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Executor operations require a separate exact executor-agent-operation grant.{' '}
+            <Link className="underline" to="/agents/executors">Manage executors and access</Link>.
+          </p>
+          <ToolPicker
+            groups={toolGroups}
+            isLoading={toolsLoading}
+            onToggle={actions.toggleTool}
+            toolState={state.tools}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

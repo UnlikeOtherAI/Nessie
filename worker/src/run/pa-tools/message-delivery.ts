@@ -7,12 +7,17 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../../queue.js'
+import { createMessageMentionAlerts } from '../mention-alerts.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireActingUserId } from './access.js'
 import {
   buildRealtimeScopesForChannel,
   resolveMessageDestination,
 } from './message-destination.js'
+import {
+  insertMessageBasis,
+  resolveToolPostBasis,
+} from './tool-message-basis.js'
 import { truncate } from './tool-output.js'
 
 export const runSendMessageTool = async (
@@ -42,25 +47,42 @@ export const runSendMessageTool = async (
     )
   }
 
-  const message = await context.prisma.message.create({
-    data: {
-      content,
-      metadata: {
-        delegatedByAgentId: context.agentId,
-        delegatedFromRunId: context.run.id,
-      } as Prisma.InputJsonValue,
-      role: 'user',
-      threadId: parseThreadId(destination.threadId),
-      userId: parseUserId(userId),
-    },
-    select: {
-      id: true,
-      createdAt: true,
-      threadId: true,
-    },
+  // `send_message` can target a channel other than the one the run is in, so a
+  // run holding restricted sources could otherwise relay them somewhere they
+  // were never implied. The destination's own chain decides: anything the run
+  // consumed that this destination does not imply is stamped on the post.
+  const destinationBasis = await resolveToolPostBasis(context, destination.channelId)
+
+  const message = await context.prisma.$transaction(async (tx) => {
+    const created = await tx.message.create({
+      data: {
+        content,
+        metadata: {
+          delegatedByAgentId: context.agentId,
+          delegatedFromRunId: context.run.id,
+        } as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: parseThreadId(destination.threadId),
+        userId: parseUserId(userId),
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        threadId: true,
+      },
+    })
+    await insertMessageBasis(tx, {
+      basis: destinationBasis,
+      messageId: created.id,
+      organizationId: String(context.channel.organizationId),
+    })
+    return created
   })
 
-  if (context.memoryCaptureConfig) {
+  // Capture writes this content back as durable memory. A restricted post must
+  // not become a memory that later recall serves without the restriction, so a
+  // stamped post is not captured at all.
+  if (context.memoryCaptureConfig && destinationBasis.length === 0) {
     await captureUserMessageMemory(
       {
         channelId: destination.channelId,
@@ -68,9 +90,22 @@ export const runSendMessageTool = async (
         memoryOrigin: 'user_authored_workspace_message',
         messageId: message.id,
         organizationId: context.channel.organizationId,
+        projectId: context.actorContext.tenant.projectId,
+        teamId:
+          context.actorContext.tenant.teamId
+          ?? context.actorContext.actionContext.teamId,
         sourceAudience: destination.channelType === 'dm' ? 'dm' : 'channel',
         threadId: destination.threadId,
         userId,
+        sessionId: context.actorContext.actionContext.sessionId,
+        taskId: context.actorContext.actionContext.taskId,
+        runId: context.run.id,
+        agentId: context.agentId,
+        agentKind: context.agentKind,
+        actorId: context.actorContext.actor.actorId,
+        actorType: context.actorContext.actor.actorType,
+        requestId: context.actorContext.actionContext.requestId,
+        correlationId: context.actorContext.actionContext.correlationId,
       },
       context.memoryCaptureConfig,
     )
@@ -86,7 +121,11 @@ export const runSendMessageTool = async (
       data: {
         agentId: undefined,
         channelId: parseChannelId(destination.channelId),
-        contentPreview: content.slice(0, 200),
+        // Channel-wide push: a restricted post goes out content-free, since the
+        // wire reaches every connected member regardless of entitlement.
+        ...(destinationBasis.length > 0
+          ? { restricted: true }
+          : { contentPreview: content.slice(0, 200) }),
         messageId: message.id,
         role: 'user',
         threadId: parseThreadId(destination.threadId),
@@ -94,6 +133,30 @@ export const runSendMessageTool = async (
       event: 'message.new',
     },
   )
+
+  // Agent-authored @mentions (the PA posting as its owner) create the same
+  // durable alerts as human-authored ones — but never for a restricted post,
+  // which would hand a non-entitled recipient its existence and a way in.
+  if (destinationBasis.length === 0) {
+    await createMessageMentionAlerts(
+      { prisma: context.prisma, realtimeTransport: context.realtimeTransport },
+      {
+        organizationId: context.channel.organizationId,
+        channelId: destination.channelId,
+        threadId: destination.threadId,
+        messageId: message.id,
+        messageCreatedAt: message.createdAt,
+        content,
+        actorUserId: userId,
+        actorAgentId: context.agentId,
+        scopes: buildRealtimeScopesForChannel({
+          channelId: destination.channelId,
+          organizationId: context.channel.organizationId,
+          systemChannelType: destination.systemChannelType,
+        }),
+      },
+    )
+  }
 
   let queuedReplyCount = 0
   if (destination.channelAgents.length > 0) {

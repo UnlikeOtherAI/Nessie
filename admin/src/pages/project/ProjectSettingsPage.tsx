@@ -8,8 +8,9 @@ import {
   useSetBoardStyle,
   useUpdateColumn,
 } from '../../facades/board/hooks'
+import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../components/kanban/kanban-config'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 
 const label = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
@@ -23,7 +24,7 @@ const CategorySelect = ({
   onChange: (category: ColumnCategory) => void
 }) => (
   <select
-    className="admin-input max-w-[160px] py-1.5 text-sm"
+    className="admin-input admin-input-compact max-w-[160px]"
     disabled={disabled}
     onChange={(event) => onChange(event.target.value as ColumnCategory)}
     value={value}
@@ -58,6 +59,7 @@ const ColumnRow = ({
   const update = useUpdateColumn(projectId)
   const remove = useDeleteColumn(projectId)
   const [name, setName] = useState(column.name)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const commitName = () => {
     const trimmed = name.trim()
@@ -72,47 +74,59 @@ const ColumnRow = ({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex flex-col">
+    <>
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col">
+          <button
+            aria-label="Move up"
+            className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)] disabled:opacity-30"
+            disabled={isFirst}
+            onClick={() => swapWith(prevId, prevPosition)}
+            type="button"
+          >
+            ▲
+          </button>
+          <button
+            aria-label="Move down"
+            className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)] disabled:opacity-30"
+            disabled={isLast}
+            onClick={() => swapWith(nextId, nextPosition)}
+            type="button"
+          >
+            ▼
+          </button>
+        </div>
+        <input
+          className="admin-input admin-input-compact min-w-0 flex-1"
+          onBlur={commitName}
+          onChange={(event) => setName(event.target.value)}
+          value={name}
+        />
+        <CategorySelect
+          onChange={(category) => update.mutate({ id: column.id, category })}
+          value={column.category}
+        />
         <button
-          aria-label="Move up"
-          className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)] disabled:opacity-30"
-          disabled={isFirst}
-          onClick={() => swapWith(prevId, prevPosition)}
+          className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+          onClick={() => setDeleteOpen(true)}
           type="button"
         >
-          ▲
-        </button>
-        <button
-          aria-label="Move down"
-          className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)] disabled:opacity-30"
-          disabled={isLast}
-          onClick={() => swapWith(nextId, nextPosition)}
-          type="button"
-        >
-          ▼
+          Delete
         </button>
       </div>
-      <input
-        className="admin-input min-w-0 flex-1 py-1.5 text-sm"
-        onBlur={commitName}
-        onChange={(event) => setName(event.target.value)}
-        value={name}
-      />
-      <CategorySelect
-        onChange={(category) => update.mutate({ id: column.id, category })}
-        value={column.category}
-      />
-      <button
-        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
-        onClick={() => {
-          if (window.confirm(`Delete column "${column.name}"?`)) remove.mutate(column.id)
+
+      <ConfirmDialog
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          setDeleteOpen(false)
+          remove.mutate(column.id)
         }}
-        type="button"
-      >
-        Delete
-      </button>
-    </div>
+        open={deleteOpen}
+        title={`Delete column "${column.name}"?`}
+      />
+    </>
   )
 }
 
@@ -121,8 +135,7 @@ type ProjectSettingsPageProps = {
 }
 
 export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: board } = useProjectBoard(projectId)
   const setStyle = useSetBoardStyle(projectId)
   const createColumn = useCreateColumn(projectId)
@@ -196,14 +209,14 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
 
           <div className="mt-2 flex items-center gap-2 border-t border-[color:var(--sep)] pt-3">
             <input
-              className="admin-input min-w-0 flex-1 py-1.5 text-sm"
+              className="admin-input admin-input-compact min-w-0 flex-1"
               onChange={(event) => setNewName(event.target.value)}
               placeholder="New column name…"
               value={newName}
             />
             <CategorySelect onChange={setNewCategory} value={newCategory} />
             <button
-              className="admin-button admin-button-primary py-1.5"
+              className="admin-button admin-button-primary admin-button-compact"
               disabled={!newName.trim() || createColumn.isPending}
               onClick={handleAdd}
               type="button"

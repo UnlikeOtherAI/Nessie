@@ -79,3 +79,15 @@ export const AgentChildSchema = z.object({
   createdAt: TimestampSchema,
 })
 export type AgentChild = z.infer<typeof AgentChildSchema>
+
+export const AgentDocumentsResponseSchema = z.object({
+  space: z.discriminatedUnion('canRead', [
+    z.object({ canRead: z.literal(false) }),
+    z.object({
+      canRead: z.literal(true),
+      id: z.string().uuid(),
+      name: NonEmptyStringSchema,
+    }),
+  ]).nullable(),
+})
+export type AgentDocumentsResponse = z.infer<typeof AgentDocumentsResponseSchema>

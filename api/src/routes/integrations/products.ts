@@ -1,15 +1,34 @@
 import type { FastifyInstance } from 'fastify'
 import {
+  DeepWaterAgentAccessResponseSchema,
   DeepWaterResearchRunRecordSchema,
   IntegratedProductResponseSchema,
   IntegrationPluginManifestSchema,
+  SetDeepWaterAgentAccessRequestSchema,
   SetProductTeamEnablementRequestSchema,
 } from '@nessie/schemas'
 import { listDeepWaterResearchRuns } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  DEEP_WATER_AGENT_ACCESS_ERROR_CODES,
+  DeepWaterAgentAccessError,
+  getDeepWaterAgentAccess,
+  setDeepWaterAgentAccess,
+} from '../../services/deepwater-agent-access.js'
+import {
+  DEEP_WATER_PRODUCT_SLUG,
+  LedgerDeepWaterCatalogUnavailableError,
+  LedgerDeepWaterActiveRunsError,
+  LedgerDeepWaterEnablementPersistenceError,
+  LedgerDeepWaterMcpUrlUnsetError,
+  LedgerAppApiKeyUnsetError,
+  LedgerIdentityConfigurationUnsetError,
+  setDeepWaterTeamEnablement,
+} from '../../services/deepwater-activation.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
+import { ensurePersonalAssistantBootstrap } from '../../services/personal-assistant.js'
 import type { RouteDeps } from '../types.js'
 import { ProductSlugParamsSchema } from './route-schemas.js'
 
@@ -55,6 +74,113 @@ export const registerIntegrationProductRoutes = (
     return createApiResponse(IntegrationPluginManifestSchema.parse(manifest))
   })
 
+  app.get('/api/integrations/products/:productSlug/agent-access', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.productSlug !== DEEP_WATER_PRODUCT_SLUG) {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
+      return reply
+    }
+
+    const access = await getDeepWaterAgentAccess(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+      userId: actorContext.actor.actorId,
+    })
+    const isOwner = actorContext.actor.roles?.includes('owner') ?? false
+    return createApiResponse(DeepWaterAgentAccessResponseSchema.parse({
+      ...access,
+      // Ordinary members need the PA readiness gate for launch, but only an
+      // owner gets the organization-wide shared-agent administration list.
+      sharedAgents: isOwner ? access.sharedAgents : [],
+    }))
+  })
+
+  app.patch('/api/integrations/products/:productSlug/agent-access', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.productSlug !== DEEP_WATER_PRODUCT_SLUG) {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+    const body = parseInput(
+      SetDeepWaterAgentAccessRequestSchema,
+      request.body,
+      reply,
+    )
+    if (!body) return reply
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
+      return reply
+    }
+
+    let agentId = body.target === 'agent' ? body.agentId : null
+    if (body.target === 'personal_assistant') {
+      const current = await getDeepWaterAgentAccess(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+        userId: actorContext.actor.actorId,
+      })
+      agentId = current.personalAssistant?.agentId ?? null
+      if (!agentId && body.enabled) {
+        const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+          userId: actorContext.actor.actorId,
+        })
+        agentId = bootstrap.agentId
+      }
+      if (!agentId) {
+        return createApiResponse(DeepWaterAgentAccessResponseSchema.parse(current))
+      }
+    }
+    if (!agentId) {
+      sendApiError(reply, 404, 'DEEP_WATER_AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    try {
+      await setDeepWaterAgentAccess(prisma, {
+        agentId,
+        enabled: body.enabled,
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+      })
+    } catch (error) {
+      if (error instanceof DeepWaterAgentAccessError) {
+        const status =
+          error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.AGENT_NOT_FOUND
+            ? 404
+            : 409
+        sendApiError(reply, status, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
+
+    const access = await getDeepWaterAgentAccess(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+      userId: actorContext.actor.actorId,
+    })
+    return createApiResponse(DeepWaterAgentAccessResponseSchema.parse(access))
+  })
+
   app.get('/api/integrations/products/:productSlug/research-runs', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -98,13 +224,56 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
-    const enablement = await setProductTeamEnablement(prisma, {
-      enabled: body.enabled,
-      organizationId: actorContext.tenant.organizationId,
-      productSlug: params.productSlug,
-      teamId,
-      userId: actorContext.actor.actorId,
-    })
+    // DeepWater serializes each org/team transition with a PostgreSQL
+    // transaction-scoped advisory lock. Connector state and the display toggle
+    // mutate in that one transaction, so either both commit or both roll back.
+    // Other products persist directly.
+    const isDeepWater = params.productSlug === DEEP_WATER_PRODUCT_SLUG
+    let enablement
+    if (isDeepWater) {
+      try {
+        enablement = await setDeepWaterTeamEnablement(prisma, actorContext, {
+          enabled: body.enabled,
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+          userId: actorContext.actor.actorId,
+        })
+      } catch (error) {
+        if (error instanceof LedgerDeepWaterMcpUrlUnsetError) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        if (
+          error instanceof LedgerAppApiKeyUnsetError
+          || error instanceof LedgerIdentityConfigurationUnsetError
+        ) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        if (error instanceof LedgerDeepWaterCatalogUnavailableError) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        if (error instanceof LedgerDeepWaterActiveRunsError) {
+          sendApiError(reply, 409, error.code, error.message)
+          return reply
+        }
+        if (error instanceof LedgerDeepWaterEnablementPersistenceError) {
+          sendApiError(reply, 404, error.code, error.message)
+          return reply
+        }
+        throw error
+      }
+    } else {
+      enablement = await setProductTeamEnablement(prisma, {
+        enabled: body.enabled,
+        organizationId: actorContext.tenant.organizationId,
+        productSlug: params.productSlug,
+        teamId,
+        userId: actorContext.actor.actorId,
+      })
+    }
+
     if (!enablement) {
       sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
       return reply

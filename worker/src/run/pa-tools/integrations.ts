@@ -24,16 +24,6 @@ const nullableString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-const nullableNonNegativeNumber = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
-  return Math.max(0, value)
-}
-
-const nullableNonNegativeInteger = (value: unknown): number | undefined => {
-  const numeric = nullableNonNegativeNumber(value)
-  return numeric === undefined ? undefined : Math.trunc(numeric)
-}
-
 const parseStatus = (value: unknown): ProductIntegrationRunStatus => {
   const parsed = ProductIntegrationRunStatusSchema.safeParse(value)
   if (!parsed.success || !RUN_UPDATE_STATUSES.has(parsed.data)) {
@@ -46,27 +36,37 @@ export const runDeepWaterRunUpdateTool = async (
   context: BuiltinToolRuntimeContext,
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  if (context.agentKind !== 'personal_assistant') {
-    throw new Error('deep_water_run_update is only available to the Personal Assistant.')
+  if (
+    Object.hasOwn(args, 'cost')
+    || Object.hasOwn(args, 'currency')
+    || Object.hasOwn(args, 'totalCost')
+  ) {
+    throw new Error(
+      'Deep Water run updates do not accept commercial amounts; UOA is authoritative.',
+    )
   }
-
   const runId = nullableString(args.runId)
   if (!runId) {
     throw new Error('runId is required.')
   }
 
   const status = parseStatus(args.status)
+  // Tenancy is taken strictly from the run context, never from tool args: the
+  // update is scoped to the caller's own team + the thread this run belongs to.
+  const teamId =
+    context.actorContext.tenant.teamId
+    ?? context.actorContext.actionContext.teamId
+  if (!teamId) {
+    throw new Error('Deep Water run updates require a team context.')
+  }
   const update: DeepWaterResearchRunUpdateInput = {
-    costAmount: nullableNonNegativeNumber(args.totalCost),
-    costCurrency: nullableString(args.currency),
     externalRunId: nullableString(args.externalRunId),
     knowledgePageId: nullableString(args.knowledgePageId),
     organizationId: String(context.channel.organizationId),
-    reportUrl: nullableString(args.reportUrl),
     runId,
-    sourceCount: nullableNonNegativeInteger(args.sourceCount),
     status,
     statusDetail: nullableString(args.statusDetail),
+    teamId: String(teamId),
     threadId: context.run.threadId,
   }
 
@@ -79,19 +79,15 @@ export const runDeepWaterRunUpdateTool = async (
     organizationId: String(context.channel.organizationId),
     runId: updated.id,
   })
-  const cost =
-    updated.totalCost === null
-      ? 'cost pending'
-      : `${updated.totalCost.toFixed(2)} ${updated.currency ?? 'USD'}`
   const sources =
     updated.sourceCount === null ? 'sources pending' : `${updated.sourceCount} sources`
-  const usageNote = usage.recorded ? ', usage ledger recorded' : ''
+  const usageNote = usage.recorded ? ', operational telemetry recorded' : ''
 
   return {
     inputSummary: `runId=${updated.id} status=${updated.status}`,
     outputPreview:
       `Updated Deep Water run ${updated.id}: status=${updated.status}, ` +
-      `${sources}, ${cost}${usageNote}.`,
+      `${sources}${usageNote}.`,
     toolName: 'deep_water_run_update',
   }
 }

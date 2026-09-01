@@ -4,6 +4,38 @@
 
 > **Voice layer note:** The brief references both Minimax (in the voice mode section) and OpenAI Realtime API (in the architecture section) — this contradiction reflects the exploratory state of the original brief. The shipping codebase uses OpenAI Realtime API in the legacy macOS client only; voice is not implemented in the `api/` server stack.
 
+## Current SSO identity invariant
+
+For every deployment that uses UnlikeOtherAI (UOA) SSO, UOA is the sole
+authority and durable store for human identity, authentication factors,
+profiles, organisation and team membership, and invitations.
+
+- Nessie must use the SSO API to read team directories and to create, resend,
+  revoke, approve, decline, and accept invitations. Team matching is by the
+  UOA subject and the UOA organisation/team identifiers returned by that API.
+- Nessie must not create local-password accounts or persist duplicate UOA
+  emails, display names, avatars, profiles, memberships, or invitation state.
+  It may retain only the stable UOA subject/reference, genuinely
+  product-specific extension data, and an encrypted scoped rotating UOA
+  refresh token or opaque session handle when required as an OAuth relying
+  party. That material is not a local credential or identity authority.
+- UOA's organisation and team structure maps **1:1** into Nessie: one UOA
+  organisation is one Nessie `Organization`, bound by the stable UOA
+  organisation id (`Organization.externalOrgId`), and one UOA workspace is one
+  `Team` (with its Project and `#general`) inside that organisation. Flattening
+  several UOA organisations into one local container — or keeping any second
+  local copy of the org hierarchy — is the same violation as duplicating
+  identity rows, and gets the same remedy: an API-backed refactor and a data
+  migration, never a compatibility copy. A local install with no IdP keeps one
+  unbound organisation (`externalOrgId` null). Model and migration:
+  [plans/2026-08-15-uoa-org-tenancy.md](./plans/2026-08-15-uoa-org-tenancy.md).
+- A bounded in-memory cache of SSO responses is permitted only as a
+  non-authoritative performance cache; it must honour SSO revocation and
+  freshness requirements.
+- Any agent that finds a duplicate identity path, local membership authority,
+  or proposed compatibility copy must flag it to the developer and plan an
+  API-backed refactor and migration instead of extending the duplicate store.
+
 ## Vision
 
 A personal AI agent that lives on your Mac, voice-first but keyboard-capable. You talk to it, it talks back. When you need deep research done across your computer, it spins up a sub-agent to do the work. When you're in keyboard mode, it types into whatever app you're using — no UI, no interruption, just you and the machine working together.

@@ -1,6 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 
-import { upsertOverride } from './mcp-credentials.js'
+import {
+  MCP_CREDENTIAL_ERROR_CODES,
+  McpCredentialError,
+  upsertOverride,
+} from './mcp-credentials.js'
+import { isValidatedMcpApiKeyAuth } from './auth-apply.js'
 import {
   canManageInstanceScope,
   type McpInstanceRow,
@@ -34,6 +39,8 @@ export const storeInstanceSecret = async (
     instance: Pick<McpInstanceRow, 'id' | 'scopeType' | 'scopeId'>
     userId: string
     access: Pick<McpUserAccess, 'role'>
+    authMethod: string
+    authConfig: unknown
     secret: string
     shared?: boolean
   },
@@ -42,6 +49,17 @@ export const storeInstanceSecret = async (
   if (!secret) {
     throw new Error('Secret value must not be empty')
   }
+
+  // OAuth is always a delegation from one human being. Only a deliberate API
+  // key connection can become the shared instance default; otherwise an owner
+  // can accidentally turn their personal provider account into a team account.
+  if (input.shared && !isValidatedMcpApiKeyAuth(input.authMethod, input.authConfig)) {
+    throw new McpCredentialError(
+      MCP_CREDENTIAL_ERROR_CODES.SHARED_CREDENTIAL_AUTH_FORBIDDEN,
+      'Only catalog entries with a validated API-key auth config can share credentials. OAuth and personal tokens stay with the person who connected them.',
+    )
+  }
+
   const ref = await secretStore.put({ accessToken: secret })
   const manageable = canManageInstanceScope(
     input.access,

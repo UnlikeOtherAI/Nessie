@@ -1,5 +1,4 @@
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
-import { KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
 
 // Short-lived cache for hybrid search's query-embedding step: repeated
 // searches for the same (model, normalized query) within a short window reuse
@@ -14,8 +13,8 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>()
 
-const cacheKey = (query: string): string =>
-  `${KNOWLEDGE_EMBEDDING_MODEL}:${query.trim().toLowerCase()}`
+const cacheKey = (model: string, query: string): string =>
+  `${model}:${query.trim().toLowerCase()}`
 
 const readCache = (key: string): number[] | null => {
   const entry = cache.get(key)
@@ -48,14 +47,11 @@ export const getQueryEmbedding = async (
   usage: LedgerAttribution,
 ): Promise<number[] | null> => {
   if (!modelClient) return null
-  const key = cacheKey(query)
+  const key = cacheKey(modelClient.embeddingModel, query)
   const cached = readCache(key)
   if (cached) return cached
   try {
-    const embedding = await modelClient.embed(query, {
-      model: KNOWLEDGE_EMBEDDING_MODEL,
-      usage,
-    })
+    const embedding = await modelClient.embed(query, { usage })
     writeCache(key, embedding)
     return embedding
   } catch (error) {

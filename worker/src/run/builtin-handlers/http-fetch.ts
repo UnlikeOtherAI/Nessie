@@ -2,10 +2,12 @@ import { z } from 'zod'
 
 import {
   assertSafeUrl,
+  pinnedFetch,
   UrlSafetyError,
   type ResolveHost,
 } from './url-safety.js'
 import { HttpFetchError } from './http-fetch-error.js'
+import { MAX_RAW_BODY_CHARS, truncateToolResult } from '../tool-util.js'
 
 export { HttpFetchError } from './http-fetch-error.js'
 
@@ -115,6 +117,31 @@ const headersToObject = (headers: Headers): Record<string, string> => {
   return out
 }
 
+/**
+ * `maxBytes` bounds what we read off the wire (megabytes); this bounds what
+ * reaches the model. A raw API or HTML body is the single biggest driver of
+ * context growth — uncapped it rides the generic 32,000-char chokepoint at
+ * roughly 8k tokens and is re-billed on every subsequent iteration — so the
+ * body is cut middle-out to `MAX_RAW_BODY_CHARS` here, at the handler, and
+ * `truncated` reports the cut whichever limit caused it.
+ */
+const buildOutput = (
+  response: Pick<Response, 'headers' | 'status' | 'statusText'>,
+  url: string,
+  body: { text: string; truncated: boolean; bytesRead: number },
+): HttpFetchOutput => {
+  const bodyText = truncateToolResult(body.text, MAX_RAW_BODY_CHARS)
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    url,
+    headers: headersToObject(response.headers),
+    bodyText,
+    truncated: body.truncated || bodyText !== body.text,
+    bytesRead: body.bytesRead,
+  }
+}
+
 const assertHttpFetchSafeUrl = async (
   rawUrl: string | URL,
   options?: { resolveHost?: ResolveHost },
@@ -134,7 +161,13 @@ export const runHttpFetch = async (
   options?: { fetchImpl?: typeof fetch; resolveHost?: ResolveHost },
 ): Promise<HttpFetchOutput> => {
   const input = InputSchema.parse(rawArgs)
-  const fetchImpl = options?.fetchImpl ?? fetch
+  // Default to the IP-pinned transport: this handler already re-validates its
+  // one redirect hop, but an unpinned socket could still be rebound to a private
+  // address between the check and the connection.
+  const fetchImpl =
+    options?.fetchImpl
+    ?? ((url: string | URL, requestInit?: RequestInit) =>
+      pinnedFetch(url, requestInit, options?.resolveHost ? { resolveHost: options.resolveHost } : {}))
   const resolveHost = options?.resolveHost
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
@@ -182,26 +215,10 @@ export const runHttpFetch = async (
         signal: AbortSignal.timeout(timeoutMs),
       })
       const second = await readBoundedBody(followed, maxBytes)
-      return {
-        status: followed.status,
-        statusText: followed.statusText,
-        url: redirectUrl.toString(),
-        headers: headersToObject(followed.headers),
-        bodyText: second.text,
-        truncated: second.truncated,
-        bytesRead: second.bytesRead,
-      }
+      return buildOutput(followed, redirectUrl.toString(), second)
     }
   }
 
   const result = await readBoundedBody(response, maxBytes)
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    url: safeUrl.toString(),
-    headers: headersToObject(response.headers),
-    bodyText: result.text,
-    truncated: result.truncated,
-    bytesRead: result.bytesRead,
-  }
+  return buildOutput(response, safeUrl.toString(), result)
 }

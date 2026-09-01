@@ -1,72 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import {
   useChangePassword,
-  useRevokeSession,
   useSessions,
-  type SessionSummary,
 } from '../../facades/auth/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   FeedbackBanner,
-  sectionTitleClass,
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
-
-const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
-
-const SessionRow = ({ session }: { session: SessionSummary }) => {
-  const revokeSession = useRevokeSession()
-  const [error, setError] = useState<string | null>(null)
-
-  const revoke = async () => {
-    setError(null)
-    try {
-      await revokeSession.mutateAsync(session.sessionId)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to revoke session')
-    }
-  }
-
-  return (
-    <div className="admin-card p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-medium text-[color:var(--tx)]">
-            {session.userAgent ?? 'Unknown device'}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--tx3)]">
-            Last used {formatWhen(session.lastUsedAt)}
-          </div>
-        </div>
-        {session.current ? (
-          <span
-            className={[
-              'shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-              'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
-            ].join(' ')}
-          >
-            This device
-          </span>
-        ) : (
-          <button
-            className="admin-button admin-button-secondary h-8 shrink-0 py-0 text-sm"
-            disabled={revokeSession.isPending}
-            onClick={() => void revoke()}
-            type="button"
-          >
-            Revoke
-          </button>
-        )}
-      </div>
-      {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
-  )
-}
+import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { ActiveSessionsTable } from '../../components/features/settings/ActiveSessionsTable'
 
 const ChangePasswordCard = () => {
   const changePassword = useChangePassword()
@@ -98,7 +42,7 @@ const ChangePasswordCard = () => {
 
   return (
     <section className="admin-card p-4">
-      <div className={sectionTitleClass}>Password</div>
+      <SectionLabel>Password</SectionLabel>
       <form className="mt-4 grid max-w-sm gap-3" onSubmit={submit}>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
           Current password
@@ -162,39 +106,31 @@ export const SecuritySettingsPage = () => {
 
   return (
     <SettingsPanel eyebrow="Account" title="Security">
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid w-full gap-4">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Active sessions</div>
+          <SectionLabel>Active sessions</SectionLabel>
           <div className="mt-2 text-sm text-[color:var(--tx2)]">
             Devices currently signed in to your account. Revoking a session signs
             that device out.
           </div>
-          <div className="mt-4 grid gap-2">
-            {isLoading ? (
-              <div className="text-sm text-[color:var(--tx3)]">Loading…</div>
-            ) : sessions.length === 0 ? (
-              <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">
-                No active sessions.
-              </div>
-            ) : (
-              sessions.map((session) => (
-                <SessionRow key={session.sessionId} session={session} />
-              ))
-            )}
+          <div className="mt-4">
+            <ActiveSessionsTable isLoading={isLoading} sessions={sessions} />
           </div>
         </section>
 
-        {isLocalAccount ? (
-          <ChangePasswordCard />
-        ) : (
-          <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Password</div>
-            <div className="mt-2 text-sm text-[color:var(--tx2)]">
-              Your account signs in through an identity provider. Manage your
-              password with that provider.
-            </div>
-          </section>
-        )}
+        <div className="max-w-3xl">
+          {isLocalAccount ? (
+            <ChangePasswordCard />
+          ) : (
+            <section className="admin-card p-4">
+              <SectionLabel>Password</SectionLabel>
+              <div className="mt-2 text-sm text-[color:var(--tx2)]">
+                Your account signs in through an identity provider. Manage your
+                password with that provider.
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </SettingsPanel>
   )

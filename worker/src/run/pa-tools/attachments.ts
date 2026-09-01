@@ -1,16 +1,10 @@
 import { Readable } from 'node:stream'
 
-import { loadConfig } from '@nessie/config'
-import {
-  attributionFromActorContext,
-  collectStream,
-  createFileService,
-  getStorage,
-  type FileService,
-} from '@nessie/runtime'
-import type { PrismaClient } from '@prisma/client'
+import { attributionFromActorContext, collectStream } from '@nessie/runtime'
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere } from './access.js'
+import { recordMessageChannelRead } from './message-search-basis.js'
 import { clampLimit, formatSection, truncate } from './tool-output.js'
 
 const ATTACHMENT_READ_MAX_TEXT_BYTES = 64 * 1024
@@ -21,17 +15,6 @@ const isTextLikeMime = (mime: string): boolean =>
   mime === 'application/xml' ||
   mime.endsWith('+json') ||
   mime.endsWith('+xml')
-
-// All blob work goes through the single FileService (storage + Attachment row +
-// stored-bytes accounting), same as the API. Built from config per call.
-const fileServiceFor = (prisma: PrismaClient): FileService => {
-  const config = loadConfig()
-  return createFileService({
-    prisma,
-    storage: getStorage(config.storage),
-    maxUploadBytes: config.storage.maxUploadBytes,
-  })
-}
 
 export const runAttachmentUploadTool = async (
   context: BuiltinToolRuntimeContext,
@@ -102,9 +85,13 @@ export const runAttachmentListTool = async (
   // then list attachments linked to those messages. Without a user context fall
   // back to the run's own thread.
   const threadId = input.threadId ?? (input.channelId ? undefined : context.run.threadId)
+  // A user actor (or the PA acting for its owner) sees attachments in channels
+  // that user can reach. An autonomous run has no user to inherit reach from, so
+  // it must NOT fall back to the whole organisation — that hands it every
+  // channel's attachments. Its own channel is the correct bound.
   const visibleChannel = userId
     ? buildVisibleChannelWhere(organizationId, userId)
-    : { organizationId }
+    : { id: context.channel.id, organizationId }
 
   const messageWhere = input.channelId
     ? { thread: { channelId: input.channelId, channel: visibleChannel } }
@@ -112,10 +99,21 @@ export const runAttachmentListTool = async (
 
   const messages = await context.prisma.message.findMany({
     where: messageWhere,
-    select: { id: true },
+    select: {
+      id: true,
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+    },
     take: 200,
   })
   const messageIds = messages.map((m) => m.id)
+  // A filename names what exists somewhere. Record the channels listed from,
+  // and inherit the basis of any message whose attachments are being named.
+  recordMessageChannelRead(
+    context,
+    messages.map((message) => message.thread.channel),
+  )
+  context.consumedSources?.addAll(messages.flatMap((message) => message.basisScopes))
 
   if (messageIds.length === 0) {
     return {
@@ -175,14 +173,25 @@ export const runAttachmentReadTool = async (
   }
   const visibleChannel = readerId
     ? buildVisibleChannelWhere(attachment.organizationId, readerId)
-    : { organizationId: attachment.organizationId }
+    // As in attachment_list: an autonomous run is bounded by its own channel.
+    : { id: context.channel.id, organizationId: attachment.organizationId }
   const visibleMessage = await context.prisma.message.findFirst({
     where: { id: attachment.messageId, thread: { channel: visibleChannel } },
-    select: { id: true },
+    select: {
+      id: true,
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+    },
   })
   if (!visibleMessage) {
     throw new Error('Attachment not found.')
   }
+
+  // A text attachment is inlined into the run's context below, and even the
+  // metadata-only branch names a file. Both are provenance: the channel it was
+  // posted in, plus whatever basis the carrying message already had.
+  recordMessageChannelRead(context, [visibleMessage.thread.channel])
+  context.consumedSources?.addAll(visibleMessage.basisScopes)
 
   const metadataLines = [
     `id=${attachment.id}`,

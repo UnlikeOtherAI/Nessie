@@ -7,12 +7,15 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
+import { reportPushSurface } from '../../../lib/push-surface'
 import {
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
   useEnsureMyDocsSpace,
   useKnowledgePages,
+  useKnowledgeSpace,
   useKnowledgeSpaces,
   usePublishKnowledgePage,
   useRestoreKnowledgeVersion,
@@ -36,13 +39,29 @@ export type KnowledgeEditorState =
   | null
 
 type KnowledgeContextValue = {
+  // Set when this provider is scoped to one project (a project's Documents
+  // tab). Consumers use it to drop org-level chrome that makes no sense inside
+  // a single project.
+  scopeProjectId?: string
+  // Set by the owning agent-detail surface, so the shared workspace can avoid
+  // rendering a redundant "Open agent" doorway while it is already there.
+  scopeAgentId?: string
   spaces: KnowledgeSpaceRecord[]
+  // A document-attention read is only safe after the scoped space list has
+  // resolved; loading an empty placeholder must not clear unseen documents.
+  spacesLoaded: boolean
+  spacesLoadFailed: boolean
   // The caller's personal "My Docs" space, provisioned once per session via
   // the idempotent ensure endpoint. Undefined until that call resolves.
   myDocsSpaceId?: string
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
+  // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
+  // the Knowledge sidebar. When set the workspace renders that product view
+  // instead of a space's pages; selecting any space clears it.
+  activeProductView?: string
+  selectProductView: (view: string) => void
   createSpace: (
     name: string,
     memberAgentIds?: string[],
@@ -96,21 +115,62 @@ export const useKnowledge = (): KnowledgeContextValue => {
   return value
 }
 
-export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
-  const { me } = useAuthSession()
-  const spacesQuery = useKnowledgeSpaces()
-  const myDocsQuery = useEnsureMyDocsSpace()
-  const spaces = useMemo(
-    () => [...(spacesQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
-    [spacesQuery.data],
-  )
+/**
+ * Resolve the space currently on screen, even when an explicit deep link
+ * points outside the scoped/capped list. The detail response is authoritative
+ * for permissions; list membership is only navigation state.
+ */
+export const useDisplayedKnowledgeSpace = (
+  spaces: KnowledgeSpaceRecord[],
+  selectedSpaceId?: string,
+): KnowledgeSpaceRecord | null => {
+  const listedSpace = spaces.find((space) => space.id === selectedSpaceId)
+  const detailQuery = useKnowledgeSpace(listedSpace ? undefined : selectedSpaceId)
+  return listedSpace ?? detailQuery.data ?? null
+}
 
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>()
+// The provider is the workspace parameterisation seam. `projectId` scopes the
+// project Documents tab to that project's spaces; `spaceId` scopes an owning
+// surface such as an agent Documents tab to one canonical knowledge space.
+// Scoped mounts never ensure My Docs or seed first-visit example content.
+export const KnowledgeProvider = ({
+  agentId,
+  children,
+  projectId,
+  spaceId,
+}: {
+  agentId?: string
+  children: ReactNode
+  projectId?: string
+  spaceId?: string
+}) => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const me = useOptionalAuthSession()?.me ?? null
+  const spacesQuery = useKnowledgeSpaces(projectId, !spaceId)
+  const spaceQuery = useKnowledgeSpace(spaceId)
+  const myDocsQuery = useEnsureMyDocsSpace(!projectId && !spaceId)
+  const spaces = useMemo(() => {
+    const all = spaceId
+      ? spaceQuery.data ? [spaceQuery.data] : []
+      : spacesQuery.data ?? []
+    // A personal "My Docs" space is filed under whichever project provisioned
+    // it, so a project-scoped list would otherwise show someone's private
+    // notebook as project documentation. The global surface still pins it.
+    const scoped = projectId
+      ? all.filter((space) => (space.metadata as { personal?: boolean } | null)?.personal !== true)
+      : all
+    return [...scoped].sort((left, right) => left.name.localeCompare(right.name))
+  }, [projectId, spaceId, spaceQuery.data, spacesQuery.data])
+
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>(spaceId)
   const [pagePath, setPagePath] = useState<string[]>([])
   const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
+  const [activeProductView, setActiveProductView] = useState<string | undefined>()
+  const selectedSpace = useDisplayedKnowledgeSpace(spaces, selectedSpaceId)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
@@ -124,15 +184,19 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const seedMutation = useSeedKnowledgeBase()
 
   useEffect(() => {
+    if (spaceId && selectedSpaceId !== spaceId) {
+      setSelectedSpaceId(spaceId)
+      return
+    }
     if (!selectedSpaceId && spaces[0]) {
       setSelectedSpaceId(spaces[0].id)
     }
-  }, [selectedSpaceId, spaces])
+  }, [selectedSpaceId, spaceId, spaces])
 
   // First visit with no spaces: seed a "General" space + one example page.
   const seededRef = useRef(false)
   useEffect(() => {
-    if (seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
+    if (projectId || spaceId || seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
     // Seed at most once per mount — never reset the guard on error, so a
     // persistent failure can't spin into a retry loop of failed POSTs.
     seededRef.current = true
@@ -148,7 +212,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
         onSuccess: (space) => setSelectedSpaceId(space.id),
       },
     )
-  }, [spacesQuery.isSuccess, spaces.length, me, seedMutation])
+  }, [projectId, spaceId, spacesQuery.isSuccess, spaces.length, me, seedMutation])
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -181,12 +245,32 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     return result
   }, [pagePath, pagesById])
 
-  const selectedSpace = spaces.find((space) => space.id === selectedSpaceId) ?? null
   const rootPages = pagesByParent.get(null) ?? []
   const validOpenPageId = openPageId && validPath.at(-1) === openPageId ? openPageId : undefined
 
-  const selectSpace = (spaceId: string) => {
-    setSelectedSpaceId(spaceId)
+  useEffect(() => {
+    reportPushSurface(
+      activeProductView || !selectedSpaceId
+        ? null
+        : { kind: 'knowledge_space', spaceId: selectedSpaceId },
+      location,
+    )
+    return () => reportPushSurface(null, location)
+  }, [activeProductView, location, selectedSpaceId])
+
+  const selectSpace = (nextSpaceId: string) => {
+    if (spaceId && nextSpaceId !== spaceId) return
+    setSelectedSpaceId(nextSpaceId)
+    setPagePath([])
+    setOpenPageId(undefined)
+    setEditor(null)
+    setHistoryPageId(undefined)
+    setSpaceSettingsOpen(false)
+    setActiveProductView(undefined)
+  }
+
+  const selectProductView = (view: string) => {
+    setActiveProductView(view)
     setPagePath([])
     setOpenPageId(undefined)
     setEditor(null)
@@ -202,7 +286,9 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     const created = await createSpaceMutation.mutateAsync({
       name,
       memberAgentIds,
-      projectId: me?.context.projectId,
+      // In project scope a new space belongs to the project being viewed, not
+      // to whichever project the session's claim happens to name.
+      projectId: projectId ?? me?.context.projectId,
       visibility,
     })
     setSelectedSpaceId(created.id)
@@ -241,10 +327,22 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const openRootPage = (pageId: string) => openPagePath([pageId])
 
   // Jumps straight to a page from outside the browsing flow (an approval's
-  // "Open page" link, a search result). We don't know the page's ancestor
-  // chain up front, so the path is just the page itself — enough for the
-  // preview to open; breadcrumbs/back just fall back to the space root.
+  // "Open page" link, a search result, a DeepWater research run's native
+  // Knowledge document). We don't know the page's ancestor chain up front, so
+  // the path is just the page itself — enough for the preview to open;
+  // breadcrumbs/back just fall back to the space root. Also clears any active
+  // product view (e.g. the DeepWater "Research" Documents view) so a deep
+  // link always lands on the real document instead of staying stuck behind
+  // whichever product surface the caller happened to be viewing.
   const openPageDeepLink = (input: { spaceId: string; pageId: string }) => {
+    if (spaceId && input.spaceId !== spaceId) {
+      void navigate(
+        `/knowledge-base/spaces/${encodeURIComponent(input.spaceId)}`
+        + `?pageId=${encodeURIComponent(input.pageId)}`,
+      )
+      return
+    }
+    setActiveProductView(undefined)
     setSelectedSpaceId(input.spaceId)
     setPagePath([input.pageId])
     setOpenPageId(input.pageId)
@@ -314,11 +412,17 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const value: KnowledgeContextValue = {
+    scopeAgentId: agentId,
+    scopeProjectId: projectId,
     spaces,
+    spacesLoaded: spaceId ? spaceQuery.isSuccess : spacesQuery.isSuccess,
+    spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.isError,
     myDocsSpaceId: myDocsQuery.data?.spaceId,
     selectedSpaceId,
     selectedSpace,
     selectSpace,
+    activeProductView,
+    selectProductView,
     createSpace,
     createSpacePending: createSpaceMutation.isPending,
     spaceSettingsOpen,

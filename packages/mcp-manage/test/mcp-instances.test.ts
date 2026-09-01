@@ -22,6 +22,8 @@ import {
   type ManagerFactory,
 } from '../src/index.js'
 
+const PROBE_USER_ID = 'probe-user-1'
+
 const baseInstance: McpInstanceRow = {
   id: 'instance-1',
   catalogEntryId: 'catalog-1',
@@ -311,10 +313,14 @@ const makeStubPrisma = (
   const prisma = {
     mcpServerInstance: {
       findFirst: async () => instance,
+      findUnique: async () => ({ ...instance, catalogEntry }),
       update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
         updates.push(args)
         return { ...instance, ...(args.data as Partial<McpInstanceRow>) }
       },
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async () => null,
     },
     mcpCatalogEntry: {
       findFirst: async () => catalogEntry,
@@ -347,7 +353,7 @@ test('testInstance keeps lifecycleState off "active" when probe fails', async ()
 
   let thrown: unknown
   try {
-    await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+    await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   } catch (error) {
     thrown = error
   }
@@ -379,9 +385,7 @@ test('testInstance transitions to active and projects tools on a successful prob
   const descriptors: McpToolDescriptor[] = [{ name: 'echo', inputSchema: {} }]
   const { factory } = makeFakeManagerFactory({ listTools: () => descriptors })
 
-  const result = await testInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
 
   assert.equal(result.lifecycleState, 'active')
   assert.equal(transactionRan.value, true)
@@ -415,7 +419,7 @@ test('testInstance persists probe failure message into lastError', async () => {
     open: () => Promise.reject(new Error('ECONNREFUSED tcp://localhost:9999')),
   })
   try {
-    await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+    await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   } catch {
     // expected — PROBE_FAILED
   }
@@ -436,7 +440,7 @@ test('testInstance clears lastError on a successful probe', async () => {
   }
   const { prisma, updates } = makeStubPrisma(stale, catalogEntryStub)
   const { factory } = makeFakeManagerFactory({ listTools: () => [] })
-  await testInstance(prisma, 'org-1', stale.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', stale.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(updates.length, 1)
   const data = updates[0]?.data as { lastError?: unknown }
   assert.equal(data.lastError, null)
@@ -461,10 +465,14 @@ test('refreshInstance persists lastError when the probe fails', async () => {
         findFirstCalls += 1
         return findFirstCalls === 1 ? baseInstance : failedRow
       },
+      findUnique: async () => ({ ...baseInstance, catalogEntry: catalogEntryStub }),
       update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
         updates.push(args)
         return failedRow
       },
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async () => null,
     },
     mcpCatalogEntry: {
       findFirst: async () => catalogEntryStub,
@@ -475,9 +483,7 @@ test('refreshInstance persists lastError when the probe fails', async () => {
   const { factory } = makeFakeManagerFactory({
     listTools: () => Promise.reject(new Error('502 Bad Gateway')),
   })
-  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(result.lifecycleState, 'error')
   assert.equal(result.lastError, '502 Bad Gateway')
   assert.equal(updates.length, 1)
@@ -493,9 +499,7 @@ test('refreshInstance persists lastError when the probe fails', async () => {
 test('healthcheckInstance reports healthy=true with latencyMs on a clean probe', async () => {
   const { prisma, updates } = makeStubPrisma(baseInstance, catalogEntryStub)
   const { factory } = makeFakeManagerFactory({ listTools: () => [] })
-  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(result.healthy, true)
   assert.equal(typeof result.latencyMs, 'number')
   assert.ok(result.latencyMs >= 0)
@@ -509,9 +513,7 @@ test('healthcheckInstance reports healthy=false with lastError on probe failure'
   const { factory } = makeFakeManagerFactory({
     listTools: () => Promise.reject(new Error('connection refused')),
   })
-  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(result.healthy, false)
   assert.match(result.lastError ?? '', /connection refused/)
   assert.equal(updates.length, 0)
@@ -523,7 +525,7 @@ test('healthcheckInstance throws NOT_FOUND when the instance does not exist', as
   } as unknown as Parameters<typeof healthcheckInstance>[0]
   let thrown: unknown
   try {
-    await healthcheckInstance(prisma, 'org-1', 'missing')
+    await healthcheckInstance(prisma, 'org-1', 'missing', { probeUserId: PROBE_USER_ID })
   } catch (error) {
     thrown = error
   }
@@ -548,9 +550,7 @@ test('refreshInstance re-projects discovered tools on a successful probe', async
     { name: 'b', inputSchema: {} },
   ]
   const { factory } = makeFakeManagerFactory({ listTools: () => descriptors })
-  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(result.lifecycleState, 'active')
   assert.equal(transactionRan.value, true)
 })
@@ -574,7 +574,11 @@ test('refreshInstance returns the updated row (lifecycleState=error) on probe fa
         // (inside refreshInstance's fallback) sees the post-fail row.
         return findFirstCalls === 1 ? baseInstance : failedRow
       },
+      findUnique: async () => ({ ...baseInstance, catalogEntry: catalogEntryStub }),
       update: async () => failedRow,
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async () => null,
     },
     mcpCatalogEntry: {
       findFirst: async () => catalogEntryStub,
@@ -586,9 +590,7 @@ test('refreshInstance returns the updated row (lifecycleState=error) on probe fa
     listTools: () => Promise.reject(new Error('502 Bad Gateway')),
   })
 
-  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
-    managerFactory: factory,
-  })
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(result.lifecycleState, 'error')
   assert.equal(result.healthFailureCount, 1)
 })
@@ -599,7 +601,7 @@ test('refreshInstance still surfaces non-probe errors (e.g. NOT_FOUND)', async (
   } as unknown as Parameters<typeof refreshInstance>[0]
   let thrown: unknown
   try {
-    await refreshInstance(prisma, 'org-1', 'missing')
+    await refreshInstance(prisma, 'org-1', 'missing', { probeUserId: PROBE_USER_ID })
   } catch (error) {
     thrown = error
   }
@@ -721,7 +723,7 @@ test('testInstance leaves status untouched when descriptors are identical to exi
     ],
   })
 
-  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
 
   assert.equal(upserts.length, 1)
   // Identical descriptor → upsert.update must NOT carry a status field.
@@ -754,7 +756,7 @@ test('testInstance flips status to pending_review when descriptor schema drifted
     ],
   })
 
-  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
 
   assert.equal(upserts.length, 1)
   assert.equal(upserts[0]!.update.status, 'pending_review')
@@ -778,7 +780,7 @@ test('testInstance flips status when descriptor label or description drifted', a
     ],
   })
 
-  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
 
   assert.equal(upserts.length, 1)
   assert.equal(upserts[0]!.update.status, 'pending_review')
@@ -809,7 +811,7 @@ test('testInstance flips removed-tool entries to pending_review via updateMany s
     listTools: () => [{ name: 'echo', title: 'Echo', inputSchema: {} }],
   })
 
-  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
 
   // One upsert for the surviving tool, identical → no status flip.
   assert.equal(upserts.length, 1)
@@ -836,6 +838,6 @@ test('testInstance skips the removal sweep when every existing entry is still pr
     listTools: () => [{ name: 'echo', title: 'Echo', inputSchema: {} }],
   })
 
-  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  await testInstance(prisma, 'org-1', baseInstance.id, { probeUserId: PROBE_USER_ID, managerFactory: factory })
   assert.equal(updateManys.length, 0)
 })

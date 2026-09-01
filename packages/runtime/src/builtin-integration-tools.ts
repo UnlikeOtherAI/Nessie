@@ -1,18 +1,26 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
+export const DEEP_WATER_RUN_UPDATE_TOOL_ID = 'deep_water_run_update'
+
 export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'deep_water_run_update',
+  id: DEEP_WATER_RUN_UPDATE_TOOL_ID,
+  summary: 'Record an approved Ledger Deep Water research run update.',
   label: 'Deep Water Run Update',
-  personalAssistantOnly: true,
+  // Default OFF for every agent; grantable to any agent (personal assistant or
+  // shared) through an explicit per-agent tool policy allow. A granted agent
+  // that calls the DeepWater MCP tools writes the durable Nessie run record back
+  // through this tool. `requiresExplicitGrant` makes exposure require an
+  // explicit allow verdict — an absent/inherited policy does NOT expose it.
+  requiresExplicitGrant: true,
   description:
-    'Update Nessie\'s durable Deep Water run record after calling the approved Deep Water MCP tools. ' +
-    'Use this with the Nessie runId from the launch card; record the external Deep Water run id, status, source count, cost, report URL, and Knowledge draft page when available.',
+    'Update Nessie\'s durable Deep Water run record after calling the approved Ledger MCP tools. ' +
+    'Use the exact full Nessie runId from the server-built launch message, never the abbreviated value on its launch card; record the Ledger research job id, status, and Knowledge draft page when available. Nessie records the validated report URL and source count from Ledger\'s authenticated responses. Commercial amounts come only from UOA and are not accepted by this tool.',
   parameters: {
     type: 'object',
     properties: {
       runId: {
         type: 'string',
-        description: 'Nessie product_integration_runs id from the Deep Water launch card.',
+        description: 'Exact full Nessie product_integration_runs UUID from the server-built Deep Water launch message; do not use the abbreviated launch-card display.',
       },
       status: {
         type: 'string',
@@ -21,25 +29,7 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
       },
       externalRunId: {
         type: 'string',
-        description: 'Deep Water research/run id returned by mcp_research_create or mcp_research_get.',
-      },
-      sourceCount: {
-        type: 'integer',
-        minimum: 0,
-        description: 'Number of sources/evidence items reported by Deep Water.',
-      },
-      totalCost: {
-        type: 'number',
-        minimum: 0,
-        description: 'Total Deep Water cost or usage charge for the run.',
-      },
-      currency: {
-        type: 'string',
-        description: 'ISO currency code for totalCost, default USD when omitted.',
-      },
-      reportUrl: {
-        type: 'string',
-        description: 'Public or authenticated Deep Water report URL, if returned.',
+        description: 'Ledger research job id returned by mcp_research_start or mcp_research_status.',
       },
       knowledgePageId: {
         type: 'string',

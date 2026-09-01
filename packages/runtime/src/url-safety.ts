@@ -1,9 +1,19 @@
 import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { connect, isIP, type Socket } from 'node:net'
+import { Agent, type Dispatcher } from 'undici'
 
-export class UrlSafetyError extends Error {
-  override readonly name = 'UrlSafetyError'
-}
+import {
+  isCredentialHeaderName,
+  normalizeFetchHeaders,
+  planRedirect,
+  resolveRedirectPolicy,
+  UrlSafetyError,
+  type RedirectPolicy,
+  type RedirectPolicyOptions,
+} from './redirect-policy.js'
+
+export { UrlSafetyError }
+export type { RedirectPolicy }
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -73,10 +83,20 @@ export type AssertSafeUrlOptions = {
   resolveHost?: ResolveHost
 }
 
-export const assertSafeUrl = async (
+export type SafeUrlResolution = {
+  addresses: string[]
+  url: URL
+}
+
+// Single source of truth: validate scheme/credentials/host, resolve the
+// hostname ONCE, and return both the URL and the vetted addresses. Handing the
+// addresses back lets callers pin the socket to exactly what was validated,
+// which is what closes the DNS-rebinding TOCTOU (validate here, re-resolve to
+// a private address at connect time).
+const resolveAndValidate = async (
   rawUrl: string | URL,
   options?: AssertSafeUrlOptions,
-): Promise<URL> => {
+): Promise<SafeUrlResolution> => {
   const url = typeof rawUrl === 'string' ? new URL(rawUrl) : rawUrl
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -99,7 +119,7 @@ export const assertSafeUrl = async (
     if (isBlockedIpAddress(hostname)) {
       throw new UrlSafetyError('Private or local network URLs are not allowed.')
     }
-    return url
+    return { addresses: [hostname], url }
   }
 
   const resolveHost = options?.resolveHost ?? defaultResolveHost
@@ -115,5 +135,228 @@ export const assertSafeUrl = async (
   ) {
     throw new UrlSafetyError('Private or local network URLs are not allowed.')
   }
-  return url
+  return { addresses, url }
+}
+
+export const assertSafeUrl = async (
+  rawUrl: string | URL,
+  options?: AssertSafeUrlOptions,
+): Promise<URL> => (await resolveAndValidate(rawUrl, options)).url
+
+// Like assertSafeUrl, but also returns the vetted IPs so the caller can pin the
+// socket to them. Pair with createPinnedFetchAgent, or just use safeFetch.
+export const assertSafeUrlPinned = resolveAndValidate
+
+// An undici lookup that only ever yields the pre-validated addresses, and
+// re-checks each one at connect time. With this as the dispatcher's
+// connect.lookup the hostname cannot be re-resolved to a different (rebound,
+// internal) address between validation and the socket opening.
+const pinnedLookup =
+  (addresses: string[]) =>
+  (
+    _hostname: string,
+    options: { all?: boolean } | undefined,
+    callback: (
+      err: NodeJS.ErrnoException | null,
+      address: string | Array<{ address: string; family: number }>,
+      family?: number,
+    ) => void,
+  ): void => {
+    const vetted = addresses.filter((address) => !isBlockedIpAddress(address))
+    const first = vetted[0]
+    if (first === undefined) {
+      callback(new UrlSafetyError('Private or local network URLs are not allowed.'), '', 0)
+      return
+    }
+    if (options?.all) {
+      callback(
+        null,
+        vetted.map((address) => ({ address, family: isIP(address) === 6 ? 6 : 4 })),
+      )
+      return
+    }
+    callback(null, first, isIP(first) === 6 ? 6 : 4)
+  }
+
+// An undici dispatcher that connects only to the vetted addresses.
+export const createPinnedFetchAgent = (addresses: string[]): Agent =>
+  new Agent({ connect: { lookup: pinnedLookup(addresses) } })
+
+// A fresh Agent per call would discard the connection pool, costing a TCP+TLS
+// handshake on every request — unacceptable on the streaming inference path.
+// Agents are keyed by the exact vetted address set, so a reused agent can only
+// ever dial addresses that passed the guard for this key; a host that later
+// resolves elsewhere produces a different key and therefore a different agent.
+const MAX_CACHED_AGENTS = 64
+const pinnedAgentCache = new Map<string, Agent>()
+
+const cachedPinnedAgent = (addresses: string[]): Agent => {
+  const key = [...addresses].sort().join(',')
+  const existing = pinnedAgentCache.get(key)
+  if (existing) {
+    // Refresh recency so the eviction below drops genuinely cold entries.
+    pinnedAgentCache.delete(key)
+    pinnedAgentCache.set(key, existing)
+    return existing
+  }
+  const agent = createPinnedFetchAgent(addresses)
+  pinnedAgentCache.set(key, agent)
+  if (pinnedAgentCache.size > MAX_CACHED_AGENTS) {
+    const oldestKey = pinnedAgentCache.keys().next().value
+    if (oldestKey !== undefined) {
+      const evicted = pinnedAgentCache.get(oldestKey)
+      pinnedAgentCache.delete(oldestKey)
+      void evicted?.close().catch(() => undefined)
+    }
+  }
+  return agent
+}
+
+type DispatcherRequestInit = RequestInit & { dispatcher?: Dispatcher }
+
+// The transport safeFetch dials through, already carrying the pinned dispatcher.
+// Overridable for the same reason resolveHost is: so the redirect contract can
+// be exercised without a live public host.
+export type PinnedFetch = (url: URL, init: DispatcherRequestInit) => Promise<Response>
+
+export type SafeFetchOptions =
+  AssertSafeUrlOptions & RedirectPolicyOptions & {
+    fetchImpl?: PinnedFetch
+  }
+
+/**
+ * One SSRF-safe request: validate the URL, then pin the socket to exactly the
+ * addresses that were validated. Redirects are NOT followed — the raw 3xx comes
+ * back so callers that re-validate hops themselves stay in control. Callers that
+ * just want a safe request end-to-end should use `safeFetch`.
+ */
+export const pinnedFetch = async (
+  rawUrl: string | URL | Request,
+  init?: RequestInit,
+  options?: SafeFetchOptions,
+): Promise<Response> => {
+  const targetUrl = rawUrl instanceof Request ? rawUrl.url : rawUrl
+  const { addresses, url } = await resolveAndValidate(targetUrl, options)
+  const fetchImpl: PinnedFetch =
+    options?.fetchImpl ?? ((target, requestInit) => fetch(target, requestInit as RequestInit))
+  const headers = normalizeFetchHeaders(rawUrl, init)
+  return fetchImpl(url, {
+    ...init,
+    headers: [...headers],
+    redirect: 'manual',
+    dispatcher: cachedPinnedAgent(addresses),
+  })
+}
+
+export type PinnedSocketConnector = (input: {
+  address: string
+  port: number
+}) => Promise<Socket>
+
+export type PinnedConnectOptions = AssertSafeUrlOptions & {
+  connectImpl?: PinnedSocketConnector
+}
+
+const connectToVettedAddress: PinnedSocketConnector = ({ address, port }) =>
+  new Promise((resolvePromise, reject) => {
+    // `address` is a literal address returned by resolveAndValidate, never the
+    // original hostname, so net.connect cannot open a DNS-rebinding window.
+    const socket = connect({ host: address, family: isIP(address), port })
+    const onError = (error: Error): void => reject(error)
+    socket.once('connect', () => {
+      socket.off('error', onError)
+      resolvePromise(socket)
+    })
+    socket.once('error', onError)
+  })
+
+/**
+ * Open one raw TCP connection to a URL only after URL validation and IP
+ * pinning. This is the narrow escape hatch for HTTPS CONNECT-style transports;
+ * ordinary HTTP callers must use safeFetch or pinnedFetch instead.
+ */
+export const pinnedConnect = async (
+  rawUrl: string | URL,
+  options?: PinnedConnectOptions,
+): Promise<{ socket: Socket; url: URL }> => {
+  const { addresses, url } = await resolveAndValidate(rawUrl, options)
+  if (url.protocol !== 'https:') {
+    throw new UrlSafetyError('Pinned raw connections require HTTPS.')
+  }
+  const address = addresses[0]
+  if (!address) throw new UrlSafetyError('Unable to resolve outbound URL host.')
+  const port = url.port ? Number(url.port) : 443
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new UrlSafetyError('Outbound URL port is invalid.')
+  }
+  const connectImpl = options?.connectImpl ?? connectToVettedAddress
+  return { socket: await connectImpl({ address, port }), url }
+}
+
+// SSRF-safe fetch: validates the URL, pins the connection to the validated IPs,
+// and re-validates + re-pins on every redirect hop (so a public URL cannot 3xx
+// its way to an internal one). Redirects are governed by redirectPolicy:
+// 'none' returns the raw 3xx, 'same-origin' (the default for credentialed
+// requests) refuses cross-origin hops, and explicit 'follow' strips
+// credential-shaped headers on any cross-origin hop and always refuses a
+// 307/308 cross-origin body replay. Returns the final Response with its body
+// unread.
+export const safeFetch = async (
+  rawUrl: string | URL | Request,
+  init?: RequestInit,
+  options?: SafeFetchOptions,
+): Promise<Response> => {
+  const headers = normalizeFetchHeaders(rawUrl, init)
+  const credentialsPresent =
+    options?.credentialsPresent === true ||
+    [...headers.keys()].some((name) => isCredentialHeaderName(name))
+  const policy = resolveRedirectPolicy(options, headers)
+  const maxRedirects = options?.maxRedirects ?? 3
+
+  let hopState: {
+    body?: RequestInit['body']
+    headers: ReadonlyMap<string, string>
+    method?: string
+    url: URL
+  } = {
+    body: init?.body,
+    headers,
+    method: init?.method ?? (rawUrl instanceof Request ? rawUrl.method : undefined),
+    url: new URL(rawUrl instanceof Request ? rawUrl.url : rawUrl),
+  }
+
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    // Resolve here as well as inside pinnedFetch so a relative `location` has
+    // the absolute URL of the hop it came from as its base.
+    const { url } = await resolveAndValidate(hopState.url, options)
+    const hopInit: RequestInit = {
+      ...init,
+      body: hopState.body,
+      headers: [...hopState.headers],
+      method: hopState.method,
+    }
+    const response = await pinnedFetch(url, hopInit, options)
+    if (response.status >= 300 && response.status < 400) {
+      // Drop the redirect body so its socket returns to the pool.
+      const location = response.headers.get('location')
+      if (location) await response.body?.cancel().catch(() => undefined)
+      const decision = planRedirect({
+        body: hopState.body,
+        credentialsPresent,
+        headers: hopState.headers,
+        location,
+        method: hopState.method,
+        policy,
+        status: response.status,
+        url: location ? new URL(location, url) : url,
+        viaUrl: url,
+      })
+      if (decision.type === 'follow') {
+        hopState = decision.hop
+        continue
+      }
+    }
+    return response
+  }
+  throw new UrlSafetyError('Too many redirects.')
 }

@@ -6,7 +6,7 @@ import {
   useUpdateWorkflowTemplate,
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import {
   CANVAS_NODE_INSERT_OFFSET,
   CANVAS_NODE_INSERT_STEPS,
@@ -21,7 +21,9 @@ import {
   buildWorkflowGraph,
   buildWorkflowTriggers,
   parseWorkflowTemplate,
+  WorkflowCanvasStructureError,
 } from '../../lib/workflow-designer/serialization'
+import type { WorkflowPreservedStep } from '../../lib/workflow-designer/serialization'
 import type {
   WorkflowCanvasNode,
   WorkflowConnection,
@@ -56,8 +58,7 @@ export const useWorkflowGraphIo = ({
   const navigate = useNavigate()
   const location = useLocation()
   const { workflowTemplateId } = useParams<{ workflowTemplateId?: string }>()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const {
     data: workflowTemplate,
     isLoading: isWorkflowTemplateLoading,
@@ -66,6 +67,9 @@ export const useWorkflowGraphIo = ({
   const updateWorkflowTemplate = useUpdateWorkflowTemplate()
 
   const hydratedWorkflowIdRef = useRef<string | null>(null)
+  // W10: steps the canvas cannot render, kept verbatim and spliced back into
+  // the graph at their original position on save.
+  const preservedStepsRef = useRef<WorkflowPreservedStep[]>([])
   const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
   const lastStoredDraftSignatureRef = useRef<string | null>(null)
   // Signature of the last graph the server rejected — autosave skips it so a
@@ -147,7 +151,7 @@ export const useWorkflowGraphIo = ({
 
     hydratedWorkflowIdRef.current = 'draft'
 
-    const draft = loadWorkflowDraft()
+    const draft = loadWorkflowDraft(undefined)
     if (!draft) {
       lastSavedWorkflowSignatureRef.current = null
       lastStoredDraftSignatureRef.current = JSON.stringify({
@@ -187,6 +191,7 @@ export const useWorkflowGraphIo = ({
       workflowTemplate.triggers,
       canvasRef.current,
     )
+    preservedStepsRef.current = parsedWorkflow.preservedSteps
     hydratedWorkflowIdRef.current = workflowTemplateId
     setConnections(parsedWorkflow.connections)
     setNodes(parsedWorkflow.nodes)
@@ -201,7 +206,7 @@ export const useWorkflowGraphIo = ({
       workflowName: workflowTemplate.name.trim(),
     })
     lastStoredDraftSignatureRef.current = null
-    clearWorkflowDraft()
+    clearWorkflowDraft(workflowTemplateId)
   }, [workflowTemplate, workflowTemplateId])
 
   const persistWorkflow = useCallback(
@@ -210,10 +215,22 @@ export const useWorkflowGraphIo = ({
         return null
       }
 
-      const payload = {
-        graph: buildWorkflowGraph(nodes, connections),
-        name: workflowName.trim(),
-        triggers: buildWorkflowTriggers(nodes, connections),
+      // W11: refuse to save a canvas the runner cannot execute (forks,
+      // merges, cycles, disconnected nodes) — locally, before any request.
+      let payload
+      try {
+        payload = {
+          graph: buildWorkflowGraph(nodes, connections, preservedStepsRef.current),
+          name: workflowName.trim(),
+          triggers: buildWorkflowTriggers(nodes, connections),
+        }
+      } catch (error) {
+        if (error instanceof WorkflowCanvasStructureError) {
+          lastFailedSignatureRef.current = workflowSignature
+          setSaveError(error.message)
+          throw error
+        }
+        throw error
       }
 
       let savedWorkflow
@@ -240,7 +257,7 @@ export const useWorkflowGraphIo = ({
         workflowName: workflowName.trim(),
       })
       lastStoredDraftSignatureRef.current = workflowSignature
-      clearWorkflowDraft()
+      clearWorkflowDraft(workflowTemplateId)
       setSaveMessage(mode === 'auto' ? 'Draft saved' : 'Workflow saved')
 
       if (!workflowTemplateId) {
@@ -291,7 +308,7 @@ export const useWorkflowGraphIo = ({
         nodes.length > 0 || workflowName.trim() !== DEFAULT_WORKFLOW_NAME
 
       if (!isMeaningfulDraft) {
-        clearWorkflowDraft()
+        clearWorkflowDraft(workflowTemplateId)
         lastStoredDraftSignatureRef.current = workflowSignature
         return
       }
@@ -301,11 +318,14 @@ export const useWorkflowGraphIo = ({
       }
 
       const timeoutId = window.setTimeout(() => {
-        storeWorkflowDraft({
-          connections,
-          nodes,
-          workflowName,
-        })
+        storeWorkflowDraft(
+          {
+            connections,
+            nodes,
+            workflowName,
+          },
+          workflowTemplateId,
+        )
         lastStoredDraftSignatureRef.current = workflowSignature
         setSaveMessage('Draft cached')
       }, 450)

@@ -1,4 +1,8 @@
-import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
 export { getAgentGlyph } from '../../shared/AgentAvatar'
 
 export type OptimisticMessage = {
@@ -8,39 +12,42 @@ export type OptimisticMessage = {
   status: 'sending' | 'failed'
 }
 
-export type PendingStreamMessage = {
-  agentId: string
-  content: string
-  reasoningContent: string
-  runId: string
-}
-
 export type MessageUserIdentity = {
   avatarAttachmentId?: string | null
   avatarUrl?: string | null
   displayName: string
-  gravatarUrl?: string | null
   id: string
 }
 
-export type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
+// The channel drawer accepts this union so a PA presence stays a participant
+// projection instead of being coerced into the private AgentRecord surface.
+export type ChannelAgentParticipant = AgentRecord | PersonalAssistantPresenceParticipant
+
+export type ChannelTab = 'agents' | 'automations' | 'files' | 'messages'
 
 export type FeedItem =
   | { kind: 'date'; key: string; label: string }
   | { kind: 'message'; message: ThreadMessageRecord }
 
 export const toolbarButtonClass = [
-  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
+  'admin-compose-action flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
   'hover:bg-[var(--overlay)]',
 ].join(' ')
 
-export const runsCardClass = [
-  'admin-card flex items-start gap-3 p-3 text-left',
-  'hover:bg-[color:var(--main-hover)]',
-].join(' ')
-
-export const isOperationsTab = (tab: ChannelTab): boolean =>
-  tab === 'agents' || tab === 'runs'
+// The Agents tab only exists where it has something to say: any ordinary
+// channel, or a conversation surface that carries the Personal Assistant config
+// or at least one bound agent. A person-to-person DM shows Messages + Files
+// only. One predicate drives both the tab button and the fallback to Messages,
+// so a tab can never be selected without a panel behind it.
+export const isAgentsTabAvailable = (input: {
+  boundAgentCount: number
+  personalAssistantPresenceCount?: number
+  isConversationSurface: boolean
+  isPersonalAssistantConversation: boolean
+}): boolean =>
+  !input.isConversationSurface ||
+  input.isPersonalAssistantConversation ||
+  input.boundAgentCount + (input.personalAssistantPresenceCount ?? 0) > 0
 
 const formatDayLabel = (value: string): string => {
   const date = new Date(value)
@@ -105,9 +112,12 @@ export const getDisplayName = (
   meDisplayName: string,
   agentMap: Map<string, AgentRecord>,
   assistantFallbackName = 'Agent',
+  personalAssistantDisplayName?: string,
 ): string => {
   if (entry.role === 'assistant') {
-    return agentMap.get(entry.agentId ?? '')?.name ?? assistantFallbackName
+    return personalAssistantDisplayName
+      ?? agentMap.get(entry.agentId ?? '')?.name
+      ?? assistantFallbackName
   }
 
   if (entry.role === 'system') {

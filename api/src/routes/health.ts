@@ -6,7 +6,7 @@ import { getOpsHealth, getReadiness } from '../services/ops-health.js'
 import type { RouteDeps } from './types.js'
 
 export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, rateLimiter, requireActorContext, requireSuperAdmin } = deps
 
   app.get('/api/health', { config: { public: true } }, async () =>
     createApiResponse({
@@ -24,12 +24,23 @@ export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     return reply.code(readiness.ready ? 200 : 503).send(payload)
   })
 
+  // Instance administration, not organisation administration: worker
+  // heartbeats, queue counts, dead jobs, and the rate-limiter snapshot are
+  // deployment-wide and have no tenant column (`services/ops-health.ts`). Under
+  // the old flattened single-organisation model "owner of the shared org" was
+  // the only thing resembling an instance administrator; with one Organization
+  // per UOA organisation an org owner is just one tenant's administrator, so
+  // this is `User.superAdmin` — the named instance-wide role.
   app.get('/api/ops/health', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
+    if (!(await requireSuperAdmin(actorContext, reply))) return reply
 
-    const health = await getOpsHealth(prisma, actorContext.tenant.organizationId)
+    const health = await getOpsHealth(
+      prisma,
+      actorContext.tenant.organizationId,
+      rateLimiter,
+    )
     return createApiResponse(OpsHealthResponseSchema.parse(health))
   })
 }

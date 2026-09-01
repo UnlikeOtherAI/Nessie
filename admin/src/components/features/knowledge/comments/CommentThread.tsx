@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { KnowledgeAnnotationRecord } from '../../../../facades/knowledge/comment-hooks'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { Pill } from '../../../primitives/Pill'
 import { UserAvatar } from '../../../primitives/UserAvatar'
 import { CommentActions } from './CommentActions'
 import { CommentComposer } from './CommentComposer'
@@ -18,6 +19,7 @@ type RowProps = {
   token: string | null
   resolveAuthor: AuthorResolver
   actions: AnnotationActions
+  canResolve: boolean
   topLevel: boolean
   onReply: () => void
 }
@@ -30,6 +32,7 @@ const CommentRow = ({
   token,
   resolveAuthor,
   actions,
+  canResolve,
   topLevel,
   onReply,
 }: RowProps) => {
@@ -61,17 +64,17 @@ const CommentRow = ({
         avatarAttachmentId={author.avatarAttachmentId}
         avatarUrl={author.avatarUrl}
         displayName={author.displayName}
-        gravatarUrl={author.gravatarUrl}
         size={36}
         token={token}
+        userId={author.userId}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-bold text-[var(--tx)]">{author.displayName}</span>
           {author.isAgent ? (
-            <span className="rounded bg-[var(--overlay-weak)] px-1 text-[10px] uppercase text-[color:var(--tx3)]">
+            <Pill radius="chip" size="sm" tone="muted">
               agent
-            </span>
+            </Pill>
           ) : null}
           <span className="text-xs text-[color:var(--tx3)]">{when(annotation.createdAt)}</span>
           {annotation.editedAt ? (
@@ -99,6 +102,7 @@ const CommentRow = ({
         )}
         <CommentActions
           canModify={isOwn}
+          canResolve={canResolve}
           currentUserId={currentUserId}
           onDelete={() => actions.remove(annotation.id)}
           onEdit={() => setEditing(true)}
@@ -119,6 +123,7 @@ type CommentThreadProps = {
   currentUserId?: string
   authorLabel: AuthorResolver
   actions: AnnotationActions
+  canResolve: boolean
   showAnchorQuote?: boolean
 }
 
@@ -128,6 +133,7 @@ export const CommentThread = ({
   currentUserId,
   authorLabel,
   actions,
+  canResolve,
   showAnchorQuote,
 }: CommentThreadProps) => {
   const { token } = useAuthSession()
@@ -146,6 +152,7 @@ export const CommentThread = ({
       <CommentRow
         actions={actions}
         annotation={annotation}
+        canResolve={canResolve}
         currentUserId={currentUserId}
         onReply={() => setReplying((value) => !value)}
         resolveAuthor={authorLabel}
@@ -158,6 +165,7 @@ export const CommentThread = ({
             <CommentRow
               actions={actions}
               annotation={reply}
+              canResolve={canResolve}
               currentUserId={currentUserId}
               key={reply.id}
               onReply={() => setReplying(true)}

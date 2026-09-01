@@ -1,0 +1,31 @@
+{
+  "name": "reasoning-tool-answer",
+  "description": "Both turns emit visible reasoning before acting: turn 0 thinks, then calls the channel_list builtin; turn 1 thinks, then answers. Exercises the worker's thought recorder (reasoning + tool chunks) end to end.",
+  "defaults": {
+    "latencyMs": 0,
+    "model": "mock-model"
+  },
+  "turns": [
+    {
+      "latencyMs": 20,
+      "reasoning": "The question is about this workspace, so I should look at the real channel list rather than guess. Calling channel_list with a small limit first.",
+      "stream": { "chunkDelayMs": 0, "chunkSize": 16 },
+      "text": "Let me check which channels exist first.",
+      "toolCalls": [
+        {
+          "arguments": { "limit": 5 },
+          "toolCallId": "mock-call-channel-list-1",
+          "toolName": "channel_list"
+        }
+      ],
+      "usage": { "inputTokens": 140, "outputTokens": 24 }
+    },
+    {
+      "latencyMs": 20,
+      "reasoning": "The tool came back with the channel list. That is everything I need, so I can answer directly now.",
+      "stream": { "chunkDelayMs": 0, "chunkSize": 16 },
+      "text": "The workspace has a handful of channels, including the one we are talking in right now.",
+      "usage": { "inputTokens": 210, "outputTokens": 18 }
+    }
+  ]
+}

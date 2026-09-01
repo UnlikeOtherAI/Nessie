@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
+import type { AuthorizedActionContext } from '@nessie/schemas'
+
 import {
   BoardColumnRecordSchema,
   CreateColumnBodySchema,
@@ -18,20 +20,25 @@ import {
 import type { RouteDeps } from './types.js'
 
 export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, requireActorContext, requireOwner, isProjectAccessibleToActor } = deps
 
-  const loadProject = async (projectId: string, organizationId: string) =>
-    prisma.project.findFirst({
-      where: { id: projectId, organizationId },
+  // Single seam for every board route: a project is only loadable by an org
+  // owner or a member of that project, so one team's board is not readable
+  // (or reorderable) by the rest of the organisation.
+  const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
       select: { id: true, organizationId: true, boardStyle: true },
     })
+  }
 
   app.get('/api/projects/:projectId/board', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -47,7 +54,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -66,7 +73,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -84,7 +91,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId, columnId } = request.params as { projectId: string; columnId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
@@ -106,7 +113,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId, columnId } = request.params as { projectId: string; columnId: string }
-    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    const project = await loadProject(actorContext, projectId)
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply

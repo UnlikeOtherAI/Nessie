@@ -1,12 +1,24 @@
+import { AGENT_ADMIN_TOOL_DEFINITIONS } from './builtin-agent-tools.js'
+import {
+  DASHBOARD_EMBED_TOOL_DEFINITIONS,
+  DASHBOARD_TOOL_DEFINITIONS,
+} from './builtin-dashboard-tools.js'
 import {
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
+import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
+import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
 import { CONNECTOR_TOOL_DEFINITIONS } from './builtin-connector-tools.js'
+import { EXECUTOR_TOOL_DEFINITIONS } from './builtin-executor-tools.js'
 import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
+import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
+import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js'
+
+export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
 import {
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
@@ -22,6 +34,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
+export { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 export {
   FILE_GLOB_TOOL_DEFINITION,
   FILE_READ_TOOL_DEFINITION,
@@ -32,9 +45,10 @@ export {
 
 const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_search',
+  summary: 'Search the public web for current results and answer snippets.',
   label: 'Web Search',
   description:
-    'Search the public web (Google results via serper.dev) for up-to-date ' +
+    'Search the public web through Ledger-metered Serper results for up-to-date ' +
     'outside information. Returns top results with titles, URLs, and snippets, ' +
     'plus a direct answer when one is available.',
   parameters: {
@@ -59,6 +73,7 @@ const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_fetch',
+  summary: 'Extract readable text from a public web page URL.',
   label: 'Web Fetch',
   description: 'Fetch and read a public URL. Returns the text content.',
   parameters: {
@@ -74,12 +89,47 @@ const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: true,
 }
 
+// Fan-out to a sub-agent. Advertised to ordinary agent runs so the model can
+// push discovery legwork out of its own context; the worker dispatches it
+// itself (nested loop, isolated MCP view, small fixed budget) rather than
+// through the builtin executor, and never advertises it inside a sub-agent or
+// on a DeepWater launch turn.
+const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'delegate',
+  summary: 'Delegate focused discovery work to a sub-agent.',
+  label: 'Delegate to Sub-agent',
+  description:
+    'Dispatch a focused sub-agent to do discovery legwork — searches, fetches, ' +
+    'and external (MCP) lookups — and report back a short digest instead of raw ' +
+    'results. Use one sub-agent per angle to keep bulky pages and transcripts out ' +
+    'of this conversation, then work from the digests. The sub-agent sees only the ' +
+    'task you write, cannot ask you questions, and cannot delegate further.',
+  parameters: {
+    type: 'object',
+    properties: {
+      task: {
+        type: 'string',
+        description:
+          'A self-contained task description for the sub-agent. Include any relevant context — the sub-agent only sees this string, not the rest of your conversation.',
+      },
+      hint: {
+        type: 'string',
+        description:
+          'Optional hint about which tool category to favor (e.g. "web search", "filesystem", "github").',
+      },
+    },
+    required: ['task'],
+  },
+  safe: true,
+}
+
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'workspace_search',
+    summary: 'Search accessible workspace conversations, threads, and messages.',
     label: 'Workspace Search',
     description:
-      'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs and snippets.',
+      'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs, snippets, and a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -98,10 +148,11 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'authored_message_search',
+    summary: 'Search accessible messages written by the current user.',
     label: 'Authored Message Search',
     personalAssistantOnly: true,
     description:
-      'Search messages authored by the current user across visible workspace channels and threads.',
+      'Search messages authored by the current user across visible workspace channels and threads. Each result carries a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -120,6 +171,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'people_search',
+    summary: 'Find organization people by display name or email address.',
     label: 'People Search',
     description:
       'Search people in the current organization by display name or email address.',
@@ -141,6 +193,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'send_message',
+    summary: 'Send a message as the current user.',
     label: 'Send Message',
     personalAssistantOnly: true,
     description:
@@ -172,6 +225,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'update_preferences',
+    summary: "Replace the current user's workspace preferences.",
     label: 'Update Preferences',
     personalAssistantOnly: true,
     description:
@@ -189,7 +243,31 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'workflow_transform_preview',
+    summary: 'Test a workflow JMESPath transform against sample JSON.',
+    label: 'Workflow Transform Preview',
+    description:
+      'Evaluate a workflow JMESPath expression against a sample JSON document and return the result. ' +
+      'Use it to author and check a `transform` step mapping (or an inline `jmespath:` value) before saving ' +
+      'the graph — the same compiler and security envelope the designer and the worker use.',
+    parameters: {
+      type: 'object',
+      properties: {
+        expression: {
+          type: 'string',
+          description: 'The JMESPath expression to evaluate',
+        },
+        sampleJson: {
+          description: 'The sample document to evaluate against (JSON value or JSON string)',
+        },
+      },
+      required: ['expression', 'sampleJson'],
+    },
+    safe: true,
+  },
+  {
     id: 'document_read',
+    summary: 'Read a project-local markdown document by path or topic.',
     label: 'Document Read',
     description: 'Read a project-local document by path or topic. Returns markdown content.',
     parameters: {
@@ -206,6 +284,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'spawn_subtask',
+    summary: 'Create a child agent for a specific subtask.',
     label: 'Spawn Sub-Task',
     description:
       'Delegate a specific sub-task to a new child agent. Use when a task is complex enough to benefit from parallel or specialized work. The child agent will complete the task and report back.',
@@ -226,6 +305,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  DELEGATE_TOOL_DEFINITION,
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
   HTTP_FETCH_TOOL_DEFINITION,
@@ -238,10 +318,13 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   // sp-messaging slice: full-text search + agent-authored message lifecycle
   {
     id: 'message_search',
+    summary: 'Search accessible channel messages, optionally within one channel.',
     label: 'Message Search',
     description:
       'Full-text search across messages in channels visible to you. Returns ' +
-      'compact results with message IDs, snippets, channel, and author.',
+      'compact results with message IDs, snippets, channel, author, and a ' +
+      '`link=` path — quote that link directly rather than describing the ' +
+      'location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -264,6 +347,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'message_edit',
+    summary: 'Edit a message previously authored by this agent.',
     label: 'Message Edit',
     description:
       'Edit a message you (this agent) previously authored. Replaces the ' +
@@ -285,7 +369,39 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'react',
+    summary: "Add or remove this agent's emoji reaction to a message.",
+    label: 'React To Message',
+    description:
+      'Add or remove an emoji reaction on a message — the same buttons a person '
+      + 'clicks. Use it to acknowledge something that needs registering but no '
+      + 'reply (👍 to confirm, 🎉 for good news, 👀 when you have seen it and will '
+      + 'act later): a reaction says it without adding a message to read. Typing '
+      + 'an emoji into a reply is not the same thing — that is still a message. '
+      + 'Set remove: true to take one of your own reactions back off.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message to react to.',
+        },
+        emoji: {
+          type: 'string',
+          description: 'A single emoji, e.g. 👍',
+        },
+        remove: {
+          type: 'boolean',
+          description: 'Remove this reaction instead of adding it.',
+        },
+      },
+      required: ['messageId', 'emoji'],
+    },
+    safe: false,
+  },
+  {
     id: 'message_delete',
+    summary: 'Soft-delete a message previously authored by this agent.',
     label: 'Message Delete',
     description:
       'Soft-delete a message you (this agent) previously authored. The message ' +
@@ -305,133 +421,23 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
-  // ─── sp-channels: channel lifecycle tools ─────────────────────────────────
-  {
-    id: 'channel_find',
-    label: 'Find Channel',
-    description:
-      'Resolve a channel by name or scoped slug (e.g. "general", "#product", or "project/general") to its id. ' +
-      'Use this to get a channelId before posting or acting on a channel — ' +
-      'do not ask the user for an id. Returns matching channels with id, ' +
-      'label, project/team scope, scoped slug, and visibility; use scope or channelId to distinguish duplicate labels.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'The channel name (or part of it) to look up.',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum number of matches to return (default 10).',
-        },
-      },
-      required: ['query'],
-    },
-    safe: true,
-  },
-  {
-    id: 'channel_list',
-    label: 'List Channels',
-    description:
-      'List channels visible in the current organization. Returns each ' +
-      'channel id, label, project/team scope, scoped slug, visibility, topic, and whether it is archived.',
-    parameters: {
-      type: 'object',
-      properties: {
-        includeArchived: {
-          type: 'boolean',
-          description: 'Include archived channels in the result (default false).',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum number of channels to return.',
-        },
-      },
-    },
-    safe: true,
-  },
-  {
-    id: 'channel_update',
-    label: 'Update Channel',
-    personalAssistantOnly: true,
-    description:
-      'Update a channel label, topic, and/or description. Requires the acting ' +
-      'principal to be able to manage the channel (channel owner/admin, or an ' +
-      'org/team owner/admin).',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The channel ID to update.',
-        },
-        label: {
-          type: 'string',
-          description: 'New channel name.',
-        },
-        topic: {
-          type: 'string',
-          description: 'New short topic for the channel.',
-        },
-        description: {
-          type: 'string',
-          description: 'New longer description for the channel.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
-  {
-    id: 'channel_archive',
-    label: 'Archive Channel',
-    personalAssistantOnly: true,
-    description:
-      'Archive or unarchive a channel. Archiving hides it from default ' +
-      'listings without deleting its history. Requires channel-manage rights.',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The channel ID to archive or unarchive.',
-        },
-        archived: {
-          type: 'boolean',
-          description:
-            'true to archive (default), false to unarchive.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
-  {
-    id: 'channel_join',
-    label: 'Join Channel',
-    personalAssistantOnly: true,
-    description:
-      'Join a public channel in the current organization. Private and ' +
-      'protected channels require an explicit invite and cannot be joined.',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The public channel ID to join.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
+  ...CHANNEL_TOOL_DEFINITIONS,
+  ...AGENT_ADMIN_TOOL_DEFINITIONS,
+  ...DASHBOARD_TOOL_DEFINITIONS,
+  ...DASHBOARD_EMBED_TOOL_DEFINITIONS,
   ...KB_COMMENT_TOOL_DEFINITIONS,
   ...KB_TOOL_DEFINITIONS,
   ...CONNECTOR_TOOL_DEFINITIONS,
+  ...EXECUTOR_TOOL_DEFINITIONS,
   ...INTEGRATION_TOOL_DEFINITIONS,
+  ...COMMS_TOOL_DEFINITIONS,
+  ...TODO_TOOL_DEFINITIONS,
+  ...DEMONSTRATION_TOOL_DEFINITIONS,
 ]
 
+// `delegate` is deliberately absent: the workflow builtin-tool executor has no
+// case for it, so save-time validation must not accept a tool that can only
+// fail at runtime (workflows-first-class plan, W5).
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,

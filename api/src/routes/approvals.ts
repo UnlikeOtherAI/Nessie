@@ -18,7 +18,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
 
     const query = request.query as Record<string, string | undefined>
-    const result = await listApprovalRequests(prisma, actorContext.tenant.organizationId, {
+    const result = await listApprovalRequests(prisma, actorContext, {
       status: query['status'],
       agentId: query['agentId'],
       channelId: query['channelId'],
@@ -33,7 +33,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const count = await getPendingApprovalCount(prisma, actorContext.tenant.organizationId)
+    const count = await getPendingApprovalCount(prisma, actorContext)
     return createApiResponse({ count })
   })
 
@@ -42,7 +42,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
 
     const { approvalId } = request.params as { approvalId: string }
-    const approval = await getApprovalRequest(prisma, approvalId, actorContext.tenant.organizationId)
+    const approval = await getApprovalRequest(prisma, approvalId, actorContext)
     if (!approval) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
@@ -82,6 +82,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
         SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
         EXPIRED: { code: 410, message: 'Approval request has expired' },
         ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
+        RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
       }
       const err = errorMap[result.error] ?? { code: 400, message: 'Unknown error' }
       sendApiError(reply, err.code, result.error, err.message)

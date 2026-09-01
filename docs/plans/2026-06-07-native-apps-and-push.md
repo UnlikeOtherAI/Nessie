@@ -1,8 +1,8 @@
 # Native Apps + Self-Operated Push — Plan
 
-Status: **proposed** (2026-06-07). Bringing Nessie to phones and desktops as
-real native apps, with a push-notification server we build and operate
-ourselves (no third-party push relay).
+Status: **in progress** (updated 2026-08-11). Bringing Nessie to phones and
+desktops as real native apps, with a push-notification server we build and
+operate ourselves (no third-party push relay).
 
 ## Goals
 
@@ -95,11 +95,14 @@ Foreground clients should use one user-scoped connection:
 
 ## The push server (self-operated)
 
-The centerpiece. One central service we run (`push-gateway/`) that owns the
-APNs/FCM credentials and the published app identity, and fans notifications out
-to devices. Every Nessie backend — including self-hosted ones — asks the gateway
-to deliver; the gateway is the single component that is *not* self-hostable,
-because the signing keys and the App Store / Play listing belong to us.
+The hosted deployment currently sends directly from Nessie's API/worker through
+`@nessie/push`: the API stores platform credentials in its encrypted secret
+store, while the worker selects recipients and opens the APNs/FCM connection.
+That is the operative, fully in-house path — no Expo Push or other message relay
+receives notification content or device tokens. The separately deployable
+`push-gateway/` remains an optional central boundary for future self-hosted
+instances; it must preserve the same payload, credential, tenant, and dead-token
+contracts rather than becoming a second delivery implementation.
 
 ### Topology
 
@@ -108,24 +111,24 @@ because the signing keys and the App Store / Play listing belong to us.
         │  (Postgres pubsub event)
         ▼
  worker push-dispatch ── resolves recipients → their device tokens
-        │  authenticated HTTPS (per-instance API key)
+        │  decrypts platform credential only in server process
         ▼
- push-gateway ── APNs (HTTP/2 + .p8 JWT) ──► iPhones
+ @nessie/push ── APNs (HTTP/2 + .p8 JWT) ──► iPhones
               └─ FCM  (v1 API + service acct) ─► Android
 ```
 
 - The **worker** decides *who* should be notified and *what the payload is*
   (this needs tenant/RBAC context, so it stays inside each instance).
-- The **gateway** is dumb fan-out: "deliver this payload to these tokens via
-  APNs/FCM." It holds the secrets; it does not need tenant context.
-- Self-hosted instances call the gateway over HTTPS with a per-instance key.
-  The single-tenant hosted deployment calls the same gateway in-process or over
-  localhost.
+- The **direct server sender** is dumb fan-out: "deliver this payload to these
+  tokens via APNs/FCM." Recipient selection and tenant policy stay in the
+  worker; decrypted secret bytes never leave the server process.
+- If the optional gateway is enabled for a self-hosted topology, it is an
+  authenticated forwarding boundary, not a client-facing push service.
 
 ### Device-token registry
 
-New table (per-instance, in each Nessie DB), `organization_id`-scoped like every
-other child table:
+New table (per-instance, in each Nessie DB). A token has one current owner;
+the worker additionally filters that owner by its organization before delivery:
 
 ```
 device_tokens
@@ -135,15 +138,26 @@ device_tokens
   platform        enum(ios, android)
   token           text   (the *native* APNs/FCM token, not an Expo token)
   app_version     text
+  apns_environment enum(sandbox, production), nullable for Android
+  registration_version bigint (server-issued global ownership generation)
+  inactive_at      timestamptz (logout tombstone; never delivered)
   last_seen_at    timestamptz
   created_at      timestamptz
-  unique(user_id, token)
+  unique(token)
 ```
 
 Endpoints (in `api/`):
 
-- `POST /api/devices` — register/refresh `{ platform, token, appVersion }`.
+- `POST /api/devices` — register/refresh `{ platform, token, appVersion,
+  apnsEnvironment? }`; iOS supplies the host selected by its signed build.
+  A native token represents one installation, so registration transfers it to
+  the current user and organization rather than retaining a former login. The
+  server signs every access session with a strictly increasing global ownership
+  generation, then rejects a late former-session request — even from a
+  different account — rather than restoring stale ownership.
 - `DELETE /api/devices/:token` — unregister (logout / token invalidated).
+  This tombstones the installation with a newer server generation instead of
+  deleting it, so an in-flight former-session registration remains rejected.
 
 Token hygiene: APNs/FCM report invalid tokens on send; the gateway returns those
 to the worker, which prunes them. Tokens also rotate on reinstall — clients
@@ -174,11 +188,17 @@ device token**, not an Expo push token:
 
 - Notify on: new message in a channel/DM the user is in, `@mention`, DM, approval
   request assigned to the user, agent run finished for the user.
-- **Coalesce** by channel (`apns-collapse-id` / FCM collapse key) so a busy
-  channel doesn't spam.
-- Carry a **deep link** (`nessie://channels/:id?msg=:id`) so a tap opens the
-  exact thread.
-- **Badge** = unread count; server is source of truth, pushed in the payload.
+- **Coalesce** by channel feed or message-level reply conversation
+  (`apns-collapse-id` / FCM collapse key) so a busy conversation doesn't spam
+  without replacing a different reply conversation.
+- Carry a **deep link** to the message's reply conversation so a tap opens the
+  exact channel feed item or reply thread.
+- **Badge** = the recipient's authoritative total: unread channel messages
+  plus visible assigned-work and published-knowledge attention. The server is
+  the source of truth and pushes an absolute total in every native/browser
+  payload; a task or knowledge delivery must never overwrite channel unread
+  state with a subtotal. Reply read cursors are per root conversation, not per
+  container thread, so reading one reply panel never clears another.
 - Respect **mute/quiet-hours** (per channel + per user) — evaluated in the
   worker before dispatch.
 - **Silent pushes** to nudge a foregrounded-soon app to refresh unread state.
@@ -187,12 +207,16 @@ device token**, not an Expo push token:
 
 - Per-instance gateway API key; the gateway never trusts a token→user mapping it
   did not receive over an authenticated call.
-- Device tokens are `organization_id`-scoped; the worker only ever sends a
-  user's own tokens.
-- `.p8` / FCM service-account secrets live only in the gateway (reuse the
-  existing prod secret-store pattern), never in client apps or instance configs.
-- Gateway is stateless w.r.t. tenant data — it stores no messages, only does
-  authenticated fan-out and reports back dead tokens.
+- Device tokens are `organization_id`-scoped; the worker filters every native
+  fan-out by both organization and recipient user, so a multi-workspace user
+  never receives another workspace's notification on a shared device.
+- iOS records the APNs environment of the signed build with its token. The
+  worker uses that environment for each send, so sandbox development builds
+  and TestFlight/production builds can coexist against the same `.p8` key.
+- `.p8` / FCM service-account secrets live only in the platform's encrypted
+  server-side secret store, never in client apps or organization configs.
+- The direct sender is stateless with respect to tenant content — it stores no
+  messages, only does scoped fan-out and reports dead tokens for pruning.
 
 ## Push credentials — super-user upload (admin)
 
@@ -200,8 +224,12 @@ The gateway needs Apple/Google credentials. These are **platform-global** — on
 Apple key + one FCM project for the single published app — so they are NOT a
 per-tenant setting. They are managed by a **platform operator** through a
 dedicated super-user surface, gated to a new **super-admin** role that sits
-*above* the per-organization `owner` role (today "superuser" === org `owner`,
-which is per-tenant and therefore the wrong gate for global creds).
+*above* the per-organization `owner` role (when this was written "superuser"
+=== org `owner`, which is per-tenant and therefore the wrong gate for global
+creds). **2026-08-16:** `User.superAdmin` is now the named instance-wide role
+generally, not only for push credentials — the other deployment-wide surfaces
+that were leaning on org `owner` (ops health, MCP public-store review,
+instance-global catalog rows) moved onto it.
 
 ### What the operator uploads — "exactly what Apple/Google give you"
 
@@ -226,8 +254,9 @@ which is per-tenant and therefore the wrong gate for global creds).
   prove it signs; reject otherwise.
 - On FCM JSON upload: parse, assert `type: "service_account"` and the required
   fields, and do a token exchange to prove the account is live.
-- A **"Send test push"** action delivers to a chosen registered device so the
-  operator confirms the whole chain before shipping.
+- A **"Send test to this iPhone"** action delivers directly to the requesting
+  operator's newest registered iOS device in the current workspace, so it
+  verifies the exact server → APNs → device chain before shipping.
 
 ### Storage & UX
 
@@ -366,8 +395,14 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
   realtime publish (`api/src/routes/threads.ts`, fire-and-forget; a push failure
   never breaks message posting). Payload (`PushDispatchJobPayloadSchema` in
   `@nessie/schemas`): `{ messageId, authorUserId, channelId, threadId,
-  organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`. Enqueue
-  helper: `enqueuePushDispatch` in `api/src/queue/pgqueue.ts`.
+  rootMessageId?, organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`.
+  New jobs target `/channels/:channelId/threads/:threadId/replies/:rootMessageId`
+  (a top-level message is its own root), so native, web, and in-app taps open
+  the notified conversation rather than the channel default. Interactive
+  agent replies use the same consumer with `recipientUserIds[]` instead of an
+  author id, so the person who asked receives the completed reply even after
+  leaving the app. Enqueue helper: `enqueuePushDispatch` in
+  `api/src/queue/pgqueue.ts`.
 - The worker consumer (`worker/src/control/push-dispatch.ts`, registered in
   `worker/src/index.ts`) loads the `push_credentials` rows (early-returns if none
   configured), resolves recipients = channel members minus the author
@@ -390,18 +425,26 @@ both the **web admin** and the **desktop (Tauri) app** (which loads the same
 bundle) notify on new messages with **no APNs/FCM** — they ride the per-user SSE
 stream directly:
 
-- `admin/src/facades/notifications/useMessageNotifications.ts` opens a fetch-based
-  SSE connection to `GET /api/events/stream` (bearer token + `Last-Event-ID`
-  reconnect, shared frame reader in `admin/src/lib/sse.ts`, also used by
-  `useThreadStream`). On each `message.new` it fires a native
+- `admin/src/facades/notifications/useMessageNotifications.ts` subscribes to the
+  shared per-user event stream (`admin/src/facades/realtime/event-stream.ts`,
+  which owns the single fetch to `GET /api/events/stream` — bearer token,
+  `Last-Event-ID` resume, the jittered reconnect policy from
+  `facades/threads/stream-retry.ts`, and the shared frame reader in
+  `admin/src/lib/sse.ts`). It used to open that connection itself, alongside a
+  second one from the alerts bell; the route derives the subscription entirely
+  server-side, so the two sockets carried identical bytes and each discarded the
+  other's events. On each newly created message (`message.new` or an agent
+  `message.reply`) it fires a native
   `Notification` (when permission is granted) **and** an in-app toast
   (`admin/src/providers/NotificationsProvider.tsx`), deep-linking to
   `/channels/:channelId` on click. Wired into `AdminShellLayout`.
 - Suppression rules: never notify for the recipient's **own** message
-  (`authorUserId === me`) and never for the **channel currently being viewed**
-  (`channelId === active route` while the tab is focused/visible). Backlog
-  replay events (ts < connect time) are ignored; notified message ids are
-  de-duplicated.
+  (`authorUserId === me`) and never for the **exact channel feed or reply
+  conversation currently being viewed** (container `threadId` plus a matching
+  nullable reply-root id while the window is focused and visible). A foreground
+  client elsewhere in Nessie still receives its in-app banner; only that exact
+  conversation suppresses it. Backlog replay events
+  (ts < connect time) are ignored; notified message ids are de-duplicated.
 - To make those rules reliable the `message.new` realtime event now carries
   `channelId` + `authorUserId` (optional fields on `MessageNewEventSchema` in
   `@nessie/schemas`), populated by every publisher (`api/src/routes/threads.ts`
@@ -409,10 +452,11 @@ stream directly:
   publishers in `pa-tools`/`orchestrate`/`execute`/`mailbox`, which set
   `channelId`). Verified live: a message posted by another user lands a toast on
   the recipient's stream; the recipient's own message does not.
-- The desktop app's native OS notifications use this exact path (the Tauri
-  WKWebView/WebView2 surfaces the Web `Notification` API), so desktop needs no
-  extra dispatch service. Mobile (backgrounded/closed) still requires the
-  APNs/FCM pipeline above.
+- The desktop app's native OS notifications use this exact path: the shared
+  admin controller calls the Tauri notification bridge, which emits a macOS or
+  Windows system alert and returns the click to the same route mapper. Desktop
+  therefore needs no separate notification SSE stream. Mobile
+  (backgrounded/closed) still requires the APNs/FCM pipeline above.
 
 ## Accounts & infra checklist
 
@@ -420,8 +464,10 @@ stream directly:
       key, TestFlight.
 - [ ] Google Play ($25 once) + **Firebase project**: FCM v1 + `google-services.json`.
 - [ ] Expo / **EAS** account: cloud builds + store submission.
-- [ ] Tauri signing: Apple Developer ID cert + notarization; Windows
-      Authenticode cert.
+- [ ] Tauri signing: Apple Developer ID cert + notarization for the
+      executor-capable direct build; Apple Distribution + Mac Installer
+      Distribution credentials and a Mac App Store Connect profile for the
+      sandboxed TestFlight build; Windows Authenticode cert.
 - [ ] Host the **push-gateway** (small always-on service alongside the Hetzner
       stack) + secret storage for `.p8` / FCM service account.
 - [ ] Custom URL scheme `nessie://` + universal links / app links.
@@ -441,7 +487,10 @@ stream directly:
      "send test push" button. This is buildable early (independent of the RN
      app) and is what makes the gateway configurable.
 3. **Desktop (Tauri)** — shell over the `admin/` build, OS notifications from
-   SSE, signed mac + win builds.
+   SSE, signed mac + win builds. The Mac App Store/TestFlight configuration is
+   a sandboxed shell build; it omits the packaged executor until that child
+   process and its user-selected workspace access have a reviewed sandbox
+   design. Developer ID distribution remains the executor-capable build.
 4. **Polish** — badges, notification UX controls, coalescing, unread sync, store
    submission (TestFlight / Play internal), auto-update.
 

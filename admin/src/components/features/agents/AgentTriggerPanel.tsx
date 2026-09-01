@@ -8,15 +8,15 @@ import {
   useTriggerHistory,
 } from '../../../facades/triggers/hooks'
 import type { AgentRecord, AgentTriggerRecord } from '../../../lib/api-client'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
+import { useIsOwner } from '../../shared/OwnerGate'
 import {
   TRIGGER_TYPE_ICONS,
   formatTimestamp,
   getScheduleSummary,
   getTriggerTone,
-  sectionTitle,
 } from '../triggers/trigger-presentation'
 
 type AgentTriggerPanelProps = {
@@ -51,7 +51,7 @@ const TriggerRow = ({
               >
                 {trigger.name ?? trigger.type}
               </Link>
-              <StatusPill tone={getTriggerTone(trigger.status)}>{trigger.status}</StatusPill>
+              <Pill tone={getTriggerTone(trigger.status)}>{trigger.status}</Pill>
             </div>
             <div className="mt-1 text-sm text-[color:var(--tx2)]">
               {trigger.description ?? getScheduleSummary(trigger)}
@@ -93,7 +93,7 @@ const TriggerRow = ({
       </div>
 
       <div className="mt-4">
-        <div className={sectionTitle}>Recent deliveries</div>
+        <SectionLabel>Recent deliveries</SectionLabel>
         <div className="mt-2 grid gap-2">
           {history.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">No deliveries yet</div>
@@ -104,9 +104,9 @@ const TriggerRow = ({
                 className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <StatusPill tone={delivery.status === 'failed' ? 'danger' : 'muted'}>
+                  <Pill tone={delivery.status === 'failed' ? 'danger' : 'muted'}>
                     {delivery.status}
-                  </StatusPill>
+                  </Pill>
                   <span className="text-xs text-[color:var(--tx3)]">
                     {formatTimestamp(delivery.createdAt)}
                   </span>
@@ -125,8 +125,7 @@ const TriggerRow = ({
 }
 
 export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const pause = usePauseTrigger()
   const resume = useResumeTrigger()
@@ -135,7 +134,7 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
   if (!isOwner) {
     return (
       <section className="admin-card p-4">
-        <div className={sectionTitle}>Triggers</div>
+        <SectionLabel>Triggers</SectionLabel>
         <div className="mt-3 text-sm text-[color:var(--tx3)]">Owner access required.</div>
       </section>
     )
@@ -145,7 +144,7 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
     <section className="admin-card p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className={sectionTitle}>Triggers</div>
+          <SectionLabel>Triggers</SectionLabel>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">
             Automatic activation and manual fire controls for this agent.
           </div>

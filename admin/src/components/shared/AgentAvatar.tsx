@@ -1,13 +1,16 @@
 import type { AgentRecord } from '../../lib/api-client'
+import { AGENT_AVATAR_BACKGROUND_COLORS } from '@nessie/schemas'
 import { useAuthedObjectUrl } from '../../lib/uploads'
 
-type AgentAvatarSource = Pick<AgentRecord, 'avatarAttachmentId' | 'name' | 'role'>
+export type AgentAvatarSource = Pick<
+  AgentRecord,
+  'avatarAttachmentId' | 'avatarBackgroundColor' | 'id' | 'name' | 'role'
+>
 
 type AgentAvatarProps = {
   agent?: AgentAvatarSource | null
   className?: string
   muted?: boolean
-  shape?: 'circle' | 'rounded'
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   token: string | null
 }
@@ -43,20 +46,30 @@ export const getAgentGlyph = (agent?: Pick<AgentAvatarSource, 'role'> | null): s
   return '⚡'
 }
 
+const fallbackBackgroundColor = (agent?: Pick<AgentAvatarSource, 'id'> | null): string => {
+  const identifier = agent?.id ?? ''
+  const hash = [...identifier].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    0,
+  )
+  return AGENT_AVATAR_BACKGROUND_COLORS[
+    hash % AGENT_AVATAR_BACKGROUND_COLORS.length
+  ]!
+}
+
 export const AgentAvatar = ({
   agent,
   className = '',
   muted = false,
-  shape = 'rounded',
   size = 'md',
   token,
 }: AgentAvatarProps) => {
   const objectUrl = useAuthedObjectUrl(agent?.avatarAttachmentId ?? null, token)
   const dimension = sizePx[size]
-  const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded-lg'
+  const backgroundColor = agent?.avatarBackgroundColor ?? fallbackBackgroundColor(agent)
   const classes = [
     'flex flex-shrink-0 items-center justify-center overflow-hidden',
-    shapeClass,
+    'rounded-md',
     muted ? 'opacity-60' : '',
     className,
   ].join(' ')
@@ -68,7 +81,7 @@ export const AgentAvatar = ({
         className={`${classes} object-cover`}
         height={dimension}
         src={objectUrl}
-        style={{ height: dimension, width: dimension }}
+        style={{ backgroundColor, height: dimension, width: dimension }}
         width={dimension}
       />
     )
@@ -82,7 +95,7 @@ export const AgentAvatar = ({
         'border border-[var(--accent)] bg-[var(--accent-soft)]',
         glyphSizeClass[size],
       ].join(' ')}
-      style={{ height: dimension, width: dimension }}
+      style={{ backgroundColor, height: dimension, width: dimension }}
     >
       {getAgentGlyph(agent)}
     </div>

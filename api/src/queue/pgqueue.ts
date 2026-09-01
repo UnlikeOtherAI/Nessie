@@ -1,86 +1,15 @@
-import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type {
+  AttentionDispatchJobPayload,
   OrchestrateDecideJobPayload,
   PushDispatchJobPayload,
-  RunExecuteJobPayload,
 } from '@nessie/schemas'
+import { enqueueQueueJob } from '@nessie/db'
 
-export const enqueueQueueJob = async (
-  prisma: Pick<PrismaClient, '$executeRaw'>,
-  input: {
-    idempotencyKey?: string
-    maxAttempts?: number
-    payload: unknown
-    topic: string
-  },
-): Promise<boolean> => {
-  const encodedPayload = JSON.stringify(input.payload)
-  const maxAttempts = input.maxAttempts ?? 3
-
-  if (input.idempotencyKey) {
-    const inserted = await prisma.$executeRaw(
-      Prisma.sql`
-        INSERT INTO queue_jobs (
-          topic,
-          payload,
-          status,
-          attempt,
-          max_attempts,
-          enqueued_at,
-          idempotency_key
-        )
-        VALUES (
-          ${input.topic},
-          ${encodedPayload}::jsonb,
-          'pending',
-          0,
-          ${maxAttempts},
-          now(),
-          ${input.idempotencyKey}
-        )
-        ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
-      `,
-    )
-
-    return Number(inserted) > 0
-  }
-
-  await prisma.$executeRaw(
-    Prisma.sql`
-      INSERT INTO queue_jobs (
-        topic,
-        payload,
-        status,
-        attempt,
-        max_attempts,
-        enqueued_at
-      )
-      VALUES (
-        ${input.topic},
-        ${encodedPayload}::jsonb,
-        'pending',
-        0,
-        ${maxAttempts},
-        now()
-      )
-    `,
-  )
-
-  return true
-}
-
-export const enqueueRunExecution = async (
-  prisma: Pick<PrismaClient, '$executeRaw'>,
-  payload: RunExecuteJobPayload,
-  idempotencyKey?: string,
-): Promise<boolean> => {
-  return enqueueQueueJob(prisma, {
-    idempotencyKey,
-    payload,
-    topic: 'run.execute',
-  })
-}
+// The raw queue insert + run.execute enqueue live in `@nessie/db` (shared with
+// the worker and with the thread-serialization claim/drain seam); re-exported
+// here so existing API call sites keep their import path.
+export { enqueueQueueJob, enqueueRunExecution } from '@nessie/db'
 
 export const enqueueOrchestrateDecide = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
@@ -103,5 +32,16 @@ export const enqueuePushDispatch = async (
     idempotencyKey,
     payload,
     topic: 'push.dispatch',
+  })
+}
+
+export const enqueueAttentionDispatch = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: AttentionDispatchJobPayload,
+): Promise<boolean> => {
+  return enqueueQueueJob(prisma, {
+    idempotencyKey: `attention:${payload.alertId}`,
+    payload,
+    topic: 'attention.dispatch',
   })
 }

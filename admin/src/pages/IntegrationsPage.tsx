@@ -3,28 +3,27 @@ import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../lib/api-client'
 import {
   AgentConnectorSection,
-  mcpCatalogHref,
-  mcpConnectorClass,
+  appsHref,
   mcpConnectorLabel,
+  mcpConnectorTone,
 } from '../components/features/integrations/AgentConnectorSection'
+import { Pill, type PillTone } from '../components/primitives/Pill'
 import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
-import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
-import {
-  ProductOperationsSection,
-  productUsageBadgeLabel,
-} from '../components/features/integrations/ProductOperationsSection'
+import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
   useIntegratedProducts,
   useIntegrationPluginManifest,
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import { usePhoneLayout } from '../lib/mobile-shell'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 type SurfacePlan = {
   nativePage: string
@@ -37,12 +36,12 @@ type SurfacePlan = {
 
 const surfacePlans: Record<string, SurfacePlan> = {
   'deep-water': {
-    nativePage: 'Research workspace with runs, source review, spend, and Knowledge import.',
-    chatCards: 'Progress, result, source, and cost cards rendered from message metadata.',
+    nativePage: 'Research workspace with runs, source review, and Knowledge import.',
+    chatCards: 'Progress, result, and source cards rendered from message metadata.',
     controls: 'Depth, chapter detail, search quality, recency, output language, and artifact destination.',
     agentAccess: 'Approved MCP tools for create, poll, list, and research scoping conversations.',
     artifacts: 'Reports and evidence land in Knowledge; file blobs go through FileService.',
-    nextStep: 'Install and approve the OAuth MCP connector, then add the native run wrapper.',
+    nextStep: 'Configure the dedicated Ledger app key, enable the team, and grant the approved tools.',
   },
   deeptest: {
     nativePage: 'Link-out plus local runner status, safe report history, and review profile state.',
@@ -61,12 +60,12 @@ const surfacePlans: Record<string, SurfacePlan> = {
     nextStep: 'Define and ship the BuildMe board API before native board rendering.',
   },
   deepsignal: {
-    nativePage: 'Per-user private DeepSignal channel; an insight digest page is planned.',
+    nativePage: 'Per-user private DeepSignal channel plus a live insight digest page.',
     chatCards: 'Conversation activity and insight cards rendered from message metadata.',
-    controls: 'Activate for me (per-user sign-in + private channel) and deactivate.',
-    agentAccess: 'DeepSignal MCP chat, history, and insight tools, called under your own UOA token.',
+    controls: 'Activate for me using your existing Nessie SSO identity, or deactivate.',
+    agentAccess: 'DeepSignal MCP chat, history, and insight tools use Nessie’s app key plus delegated UOA identity.',
     artifacts: 'DeepWater research references deep-link out; DeepSignal owns the report content.',
-    nextStep: 'Ship the worker driver that proxies channel turns to DeepSignal over MCP.',
+    nextStep: 'Configure the DeepSignal-issued Nessie app key and activate team access.',
   },
 }
 
@@ -91,17 +90,12 @@ const healthLabels: Record<IntegratedProductResponse['healthStatus'], string> = 
   unreachable: 'Unreachable',
 }
 
-const statusClass = (status: IntegratedProductResponse['healthStatus']): string =>
-  [
-    'inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'healthy'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'degraded' || status === 'setup_required'
-        ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-        : status === 'unreachable'
-          ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-          : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+const healthTone = (status: IntegratedProductResponse['healthStatus']): PillTone => {
+  if (status === 'healthy') return 'success'
+  if (status === 'degraded' || status === 'setup_required') return 'warning'
+  if (status === 'unreachable') return 'danger'
+  return 'muted'
+}
 
 const productAccent = (slug: string): string => {
   if (slug === 'deep-water') return '#0f766e'
@@ -169,28 +163,33 @@ const ProductRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-[var(--tx)]">{product.name}</h3>
-          <span className={statusClass(product.healthStatus)}>
+          <Pill
+            className="font-semibold"
+            radius="chip"
+            size="sm"
+            tone={healthTone(product.healthStatus)}
+            uppercase={false}
+          >
             {healthLabels[product.healthStatus]}
-          </span>
+          </Pill>
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx3)]">{product.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          <Pill radius="chip" size="sm" uppercase={false}>
             {installLabels[product.defaultInstallState]}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {accountLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamEnablementLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamAuthorityLabel(product)}
-          </span>
-          <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
-            {productUsageBadgeLabel(product)}
-          </span>
+          </Pill>
+          <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+            {mcpConnectorLabel(product)}
+          </Pill>
         </div>
       </div>
     </div>
@@ -282,9 +281,8 @@ const ProductDetail = ({
   product: IntegratedProductResponse
   showBack: boolean
 }) => {
-  const { me } = useAuthSession()
   const manifestQuery = useIntegrationPluginManifest(product.slug)
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const plan = surfacePlans[product.slug] ?? {
     nativePage: 'Custom product page registered from the integration manifest.',
     chatCards: 'Cards rendered from message metadata when agents run product work.',
@@ -293,6 +291,53 @@ const ProductDetail = ({
     artifacts: 'Durable artifacts stored through Knowledge and FileService.',
     nextStep: 'Publish the product manifest and MCP catalog entry.',
   }
+  const productDetailSections = (
+    <>
+      <TeamAccessSection isOwner={isOwner} product={product} />
+      <AgentConnectorSection product={product} />
+      {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
+      {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
+      <ExternalAgentActivationSection product={product} />
+
+      <section>
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>
+        <div className="mt-3">
+          <SurfaceRow label="Native page" value={plan.nativePage} />
+          <SurfaceRow label="Chat cards" value={plan.chatCards} />
+          <SurfaceRow label="Custom controls" value={plan.controls} />
+          <SurfaceRow label="Agent access" value={plan.agentAccess} />
+          <SurfaceRow label="Artifacts" value={plan.artifacts} />
+        </div>
+      </section>
+
+      <ProductSurfacesPanel
+        loading={manifestQuery.isLoading}
+        manifest={manifestQuery.data}
+        product={product}
+      />
+
+      <section className="border-t border-[var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {product.capabilities.map((capability) => (
+            <span
+              className="rounded bg-[var(--overlay)] px-2 py-1 text-xs text-[var(--tx2)]"
+              key={capability}
+            >
+              {capabilityLabel(capability)}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-t border-[var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Next step</h3>
+        <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          {product.setupHint ?? plan.nextStep}
+        </p>
+      </section>
+    </>
+  )
 
   return (
     <ColumnBrowserColumn onBack={onBack} showBack={showBack} title={product.name}>
@@ -303,9 +348,15 @@ const ProductDetail = ({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold text-[var(--tx)]">{product.name}</h2>
-                <span className={statusClass(product.healthStatus)}>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={healthTone(product.healthStatus)}
+                  uppercase={false}
+                >
                   {healthLabels[product.healthStatus]}
-                </span>
+                </Pill>
               </div>
               <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">{product.summary}</p>
             </div>
@@ -326,12 +377,14 @@ const ProductDetail = ({
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {teamAuthorityLabel(product)}
             </span>
-            <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+            <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+              {mcpConnectorLabel(product)}
+            </Pill>
           </div>
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (
               <a
-                className="admin-button admin-button-primary gap-1.5 text-xs"
+                className="admin-button admin-button-primary admin-button-compact gap-1.5"
                 href={product.launchUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -341,57 +394,18 @@ const ProductDetail = ({
             ) : null}
             {product.mcpCatalogEntryId ? (
               <Link
-                className="admin-button admin-button-secondary text-xs"
-                to={mcpCatalogHref(product)}
+                className="admin-button admin-button-secondary admin-button-compact"
+                to={appsHref(product)}
               >
-                MCP store
+                Open apps
               </Link>
             ) : null}
           </div>
         </section>
 
-        <TeamAccessSection isOwner={isOwner} product={product} />
-        <AgentConnectorSection product={product} />
-        <ProductOperationsSection product={product} />
-        {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
-        {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
-        {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
-
-        <ExternalAgentActivationSection product={product} />
-
-        <section>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>
-          <div className="mt-3">
-            <SurfaceRow label="Native page" value={plan.nativePage} />
-            <SurfaceRow label="Chat cards" value={plan.chatCards} />
-            <SurfaceRow label="Custom controls" value={plan.controls} />
-            <SurfaceRow label="Agent access" value={plan.agentAccess} />
-            <SurfaceRow label="Artifacts" value={plan.artifacts} />
-          </div>
-        </section>
-
-        <ManifestPanel loading={manifestQuery.isLoading} manifest={manifestQuery.data} />
-
-        <section className="border-t border-[var(--sep)] pt-4">
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {product.capabilities.map((capability) => (
-              <span
-                className="rounded bg-[var(--overlay)] px-2 py-1 text-xs text-[var(--tx2)]"
-                key={capability}
-              >
-                {capabilityLabel(capability)}
-              </span>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-t border-[var(--sep)] pt-4">
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Next step</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
-            {product.setupHint ?? plan.nextStep}
-          </p>
-        </section>
+        {product.slug === 'deep-water' ? (
+          <DeepWaterResearchPanel product={product} settingsContent={productDetailSections} />
+        ) : productDetailSections}
       </div>
     </ColumnBrowserColumn>
   )
@@ -399,7 +413,7 @@ const ProductDetail = ({
 
 export const IntegrationsPage = () => {
   const productsQuery = useIntegratedProducts()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const phoneLayout = usePhoneLayout()
   const [selectedSlug, setSelectedSlug] = useState<string>()
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
 
@@ -409,35 +423,38 @@ export const IntegrationsPage = () => {
     [products, selectedSlug],
   )
 
-  const listBody = productsQuery.isLoading ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">Loading integrations...</div>
-  ) : productsQuery.isError ? (
-    <div className="py-8 text-center text-sm text-[var(--danger-text)]">
-      Failed to load integrations.{' '}
-      <button className="underline" onClick={() => void productsQuery.refetch()} type="button">
-        Retry
-      </button>
-    </div>
-  ) : products.length === 0 ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">No integrations registered.</div>
-  ) : (
-    <div className="grid gap-3">
-      {products.map((product) => (
-        <ProductRow
-          active={selectedProduct?.slug === product.slug}
-          key={product.slug}
-          onSelect={() => {
-            setSelectedSlug(product.slug)
-            setMobileDetailOpen(true)
-          }}
-          product={product}
-        />
-      ))}
-    </div>
+  const listBody = (
+    <QueryState
+      emptyLabel="No integrations registered."
+      errorLabel="Failed to load integrations."
+      isEmpty={products.length === 0}
+      loadingLabel="Loading integrations…"
+      query={productsQuery}
+    >
+      {() => (
+        <div className="grid gap-3">
+          {products.map((product) => (
+            <ProductRow
+              active={selectedProduct?.slug === product.slug}
+              key={product.slug}
+              onSelect={() => {
+                setSelectedSlug(product.slug)
+                setMobileDetailOpen(true)
+              }}
+              product={product}
+            />
+          ))}
+        </div>
+      )}
+    </QueryState>
   )
 
   const columns = [
-    <ColumnBrowserColumn key="list" title={`Integrations (${products.length})`}>
+    <ColumnBrowserColumn
+      key="list"
+      leading={<PhoneNavigationButton />}
+      title={`Integrations (${products.length})`}
+    >
       {listBody}
     </ColumnBrowserColumn>,
   ]
@@ -448,14 +465,14 @@ export const IntegrationsPage = () => {
         key={selectedProduct.slug}
         onBack={() => setMobileDetailOpen(false)}
         product={selectedProduct}
-        showBack={isMobile}
+        showBack
       />,
     )
   }
 
   return (
     <ColumnBrowserViewport
-      activeColumn={isMobile && mobileDetailOpen ? 1 : 0}
+      activeColumn={phoneLayout && mobileDetailOpen ? 1 : 0}
       columns={columns}
     />
   )

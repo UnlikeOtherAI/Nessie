@@ -4,6 +4,7 @@ import {
   type ScopeResolutionMode,
 } from '@nessie/memory'
 import type { SpaceViewerPrincipal } from '@nessie/knowledge'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 export type ChannelAgent = {
@@ -47,6 +48,74 @@ export const requireActingUserId = (
     throw new Error('This tool requires a user actor context.')
   }
   return userId
+}
+
+export type ActingMember = {
+  // The acting user as the actor, so a write is attributed to the person and a
+  // policy check reads their live role — not the assistant agent running the loop.
+  actorContext: AuthorizedActionContext
+  isOwner: boolean
+  organizationId: string
+  role: string
+  userId: string
+}
+
+/**
+ * The acting user plus their CURRENT organization role.
+ *
+ * The API re-reads the membership row on every request rather than trusting the
+ * session claim, so a demoted owner loses owner routes immediately. A run's
+ * `actorContext` is a snapshot taken when the run was enqueued, which can be
+ * older still — so tools that mirror an owner-gated route resolve the role here
+ * instead. A membership that is absent or deactivated is refused for the same
+ * reason the API rejects the request outright.
+ */
+export const resolveActingMember = async (
+  context: BuiltinToolRuntimeContext,
+): Promise<ActingMember> => {
+  const userId = requireActingUserId(context)
+  const organizationId = context.channel.organizationId
+  const membership = await context.prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId, userId } },
+    select: { role: true, deactivatedAt: true },
+  })
+  if (!membership || membership.deactivatedAt) {
+    throw new Error(
+      'Your access to this organisation is not active, so I cannot do this on your behalf.',
+    )
+  }
+
+  return {
+    actorContext: {
+      ...context.actorContext,
+      actor: {
+        ...context.actorContext.actor,
+        actorType: 'user',
+        actorId: userId,
+        roles: [membership.role],
+      },
+    },
+    isOwner: membership.role === 'owner',
+    organizationId,
+    role: membership.role,
+    userId,
+  }
+}
+
+/**
+ * Owner-gated tools stay visible to everyone and explain themselves, the same
+ * way the connector tools do: a member who asks gets told who can do it and
+ * where, rather than watching the assistant claim it has no such capability.
+ */
+export const requireOwnerMember = (
+  member: ActingMember,
+  whatItWouldDo: string,
+): void => {
+  if (member.isOwner) return
+  throw new Error(
+    `Only an organisation owner can ${whatItWouldDo} (your role is "${member.role}"). `
+    + 'Ask an owner to do it, or to make you one.',
+  )
 }
 
 // The knowledge-base access principal for a tool call: a delegating PA (or

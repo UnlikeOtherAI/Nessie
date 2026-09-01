@@ -1,23 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
 } from '../lib/api-client'
 import {
+  useFailedWorkflowRuns,
   useInstallWorkflowTemplate,
   useWorkflowInstallations,
   useWorkflowTemplates,
 } from '../facades/workflows/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
+import {
+  useDemonstrations,
+} from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { StatusPill } from '../components/primitives/StatusPill'
+import { workflowKeys } from '../lib/query-keys'
+import { Pill } from '../components/primitives/Pill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
+import { DemonstrationDraftsColumn } from '../components/features/workflows/DemonstrationDraftsColumn'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -72,12 +80,19 @@ const summarizeInstallations = (
 export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const queryClient = useQueryClient()
   const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const { data: templates = [] } = useWorkflowTemplates(isOwner)
-  const { data: installations = [] } = useWorkflowInstallations(isOwner)
+  const isOwner = useIsOwner()
+  const isWorkflowAdmin =
+    isOwner || (me?.user.roleIds.includes('admin') ?? false)
+  // W19: template authoring stays admin-gated; the member-facing read surface
+  // is the installations list (entitlement-scoped server-side) plus the
+  // failed-runs triage view.
+  const { data: templates = [] } = useWorkflowTemplates(isWorkflowAdmin)
+  const { data: installations = [] } = useWorkflowInstallations(true)
+  const { data: failedRuns = [] } = useFailedWorkflowRuns(true)
   const installWorkflowTemplate = useInstallWorkflowTemplate()
+  const { data: demonstrations = [] } = useDemonstrations()
   const restoredSelection = useMemo(
     () => readWorkflowsPageLocationState(location.state),
     [location.state],
@@ -92,6 +107,22 @@ export const WorkflowsPage = () => {
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>(
     () => restoredSelection.selectedRunId,
   )
+  // W29: the triage surface — one cross-installation answer to "what broke
+  // last night". Opens straight onto the failed run's detail.
+  const [showFailedRuns, setShowFailedRuns] = useState(false)
+  const [showDemonstrationDrafts, setShowDemonstrationDrafts] = useState(false)
+
+  useEffect(() => {
+    if (
+      isWorkflowAdmin
+      && demonstrations.some((demonstration) =>
+        demonstration.workflowTemplateId
+        && !templates.some((template) => template.id === demonstration.workflowTemplateId),
+      )
+    ) {
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })
+    }
+  }, [demonstrations, isWorkflowAdmin, queryClient, templates])
 
   const sortedTemplates = useMemo(
     () =>
@@ -159,14 +190,6 @@ export const WorkflowsPage = () => {
     }
   }, [installations, restoredSelection])
 
-  if (!isOwner) {
-    return (
-      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
-      </section>
-    )
-  }
-
   const currentWorkflowLocationState: WorkflowsPageLocationState = {
     selectedTemplateId: selectedTemplate?.id,
     selectedInstallationId,
@@ -179,27 +202,118 @@ export const WorkflowsPage = () => {
     setSelectedRunId(undefined)
   }
 
-  const columns = [
+  const columns = []
+
+  if (showFailedRuns) {
+    columns.push(
+      <ColumnBrowserColumn
+        key="failed-runs"
+        onBack={() => setShowFailedRuns(false)}
+        showBack
+        title={`Failed runs (${failedRuns.length})`}
+      >
+        {failedRuns.length === 0 ? (
+          <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
+            No failed runs — nothing broke.
+          </div>
+        ) : (
+          <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+            {failedRuns.map((run) => (
+              <button
+                className="w-full px-3 py-2.5 text-left hover:bg-[var(--overlay-weak)]"
+                data-testid="failed-run-row"
+                key={run.id}
+                onClick={() => {
+                  setSelectedRunId(run.id)
+                  setSelectedInstallationId(run.installationId)
+                  setShowFailedRuns(false)
+                }}
+                type="button"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
+                    Run {run.id.slice(0, 8)}
+                  </span>
+                  <Pill tone="danger">{run.status}</Pill>
+                </div>
+                <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
+                  {run.errorMessage ?? run.summary ?? 'Failed'}
+                  {' · '}
+                  {formatRelativeTime(run.finishedAt ?? run.updatedAt) ??
+                    formatTimestamp(run.updatedAt)}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </ColumnBrowserColumn>,
+    )
+  }
+
+  if (showDemonstrationDrafts) {
+    columns.push(
+      <DemonstrationDraftsColumn
+        demonstrations={demonstrations}
+        key="demonstration-drafts"
+        onBack={() => setShowDemonstrationDrafts(false)}
+        onReview={(workflowTemplateId) => {
+          setSelectedTemplateId(workflowTemplateId)
+          setSelectedInstallationId(undefined)
+          setSelectedRunId(undefined)
+          setShowDemonstrationDrafts(false)
+        }}
+      />,
+    )
+  }
+
+  columns.push(
     <ColumnBrowserColumn
+      leading={<PhoneNavigationButton />}
       headerAction={
-        <button
-          className="admin-button admin-button-primary"
-          onClick={() =>
-            void navigate('/agents/workflow-designer', {
-              state: {
-                returnTo: '/agents/workflows',
-                returnToState: currentWorkflowLocationState,
-              },
-            })
-          }
-          type="button"
-        >
-          New workflow
-        </button>
+        isWorkflowAdmin ? (
+          <button
+            className="admin-button admin-button-primary"
+            onClick={() =>
+              void navigate('/agents/workflow-designer', {
+                state: {
+                  returnTo: '/agents/workflows',
+                  returnToState: currentWorkflowLocationState,
+                },
+              })
+            }
+            type="button"
+          >
+            New workflow
+          </button>
+        ) : undefined
       }
       key="workflows"
       title={`Workflows (${sortedTemplates.length})`}
     >
+      <button
+        className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
+        data-testid="failed-runs-toggle"
+        onClick={() => setShowFailedRuns(true)}
+        type="button"
+      >
+        <span className="text-sm font-medium text-[var(--tx)]">
+          What failed?
+        </span>
+        <Pill tone={failedRuns.length > 0 ? 'danger' : 'muted'}>
+          {failedRuns.length} failed
+        </Pill>
+      </button>
+      <button
+        className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
+        data-testid="demonstration-drafts-toggle"
+        onClick={() => setShowDemonstrationDrafts(true)}
+        type="button"
+      >
+        <span className="text-sm font-medium text-[var(--tx)]">Demonstration drafts</span>
+        <Pill tone={demonstrations.some((entry) => entry.status === 'captured') ? 'warning' : 'muted'}>
+          {demonstrations.length}
+        </Pill>
+      </button>
       <div className="grid gap-3">
         <div className="flex items-start gap-2">
           <input
@@ -247,7 +361,8 @@ export const WorkflowsPage = () => {
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
                       {template.name}
                     </span>
-                    <StatusPill tone={summary.tone}>{summary.label}</StatusPill>
+                    <Pill tone={summary.tone}>{summary.label}</Pill>
+                    {template.source === 'demonstration' ? <Pill tone="accent">Learned</Pill> : null}
                   </div>
                   <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
                     v{template.version} · {template.graph.steps.length} step
@@ -268,14 +383,14 @@ export const WorkflowsPage = () => {
         )}
       </div>
     </ColumnBrowserColumn>,
-  ]
+  )
 
   if (selectedTemplate) {
     columns.push(
       <ColumnBrowserColumn
         key={`template-${selectedTemplate.id}`}
         onBack={() => setSelectedTemplateId(undefined)}
-        showBack={isMobile}
+        showBack
         title={selectedTemplate.name}
       >
         <WorkflowTemplateDetail
@@ -323,7 +438,7 @@ export const WorkflowsPage = () => {
           setSelectedInstallationId(undefined)
           setSelectedRunId(undefined)
         }}
-        showBack={isMobile}
+        showBack
         title={`Installation ${selectedInstallation.id.slice(0, 8)}`}
       >
         <WorkflowInstallationDetail
@@ -344,7 +459,7 @@ export const WorkflowsPage = () => {
       <ColumnBrowserColumn
         key={`run-${selectedRunId}`}
         onBack={() => setSelectedRunId(undefined)}
-        showBack={isMobile}
+        showBack
         title={`Run ${selectedRunId.slice(0, 8)}`}
       >
         <WorkflowRunDetail workflowRunId={selectedRunId} />

@@ -1,9 +1,13 @@
-// Injected into the admin page. The WebView fills the area above the native tab
-// bar; the admin's full-height columns run edge to edge. This (1) enables CSS
-// safe-area insets via viewport-fit=cover, (2) pads the column *content* up from
-// the home indicator (the global top bar already clears the status bar/notch via
-// its own safe-area-inset-top), and (3) reports the document background so the
-// native view behind the WebView matches during load/overscroll.
+import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
+import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
+
+// Injected into the admin page. The Android WebView continues beneath its
+// floating dock so full-height columns and dividers do not stop at a detached
+// native slab; its content reserves the dock through a shared CSS custom
+// property. This (1) enables CSS safe-area insets via viewport-fit=cover, (2)
+// pads full-screen web surfaces clear of the home indicator, (3) reserves
+// interaction space below Android's floating dock, and (4) reports the document
+// background so the native view behind the WebView matches during load/overscroll.
 export const INJECTED = `
 (function () {
   var vp = document.querySelector('meta[name=viewport]');
@@ -18,11 +22,69 @@ export const INJECTED = `
   var styleId = 'nessie-mobile-safe-area';
   if (!document.getElementById(styleId)) {
     var st = document.createElement('style');
+    var shell = window.__nessieNativeShell;
+    var isIosPhone = shell && shell.platform === 'ios' && (
+      shell.formFactor === 'phone' || shell.formFactor === 'large-phone-landscape'
+    );
+    var nativeBottomInset =
+      shell && typeof shell.bottomInset === 'number' && isFinite(shell.bottomInset)
+        ? Math.max(0, shell.bottomInset)
+        : 0;
+    // The native frame owns the iPhone status-bar inset: phone tab roots can
+    // place their aside below an intermediate DOM wrapper, so a selector-based
+    // top inset is not reliable. Keep the surface behind native chrome aligned
+    // with the page itself.
+    var iosPhoneBackgroundCss = isIosPhone
+      ? 'body { background: var(--main); }'
+      : '';
+    // The WebView reaches under the translucent iPhone tab bar so the bar can
+    // blur real page content rather than a separate native slab. Only the
+    // page-level scroll region receives end clearance; never shrink the screen
+    // or its background above the overlay.
+    var iosPhoneTabBarOverlayCss = isIosPhone
+      ? [
+          ':root { --nessie-native-phone-tabbar-clearance: ' +
+            (${IPHONE_TAB_BAR_HEIGHT} + nativeBottomInset) +
+            'px; }',
+          // Every phone-navigation route has this outer scroll owner. Its
+          // spacer covers full-height and horizontal layouts (such as the
+          // project board) that deliberately do not own a vertical scroller.
+          // A spacer, rather than padding, preserves the route's full-height
+          // background beneath the native glass while making its final row
+          // reachable above the tab bar.
+          '.admin-frame.has-native-phone-tabbar .phone-navigation-page::after {' +
+            ' content: "";' +
+            ' display: block;' +
+            ' height: var(--nessie-native-phone-tabbar-clearance);' +
+            ' pointer-events: none;' +
+          '}',
+          '.admin-frame.has-native-phone-tabbar .nessie-native-phone-tabbar-scroll {' +
+            ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
+            ' scroll-padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
+          '}',
+        ].join('')
+      : '';
+    var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
+    var androidNativeFrameCss = nativeTopbarOwnsSafeArea
+      ? [
+          ':root { --nessie-native-bottom-overlay: ${ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE}px; }',
+          '.admin-topbar { height: var(--topbar-h); padding-top: 0; }',
+          // The channel composer is part of main's flex flow, so this shared
+          // bottom padding keeps the input, controls, and send button clear of
+          // the floating dock without adding a disconnected native slab.
+          '.admin-shell > aside, .admin-shell > main { padding-bottom: calc(var(--nessie-native-bottom-overlay) + env(safe-area-inset-bottom)); }',
+          '[data-testid="channel-content-scroll"] { overflow-x: hidden; }',
+          '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
+        ].join('')
+      : '';
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
       '  padding-bottom: env(safe-area-inset-bottom);' +
-      '}';
+      '}' +
+      iosPhoneBackgroundCss +
+      iosPhoneTabBarOverlayCss +
+      androidNativeFrameCss;
     (document.head || document.documentElement).appendChild(st);
   }
 
@@ -48,14 +110,55 @@ export const INJECTED = `
   }
   function postTheme() {
     var accent = cssVar('--accent');
+    var accentStrong = cssVar('--accent-strong');
     var inactive = cssVar('--tx3');
-    if (accent) {
+    var surface = cssVar('--panel');
+    var text = cssVar('--tx');
+    var textMuted = cssVar('--tx2');
+    var onAccent = cssVar('--on-accent');
+    // Match the uninterrupted surface behind iPad's transparent native tab
+    // controls. This is deliberately the page rail rather than a dark top-bar
+    // colour, so light themes keep a light phone workspace header too.
+    var headerSurface = cssVar('--rail');
+    var headerText = cssVar('--tx');
+    var scheme = '';
+    try { scheme = getComputedStyle(document.documentElement).colorScheme } catch (e) {}
+    if (accent || surface || scheme === 'light' || scheme === 'dark') {
       try {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'theme', accent: accent, inactive: inactive }))
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'theme', accent: accent, accentStrong: accentStrong, inactive: inactive, scheme: scheme, surface: surface,
+          headerSurface: headerSurface, headerText: headerText,
+          text: text, textMuted: textMuted, onAccent: onAccent
+        }))
       } catch (e) {}
     }
   }
-  function sync() { post(); postTheme(); }
+  function syncNativePhoneTabBarScrollRegions() {
+    if (!isIosPhone || !window.innerHeight) return;
+    var frame = document.querySelector('.admin-frame.has-native-phone-tabbar');
+    if (!frame || !frame.querySelectorAll) return;
+    var viewportBottom = window.innerHeight;
+    // The page shell itself owns the universal end spacer above. Nested,
+    // vertical scrollers still need an internal end inset so their final item
+    // can scroll above the glass rather than stopping below it.
+    var candidates = frame.querySelectorAll('.phone-navigation-page *');
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (!candidate.classList || !candidate.getBoundingClientRect) continue;
+      var candidateStyle = getComputedStyle(candidate);
+      var overflowY = candidateStyle.overflowY;
+      var isScroller = overflowY === 'auto' || overflowY === 'scroll';
+      var rect = candidate.getBoundingClientRect();
+      // Fixed menus own their own placement; only a scroll surface that really
+      // reaches the WebView edge can pass beneath the native glass tab bar.
+      var reachesNativeTabBar =
+        isScroller && candidateStyle.position !== 'fixed' &&
+        rect.top < viewportBottom && rect.bottom >= viewportBottom - 1;
+      candidate.classList.toggle('nessie-native-phone-tabbar-scroll', reachesNativeTabBar);
+    }
+  }
+
+  function sync() { syncNativePhoneTabBarScrollRegions(); post(); postTheme(); }
   sync();
 
   function installBuildFreshnessCheck() {
@@ -131,7 +234,12 @@ export const INJECTED = `
   });
   if (document.body) {
     new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    new MutationObserver(syncNativePhoneTabBarScrollRegions).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
   }
+  window.addEventListener('resize', syncNativePhoneTabBarScrollRegions);
   window.addEventListener('load', sync);
   true;
 })();
@@ -140,6 +248,19 @@ export const INJECTED = `
 export const DEFAULT_BG = '#1a1d21'
 
 export const parseRgb = (c: string): [number, number, number, number] | null => {
+  const hex = c.trim().replace(/^#/, '')
+  if (/^[0-9a-f]{3,4}$/i.test(hex) || /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(hex)) {
+    const expanded = hex.length <= 4
+      ? hex.split('').map((value) => `${value}${value}`).join('')
+      : hex
+    const alpha = expanded.length === 8 ? parseInt(expanded.slice(6, 8), 16) / 255 : 1
+    return [
+      parseInt(expanded.slice(0, 2), 16),
+      parseInt(expanded.slice(2, 4), 16),
+      parseInt(expanded.slice(4, 6), 16),
+      alpha,
+    ]
+  }
   const m = c.match(/rgba?\(([^)]+)\)/)
   if (!m) return null
   const p = m[1].split(',').map((s) => parseFloat(s.trim()))

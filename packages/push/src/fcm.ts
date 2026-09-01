@@ -35,8 +35,11 @@ interface CachedToken {
   expiresAtMs: number
 }
 
+// The token exchange and message POST are credentialed and must never be
+// replayed cross-origin: `redirect: 'manual'` surfaces any 3xx to the caller,
+// which classifies it as a failed send rather than following it.
 const defaultFetch: FetchLike = (url, init) =>
-  fetch(url, init).then((res) => ({
+  fetch(url, { ...init, redirect: 'manual' }).then((res) => ({
     status: res.status,
     text: () => res.text(),
   }))
@@ -76,15 +79,46 @@ export const parseServiceAccount = (json: string): ServiceAccount => {
 
 /** Build the FCM v1 message body for a payload + token. */
 export const buildFcmBody = (token: string, payload: PushPayload): string => {
+  const title = payload.subtitle
+    ? `${payload.title} · ${payload.subtitle}`
+    : payload.title
   const message: Record<string, unknown> = {
     token,
-    notification: { title: payload.title, body: payload.body },
+    notification: { title, body: payload.body },
   }
   if (payload.data !== undefined) message.data = payload.data
+  const android: Record<string, unknown> = {}
+  const apns: Record<string, unknown> = {}
+  const apnsPayload: Record<string, unknown> = {}
+  const aps: Record<string, unknown> = {}
   if (payload.collapseId !== undefined) {
-    message.android = { collapse_key: payload.collapseId }
-    message.apns = { headers: { 'apns-collapse-id': payload.collapseId } }
+    android.collapse_key = payload.collapseId
+    apns.headers = { 'apns-collapse-id': payload.collapseId }
   }
+  if (payload.priority === 'high') {
+    android.priority = 'high'
+  }
+  if (payload.category !== undefined) {
+    android.notification = {
+      ...(android.notification as Record<string, unknown> | undefined),
+      channel_id: payload.category,
+    }
+    aps.category = payload.category
+  }
+  if (payload.badge !== undefined) {
+    android.notification = {
+      ...(android.notification as Record<string, unknown> | undefined),
+      notification_count: payload.badge,
+    }
+    aps.badge = payload.badge
+  }
+  if (Object.keys(aps).length > 0) apnsPayload.aps = aps
+  // FCM forwards this as APNs userInfo. Expo on iOS reads remote `body` into
+  // NotificationContent.data, while Android consumes message.data above.
+  if (payload.data !== undefined) apnsPayload.body = payload.data
+  if (Object.keys(apnsPayload).length > 0) apns.payload = apnsPayload
+  if (Object.keys(android).length > 0) message.android = android
+  if (Object.keys(apns).length > 0) message.apns = apns
   return JSON.stringify({ message })
 }
 
@@ -217,9 +251,14 @@ export class FcmClient {
   }
 }
 
-/** One-shot FCM send. Builds a client and sends a single message. */
+/**
+ * One-shot FCM send. Builds a client and sends a single message. Callers should
+ * pass an SSRF-safe `fetchImpl`: the service-account `token_uri` is
+ * attacker-controllable and the default global fetch validates no URL.
+ */
 export const sendFcm = (
   creds: FcmCredentials,
   target: PushTarget,
   payload: PushPayload,
-): Promise<PushResult> => new FcmClient(creds).send(target, payload)
+  fetchImpl?: FetchLike,
+): Promise<PushResult> => new FcmClient(creds, fetchImpl).send(target, payload)

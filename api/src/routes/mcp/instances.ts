@@ -2,9 +2,12 @@ import {
   canManageInstanceScope,
   createInstance,
   deleteInstance,
+  getCatalogEntry,
   getInstance,
   healthcheckInstance,
   isOwnerRole,
+  isManagedIntegrationCatalogEntry,
+  isManagedIntegrationInstance,
   listInstances,
   listInstancesVisibleToUser,
   MCP_INSTANCE_ERROR_CODES,
@@ -16,6 +19,7 @@ import {
   type McpUserAccess,
 } from '@nessie/mcp-manage'
 import { McpServerScopeTypeSchema, type AuthorizedActionContext } from '@nessie/schemas'
+import type { PrismaClient } from '@prisma/client'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
@@ -44,14 +48,52 @@ const CreateInstanceBodySchema = z.object({
   catalogEntryId: z.string().uuid(),
   scopeType: McpServerScopeTypeSchema,
   scopeId: z.string().uuid(),
-  credentialRef: z.string().nullable().optional(),
   transportConfig: JsonRecordSchema.optional(),
-})
+}).strict()
 
 const SetSecretBodySchema = z.object({
-  secret: z.string().min(1).max(8192),
+  secret: z.string().trim().min(1).max(8192),
   shared: z.boolean().optional(),
-})
+}).strict()
+
+const publicInstance = <T extends { credentialRef: string | null }>(
+  instance: T,
+): Omit<T, 'credentialRef'> => {
+  const safe = { ...instance } as Record<string, unknown>
+  delete safe.credentialRef
+  return safe as Omit<T, 'credentialRef'>
+}
+
+/**
+ * How many of each instance's projected tools are still awaiting owner review.
+ *
+ * Counted only over instance ids the caller was already entitled to see — the
+ * list above resolves entitlement, this annotates it for API and assistant
+ * setup flows that need to direct an owner to the review surface.
+ */
+const countPendingToolsByInstance = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  instanceIds: string[],
+): Promise<Map<string, number>> => {
+  if (instanceIds.length === 0) return new Map()
+  const grouped = await prisma.toolRegistryEntry.groupBy({
+    _count: { _all: true },
+    by: ['mcpInstanceId'],
+    where: {
+      handlerKind: 'mcp',
+      mcpInstanceId: { in: instanceIds },
+      organizationId,
+      status: 'pending_review',
+    },
+  })
+  return new Map(
+    grouped
+      .filter((row): row is typeof row & { mcpInstanceId: string } =>
+        row.mcpInstanceId !== null)
+      .map((row) => [row.mcpInstanceId, row._count._all]),
+  )
+}
 
 const FORBIDDEN_SCOPE = {
   code: 'MCP_INSTANCE_FORBIDDEN',
@@ -148,7 +190,17 @@ export const registerMcpInstanceRoutes = (
             (!scopeType || instance.scopeType === scopeType)
             && (!query.scopeId || instance.scopeId === query.scopeId),
         )
-    return createApiResponse(instances)
+    const pendingByInstance = await countPendingToolsByInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instances.map((instance) => instance.id),
+    )
+    return createApiResponse(
+      instances.map((instance) => ({
+        ...publicInstance(instance),
+        pendingToolCount: pendingByInstance.get(instance.id) ?? 0,
+      })),
+    )
   })
 
   app.post('/api/mcp/instances', async (request, reply) => {
@@ -160,10 +212,19 @@ export const registerMcpInstanceRoutes = (
     if (!(await canManage(actorContext, body.scopeType, body.scopeId))) {
       return denyScope(reply)
     }
+    if (await isManagedIntegrationCatalogEntry(prisma, body.catalogEntryId)) {
+      sendApiError(
+        reply,
+        409,
+        MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
+        'This first-party connector is provisioned from Integrations and uses Nessie SSO.',
+      )
+      return reply
+    }
 
     try {
       const instance = await createInstance(prisma, actorContext, body)
-      return reply.code(201).send(createApiResponse(instance))
+      return reply.code(201).send(createApiResponse(publicInstance(instance)))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -196,7 +257,7 @@ export const registerMcpInstanceRoutes = (
         return denyScope(reply)
       }
     }
-    return createApiResponse(instance)
+    return createApiResponse(publicInstance(instance))
   })
 
   app.post('/api/mcp/instances/:instanceId/test', async (request, reply) => {
@@ -212,7 +273,7 @@ export const registerMcpInstanceRoutes = (
         instanceId,
         { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
-      return createApiResponse(instance)
+      return createApiResponse(publicInstance(instance))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -233,7 +294,7 @@ export const registerMcpInstanceRoutes = (
         instanceId,
         { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
-      return createApiResponse(instance)
+      return createApiResponse(publicInstance(instance))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -285,6 +346,22 @@ export const registerMcpInstanceRoutes = (
       sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
       return reply
     }
+    if (
+      await isManagedIntegrationInstance(
+        prisma,
+        actorContext.tenant.organizationId,
+        instance.id,
+      )
+    ) {
+      sendApiError(
+        reply,
+        409,
+        'INTEGRATION_MANAGED_CREDENTIAL',
+        'This first-party connector uses signed Nessie SSO identity and its '
+        + 'dedicated app API key; personal credentials are not accepted.',
+      )
+      return reply
+    }
     const access = await accessFor(actorContext)
     const manageable =
       isOwnerRole(actorContext)
@@ -305,14 +382,31 @@ export const registerMcpInstanceRoutes = (
       }
     }
 
-    const result = await storeInstanceSecret(prisma, ctx.mcpSecretStore, {
-      instance,
-      userId: actorContext.actor.actorId,
-      access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
-      secret: body.secret,
-      shared: body.shared,
-    })
-    return createApiResponse({ placement: result.placement })
+    const catalogEntry = await getCatalogEntry(
+      prisma,
+      actorContext.tenant.organizationId,
+      instance.catalogEntryId,
+    )
+    if (!catalogEntry) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND, 'Catalog entry not found')
+      return reply
+    }
+
+    try {
+      const result = await storeInstanceSecret(prisma, ctx.mcpSecretStore, {
+        instance,
+        userId: actorContext.actor.actorId,
+        access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
+        authMethod: catalogEntry.authMethod,
+        authConfig: catalogEntry.authConfig,
+        secret: body.secret,
+        shared: body.shared,
+      })
+      return createApiResponse({ placement: result.placement })
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.delete('/api/mcp/instances/:instanceId', async (request, reply) => {
@@ -321,15 +415,20 @@ export const registerMcpInstanceRoutes = (
 
     const { instanceId } = request.params as { instanceId: string }
     if (!(await loadManageable(actorContext, instanceId, reply))) return reply
-    const deleted = await deleteInstance(
-      prisma,
-      actorContext.tenant.organizationId,
-      instanceId,
-    )
-    if (!deleted) {
-      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
-      return reply
+    try {
+      const deleted = await deleteInstance(
+        prisma,
+        actorContext.tenant.organizationId,
+        instanceId,
+      )
+      if (!deleted) {
+        sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+        return reply
+      }
+      return reply.code(204).send()
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
     }
-    return reply.code(204).send()
   })
 }

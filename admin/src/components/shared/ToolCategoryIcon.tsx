@@ -15,6 +15,7 @@ type ToolCategoryIconProps = {
 const SOURCE_GLYPHS: Record<ToolRegistrySource, string> = {
   'builtin': 'B',
   'custom': 'C',
+  'executor': 'E',
   'mcp-remote': 'M',
   'interactive-session': 'I',
 }
@@ -22,6 +23,7 @@ const SOURCE_GLYPHS: Record<ToolRegistrySource, string> = {
 const SOURCE_TONE: Record<ToolRegistrySource, string> = {
   'builtin': 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
   'custom': 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  'executor': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
   'mcp-remote': 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
   'interactive-session': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
 }

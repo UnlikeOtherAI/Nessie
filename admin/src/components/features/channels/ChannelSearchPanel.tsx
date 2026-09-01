@@ -21,7 +21,7 @@ export const ChannelSearchPanel = ({
   <div className="border-b border-[color:var(--sep)] px-5 py-2">
     <input
       autoFocus
-      className="admin-input w-full text-sm"
+      className="admin-input"
       onChange={(event) => onChangeQuery(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {

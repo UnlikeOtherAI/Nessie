@@ -1,12 +1,14 @@
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { AuthorizedActionContext, ProviderReasoningEffort } from '@nessie/schemas'
 
-export type ModelProviderName = 'openai' | 'minimax' | 'kimi' | 'openai-compatible'
+export type ModelProviderName = 'openai' | 'kimi' | 'deepseek' | 'openai-compatible'
 
 export type ModelProviderConfig = {
   apiKey?: string
   baseUrl?: string
   modelName?: string
   provider: ModelProviderName
+  /** Ledger adapter id; defaults to provider for built-in connectors. */
+  serviceId?: string
 }
 
 export type ProviderHealthStatus =
@@ -44,9 +46,22 @@ export type ProviderToolCall = {
   arguments: Record<string, unknown>
 }
 
+/**
+ * An image riding along with a user turn so a vision-capable model can actually
+ * look at it. The bytes are inlined rather than referenced by URL: attachment
+ * bytes are private to the workspace and no provider can fetch them.
+ *
+ * Connectors whose model cannot take images drop these and send the text alone
+ * — the turn still names its attachments, so the model knows they exist.
+ */
+export type ProviderImage = {
+  mime: string
+  dataBase64: string
+}
+
 export type ProviderMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: ProviderImage[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ProviderToolCall[] }
   | { role: 'tool'; content: string; toolCallId: string }
 
@@ -117,11 +132,19 @@ export type ProviderInvocationRequest = {
   messages: ProviderMessage[]
   maxOutputTokens?: number
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model: string
   // Stable key grouping requests that share a prefix (system prompt + tools), so
   // providers route them to the same prompt cache for higher hit rates.
   promptCacheKey?: string
+  // Only sent to the provider when set; OpenAI-compatible connectors add it to
+  // the request body as `reasoning_effort`. Other providers ignore it.
+  reasoningEffort?: ProviderReasoningEffort
   responseFormat?: JsonObjectResponseFormat
+  // Aborts the in-flight HTTP request. A caller that passes one must classify
+  // the resulting error as an abort rather than a transient failure: retrying a
+  // deliberately cancelled call would re-run the work the user just stopped.
+  signal?: AbortSignal
   temperature?: number
   tools?: ToolSchemaDescriptor[]
   toolChoice?:
@@ -141,7 +164,11 @@ export type ProviderInvocationResult = {
 export type ProviderStreamEvent =
   | { type: 'reasoning_text.delta'; text: string }
   | { type: 'output_text.delta'; text: string }
-  | { type: 'tool_call.delta'; text: string }
+  // `id`/`toolName` come from the connector's accumulated call, not from the
+  // chunk that carried this fragment: the canonical OpenAI stream announces the
+  // name in a first chunk with empty arguments (which yields no event at all),
+  // and every later fragment carries only an index and argument text.
+  | { type: 'tool_call.delta'; index: number; id: string; toolName: string; text: string }
   | { type: 'response.error'; message: string; retryable: boolean }
 
 export type ProviderEmbeddingRequest = {
@@ -149,6 +176,7 @@ export type ProviderEmbeddingRequest = {
   correlationId?: string
   input: string
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model?: string
 }
 
@@ -162,6 +190,7 @@ export type ProviderEmbeddingBatchRequest = {
   correlationId?: string
   input: string[]
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model?: string
 }
 
@@ -183,7 +212,10 @@ export interface ProviderConnector {
   close(): void
   embed?(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResult>
   embedBatch?(request: ProviderEmbeddingBatchRequest): Promise<ProviderEmbeddingBatchResult>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
+  ): Promise<Response>
   getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot>
   getProviderMeta(): Promise<{
     displayName: string
@@ -222,11 +254,15 @@ export type InferenceRequest = {
   actorContext?: AuthorizedActionContext
   correlationId?: string
   maxOutputTokens?: number
+  /** Aborts the in-flight provider call; see ProviderInvocationRequest.signal. */
+  signal?: AbortSignal
   messages: ProviderMessage[]
   metadata?: Record<string, unknown>
   model?: string
   promptCacheKey?: string
+  reasoningEffort?: ProviderReasoningEffort
   requestId?: string
+  requestHeaders?: Record<string, string>
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
   tools?: ToolSchemaDescriptor[]
@@ -256,6 +292,7 @@ export type InferenceEmbedRequest = {
   metadata?: Record<string, unknown>
   model?: string
   requestId?: string
+  requestHeaders?: Record<string, string>
 }
 
 export interface InferenceService {
@@ -269,7 +306,10 @@ export interface InferenceService {
     input: string[],
     request?: InferenceEmbedRequest,
   ): Promise<ProviderEmbeddingBatchResult>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
+  ): Promise<Response>
   getCapabilities(model?: string): Promise<CapabilityResolution>
   run(request: InferenceRequest): Promise<InferenceResult>
   stream?(
@@ -277,13 +317,92 @@ export interface InferenceService {
   ): AsyncGenerator<InferenceStreamEvent, InferenceResult, undefined>
 }
 
-export class ProviderInvocationError extends Error {
-  readonly invocation: InvocationRecord
+export type ProviderFailureDetails = {
+  creditRefusal?: 'ledger'
+  providerCode?: string
+  statusCode?: number
+}
 
-  constructor(message: string, invocation: InvocationRecord, cause?: unknown) {
+/**
+ * A non-success HTTP response from a model provider. The response's structured
+ * status and code are intentionally retained separately from its display
+ * message: callers make recovery decisions from protocol facts, never from
+ * provider prose.
+ */
+export class ProviderHttpError extends Error {
+  readonly creditRefusal?: 'ledger'
+  readonly providerCode?: string
+  readonly statusCode: number
+
+  constructor(
+    message: string,
+    details: ProviderFailureDetails & { statusCode: number },
+  ) {
+    super(message)
+    this.name = 'ProviderHttpError'
+    this.creditRefusal = details.creditRefusal
+    this.providerCode = details.providerCode
+    this.statusCode = details.statusCode
+  }
+}
+
+export class ProviderInvocationError extends Error {
+  readonly creditRefusal?: 'ledger'
+  readonly invocation: InvocationRecord
+  readonly providerCode?: string
+  readonly statusCode?: number
+
+  constructor(
+    message: string,
+    invocation: InvocationRecord,
+    cause?: unknown,
+    details: ProviderFailureDetails = {},
+  ) {
     super(message)
     this.name = 'ProviderInvocationError'
+    this.creditRefusal = details.creditRefusal
     this.invocation = invocation
     this.cause = cause
+    this.providerCode = details.providerCode
+    this.statusCode = details.statusCode
   }
+}
+
+const isProviderFailureDetails = (value: unknown): value is ProviderFailureDetails =>
+  typeof value === 'object'
+  && value !== null
+  && (
+    ('statusCode' in value && typeof value.statusCode === 'number')
+    || ('providerCode' in value && typeof value.providerCode === 'string')
+    || ('creditRefusal' in value && value.creditRefusal === 'ledger')
+  )
+
+/** Extract typed provider facts while an error passes through worker layers. */
+export const providerFailureDetails = (
+  error: unknown,
+): ProviderFailureDetails | undefined => {
+  if (error instanceof ProviderHttpError || error instanceof ProviderInvocationError) {
+    return {
+      ...(error.creditRefusal ? { creditRefusal: error.creditRefusal } : {}),
+      ...(error.providerCode ? { providerCode: error.providerCode } : {}),
+      ...(error.statusCode !== undefined ? { statusCode: error.statusCode } : {}),
+    }
+  }
+  return isProviderFailureDetails(error)
+    ? {
+      ...(error.creditRefusal === 'ledger' ? { creditRefusal: error.creditRefusal } : {}),
+      ...(error.providerCode ? { providerCode: error.providerCode } : {}),
+      ...(error.statusCode !== undefined ? { statusCode: error.statusCode } : {}),
+    }
+    : undefined
+}
+
+/**
+ * Ledger's refusal is authoritative for commercial credits. The connector
+ * stamps the refusal only when the response came from Ledger; a direct model
+ * provider's HTTP 402 is a separate provider-billing problem.
+ */
+export const isCreditsExhaustedError = (error: unknown): boolean => {
+  const details = providerFailureDetails(error)
+  return details?.creditRefusal === 'ledger'
 }

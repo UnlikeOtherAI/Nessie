@@ -54,7 +54,6 @@ export const useWorkflowCanvasInteractions = ({
   const [draftConnection, setDraftConnection] = useState<WorkflowDraftConnection | null>(null)
   const [hoveredHandle, setHoveredHandle] = useState<WorkflowHoveredHandle | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [isDraggingNode, setIsDraggingNode] = useState(false)
 
   const connectionLayouts = useMemo<WorkflowConnectionLayout[]>(() => {
@@ -146,34 +145,18 @@ export const useWorkflowCanvasInteractions = ({
   )
 
   useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target
-      if (!(target instanceof Element)) {
-        return
-      }
-
-      if (target.closest('[data-workflow-menu-root="true"]')) {
-        return
-      }
-
-      setOpenMenu(null)
-    }
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraftConnection(null)
         setHoveredHandle(null)
         setHoveredConnectionId(null)
-        setOpenMenu(null)
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    document.addEventListener('mousedown', handlePointerDown)
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      document.removeEventListener('mousedown', handlePointerDown)
     }
   }, [])
 
@@ -401,8 +384,6 @@ export const useWorkflowCanvasInteractions = ({
     hoveredHandle,
     hoveredConnectionId,
     setHoveredConnectionId,
-    openMenu,
-    setOpenMenu,
     isDraggingNode,
     connectionLayouts,
     invalidDraftTarget,

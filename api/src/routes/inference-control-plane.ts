@@ -69,6 +69,17 @@ const INFERENCE_ERROR_MAP: Record<string, { status: number; code: string; messag
     code: 'INFERENCE_PROVIDER_OPENAI_COMPATIBLE_REQUIRES_BINDING',
     message: 'OpenAI-compatible providers must have a credential binding before being enabled',
   },
+  INFERENCE_PROVIDER_BASE_URL_UNSAFE: {
+    status: 400,
+    code: 'INFERENCE_PROVIDER_BASE_URL_UNSAFE',
+    message: 'The provider baseUrl must be a public http(s) address',
+  },
+  INFERENCE_ENV_REF_FORBIDDEN: {
+    status: 400,
+    code: 'INFERENCE_ENV_REF_FORBIDDEN',
+    message:
+      'New caller-chosen authSecretRef env references are not accepted. Configure inference credentials at the deployment level.',
+  },
   INFERENCE_CREDENTIAL_BINDING_NOT_FOUND: {
     status: 404,
     code: 'INFERENCE_CREDENTIAL_BINDING_NOT_FOUND',

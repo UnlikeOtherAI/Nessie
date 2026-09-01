@@ -1,8 +1,17 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
+import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
-import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { usePresenceLookup } from '../../providers/PresenceProvider';
+import { isReactNativeWebView } from '../../lib/mobile-shell';
+import {
+  channelHashClassName,
+  projectSelectionClassName,
+  renderUnreadCount,
+} from './SidebarRow';
+import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { StarredItem, VisibleStarredEntry } from './types';
 
@@ -16,6 +25,7 @@ type SidebarStarredSectionProps = {
   onNavigateDm: (userId: string) => void;
   onNavigateProject: (projectId: string) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
+  personalAssistantChannelId?: string;
   starredCollapsed: boolean;
   toggleStarredCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
@@ -31,11 +41,14 @@ export const SidebarStarredSection = ({
   onNavigateDm,
   onNavigateProject,
   onToggleStar,
+  personalAssistantChannelId,
   starredCollapsed,
   toggleStarredCollapsed,
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const getPresence = usePresenceLookup();
+  const nativeTouchShell = isReactNativeWebView();
   if (entries.length === 0) {
     return null;
   }
@@ -61,17 +74,19 @@ export const SidebarStarredSection = ({
       {entries.map((item) => {
         if (item.type === 'agent') {
           const { agent } = item;
+          const isActivePersonalAssistant = agent.agentKind === 'personal_assistant'
+            && personalAssistantChannelId === currentChannelId;
           return (
             <button
               key={`starred-agent-${agent.id}`}
-              className="admin-sb-item group"
+              className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
             >
-              <AgentAvatar agent={agent} shape="circle" size="xs" token={token} />
+              <AgentAvatar agent={agent} size="xs" token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
               <span
-                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleStar('agent', agent.id);
@@ -92,10 +107,10 @@ export const SidebarStarredSection = ({
               type="button"
             >
               <span className={channelHashClassName}>#</span>
-              <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+              <GroupDmSidebarLabel label={channel.label} />
               {renderUnreadCount(channel.unreadCount)}
               <span
-                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleStar('channel', channel.id);
@@ -116,31 +131,24 @@ export const SidebarStarredSection = ({
             <div key={`starred-prj-${project.id}`} className="mt-1">
               <button
                 className={[
-                  'admin-sb-item group',
+                  'admin-sb-item sidebar-project-tile group',
                   unreadCount > 0 ? 'unread' : '',
-                  project.id === currentProjectId ? 'active-parent' : '',
+                  projectSelectionClassName(project.id, currentProjectId, currentChannelId),
                 ].join(' ')}
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
               >
-                <svg
-                  className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <ProjectAvatar
+                  avatarAttachmentId={project.avatarAttachmentId}
+                  avatarEmoji={project.avatarEmoji}
+                  size={18}
+                  token={token}
+                />
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 {renderUnreadCount(unreadCount)}
                 {item.starred ? (
                   <span
-                    className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                    className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleStar('project', project.id);
@@ -163,10 +171,10 @@ export const SidebarStarredSection = ({
                   type="button"
                 >
                   <span className={channelHashClassName}>#</span>
-                  <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                  <GroupDmSidebarLabel label={channel.label} />
                   {renderUnreadCount(channel.unreadCount)}
                   <span
-                    className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                    className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleStar('channel', channel.id);
@@ -183,6 +191,7 @@ export const SidebarStarredSection = ({
         const personUnreadCount = person.dmChannelId
           ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
           : 0;
+        const presence = getPresence(person.id);
         return (
           <button
             key={`starred-usr-${person.id}`}
@@ -194,14 +203,24 @@ export const SidebarStarredSection = ({
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}
               avatarUrl={person.avatarUrl ?? undefined}
               displayName={person.label}
-              gravatarUrl={person.gravatarUrl ?? undefined}
-              size={18}
+              presenceRingWidth={nativeTouchShell ? 3 : undefined}
+              ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
+              showPresence={nativeTouchShell}
+              showStatus={false}
+              size={nativeTouchShell ? 24 : 18}
               token={token}
+              userId={person.id}
             />
-            <span className="min-w-0 flex-1 truncate">{person.label}</span>
+            <span className="min-w-0 flex flex-1 items-center gap-1 overflow-hidden">
+              <span className="truncate">{person.label}</span>
+              <UserStatusEmoji
+                statusEmoji={presence?.statusEmoji}
+                statusLabel={presence?.statusLabel}
+              />
+            </span>
             {renderUnreadCount(personUnreadCount)}
             <span
-              className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+              className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleStar('user', person.id);

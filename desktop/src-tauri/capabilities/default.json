@@ -7,14 +7,13 @@
   ],
   "remote": {
     "urls": [
-      "http://localhost:5455/**",
-      "https://app.nessie.works/**",
-      "https://nessie.unlikeotherai.com/**"
+      "https://app.nessie.works/**"
     ]
   },
   "permissions": [
     "core:default",
     "core:window:allow-set-focus",
+    "core:window:allow-set-badge-count",
     "core:window:allow-show",
     "core:window:allow-unminimize",
     "deep-link:default",

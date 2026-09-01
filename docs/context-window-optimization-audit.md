@@ -35,7 +35,9 @@ Two mitigations soften the picture and must be kept in mind when prioritizing:
   prefix). When the stable prefix (system prompt + tool schemas) doesn't change
   within a run, iterations 2…N read it from cache cheaply. There is **no native
   Anthropic connector** — Fable/Opus/Sonnet-class models run through the
-  OpenAI-compatible path. MiniMax has no caching.
+  OpenAI-compatible path. (The compiled MiniMax connector was removed on
+  2026-08-31 — a Ledger-listed MiniMax model rides the OpenAI-compatible
+  path like any other uncompiled service id.)
 - **Existing caps.** Memory injection, conversation length, and MCP schemas are
   already bounded (see §5). The gaps are specific and enumerated below.
 
@@ -80,10 +82,11 @@ data, and the current cap (if any).
 
 | Tool(s) | Effective cap before context |
 |---|---|
-| `web_search`, `web_fetch`, `document_read` | ~1,200 chars (`MAX_PREVIEW_LENGTH`) |
+| `web_search`, `web_fetch`, `document_read` | ~4,000 chars (`MAX_PREVIEW_LENGTH`) |
 | `workspace_search` | ~4,000 chars |
+| `http_fetch` (and HTTP-transport tools) | 12,000 chars middle-out (`MAX_RAW_BODY_CHARS`) |
 | `kb_page_read` | 20,000 chars (`PAGE_BODY_CHAR_CAP`) |
-| `file_read`, `file_glob`, `http_fetch`, other builtins | 32,000 chars (`truncateToolResult`) |
+| `file_read`, `file_glob`, other builtins | 32,000 chars (`truncateToolResult`) |
 | **MCP tools** | **none** |
 | **`delegate` sub-agent result** | **none** |
 
@@ -101,7 +104,38 @@ persists across every remaining iteration.
 an MCP-specific limit smaller than 32k is reasonable since connector output is
 often verbose JSON).
 
+**✅ Resolved.** `runAgenticLoop` now truncates **every** tool result at the
+single point where it enters context — `messages.push({ role: 'tool', … })` in
+`worker/src/run/agentic-loop.ts` — via `truncateToolResult` (32k cap). This
+catches MCP dispatch and `delegate` output, which previously had no cap. The
+builtin per-tool caps in `tools.ts` still run first.
+
+Truncation is **middle-out**: the head (~70% of the budget) and the tail (~30%)
+are both kept, joined by `\n\n[... truncated N chars ...]\n\n`. A tail-only cut
+discarded the second half of every oversized result, which is where "did it
+finish?" lives — totals, the closing brace, the last log lines. The marker is
+detected anywhere in the string, so a result already cut at its per-tool cap
+passes the chokepoint unchanged and the double pass stays safe.
+
+The per-tool caps were rebalanced at the same time (see the table above). The
+web tools previously self-capped at 1,200 chars while a raw `http_fetch` body
+rode the 32k chokepoint at roughly 8k tokens — a 26× gap that taught the model
+to prefer the bulky tool, and every oversized result is re-billed on every
+remaining iteration. `http_fetch` now caps its body at 12,000 chars in
+`worker/src/run/builtin-handlers/http-fetch.ts` (which also covers the HTTP
+transport in `tool-http.ts`), and the web tools sit at 4,000. A tighter
+MCP-specific limit is still a possible refinement.
+
 #### F2. Tool results persist verbatim for the rest of the run; nothing summarizes
+
+> **Resolved (2026-08-05).** Real compaction now exists:
+> `worker/src/run/context-compaction.ts` folds the elder transcript into a
+> rolling work-state note (verbatim-URL sources section, closed tool groups
+> only, cooldown + bounded attempts, invocations counted in run totals);
+> `trimConversationToFit` is demoted to emergency fallback and the dead
+> `buildCompactionPrompt` was removed. See
+> `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md` §8.
+> Original finding kept below for context.
 
 **Location:** `worker/src/run/agentic-loop.ts` (the `messages` array is grown
 and re-sent each iteration; tool results appended as `role: 'tool'` are never
@@ -123,6 +157,12 @@ same tool with the same args twice (both below the loop-detection threshold of
 **Effort:** Large. Recommended as its own focused slice — see §4, item 3.
 
 #### F3. Context budget is a hard-coded 100k, not model-aware
+
+> **Resolved (2026-08-05).** `worker/src/run/context-window.ts` supplies a
+> per-model window (small conservative map, 100k default for unknown models,
+> 0.85 estimator safety factor); compaction triggers at ~80% of the effective
+> window. Revisit the map as real model metadata becomes available. Original
+> finding kept below for context.
 
 **Location:** `worker/src/run/agentic-loop.ts` —
 `CONTEXT_BUDGET_TOKENS = 100_000`, `CONTEXT_TRIM_THRESHOLD = 0.85`,
@@ -158,20 +198,31 @@ outputs already in context.
 
 ### Tier 3 — polish / caching
 
-#### F5. Builtin tool schemas are always inline (no deferral)
+#### F5. Builtin tool schemas are always inline (addressed)
 
-**Location:** `resolveAgentTools` (`worker/src/run/tool-policy.ts`) materializes
-the full `description` + `parameters` schema for every allowed builtin. There
-are **46 builtin definitions** (~15–22 KB serialized ≈ 4,000–6,000 tokens for
-the full set; ~3,000–4,000 for the 32-tool shared-agent set after
-`personalAssistantOnly` gating). The find/load/drop deferral built for MCP
-tools does **not** apply to builtins. **However**, the stable system+tools
-prefix is cache-eligible, so on a caching provider the marginal per-iteration
-cost is largely absorbed after the first call. The uncached first call and the
-MiniMax path still pay full price.
+> **Resolved (2026-08-31).** The registry has **82 builtin definitions**. A
+> shared-channel agent resolved 49 tools at **32.4 KB ≈ 8.1k tokens** per call;
+> a personal assistant resolved 81 at **51.3 KB ≈ 12.8k tokens**. The previous
+> 46-definition estimate substantially understated the fixed context cost.
 
-**Impact:** Low-Medium (caching mitigates). **Risk:** Low. **Effort:** Medium.
-Lower priority than the raw token count suggests.
+`resolveAgentTools` now applies authorization and temporary-context narrowing
+first, then builds a two-tier, run-stable descriptor array when the remaining
+set exceeds `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20). A fixed list of ten
+hot tools keeps full descriptions and schemas — those of the ten the agent is
+actually allowed; a hot tool outside the allowed set is simply absent, never
+replaced by promoting another. Every other allowed builtin keeps
+its real name but advertises a curated compact summary and a permissive schema
+that points the model to `tool_spec`; `tool_spec` returns the requested full
+descriptions and JSON schemas as tool output. It never mutates the descriptor
+array, so the provider prompt-cache prefix and the loop's one-time schema-token
+estimate stay valid for the whole run. Direct calls to remembered or guessed
+stub names still dispatch normally, while failed stub executions include the
+exact schema for one-round-trip correction. Delegate sub-agents inherit the
+same tiered view. At or below the threshold, descriptors remain byte-identical
+to the original fully-inline form.
+
+Executor descriptors are also code-unit sorted by tool name so database row
+order cannot vary the complete model-facing tool array.
 
 #### F6. Two inputs bounded by count/config, not tokens
 
@@ -184,18 +235,31 @@ Lower priority than the raw token count suggests.
 
 #### F7. Cache-friendliness of the stable prefix
 
-- The system prompt embeds `new Date().toISOString()`. It is stable **within** a
-  run (built once) but **rotates the cross-run cache key** for every agent, so
-  two runs of the same agent never share the cached prefix. Moving the timestamp
-  out of the cacheable prefix (or rounding it, e.g. to the hour) would lift
-  cross-run hit rates.
+> **Resolved (2026-08-31).** The system anchor no longer embeds a per-run
+> timestamp: the clock moved into a trailing volatile system message (after
+> the memory/checkpoint injections), rounded down to the hour, so the anchor —
+> persona, instructions, structural blocks — is byte-identical across runs.
+> The shared-thread guidance paragraph is unconditional rather than keyed on
+> the window's contents, so mixed-agent channels no longer flip anchor bytes
+> either. `buildPromptCacheKey` (moved to `@nessie/runtime`
+> `inference/prompt-cache.ts`) hashes model + sorted tool names + that stable
+> anchor only, so OpenAI `prompt_cache_key` affinity now holds across runs of
+> the same agent; the shared model client derives the same default for
+> system-led utility calls (engagement decision, compaction, designer), which
+> previously sent no key — on Kimi that disabled `cache_control` entirely.
+> The Kimi Anthropic payload emits the stable block (tool render + first
+> system message) as the sole `cache_control` breakpoint, keeps later system
+> turns (memory, checkpoint, mid-run wind-down) in uncached follow-on blocks,
+> and adds a sliding tail breakpoint on the last message so a multi-iteration
+> run cache-reads its transcript.
+
 - The MCP deferred view **mutates the tool list mid-run** (load/drop), which
   changes the tools portion of the cacheable prefix and rotates
   `buildPromptCacheKey` (it hashes sorted tool names). This is an inherent
-  trade-off of deferral — fewer tokens, less cacheable — and is acceptable, but
-  should be documented so it isn't mistaken for a regression.
-
-**Impact:** Low. **Risk:** Low. **Effort:** Small.
+  trade-off of deferral — fewer tokens, less cacheable — and is acceptable,
+  not a regression. The same applies to a to-do/routing/documents block whose
+  structural facts genuinely changed between runs: the anchor honestly
+  differs, and the key honestly rotates with it.
 
 ---
 
@@ -207,9 +271,9 @@ Lower priority than the raw token count suggests.
 | F3 | Model-aware context budget | Med-High | Low | Small |
 | F2 | Real compaction (summarize, don't drop) | High | Med | Large |
 | F4 | Duplicate-result collapse | Med | Low | Small |
-| F5 | Defer builtin schemas | Low-Med | Low | Med |
+| F5 | Two-tier builtin schemas | Addressed | Low | Done |
 | F6 | Token-cap `systemPrompt` + conversation | Low-Med | Low | Small |
-| F7 | Cache-stable system prefix | Low | Low | Small |
+| F7 | Cache-stable system prefix | Addressed | Low | Done |
 
 ### Recommended sequencing
 
@@ -221,9 +285,8 @@ Lower priority than the raw token count suggests.
    groups rather than dropping them; keep a compact marker so the agent knows
    history was condensed). Design the summarization budget so the summary itself
    doesn't reintroduce the cost it removed.
-3. **F5–F7 as polish.** F6 and F7 are quick guards; F5 only meaningfully pays
-   off on the non-caching path or to cut first-call cost, so defer it unless
-   builtin counts grow.
+3. **F6 as polish.** A quick, lower-impact guard after F5's two-tier builtin
+   descriptor work. (F7 landed 2026-08-31 — see its resolution note above.)
 
 ---
 
@@ -236,8 +299,10 @@ What is **already** capped (do not regress these):
 | Injected long-term memories | ≤ 5 items × ≤ 220 chars | `worker/src/run/execute/memory.ts` (`MAX_MEMORY_RESULTS`, `MAX_MEMORY_CONTEXT_LENGTH`) |
 | Conversation history | 20 most-recent non-system messages | `worker/src/run/execute/prompt.ts` (`loadConversation`, `take: 20`) |
 | MCP tool schemas | inline ≤ 12 tools, else deferred; ≤ 15 loaded at once | `worker/src/run/mcp-toolset.ts`, `mcp-toolset-deferred.ts` |
-| Most builtin tool results | 32,000 chars | `worker/src/run/tool-util.ts` (`truncateToolResult`) |
-| Web tool results | ~1,200 chars | `worker/src/run/content-tools.ts` |
+| MCP tool ordering | name-sorted descriptors, fixed allocation order | `worker/src/run/mcp-toolset.ts`, `mcp-toolset-deferred.ts` |
+| Most builtin tool results | 32,000 chars, middle-out | `worker/src/run/tool-util.ts` (`truncateToolResult`) |
+| Web tool results (`web_search`, `web_fetch`, `document_read`) | ~4,000 chars | `worker/src/run/content-tools.ts` (`MAX_PREVIEW_LENGTH`) |
+| Raw HTTP bodies (`http_fetch`, HTTP transport) | 12,000 chars, middle-out | `worker/src/run/builtin-handlers/http-fetch.ts` (`MAX_RAW_BODY_CHARS`) |
 | `kb_page_read` | 20,000 chars | `worker/src/run/pa-tools/knowledge.ts` |
 | Post-run memory consolidation | heuristic extraction, ≤ ~5 short memories | `packages/memory/src/consolidate.ts` |
 

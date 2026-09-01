@@ -14,9 +14,14 @@ export const pageInclude = {
 export type PageRow = Prisma.KnowledgePageGetPayload<{ include: typeof pageInclude }>
 
 export const spaceInclude = {
+  // ownerAgentId is a scalar and Prisma includes it without hydrating the
+  // ownerAgent relation; access only needs the stable id.
   members: { select: { userId: true, agentId: true } },
 } satisfies Prisma.KnowledgeSpaceInclude
 
+// Prisma includes scalar fields such as `ownerAgentId` alongside relation
+// includes, so the shared row shape carries ownership without loading the
+// Agent relation or creating another visibility lookup here.
 export type SpaceRow = Prisma.KnowledgeSpaceGetPayload<{ include: typeof spaceInclude }>
 
 const toJsonRecord = (value: unknown): Record<string, unknown> | null =>
@@ -49,6 +54,7 @@ export const mapSpace = (space: SpaceRow): KnowledgeSpaceRecord => ({
   name: space.name,
   description: space.description,
   metadata: toJsonRecord(space.metadata),
+  ownerAgentId: space.ownerAgentId,
   writeRestricted: space.writeRestricted,
   memberUserIds: space.members
     .map((member) => member.userId)

@@ -2,15 +2,13 @@ import type { FastifyInstance } from 'fastify'
 import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
+  isAdminRole,
   OrganizationSummarySchema,
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
-
-// Only owners/admins may change the org-wide logo (members get a read-only view).
-const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 // Logos are served from a public, unauthenticated endpoint and rendered on the
 // login screen, so restrict them to raster image types. This excludes SVG —
@@ -45,6 +43,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         name: organization.name,
         role: membership?.role ?? 'member',
         logoAttachmentId: organization.logoAttachmentId ?? null,
+        stripImageMetadata: organization.stripImageMetadata,
       }),
     )
   })
@@ -60,7 +59,8 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     const membership = await prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId } },
     })
-    if (!membership || !ADMIN_ROLES.has(membership.role)) {
+    // Only owners/admins may change the org-wide logo (members get a read-only view).
+    if (!membership || !isAdminRole(membership.role)) {
       sendApiError(
         reply,
         403,
@@ -101,12 +101,15 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     }
 
     // Each field is optional; only apply what was sent so a name-only PATCH
-    // leaves the logo intact and vice versa.
+    // leaves the logo and metadata-stripping flag intact and vice versa.
     const organization = await prisma.organization.update({
       where: { id: organizationId },
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.logoAttachmentId !== undefined ? { logoAttachmentId: body.logoAttachmentId } : {}),
+        ...(body.stripImageMetadata !== undefined
+          ? { stripImageMetadata: body.stripImageMetadata }
+          : {}),
       },
     })
 
@@ -116,24 +119,24 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         name: organization.name,
         role: membership.role,
         logoAttachmentId: organization.logoAttachmentId ?? null,
+        stripImageMetadata: organization.stripImageMetadata,
       }),
     )
   })
 
-  // Public branding endpoint: the login screen runs unauthenticated, so for a
-  // single-organisation (self-hosted) instance we surface that org's logo here.
-  // Multi-org instances and unset logos return 404 so the client falls back to
-  // the static Nessie brand icon (an `<img onError>`), mirroring GET /icon.png.
+  // Public branding endpoint: the sign-in screen runs unauthenticated and is
+  // instance state, not tenant state, so the organisation whose mark it carries
+  // is designated by the instance operator (`nessie set-instance-brand`) — never
+  // by an org admin, and never inferred from "the instance happens to hold one
+  // organisation" (routinely false under per-UOA-org tenancy, and it handed one
+  // tenant control of everybody's login screen). No designation and unset logos
+  // return 404 so the client falls back to the static Nessie brand icon (an
+  // `<img onError>`), mirroring GET /icon.png.
   app.get('/api/brand/logo', { config: { public: true } }, async (_request, reply) => {
     const startedAt = Date.now()
-    const orgCount = await prisma.organization.count()
-    if (orgCount !== 1) {
-      sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')
-      return reply
-    }
-
     const organization = await prisma.organization.findFirst({
-      where: { logoAttachmentId: { not: null } },
+      where: { instanceBrand: true, logoAttachmentId: { not: null } },
+      orderBy: { createdAt: 'asc' },
     })
     if (!organization?.logoAttachmentId) {
       sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')

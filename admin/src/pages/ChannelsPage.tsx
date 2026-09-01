@@ -1,96 +1,115 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
-import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
-import { useSyncExternalAgentChannel } from '../facades/integrations/hooks'
+import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
 import {
   isExternalAgentChannel,
   isPersonalAssistantChannel,
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
-import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
-import { useTools } from '../facades/tools/hooks'
+import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
+import { useFileDrop } from '../hooks/useFileDrop'
+import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { CallBanner } from '../components/shared/CallBanner'
-import { CallOverlay } from '../components/shared/CallOverlay'
-import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
-import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
-import { ChannelComposer } from '../components/features/channels/ChannelComposer'
-import { ChannelAgentInfoDrawer } from '../components/features/channels/ChannelAgentInfoDrawer'
-import { ChannelHeader } from '../components/features/channels/ChannelHeader'
-import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
-import { ChannelSearchPanel } from '../components/features/channels/ChannelSearchPanel'
-import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
-import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
-import { ChannelUserInfoDrawer } from '../components/features/channels/ChannelUserInfoDrawer'
-import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
+import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
+import { parseChannelIdFromPath } from '../lib/channel-route'
+import { usePhoneLayout } from '../lib/mobile-shell'
+import { useIsOwner } from '../components/shared/OwnerGate'
+import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
+import {
+  buildFeedItems,
+  isAgentsTabAvailable,
+  type ChannelAgentParticipant,
+  type ChannelTab,
+  type MessageUserIdentity,
+} from '../components/features/channels/channel-helpers'
+import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
+import { useShareRestrictedMessage } from '../facades/messages/hooks'
+import { ChannelOverlays } from './channels/ChannelOverlays'
+import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
 import { useChannelCall } from './channels/useChannelCall'
+import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
+import { useExecutorRunLauncher } from './channels/useExecutorRunLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
-import { useChannelMessageSearch } from './channels/useChannelMessageSearch'
+import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
+import { useReplyThread } from './channels/useReplyThread'
+import { isConversationReadReady } from './channels/thread-read-marker'
+import { useThreadReadMarker } from './channels/useThreadReadMarker'
+import { useReportChannelPushSurface } from './channels/useReportChannelPushSurface'
+import { useChannelParticipants } from './channels/useChannelParticipants'
 
 export const ChannelsPage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
-  const { onSelectAgent, scopedAgents } = useOutletContext<AdminShellOutletContext>()
+  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
-  const { data: tools = [] } = useTools()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
 
+  const isComposeRoute = location.pathname === '/channels/new'
+  const composeReturnTo = readChannelComposeReturnTo(location.state)
+  const backgroundChannelId = isComposeRoute
+    ? parseChannelIdFromPath(composeReturnTo)
+    : channelId
   const activeChannel =
-    channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
+    channels.find((channel) => channel.id === backgroundChannelId) ?? channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
-  const boundAgents = useMemo(
-    () =>
-      activeChannel
-        ? agents.filter((agent) => agent.channelIds.includes(activeChannel.id))
-        : [],
-    [activeChannel, agents],
+  // Function-first identity + conversation starters for the active external
+  // agent, sourced from its plugin manifest (null for any other channel).
+  const externalAgentIdentity = useExternalAgentIdentity(activeChannel)
+  const { agentMap, boundAgents, channelUsers } = useChannelParticipants(
+    activeChannel,
+    agents,
+    allUsers,
   )
-  const agentMap = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent])),
-    [agents],
-  )
-  const { data: threadMessages = [] } = useThreadMessages(activeChannel?.defaultThreadId)
+  const { data: threadMessages = [], isFetched: threadMessagesFetched } =
+    useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
-  const markThreadRead = useMarkThreadRead()
-  const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
-
-  const channelUsers = useMemo(
-    () =>
-      activeChannel
-        ? allUsers.filter((user) => user.channelIds.includes(activeChannel.id))
-        : [],
-    [activeChannel, allUsers],
+  const { documentSessions, documentStore, pendingMessages } = useThreadStream(
+    activeChannel?.defaultThreadId,
   )
 
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
-  const [selectedMessageUser, setSelectedMessageUser] =
-    useState<MessageUserIdentity | null>(null)
-  const [selectedMessageAgentId, setSelectedMessageAgentId] = useState<string | null>(null)
-  const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
+  const [selectedMessageAgent, setSelectedMessageAgent] = useState<ChannelAgentParticipant | null>(null)
 
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
+  const agentsTabAvailable = isAgentsTabAvailable({
+    boundAgentCount: boundAgents.length,
+    isConversationSurface,
+    isPersonalAssistantConversation,
+    personalAssistantPresenceCount: activeChannel?.personalAssistantPresences?.length ?? 0,
+  })
   const visibleActiveTab =
-    isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
+    (activeTab === 'agents' && !agentsTabAvailable) ||
+    (activeTab === 'automations' && isConversationSurface)
+      ? 'messages'
+      : activeTab
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(location.search).get('tab')
+    if (requestedTab === 'files' || requestedTab === 'messages') {
+      setActiveTab(requestedTab)
+    }
+  }, [location.search])
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
-  const selectedMessageAgent =
-    selectedMessageAgentId ? agentMap.get(selectedMessageAgentId) ?? null : null
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
   const callEligible =
@@ -103,15 +122,17 @@ export const ChannelsPage = () => {
 
   const {
     activeCall,
-    activeParticipants,
-    isInCall,
-    showCallOverlay,
+    callActionError,
+    callActionPending,
+    callStarting,
+    callerDialogCall,
     onCallButton,
-    onBannerJoin,
-    onOverlayLeave,
+    onCloseCallerDialog,
+    onCloseStartCallFailure,
+    onFinishCall,
+    startCallFailureCode,
   } = useChannelCall({
     activeChannel,
-    currentUserId: me?.user.id,
     callEligible,
   })
 
@@ -120,6 +141,39 @@ export const ChannelsPage = () => {
     agents,
     channels,
     channelUsers,
+    personalAssistantPresences: activeChannel?.personalAssistantPresences,
+  })
+
+  // Reply-thread panel (#233): URL-driven open state, replies/root queries,
+  // and the persisted drag-resizable width.
+  const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+  const visibleConversationMessages = useMemo(() => {
+    if (!replyThread.openRootMessageId) return threadMessages
+    const root = replyThread.rootQuery.data?.message
+    return root ? [root, ...(replyThread.repliesQuery.data ?? [])] : []
+  }, [replyThread.openRootMessageId, replyThread.repliesQuery.data, replyThread.rootQuery.data, threadMessages])
+  const conversationReadReady = isConversationReadReady({
+    isReplyConversation: Boolean(replyThread.openRootMessageId),
+    repliesLoaded: replyThread.repliesQuery.isSuccess,
+    rootLoaded: replyThread.rootQuery.isSuccess,
+  })
+  // Loading a channel's Files, Info, or Runs data must not acknowledge its
+  // messages. A reply panel acknowledges only its exact, rendered conversation.
+  useThreadReadMarker(
+    replyThread.activeThreadId,
+    visibleConversationMessages,
+    visibleActiveTab === 'messages' && conversationReadReady,
+    replyThread.openRootMessageId ?? undefined,
+  )
+
+  // Presence is the rendered conversation only. Files, Info, and Runs leave
+  // the push surface clear so a reply still raises an in-app/native banner.
+  useReportChannelPushSurface({
+    activeChannel,
+    activeThreadId: replyThread.activeThreadId,
+    location,
+    openRootMessageId: replyThread.openRootMessageId,
+    visibleActiveTab,
   })
 
   const {
@@ -130,6 +184,9 @@ export const ChannelsPage = () => {
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,
@@ -138,11 +195,18 @@ export const ChannelsPage = () => {
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    secretCapture,
+    dismissSecretCapture,
   } = useChannelComposer({
     activeChannel,
     threadMessages,
     currentUserId: me?.user.id,
   })
+  // Dropping files anywhere over the conversation column stages them in the
+  // composer. The reply panel is a sibling with its own zone, so the two never
+  // both fire for one drop.
+  const chatDrop = useFileDrop(attachments.addFiles)
+  const deepWaterLauncher = useDeepWaterResearchLauncher(message)
 
   // sp-messaging: inline edit + channel message search.
   const {
@@ -150,12 +214,15 @@ export const ChannelsPage = () => {
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
     submitEdit,
     updatePending,
   } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  // Answering the acknowledgement card on a reply that used restricted sources.
+  const shareRestricted = useShareRestrictedMessage(activeChannel?.defaultThreadId)
   const {
     closeSearch,
     jumpToMessage,
@@ -165,22 +232,37 @@ export const ChannelsPage = () => {
     setSearchQuery,
     toggleSearch,
   } = useChannelMessageSearch(activeChannel?.id)
+  // The feed opens on its newest message and stays there while rows settle
+  // (media decoding, streaming replies, growing thinking bubbles), so nothing
+  // is left hiding behind the composer.
+  const feedScroll = useStickToBottom(`${activeChannel?.id ?? ''}:${visibleActiveTab}`)
+  const releaseFeedPin = feedScroll.releasePin
+  // Jumping to an older message is the reader taking over: stop following the
+  // bottom, or the next row that settles would yank them back down.
+  const jumpToFeedMessage = useCallback(
+    (messageId: string) => {
+      releaseFeedPin()
+      jumpToMessage(messageId)
+    },
+    [jumpToMessage, releaseFeedPin],
+  )
+  useAlertMessageHighlight(threadMessagesFetched, jumpToFeedMessage)
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
 
   useEffect(() => {
-    if (isConversationSurface && isOperationsTab(activeTab)) {
+    if (activeTab === 'agents' && !agentsTabAvailable) {
       setActiveTab('messages')
     }
-  }, [activeTab, isConversationSurface])
+  }, [activeTab, agentsTabAvailable])
 
   useEffect(() => {
     cancelEdit()
     closeSearch()
     setShowChannelSettings(false)
     setSelectedMessageUser(null)
-    setSelectedMessageAgentId(null)
+    setSelectedMessageAgent(null)
   }, [activeChannel?.id, cancelEdit, closeSearch])
 
   // History hydration (DeepSignal §6): when an external-agent channel is opened,
@@ -204,276 +286,220 @@ export const ChannelsPage = () => {
     syncExternalAgentMutate,
   ])
 
-  const lastReadMarkerRef = useRef<string | null>(null)
-  const pendingReadMarkerRef = useRef<string | null>(null)
   useEffect(() => {
-    lastReadMarkerRef.current = null
-    pendingReadMarkerRef.current = null
-  }, [activeChannel?.defaultThreadId])
-
-  useEffect(() => {
-    const threadId = activeChannel?.defaultThreadId
-    const latestMessageId = threadMessages.at(-1)?.id
-    if (!threadId || !latestMessageId) {
-      return
-    }
-
-    const marker = `${threadId}:${latestMessageId}`
-    if (lastReadMarkerRef.current === marker || pendingReadMarkerRef.current === marker) {
-      return
-    }
-
-    pendingReadMarkerRef.current = marker
-    markThreadRead.mutate(threadId, {
-      onError: () => {
-        pendingReadMarkerRef.current = null
-      },
-      onSuccess: () => {
-        lastReadMarkerRef.current = marker
-        pendingReadMarkerRef.current = null
-      },
-    })
-  }, [activeChannel?.defaultThreadId, markThreadRead, threadMessages])
-
-  useEffect(() => {
-    if (!channelId && activeChannel) {
+    // A phone tab starts on its contextual list. Desktop and tablet retain the
+    // existing convenience of opening the first conversation in the detail
+    // pane because that list remains visible alongside it.
+    if (!phoneLayout && !isComposeRoute && !channelId && activeChannel) {
       void navigate(`/channels/${activeChannel.id}`, { replace: true })
     }
-  }, [activeChannel, channelId, navigate])
+  }, [activeChannel, channelId, isComposeRoute, navigate, phoneLayout])
+
+  // Structural only: is there an agent here at all? Whether one engages is the
+  // orchestrator's model-judged call. The Personal Assistant and external-agent
+  // DMs own their channel without appearing in `boundAgents`.
+  const hasRespondingAgent =
+    boundAgents.length > 0
+    || (activeChannel?.personalAssistantPresences?.length ?? 0) > 0
+    || isPersonalAssistantActiveChannel
+    || isExternalAgentActiveChannel
+  // Ambient liveness for the channel surface. `pendingMessages` is the full set
+  // this feed renders bubbles for — top-level runs at the bottom, thread-anchored
+  // ones compactly under their root — so a bubble anywhere in the feed hides the
+  // hint rather than stacking with it.
+  const channelLiveness = useAgentLivenessHint({
+    hasRespondingAgent,
+    meUserId: me?.user.id ?? '',
+    messages: threadMessages,
+    pendingMessages,
+    surfaceKey: activeChannel?.defaultThreadId,
+  })
+  const markChannelSent = channelLiveness.markSent
+  const executorLauncher = useExecutorRunLauncher({
+    agents: !isPersonalAssistantConversation && !isExternalAgentActiveChannel ? boundAgents : [],
+    message,
+    onLaunched: () => {
+      setMessage('')
+      feedScroll.pinToBottom()
+      markChannelSent()
+    },
+    projectId: activeChannel?.projectId,
+    threadId: activeChannel?.defaultThreadId,
+  })
 
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
-
-  useLayoutEffect(() => {
-    const container = contentScrollRef.current
-    if (!container) {
-      return
-    }
-
-    container.scrollTop = container.scrollHeight
-  }, [
-    activeChannel?.id,
-    visibleActiveTab,
-    feedItems.length,
-    optimisticMessages.length,
-    pendingMessages.length,
-    scopedAgents.length,
-  ])
+  // Runs replying into the open reply thread render their bubble (and streaming
+  // text) inside the panel, not at the bottom of the channel.
+  const threadPendingMessages = useMemo(
+    () => selectPendingForRoot(pendingMessages, replyThread.openRootMessageId),
+    [pendingMessages, replyThread.openRootMessageId],
+  )
 
   if (!me) {
     return null
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <ChannelHeader
+    <section className="relative flex h-full min-h-0">
+      <ChannelConversationSurface
+        activeCall={activeCall}
         activeChannel={activeChannel}
-        isPersonalAssistantConversation={isPersonalAssistantConversation}
-        channelUsers={channelUsers}
+        agentMap={agentMap}
         boundAgents={boundAgents}
         callEligible={callEligible}
-        activeCall={Boolean(activeCall)}
-        isInCall={isInCall}
-        searchOpen={searchOpen}
-        joinPending={joinChannel.isPending}
-        titleFavorite={titleFavorite}
-        onOpenMembers={() => setShowMembersPopup(true)}
-        onCallButton={onCallButton}
-        onOpenSettings={() => setShowChannelSettings(true)}
-        onJoin={() => {
-          if (activeChannel) {
-            joinChannel.mutate({ channelId: activeChannel.id })
-          }
+        callStarting={callStarting}
+        channelLiveness={channelLiveness}
+        channelUsers={channelUsers}
+        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
+        chatDrop={chatDrop}
+        composePlaceholder={composePlaceholder}
+        composer={{
+          attachments,
+          dismissPendingAgent,
+          dismissSecretCapture,
+          insertEmoji,
+          inviteErrors,
+          invitePendingAgent,
+          invitingAgentId,
+          isSendPending,
+          sendError,
+          mentionRef,
+          message,
+          optimisticMessages,
+          pendingAgentInvites,
+          sendMessageSubmit,
+          sendText,
+          setMessage,
+          setOversizePaste,
+          secretCapture,
         }}
-        onToggleSearch={toggleSearch}
-      />
-
-      {searchOpen ? (
-        <ChannelSearchPanel
-          onChangeQuery={setSearchQuery}
-          onClose={closeSearch}
-          onSelectResult={(messageId) => {
-            jumpToMessage(messageId)
-            closeSearch()
-          }}
-          searchQuery={searchQuery}
-          searchResults={searchResults}
-        />
-      ) : null}
-
-      {activeCall && !isInCall && callEligible && activeParticipants.length > 0 && (
-        <CallBanner participants={activeParticipants} onJoin={onBannerJoin} />
-      )}
-
-      <ChannelTabBar
-        visibleActiveTab={visibleActiveTab}
+        agentsTabAvailable={agentsTabAvailable}
+        deepWaterLauncher={deepWaterLauncher}
+        documentSessions={documentSessions}
+        documentStore={documentStore}
+        executorLauncher={executorLauncher}
+        externalAgentIdentity={externalAgentIdentity}
+        feedItems={feedItems}
+        feedScroll={feedScroll}
         isConversationSurface={isConversationSurface}
-        onSelectTab={setActiveTab}
-      />
-
-      <div
-        className="min-h-0 flex-1 overflow-y-auto"
-        data-testid="channel-content-scroll"
-        ref={contentScrollRef}
-      >
-        {visibleActiveTab === 'messages' ? (
-          <ChannelMessageFeed
-            feedItems={feedItems}
-            optimisticMessages={optimisticMessages}
-            pendingMessages={pendingMessages}
-            agentMap={agentMap}
-            agentById={agentMap}
-            meDisplayName={me.user.displayName}
-            meUserId={me.user.id}
-            meAvatar={{
-              avatarUrl: me.user.avatarUrl,
-              avatarAttachmentId: me.user.avatarAttachmentId,
-              gravatarUrl: me.user.gravatarUrl,
-            }}
-            token={token}
-            isPersonalAssistantConversation={isPersonalAssistantConversation}
-            isExternalAgentConversation={isExternalAgentActiveChannel}
-            externalAgentDisplayName={activeChannel?.label}
-            renderContent={renderContent}
-            editingMessageId={editingMessageId}
-            editingContent={editingContent}
-            updatePending={updatePending}
-            onStartEdit={startEdit}
-            onChangeEditingContent={changeEditingContent}
-            onSubmitEdit={(messageId) => void submitEdit(messageId)}
-            onCancelEdit={cancelEdit}
-            onAddReaction={addReaction}
-            onConfirmDelete={confirmDelete}
-            onSelectAgent={
-              isPersonalAssistantConversation
-                ? undefined
-                : (agent) => setSelectedMessageAgentId(agent.id)
-            }
-            onSelectUser={
-              activeChannel?.type === 'dm' ? undefined : setSelectedMessageUser
-            }
-          />
-        ) : null}
-
-        <ChannelTabPanels
-          visibleActiveTab={visibleActiveTab}
-          isConversationSurface={isConversationSurface}
-          isPersonalAssistantConversation={isPersonalAssistantConversation}
-          activeChannel={activeChannel}
-          boundAgents={boundAgents}
-          scopedAgents={scopedAgents}
-          toolsCount={tools.length}
-          pendingMessagesCount={pendingMessages.length}
-          personalAssistantAgent={personalAssistantAgent}
-          personalAssistantChannel={personalAssistantChannel}
-          personalAssistantState={personalAssistantState}
-          onSelectAgent={onSelectAgent}
-          onCreateAgent={() => void navigate('/agents/designer')}
-        />
-      </div>
-
-      <ChannelComposer
-        mentionRef={mentionRef}
+        isExternalAgentConversation={isExternalAgentActiveChannel}
+        isPersonalAssistantConversation={isPersonalAssistantConversation}
+        joinPending={joinChannel.isPending}
         mentionEntities={mentionEntities}
-        placeholder={composePlaceholder}
-        message={message}
-        isSendPending={isSendPending}
-        onChangeMessage={setMessage}
-        onOversizePaste={(paste) => setOversizePaste(paste)}
-        onSubmitText={(text) => void sendText(text)}
-        onSubmitForm={(event) => void sendMessageSubmit(event)}
-        onInsertHashSign={() => mentionRef.current?.insertHashSign()}
-        onInsertAtSign={() => mentionRef.current?.insertAtSign()}
-        pendingAgentInvites={pendingAgentInvites}
-        invitingAgentId={invitingAgentId}
-        inviteErrors={inviteErrors}
-        onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
-        onDismissPendingAgent={dismissPendingAgent}
+        messageActions={{
+          addReaction,
+          cancelEdit,
+          changeEditingContent,
+          confirmDelete,
+          deleteConfirm,
+          editingContent,
+          editingMessageId,
+          startEdit,
+          submitEdit,
+          updatePending,
+        }}
+        me={me}
+        pendingMessages={pendingMessages}
+        personalAssistantAgent={personalAssistantAgent}
+        personalAssistantChannel={personalAssistantChannel}
+        personalAssistantState={personalAssistantState}
+        renderContent={renderContent}
+        replyThread={replyThread}
+        search={{
+          closeSearch,
+          jumpToMessage,
+          searchOpen,
+          searchQuery,
+          searchResults,
+          setSearchQuery,
+          toggleSearch,
+        }}
+        shareRestricted={shareRestricted}
+        titleFavorite={titleFavorite}
+        token={token}
+        visibleActiveTab={visibleActiveTab}
+        onCallButton={onCallButton}
+        onCreateAgent={() => void navigate('/agents/designer')}
+        onJoin={() => {
+          if (activeChannel) joinChannel.mutate({ channelId: activeChannel.id })
+        }}
+        onOpenInfo={() => {
+          if (activeChannel) void navigate(`/channels/${activeChannel.id}/info`)
+        }}
+        onOpenMembers={() => setShowMembersPopup(true)}
+        onOpenSettings={() => setShowChannelSettings(true)}
+        onSelectAgent={onSelectAgent}
+        onSelectMessageAgent={setSelectedMessageAgent}
+        onSelectMessageUser={setSelectedMessageUser}
+        onToggleSearch={toggleSearch}
+        setActiveTab={setActiveTab}
       />
 
-      {showMembersPopup && activeChannel ? (
-        <ChannelMembersPopup
-          allAgents={agents}
-          allUsers={allUsers}
-          boundAgents={boundAgents}
-          channelId={activeChannel.id}
-          channelLabel={activeChannel.label}
-          channelType={activeChannel.type}
-          channelUsers={channelUsers}
-          currentUserId={me.user.id}
-          onClose={() => setShowMembersPopup(false)}
-          onGroupCreated={(newChannelId) => {
-            setShowMembersPopup(false)
-            navigate(`/channels/${newChannelId}`)
-          }}
-          onSelectAgent={onSelectAgent}
-        />
-      ) : null}
-
-      {activeChannel ? (
-        <ChannelSettingsDialog
-          channel={activeChannel}
-          onClose={() => setShowChannelSettings(false)}
-          open={showChannelSettings}
-        />
-      ) : null}
-
-      <OversizePasteDialog
-        limit={CHAT_MESSAGE_MAX_CHARS}
-        onCancel={() => setOversizePaste(null)}
+      <ChannelOverlays
+        activeCall={activeCall}
+        activeChannel={activeChannel}
+        agentMap={agentMap}
+        agents={agents}
+        allUsers={allUsers}
+        boundAgents={boundAgents}
+        channelUsers={channelUsers}
+        callerCallActionError={callActionError}
+        callerCallActionPending={callActionPending}
+        callerDialogCall={callerDialogCall}
+        startCallFailureCode={startCallFailureCode}
+        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
+        deepWaterDialog={deepWaterLauncher.dialog}
+        hasRespondingAgent={hasRespondingAgent}
+        isExternalAgentConversation={isExternalAgentActiveChannel}
+        isPersonalAssistantConversation={isPersonalAssistantConversation}
+        me={me}
+        mentionEntities={mentionEntities}
+        oversizePaste={oversizePaste}
+        pendingMessages={pendingMessages}
+        renderContent={renderContent}
+        replyThread={replyThread}
+        selectedMessageAgent={selectedMessageAgent}
+        selectedMessageUser={selectedMessageUser}
+        showChannelSettings={showChannelSettings}
+        showMembersPopup={showMembersPopup}
+        threadMessages={threadMessages}
+        threadPendingMessages={threadPendingMessages}
+        token={token}
+        onCancelOversizePaste={() => setOversizePaste(null)}
+        onCloseMembers={() => setShowMembersPopup(false)}
+        onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
+        onCloseSelectedUser={() => setSelectedMessageUser(null)}
+        onCloseSettings={() => setShowChannelSettings(false)}
+        onGroupCreated={(newChannelId) => {
+          setShowMembersPopup(false)
+          navigate(`/channels/${newChannelId}`)
+        }}
         onInsertTrimmed={(trimmed) => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
         }}
-        onSendAsFile={(text) => sendAsFile(text)}
-        open={oversizePaste !== null}
-        pastedText={oversizePaste ?? ''}
-      />
-
-      {showCallOverlay && activeCall && isInCall && (
-        <CallOverlay
-          displayName={me?.user.displayName ?? 'User'}
-          onLeave={onOverlayLeave}
-          roomId={activeCall.roomId}
-        />
-      )}
-
-      <ChannelAgentInfoDrawer
-        activeChannel={activeChannel}
-        agent={selectedMessageAgent}
-        agents={agents}
-        meAvatar={{
-          avatarUrl: me.user.avatarUrl,
-          avatarAttachmentId: me.user.avatarAttachmentId,
-          gravatarUrl: me.user.gravatarUrl,
-        }}
-        meDisplayName={me.user.displayName}
-        meUserId={me.user.id}
-        mentionEntities={mentionEntities}
-        pendingMessages={pendingMessages}
-        renderContent={renderContent}
-        threadMessages={threadMessages}
-        token={token}
-        onClose={() => setSelectedMessageAgentId(null)}
-        onOpenActivity={(agentId) => {
-          setSelectedMessageAgentId(null)
+        onCloseCallerDialog={onCloseCallerDialog}
+        onCloseStartCallFailure={onCloseStartCallFailure}
+        onFinishCall={onFinishCall}
+        onOpenAgentActivity={(agentId) => {
+          setSelectedMessageAgent(null)
           onSelectAgent(agentId)
         }}
+        onSelectAgent={onSelectAgent}
+        onSendAsFile={sendAsFile}
       />
-
-      <ChannelUserInfoDrawer
-        agents={agents}
-        meAvatar={{
-          avatarUrl: me.user.avatarUrl,
-          avatarAttachmentId: me.user.avatarAttachmentId,
-          gravatarUrl: me.user.gravatarUrl,
-        }}
-        meDisplayName={me.user.displayName}
-        meUserId={me.user.id}
-        target={selectedMessageUser}
-        token={token}
-        users={allUsers}
-        onClose={() => setSelectedMessageUser(null)}
-      />
+      {activeChannel ? (
+        <ConversationInfoFlow
+          activeChannel={activeChannel}
+          allUsers={allUsers}
+          canAddPeople={isOwner && activeChannel.type !== 'dm'}
+          channelUsers={channelUsers}
+          me={me}
+          onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
+        />
+      ) : null}
+      {executorLauncher.dialog}
+      <Outlet />
     </section>
   )
 }

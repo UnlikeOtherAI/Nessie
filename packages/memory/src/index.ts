@@ -21,6 +21,11 @@ export {
   type ConsolidationThreadMessage,
 } from './consolidate.js'
 export {
+  deriveMemoryConsolidationInferenceOrigin,
+  MemoryConsolidationIdentityError,
+  parseAndVerifyMemoryConsolidationJobPayload,
+} from './consolidation-origin.js'
+export {
   captureUserMessageMemory,
   type UserMessageMemoryOrigin,
 } from './user-message-memory.js'
@@ -38,8 +43,14 @@ export {
   type SearchExecutionConfig,
 } from './search.js'
 export {
+  constrainScopesToDestination,
+  loadThoughtAudiences,
   resolveAccessibleScopes,
+  scopeForVisibility,
   type AccessibleScopes,
+  type DestinationScopeChain,
+  type ScopedRecord,
+  type ScopeRef,
   type ScopeResolutionMode,
   type ResolveAccessibleScopesInput,
 } from './scopes.js'

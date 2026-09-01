@@ -2,6 +2,23 @@ import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 
+import type {
+  AccountLink,
+  Agent,
+  AgentBinding,
+  Channel,
+  ChannelMember,
+  ChannelUpdateManyArgs,
+  ExternalAgentFakeSeed,
+  Instance,
+  Team,
+  Thread,
+} from './external-agent-prisma-fake-model.js'
+import {
+  makeTeamEnablementMap,
+  matchesChannelUpdateMany,
+} from './external-agent-prisma-fake-model.js'
+
 /**
  * Purpose-built in-memory Prisma fake covering exactly the operations the
  * external-agent bootstrap + activation/deactivation flows perform. Stateful,
@@ -9,66 +26,17 @@ import type { PrismaClient } from '@prisma/client'
  * bootstrap and activation tests.
  */
 
-type Team = {
-  id: string
-  name: string
-  projectId: string
-  systemManaged: boolean
-  organizationId: string
-}
-type Agent = {
-  id: string
-  organizationId: string
-  name: string
-  systemManaged: boolean
-  executionMode: string
-  agentKind: string
-  surfacePolicy: string
-  delegationMode: string
-}
-type Channel = {
-  id: string
-  dmKey: string
-  label: string
-  systemChannelType: string
-  archivedAt: Date | null
-}
-type ChannelMember = { channelId: string; userId: string; role: string }
-type Thread = { id: string; channelId: string; createdAt: number }
-type AgentBinding = { agentId: string; channelId: string }
-type CatalogEntry = { id: string; name: string; visibility: string; status: string; authMethod: string }
-type Instance = {
-  id: string
-  organizationId: string
-  catalogEntryId: string
-  scopeType: string
-  scopeId: string
-  lifecycleState: string
-}
-type AccountLink = {
-  organizationId: string
-  userId: string
-  productSlug: string
-  status: string
-  uoaSub: string | null
-}
-
-export type ExternalAgentFakeSeed = {
-  organizationId: string
-  projectId: string
-  teamId: string
-  catalogEntries?: CatalogEntry[]
-  instances?: Instance[]
-  teamEnablements?: Array<{ teamId: string; productSlug: string; enabled: boolean }>
-}
-
-export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
+export const makeExternalAgentPrismaFake = (
+  seed: ExternalAgentFakeSeed,
+) => {
   const projects = new Map<string, string>([[seed.projectId, seed.organizationId]])
   const teams = new Map<string, Team>([
     [
       seed.teamId,
       {
         id: seed.teamId,
+        externalOrgId: seed.externalOrgId ?? 'uoa-org',
+        externalWorkspaceId: seed.externalWorkspaceId ?? 'uoa-team',
         name: 'Seed Team',
         projectId: seed.projectId,
         systemManaged: false,
@@ -84,11 +52,10 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
   const agentBindings: AgentBinding[] = []
   const catalogEntries = seed.catalogEntries ?? []
   const instances = seed.instances ?? []
-  const accountLinks: AccountLink[] = []
+  const accountLinks: AccountLink[] = [...(seed.accountLinks ?? [])]
+  const credentialOverrides: Array<{ instanceId: string }> = []
   const toolRegistryEntries: Array<{ id: string; mcpInstanceId: string }> = []
-  const enablements = new Map<string, boolean>(
-    (seed.teamEnablements ?? []).map((e) => [`${e.teamId}:${e.productSlug}`, e.enabled]),
-  )
+  const enablements = makeTeamEnablementMap(seed)
 
   const self = {
     teams,
@@ -99,6 +66,7 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
     agentBindings,
     instances,
     accountLinks,
+    credentialOverrides,
     toolRegistryEntries,
     $executeRaw: async () => 0,
     $transaction: async (arg: unknown) =>
@@ -126,7 +94,11 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
         }
         const seedTeam = teams.get(args.where.id ?? '')
         return seedTeam && seedTeam.organizationId === orgId
-          ? { projectId: seedTeam.projectId }
+          ? {
+              externalOrgId: seedTeam.externalOrgId,
+              externalWorkspaceId: seedTeam.externalWorkspaceId,
+              projectId: seedTeam.projectId,
+            }
           : null
       },
       findUnique: async (args: { where: { id: string } }) => {
@@ -140,6 +112,8 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
         const id = randomUUID()
         teams.set(id, {
           id,
+          externalOrgId: null,
+          externalWorkspaceId: null,
           name: args.data.name,
           projectId: args.data.projectId,
           systemManaged: args.data.systemManaged,
@@ -207,12 +181,27 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
         const channel = channelsByKey.get(args.where.dmKey)
         return channel ? { id: channel.id, archivedAt: channel.archivedAt } : null
       },
+      findMany: async (args: {
+        where: { dmKey: { startsWith: string } }
+      }) =>
+        [...channelsByKey.values()]
+          .filter((channel) => channel.dmKey.startsWith(args.where.dmKey.startsWith))
+          .map((channel) => ({ id: channel.id, archivedAt: channel.archivedAt })),
       update: async (args: { where: { id: string }; data: { archivedAt?: Date } }) => {
         const channel = channelsById.get(args.where.id)
         if (channel && args.data.archivedAt !== undefined) {
           channel.archivedAt = args.data.archivedAt
         }
         return { id: args.where.id }
+      },
+      updateMany: async (args: ChannelUpdateManyArgs) => {
+        let count = 0
+        for (const channel of channelsById.values()) {
+          if (!matchesChannelUpdateMany(channel, args.where)) continue
+          channel.archivedAt = args.data.archivedAt
+          count += 1
+        }
+        return { count }
       },
     },
     channelMember: {
@@ -253,15 +242,19 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
       },
     },
     agentBinding: {
-      upsert: async (args: {
-        where: { agentId_channelId: { agentId: string; channelId: string } }
-      }) => {
-        const key = args.where.agentId_channelId
-        const existing = agentBindings.find(
-          (b) => b.agentId === key.agentId && b.channelId === key.channelId,
-        )
-        if (!existing) agentBindings.push({ ...key })
-        return {}
+      createMany: async (args: { data: AgentBinding[]; skipDuplicates?: boolean }) => {
+        let count = 0
+        for (const binding of args.data) {
+          const duplicate = agentBindings.some((row) =>
+            row.agentId === binding.agentId && row.channelId === binding.channelId)
+          if (duplicate) {
+            if (args.skipDuplicates) continue
+            throw new Error('agent binding pair must be unique')
+          }
+          agentBindings.push({ ...binding })
+          count += 1
+        }
+        return { count }
       },
     },
     productTeamEnablement: {
@@ -275,22 +268,55 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
         }
       }) => {
         const key = args.where.organizationId_teamId_productSlug
-        const enabled = enablements.get(`${key.teamId}:${key.productSlug}`)
-        return enabled === undefined ? null : { enabled }
+        return enablements.get(`${key.teamId}:${key.productSlug}`) ?? null
       },
     },
     mcpCatalogEntry: {
       findFirst: async (args: {
-        where: { name: string; visibility: string; status: string }
+        where: {
+          id?: string
+          name?: string
+          organizationId?: string | null
+          visibility?: string
+          status?: string
+          integratedProducts?: { some: { slug: string } }
+        }
       }) => {
+        const integratedSlug = args.where.integratedProducts?.some.slug
         const found = catalogEntries.find(
           (e) =>
-            e.name === args.where.name
-            && e.visibility === args.where.visibility
-            && e.status === args.where.status,
+            (args.where.id === undefined || e.id === args.where.id)
+            && (args.where.name === undefined || e.name === args.where.name)
+            && (
+              args.where.organizationId === undefined
+              || (e.organizationId ?? null) === args.where.organizationId
+            )
+            && (
+              args.where.visibility === undefined
+              || e.visibility === args.where.visibility
+            )
+            && (
+              args.where.status === undefined
+              || e.status === args.where.status
+            )
+            && (
+              integratedSlug === undefined
+              || e.integratedProductSlugs?.includes(integratedSlug) === true
+            )
         )
-        return found ? { id: found.id, authMethod: found.authMethod } : null
+        return found
+          ? {
+              ...found,
+              defaultTransportConfig: found.defaultTransportConfig ?? {},
+              integratedProducts: (found.integratedProductSlugs ?? [])
+                .map((slug) => ({ slug })),
+              label: 'DeepSignal',
+              locked: false,
+              ownerUserId: null,
+            }
+          : null
       },
+      findMany: async () => [],
     },
     mcpServerInstance: {
       findFirst: async (args: {
@@ -299,7 +325,11 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
           scopeType: string
           scopeId: string
           catalogEntryId?: string
-          catalogEntry?: { name: string; visibility: string }
+          catalogEntry?: {
+            name: string
+            visibility: string
+            integratedProducts?: { some: { slug: string } }
+          }
         }
       }) => {
         const catalogName = args.where.catalogEntry?.name
@@ -311,16 +341,80 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
           if (args.where.catalogEntryId) return i.catalogEntryId === args.where.catalogEntryId
           if (catalogName) {
             const entry = catalogEntries.find((e) => e.id === i.catalogEntryId)
+            const integratedSlug =
+              args.where.catalogEntry?.integratedProducts?.some.slug
             return entry?.name === catalogName
+              && (
+                integratedSlug === undefined
+                || entry.integratedProductSlugs?.includes(integratedSlug) === true
+              )
           }
           return true
         })
         return found ?? null
       },
+      create: async (args: {
+        data: {
+          catalogEntryId: string
+          credentialRef: string | null
+          lifecycleState: string
+          organizationId: string
+          scopeId: string
+          scopeType: string
+          transportConfig: unknown
+        }
+      }) => {
+        const instance: Instance = {
+          id: randomUUID(),
+          ...args.data,
+        }
+        instances.push(instance)
+        return instance
+      },
+      update: async (args: {
+        where: { id: string }
+        data: {
+          credentialRef?: string
+          lifecycleState?: string
+          transportConfig?: unknown
+        }
+      }) => {
+        const instance = instances.find((row) => row.id === args.where.id)
+        if (!instance) throw new Error(`Missing instance ${args.where.id}`)
+        Object.assign(instance, args.data)
+        return instance
+      },
       delete: async (args: { where: { id: string } }) => {
         const idx = instances.findIndex((i) => i.id === args.where.id)
         if (idx >= 0) instances.splice(idx, 1)
         return { id: args.where.id }
+      },
+    },
+    mcpServerCredentialOverride: {
+      deleteMany: async (args: { where: { instanceId: string } }) => {
+        let count = 0
+        for (let index = credentialOverrides.length - 1; index >= 0; index -= 1) {
+          if (credentialOverrides[index]?.instanceId === args.where.instanceId) {
+            credentialOverrides.splice(index, 1)
+            count += 1
+          }
+        }
+        return { count }
+      },
+    },
+    organizationMember: {
+      findUnique: async (args: {
+        where: {
+          organizationId_userId: {
+            organizationId: string
+            userId: string
+          }
+        }
+      }) => {
+        const key = args.where.organizationId_userId
+        return key.organizationId === seed.organizationId
+          ? { id: `${key.organizationId}:${key.userId}` }
+          : null
       },
     },
     toolRegistryEntry: {
@@ -334,6 +428,23 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
       },
     },
     productAccountLink: {
+      findUnique: async (args: {
+        where: {
+          organizationId_userId_productSlug: {
+            organizationId: string
+            userId: string
+            productSlug: string
+          }
+        }
+      }) => {
+        const key = args.where.organizationId_userId_productSlug
+        return accountLinks.find(
+          (link) =>
+            link.organizationId === key.organizationId
+            && link.userId === key.userId
+            && link.productSlug === key.productSlug,
+        ) ?? null
+      },
       upsert: async (args: {
         where: {
           organizationId_userId_productSlug: {
@@ -356,7 +467,12 @@ export const makeExternalAgentPrismaFake = (seed: ExternalAgentFakeSeed) => {
           existing.status = args.update.status
           if (args.update.uoaSub !== undefined) existing.uoaSub = args.update.uoaSub
         } else {
-          accountLinks.push({ ...args.create })
+          accountLinks.push({
+            activeOrgId: null,
+            activeTeamId: null,
+            uoaTokenVersion: null,
+            ...args.create,
+          })
         }
         return {}
       },

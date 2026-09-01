@@ -2,6 +2,7 @@ import {
   AgentIdSchema,
   ChannelIdSchema,
   OrganizationIdSchema,
+  PushSurfaceSchema,
   ProjectIdSchema,
   UserIdSchema,
 } from '@nessie/schemas'
@@ -51,6 +52,15 @@ export const PresenceHeartbeatBodySchema = z.object({
   active: z.boolean(),
 })
 export type PresenceHeartbeatBody = z.infer<typeof PresenceHeartbeatBodySchema>
+
+export const PushSurfaceHeartbeatBodySchema = z.object({
+  clientId: z.string().uuid(),
+  // JSON has no bigint type. The client sends its strictly-increasing logical
+  // clock as a decimal string and the API persists it as PostgreSQL BIGINT.
+  sequence: z.string().regex(/^(?:0|[1-9]\d{0,18})$/),
+  surface: PushSurfaceSchema.nullable(),
+})
+export type PushSurfaceHeartbeatBody = z.infer<typeof PushSurfaceHeartbeatBodySchema>
 
 export const UserStatusScheduleKindSchema = z.enum(['date_range', 'weekly'])
 export type UserStatusScheduleKind = z.infer<typeof UserStatusScheduleKindSchema>
@@ -227,10 +237,10 @@ export const UserRecordSchema = z.object({
   channelIds: z.array(ChannelIdSchema),
   activeStatus: UserActiveStatusSchema.nullable().optional(),
   // Avatar sources so member/people lists can render real profile pictures
-  // (same precedence as MessageAuthor: custom attachment > provider > Gravatar).
+  // (same precedence as MessageAuthor: UnlikeOtherAI > custom attachment >
+  // provider picture > initials).
   avatarUrl: z.string().nullish(),
   avatarAttachmentId: z.string().uuid().nullish(),
-  gravatarUrl: z.string().nullish(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })

@@ -1,33 +1,38 @@
 import type { FastifyInstance } from 'fastify'
 
-import { captureUserMessageMemory } from '@nessie/memory'
 import {
-  CHAT_MESSAGE_MAX_CHARS,
-  parseChannelId,
+  detectSecrets,
+  parseOrganizationId,
   parseThreadId,
   parseUserId,
-  withActionContext,
 } from '@nessie/schemas'
 import {
-  CreateThreadMessageBodySchema,
   ListThreadMessagesQuerySchema,
+  MarkThreadReadBodySchema,
+  RunThinkingLogSchema,
   ThreadMessageRecordSchema,
+  ThreadThinkingSchema,
   UpdateThreadMessageBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { buildStreamCorsHeaders } from '../lib/server-context.js'
-import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
 import { canManageChannel } from '../services/channels.js'
 import {
-  createThreadMessage,
   findThreadForUser,
   listThreadMessages,
-  mapMessageRecord,
+  mapMessageRecordWithAttachments,
   markThreadRead,
   softDeleteMessage,
   updateMessage,
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
+import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
+import { canUserReadRunBasis } from '../services/run-disclosure.js'
+import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
+import { registerCreateThreadMessageRoute } from './thread-message-create.js'
+import { registerThreadReplyRoutes } from './thread-replies.js'
+import { registerThreadActivityRoutes } from './thread-activity.js'
+import { registerUnreadDirectMessageRoutes } from './unread-direct-messages.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -38,9 +43,10 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     realtimeHub,
     requireActorContext,
     buildChannelRealtimeScopes,
-    isPersonalAssistantChannelType,
-    messageMemoryCaptureConfig,
   } = deps
+
+  registerThreadActivityRoutes(app, deps)
+  registerUnreadDirectMessageRoutes(app, deps)
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -69,6 +75,13 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       before: query.before,
       limit: query.limit,
       senderId: query.senderId,
+      rootMessageId: query.rootMessageId,
+      // Disclosure predicate: thread visibility admits the caller to the thread,
+      // but a message drawn from sources they cannot reach is still withheld.
+      organizationId: actorContext.tenant.organizationId,
+      ...(actorContext.actor.actorType === 'user'
+        ? { viewerUserId: actorContext.actor.actorId }
+        : {}),
     })
     return createApiResponse(
       ThreadMessageRecordSchema.array().parse(page.data),
@@ -76,38 +89,19 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     )
   })
 
-  app.post('/api/threads/:threadId/messages', async (request, reply) => {
+  registerCreateThreadMessageRoute(app, deps)
+  registerThreadReplyRoutes(app, deps)
+  // Live document composition (bootstrap + address-bar retarget). Split out for
+  // the same reason as the two above: this module is at its size budget.
+  registerThreadDocumentStreamRoutes(app, deps)
+
+  // ─── Agent thought process ────────────────────────────────────────────────
+  // Both routes gate on thread visibility exactly like the SSE stream route
+  // below, then require the run to belong to that thread — a run from another
+  // thread is indistinguishable from a missing one.
+  app.get('/api/threads/:threadId/thinking', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
-      return reply
-    }
-
-    // Guard oversized chat bodies BEFORE Zod validation so the client can
-    // distinguish "too large, offer file upload" from generic validation
-    // failures. Checked on the raw body.
-    const rawContent =
-      typeof request.body === 'object' &&
-      request.body !== null &&
-      'content' in request.body &&
-      typeof (request.body as { content: unknown }).content === 'string'
-        ? (request.body as { content: string }).content
-        : null
-    if (rawContent !== null && rawContent.length > CHAT_MESSAGE_MAX_CHARS) {
-      reply.status(413).send({
-        error: {
-          code: 'MESSAGE_TOO_LARGE',
-          message:
-            `Message is ${rawContent.length} characters; the chat limit is ${CHAT_MESSAGE_MAX_CHARS}.` +
-            ' Send as a file instead.',
-          limit: CHAT_MESSAGE_MAX_CHARS,
-          length: rawContent.length,
-        },
-      })
-      return reply
-    }
-
-    const body = parseInput(CreateThreadMessageBodySchema, request.body, reply)
-    if (!body) {
       return reply
     }
 
@@ -123,153 +117,55 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const result = await createThreadMessage(prisma, {
-      content: body.content,
-      threadId: thread.id,
-      userId: actorContext.actor.actorId,
-    })
+    return createApiResponse(
+      ThreadThinkingSchema.parse(
+        await loadThreadThinking(prisma, thread.id, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }),
+      ),
+    )
+  })
 
-    if (result.kind === 'thread_not_found') {
+  app.get('/api/threads/:threadId/runs/:runId/thinking', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId, runId } = request.params as { threadId: string; runId: string }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
     }
 
-    // ─── Attachments (files slice) ──────────────────────────────────────────
-    // Link any pre-uploaded attachments to this message, scoped to the actor's
-    // organization so a stray id cannot poach another tenant's attachment.
-    if (body.attachmentIds && body.attachmentIds.length > 0) {
-      await prisma.attachment.updateMany({
-        where: {
-          id: { in: body.attachmentIds },
-          organizationId: actorContext.tenant.organizationId,
-          messageId: null,
-        },
-        data: { messageId: result.message.id },
-      })
+    const log = await loadRunThinkingLog(prisma, { runId, threadId: thread.id })
+    if (!log) {
+      sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+      return reply
     }
 
-    if (messageMemoryCaptureConfig) {
-      // Fire-and-forget: never block the message POST response on memory
-      // capture. The handler comment downstream asserts orchestration "never
-      // blocks this response" — keep that invariant here too.
-      void captureUserMessageMemory(
-        {
-          channelId: thread.channel.id,
-          content: result.message.content,
-          memoryOrigin:
-            thread.channel.systemChannelType === 'personal_assistant'
-              ? 'personal_assistant_dm'
-              : 'user_authored_workspace_message',
-          messageId: result.message.id,
-          organizationId: actorContext.tenant.organizationId,
-          sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
-          threadId: thread.id,
-          userId: actorContext.actor.actorId,
-        },
-        messageMemoryCaptureConfig,
-      ).catch((err) =>
-        request.log.error(
-          { err, messageId: result.message.id },
-          'capture_user_message_memory_failed',
-        ),
-      )
+    // The thought log inherits the reply's provenance: a viewer withheld the
+    // restricted answer must not read the reasoning that produced it. Answering
+    // 404 (rather than 403) keeps this consistent with the route's existing
+    // "do not confirm what you cannot see" behaviour above.
+    const readable = await canUserReadRunBasis(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      runId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!readable) {
+      sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+      return reply
     }
 
-    await realtimeHub.publishWs(
-      buildChannelRealtimeScopes({
-        channelId: thread.channel.id,
-        organizationId: actorContext.tenant.organizationId,
-        systemChannelType: thread.channel.systemChannelType,
-      }),
-      {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(thread.channel.id),
-          contentPreview: result.message.content.slice(0, 200),
-          messageId: result.message.id,
-          role: result.message.role,
-          threadId: parseThreadId(thread.id),
-        },
-        event: 'message.new',
-      },
-    )
-
-    // Enqueue push dispatch — fan APNs/FCM notifications out to the other
-    // channel members' devices. Fire-and-forget: a push failure must NEVER
-    // break message posting, so a transient queue-insert error is logged and
-    // swallowed here exactly like the orchestrate enqueue below.
-    try {
-      const mentions =
-        result.message.metadata
-        && typeof result.message.metadata === 'object'
-        && !Array.isArray(result.message.metadata)
-          ? (result.message.metadata as { mentions?: { userIds?: unknown } }).mentions
-          : undefined
-      const mentionUserIds =
-        mentions && Array.isArray(mentions.userIds)
-          ? mentions.userIds.filter((id): id is string => typeof id === 'string')
-          : []
-      await enqueuePushDispatch(
-        prisma,
-        {
-          messageId: result.message.id,
-          authorUserId: actorContext.actor.actorId,
-          channelId: thread.channel.id,
-          threadId: thread.id,
-          organizationId: actorContext.tenant.organizationId,
-          contentSnippet: result.message.content.slice(0, 140),
-          mentionUserIds,
-        },
-        `push:${result.message.id}`,
-      )
-    } catch (err) {
-      app.log.error(
-        { err, messageId: result.message.id },
-        '[push] failed to enqueue dispatch job — recipients will not be notified',
-      )
-    }
-
-    // Enqueue agent-engagement decision — durable, retryable, never blocks this
-    // response. The try/catch ensures a transient queue-insert failure cannot
-    // surface as a "failed" badge on an already-persisted user message.
-    if (result.channelAgents.length > 0) {
-      const orchestrationActorContext = isPersonalAssistantChannelType(
-        thread.channel.systemChannelType,
-      )
-        ? withActionContext(actorContext, {
-            effectiveUserId: parseUserId(actorContext.actor.actorId),
-          })
-        : actorContext
-
-      try {
-        await enqueueOrchestrateDecide(
-          prisma,
-          {
-            actorContext: orchestrationActorContext,
-            channelAgents: result.channelAgents,
-            channelId: parseChannelId(thread.channel.id),
-            content: body.content,
-            messageId: result.message.id,
-            role: result.message.role,
-            threadId: parseThreadId(thread.id),
-          },
-          `orchestrate:${result.message.id}`,
-        )
-      } catch (err) {
-        app.log.error(
-          { err, messageId: result.message.id },
-          '[orchestrate] failed to enqueue decide job — agent will not respond',
-        )
-      }
-    }
-
-    return reply.code(201).send(
-      createApiResponse({
-        message: ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
-        pendingAgentInvites: result.pendingAgentInvites,
-      }),
-    )
+    return createApiResponse(RunThinkingLogSchema.parse(log))
   })
 
   app.post('/api/threads/:threadId/read', async (request, reply) => {
@@ -290,9 +186,36 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    await markThreadRead(prisma, {
+    const body = parseInput(MarkThreadReadBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const marked = await markThreadRead(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      rootMessageId: body.rootMessageId,
+      lastReadMessageId: body.lastReadMessageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
+    })
+    if (!marked) {
+      sendApiError(reply, 404, 'REPLY_ROOT_NOT_FOUND', 'Reply conversation not found')
+      return reply
+    }
+
+    // Read state is per person. Deliver a durable, recipient-private event so
+    // their other sessions refresh immediately without exposing a read receipt
+    // to every channel participant.
+    await realtimeHub.publishWs([
+      { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+      {
+        kind: 'user',
+        organizationId: parseOrganizationId(actorContext.tenant.organizationId),
+        userId: parseUserId(actorContext.actor.actorId),
+      },
+    ], {
+      data: { rootMessageId: body.rootMessageId, threadId: thread.id },
+      event: 'thread.read',
     })
 
     return reply.code(200).send(createApiResponse({ ok: true }))
@@ -376,6 +299,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!body) {
       return reply
     }
+    if (detectSecrets(body.content).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this message was saved. Save it through Secrets instead.',
+      )
+      return reply
+    }
 
     const result = await updateMessage(prisma, {
       content: body.content,
@@ -392,7 +324,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = mapMessageRecord(result.message)
+    const record = await mapMessageRecordWithAttachments(prisma, result.message)
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,
@@ -462,7 +394,14 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = mapMessageRecord(result.message)
+    // A channel manager may delete a message they were never entitled to read,
+    // so the record echoed back to them goes through the disclosure predicate
+    // like any other read.
+    const record = await mapMessageRecordWithAttachments(prisma, result.message, {
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,
@@ -510,7 +449,11 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'Content-Type': 'text/event-stream',
+      // Token-by-token delivery only survives if no hop buffers the response:
+      // the proxy hint plus Nagle off, matching streamDesignerChat.
+      'X-Accel-Buffering': 'no',
     })
+    reply.raw.socket?.setNoDelay(true)
     reply.raw.write(': stream connected\n\n')
 
     const lastEventIdHeader = request.headers['last-event-id']

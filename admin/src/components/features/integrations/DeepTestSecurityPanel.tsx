@@ -5,7 +5,8 @@ import type {
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import { usePrepareDeepTestReview } from '../../../facades/integrations/hooks'
-import { mcpInstallHref } from './AgentConnectorSection'
+import { Pill, type PillTone } from '../../primitives/Pill'
+import { appsHref } from './AgentConnectorSection'
 
 const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
   { label: 'Shallow', value: 'shallow' },
@@ -14,23 +15,7 @@ const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
   { label: 'Overnight', value: 'overnight' },
 ]
 
-const readinessClass = (ready: boolean): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    ready
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  ].join(' ')
-
-const formatCount = (value: number): string =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
-
-const money = (amount: number, currency: string): string =>
-  new Intl.NumberFormat(undefined, {
-    currency,
-    maximumFractionDigits: 2,
-    style: 'currency',
-  }).format(amount)
+const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
 
 const PrivacyRow = ({ label, value }: { label: string; value: string }) => (
   <div className="rounded border border-[var(--sep)] px-3 py-2">
@@ -72,24 +57,33 @@ export const DeepTestSecurityPanel = ({
         <div>
           <h3 className="text-sm font-semibold text-[var(--tx)]">DeepTest security review</h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className={readinessClass(teamReady)}>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(teamReady)}
+              uppercase={false}
+            >
               {teamReady ? 'Team enabled' : 'Team disabled'}
-            </span>
-            <span className={readinessClass(connectorReady)}>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(connectorReady)}
+              uppercase={false}
+            >
               {connectorReady ? 'Local MCP active' : 'Local MCP setup required'}
-            </span>
-            <span className={readinessClass(product.accountLink?.status === 'linked')}>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(product.accountLink?.status === 'linked')}
+              uppercase={false}
+            >
               {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
-            </span>
-          </div>
-        </div>
-        <div className="rounded border border-[var(--sep)] px-3 py-2 text-right">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Month to date</div>
-          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
-            {money(product.usageSummary.totalCost, product.usageSummary.currency)}
-          </div>
-          <div className="text-xs text-[var(--tx3)]">
-            {formatCount(product.usageSummary.totalCalls)} calls
+            </Pill>
           </div>
         </div>
       </div>
@@ -152,7 +146,7 @@ export const DeepTestSecurityPanel = ({
         <div className="flex flex-wrap gap-2">
           {product.launchUrl ? (
             <a
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               href={product.launchUrl}
               rel="noreferrer"
               target="_blank"
@@ -161,8 +155,8 @@ export const DeepTestSecurityPanel = ({
             </a>
           ) : null}
           {!connectorReady ? (
-            <Link className="admin-button admin-button-secondary text-xs" to={mcpInstallHref(product)}>
-              Install MCP
+            <Link className="admin-button admin-button-secondary admin-button-compact" to={appsHref(product)}>
+              Connect app
             </Link>
           ) : null}
         </div>

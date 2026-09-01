@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createCapabilityCatalog } from './catalog.js'
 import { createConnectorRegistry } from './connectors.js'
+import { resolveLedgerServiceBaseUrl } from '../ledger-identity.js'
 import type {
   CapabilityCatalog,
   ConnectorRegistry,
@@ -41,8 +42,10 @@ const buildProviderRequest = (
   maxOutputTokens: request.maxOutputTokens,
   messages: request.messages,
   metadata: request.metadata,
+  requestHeaders: request.requestHeaders,
   model,
   promptCacheKey: request.promptCacheKey,
+  reasoningEffort: request.reasoningEffort,
   requestId,
   responseFormat: request.responseFormat,
   temperature: request.temperature,
@@ -76,16 +79,23 @@ export const createInferenceService = (
   config: ModelProviderConfig,
   options: InferenceServiceOptions = {},
 ): InferenceService => {
+  const resolvedConfig: ModelProviderConfig = {
+    ...config,
+    baseUrl: resolveLedgerServiceBaseUrl(
+      config.baseUrl,
+      config.serviceId ?? config.provider,
+    ),
+  }
   const registry = options.registry ?? createConnectorRegistry()
   const capabilityCatalog = options.capabilityCatalog ?? createCapabilityCatalog(registry)
   const requestIdFactory = options.requestIdFactory ?? randomUUID
-  const connector = registry.getConfigured(config)
+  const connector = registry.getConfigured(resolvedConfig)
 
   const run: InferenceService['run'] = async (
     request: InferenceRequest,
   ): Promise<InferenceResult> => {
     const requestId = buildRequestId(request, requestIdFactory)
-    const capabilities = await capabilityCatalog.resolve(config, request.model)
+    const capabilities = await capabilityCatalog.resolve(resolvedConfig, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
     const providerRequest = buildProviderRequest(
       capabilities.effectiveSnapshot.toolCallingMode === 'disabled'
@@ -97,7 +107,7 @@ export const createInferenceService = (
     const providerResult = await connector.invoke(providerRequest)
     const resolvedModel = providerResult.invocation.model
 
-    return buildInferenceResult(config.provider, resolvedModel, {
+    return buildInferenceResult(resolvedConfig.provider, resolvedModel, {
       correlationId: providerResult.invocation.correlationId,
       finishReason: providerResult.finishReason,
       invocations: [providerResult.invocation],
@@ -119,7 +129,7 @@ export const createInferenceService = (
     }
 
     const requestId = buildRequestId(request, requestIdFactory)
-    const capabilities = await capabilityCatalog.resolve(config, request.model)
+    const capabilities = await capabilityCatalog.resolve(resolvedConfig, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
     const providerRequest = buildProviderRequest(
       capabilities.effectiveSnapshot.toolCallingMode === 'disabled'
@@ -138,7 +148,7 @@ export const createInferenceService = (
 
     const resolvedModel = next.value.invocation.model
 
-    return buildInferenceResult(config.provider, resolvedModel, {
+    return buildInferenceResult(resolvedConfig.provider, resolvedModel, {
       correlationId: next.value.invocation.correlationId,
       finishReason: next.value.finishReason,
       invocations: [next.value.invocation],
@@ -162,7 +172,7 @@ export const createInferenceService = (
       request = {},
     ): Promise<ProviderEmbeddingResult> {
       if (!connector.embed) {
-        throw new Error(`${config.provider} does not support embeddings`)
+        throw new Error(`${resolvedConfig.provider} does not support embeddings`)
       }
 
       return connector.embed({
@@ -170,6 +180,7 @@ export const createInferenceService = (
           ?? request.actorContext?.actionContext.correlationId,
         input,
         metadata: request.metadata,
+        requestHeaders: request.requestHeaders,
         model: request.model,
         requestId:
           request.requestId
@@ -183,7 +194,7 @@ export const createInferenceService = (
       request = {},
     ): Promise<ProviderEmbeddingBatchResult> {
       if (!connector.embedBatch) {
-        throw new Error(`${config.provider} does not support batch embeddings`)
+        throw new Error(`${resolvedConfig.provider} does not support batch embeddings`)
       }
 
       return connector.embedBatch({
@@ -191,6 +202,7 @@ export const createInferenceService = (
           ?? request.actorContext?.actionContext.correlationId,
         input,
         metadata: request.metadata,
+        requestHeaders: request.requestHeaders,
         model: request.model,
         requestId:
           request.requestId
@@ -199,12 +211,15 @@ export const createInferenceService = (
       })
     },
 
-    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
-      return connector.fetchCompletion(body)
+    async fetchCompletion(
+      body: Record<string, unknown>,
+      requestHeaders?: Record<string, string>,
+    ): Promise<Response> {
+      return connector.fetchCompletion(body, requestHeaders)
     },
 
     async getCapabilities(model = config.modelName) {
-      return capabilityCatalog.resolve(config, model)
+      return capabilityCatalog.resolve(resolvedConfig, model)
     },
 
     run,

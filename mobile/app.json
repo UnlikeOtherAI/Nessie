@@ -2,17 +2,19 @@
   "expo": {
     "name": "Nessie",
     "slug": "nessie",
-    "version": "0.1.0",
+    "owner": "unlikeotherai",
+    "version": "0.1.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "nessie",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.unlikeotherai.nessie",
-      "buildNumber": "1",
+      "bundleIdentifier": "com.km.nessie",
+      "appleTeamId": "59S95D279D",
+      "buildNumber": "14",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
@@ -25,10 +27,8 @@
       }
     },
     "android": {
-      "package": "com.unlikeotherai.nessie",
-      "edgeToEdgeEnabled": true,
-      "versionCode": 1,
-      "usesCleartextTraffic": true,
+      "package": "com.km.nessie",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
@@ -49,14 +49,19 @@
         {
           "ios": {
             "deploymentTarget": "16.0"
+          },
+          "android": {
+            "usesCleartextTraffic": true
           }
         }
       ],
-      "react-native-bottom-tabs"
+      "expo-notifications",
+      "react-native-bottom-tabs",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
-        "projectId": "TODO-run-eas-init"
+        "projectId": "7fdf89c0-9fbc-4ca9-9d01-8eeda3efd62c"
       }
     }
   }

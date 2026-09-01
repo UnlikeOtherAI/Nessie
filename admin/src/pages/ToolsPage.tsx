@@ -1,18 +1,36 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type {
   ToolRegistryEntryStatus,
   ToolRegistrySource,
 } from '@nessie/schemas'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
+import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ToolAgentAccessPanel } from '../components/features/workflow-tools/ToolAgentAccessPanel'
+import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-tools/ExplicitToolAgentAccessPanel'
 import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
 import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterBar'
 import { ToolList } from '../components/features/workflow-tools/ToolList'
+import { ToolReviewActions } from '../components/features/workflow-tools/ToolReviewActions'
+import { ToolReviewBar } from '../components/features/workflow-tools/ToolReviewBar'
 import { useAgents } from '../facades/agents/hooks'
-import { useMcpToolRegistry } from '../facades/tool-grants/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import {
+  matchesDeepWaterInstanceFilter,
+  readDeepWaterInstanceFilter,
+} from '../facades/deep-water-tool-filter'
+import {
+  matchesMcpInstanceToolFilter,
+  readMcpInstanceToolFilter,
+} from '../facades/mcp-instance-tool-filter'
+import {
+  useAgentToolPolicyTargets,
+  useMcpToolRegistry,
+} from '../facades/tool-grants/hooks'
+import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
+import { usePhoneLayout } from '../lib/mobile-shell'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
  * `/agents/tools` — the single, canonical tool surface.
@@ -25,18 +43,38 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
  * grants inline.
  */
 export const ToolsPage = () => {
-  const { me } = useAuthSession()
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const phoneLayout = usePhoneLayout()
+  // Still the page's own flag: the registry and policy-target reads below stay
+  // disabled for a non-owner, exactly as before OwnerGate wrapped the render.
+  const isOwner = useIsOwner()
+  const [searchParams] = useSearchParams()
+  const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
+  // `?instance=…&status=pending_review` narrows the owner review to tools from
+  // one connection when setup identifies unreviewed tools.
+  const instanceId = readMcpInstanceToolFilter(searchParams)
 
   const [source, setSource] = useState<ToolRegistrySource | undefined>()
-  const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>()
+  const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>(
+    () => {
+      const initial = searchParams.get('status')
+      return initial === 'pending_review' || initial === 'active'
+        || initial === 'disabled'
+        ? initial
+        : undefined
+    },
+  )
   const [tag, setTag] = useState<string | undefined>()
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('search') ?? '',
+  )
   const [selectedToolId, setSelectedToolId] = useState<string | undefined>()
+  const [selectedForReview, setSelectedForReview] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
 
   const toolsQuery = useMcpToolRegistry({ source, status }, isOwner)
   const agentsQuery = useAgents()
+  const policyTargetsQuery = useAgentToolPolicyTargets(isOwner)
 
   const allTools = useMemo(() => toolsQuery.data ?? [], [toolsQuery.data])
   const tagOptions = useMemo(() => {
@@ -52,6 +90,10 @@ export const ToolsPage = () => {
   const filteredTools = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return allTools.filter((tool) => {
+      if (!matchesDeepWaterInstanceFilter(tool, deepWaterInstanceId)) {
+        return false
+      }
+      if (!matchesMcpInstanceToolFilter(tool, instanceId)) return false
       if (tag && !tool.tags.includes(tag)) return false
       if (!query) return true
       return (
@@ -60,7 +102,7 @@ export const ToolsPage = () => {
         tool.description.toLowerCase().includes(query)
       )
     })
-  }, [allTools, searchQuery, tag])
+  }, [allTools, deepWaterInstanceId, instanceId, searchQuery, tag])
 
   const sortedTools = useMemo(
     () =>
@@ -76,34 +118,74 @@ export const ToolsPage = () => {
       ?? sortedTools[0],
     [sortedTools, selectedToolId],
   )
+  const deepWaterDependencyPolicyKeys = useMemo(
+    () =>
+      allTools
+        .filter(
+          (tool) =>
+            tool.managedProductSlug === 'deep-water'
+            && tool.mcpInstanceId !== null,
+        )
+        .map((tool) => tool.policyKey),
+    [allTools],
+  )
 
-  if (!isOwner) {
-    return (
-      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
-      </section>
-    )
-  }
+  /**
+   * A row is reviewable when its status is something an owner can change here:
+   * connector-projected tools that no first-party integration owns. Built-ins
+   * have no review state, and DeepWater/DeepSignal projections are managed
+   * from Integrations (the API refuses those ids).
+   */
+  const isReviewable = useCallback(
+    (tool: McpToolRegistryRecord) =>
+      !tool.builtin
+      && tool.mcpInstanceId !== null
+      && tool.managedProductSlug === null,
+    [],
+  )
+  const reviewableShown = useMemo(
+    () => sortedTools.filter(isReviewable),
+    [isReviewable, sortedTools],
+  )
+  const selectedReviewIds = useMemo(
+    () =>
+      reviewableShown
+        .filter((tool) => selectedForReview.has(tool.id))
+        .map((tool) => tool.id),
+    [reviewableShown, selectedForReview],
+  )
+  const toggleSelected = useCallback((toolId: string) => {
+    setSelectedForReview((current) => {
+      const next = new Set(current)
+      if (next.has(toolId)) next.delete(toolId)
+      else next.add(toolId)
+      return next
+    })
+  }, [])
 
-  const listBody = toolsQuery.isLoading ? (
-    <div className="py-8 text-center text-sm text-[color:var(--tx3)]">Loading tools…</div>
-  ) : toolsQuery.isError ? (
-    <div className="py-8 text-center text-sm text-[color:var(--danger-text)]">
-      Failed to load tools.{' '}
-      <button className="underline" onClick={() => void toolsQuery.refetch()} type="button">
-        Retry
-      </button>
-    </div>
-  ) : (
-    <ToolList
-      onSelect={(tool) => setSelectedToolId(tool.id)}
-      selectedId={selectedTool?.id}
-      tools={sortedTools}
-    />
+  // No `emptyLabel`: ToolList already distinguishes "no tools at all" from
+  // "none match the current filter", which this component could not.
+  const listBody = (
+    <QueryState
+      errorLabel="Failed to load tools."
+      loadingLabel="Loading tools…"
+      query={toolsQuery}
+    >
+      {() => (
+        <ToolList
+          isReviewable={isReviewable}
+          onSelect={(tool) => setSelectedToolId(tool.id)}
+          onToggleSelected={toggleSelected}
+          selectedForReview={selectedForReview}
+          selectedId={selectedTool?.id}
+          tools={sortedTools}
+        />
+      )}
+    </QueryState>
   )
 
   const columns = [
-    <ColumnBrowserColumn key="list" title={`Tools (${sortedTools.length})`}>
+    <ColumnBrowserColumn leading={<PhoneNavigationButton />} key="list" title={`Tools (${sortedTools.length})`}>
       <div className="grid gap-3">
         <input
           autoComplete="off"
@@ -122,6 +204,14 @@ export const ToolsPage = () => {
           tag={tag}
           tagOptions={tagOptions}
         />
+        <ToolReviewBar
+          onClearSelection={() => setSelectedForReview(new Set())}
+          onSelectAllShown={() =>
+            setSelectedForReview(new Set(reviewableShown.map((tool) => tool.id)))
+          }
+          reviewableCount={reviewableShown.length}
+          selectedIds={selectedReviewIds}
+        />
         {listBody}
       </div>
     </ColumnBrowserColumn>,
@@ -132,36 +222,42 @@ export const ToolsPage = () => {
       <ColumnBrowserColumn
         key={`detail-${selectedTool.id}`}
         onBack={() => setSelectedToolId(undefined)}
-        showBack={isMobile}
+        showBack
         title={selectedTool.label}
       >
         <div className="grid max-w-3xl gap-6">
           <ToolDetailDrawer tool={selectedTool} />
+          <ToolReviewActions tool={selectedTool} />
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h3>
             <p className="mt-1 text-xs text-[color:var(--tx3)]">
-              Switch a row on to grant this tool to that agent; switch it off to
-              revoke. A denied grant is read-only and always wins.
+              {selectedTool.requiresExplicitGrant
+                ? 'This tool is off by default. Switch a row on to write the exact per-agent allow; switch it off to revoke only that allow.'
+                : 'Switch a row on to grant this tool to that agent; switch it off to revoke. A denied grant is read-only and always wins.'}
             </p>
+            {/* `py-6`, not the default `py-8`: these states swap with the two
+                access panels, whose own "no agents yet" line is py-6. */}
             <div className="mt-3">
-              {agentsQuery.isLoading ? (
-                <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
-                  Loading agents…
-                </div>
-              ) : agentsQuery.isError ? (
-                <div className="py-6 text-center text-sm text-[color:var(--danger-text)]">
-                  Failed to load agents.{' '}
-                  <button
-                    className="underline"
-                    onClick={() => void agentsQuery.refetch()}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : (
-                <ToolAgentAccessPanel agents={agentsQuery.data ?? []} tool={selectedTool} />
-              )}
+              <QueryState
+                className="py-6"
+                errorLabel="Failed to load agents."
+                loadingLabel="Loading agents…"
+                query={
+                  selectedTool.requiresExplicitGrant ? policyTargetsQuery : agentsQuery
+                }
+              >
+                {() =>
+                  selectedTool.requiresExplicitGrant ? (
+                    <ExplicitToolAgentAccessPanel
+                      deepWaterDependencyPolicyKeys={deepWaterDependencyPolicyKeys}
+                      targets={policyTargetsQuery.data ?? []}
+                      tool={selectedTool}
+                    />
+                  ) : (
+                    <ToolAgentAccessPanel agents={agentsQuery.data ?? []} tool={selectedTool} />
+                  )
+                }
+              </QueryState>
             </div>
           </section>
         </div>
@@ -170,11 +266,13 @@ export const ToolsPage = () => {
   }
 
   return (
-    <div className="h-full w-full">
-      <ColumnBrowserViewport
-        activeColumn={selectedToolId && selectedTool ? 1 : 0}
-        columns={columns}
-      />
-    </div>
+    <OwnerGate>
+      <div className="h-full w-full">
+        <ColumnBrowserViewport
+          activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
+          columns={columns}
+        />
+      </div>
+    </OwnerGate>
   )
 }

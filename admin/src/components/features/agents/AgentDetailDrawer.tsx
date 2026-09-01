@@ -1,8 +1,9 @@
+import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { AgentAvatar } from '../../shared/AgentAvatar'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { useIsOwner } from '../../shared/OwnerGate'
+import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
 
@@ -33,7 +34,8 @@ export const AgentDetailDrawer = ({
   onClose,
   onSelectAgent,
 }: AgentDetailDrawerProps) => {
-  const { token } = useAuthSession()
+  const navigate = useNavigate()
+  const isOwner = useIsOwner()
   const { data: status } = useAgentStatus(agent?.id)
 
   if (!agent) {
@@ -59,10 +61,10 @@ export const AgentDetailDrawer = ({
         >
           <div>
             <div className="flex items-center gap-3">
-              <AgentAvatar agent={agent} token={token} />
+              <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
               <h2 className="text-2xl font-semibold text-[var(--tx)]">{agent.name}</h2>
               <AgentStatusDot status={agent.status} />
-              <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+              <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
             </div>
             <div className="mt-2 text-sm text-[color:var(--tx2)]">{agent.role}</div>
             <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
@@ -71,13 +73,24 @@ export const AgentDetailDrawer = ({
                 : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
             </div>
           </div>
-          <button
-            className="admin-button admin-button-secondary"
-            onClick={onClose}
-            type="button"
-          >
-            Close
-          </button>
+          <div className="flex gap-2">
+            {isOwner ? (
+              <button
+                className="admin-button admin-button-secondary"
+                onClick={() => void navigate(`/agents/designer/${agent.id}`)}
+                type="button"
+              >
+                Edit details
+              </button>
+            ) : null}
+            <button
+              className="admin-button admin-button-secondary"
+              onClick={onClose}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
         </header>
 
         <AgentDetailTabs key={agent.id} agent={agent} onSelectAgent={onSelectAgent} />

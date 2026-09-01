@@ -167,7 +167,7 @@ const mapActions = (value: unknown): IntegrationUiCard['actions'] => {
     const href = firstString(raw, ['href', 'url'])
     const variant: 'primary' | 'secondary' | undefined =
       raw.variant === 'primary' || raw.variant === 'secondary' ? raw.variant : undefined
-    return [{ label, ...(href ? { href } : {}), ...(variant ? { variant } : {}) }]
+    return [{ label, type: 'link' as const, ...(href ? { href } : {}), ...(variant ? { variant } : {}) }]
   })
   return actions.length > 0 ? actions : undefined
 }
@@ -179,8 +179,16 @@ const activityToCard = (productSlug: string, raw: unknown): IntegrationUiCard | 
   const candidate = {
     kind: 'integration' as const,
     productSlug,
+    // A narrated reasoning step — the client folds these into the collapsed
+    // plan/timeline for external-agent turns.
+    role: 'activity' as const,
     title,
-    status: mapStatus(firstString(raw, ['status', 'visibleStatus', 'state']), 'running'),
+    // These cards are mapped only when persisting an already-finished turn (the
+    // MCP tool call has returned in full — there is no incremental streaming into
+    // Nessie). So a step the product left status-less is done, not running: a
+    // 'running' default would pulse "running" forever on historical turns. An
+    // explicit in-flight status the product does send is still honoured.
+    status: mapStatus(firstString(raw, ['status', 'visibleStatus', 'state']), 'completed'),
     summary: firstString(raw, ['summary', 'detail', 'description', 'message']) ?? undefined,
     fields: mapFields(raw.fields),
     actions: mapActions(raw.actions),
@@ -196,6 +204,8 @@ const cardToCard = (productSlug: string, raw: unknown): IntegrationUiCard | null
   const candidate = {
     kind: 'integration' as const,
     productSlug,
+    // A result card — rendered flat, below the activity timeline.
+    role: 'result' as const,
     title,
     status: mapStatus(firstString(raw, ['status', 'state']), 'completed'),
     summary: firstString(raw, ['summary', 'body', 'description', 'detail']) ?? undefined,

@@ -101,20 +101,6 @@ export const ProductMcpInstallationRecordSchema = z.object({
 export type ProductMcpInstallationRecord =
   z.infer<typeof ProductMcpInstallationRecordSchema>
 
-export const ProductUsageSummaryRecordSchema = z.object({
-  currency: NonEmptyStringSchema,
-  failureCount: z.number().int().nonnegative(),
-  lastOperation: z.string().nullable(),
-  lastUsedAt: TimestampSchema.nullable(),
-  monthStart: TimestampSchema,
-  successCount: z.number().int().nonnegative(),
-  totalCalls: z.number().int().nonnegative(),
-  totalCost: z.number().nonnegative(),
-  totalUnits: z.number().int().nonnegative(),
-})
-export type ProductUsageSummaryRecord =
-  z.infer<typeof ProductUsageSummaryRecordSchema>
-
 export const ProductIntegrationRunStatusSchema = z.enum([
   'queued',
   'running',
@@ -133,7 +119,6 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   completedAt: TimestampSchema.nullable(),
   connectorId: z.string().uuid().nullable(),
   createdAt: TimestampSchema,
-  currency: NonEmptyStringSchema.nullable(),
   depth: z.enum([
     'light',
     'standard',
@@ -159,11 +144,13 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   teamId: z.string().uuid(),
   threadId: z.string().uuid().nullable(),
   title: z.string().nullable(),
-  totalCost: z.number().nonnegative().nullable(),
   updatedAt: TimestampSchema,
 })
 export type DeepWaterResearchRunRecord =
   z.infer<typeof DeepWaterResearchRunRecordSchema>
+
+export const DeepSignalSignalKindSchema = z.enum(['opportunity', 'risk', 'signal'])
+export type DeepSignalSignalKind = z.infer<typeof DeepSignalSignalKindSchema>
 
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
@@ -187,7 +174,6 @@ export const IntegratedProductResponseSchema = z.object({
   summary: z.string(),
   teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
-  usageSummary: ProductUsageSummaryRecordSchema,
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
 
@@ -196,6 +182,42 @@ export const SetProductTeamEnablementRequestSchema = z.object({
 })
 export type SetProductTeamEnablementRequest =
   z.infer<typeof SetProductTeamEnablementRequestSchema>
+
+export const DeepWaterAgentAccessTargetSchema = z.object({
+  agentId: z.string().uuid(),
+  agentKind: z.enum(['personal_assistant', 'shared']),
+  enabled: z.boolean(),
+  grantedToolCount: z.number().int().nonnegative(),
+  name: NonEmptyStringSchema,
+  revocableGrantCount: z.number().int().nonnegative(),
+  requiredToolCount: z.number().int().positive(),
+  role: NonEmptyStringSchema,
+})
+export type DeepWaterAgentAccessTarget =
+  z.infer<typeof DeepWaterAgentAccessTargetSchema>
+
+export const DeepWaterAgentAccessResponseSchema = z.object({
+  configured: z.boolean(),
+  personalAssistant: DeepWaterAgentAccessTargetSchema.nullable(),
+  requiredToolCount: z.number().int().positive(),
+  sharedAgents: z.array(DeepWaterAgentAccessTargetSchema),
+})
+export type DeepWaterAgentAccessResponse =
+  z.infer<typeof DeepWaterAgentAccessResponseSchema>
+
+export const SetDeepWaterAgentAccessRequestSchema = z.discriminatedUnion('target', [
+  z.object({
+    enabled: z.boolean(),
+    target: z.literal('personal_assistant'),
+  }).strict(),
+  z.object({
+    agentId: z.string().uuid(),
+    enabled: z.boolean(),
+    target: z.literal('agent'),
+  }).strict(),
+])
+export type SetDeepWaterAgentAccessRequest =
+  z.infer<typeof SetDeepWaterAgentAccessRequestSchema>
 
 export const DeepWaterResearchDepthSchema = z.enum([
   'light',
@@ -208,6 +230,10 @@ export const DeepWaterResearchDepthSchema = z.enum([
 export type DeepWaterResearchDepth =
   z.infer<typeof DeepWaterResearchDepthSchema>
 
+// No title is asked for or accepted: the research question is the whole ask,
+// and a report's own name belongs to DeepWater rather than to whoever typed the
+// prompt. Existing rows keep the titles they were launched with; new runs are
+// identified by their query preview until DeepWater supplies a report title.
 export const DeepWaterResearchLaunchRequestSchema = z.object({
   artifactDestination: z.enum(['knowledge_draft', 'chat_only']).default('knowledge_draft'),
   chapterDepth: z.enum(['brief', 'standard', 'detailed', 'exhaustive']).default('standard'),
@@ -219,10 +245,33 @@ export const DeepWaterResearchLaunchRequestSchema = z.object({
   searchQuality: z.enum(['standard', 'premium']).default('standard'),
   searchesPerPillar: z.number().int().min(1).max(20).default(4),
   sections: z.number().int().min(3).max(20).default(8),
-  title: z.string().trim().max(200).optional(),
 })
 export type DeepWaterResearchLaunchRequest =
   z.infer<typeof DeepWaterResearchLaunchRequestSchema>
+
+// A chat card can ask the client to open the native DeepWater launcher. Its
+// preset is intentionally bounded to the same safe controls as a manual
+// launch, but every field is optional so a conversation can prefill only the
+// choices it has already established with the user.
+export const DeepWaterResearchLauncherPresetSchema = z.object({
+  artifactDestination: z.enum(['knowledge_draft', 'chat_only']).optional(),
+  chapterDepth: z.enum(['brief', 'standard', 'detailed', 'exhaustive']).optional(),
+  depth: DeepWaterResearchDepthSchema.optional(),
+  outputLanguage: z.string().trim().min(2).max(12).optional(),
+  outputTier: z.enum(['summary', 'full']).optional(),
+  query: z.string().trim().min(1).max(5_000).optional(),
+  recency: z.enum(['any', 'day', 'week', 'month', 'year']).optional(),
+  searchQuality: z.enum(['standard', 'premium']).optional(),
+  searchesPerPillar: z.number().int().min(1).max(20).optional(),
+  sections: z.number().int().min(3).max(20).optional(),
+  // Tolerated, never used. Cards authored before titles were dropped carry one
+  // in their stored message metadata, and this schema is strict — rejecting the
+  // key would stop those older chat cards rendering at all. New cards omit it
+  // and the launcher ignores it.
+  title: z.string().trim().max(200).optional(),
+}).strict()
+export type DeepWaterResearchLauncherPreset =
+  z.infer<typeof DeepWaterResearchLauncherPresetSchema>
 
 export const DeepTestReviewDepthSchema = z.enum([
   'shallow',
@@ -270,6 +319,8 @@ export type IntegrationUiCardStatus = z.infer<typeof IntegrationUiCardStatusSche
 export const IntegrationUiCardActionSchema = z.object({
   label: NonEmptyStringSchema,
   href: z.string().min(1).optional(),
+  type: z.enum(['link', 'open_deep_water_research_launcher']).default('link'),
+  preset: DeepWaterResearchLauncherPresetSchema.optional(),
   variant: z.enum(['primary', 'secondary']).optional(),
 })
 export type IntegrationUiCardAction = z.infer<typeof IntegrationUiCardActionSchema>
@@ -283,126 +334,26 @@ export type IntegrationUiCardField = z.infer<typeof IntegrationUiCardFieldSchema
 export const IntegrationUiCardSchema = z.object({
   kind: z.enum(['integration', 'deep_research', 'security_review', 'project_board']),
   productSlug: NonEmptyStringSchema.optional(),
+  // Distinguishes a narrated reasoning step ('activity') from a result card
+  // ('result') so an external-agent assistant turn can render its activities as
+  // a collapsed plan/timeline while result cards stay flat. Additive/optional:
+  // producers that omit it (and every non-external card) render as flat cards.
+  role: z.enum(['activity', 'result']).optional(),
   title: NonEmptyStringSchema,
   status: IntegrationUiCardStatusSchema,
   summary: z.string().optional(),
   fields: z.array(IntegrationUiCardFieldSchema).optional(),
   actions: z.array(IntegrationUiCardActionSchema).optional(),
+}).superRefine((card, context) => {
+  if (
+    card.actions?.some((action) => action.type === 'open_deep_water_research_launcher')
+    && card.productSlug !== 'deep-water'
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only Deep Water cards can open the Deep Water research launcher.',
+      path: ['actions'],
+    })
+  }
 })
 export type IntegrationUiCard = z.infer<typeof IntegrationUiCardSchema>
-
-export const IntegrationPluginInstallModeSchema = z.enum([
-  'hosted_preinstall',
-  'remote_mcp_oauth',
-  'api_key',
-  'local_mcp',
-  'link_out',
-  'native_data_source',
-])
-export type IntegrationPluginInstallMode =
-  z.infer<typeof IntegrationPluginInstallModeSchema>
-
-export const IntegrationPluginAvailabilitySchema = z.enum([
-  'hosted',
-  'self_hosted',
-  'both',
-])
-export type IntegrationPluginAvailability =
-  z.infer<typeof IntegrationPluginAvailabilitySchema>
-
-export const IntegrationPluginSurfaceStatusSchema = z.enum([
-  'available',
-  'planned',
-  'blocked',
-])
-export type IntegrationPluginSurfaceStatus =
-  z.infer<typeof IntegrationPluginSurfaceStatusSchema>
-
-export const IntegrationPluginPrivacyTierSchema = z.enum([
-  'normal',
-  'sensitive',
-  'restricted',
-  'local_only',
-])
-export type IntegrationPluginPrivacyTier =
-  z.infer<typeof IntegrationPluginPrivacyTierSchema>
-
-export const IntegrationPluginManifestSchema = z.object({
-  apiVersion: z.literal('integrations.nessie.io/v1'),
-  kind: z.literal('NessieIntegrationPlugin'),
-  manifestRef: NonEmptyStringSchema,
-  productSlug: NonEmptyStringSchema,
-  name: NonEmptyStringSchema,
-  version: NonEmptyStringSchema,
-  vendor: NonEmptyStringSchema,
-  install: z.array(z.object({
-    mode: IntegrationPluginInstallModeSchema,
-    availability: IntegrationPluginAvailabilitySchema,
-    label: NonEmptyStringSchema,
-    requiredForAgentUse: z.boolean(),
-    setup: NonEmptyStringSchema,
-  })).min(1),
-  mcp: z.object({
-    catalogTemplate: z.object({
-      name: NonEmptyStringSchema,
-      label: NonEmptyStringSchema,
-      protocol: z.enum(['stdio', 'http', 'sse', 'ws']),
-      authMethod: z.enum(['api_key', 'bearer', 'basic', 'oauth2', 'none']),
-      transport: z.record(z.string(), z.unknown()),
-      auth: z.record(z.string(), z.unknown()),
-    }).nullable(),
-    toolBundleRef: z.string().nullable(),
-    tools: z.array(z.object({
-      name: NonEmptyStringSchema,
-      label: NonEmptyStringSchema,
-      description: NonEmptyStringSchema,
-      privacyTier: IntegrationPluginPrivacyTierSchema,
-      status: IntegrationPluginSurfaceStatusSchema,
-    })),
-  }),
-  ui: z.object({
-    pages: z.array(z.object({
-      id: NonEmptyStringSchema,
-      label: NonEmptyStringSchema,
-      status: IntegrationPluginSurfaceStatusSchema,
-    })),
-    cards: z.array(z.object({
-      kind: z.enum(['integration', 'deep_research', 'security_review', 'project_board']),
-      label: NonEmptyStringSchema,
-      status: IntegrationPluginSurfaceStatusSchema,
-    })),
-    controls: z.array(z.object({
-      id: NonEmptyStringSchema,
-      label: NonEmptyStringSchema,
-      status: IntegrationPluginSurfaceStatusSchema,
-    })),
-  }),
-  artifacts: z.array(z.object({
-    kind: NonEmptyStringSchema,
-    label: NonEmptyStringSchema,
-    defaultDestination: NonEmptyStringSchema,
-    fileServiceRequired: z.boolean(),
-  })),
-  privacy: z.object({
-    dataBoundary: NonEmptyStringSchema,
-    defaultImportPolicy: NonEmptyStringSchema,
-    prohibitedByDefault: z.array(NonEmptyStringSchema),
-  }),
-  usage: z.object({
-    ledger: z.enum(['connector_usage_events', 'token_ledger_events', 'none']),
-    connectorType: z.enum([
-      'mcp',
-      'http',
-      'web_search',
-      'web_fetch',
-      'storage',
-      'push',
-      'github',
-      'oauth',
-      'other',
-    ]).nullable(),
-    costFields: z.array(NonEmptyStringSchema),
-  }),
-})
-export type IntegrationPluginManifest =
-  z.infer<typeof IntegrationPluginManifestSchema>

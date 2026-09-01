@@ -1,5 +1,51 @@
 @import 'tailwindcss';
 
+/* The sole numeric source for viewport breakpoints (see
+   docs/plans/2026-08-13-responsive-coherence.md §A). Values match Tailwind's
+   defaults, so this is behaviour-preserving for CSS; `static` also emits these
+   as real CSS custom properties so the TS viewport store
+   (hooks/useViewport.ts) reads the same numbers instead of restating them. */
+@theme static {
+  --breakpoint-*: initial;
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+}
+
+/* Focus mode changes the palette through inherited custom properties. Register
+   the colour tokens that it replaces so browsers can interpolate them instead
+   of snapping every surface to its new colour. */
+@property --rail { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb-active { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse-2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --muted { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --line { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sep { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --border-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx3 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --overlay-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+
 :root {
   color-scheme: dark;
   --rail: #2e1132; --sb: #1e1222; --sb-active: #6d3579; --ink: #2c1832;
@@ -23,6 +69,7 @@
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
+  --font-weight-bold: 700;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -273,12 +320,399 @@ a {
   color: var(--tx);
 }
 
+/* The value changes happen on the four palette owners. Descendants inherit the
+   in-flight colours, which keeps every route and component in sync through one
+   300ms transition rather than giving each screen a separate animation. */
+.admin-frame > .admin-topbar,
+.admin-frame > .admin-shell,
+.admin-frame > .admin-shell > aside,
+.admin-frame > .admin-shell > .resizable-sidebar {
+  transition:
+    --rail 300ms var(--easing-standard),
+    --sb 300ms var(--easing-standard),
+    --sb-active 300ms var(--easing-standard),
+    --main 300ms var(--easing-standard),
+    --main-hover 300ms var(--easing-standard),
+    --panel 300ms var(--easing-standard),
+    --panel-soft 300ms var(--easing-standard),
+    --surface-inverse 300ms var(--easing-standard),
+    --surface-inverse-2 300ms var(--easing-standard),
+    --ink 300ms var(--easing-standard),
+    --muted 300ms var(--easing-standard),
+    --line 300ms var(--easing-standard),
+    --sep 300ms var(--easing-standard),
+    --border-strong 300ms var(--easing-standard),
+    --tx 300ms var(--easing-standard),
+    --tx2 300ms var(--easing-standard),
+    --tx3 300ms var(--easing-standard),
+    --accent 300ms var(--easing-standard),
+    --accent-hover 300ms var(--easing-standard),
+    --accent-strong 300ms var(--easing-standard),
+    --accent-soft 300ms var(--easing-standard),
+    --on-accent 300ms var(--easing-standard),
+    --overlay-weak 300ms var(--easing-standard),
+    --overlay 300ms var(--easing-standard),
+    --overlay-strong 300ms var(--easing-standard),
+    --scrim-weak 300ms var(--easing-standard),
+    --scrim 300ms var(--easing-standard),
+    --scrim-strong 300ms var(--easing-standard);
+}
+
+/* Focus is a neutral Slack-style treatment: charcoal navigation frames a
+   paper-white work surface, so the current theme's colour accents cannot turn
+   messages into another source of visual noise. */
+.focus-mode > .admin-topbar,
+.focus-mode > .admin-shell > aside,
+.focus-mode > .admin-shell > .resizable-sidebar {
+  --rail: #242424;
+  --sb: #383838;
+  --sb-active: #606062;
+  --sep: #505052;
+  --border-strong: #6a6a6c;
+  --tx: #f1f1f1;
+  --tx2: #d4d4d6;
+  --tx3: #aeaeaf;
+  --accent: #b9b9bc;
+  --accent-hover: #d4d4d6;
+  --accent-strong: #ececee;
+  --accent-soft: rgba(255, 255, 255, 0.16);
+  --panel: #353535;
+  --panel-soft: rgba(255, 255, 255, 0.08);
+  --overlay-weak: rgba(255, 255, 255, 0.09);
+  --overlay: rgba(255, 255, 255, 0.14);
+  --overlay-strong: rgba(255, 255, 255, 0.24);
+  --scrim-weak: rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.38);
+  --scrim-strong: rgba(0, 0, 0, 0.62);
+  color: var(--tx);
+}
+
+.focus-mode > .admin-shell {
+  --rail: #ffffff;
+  --sb: #ffffff;
+  --sb-active: #ececec;
+  --main: #ffffff;
+  --main-hover: #f5f5f5;
+  --panel: #ffffff;
+  --panel-soft: #f5f5f5;
+  --surface-inverse: #1d1d1d;
+  --surface-inverse-2: #353535;
+  --ink: #1d1d1d;
+  --muted: #686868;
+  --line: rgba(29, 29, 29, 0.16);
+  --sep: #dddddd;
+  --border-strong: #b8b8b8;
+  --tx: #1d1d1d;
+  --tx2: #4d4d4d;
+  --tx3: #707070;
+  --accent: #303030;
+  --accent-hover: #171717;
+  --accent-strong: #000000;
+  --accent-soft: rgba(29, 29, 29, 0.12);
+  --on-accent: #ffffff;
+  --overlay-weak: rgba(29, 29, 29, 0.05);
+  --overlay: rgba(29, 29, 29, 0.09);
+  --overlay-strong: rgba(29, 29, 29, 0.16);
+  --scrim-weak: rgba(0, 0, 0, 0.08);
+  --scrim: rgba(0, 0, 0, 0.18);
+  --scrim-strong: rgba(0, 0, 0, 0.45);
+  color: var(--tx);
+}
+
+/* Tailwind's generated arbitrary-colour utilities are resolved before this
+   focus scope in a few controls. Pin their visible accent treatment to the
+   same monochrome scale as the work surface. */
+.focus-mode > .admin-shell .admin-button-primary,
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='bg-[color:var(--accent)]'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='border-[color:var(--accent)]'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='text-[color:var(--accent)]'] {
+  color: #1d1d1d !important;
+}
+
+.focus-mode .admin-sb-item.unread {
+  color: var(--tx2);
+  font-weight: 400;
+}
+
+.focus-mode .sidebar-unread-count {
+  display: none;
+}
+
 .admin-shell {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   background: var(--rail);
   color: var(--tx);
+}
+
+/* Phone list/detail navigation mirrors a native controller: the selected
+   screen enters over the tab root, then slides back off to reveal it. The
+   viewport is mounted only by the single-column phone branch; tablet and
+   desktop keep their adjacent columns and never receive these transforms. */
+.phone-navigation-viewport {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  background: var(--main);
+}
+
+.phone-navigation-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--main);
+  animation-duration: 300ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* Every phone route gets one page-level scrolling owner. Most detail pages
+   keep their own inner content scroller so their header stays fixed; this
+   shell is the fallback for full-height or horizontal surfaces such as the
+   project board. Native iPhone chrome appends its end spacer here, allowing
+   those surfaces to reveal their final row without shortening the background
+   that continues beneath the translucent tab bar. */
+.phone-navigation-page {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.phone-navigation-screen--current {
+  z-index: 1;
+  animation: none;
+  will-change: auto;
+}
+
+.phone-navigation-screen--forward-out {
+  z-index: 1;
+  animation-name: phone-navigation-forward-out;
+  pointer-events: none;
+}
+
+.phone-navigation-screen--forward-source-ready {
+  z-index: 1;
+  animation: none;
+  transform: translate3d(0, 0, 0);
+}
+
+.phone-navigation-screen--forward-ready {
+  z-index: 2;
+  animation: none;
+  transform: translate3d(100%, 0, 0);
+}
+
+.phone-navigation-screen--forward-in {
+  z-index: 2;
+  animation-name: phone-navigation-forward-in;
+  box-shadow: -12px 0 32px var(--scrim);
+}
+
+.phone-navigation-screen--back-out {
+  z-index: 2;
+  animation-name: phone-navigation-back-out;
+  box-shadow: -12px 0 32px var(--scrim);
+  pointer-events: none;
+}
+
+.phone-navigation-screen--back-in {
+  z-index: 1;
+  animation-name: phone-navigation-back-in;
+}
+
+/* Interactive edge back-swipe. The retained stack renders every layer in a
+   stable keyed sibling; the immediate lower layer rests live beneath the
+   current screen at the -28% parallax offset, and the gesture hook drives
+   both layers' inline transforms with the finger. While the finger is down
+   there is no CSS animation at all; on release the hook settles both layers
+   with Web Animations from exactly the released position (held by the inline
+   transforms) to the rest or revealed transform. The settle's finish — or
+   the hook's timer fallback — closes the lane: a cancel just drops the
+   inline transforms back on the current screen, and only then does a commit
+   fire its single route update, so the revealed layer becomes current
+   without a second animation. The underlay and a Back's outgoing screen stay
+   inert and aria-hidden; deeper retained layers are hidden entirely. */
+.phone-navigation-screen--underlay {
+  z-index: 1;
+  animation: none;
+  transform: translate3d(-28%, 0, 0);
+  will-change: transform;
+}
+
+@keyframes phone-navigation-forward-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-28%, 0, 0); }
+}
+
+@keyframes phone-navigation-forward-in {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes phone-navigation-back-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes phone-navigation-back-in {
+  from { transform: translate3d(-28%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+/* The secondary navigation is a viewport-relative, per-device width on desktop
+   and tablet. The separator stays at the column boundary; its larger coarse-
+   pointer hit area makes the same control practical with an iPad finger. */
+.resizable-sidebar {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.resizable-sidebar > aside {
+  min-width: 0;
+}
+
+.resizable-sidebar-control {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  display: flex;
+  width: 12px;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* Every desktop column divider gets one shared, discoverable pill. Its host
+   supplies only placement and resize behaviour, so the sidebar and thread
+   separator cannot visually drift. */
+.column-resize-control {
+  outline: none;
+}
+
+.column-resize-control::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--sep);
+  content: '';
+  transform: translateX(-50%);
+}
+
+.thread-panel-resize-control {
+  left: -6px;
+  width: 12px;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+}
+
+.column-resize-handle {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 16px;
+  height: 30px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 3px 10px var(--scrim);
+  color: var(--tx3);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+
+.column-resize-handle span {
+  display: block;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.column-resize-control.is-revealed .column-resize-handle,
+.column-resize-control.is-resizing .column-resize-handle {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.column-resize-control.is-resizing .column-resize-handle {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (pointer: fine) {
+  .column-resize-control:hover .column-resize-handle,
+  .column-resize-control:focus .column-resize-handle {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .column-resize-control:focus .column-resize-handle {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}
+
+@media (pointer: coarse) {
+  .resizable-sidebar-control {
+    right: -14px;
+    width: 28px;
+  }
+
+  .thread-panel-resize-control {
+    left: -14px;
+    width: 28px;
+  }
+
+  .column-resize-handle {
+    width: 26px;
+    height: 46px;
+    gap: 4px;
+  }
+
+  .column-resize-handle span {
+    width: 3px;
+    height: 3px;
+  }
 }
 
 /* Mobile web bottom tab bar. When shown, the frame is shortened by the bar's
@@ -290,6 +724,57 @@ a {
 
 .admin-frame.has-mobile-tabbar {
   height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+}
+
+/* Browser counterpart to the installed phone shell's workspace bar. It only
+   appears on a top-level tab screen, so it keeps the list/detail hierarchy
+   clear while making core navigation available in Safari and Android browsers. */
+.mobile-web-home-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tx) 14%, transparent);
+  background: var(--rail);
+  color: var(--tx);
+}
+
+.mobile-web-home-workspace {
+  display: flex;
+  min-width: 0;
+  max-width: 62%;
+  align-items: center;
+  gap: 9px;
+  border-radius: 22px;
+  padding: 3px 5px;
+  color: var(--tx);
+  font-size: 21px;
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.mobile-web-home-workspace:hover,
+.mobile-web-home-workspace:focus-visible,
+.mobile-web-home-action:hover,
+.mobile-web-home-action:focus-visible {
+  background: color-mix(in srgb, var(--tx) 8%, transparent);
+  outline: none;
+}
+
+.mobile-web-home-action {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--tx) 24%, transparent);
+  border-radius: 21px;
+  color: var(--tx);
+  transition: background-color 120ms ease;
 }
 
 /* ── Global top bar (Slack-style) ──────────────────────────────────────────
@@ -480,7 +965,8 @@ a {
 
 .admin-topbar-menu {
   left: 0;
-  min-width: 220px;
+  width: min(320px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
 }
 
 .admin-topbar-result,
@@ -502,20 +988,6 @@ a {
 
 .admin-topbar-menu-item {
   font-size: 13px;
-}
-
-.admin-topbar-workspace {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
 }
 
 .mobile-tabbar {
@@ -650,11 +1122,14 @@ a {
   justify-content: center;
   width: 22px;
   height: 22px;
+  border: none;
   border-radius: 5px;
+  background: transparent;
   color: var(--tx3);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
+  padding: 0;
 }
 
 .admin-sidebar-more:hover {
@@ -670,14 +1145,23 @@ a {
   width: 180px;
   overflow: hidden;
   border: 1px solid var(--sep);
-  border-radius: 6px;
+  border-radius: 12px;
   background: var(--panel);
+  padding: 6px;
   box-shadow: 0 16px 48px var(--scrim-strong);
+}
+
+/* Project menus render through a portal with a full-screen dismiss control at
+   z-60. This unlayered rule otherwise wins over Tailwind's z-[61] utility and
+   leaves the dismiss control above the menu, making Edit impossible to click. */
+.admin-sidebar-menu.fixed {
+  z-index: 61;
 }
 
 .admin-sidebar-menu-project {
   top: 24px;
-  right: 0;
+  left: 0;
+  right: auto;
   width: 220px;
 }
 
@@ -686,7 +1170,8 @@ a {
   width: 100%;
   border: none;
   background: transparent;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--tx);
   cursor: pointer;
   font-size: 13px;
@@ -696,7 +1181,8 @@ a {
 .admin-sidebar-menu [role="button"] {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--tx);
   cursor: pointer;
   font-size: 13px;
@@ -739,6 +1225,45 @@ a {
 .admin-sb-item.unread {
   color: var(--tx);
   font-weight: 700;
+}
+
+.sidebar-project-link {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* Group participant names preserve a full label for mouse/keyboard users while
+   their visible row is measured down to a compact, navigable participant list. */
+.group-dm-sidebar-label {
+  position: relative;
+}
+
+.group-dm-sidebar-tooltip {
+  position: fixed;
+  z-index: 80;
+  left: 0;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  transform: translateY(-100%);
+  white-space: normal;
+  padding: 7px 9px;
+  border: 1px solid var(--sep);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--tx);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 /* Status chip after a chat author's name (emoji or speech-bubble fallback) with
@@ -797,17 +1322,85 @@ a {
 }
 
 .admin-sb-item.active {
-  background: var(--sb-active);
-  color: var(--on-accent);
+  /* A selected channel shares its project's existing contextual tint rather
+     than overpowering the project hierarchy with a full accent slab. */
+  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  color: var(--tx);
+}
+
+/* Several sidebar glyphs carry a dim or accent utility while inactive. Keep
+   every selected navigation affordance on the row's readable foreground
+   instead of letting that inactive colour leak through. */
+.admin-sb-item.active svg,
+.admin-sb-item.active .sidebar-row-symbol,
+.admin-sb-item.active .sidebar-row-star {
+  color: var(--tx);
 }
 
 .admin-sb-item.active-parent {
-  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  /* The parent remains visible, but at half the selected child's intensity. */
+  background: color-mix(in srgb, var(--sb-active) 10%, transparent);
   color: var(--tx);
 }
 
 .admin-sb-item.sidebar-child {
   padding-left: 32px;
+}
+
+/* Threads aligns with a section's chevron, not the section title. */
+.admin-sb-item.sidebar-threads {
+  padding-left: 10px;
+  font-weight: 700;
+}
+
+/* Native phone/tablet shells use Slack-scale navigation density. This marker
+   arrives only from the React Native WebView bridge, so desktops (including
+   touchscreen laptops) retain their compact rail and sidebar typography. */
+.touch-sidebar .admin-sec-hdr {
+  min-height: 38px;
+  gap: 6px;
+  padding: 8px 12px 3px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.touch-sidebar .admin-sidebar-plus {
+  width: 28px;
+  height: 28px;
+  margin: 4px 8px 0 0;
+  border-radius: 8px;
+  font-size: 21px;
+}
+
+.touch-sidebar .admin-sb-item {
+  width: calc(100% - 16px);
+  min-height: 38px;
+  margin: 0 8px;
+  gap: 7px;
+  border-radius: 8px;
+  padding: 5px 8px 5px 20px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.touch-sidebar .admin-sb-item.sidebar-child {
+  padding-left: 32px;
+}
+
+.touch-sidebar .sidebar-project-tile {
+  font-weight: 600;
+}
+
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > div[aria-hidden="true"],
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > img,
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.touch-sidebar .admin-sb-item > .w-\[14px\] {
+  width: 16px;
+  font-size: 16px;
 }
 
 .admin-rail-btn {
@@ -861,26 +1454,294 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
-.admin-tab {
+/* The rail clips its contents, so its control explanations are portalled beside
+   it. This matches Slack's two-line, right-hand hover affordance. */
+.rail-tooltip {
+  position: fixed;
+  z-index: 90;
   display: flex;
-  height: 36px;
-  align-items: center;
-  gap: 6px;
-  border-bottom: 2px solid transparent;
-  padding: 0 10px;
-  color: var(--tx3);
-  white-space: nowrap;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 92px));
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #f8f8f8;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
-.admin-tab.active {
-  border-bottom-color: var(--accent);
+.rail-tooltip.is-opening {
+  animation: rail-tooltip-enter 120ms ease-out both;
+}
+
+.rail-tooltip.is-closing {
+  animation: rail-tooltip-exit 120ms ease-in both;
+}
+
+@keyframes rail-tooltip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes rail-tooltip-exit {
+  from {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-tooltip.is-opening,
+  .rail-tooltip.is-closing {
+    animation: none;
+  }
+}
+
+.rail-tooltip strong {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.rail-tooltip span {
+  color: #c8c8c8;
+}
+
+/* The rail's creation control intentionally has no label: its compact
+   plus-button placement mirrors the native phone action and keeps it directly
+   above the account avatar, where it remains available from every workspace. */
+.admin-rail-create-trigger {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  margin: 0 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tx) 16%, transparent);
   color: var(--tx);
+  cursor: pointer;
+  font-size: 21px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.admin-rail-create-trigger:hover,
+.admin-rail-create-trigger:focus-visible,
+.admin-rail-create-trigger.is-open {
+  background: color-mix(in srgb, var(--tx) 28%, transparent);
+  outline: none;
+}
+
+.admin-rail-create-trigger:active {
+  transform: scale(0.94);
+}
+
+.create-menu-icon {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.create-menu-icon-message {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent);
+}
+
+.create-menu-icon-channel {
+  background: color-mix(in srgb, #3ba55c 19%, transparent);
+  color: #258143;
+}
+
+.create-menu-icon-project {
+  background: color-mix(in srgb, #d98600 19%, transparent);
+  color: #a96400;
+}
+
+/* The one single-select strip in the admin (components/primitives/TabBar).
+   The selected item is a single sliding pill rather than a per-item background,
+   so a tab change reads as one object moving to what was tapped. Every colour
+   is a theme token, so the strip follows the active theme like everything else. */
+.tabbar {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--overlay-weak);
+  padding: 3px;
+  scrollbar-width: none;
+}
+
+.tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tabbar-full {
+  width: 100%;
+}
+
+.tabbar-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  z-index: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: var(--panel);
+  box-shadow: 0 1px 2px var(--scrim-weak), 0 0 0 1px var(--sep);
+  transition:
+    transform var(--duration-fast) var(--easing-standard),
+    width var(--duration-fast) var(--easing-standard);
+  will-change: transform, width;
+}
+
+/* The first placement must not slide in from the left edge. */
+.tabbar-indicator[data-animate='false'] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-indicator {
+    transition: none;
+  }
+}
+
+.tabbar-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: calc(var(--radius-md) - 3px);
+  color: var(--tx3);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-item:hover {
+  color: var(--tx2);
+}
+
+.tabbar-item[aria-selected='true'],
+.tabbar-item[aria-checked='true'] {
+  color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tabbar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tabbar-full .tabbar-item {
+  flex: 1 1 0;
+}
+
+.tabbar-sm .tabbar-item {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.tabbar-md .tabbar-item {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.tabbar-count {
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Agents list table: zebra striping over the row-hover highlight. The `:hover`
+   rule follows both stripe rules at equal specificity so it always wins for the
+   hovered row; all three reference theme tokens so every theme picks them up. */
+/* Zebra striping, hover and focus for every dense data table in the admin.
+   `.agents-table` is the original name; `.admin-table` is the generic alias so
+   a new table reuses these rules instead of forking a look-alike. */
+.agents-table tbody tr,
+.admin-table tbody tr {
+  transition: background var(--duration-fast) var(--easing-standard);
+}
+
+.agents-table tbody tr:nth-child(odd),
+.admin-table tbody tr:nth-child(odd) {
+  background: var(--panel);
+}
+
+.agents-table tbody tr:nth-child(even),
+.admin-table tbody tr:nth-child(even) {
+  background: var(--overlay);
+}
+
+.agents-table tbody tr:hover,
+.admin-table tbody tr:hover {
+  background: var(--main-hover);
+}
+
+.agents-table tbody tr:focus-visible,
+.admin-table tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .admin-compose {
+  position: relative;
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
+}
+
+/* The emoji button sits at the left of the toolbar, but its popover is
+   anchored to the composer itself so it stays inside narrow hosts instead of
+   overflowing like the right-aligned message-reaction picker. Those narrow
+   hosts come from the thread panel family in ThreadReplyPanel.tsx: the
+   docked panel near its 320px minimum, and the `max-[900px]` full-screen
+   variant of the same panel — one private component scale, not a breakpoint
+   this file owns. */
+.admin-compose-emoji {
+  position: static;
+}
+
+.admin-compose-emoji-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 60;
+  width: min(20rem, 100%);
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 18%);
 }
 
 .admin-compose textarea,
@@ -896,11 +1757,66 @@ a {
   color: var(--tx3);
 }
 
+/* Keep touch-device composer glyphs at their familiar size while giving every
+   secondary action the same easy-to-tap frame as Send. This follows the input
+   capability instead of viewport width, so iPad Safari and Android tablets
+   receive it even when their browser is wider than the desktop breakpoint. */
+@media (any-pointer: coarse) {
+  .admin-compose-actions {
+    gap: 6px;
+  }
+
+  .admin-compose-action {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border-strong);
+    background: var(--overlay);
+  }
+
+  .admin-compose-send {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+  }
+}
+
 .mention-editor {
   caret-color: var(--tx);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-y: auto;
+}
+
+.mention-editor-code {
+  border-radius: 4px;
+  background: var(--overlay);
+  box-decoration-break: clone;
+  color: var(--tx);
+  font-family: var(--font-family-mono);
+  -webkit-box-decoration-break: clone;
+}
+
+.mention-editor-code-inline {
+  padding: 1px 3px;
+}
+
+/* Kept in the document — it is part of the message — but out of the layout, so
+   the caret steps straight from the prose into the snippet and back. */
+.mention-editor-fence[data-markdown-fence='concealed'] {
+  display: none;
+}
+
+.mention-editor-code-block {
+  background: var(--overlay-strong);
+  box-shadow: 0 0 0 3px var(--overlay-weak);
+}
+
+.admin-markdown-edit-input {
+  min-height: 5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .mention-editor.is-empty::before {
@@ -945,11 +1861,57 @@ button.reaction-pill-active:focus-visible {
   background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
 }
 
+/* Anchor for one reaction pill + its "who reacted" popover. */
+.reaction-pill-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* "Who reacted" popover: shown above the pill on hover / focus / long-press.
+   Left-anchored by default; flipped to the right edge (data-align="right")
+   when it would overflow the viewport. */
+.reaction-pill-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 2rem));
+  padding: 6px 10px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--tx);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  pointer-events: none;
+}
+
+.reaction-pill-popover[data-align='right'] {
+  left: auto;
+  right: 0;
+}
+
+.reaction-pill-popover-emoji {
+  flex-shrink: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
 .mention-tag {
+  appearance: none;
   display: inline;
+  border: 0;
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--thinking);
+  font: inherit;
+  line-height: inherit;
   padding: 1px 4px;
   font-weight: 500;
   user-select: all;
@@ -974,6 +1936,39 @@ button.reaction-pill-active:focus-visible {
   background: var(--panel-soft);
 }
 
+/* Unlayered, like the control classes below — see the convention note there.
+
+   NOT the same card as the inline
+   `rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]`
+   string used across the feature panels, and not a duplicate of it. This rule
+   is a 12px card; `rounded-xl` resolves to `--radius-xl`, which the `:root`
+   block above redeclares as **20px** (it lands after `@import 'tailwindcss'`,
+   so it overrides Tailwind's 0.75rem default). Folding those call sites onto
+   `.admin-card` was attempted on 2026-08-30 and reverted: it silently reshaped
+   26 panels — AgentAvailableTools, TriggerDetail, TriggerListColumn,
+   WorkflowRunDetail/TemplateDetail/InstallationDetail, WorkflowsPage, ToolList,
+   ToolExecutionLog, the two agent-access panels, the attachment viewer, and the
+   user-menu/workspace popovers among them. Two cards of different radii are two
+   cards. If the admin should have one card radius, that is a design decision
+   with a visible diff, not a de-duplication.
+
+   Because this rule is unlayered it also beats every Tailwind utility on the
+   same element, so a call site cannot restyle it: `admin-card border-... bg-...`
+   renders as a plain `--panel`/`--sep` card with the utilities inert. Removing
+   `admin-card` from such a string is therefore a visible change, not a cleanup.
+
+   A `@utility admin-card` was tried and reverted. Moving it into the
+   `utilities` layer did fix the radius-override trap (a call site could then
+   say `admin-card rounded-md`), but it also handed EVERY other utility a win
+   against this rule: `bg-*`, `border-*`, `hover:bg-*` all began painting on
+   cards where they had been silently inert, including through indirect
+   composition (`hoverCardClass` in `pages/settings/settings-shared.tsx`, the
+   joined class array in `pages/settings/statuses/status-components.tsx`).
+   Two site-by-site audits could not enumerate the blast radius; the flips
+   they did catch repainted the appearance panels, four App Store panels,
+   three executor panels and five hover rows. Do not repeat it as part of a
+   tidy-up. If the radius trap is worth fixing, it is its own change, with
+   every affected call site pinned first. */
 .admin-card {
   border: 1px solid var(--sep);
   border-radius: 12px;
@@ -988,6 +1983,13 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx);
   outline: none;
   padding: 10px 12px;
+}
+
+/* Dense variant for controls inside a table row. It must come after
+   `.admin-input` so its padding wins — a Tailwind `py-*` utility does not,
+   which silently clips a select's text to a few pixels. */
+.admin-input-sm {
+  padding: 4px 8px;
 }
 
 .admin-input::placeholder {
@@ -1025,11 +2027,286 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx2);
 }
 
-.admin-inline-code {
+/* Modifiers for the unlayered control classes above.
+
+   Every one of these has to live here rather than at the call site. `@import
+   'tailwindcss'` puts utilities in the `utilities` layer; the rules above are
+   unlayered, and unlayered always beats layered no matter the specificity. So
+   a Tailwind utility can only reach a control for a property the base class
+   (or the `button, input, select, textarea { font: inherit }` reset) leaves
+   alone. Padding, width, font-size, font-family, font-weight, border-radius
+   and colour are all claimed; `py-0`, `font-mono` and
+   `text-[color:var(--danger-text)]` at a call site are silently inert.
+   Height, max/min-width, margins, gaps and text-align are not claimed and do
+   still work from utilities. */
+
+/* Disabled state — the one modifier a call site cannot write as a utility even
+   in principle. `.admin-button:hover` above is unlayered and beats Tailwind's
+   `utilities` layer at any specificity, and `:hover` still matches a disabled
+   button, so `disabled:opacity-50` at a call site was silently lifted back to
+   0.92 the moment the pointer arrived — killing the one cue that the control
+   cannot be pressed exactly when the user aimed at it. Equal specificity to
+   `:hover`, so it has to stay *below* it in source order. `[aria-disabled]`
+   covers the controls that cannot carry the real attribute (links, composite
+   widgets); it is matched on `true` so an explicit `false` reads as enabled. */
+.admin-button:disabled,
+.admin-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Compact size for a control that sits inline in a row instead of a form
+   column. Both modifiers resolve to the same 30px box so a select and a
+   button align in one row. */
+.admin-input.admin-input-compact,
+.admin-button.admin-button-compact {
+  padding: 5px 10px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.admin-input.admin-input-compact {
+  width: auto;
+}
+
+/* `.admin-button-secondary` carries a 1px border and `.admin-button-primary`
+   does not, so without this the two would differ by 2px and break the shared
+   30px box whenever a primary and a secondary sit side by side. */
+.admin-button.admin-button-compact.admin-button-primary {
+  border: 1px solid transparent;
+}
+
+/* Destructive action. Only the text is tinted — these sit next to ordinary
+   secondary buttons and a filled red would over-weight the row. */
+.admin-button.admin-button-danger {
+  color: var(--danger-text);
+}
+
+/* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
+   `font: inherit` reset claims font-family for every control. */
+.admin-input.admin-input-mono {
+  font-family: var(--font-family-mono);
+}
+
+/* User and agent posts share one safe GitHub-flavoured Markdown surface. */
+.admin-message-markdown {
+  min-width: 0;
+  color: var(--tx);
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-message-markdown > :first-child {
+  margin-top: 0;
+}
+
+.admin-message-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.admin-message-markdown p {
+  margin: 0.2rem 0;
+  white-space: pre-wrap;
+}
+
+.admin-message-markdown h1,
+.admin-message-markdown h2,
+.admin-message-markdown h3,
+.admin-message-markdown h4,
+.admin-message-markdown h5,
+.admin-message-markdown h6 {
+  margin: 0.65rem 0 0.25rem;
+  color: var(--tx);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.admin-message-markdown h1 {
+  font-size: 1.35rem;
+}
+
+.admin-message-markdown h2 {
+  font-size: 1.2rem;
+}
+
+.admin-message-markdown h3 {
+  font-size: 1.08rem;
+}
+
+.admin-message-markdown h4,
+.admin-message-markdown h5,
+.admin-message-markdown h6 {
+  font-size: 0.95rem;
+}
+
+.admin-message-markdown ul,
+.admin-message-markdown ol {
+  margin: 0.3rem 0;
+  padding-left: 1.5rem;
+}
+
+.admin-message-markdown ul {
+  list-style: disc;
+}
+
+.admin-message-markdown ol {
+  list-style: decimal;
+}
+
+.admin-message-markdown li + li {
+  margin-top: 0.12rem;
+}
+
+.admin-message-markdown blockquote {
+  margin: 0.45rem 0;
+  border-left: 3px solid var(--border-strong);
+  padding-left: 0.75rem;
+  color: var(--tx2);
+}
+
+.admin-message-markdown a {
+  color: var(--lnk);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.admin-message-markdown .admin-message-code {
   border-radius: 4px;
-  background: var(--sep);
-  padding: 1px 5px;
-  font-size: 12px;
+  background: var(--overlay);
+  padding: 0.1rem 0.3rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.82rem;
+  overflow-wrap: normal;
+}
+
+.admin-message-markdown .admin-message-code-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--overlay-weak);
+  padding: 0.75rem;
+  white-space: pre;
+}
+
+.admin-message-markdown .admin-message-code-block:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-message-markdown .admin-message-code-block .admin-message-code {
+  display: block;
+  min-width: max-content;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.admin-message-markdown hr {
+  margin: 0.65rem 0;
+  border: 0;
+  border-top: 1px solid var(--sep);
+}
+
+.admin-message-markdown .admin-expandable-table {
+  margin: 0.5rem 0;
+}
+
+.admin-message-markdown th,
+.admin-message-markdown td {
+  border: 1px solid var(--sep);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+
+.admin-message-markdown th {
+  background: var(--overlay-weak);
+  font-weight: 700;
+}
+
+/* A table retains readable columns at any shell width. The viewport owns the
+   horizontal scroll rather than shrinking cells to a single character. */
+.admin-expandable-table {
+  position: relative;
+  min-width: 0;
+}
+
+.admin-expandable-table__viewport {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+
+.admin-expandable-table__viewport:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-expandable-table__viewport > table {
+  min-width: 100%;
+  width: max-content;
+}
+
+.admin-expandable-table__viewport > table > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+  min-width: 10rem;
+}
+
+.admin-table-expand-button {
+  position: absolute;
+  z-index: 1;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sep);
+  border-radius: 0.375rem;
+  background: var(--panel);
+  color: var(--tx3);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--scrim-strong) 12%, transparent);
+}
+
+.admin-table-expand-button:hover {
+  background: var(--overlay-weak);
+  color: var(--tx);
+}
+
+.admin-table-expand-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-expandable-table__dialog-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.admin-expandable-table__dialog-content .admin-expandable-table__viewport {
+  flex: 1;
+}
+
+.admin-message-markdown .contains-task-list {
+  padding-left: 0.25rem;
+  list-style: none;
+}
+
+.admin-message-markdown .task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.admin-message-markdown img {
+  max-width: 100%;
+  border-radius: 8px;
 }
 
 .admin-date-sep {
@@ -1166,7 +2443,33 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
-@media (hover: none), (pointer: coarse) {
+@media (hover: none), (pointer: coarse), (any-pointer: coarse) {
+  /* Chat message controls are explicit. Native selection would conflict with
+     the tap-on-message action bar; knowledge and project text never receives
+     this class and remains selectable. */
+  .admin-chat-surface,
+  .admin-chat-feed {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* The left navigation menu is a list of tap targets on touch — nothing in it
+     should ever enter text-selection or fire the iOS touch callout on long
+     press. user-select inherits, so this one rule on the container covers every
+     row type (section headers, channels, DMs, project tiles). */
+  .admin-sidebar-nav {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .admin-chat-surface :is(input, textarea, [contenteditable='true']),
+  .admin-chat-feed :is(input, textarea, [contenteditable='true']) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
   .admin-msg-row:not([data-actions-open="true"]):focus-within .admin-msg-actions {
     display: none;
   }
@@ -1201,6 +2504,20 @@ button.reaction-pill-active:focus-visible {
   animation: admin-msg-flash 1.6s ease-out;
 }
 
+/* A visible, keyboard-safe confirmation for an assistant-guided UI change. */
+.designer-control-highlight {
+  animation: designer-control-flash 1.6s ease-out;
+}
+
+@keyframes designer-control-flash {
+  0% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 @keyframes admin-msg-flash {
   0% {
     background: var(--accent-soft);
@@ -1230,6 +2547,18 @@ button.reaction-pill-active:focus-visible {
   50% {
     opacity: 0.35;
   }
+}
+
+/*
+ * Where an agent is currently writing inside a streamed document. It is an
+ * anchor, not a decoration: the viewport measures it to keep the edit centred.
+ * Deliberately styleless and empty — no glyph, no box, no colour — so it can
+ * never move a character of the document it is measuring. Only pointer events
+ * are taken away, so a text selection dragged across it behaves as if it were
+ * not there.
+ */
+.doc-edit-cursor {
+  pointer-events: none;
 }
 
 .thinking-dots {
@@ -1270,6 +2599,60 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
+/*
+ * Ambient liveness dots: the single uninvited line between "you sent it" and a
+ * run announcing itself. Quieter than .thinking-dots on purpose — muted text
+ * colour, smaller, slower — because it claims only that a message is in flight,
+ * not that an agent has taken it. It never renders beside a thinking bubble.
+ */
+.liveness-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.liveness-dots span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--tx3);
+  animation: thinking-bounce 1.5s ease-in-out infinite;
+}
+
+.liveness-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.liveness-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/*
+ * Thinking-bubble ticker: a fixed-height viewport that shows the tail of an
+ * agent's live thought process. New lines are appended at the bottom and older
+ * ones are pushed up and clipped away — the bubble is deliberately lossy; the
+ * full record lives in the thought-process dialog.
+ */
+.thinking-ticker {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  /*
+   * Alpha stencil, not a colour: the gradient's opaque end simply keeps the
+   * text visible while the top edge fades out as lines scroll away, so it is
+   * theme-independent by construction.
+   */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgb(0 0 0) 12px);
+  mask-image: linear-gradient(to bottom, transparent 0, rgb(0 0 0) 12px);
+}
+
+.thinking-ticker > * {
+  flex: 0 0 auto;
+}
+
 .create-channel-panel {
   border: 1px solid var(--sep);
   border-radius: 14px;
@@ -1284,22 +2667,6 @@ button.reaction-pill-active:focus-visible {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-}
-
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0.8;
-  }
-
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 300ms ease-out;
 }
 
 @keyframes kb-view-slide {

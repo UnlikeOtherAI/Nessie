@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentStatusResponse } from '@nessie/schemas'
 import { WsServerMessageSchema } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
+import { agentKeys, agentTodoKeys, channelKeys, threadKeys } from '../../lib/query-keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   mergeAgentSnapshot,
@@ -83,10 +84,10 @@ export const useAgentRealtime = (input: {
     }
 
     const invalidateAgentCaches = (agentId: string) => {
-      void queryClient.invalidateQueries({ queryKey: ['agents', agentId, 'activity'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents', agentId, 'children'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents', agentId, 'messages'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents', agentId, 'status'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.activity(agentId) })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.children(agentId) })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.messages(agentId) })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.status(agentId) })
     }
 
     const handleServerMessage = (message: WsServerMessage) => {
@@ -97,7 +98,7 @@ export const useAgentRealtime = (input: {
         setConnectionState('connected')
         setRecords(snapshotToRecords(message.snapshot))
         queryClient.setQueryData<AgentRecord[] | undefined>(
-          ['agents'],
+          agentKeys.all,
           (current) => mergeAgentSnapshot(current, message.snapshot),
         )
         return
@@ -119,7 +120,7 @@ export const useAgentRealtime = (input: {
           },
         }))
         queryClient.setQueryData<AgentRecord[] | undefined>(
-          ['agents'],
+          agentKeys.all,
           (current) =>
             patchAgentStatusRecord(current, {
               agentId: message.data.agentId,
@@ -131,7 +132,7 @@ export const useAgentRealtime = (input: {
             }),
         )
         queryClient.setQueryData<AgentStatusResponse | undefined>(
-          ['agents', message.data.agentId, 'status'],
+          agentKeys.status(message.data.agentId),
           (current) =>
             current
               ? {
@@ -154,7 +155,7 @@ export const useAgentRealtime = (input: {
 
       if (message.event === 'agent.spawned') {
         invalidateAgentCaches(message.data.parentId)
-        void queryClient.invalidateQueries({ queryKey: ['agents'] })
+        void queryClient.invalidateQueries({ queryKey: agentKeys.all })
         return
       }
 
@@ -163,16 +164,58 @@ export const useAgentRealtime = (input: {
         return
       }
 
+      if (message.event === 'agent.todo.updated') {
+        // The event carries no title, step, or note. A to-do card can therefore
+        // only repaint after its regular entitled API read succeeds.
+        void queryClient.invalidateQueries({
+          queryKey: agentTodoKeys.instances(message.data.agentId),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: agentTodoKeys.card(message.data.todoId),
+        })
+        return
+      }
+
       if (message.event === 'message.new') {
         if (message.data.agentId) {
           invalidateAgentCaches(message.data.agentId)
         }
-        void queryClient.invalidateQueries({ queryKey: ['channels'] })
+        void queryClient.invalidateQueries({ queryKey: channelKeys.all })
         if (message.data.threadId === threadIdRef.current) {
           void queryClient.invalidateQueries({
-            queryKey: ['threads', message.data.threadId, 'messages'],
+            queryKey: threadKeys.messages(message.data.threadId),
           })
         }
+        return
+      }
+
+      // A message changed in place — today the rolling watch status line.
+      // Deliberately refreshes only the open thread and NOT channelKeys.all: an
+      // edit is not new activity, so channel badges and unread counts must
+      // stay exactly where they were.
+      if (message.event === 'message.updated') {
+        if (message.data.threadId === threadIdRef.current) {
+          void queryClient.invalidateQueries({
+            queryKey: threadKeys.messages(message.data.threadId),
+          })
+        }
+        return
+      }
+
+      // Reply threads (#233): a new reply or updated root summary refreshes
+      // both the top-level feed (summary bars) and any open reply panel.
+      if (message.event === 'message.reply' || message.event === 'message.reply.meta') {
+        // This listener owns cache coherence independently of notification
+        // preference. A muted user still needs their sidebar/app badge to move.
+        if (message.event === 'message.reply') {
+          void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+        }
+        void queryClient.invalidateQueries({
+          queryKey: threadKeys.messages(message.data.threadId),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: threadKeys.repliesOf(message.data.threadId, message.data.rootMessageId),
+        })
         return
       }
     }

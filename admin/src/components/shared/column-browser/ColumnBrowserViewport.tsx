@@ -1,5 +1,7 @@
 import { Children, type ReactNode, useMemo } from 'react'
-import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import { useViewport } from '../../../hooks/useViewport'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { ColumnBackProvider } from '../../../layouts/admin-shell/local-back/LocalBackContext'
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -10,14 +12,22 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
 }: ColumnBrowserViewportProps) => {
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const isTablet = useMediaQuery(
-    '(min-width: 768px) and (max-width: 1023px)',
-  )
+  // Phone ownership follows the shell's geometry-aware classification, so
+  // native Android/iOS tablets keep multiple columns even at a narrow CSS
+  // width. Non-phone widths still use the shared viewport bands.
+  const { atLeast } = useViewport()
+  const phoneLayout = usePhoneLayout()
+  const isMobile = phoneLayout
+  const isTablet = !phoneLayout && !atLeast.lg
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)
   const totalColumns = normalizedColumns.length
+  // A phone shows exactly one column at a time; the column at the translation
+  // origin owns the phone Back doorway. Off-screen columns stay mounted for
+  // the slide transition but report phoneVisible: false so their Back
+  // registrations deactivate instead of competing for the shell control.
+  const phoneVisibleIndex = isMobile ? Math.max(0, Math.min(activeColumn, totalColumns - 1)) : -1
 
   const translateX = useMemo(() => {
     const columnWidthPercent = 100 / visibleColumns
@@ -50,13 +60,20 @@ export const ColumnBrowserViewport = ({
             index === totalColumns - 1
               ? Math.max(1, visibleColumns - (totalColumns - 1))
               : 1
+          const phoneHidden = isMobile && index !== phoneVisibleIndex
           return (
             <div
+              aria-hidden={phoneHidden || undefined}
               className="h-full w-full flex-shrink-0"
+              inert={phoneHidden || undefined}
               key={index}
               style={{ width: `${(100 / visibleColumns) * slots}%` }}
             >
-              {column}
+              <ColumnBackProvider
+                value={{ index, phoneVisible: index === phoneVisibleIndex }}
+              >
+                {column}
+              </ColumnBackProvider>
             </div>
           )
         })}

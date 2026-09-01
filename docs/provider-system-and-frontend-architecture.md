@@ -400,7 +400,9 @@ must show C's activity, tools, and messages.
 
 ### 9.3 Required frontend data for agent activity
 
-The agent activity panel and drill-down require these data flows:
+The agent Activity page and drill-down require these data flows. Activity is
+owned by the Agents navigation surface; it does not appear as a duplicate
+section in the chat sidebar.
 
 - **WebSocket subscription** to the `WsEventMap` from
   [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
@@ -437,7 +439,7 @@ Cache update rules:
 
 Add to the mandatory component list:
 
-- `AgentActivityPanel` — the always-visible agent list with status dots
+- `AgentActivityPanel` — the Activity-page agent list with status dots
 - `AgentStatusDot` — the animated status indicator:
   idle/thinking/executing/waiting/error
 - `AgentDetailDrawer` — the drill-down view opened by clicking an agent
@@ -468,7 +470,7 @@ The right model is:
 
 - [implementation-phases.md](./implementation-phases.md)
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [functionality.md](./functionality.md)
 - [model-provider-connector-spec.md](./model-provider-connector-spec.md)
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)

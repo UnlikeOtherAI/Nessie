@@ -16,6 +16,10 @@ import {
   ThreadRecordSchema,
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  DeepWaterLaunchAuthorizationError,
+  runWithAuthorizedDeepWaterLaunch,
+} from '../../services/deepwater-launch-authorization.js'
 import { createPersonalAssistantIntegrationHandoff } from '../../services/integration-handoffs.js'
 import { listIntegratedProducts } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
@@ -76,43 +80,57 @@ export const registerIntegrationHandoffRoutes = (
       return reply
     }
 
-    const products = await listIntegratedProducts(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId,
-      userId: actorContext.actor.actorId,
-    })
-    const product = products.find((candidate) => candidate.slug === 'deep-water')
-    if (!product) {
-      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
-      return reply
+    let authorizedLaunch
+    try {
+      authorizedLaunch = await runWithAuthorizedDeepWaterLaunch(
+        prisma,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+        },
+        async (tx, connectorId) => ({
+          connectorId,
+          run: await createDeepWaterResearchRun(
+            tx as unknown as typeof prisma,
+            {
+              connectorId,
+              input: body,
+              organizationId: actorContext.tenant.organizationId,
+              requestedByUserId: actorContext.actor.actorId,
+              teamId,
+            },
+          ),
+        }),
+      )
+    } catch (error) {
+      if (error instanceof DeepWaterLaunchAuthorizationError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
     }
-    if (!product.teamEnablement?.enabled) {
-      sendApiError(reply, 409, 'DEEP_WATER_TEAM_DISABLED', 'Deep Water is not enabled for this team')
-      return reply
-    }
-    const mcpInstallation = product.mcpInstallation
-    if (!mcpInstallation || mcpInstallation.lifecycleState !== 'active') {
-      sendApiError(reply, 409, 'DEEP_WATER_MCP_INACTIVE', 'Deep Water MCP is not active for this team')
-      return reply
-    }
-
-    const run = await createDeepWaterResearchRun(prisma, {
-      connectorId: mcpInstallation.id,
-      input: body,
-      organizationId: actorContext.tenant.organizationId,
-      requestedByUserId: actorContext.actor.actorId,
-      teamId,
-    })
+    const { connectorId, run } = authorizedLaunch
 
     let handoff: IntegrationHandoff
+    let attachedRun
     try {
       handoff = await createPersonalAssistantIntegrationHandoff(deps, {
         actorContext,
-        content: buildDeepWaterLaunchMessage(body),
+        beforeEnqueue: async (tx, context) => {
+          attachedRun = await attachDeepWaterResearchHandoff(
+            tx as unknown as typeof prisma,
+            {
+              ...context,
+              organizationId: actorContext.tenant.organizationId,
+              runId: run.id,
+            },
+          )
+        },
+        content: buildDeepWaterLaunchMessage(body, { runId: run.id }),
         metadata: ({ channelId }) => buildDeepWaterLaunchMetadata(body, {
           channelId,
-          connectorId: mcpInstallation.id,
-          productSlug: product.slug,
+          connectorId,
+          productSlug: 'deep-water',
           runId: run.id,
         }),
         teamId,
@@ -125,14 +143,14 @@ export const registerIntegrationHandoffRoutes = (
       sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
       return reply
     }
-
-    const attachedRun = await attachDeepWaterResearchHandoff(prisma, {
-      channelId: handoff.channel.id,
-      messageId: handoff.message.id,
-      organizationId: actorContext.tenant.organizationId,
-      runId: run.id,
-      threadId: handoff.thread.id,
-    })
+    if (!attachedRun) {
+      await markDeepWaterResearchRunFailed(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        runId: run.id,
+      })
+      sendApiError(reply, 500, 'DEEP_WATER_HANDOFF_ATTACH_FAILED', 'Research handoff failed')
+      return reply
+    }
 
     return sendHandoffResponse(reply, handoff, { run: attachedRun })
   })

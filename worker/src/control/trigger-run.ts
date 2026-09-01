@@ -1,6 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildTriggerPrompt, extractTriggerEffectiveUserId } from '@nessie/runtime'
+import {
+  prepareScheduledAgentTodoTrigger,
+} from '@nessie/workspace-admin'
+import {
+  activeWorkspaceMatchesAttribution,
+  buildTriggerPrompt,
+  loadLedgerIdentitySettings,
+  loadLedgerUoaIdentity,
+} from '@nessie/runtime'
+
+// Read once at startup: whether this deployment signs Ledger calls is never a
+// per-request, per-organization or per-user decision.
+const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 import {
   type AgentTriggerType,
   parseAgentId,
@@ -12,23 +24,33 @@ import {
   parseTeamId,
   parseThreadId,
   parseUserId,
+  withActionContext,
   type AuthorizedActionContext,
-  type WorkflowRunExecuteJobPayload,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
-import { enqueueQueueJob, enqueueRunExecution } from '../queue.js'
+import { enqueueRunExecution } from '../queue.js'
+import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
+import { recordTriggerHealthFailure } from './trigger-health.js'
+import {
+  assertTriggerExecutionOriginTenant,
+  resolveTriggerExecutionOrigin,
+  TriggerLaunchOriginError,
+} from './trigger-origin.js'
 
 // Shared "fire a run from a trigger" primitives used by both the scheduler sweep
 // and event dispatch. Kept separate from the scheduling/claim logic so the two
-// callers depend on the run-queueing seam, not on each other.
+// callers depend on the run-queueing seam, not on each other. The workflow-
+// installation variant lives in workflow-trigger-run.ts and reuses the shared
+// helpers below (exported for it).
 
 // sp-webhook: a retry attempt (driven by the delivery-retry poller) reuses an
 // existing `failed` delivery row instead of creating a new one, so the
 // (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
-type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
+export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
-const upsertDelivery = async (
+export const upsertDelivery = async (
   tx: Prisma.TransactionClient,
   input: {
     dedupeKey?: string
@@ -63,7 +85,7 @@ const upsertDelivery = async (
   })
 }
 
-const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
+export const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
     return Prisma.JsonNull as unknown as Prisma.InputJsonValue
   }
@@ -91,8 +113,17 @@ const buildActorContext = (input: {
   projectId?: string | null
   teamId?: string | null
   threadId: string
-  taskId: string
+  // Omitted while the (agent, thread) slot claim is still unresolved: the
+  // pending-marker path has no task, and the claimed path injects the fresh
+  // task id via withActionContext once the task exists.
+  taskId?: string
   source: string
+  /**
+   * The creator's UOA workspace, replayed from the trigger's launch origin.
+   * A fire has no session, so without this the Ledger signer has no identity
+   * to verify and every scheduled run fails before dispatch.
+   */
+  uoaIdentity?: UoaSessionIdentity
 }): AuthorizedActionContext => ({
   actor: {
     actorId: input.agentId,
@@ -111,8 +142,9 @@ const buildActorContext = (input: {
       : {}),
     purpose: input.source,
     requestId: randomUUID(),
+    ...(input.uoaIdentity ? { uoaIdentity: input.uoaIdentity } : {}),
     threadId: parseThreadId(input.threadId),
-    taskId: parseTaskId(input.taskId),
+    ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
   },
   tenant: {
     organizationId: parseOrganizationId(input.organizationId),
@@ -120,147 +152,6 @@ const buildActorContext = (input: {
     teamId: input.teamId ? parseTeamId(input.teamId) : undefined,
   },
 })
-
-export const queueWorkflowTriggerRun = async (
-  prisma: PrismaClient,
-  input: {
-    dedupeKey?: string
-    payload: unknown
-    retry?: RetryContext
-    source: string
-    trigger: {
-      id: string
-      type: AgentTriggerType
-      workflowInstallation: {
-        active: boolean
-        channelId: string | null
-        id: string
-        organizationId: string
-        status: 'active' | 'disabled' | 'draft' | 'paused'
-        projectId: string | null
-        teamId: string | null
-      }
-    }
-  },
-): Promise<void> => {
-  const installation = input.trigger.workflowInstallation
-  if (!installation.active || installation.status === 'disabled') {
-    return
-  }
-
-  const existingDelivery = input.dedupeKey
-    ? await prisma.agentTriggerDelivery.findFirst({
-        where: {
-          dedupeKey: input.dedupeKey,
-          triggerId: input.trigger.id,
-        },
-        include: {
-          workflowRuns: {
-            select: { id: true },
-            take: 1,
-          },
-        },
-      })
-    : null
-
-  if (existingDelivery?.workflowRuns[0]?.id) {
-    return
-  }
-
-  const actorContext: AuthorizedActionContext = {
-    actor: {
-      actorId: installation.id,
-      actorType: 'service',
-      roles: ['system'],
-    },
-    actionContext: {
-      ...(installation.channelId
-        ? { channelId: parseChannelId(installation.channelId) }
-        : {}),
-      purpose: `trigger:${input.trigger.type}`,
-      requestId: randomUUID(),
-      correlationId: `trigger:${input.trigger.id}`,
-    },
-    tenant: {
-      organizationId: parseOrganizationId(installation.organizationId),
-      projectId: installation.projectId ? parseProjectId(installation.projectId) : undefined,
-      teamId: installation.teamId ? parseTeamId(installation.teamId) : undefined,
-    },
-  }
-
-  const normalizedPayload = normalizePayload(input.payload)
-  try {
-    await prisma.$transaction(async (tx) => {
-      const delivery = await upsertDelivery(tx, {
-        dedupeKey: input.dedupeKey,
-        payload: normalizedPayload,
-        retry: input.retry,
-        source: input.source,
-        triggerId: input.trigger.id,
-      })
-
-      const workflowRun = await tx.workflowRun.create({
-        data: {
-          installationId: installation.id,
-          organizationId: installation.organizationId,
-          triggerId: input.trigger.id,
-          triggerDeliveryId: delivery.id,
-          input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
-            ? (input.payload as Record<string, unknown>)
-            : { payload: input.payload ?? null }) as Prisma.InputJsonValue,
-          startedByActorType: actorContext.actor.actorType,
-          startedByActorId: actorContext.actor.actorId,
-        },
-        select: { id: true },
-      })
-
-      const jobPayload: WorkflowRunExecuteJobPayload = {
-        actorContext,
-        workflowRunId: workflowRun.id,
-      }
-      await enqueueQueueJob(tx, {
-        idempotencyKey: `workflow-run:start:${workflowRun.id}`,
-        payload: jobPayload,
-        topic: 'workflow.run.execute',
-      })
-
-      await tx.agentTriggerDelivery.update({
-        where: { id: delivery.id },
-        data: {
-          deliveredAt: new Date(),
-          status: 'delivered',
-        },
-      })
-
-      await tx.agentTrigger.update({
-        where: { id: input.trigger.id },
-        data: {
-          lastFiredAt: new Date(),
-        },
-      })
-    })
-  } catch (error) {
-    if (
-      input.dedupeKey &&
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
-      return
-    }
-    // sp-webhook: persist a retryable failed delivery (outside the rolled-back
-    // tx) so the retry poller can re-attempt with backoff.
-    await recordDeliveryFailure(prisma, {
-      dedupeKey: input.dedupeKey,
-      error,
-      existingDeliveryId: input.retry?.reuseDeliveryId,
-      payload: normalizedPayload,
-      retryCount: input.retry?.retryCount ?? 0,
-      source: input.source,
-      triggerId: input.trigger.id,
-    })
-    throw error
-  }
-}
 
 export const queueTriggerRun = async (
   prisma: PrismaClient,
@@ -285,9 +176,11 @@ export const queueTriggerRun = async (
     }
   },
 ): Promise<void> => {
-  // The personal assistant is its owner's delegate: it reaches every channel in
-  // the organization, so the binding gate and the membership re-check below do
-  // not apply to it. It always keeps acting as its owner.
+  // The personal assistant is its owner's delegate, so it is exempt from the
+  // *binding* gate — it is not bound to channels the way a shared agent is. It
+  // is NOT exempt from the membership re-check: a PA's reach is its owner's
+  // reach, so if the owner has since lost access to a private target channel
+  // the trigger must not fire and load that channel's conversation.
   const isPersonalAssistantTrigger =
     input.trigger.agent.agentKind === 'personal_assistant'
   const existingDelivery = input.dedupeKey
@@ -334,36 +227,97 @@ export const queueTriggerRun = async (
     }
   }
 
-  // The scheduled run acts as the user who created it (config.createdByUserId).
-  // Authorization for the target channel was checked at creation time; re-verify
-  // here so a user later removed from a private channel can't keep the run acting
-  // as them. If they've lost access, fall back to an autonomous (no-user) run.
-  // The personal assistant is exempt: it reaches every channel as its owner, so
-  // it keeps acting as the owner regardless of that user's channel membership.
-  let effectiveUserId = extractTriggerEffectiveUserId(input.trigger.config)
-  if (
-    !isPersonalAssistantTrigger
-    && effectiveUserId
-    && thread.channel.visibility !== 'public'
-  ) {
-    const membership = await prisma.channelMember.findFirst({
-      where: { channelId: input.trigger.targetChannelId, userId: effectiveUserId },
-      select: { userId: true },
-    })
-    if (!membership) {
-      effectiveUserId = null
-    }
-  }
-
   const content = buildTriggerPrompt({
     config: input.trigger.config,
     payload: input.payload,
     source: input.source,
     triggerType: input.trigger.type,
   })
+  const scheduledTodo = prepareScheduledAgentTodoTrigger({
+    config: input.trigger.config,
+    triggerId: input.trigger.id,
+  })
 
   const normalizedPayload = normalizePayload(input.payload)
   try {
+    const executionOrigin = resolveTriggerExecutionOrigin({
+      agent: input.trigger.agent,
+      channelOrganizationId: thread.channel.organizationId,
+      config: input.trigger.config,
+      triggerType: input.trigger.type,
+    })
+    await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
+
+    // Pre-flight the Ledger identity, so a schedule that can never sign says so
+    // once on the Triggers page instead of burning a failed run every sweep.
+    // Catches the three ways a captured identity goes stale: the link was
+    // revoked, the user's credential epoch rotated (logout, password change,
+    // deactivation), or the schedule predates identity capture entirely.
+    //
+    // It must ask exactly what dispatch asks. `loadLedgerUoaIdentity` checks
+    // only the account link (status, subject, epoch); the header path that
+    // actually signs a model call additionally requires the attributed team's
+    // external UOA mapping to match the captured workspace. Checking the
+    // narrower condition here let a trigger pass, create a run, and have that
+    // run die at its first inference — silently, because an unattended failure
+    // posts nothing. That is how one production schedule burned ~1.5 hours of
+    // failed runs before its epoch drifted far enough to fail this gate too.
+    if (ledgerSigningConfigured && executionOrigin.userId) {
+      const identity = executionOrigin.uoaIdentity
+        ? await loadLedgerUoaIdentity(prisma, {
+            actorId: executionOrigin.userId,
+            actorType: 'user',
+            organizationId: executionOrigin.organizationId,
+            uoaIdentity: executionOrigin.uoaIdentity,
+            userId: executionOrigin.userId,
+          })
+        : null
+      if (!identity) {
+        throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
+          'its saved UnlikeOtherAI identity is missing or no longer valid',
+        )
+      }
+      // The same predicate the signing path applies, not a second copy of it.
+      const workspaceMatches = await activeWorkspaceMatchesAttribution(
+        prisma,
+        {
+          actorId: executionOrigin.userId,
+          actorType: 'user',
+          organizationId: executionOrigin.organizationId,
+          ...(executionOrigin.teamId ? { teamId: executionOrigin.teamId } : {}),
+          userId: executionOrigin.userId,
+        },
+        identity,
+      )
+      if (!workspaceMatches) {
+        throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
+          'its saved UnlikeOtherAI workspace no longer maps to its team',
+        )
+      }
+    }
+
+    // The saved user must still be able to reach the target channel at fire
+    // time — for a shared agent's saved launcher and equally for the personal
+    // assistant's owner. Losing that authorization fails closed; it must never
+    // silently erase the user while retaining their immutable billing team.
+    if (executionOrigin.userId && thread.channel.visibility !== 'public') {
+      const membership = await prisma.channelMember.findFirst({
+        where: {
+          channelId: input.trigger.targetChannelId,
+          userId: executionOrigin.userId,
+        },
+        select: { userId: true },
+      })
+      if (!membership) {
+        throw new TriggerLaunchOriginError(
+          'channel_access_lost',
+          'its saved user no longer has access to the target channel',
+        )
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       const delivery = await upsertDelivery(tx, {
         dedupeKey: input.dedupeKey,
@@ -375,70 +329,119 @@ export const queueTriggerRun = async (
 
       const message = await tx.message.create({
         data: {
+          // A trigger kickoff is an internal directive that drives the run, not
+          // a post any human made — nobody types "A schedule trigger fired" or
+          // the memory nudge appended to a saved prompt. Rendering it as a
+          // `user` message attributed it to the trigger's owner, so a
+          // 15-minute sweep filled its own alert channel with plumbing signed
+          // by someone who never wrote it. `system` keeps the row (audit,
+          // restart replay by id) while excluding it from the channel feed and
+          // from future model context (see listThreadMessages /
+          // loadConversation) — the same treatment the PA path already used.
+          // The run still receives this content as its prompt via
+          // `payload.messageId`, which does not consult role, so the payload
+          // JSON stays useful to the model (webhook event data) without ever
+          // being shown to a person. Provenance for humans lives on the
+          // Triggers page delivery log.
           content,
-          // A PA-owned scheduled run posts AS the owner, so its kickoff prompt is
-          // an internal system-injected directive rather than a post the owner
-          // made. Mark it `system` so it drives the run but is excluded from both
-          // the channel feed and future model context (see listThreadMessages /
-          // loadConversation). Shared agents keep the visible `user` kickoff.
-          ...(isPersonalAssistantTrigger
+          ...((isPersonalAssistantTrigger || scheduledTodo)
             ? {
                 metadata: {
-                  delegatedByAgentId: input.trigger.agentId,
+                  ...(isPersonalAssistantTrigger
+                    ? { delegatedByAgentId: input.trigger.agentId }
+                    : {}),
+                  ...(scheduledTodo
+                    ? scheduledTodo.metadata
+                    : {}),
                 } as Prisma.InputJsonValue,
               }
             : {}),
-          role: isPersonalAssistantTrigger ? 'system' : 'user',
+          role: 'system',
           threadId: input.trigger.targetThreadId,
         },
         select: { id: true },
       })
 
-      const run = await tx.run.create({
-        data: {
-          agentId: input.trigger.agentId,
-          status: 'pending',
-          threadId: input.trigger.targetThreadId,
-          triggerDeliveryId: delivery.id,
-          triggerId: input.trigger.id,
-        },
-        select: { id: true },
+      const actorContext = buildActorContext({
+        agentId: input.trigger.agentId,
+        channelId: input.trigger.targetChannelId,
+        effectiveUserId: executionOrigin.userId,
+        organizationId: executionOrigin.organizationId,
+        projectId: executionOrigin.projectId,
+        source: input.source,
+        teamId: executionOrigin.teamId,
+        threadId: input.trigger.targetThreadId,
+        ...(executionOrigin.uoaIdentity
+          ? { uoaIdentity: executionOrigin.uoaIdentity }
+          : {}),
       })
 
-      const task = await tx.task.create({
-        data: {
-          agentId: input.trigger.agentId,
-          organizationId: input.trigger.agent.organizationId ?? thread.channel.organizationId,
-          purpose: content.slice(0, 200),
-          runId: run.id,
-          status: 'inbox',
-        },
-        select: { id: true },
-      })
-
-      await enqueueRunExecution(
-        tx,
-        {
-          actorContext: buildActorContext({
-            agentId: input.trigger.agentId,
-            channelId: input.trigger.targetChannelId,
-            effectiveUserId,
-            organizationId:
-              input.trigger.agent.organizationId ?? thread.channel.organizationId,
-            projectId: input.trigger.agent.projectId,
-            source: input.source,
-            taskId: task.id,
-            teamId: input.trigger.agent.teamId,
-            threadId: input.trigger.targetThreadId,
-          }),
-          agentId: parseAgentId(input.trigger.agentId),
+      // Scheduled/trigger runs respect the same per-(agent, thread) claim as
+      // chat replies: with a run already in flight the kickoff message pends
+      // for the batched follow-up instead of spawning a concurrent run. The
+      // delivery/trigger bookkeeping below still records the fire.
+      const claim = await claimThreadRunOrPend(tx, {
+        agentId: input.trigger.agentId,
+        threadId: input.trigger.targetThreadId,
+        pending: {
+          actorContext,
+          channelId: input.trigger.targetChannelId,
+          interactive: false,
           messageId: message.id,
-          runId: parseRunId(run.id),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(input.trigger.targetThreadId),
+          // Copied onto the batched follow-up run when this fire ends up as
+          // the latest pending row at drain time.
+          triggerId: input.trigger.id,
+          triggerDeliveryId: delivery.id,
+          ...(scheduledTodo ? { todoTemplateId: scheduledTodo.todoTemplateId } : {}),
         },
-        `run:${run.id}`,
-      )
+      })
+
+      if (claim === 'claimed') {
+        const run = await tx.run.create({
+          data: {
+            agentId: input.trigger.agentId,
+            // A trigger fire is a standalone contribution to the room, not an
+            // answer owed to whoever last spoke — the definition of `channel`
+            // placement. Stamped structurally from the fact that this is a
+            // trigger run, never judged from content. This must stay paired
+            // with the `system` kickoff above: a hidden root plus the default
+            // thread placement would bury every sweep under an invisible
+            // message and drop it out of the feed entirely.
+            replyPlacement: 'channel',
+            status: 'pending',
+            threadId: input.trigger.targetThreadId,
+            triggerDeliveryId: delivery.id,
+            triggerId: input.trigger.id,
+          },
+          select: { id: true },
+        })
+
+        const task = await tx.task.create({
+          data: {
+            agentId: input.trigger.agentId,
+            organizationId: executionOrigin.organizationId,
+            purpose: content.slice(0, 200),
+            runId: run.id,
+            status: 'inbox',
+          },
+          select: { id: true },
+        })
+
+        await enqueueRunExecution(
+          tx,
+          {
+            actorContext: withActionContext(actorContext, {
+              taskId: parseTaskId(task.id),
+            }),
+            agentId: parseAgentId(input.trigger.agentId),
+            messageId: message.id,
+            runId: parseRunId(run.id),
+            taskId: parseTaskId(task.id),
+            threadId: parseThreadId(input.trigger.targetThreadId),
+          },
+          `run:${run.id}`,
+        )
+      }
 
       await tx.agentTriggerDelivery.update({
         where: { id: delivery.id },
@@ -474,6 +477,12 @@ export const queueTriggerRun = async (
       source: input.source,
       triggerId: input.trigger.id,
     })
+    if (error instanceof TriggerLaunchOriginError) {
+      await recordTriggerHealthFailure(prisma, {
+        error,
+        triggerId: input.trigger.id,
+      })
+    }
     throw error
   }
 }

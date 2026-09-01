@@ -1,6 +1,15 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { UrlSafetyError, WORKFLOW_TOOL_IDS } from '@nessie/runtime'
-import { parseOrganizationId } from '@nessie/schemas'
+import {
+  attributionFromActorContext,
+  UrlSafetyError,
+  WORKFLOW_TOOL_IDS,
+  type LedgerIdentityService,
+} from '@nessie/runtime'
+import {
+  parseOrganizationId,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
+import { createWorkflowChannelMessage } from '../control/workflow-message-send.js'
 import { collectWebFetchResult, collectWebSearchResults, coercePage } from './content-tools.js'
 import { HttpFetchError } from './builtin-handlers/index.js'
 import { hashJsonValue, summarizeToolInput } from './tool-util.js'
@@ -13,11 +22,19 @@ type WorkflowToolExecutionResult = {
 }
 
 export type WorkflowBuiltinToolRuntimeContext = {
+  actorContext: AuthorizedActionContext
+  ledgerIdentity: LedgerIdentityService | null
   organizationId: string
   prisma: PrismaClient
   workflowInstallationId: string
   workflowRunId: string
   workflowStepRunId: string
+  // W15: message_send's default target is the installation's channel.
+  installationChannelId?: string | null
+  // W18: the run's executor dispatch attempt — scopes a state_put writer so a
+  // retried step's repeat write is a conflict, while the crashed attempt's
+  // repeat is an idempotent no-op.
+  workflowRunAttempt?: number
 }
 
 const workflowToolFailure = (
@@ -50,7 +67,26 @@ export const executeWorkflowBuiltinTool = async (
         return workflowToolFailure(inputSummary, 'Workflow web_search requires query.')
       }
 
-      const result = await collectWebSearchResults(query, coercePage(args.page))
+      const actionAgentId = context.actorContext.actionContext.agentId
+      const actorAgentId =
+        context.actorContext.actor.actorType === 'agent'
+          ? context.actorContext.actor.actorId
+          : undefined
+      const attributedAgentId = actionAgentId ?? actorAgentId
+      const result = await collectWebSearchResults(
+        query,
+        coercePage(args.page),
+        {
+          attribution: attributionFromActorContext(context.actorContext, {
+            agentId: attributedAgentId,
+            agentKind: attributedAgentId ? 'shared' : 'system',
+            runId: context.workflowRunId,
+            systemComponent: 'workflow.web-search',
+          }),
+          ledgerIdentity: context.ledgerIdentity,
+          toolCallId: context.workflowStepRunId,
+        },
+      )
       return {
         inputSummary,
         output: {
@@ -143,6 +179,75 @@ export const executeWorkflowBuiltinTool = async (
 
       const value = args.value ?? null
       const valueHash = hashJsonValue(value)
+      // W18 CAS: `expectedVersion` is the version state_get/change_detect
+      // returned. A mismatch fails the write; a repeat write from the same
+      // writer (stepRun + run attempt) with the same value hash is a no-op
+      // success, so a crash between the write and the step-finish never
+      // wedges the retry on a permanently stale expectedVersion.
+      const hasExpectedVersion = Object.prototype.hasOwnProperty.call(args, 'expectedVersion')
+      const expectedVersion =
+        typeof args.expectedVersion === 'number' && Number.isInteger(args.expectedVersion)
+          ? args.expectedVersion
+          : undefined
+      if (hasExpectedVersion && expectedVersion === undefined) {
+        return workflowToolFailure(
+          inputSummary,
+          'Workflow state_put expectedVersion must be an integer.',
+        )
+      }
+
+      const existing = await context.prisma.workflowStateEntry.findUnique({
+        where: {
+          workflowInstallationId_key: {
+            key,
+            workflowInstallationId: context.workflowInstallationId,
+          },
+        },
+        select: {
+          updatedAt: true,
+          value: true,
+          valueHash: true,
+          version: true,
+          workflowStepRunId: true,
+          writerAttempt: true,
+        },
+      })
+
+      if (hasExpectedVersion) {
+        const currentVersion = existing?.version ?? 0
+        const sameWriter =
+          existing !== null &&
+          existing.workflowStepRunId === context.workflowStepRunId &&
+          existing.writerAttempt === context.workflowRunAttempt &&
+          existing.version === expectedVersion
+        // The hash condition matters: a same-writer repeat carrying the SAME
+        // value is the crash-between-write-and-finish replay (no-op success),
+        // while the same writer carrying DIFFERENT data is a real conflict —
+        // never silently swallowed.
+        const sameWriterRepeat = sameWriter && existing?.valueHash === valueHash
+        if (!sameWriterRepeat && (sameWriter || currentVersion !== expectedVersion)) {
+          return workflowToolFailure(
+            inputSummary,
+            `Workflow state_put conflict for "${key}": expected version ${expectedVersion}, found ${currentVersion}. Re-read the state and retry.`,
+          )
+        }
+        if (sameWriterRepeat) {
+          return {
+            inputSummary,
+            output: {
+              idempotent: true,
+              key,
+              updatedAt: existing.updatedAt.toISOString(),
+              value: existing.value,
+              valueHash: existing.valueHash,
+              version: existing.version,
+            },
+            summary: `State "${key}" already written by this attempt.`,
+            success: true,
+          }
+        }
+      }
+
       const entry = await context.prisma.workflowStateEntry.upsert({
         where: {
           workflowInstallationId_key: {
@@ -159,6 +264,7 @@ export const executeWorkflowBuiltinTool = async (
           workflowInstallationId: context.workflowInstallationId,
           workflowRunId: context.workflowRunId,
           workflowStepRunId: context.workflowStepRunId,
+          writerAttempt: context.workflowRunAttempt,
         },
         update: {
           organizationId: parseOrganizationId(context.organizationId),
@@ -169,6 +275,7 @@ export const executeWorkflowBuiltinTool = async (
           },
           workflowRunId: context.workflowRunId,
           workflowStepRunId: context.workflowStepRunId,
+          writerAttempt: context.workflowRunAttempt,
         },
         select: {
           updatedAt: true,
@@ -190,6 +297,47 @@ export const executeWorkflowBuiltinTool = async (
         },
         summary: `Stored state "${entry.key}".`,
         success: true,
+      }
+    }
+    case 'message_send': {
+      const body = typeof args.body === 'string' ? args.body : ''
+      if (!body.trim()) {
+        return workflowToolFailure(inputSummary, 'Workflow message_send requires body.')
+      }
+
+      try {
+        // W15: validate + post through the single message-create seam INSIDE
+        // one transaction (the W28 lesson). The body reached the tool
+        // arguments through the redacted binding resolver, so no tainted ref
+        // can be in it.
+        const posted = await context.prisma.$transaction((tx) =>
+          createWorkflowChannelMessage(tx, {
+            actorId: context.actorContext.actor.actorId,
+            actorType: context.actorContext.actor.actorType,
+            body,
+            channelId: typeof args.channelId === 'string' ? args.channelId : undefined,
+            installationChannelId: context.installationChannelId,
+            organizationId: context.organizationId,
+            threadId: typeof args.threadId === 'string' ? args.threadId : undefined,
+            workflowRunId: context.workflowRunId,
+            workflowStepRunId: context.workflowStepRunId,
+          }),
+        )
+        return {
+          inputSummary,
+          output: {
+            channelId: posted.channelId,
+            messageId: posted.messageId,
+            threadId: posted.threadId,
+          },
+          summary: `Posted message to channel ${posted.channelId}.`,
+          success: true,
+        }
+      } catch (error) {
+        return workflowToolFailure(
+          inputSummary,
+          error instanceof Error ? error.message : 'Workflow message_send failed.',
+        )
       }
     }
     case 'change_detect': {

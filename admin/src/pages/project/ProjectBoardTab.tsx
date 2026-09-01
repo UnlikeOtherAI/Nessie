@@ -6,6 +6,7 @@ import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { useMoveTask, useTasks } from '../../facades/tasks/hooks'
+import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 
 type ProjectBoardTabProps = {
   projectId: string
@@ -16,6 +17,7 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useTasks(projectId)
   const { data: projects = [] } = useProjects()
   const moveTask = useMoveTask()
+  useClearProjectAttention(projectId, 'task_assigned', boardQuery.isSuccess && tasksQuery.isSuccess)
 
   const isScrum = boardQuery.data?.style === 'scrum'
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
@@ -65,6 +67,8 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
+        {/* Not QueryState: the recovery here is "Please refresh.", not a Retry
+            button, and there is no loading or empty state to share. */}
         {tasksQuery.isError ? (
           <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
             Failed to load tasks. Please refresh.

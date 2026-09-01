@@ -12,9 +12,9 @@ import {
   type SpaceViewer,
 } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
+import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { truncate } from './tool-output.js'
 
 const MAX_KB_SEARCH_LIMIT = 8
@@ -39,8 +39,11 @@ const resolveQueryEmbedding = async (
   if (!context.modelClient) return null
   try {
     return await context.modelClient.embed(query, {
-      model: KNOWLEDGE_EMBEDDING_MODEL,
-      usage: attributionFromActorContext(context.actorContext),
+      usage: attributionFromActorContext(context.actorContext, {
+        agentId: context.agentId,
+        agentKind: context.agentKind,
+        runId: context.run.id,
+      }),
     })
   } catch (error) {
     console.warn('kb_search: query embedding failed, degrading to lexical-only', error)
@@ -84,6 +87,16 @@ export const runKbSearchTool = async (
       toolName: 'kb_search',
     }
   }
+
+  // A snippet is content. Every space a hit came from is provenance, so the
+  // distinct spaces behind this page of results are recorded before the
+  // snippets reach the model.
+  const provider = createNativeKnowledgeProvider(context.prisma)
+  const hitSpaceIds = [...new Set(result.data.map((hit) => hit.page.spaceId))]
+  const hitSpaces = (
+    await Promise.all(hitSpaceIds.map((id) => provider.getSpace(organizationId, id)))
+  ).filter((space): space is KnowledgeSpaceRecord => space !== null)
+  recordKnowledgeSpaceRead(context, hitSpaces)
 
   const lines = result.data.map((hit, index) =>
     [
@@ -148,6 +161,10 @@ export const runKbPageReadTool = async (
       return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
     }
   }
+
+  // Past every gate: the agent is about to read this page's body, so the space
+  // it lives in is provenance for whatever the run says next.
+  recordKnowledgeSpaceRead(context, [space])
 
   const version = page.publishedVersion ?? page.latestVersion
   const plain = htmlToPlainText(version?.body ?? '')
@@ -228,6 +245,15 @@ const runKbListByTaskTool = async (
       toolName: 'kb_list',
     }
   }
+
+  // A title names what exists somewhere the room may not reach, so a listing is
+  // provenance too — cheaply, since a space the destination already implies
+  // contributes nothing to the basis.
+  recordKnowledgeSpaceRead(
+    context,
+    [...spaceCache.values()].filter((space): space is KnowledgeSpaceRecord => space !== null),
+  )
+
   const lines = visible.map(
     (page, index) => `${index + 1}. ${page.title} (pageId=${page.id}, kind=${page.kind})`,
   )
@@ -259,6 +285,10 @@ export const runKbListTool = async (
         toolName: 'kb_list',
       }
     }
+    // A catalogue says only which spaces the agent can reach; it does not put
+    // their contents in context. Recording it can add a personal user scope
+    // and withhold an ordinary shared-channel reply, so catalogue listing never
+    // contributes provenance. The task-scoped page-list path remains recorded.
     const lines = result.data.map(
       (space, index) => `${index + 1}. ${space.name} (spaceId=${space.id}, visibility=${space.visibility})`,
     )
@@ -281,6 +311,8 @@ export const runKbListTool = async (
       toolName: 'kb_list',
     }
   }
+
+  recordKnowledgeSpaceRead(context, [space])
 
   const pages = await provider.listPages({ organizationId, spaceId })
   if (pages.length === 0) {

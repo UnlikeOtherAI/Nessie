@@ -23,6 +23,7 @@ const SectionHeader = ({
     onClick={onToggle}
     type="button"
   >
+    {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
     <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
       {label} ({count})
     </span>

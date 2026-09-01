@@ -56,14 +56,19 @@ export const registerKnowledgeSummaryRoutes = (
 
     const viewer = await buildViewer(actorContext)
     const organizationId = actorContext.tenant.organizationId
-    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    // Explicit-only: the summary searches the same corpus as
+    // POST /api/knowledge-base/search, and narrowing to the session's project
+    // would answer from a strict subset of what the caller may read.
+    const projectId = body.projectId
     const query = body.query.trim()
     const trace = policyTrace(decision)
 
     const queryEmbedding = await getQueryEmbedding(
       modelClient,
       query,
-      attributionFromActorContext(actorContext),
+      attributionFromActorContext(actorContext, {
+        systemComponent: 'knowledge-query-embedding',
+      }),
     )
     const result = await hybridSearch({
       organizationId,
@@ -89,7 +94,9 @@ export const registerKnowledgeSummaryRoutes = (
       modelClient,
       query,
       passages,
-      usage: attributionFromActorContext(actorContext),
+      usage: attributionFromActorContext(actorContext, {
+        systemComponent: 'knowledge-summary',
+      }),
     })
     if (!synthesis) {
       sendApiError(reply, 502, 'MODEL_OUTPUT_INVALID', 'The model did not return a valid summary')

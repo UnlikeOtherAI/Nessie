@@ -2,6 +2,7 @@ export {
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,
+  runReactTool,
 } from './pa-tools/agent-messages.js'
 export {
   runAttachmentListTool,
@@ -9,6 +10,11 @@ export {
   runAttachmentUploadTool,
 } from './pa-tools/attachments.js'
 export { isDelegatingPersonalAssistant } from './pa-tools/access.js'
+export {
+  runCallStartTool,
+  runMeetingLinkCreateTool,
+} from './pa-tools/calls.js'
+export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
 export {
   runChannelArchiveTool,
   runChannelFindTool,
@@ -27,6 +33,16 @@ export {
   runConnectorUninstallTool,
 } from './pa-tools/connectors.js'
 export {
+  runExecutorAgentAccessPrepareTool,
+  runExecutorDescriptorReviewPrepareTool,
+  runExecutorInspectTool,
+  runExecutorLifecyclePrepareTool,
+  runExecutorListTool,
+  runExecutorPairTool,
+  runExecutorPrivateAssignmentPrepareTool,
+  runExecutorWorkspacePromotionPrepareTool,
+} from './pa-tools/executors.js'
+export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'
@@ -43,6 +59,8 @@ export {
   runKbPageReadTool,
   runKbSearchTool,
 } from './pa-tools/knowledge.js'
+export { runKbDocumentComposeTool } from './pa-tools/knowledge-compose.js'
+export { runKbDocumentEditTool } from './pa-tools/knowledge-edit.js'
 export {
   runKbDraftWriteTool,
   runKbFileTool,
@@ -50,6 +68,24 @@ export {
 } from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runAgentListTool,
+  runAgentTriggerCreateTool,
+  runChannelCreateTool,
+} from './pa-tools/provisioning.js'
+export {
+  runTodoStartTool,
+  runTodoStepUpdateTool,
+  runTodoTemplateProposeTool,
+} from './pa-tools/todos.js'
+export {
+  runDemonstrationStartTool,
+  runDemonstrationStopTool,
+} from './pa-tools/demonstrations.js'
+export { runPersonalAssistantJoinChannelTool } from './pa-tools/presence.js'
+export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,
 } from './pa-tools/people.js'
+export { runWorkflowTransformPreviewTool } from './pa-tools/workflow-transform.js'

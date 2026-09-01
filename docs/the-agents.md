@@ -161,7 +161,10 @@ function (advisory-lock upsert-by-kind — find-by-kind-and-name, else create):
 - **Personal Assistant** (`api/src/services/personal-assistant.ts`,
   `ensurePersonalAssistantAgent`) — `agentKind: 'personal_assistant'`, DM-only
   surface, delegates as its owning user for "act as the user" tools
-  (`send_message`, channel management, etc.).
+  (`send_message`, channel management, etc.). New-user provisioning creates
+  each user's private DM and generates the shared organization-managed agent's
+  first original cartoon headshot through Ledger; later users retain that
+  assistant avatar rather than replacing it.
 - **Librarian** (`api/src/services/librarian.ts`, `ensureLibrarianAgent`,
   bootstrapped via `POST /api/knowledge-base/librarian`) — `agentKind:
   'shared'`, read-only knowledge-base research today (`kb_search`,
@@ -448,20 +451,38 @@ As the skill system grows, roles become less about hardcoded tool lists and more
 
 When a message arrives in a channel, the channel orchestrator decides which agent (if any) responds.
 
-**Current implementation** (`api/src/services/orchestrator.ts`):
+**Implementation**: the decision is pure (`decideAgentEngagement`, `packages/runtime/src/orchestrator.ts`) and is invoked from the worker's `orchestrate.decide` job (`worker/src/run/orchestrate.ts`), which the API enqueues from the message-create route (`api/src/routes/thread-message-create.ts`) — **only for human-authored messages** in a channel that has bound agents.
 
-1. **Fast path**: Explicit `@AgentName` mention → route directly to that agent
-2. **Silent path**: `@mention` exists but matches no agent → nobody responds
-3. **LLM decision**: Invisible orchestrator (cheap model, temperature 0.1, max 128 tokens) evaluates the message against all bound agents and returns one of:
+1. **Human-only gate**: the orchestrator engages agents ONLY in response to a human message (`triggerIsHuman`). An agent's own reply — and an agent @mentioning another agent — never triggers a decision. This is the hard anti-loop guard.
+2. **Fast path**: explicit `@AgentName` mention → route directly to that agent (each mentioned agent replies).
+3. **Silent path**: `@mention` exists but matches no bound agent → nobody responds.
+4. **LLM decision**: an invisible orchestrator (cheap model, temperature 0.1) evaluates the message against all bound agents and returns one of:
    - `{ action: "reply", agentId }` — agent should respond
    - `{ action: "acknowledge", agentId, emoji }` — agent reacts with emoji
    - `{ action: "none" }` — no agent engages (default when in doubt)
 
-**What needs to change**: The channel orchestrator works. It should also factor in:
-- Agent current status (don't route to a busy agent if another can handle it)
-- Budget/cost awareness (route to cheaper model agents for simple tasks)
-- Skill matching (which agent has the right skills for this request)
-- Plan context (if there's an active plan, route to the assigned agent)
+**Thread-following**: an agent that has previously **authored a message in the thread** is *following* it (provable straight from the `Message` rows — no extra schema). The worker computes the following set for the thread (`selectFollowingAgentIds`) and passes it into the decision; following agents are annotated in the orchestrator prompt so a new human message keeps them engaged **without a fresh @mention**. This fixes agents "going deaf" in threads they have joined. Following is subject to hard anti-loop invariants:
+
+- **(1) Only humans trigger.** Following never fires on another agent's message; the mention fast path keeps its existing behavior. Enforced structurally (agent replies never enqueue `orchestrate.decide`) and again at the decision (`triggerIsHuman === false` ⇒ no engagement).
+- **(2) No self-retrigger / no ping-pong.** After an agent replies it does not reply again in the thread until a **newer human message** exists: agent-authored messages do not route through message-create, each human message enqueues exactly one decision, and `run:{messageId}:{agentId}` dedupes the resulting run.
+- **(3) No thundering herd.** When several agents follow one thread, the non-mention path still returns **at most one** reply — the LLM picks the single most relevant follower. Existing per-message single-in-flight discipline is unchanged.
+- **Following ≠ forced reply.** A following agent is only a strong *candidate*; the LLM may still return `none` (e.g. human side-chatter or a message aimed at a named person).
+- **PA DMs are unchanged.** Personal-assistant DM channels answer every message on their existing path, so no following set is computed for them (behavior is byte-identical to before this feature).
+
+**What could still be factored in**: agent current status (don't route to a busy agent if another can handle it), budget/cost awareness, skill matching, and active-plan context.
+
+### Per-Thread Run Serialization
+
+At most **one in-flight run per (agent, thread)**. Without this, N rapid messages in one thread spawn N concurrent runs for the same agent — interleaved replies, duplicated work, multiplied token spend (the `run:{messageId}:{agentId}` dedupe only stops re-processing the *same* message).
+
+**Implementation**: `packages/db/src/thread-serialization.ts` (`@nessie/db` — shared by the worker and the API) + the `run_thread_pending_messages` table. The worker re-exports it from `worker/src/run/thread-serialization.ts` for existing call sites.
+
+1. **Claim or pend.** Every run-creation path — the `orchestrate.decide` reply path (channel engagement and PA DMs alike), scheduled/trigger fires (`queueTriggerRun`), API-side trigger dispatch (`dispatchAgentTrigger`: webhook intake and manual fire), and agent-to-agent mailbox delivery — opens its run-creation transaction with a transaction-scoped advisory lock keyed on `(agentId, threadId)`. If an active run (`pending` / `running` / `waiting_approval`) already holds the slot, no run is created: the message is recorded as a durable `RunThreadPendingMessage` row (base actor context, channel, interactive flag, optional trigger linkage) and the transaction commits. `waiting_approval` deliberately holds the slot for the whole suspension: the run resumes after the approval, so new messages pend rather than interleave, and an abandoned approval keeps pendings waiting until it is resolved or expires (expiry is issue #208's scope).
+2. **Redelivery dedupe.** The queue is at-least-once: a job that committed (run created or pending marker recorded) can be redelivered before its ack. Inside the claim, a delivery whose exact `(agentId, triggerMessageId)` run already exists — in **any** status — or whose pending marker already exists is a duplicate and no-ops (no pend, no run). Without this, a redelivered decide job would see its own run still active, pend the same message again, and double-reply.
+3. **Batched follow-up.** Every terminal path of the in-flight run — completion, cooperative cancel, final failure, and the budget-gate block — drains the slot under the same advisory lock: all pending rows become **one** follow-up run whose prompt is the *latest* pending message, enqueued as `run:batch:{runId}` and consumed in thread-arrival order (`message.createdAt`, `seq` tiebreak). Cancelling the in-flight run therefore still delivers the batch. Pended `user`/`assistant` messages are ordinary thread history the follow-up loads; **`system`-role kickoffs (PA scheduled triggers) are excluded from model context, so repeated system kickoffs coalesce to the latest — intended**, since each is a self-contained "check for work" directive. When the latest pending row came from a trigger fire, its `triggerId`/`triggerDeliveryId` is carried onto the follow-up run.
+4. **No lost messages across restart.** The pending row is the durable marker. A worker sweep (`pendingBatchSweepInterval`, 10s) re-polls for (agent, thread) pairs with pending rows but no in-flight run and drains them — covering a crash between the terminal update and the drain, and an API-side cancel of a queued (never-executed) run.
+
+DeepWater/product-handoff runs keep their own stricter invariants and never touch this module; subtask, workflow, and external-agent runs are likewise outside the claim. Restart (`POST /api/runs/:id/restart`) probes the same slot and **rejects with 409 `RUN_THREAD_BUSY`** when another run is in flight — an explicit human restart into a busy thread gets a clear error, not a silent queue. Workflow-installation triggers fire a `WorkflowRun`, not an agent run, and are unaffected.
 
 ### Task Orchestrator
 
@@ -1554,6 +1575,19 @@ Triggers are first-class records. An agent may have zero, one, or many triggers.
 }
 ```
 
+**Scheduled — follow up hourly, but only when the thread has new activity:**
+```json
+{
+  "type": "scheduled",
+  "config": {
+    "cron": "0 * * * *",
+    "skipWhenEmpty": true,
+    "prompt": "Review new messages in this thread and follow up where needed."
+  }
+}
+```
+> `skipWhenEmpty` (optional, scheduled/interval agent triggers) records the fire as `skipped` and enqueues **no run** when the target thread has had no new work since the last actual run. See the Scheduler Service section for the exact emptiness criterion.
+
 ### Database Tables
 
 ```
@@ -1635,6 +1669,16 @@ Scheduler loop (runs every 15 seconds):
 ```
 
 **Concurrency guard:** The scheduler skips agents that already have a running or queued run. This prevents pile-up if a scheduled agent takes longer than its interval. The skipped activation is logged with `status: skipped`.
+
+**Empty-fire skip (`config.skipWhenEmpty`):** Scheduled/interval agent triggers burn tokens even when there is provably nothing to do — a daily-digest or "follow up on this thread" schedule that fires into a thread nobody touched still spins up a full run. A trigger can opt into skipping those no-op fires by setting `"skipWhenEmpty": true` in its `config`. It is strictly opt-in: without the flag the trigger always runs, so a schedule whose real work source is *not* its target thread (e.g. "check my email hourly" via a connector) is never skipped on a guess.
+
+The emptiness criterion is deliberately the one thing provable from the data model — **no new messages in the target thread since the last actual run**:
+
+- The reference point is `last_fired_at` (the last time the trigger produced a run), falling back to the trigger's `created_at` for the first fire. Skips never advance `last_fired_at`, so the pending-work window keeps growing across consecutive skips until real work appears.
+- A message counts as pending work when it was posted after the reference time by anyone other than the trigger's own agent: human posts (`user_id` set) and other agents' posts (`agent_id` set and not this agent). The trigger's own system-injected kickoffs (`user_id` and `agent_id` both null) and its agent's replies (`agent_id` = this agent) are excluded, so a quiet thread reads as genuinely empty.
+- Zero pending messages ⇒ the fire is recorded as an `agent_trigger_deliveries` row with `status: skipped` (source `scheduler`, payload `{ reason: "empty_work_source" }`) and **no run is enqueued**; `next_run_at` still advances so the schedule keeps ticking. Any pending message ⇒ the trigger runs exactly as before.
+
+The skip is observable, not silent: the `skipped` delivery appears in the trigger history surfaces (`GET /api/triggers/{id}/history`) alongside real deliveries. Applies to agent-target scheduled/interval triggers only; workflow triggers (no target thread ⇒ emptiness unprovable) always run. Implementation: `worker/src/control/trigger-empty-skip.ts`, wired in `trigger-scheduler.ts`.
 
 **Leader election:** In multi-instance deployments, only one scheduler instance should be active. Use `pg_advisory_lock` on a well-known lock ID. If the lock holder dies, another instance acquires it automatically.
 

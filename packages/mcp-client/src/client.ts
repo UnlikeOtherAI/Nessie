@@ -4,6 +4,7 @@ import { Backoff, sleep } from './backoff.js'
 import { DiscoveryCache, normaliseTools } from './discovery.js'
 import {
   McpNotConnectedError,
+  McpProtocolError,
   McpTimeoutError,
   McpTransportError,
   classifyError,
@@ -16,6 +17,7 @@ import type {
   McpConnectionSpec,
   McpConnectionState,
   McpHealth,
+  McpServerCapabilities,
   McpToolDescriptor,
   McpToolResult,
 } from './types.js'
@@ -24,7 +26,7 @@ const CLIENT_NAME = '@nessie/mcp-client'
 const CLIENT_VERSION = '0.0.0'
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000
-const DEFAULT_LIST_TOOLS_TIMEOUT_MS = 30_000
+const DEFAULT_LIST_TIMEOUT_MS = 30_000
 
 export type ConnectionListener = {
   onState: (state: McpConnectionState) => void
@@ -91,7 +93,7 @@ export class McpConnection {
     opts: { timeoutMs?: number; abort?: AbortSignal } = {},
   ): Promise<McpToolDescriptor[]> {
     const client = this.requireClient()
-    const timeoutMs = opts.timeoutMs ?? DEFAULT_LIST_TOOLS_TIMEOUT_MS
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_LIST_TIMEOUT_MS
     const abort = opts.abort
 
     if (abort?.aborted) throw classifyError(abort.reason ?? new Error('aborted'))
@@ -113,6 +115,54 @@ export class McpConnection {
     } catch (err) {
       throw classifyError(err)
     }
+  }
+
+  /**
+   * What the server advertised in its `initialize` response, or `null` when it
+   * advertised nothing at all.
+   *
+   * Synchronous, because the answer is already in hand from the handshake — and
+   * that is what makes it usable as a *gate*: `resources/list` against a server
+   * that never offered `resources` is a method it does not implement, and the
+   * well-behaved answer is a JSON-RPC error. Asking a server what it can do
+   * must not be the thing that makes it look broken.
+   */
+  serverCapabilities(): McpServerCapabilities | null {
+    const advertised = this.requireClient().getServerCapabilities()
+    if (!advertised) return null
+    return {
+      tools: advertised.tools !== undefined,
+      resources: advertised.resources !== undefined,
+      prompts: advertised.prompts !== undefined,
+    }
+  }
+
+  /**
+   * `resources/list`, one page — the same single round trip `listTools` makes.
+   * Uncached on purpose: these are read once per capability discovery, so a
+   * cache would only ever serve a stale count.
+   */
+  async listResources(
+    opts: { timeoutMs?: number; abort?: AbortSignal } = {},
+  ): Promise<unknown[]> {
+    return this.listCollection(
+      'resources/list',
+      (client, signal, timeout) => client.listResources(undefined, { signal, timeout }),
+      (page) => page.resources,
+      opts,
+    )
+  }
+
+  /** `prompts/list`, one page. See `listResources`. */
+  async listPrompts(
+    opts: { timeoutMs?: number; abort?: AbortSignal } = {},
+  ): Promise<unknown[]> {
+    return this.listCollection(
+      'prompts/list',
+      (client, signal, timeout) => client.listPrompts(undefined, { signal, timeout }),
+      (page) => page.prompts,
+      opts,
+    )
   }
 
   refresh(): void {
@@ -269,6 +319,48 @@ export class McpConnection {
         return _exhaustive
       }
     }
+  }
+
+  /**
+   * The shared body of `resources/list` and `prompts/list`: the same timeout,
+   * abort and error classification `listTools` gets, so a caller branching on
+   * `McpError.kind` reads all three listings the same way.
+   */
+  private async listCollection(
+    operation: string,
+    send: (
+      client: Client,
+      signal: AbortSignal,
+      timeoutMs: number,
+    ) => Promise<Record<string, unknown>>,
+    pick: (page: Record<string, unknown>) => unknown,
+    opts: { timeoutMs?: number; abort?: AbortSignal },
+  ): Promise<unknown[]> {
+    const client = this.requireClient()
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_LIST_TIMEOUT_MS
+    const abort = opts.abort
+
+    if (abort?.aborted) throw classifyError(abort.reason ?? new Error('aborted'))
+
+    let entries: unknown
+    try {
+      entries = pick(
+        await this.withTimeoutAndAbort(
+          (signal) => send(client, signal, timeoutMs),
+          timeoutMs,
+          abort,
+          operation,
+        ),
+      )
+    } catch (err) {
+      throw classifyError(err)
+    }
+    // A malformed page is not an empty one: answering `[]` here would turn "the
+    // server did not answer the question" into a confident zero.
+    if (!Array.isArray(entries)) {
+      throw new McpProtocolError(`${operation} response was not an array`)
+    }
+    return entries
   }
 
   private async withTimeoutAndAbort<T>(

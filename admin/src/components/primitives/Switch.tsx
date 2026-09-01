@@ -1,10 +1,11 @@
 type SwitchProps = {
   checked: boolean
+  disabled?: boolean
   label: string
   onChange: (checked: boolean) => void
 }
 
-export const Switch = ({ checked, label, onChange }: SwitchProps) => (
+export const Switch = ({ checked, disabled = false, label, onChange }: SwitchProps) => (
   <button
     aria-checked={checked}
     aria-label={label}
@@ -13,7 +14,9 @@ export const Switch = ({ checked, label, onChange }: SwitchProps) => (
       checked
         ? 'border-[color:var(--accent)] bg-[color:var(--accent)]'
         : 'border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)]',
+      disabled ? 'cursor-not-allowed opacity-50' : '',
     ].join(' ')}
+    disabled={disabled}
     onClick={() => onChange(!checked)}
     role="switch"
     type="button"

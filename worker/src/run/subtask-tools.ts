@@ -8,6 +8,7 @@ import {
   parseThreadId,
   withActionContext,
 } from '@nessie/schemas'
+import { stripProtectedExplicitToolPolicy } from '@nessie/runtime'
 import { enqueueRunExecution } from '../queue.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
@@ -57,17 +58,26 @@ export const runSpawnSubtaskTool = async (
   const parentAgent = await context.prisma.agent.findUnique({
     where: { id: context.agentId },
     select: {
+      effort: true,
       id: true,
       model: true,
       name: true,
+      ownerUserId: true,
       provider: true,
       systemPrompt: true,
       toolPolicy: true,
+      visibility: true,
     },
   })
   if (!parentAgent) {
     throw new Error('Parent agent not found.')
   }
+  const childToolPolicy = parentAgent.toolPolicy
+    ? await stripProtectedExplicitToolPolicy(
+      context.prisma,
+      parentAgent.toolPolicy,
+    )
+    : undefined
 
   const plan = await context.prisma.plan.findFirst({
     where: { runId: context.run.id },
@@ -79,9 +89,15 @@ export const runSpawnSubtaskTool = async (
       data: {
         agentKind: 'shared',
         delegationMode: 'none',
+        effort: parentAgent.effort,
         model: parentAgent.model,
         name: `${parentAgent.name} ${role} ${randomUUID().slice(0, 8)}`,
         organizationId: context.channel.organizationId,
+        // A subtask child answers to the same person as its parent, so spend
+        // and activity stay attributable. It is still kept out of every
+        // ownership-derived list by `parentAgentId` — these are run workers,
+        // not staff (see buildVisibleAgentWhere's stewardship arm).
+        ownerUserId: parentAgent.ownerUserId,
         parentAgentId: parentAgent.id,
         provider: parentAgent.provider,
         role,
@@ -92,7 +108,8 @@ export const runSpawnSubtaskTool = async (
           parentSystemPrompt: parentAgent.systemPrompt,
           role,
         }),
-        toolPolicy: (parentAgent.toolPolicy ?? undefined) as Prisma.InputJsonValue | undefined,
+        toolPolicy: childToolPolicy as Prisma.InputJsonValue | undefined,
+        visibility: parentAgent.visibility,
       },
       select: { id: true, name: true },
     })
@@ -109,6 +126,10 @@ export const runSpawnSubtaskTool = async (
     const run = await tx.run.create({
       data: {
         agentId: childAgent.id,
+        // The PA-presence principal is a run capability, not an agent-kind
+        // detail. Carry it into the shared child so the reduced toolset remains
+        // in force while it acts as the owner's delegate in this room.
+        principalUserId: context.run.principalUserId ?? null,
         status: 'pending',
         threadId: context.run.threadId,
       },
@@ -139,6 +160,9 @@ export const runSpawnSubtaskTool = async (
         messageId: context.run.messageId,
         parentPlanId: plan?.id,
         parentPlanStepId: planStep?.stepId,
+        ...(context.run.principalUserId
+          ? { principalUserId: context.run.principalUserId }
+          : {}),
         promptOverride: task,
         runId: parseRunId(run.id),
         taskId: parseTaskId(childTask.id),

@@ -8,6 +8,7 @@ import {
   SearchThoughtsBodySchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { checkThoughtAudienceAccess } from '../services/thought-audience-access.js'
 import {
   resolveThoughtCaptureAudience,
   resolveThoughtOutputAudience,
@@ -15,7 +16,7 @@ import {
 import type { RouteDeps } from './types.js'
 
 export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { requireActorContext, requireUserActor, thoughtService } = deps
+  const { prisma, requireActorContext, requireUserActor, thoughtService } = deps
 
   const requireThoughtService = (reply: FastifyReply) => {
     if (!thoughtService) {
@@ -57,6 +58,21 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!captureAudience.audience) {
       return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', captureAudience.error)
     }
+    // The audience ids above come from the request body, so confirm the actor
+    // actually belongs to the scope before writing a memory into it.
+    const audienceDenied = await checkThoughtAudienceAccess(
+      prisma,
+      actorContext,
+      captureAudience.audience,
+    )
+    if (audienceDenied) {
+      return sendApiError(
+        reply,
+        403,
+        audienceDenied,
+        'You do not have access to the requested memory audience',
+      )
+    }
 
     const result = await ts.capture({
       content: body.content,
@@ -75,6 +91,15 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       visibility: captureAudience.audience.visibility,
       sensitivityTier: body.sensitivityTier,
       importance: body.importance,
+      sessionId: actorContext.actionContext.sessionId,
+      taskId: actorContext.actionContext.taskId,
+      runId: undefined,
+      agentId: actorContext.actionContext.agentId,
+      actorId: actorContext.actor.actorId,
+      actorType: actorContext.actor.actorType,
+      requestId: actorContext.actionContext.requestId,
+      correlationId: actorContext.actionContext.correlationId,
+      systemComponent: 'memory-capture',
     })
 
     return reply.code(201).send(createApiResponse(result))
@@ -117,6 +142,19 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         sessionId: actorContext.actionContext.sessionId,
         channelId:
           actorContext.actionContext.channelId ?? actorContext.tenant.channelId,
+        projectId: actorContext.tenant.projectId ?? null,
+        teamId:
+          actorContext.tenant.teamId
+          ?? actorContext.actionContext.teamId
+          ?? null,
+        threadId: actorContext.actionContext.threadId ?? null,
+        taskId: actorContext.actionContext.taskId ?? null,
+        agentId: actorContext.actionContext.agentId ?? null,
+        actorId: actorContext.actor.actorId,
+        actorType: actorContext.actor.actorType,
+        requestId: actorContext.actionContext.requestId,
+        correlationId: actorContext.actionContext.correlationId ?? null,
+        systemComponent: 'memory-search',
       })
       return createApiResponse(results)
     } catch (err) {

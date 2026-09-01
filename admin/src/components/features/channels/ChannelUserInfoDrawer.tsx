@@ -41,7 +41,7 @@ const toAvatarSources = (
 ): AvatarSources => ({
   avatarAttachmentId: user.avatarAttachmentId ?? undefined,
   avatarUrl: user.avatarUrl ?? undefined,
-  gravatarUrl: user.gravatarUrl ?? undefined,
+  userId: user.id,
 })
 
 export const ChannelUserInfoDrawer = ({
@@ -71,7 +71,6 @@ export const ChannelUserInfoDrawer = ({
       avatarAttachmentId: fullUser?.avatarAttachmentId ?? target.avatarAttachmentId,
       avatarUrl: fullUser?.avatarUrl ?? target.avatarUrl,
       email: fullUser?.email,
-      gravatarUrl: fullUser?.gravatarUrl ?? target.gravatarUrl,
       role: fullUser?.role,
       displayName: fullUser?.displayName ?? target.displayName,
     }
@@ -121,6 +120,9 @@ export const ChannelUserInfoDrawer = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,
@@ -139,6 +141,7 @@ export const ChannelUserInfoDrawer = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -172,7 +175,7 @@ export const ChannelUserInfoDrawer = ({
       <aside
         aria-label={`${user.displayName} info`}
         className={[
-          'fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
+          'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
           'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
           'shadow-[0_32px_80px_var(--scrim-strong)]',
         ].join(' ')}
@@ -188,7 +191,6 @@ export const ChannelUserInfoDrawer = ({
                 showStatus
                 size={46}
                 token={token}
-                userId={user.id}
               />
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
@@ -208,7 +210,7 @@ export const ChannelUserInfoDrawer = ({
               </div>
             </div>
             <button
-              className="admin-button admin-button-secondary h-9 px-3"
+              className="admin-button admin-button-secondary h-9"
               onClick={onClose}
               type="button"
             >
@@ -260,17 +262,20 @@ export const ChannelUserInfoDrawer = ({
 
         {dmChannel ? (
           <ChannelComposer
+            attachments={attachments}
             isSendPending={isSendPending}
+            sendError={sendError}
             mentionEntities={emptyMentions}
             mentionRef={mentionRef}
             message={message}
             placeholder={`Message ${user.displayName}`}
             onChangeMessage={setMessage}
             onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+            onInsertEmoji={insertEmoji}
             onInsertHashSign={() => mentionRef.current?.insertHashSign()}
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmitForm={(event) => void sendMessageSubmit(event)}
-            onSubmitText={(text) => void sendText(text)}
+            onSubmitText={(text, agentMentions) => void sendText(text, agentMentions)}
             pendingAgentInvites={pendingAgentInvites}
             invitingAgentId={invitingAgentId}
             inviteErrors={inviteErrors}
@@ -279,6 +284,8 @@ export const ChannelUserInfoDrawer = ({
           />
         ) : null}
       </aside>
+
+      {deleteConfirm}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

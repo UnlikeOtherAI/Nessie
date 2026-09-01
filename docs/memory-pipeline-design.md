@@ -158,7 +158,7 @@ thought_artifacts
   thought_id   UUID FK -> thoughts
   artifact_type  TEXT    -- 'file', 'component', 'endpoint', 'column', 'config', 'ui_element', 'concept'
   artifact_ref   TEXT    -- the identifier: 'src/components/SignupForm.tsx', 'signup-form > phone-field'
-  artifact_embedding  vector(1536)  -- embedding of the artifact ref for fuzzy matching
+  artifact_embedding  vector(1024)  -- embedding of the artifact ref for fuzzy matching
   created_at   TIMESTAMPTZ
 ```
 
@@ -176,7 +176,7 @@ thought_recalls
   session_id      TEXT          -- conversation/thread ID
   channel_id      UUID          -- where the recall happened
   query_text      TEXT          -- what query triggered the recall
-  query_embedding vector(1536)  -- the query that found this memory
+  query_embedding vector(1024)  -- the query that found this memory
   similarity      FLOAT         -- cosine similarity score
   rank_position   INT           -- position in search results (1 = top)
   recall_context  TEXT          -- 'semantic_search', 'artifact_lookup', 'agent_retrieval'
@@ -196,7 +196,7 @@ Training data for improving retrieval. Separate table (or separate database late
 recall_training_signals
   id              UUID PK
   query_text      TEXT
-  query_embedding vector(1536)
+  query_embedding vector(1024)
   thought_id      UUID
   similarity      FLOAT
   signal          TEXT    -- 'positive', 'negative_ignored', 'negative_unhelpful', 'negative_harmful'

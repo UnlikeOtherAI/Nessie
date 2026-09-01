@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KEY_NAME="DEEPSIGNAL_MCP_APP_KEY"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+
+IFS= read -r app_key
+if [[ ! "$app_key" =~ ^dsk_[A-Za-z0-9_-]{24,}$ ]]; then
+  echo "Refusing to install an invalid DeepSignal-issued Nessie app key" >&2
+  exit 1
+fi
+
+umask 077
+temp_file="$(mktemp "$SCRIPT_DIR/.env.tmp.XXXXXX")"
+trap 'rm -f -- "$temp_file"' EXIT HUP INT TERM
+
+if [[ -f "$ENV_FILE" ]]; then
+  sed "/^${KEY_NAME}=/d" "$ENV_FILE" > "$temp_file"
+fi
+if [[ -s "$temp_file" && -n "$(tail -c 1 "$temp_file")" ]]; then
+  printf '\n' >> "$temp_file"
+fi
+printf '%s=%s\n' "$KEY_NAME" "$app_key" >> "$temp_file"
+chmod 600 "$temp_file"
+mv -f -- "$temp_file" "$ENV_FILE"
+trap - EXIT HUP INT TERM
+
+unset app_key

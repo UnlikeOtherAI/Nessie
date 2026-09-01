@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { useCreateFeedback } from '../../facades/feedback/hooks'
 import { uploadAttachment } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useShakeFeedback } from '../../providers/ShakeFeedbackContext'
-import { sectionTitleClass } from '../settings/settings-shared'
 
-export const FeedbackComposer = () => {
+export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) => {
   const { token } = useAuthSession()
   const createFeedback = useCreateFeedback()
   const { screenshot, setScreenshot } = useShakeFeedback()
@@ -61,6 +61,7 @@ export const FeedbackComposer = () => {
       setTitle('')
       setBody('')
       setFile(null)
+      onSubmitted()
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to send feedback')
     } finally {
@@ -69,8 +70,8 @@ export const FeedbackComposer = () => {
   }
 
   return (
-    <form className="admin-card max-w-3xl p-4" onSubmit={handleSubmit}>
-      <div className={sectionTitleClass}>Send feedback</div>
+    <form className="admin-card w-full p-4" onSubmit={handleSubmit}>
+      <SectionLabel>Send feedback</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Tell us what&apos;s working or what&apos;s not. Your feedback is filed as a GitHub issue.
       </div>
@@ -90,7 +91,7 @@ export const FeedbackComposer = () => {
       <label className="mt-3 block">
         <span className="text-xs text-[color:var(--tx3)]">Details</span>
         <textarea
-          className="admin-input mt-1 min-h-[120px] resize-y"
+          className="admin-input mt-1 min-h-[120px]"
           maxLength={20000}
           onChange={(event) => setBody(event.target.value)}
           placeholder="What happened, what did you expect, steps to reproduce…"

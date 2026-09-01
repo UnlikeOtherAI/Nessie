@@ -4,18 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "lint": "eslint src --max-warnings 0",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "dev": "pnpm prepare:executor-runtime && tauri dev --config src-tauri/tauri.dev.conf.json",
+    "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
+    "tauri:build": "pnpm prepare:executor-runtime && tauri build",
+    "tauri:build:executor": "pnpm prepare:executor-runtime && node scripts/require-signing-team.mjs && tauri build",
+    "tauri:build:appstore": "node scripts/require-signing-team.mjs && node scripts/prepare-appstore-profile.mjs && tauri build --bundles app --config src-tauri/tauri.appstore.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
-    "@tauri-apps/plugin-opener": "^2.5.4",
-    "@tauri-apps/plugin-notification": "^2.3.3"
+    "@tauri-apps/plugin-opener": "^2.5.4"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.2"
+    "@tauri-apps/cli": "^2.11.2",
+    "esbuild": "^0.27.7"
   }
 }

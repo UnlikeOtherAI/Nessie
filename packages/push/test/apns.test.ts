@@ -36,10 +36,11 @@ class FakeTransport implements ApnsTransport {
   }
 }
 
-test('buildApnsBody includes alert, badge, thread-id, and data', () => {
+test('buildApnsBody puts routing data in Expo\'s remote userInfo.body envelope', () => {
   const body = JSON.parse(
     buildApnsBody({
       title: 'Hi',
+      subtitle: '# General',
       body: 'There',
       badge: 3,
       collapseId: 'chan-1',
@@ -47,8 +48,12 @@ test('buildApnsBody includes alert, badge, thread-id, and data', () => {
     }),
   )
   assert.deepEqual(body, {
-    aps: { alert: { title: 'Hi', body: 'There' }, badge: 3, 'thread-id': 'chan-1' },
-    url: 'nessie://channels/1',
+    aps: {
+      alert: { title: 'Hi', subtitle: '# General', body: 'There' },
+      badge: 3,
+      'thread-id': 'chan-1',
+    },
+    body: { url: 'nessie://channels/1' },
   })
 })
 

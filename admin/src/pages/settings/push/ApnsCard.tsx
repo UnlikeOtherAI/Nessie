@@ -10,7 +10,7 @@ import {
   useTestPush,
   useUploadApns,
 } from '../../../facades/platform-push/hooks'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { PushResultBanner, PushStatusRow } from './shared'
 
 // Derive a Key ID from an `AuthKey_<KEYID>.p8` filename, matching the server's
@@ -85,7 +85,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
 
   return (
     <section className="admin-card p-4">
-      <div className={sectionTitleClass}>Apple (APNs)</div>
+      <SectionLabel>Apple (APNs)</SectionLabel>
 
       {status?.configured && (
         <div className="mt-3 grid gap-1.5 rounded-md bg-[color:var(--main-hover)] p-3 text-sm">
@@ -161,7 +161,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Send test
+                Send test to this iPhone
               </button>
               <button
                 className="admin-button admin-button-secondary"

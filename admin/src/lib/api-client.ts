@@ -6,7 +6,7 @@ export type { ApiClient }
 // single web-specific seam; @nessie/client-core stays env-agnostic and has the
 // base URL injected by the host (here).
 export const getBaseUrl = (): string => {
-  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+  const configuredBaseUrl = import.meta.env?.VITE_API_BASE_URL?.trim()
   return configuredBaseUrl ? configuredBaseUrl.replace(/\/$/, '') : ''
 }
 
@@ -19,9 +19,11 @@ export const createApiClient = (
 // Re-export the shared API data-shape + schema types so existing
 // `import { ... } from '../lib/api-client'` call sites keep working.
 export type {
+  AgentModelOption,
   AgentActivityResponse,
   AgentChild,
   AgentMessage,
+  AgentOwner,
   AgentRecord,
   AgentStatusResponse,
   AgentTriggerDeliveryRecord,
@@ -34,12 +36,33 @@ export type {
   CallRecord,
   ChannelMetadataRecord,
   ChannelRecord,
+  CommsCapabilityState,
+  CommsConnectionDetail,
+  CommsConnectionListResponse,
+  CommsConnectionStartResponse,
+  CommsConnectionStatus,
+  CommsConnectionSummary,
+  CommsProvider,
+  CommsResourceRecord,
+  CommsResourcesPatchRequest,
+  CommsResourceToggle,
+  CommsSyncJobRecord,
+  CommsSyncPhase,
+  CommsSyncStatus,
+  GoogleCapabilityId,
   CreateFeedbackRequest,
   DeepTestReviewDepth,
   DeepTestReviewHandoffRequest,
   DeepWaterResearchDepth,
+  DeepWaterAgentAccessResponse,
+  DeepWaterAgentAccessTarget,
+  DeepWaterResearchLauncherPreset,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
+  ExecutorAccessChangeRequest,
+  ExecutorAccessChangeResponse,
+  ExecutorAccessViewResponse,
+  ExecutorRecordResponse,
   FavoriteRecord,
   FavoriteTargetType,
   FeedbackRecord,
@@ -68,6 +91,7 @@ export type {
   PersonalAssistantBootstrapResponse,
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,
+  PersonalAssistantPresenceParticipant,
   PersonalAssistantStateResponse,
   ProjectMemberRecord,
   ProjectRecord,
@@ -77,14 +101,17 @@ export type {
   ProductMcpInstallationRecord,
   ProductTeamEnablementAuthority,
   ProductTeamEnablementRecord,
-  ProductUsageSummaryRecord,
   SetProductTeamEnablementRequest,
+  SetDeepWaterAgentAccessRequest,
   SessionState,
   TeamRecord,
   ThreadMessageRecord,
   ThreadRecord,
   ToolCallEntry,
   ToolDescriptor,
+  UnreadDirectMessagePreview,
+  UnreadDirectMessageRecord,
+  UnreadDirectMessagesResponse,
   UserActiveStatus,
   UserRecord,
   UserStatusRecord,
@@ -97,6 +124,7 @@ export type {
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowStepRunRecord,
+  WorkflowStepSamplesRecord,
   WorkflowStepRunStatus,
   WorkflowTemplateRecord,
 } from '@nessie/client-core'

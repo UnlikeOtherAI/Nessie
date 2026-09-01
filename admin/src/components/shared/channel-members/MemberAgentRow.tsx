@@ -1,5 +1,6 @@
-import type { AgentRecord } from '../../../lib/api-client'
+import type { AgentRecord, PersonalAssistantPresenceParticipant } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../AgentAvatar'
 import { CloneIcon, CloseIcon, ViewIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
@@ -33,7 +34,7 @@ export const CurrentAgentRow = ({
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
-      <AgentAvatar agent={agent} shape="circle" size="sm" token={token} />
+      <AgentAvatar agent={agent} size="sm" token={token} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-[color:var(--tx)]">
           {agent.name}
@@ -42,16 +43,9 @@ export const CurrentAgentRow = ({
           {agent.role}
         </div>
       </div>
-      <span
-        className={[
-          'rounded border border-[color:var(--accent)]/30',
-          'bg-[color:var(--accent-soft)] px-1.5 py-0.5',
-          'text-[10px] font-semibold uppercase tracking-[0.12em]',
-          'text-[color:var(--thinking)]',
-        ].join(' ')}
-      >
+      <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
         agent
-      </span>
+      </Pill>
       <div className="flex items-center gap-1">
         <button
           className={agentActionBtnClass}
@@ -84,6 +78,63 @@ export const CurrentAgentRow = ({
   )
 }
 
+type CurrentPersonalAssistantRowProps = {
+  currentUserId: string
+  presence: PersonalAssistantPresenceParticipant
+  removePending: boolean
+  onRemove: () => void
+}
+
+/**
+ * The channel-safe projection of a PA presence. It deliberately takes no
+ * AgentRecord and offers no details action: channel peers may see a colleague's
+ * PA as a participant, never its singleton configuration.
+ */
+export const CurrentPersonalAssistantRow = ({
+  currentUserId,
+  presence,
+  removePending,
+  onRemove,
+}: CurrentPersonalAssistantRowProps) => {
+  const { token } = useAuthSession()
+  const isMine = presence.principalUserId === currentUserId
+  return (
+    <div className={rowClass} data-testid={`personal-assistant-presence-${presence.id}`}>
+      <AgentAvatar
+        agent={{
+          avatarAttachmentId: presence.avatarAttachmentId,
+          id: presence.agentId,
+          name: presence.displayName,
+          role: 'Personal Assistant',
+        }}
+        size="sm"
+        token={token}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-[color:var(--tx)]">
+          {presence.displayName}
+        </div>
+        <div className="truncate text-xs text-[color:var(--tx3)]">
+          Personal Assistant
+        </div>
+      </div>
+      <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
+        PA
+      </Pill>
+      {isMine ? (
+        <button
+          className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}
+          disabled={removePending}
+          onClick={onRemove}
+          type="button"
+        >
+          Remove
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 type AvailableAgentRowProps = {
   agent: AgentRecord
   channelId: string
@@ -105,7 +156,7 @@ export const AvailableAgentRow = ({
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
-      <AgentAvatar agent={agent} muted shape="circle" size="sm" token={token} />
+      <AgentAvatar agent={agent} muted size="sm" token={token} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-[color:var(--tx2)]">
           {agent.name}

@@ -40,6 +40,8 @@ const makeApp = (initialPreferences: Record<string, unknown>) => {
       },
     },
     organizationMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })
@@ -107,5 +109,23 @@ test('PATCH /api/auth/me/preferences sets only the fontScale slice, preserving p
 
   assert.equal(response.statusCode, 200)
   assert.deepEqual(state.stored, { pushEnabled: false, theme: 'ocean', fontScale: 'large' })
+  await app.close()
+})
+
+test('PATCH /api/auth/me/preferences stores focus mode without replacing other preferences', async () => {
+  const { app, state } = makeApp({ pushEnabled: true, theme: 'graphite' })
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: '/api/auth/me/preferences',
+    payload: { focusModeEnabled: true },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(state.stored, {
+    focusModeEnabled: true,
+    pushEnabled: true,
+    theme: 'graphite',
+  })
   await app.close()
 })

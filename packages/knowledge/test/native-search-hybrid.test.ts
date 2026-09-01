@@ -191,6 +191,7 @@ test('searchNativePagesHybrid omits the taskId filter when not supplied', async 
 
 const agentScopes = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceViewerAgentScopes => ({
   id: '00000000-0000-4000-8000-000000000020',
+  parentAgentId: null,
   orgBound: true,
   channelIds: new Set(),
   teamIds: new Set(),
@@ -208,7 +209,13 @@ test('searchNativePagesHybrid excludes restricted/other-agent-private chunks for
     },
     knowledgePage: { findMany: async () => [] },
   } as unknown as PrismaClient
-  const agentViewer: SpaceViewer = { bypass: false, userId: null, projectIds: new Set(), agent: agentScopes() }
+  const agentViewer: SpaceViewer = {
+    bypass: false,
+    userId: null,
+    projectIds: new Set(),
+    visibleAgentIds: new Set(),
+    agent: agentScopes(),
+  }
 
   await searchNativePagesHybrid(prisma, {
     organizationId,
@@ -230,7 +237,12 @@ test('searchNativePagesHybrid excludes agent-private chunks entirely for a user 
     },
     knowledgePage: { findMany: async () => [] },
   } as unknown as PrismaClient
-  const userViewer: SpaceViewer = { bypass: false, userId: 'user-1', projectIds: new Set() }
+  const userViewer: SpaceViewer = {
+    bypass: false,
+    userId: 'user-1',
+    projectIds: new Set(),
+    visibleAgentIds: new Set(),
+  }
 
   await searchNativePagesHybrid(prisma, {
     organizationId,
@@ -257,7 +269,12 @@ test('searchNativePagesHybrid adds no chunk-privacy predicate for a bypass viewe
     organizationId,
     query: 'runbook',
     queryEmbedding: null,
-    viewer: { bypass: true, userId: null, projectIds: new Set() },
+    viewer: {
+      bypass: true,
+      userId: null,
+      projectIds: new Set(),
+      visibleAgentIds: new Set(),
+    },
   })
 
   assert.doesNotMatch(queries[0] ?? '', /private_to_agent_id/)

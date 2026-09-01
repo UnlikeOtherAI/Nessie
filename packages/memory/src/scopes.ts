@@ -278,3 +278,158 @@ export const resolveAccessibleScopes = async (
     userPrivateId: null,
   })
 }
+
+/**
+ * The scope chain a destination surface itself sits on. Every `Channel` carries
+ * a complete, non-nullable chain (organization → project → team → channel), so
+ * this is always fully populated for a real destination.
+ */
+export type DestinationScopeChain = {
+  organizationId: string
+  projectId: string
+  teamId: string
+  channelId: string
+}
+
+/**
+ * Containment: narrow accessible scopes to those the *destination* implies.
+ *
+ * `resolveAccessibleScopes` answers "what may this agent, acting for this user,
+ * reach?" — which is deliberately wider than the room the answer lands in. A
+ * shared agent recalling a private-project memory into a channel outside that
+ * project would be disclosing it to everyone present, and once that reply exists
+ * it propagates through the transcript, the realtime wire, consolidated memory,
+ * and every artifact derived from the run.
+ *
+ * Containment removes the possibility rather than tracking it: a run whose
+ * destination is narrower than its reach recalls only what the destination's own
+ * chain already implies, so nothing cross-scope enters the run at all. This is
+ * the safe floor the full disclosure boundary is built behind — see
+ * docs/plans/2026-08-11-disclosure-boundaries-build.md.
+ *
+ * `user`-audience (private) memories are never implied by any destination, so
+ * they are always dropped here. Personal-assistant runs must therefore NOT be
+ * contained — the PA acts as its owner, in a DM whose only human is that owner.
+ *
+ * Structural only: this compares scope ids, never message content.
+ */
+export const constrainScopesToDestination = (
+  scopes: AccessibleScopes,
+  destination: DestinationScopeChain,
+): AccessibleScopes => {
+  const implied = new Set<string>([
+    `organization:${destination.organizationId}`,
+    `project:${destination.projectId}`,
+    `team:${destination.teamId}`,
+    `channel:${destination.channelId}`,
+  ])
+
+  const audienceTypes: string[] = []
+  const audienceIds: string[] = []
+  for (let index = 0; index < scopes.audienceTypes.length; index += 1) {
+    const audienceType = scopes.audienceTypes[index]
+    const audienceId = scopes.audienceIds[index]
+    if (audienceType === undefined || audienceId === undefined) {
+      continue
+    }
+    if (implied.has(`${audienceType}:${audienceId}`)) {
+      audienceTypes.push(audienceType)
+      audienceIds.push(audienceId)
+    }
+  }
+
+  return {
+    audienceTypes,
+    audienceIds,
+    // Past-conversation search narrows to the destination channel for the same
+    // reason: another channel's history is not implied by this room.
+    channelIds: scopes.channelIds.filter((id) => id === destination.channelId),
+  }
+}
+
+/**
+ * A record that carries the shared scoped-content shape: a `visibility` plus the
+ * tenant chain it is scoped against. `Thought` and `KnowledgeSpace` both satisfy
+ * it by construction, which is why one resolver serves both.
+ */
+export type ScopedRecord = {
+  visibility: string
+  organizationId: string
+  projectId?: string | null
+  teamId?: string | null
+  channelId?: string | null
+  userId?: string | null
+}
+
+/**
+ * The single scope a scoped record lives at, in disclosure-basis vocabulary.
+ *
+ * A thought stores its audience as an explicit `(audience_type, audience_id)`
+ * pair, but a knowledge space stores `visibility` plus the chain — the same fact
+ * in a different shape. Resolving it here keeps one mapping from visibility to
+ * audience type instead of a second copy beside every reader.
+ *
+ * Returns null when the record names no id at its own visibility level (a
+ * `private` space with no `userId`, say): there is no scope to be outside of, so
+ * it cannot make a reply privileged.
+ */
+export const scopeForVisibility = (record: ScopedRecord): ScopeRef | null => {
+  switch (record.visibility) {
+    case 'private':
+      return record.userId ? { scopeId: record.userId, scopeType: 'user' } : null
+    case 'channel':
+      return record.channelId ? { scopeId: record.channelId, scopeType: 'channel' } : null
+    case 'team':
+      return record.teamId ? { scopeId: record.teamId, scopeType: 'team' } : null
+    case 'project':
+      return record.projectId ? { scopeId: record.projectId, scopeType: 'project' } : null
+    case 'organization':
+      return { scopeId: record.organizationId, scopeType: 'organization' }
+    default:
+      return null
+  }
+}
+
+export type ScopeRef = { scopeType: string; scopeId: string }
+
+type ThoughtAudienceRow = {
+  audienceType: string | null
+  audienceId: string | null
+}
+
+/**
+ * The audiences a set of recalled thoughts belong to.
+ *
+ * `SearchResult` carries `visibility` but not the audience *id*, and the id is
+ * what a disclosure basis needs — "a project memory" is not privileged, "a
+ * memory scoped to project X" is. Rather than widen the `match_thoughts_*`
+ * function contract, this resolves the audience for the handful of ids a recall
+ * actually returned (at most a page of results).
+ *
+ * Rows with a null audience are skipped: a thought with no audience cannot make
+ * a reply privileged, because there is no scope to be outside of.
+ */
+export const loadThoughtAudiences = async (
+  db: Queryable,
+  thoughtIds: readonly string[],
+): Promise<Array<{ scopeType: string; scopeId: string }>> => {
+  if (thoughtIds.length === 0) {
+    return []
+  }
+
+  const result = await db.query(
+    `SELECT audience_type AS "audienceType", audience_id AS "audienceId"
+     FROM thoughts
+     WHERE id = ANY($1::uuid[])`,
+    [[...thoughtIds]],
+  )
+
+  const scopes: Array<{ scopeType: string; scopeId: string }> = []
+  for (const row of result.rows as ThoughtAudienceRow[]) {
+    if (!row.audienceType || !row.audienceId) {
+      continue
+    }
+    scopes.push({ scopeId: row.audienceId, scopeType: row.audienceType })
+  }
+  return scopes
+}

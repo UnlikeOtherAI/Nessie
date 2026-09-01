@@ -9,6 +9,7 @@ import {
   TeamIdSchema,
   ThreadIdSchema,
   TokenLedgerEventIdSchema,
+  UserIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
@@ -61,6 +62,7 @@ export const TokenLedgerEventResponseSchema = z.object({
   eventId: TokenLedgerEventIdSchema,
   occurredAt: TimestampSchema,
   organizationId: OrganizationIdSchema,
+  userId: UserIdSchema.optional(),
   projectId: ProjectIdSchema.optional(),
   teamId: TeamIdSchema.optional(),
   channelId: ChannelIdSchema.optional(),

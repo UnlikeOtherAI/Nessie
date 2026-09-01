@@ -39,11 +39,15 @@ const policyRow = (effect: 'allow' | 'deny') => ({
   actorId: '*',
 })
 
-const makeSpace = (): KnowledgeSpaceRecord => ({
+const makeSpace = (input: Partial<KnowledgeSpaceRecord> = {}): KnowledgeSpaceRecord => ({
   id: spaceId,
   name: 'Engineering',
   description: null,
   metadata: null,
+  writeRestricted: false,
+  memberUserIds: [],
+  memberAgentIds: [],
+  ownerAgentId: null,
   organizationId,
   projectId,
   teamId: null,
@@ -57,6 +61,7 @@ const makeSpace = (): KnowledgeSpaceRecord => ({
   deletedAt: null,
   createdAt: '2026-05-31T10:00:00.000Z',
   updatedAt: '2026-05-31T10:00:00.000Z',
+  ...input,
 })
 
 const makePage = (input: Partial<KnowledgePageRecord> = {}): KnowledgePageRecord => ({
@@ -137,6 +142,7 @@ const makeProvider = (
     getPage: async () => makePage(),
     getSpace: async () => makeSpace(),
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,
@@ -153,21 +159,28 @@ const makeApp = (
   effect: 'allow' | 'deny',
   providerOverrides: Partial<KnowledgeProvider> = {},
   actorContextOverride: AuthorizedActionContext = actorContext,
+  visibleAgentIds: string[] = [],
 ) => {
   const auditLogs: Array<Record<string, unknown>> = []
   const calls: string[] = []
   const prisma = {
     $queryRaw: async () => (effect === 'allow' ? [policyRow('allow')] : [policyRow('deny')]),
+    // The hash-chain audit writer takes a pg advisory lock + reads the chain tip.
+    $executeRaw: async () => 0,
+    $transaction: async (operation: (tx: unknown) => Promise<unknown>) => operation(prisma),
     auditLog: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         auditLogs.push(data)
       },
+      // The hash-chain audit writer reads the current chain tip first.
+      findFirst: async () => null,
     },
     // The per-space access layer (loadSpaceViewer) resolves the caller's project
     // memberships; the actor is a member of the space's project.
     projectMember: {
       findMany: async () => [{ projectId }],
     },
+    agent: { findMany: async () => visibleAgentIds.map((id) => ({ id })) },
     agentBinding: {
       findMany: async () => [],
     },
@@ -398,5 +411,149 @@ test('knowledge mutations map Prisma unique conflicts without leaking constraint
   assert.equal(payload.error.code, 'KNOWLEDGE_MUTATION_CONFLICT')
   assert.equal(payload.error.message, 'Knowledge base mutation conflict')
   assert.equal(payload.error.message.includes('page_id'), false)
+  await app.close()
+})
+
+test('a plain writer cannot restrict a shared space or edit its membership', async () => {
+  const calls: string[] = []
+  const memberContext: AuthorizedActionContext = {
+    ...actorContext,
+    actor: { ...actorContext.actor, roles: ['member'] },
+  }
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: '00000000-0000-4000-8000-000000000099',
+    }),
+    updateSpace: async () => {
+      calls.push('updateSpace')
+      return makeSpace()
+    },
+  }, memberContext)
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { writeRestricted: true, memberUserIds: [userId] },
+  })
+
+  assert.equal(response.statusCode, 403)
+  assert.equal(response.json().error.code, 'POLICY_DENIED')
+  assert.match(response.json().error.message, /SPACE_ADMIN_REQUIRED/)
+  assert.deepEqual(calls, [])
+  await app.close()
+})
+
+test('a plain writer may still edit non-administrative space details', async () => {
+  const calls: string[] = []
+  const memberContext: AuthorizedActionContext = {
+    ...actorContext,
+    actor: { ...actorContext.actor, roles: ['member'] },
+  }
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: '00000000-0000-4000-8000-000000000099',
+    }),
+    updateSpace: async (_organizationId, _spaceId, input) => {
+      calls.push(input.name ?? '')
+      return makeSpace({ name: input.name ?? 'Engineering' })
+    },
+  }, memberContext)
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { name: 'Platform' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, ['Platform'])
+  await app.close()
+})
+
+test('an entitled administrator can reverse writeRestricted on an agent home they can read', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const agentHomeId = '00000000-0000-4000-8000-000000000099'
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: agentHomeId,
+      ownerAgentId: agentHomeId,
+      visibility: 'private',
+      writeRestricted: true,
+    }),
+    updateSpace: async (_organizationId, _spaceId, input) => {
+      calls.push(input)
+      return makeSpace({
+        createdBy: agentHomeId,
+        ownerAgentId: agentHomeId,
+        visibility: 'private',
+        writeRestricted: input.writeRestricted ?? true,
+      })
+    },
+  }, actorContext, [agentHomeId])
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { writeRestricted: false },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, [{ writeRestricted: false }])
+  await app.close()
+})
+
+// The session's `proj` claim is only the caller's oldest project membership, so
+// scoping the space list to it hid org-visibility spaces filed in a sibling
+// project and the caller's own "My Docs" when it lived under another project —
+// and an empty list makes the admin seed a duplicate "General". What the caller
+// may see is canReadSpace's decision inside listSpaces, not their session.
+test('knowledge space listing is organization-wide unless a project is requested', async () => {
+  const seen: Array<string | undefined> = []
+  const { app } = makeApp('allow', {
+    listSpaces: async (input) => {
+      seen.push(input.projectId)
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+
+  const orgWide = await app.inject({ method: 'GET', url: '/api/knowledge-base/spaces' })
+  assert.equal(orgWide.statusCode, 200)
+
+  const otherProjectId = '00000000-0000-4000-8000-0000000000a1'
+  const narrowed = await app.inject({
+    method: 'GET',
+    url: `/api/knowledge-base/spaces?projectId=${otherProjectId}`,
+  })
+  assert.equal(narrowed.statusCode, 200)
+
+  assert.deepEqual(seen, [undefined, otherProjectId])
+  await app.close()
+})
+
+test('knowledge search is organization-wide unless a project is requested', async () => {
+  const seen: Array<string | undefined> = []
+  const { app } = makeApp('allow', {
+    searchPagesHybrid: async (input) => {
+      seen.push(input.projectId)
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+
+  const orgWide = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook' },
+  })
+  assert.equal(orgWide.statusCode, 200)
+
+  const otherProjectId = '00000000-0000-4000-8000-0000000000a2'
+  const narrowed = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook', projectId: otherProjectId },
+  })
+  assert.equal(narrowed.statusCode, 200)
+
+  assert.deepEqual(seen, [undefined, otherProjectId])
   await app.close()
 })

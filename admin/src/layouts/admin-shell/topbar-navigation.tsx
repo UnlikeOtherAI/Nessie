@@ -2,6 +2,8 @@ import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } fro
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
+import { recordSectionRoute } from './section-route-memory'
+import { useTransientMenu } from './TransientMenuContext'
 
 // Tracks position in the SPA history so the back/forward buttons can disable at
 // the ends. New navigations (PUSH) advance the cursor and clear the forward
@@ -44,6 +46,20 @@ export const useHistoryNav = () => {
   return { goBack, goForward, canBack: posRef.current > 0, canForward: fwdRef.current > 0 }
 }
 
+// Remember the reader's place in each top-level section so its rail tab returns
+// there instead of the section root. Runs once at the shell so every route
+// change is recorded, whichever section it belongs to.
+export const useRecordSectionRoute = () => {
+  const location = useLocation()
+
+  useEffect(() => {
+    recordSectionRoute(
+      location.pathname,
+      `${location.pathname}${location.search}${location.hash}`,
+    )
+  }, [location.pathname, location.search, location.hash])
+}
+
 export const useRecordRecentChannelVisits = () => {
   const location = useLocation()
   const { data: channels = [] } = useChannels()
@@ -54,6 +70,46 @@ export const useRecordRecentChannelVisits = () => {
     const channel = channels.find((entry) => entry.id === match[1])
     if (channel) recordRecentChannel({ id: channel.id, label: channel.label })
   }, [location.pathname, channels])
+}
+
+type RecentChannelsControlProps = {
+  buttonClassName?: string
+}
+
+// Reuse the same recents menu in each presentation of the global phone/tablet
+// header so its history and navigation always agree.
+export const RecentChannelsControl = ({
+  buttonClassName = 'admin-topbar-btn',
+}: RecentChannelsControlProps): React.JSX.Element => {
+  const { close, isOpen: open, toggle } = useTransientMenu()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) close()
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [close, open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        aria-label="Recent channels"
+        className={buttonClassName}
+        onClick={toggle}
+        title="Recent channels"
+        type="button"
+      >
+        <svg fill="none" height="22" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="22">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? <RecentChannelsMenu onSelect={close} /> : null}
+    </div>
+  )
 }
 
 type RecentChannelsMenuProps = {
@@ -88,7 +144,7 @@ export const RecentChannelsMenu = ({
             type="button"
           >
             <span className="text-[color:var(--tx3)]">#</span>
-            <span className="truncate">{channel.label}</span>
+            <span className="min-w-0 flex-1 truncate">{channel.label}</span>
           </button>
         ))
       )}

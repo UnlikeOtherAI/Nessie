@@ -1,5 +1,5 @@
 import { useTheme, type Theme } from '../../../providers/ThemeProvider'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const THEME_SWATCHES: Record<Theme, readonly [string, string, string]> = {
   contrast: ['#000000', '#facc15', '#ffffff'],
@@ -32,7 +32,7 @@ export const ColoursPanel = () => {
 
   return (
     <section className="admin-card max-w-3xl p-4">
-      <div className={sectionTitleClass}>Theme</div>
+      <SectionLabel>Theme</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Choose the admin color palette for your account.
       </div>

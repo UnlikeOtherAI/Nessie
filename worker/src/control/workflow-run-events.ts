@@ -6,6 +6,7 @@ import {
   parseTeamId,
   type AuthorizedActionContext,
   type TriggerEventDispatchJobPayload,
+  type WorkflowRunFailureDispatchJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../queue.js'
 
@@ -41,10 +42,15 @@ export type WorkflowGraphForEvents = {
     projectId: string | null
     teamId: string | null
     workflowTemplateId?: string | null
+    workflowTemplate?: { name?: string | null } | null
   }
   run: {
     id: string
     organizationId: string
+    originChannelId?: string | null
+    originMessageId?: string | null
+    originThreadId?: string | null
+    replyRootMessageId?: string | null
     startedByActorId: string
     startedByActorType: string
   }
@@ -143,11 +149,137 @@ export const emitWorkflowRunTerminalEvent = async (
       payload: job.payload,
       topic: job.topic,
     })
+    if (status === 'failed') {
+      // W23: the failure also reaches a human through the push pipeline. The
+      // payload carries ids only — no raw error or input data.
+      const failureDispatch: WorkflowRunFailureDispatchJobPayload = {
+        organizationId: context.organizationId,
+        workflowInstallationId: context.workflowInstallationId,
+        workflowRunId: context.workflowRunId,
+      }
+      await enqueueQueueJob(prisma, {
+        idempotencyKey: `workflow-run-failure:${context.workflowRunId}`,
+        payload: failureDispatch,
+        topic: 'workflow.run.failure-dispatch',
+      })
+    }
   } catch (error) {
     console.error('[workflow-run-events] failed to enqueue workflow run terminal event', {
       error,
       status,
       workflowRunId: context.workflowRunId,
+    })
+  }
+}
+
+// ─── W21: run cards in the channel ──────────────────────────────────────────
+
+export type WorkflowRunCardPrisma = Pick<PrismaClient, 'message' | 'thread' | 'workflowTemplate'>
+
+const WORKFLOW_RUN_CARD_COPY: Record<WorkflowRunTerminalStatus, (name: string) => string> = {
+  completed: (name) => `✅ Workflow “${name}” finished.`,
+  failed: (name) => `❌ Workflow “${name}” failed.`,
+}
+
+/**
+ * Posts the finish/fail card into the run's origin channel. W25's explicit
+ * `originChannelId` (a run started from a conversation) always earns a card;
+ * the installation's ambient channel does not — a channel-bound installation's
+ * own `message_send` step already speaks there, and an automatic card would
+ * double-post (the flagship watcher completes without posting anything). The card is
+ * an ordinary assistant-role message carrying
+ * `metadata.workflowRun = { workflowRunId, installationId, status }` — the
+ * same pattern as budget-stop notices (`metadata.runStop`) — and the admin
+ * renders the Retry affordance from that metadata, never from the text.
+ *
+ * Targets the origin thread when W25 recorded one; otherwise the origin (or
+ * installation) channel's default thread. Never throws: a lost card must not
+ * fail run bookkeeping that already committed.
+ */
+export const postWorkflowRunCard = async (
+  prisma: WorkflowRunCardPrisma,
+  workflow: WorkflowGraphForEvents,
+  status: WorkflowRunTerminalStatus,
+): Promise<void> => {
+  try {
+    const channelId = workflow.run.originChannelId
+    if (!channelId) {
+      return
+    }
+
+    let threadId = workflow.run.originThreadId ?? null
+    if (!threadId) {
+      const channel = await prisma.thread.findFirst({
+        where: { channelId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      threadId = channel?.id ?? null
+    }
+    if (!threadId) {
+      return
+    }
+
+    const templateName =
+      workflow.installation.workflowTemplate?.name ??
+      (workflow.installation.workflowTemplateId
+        ? (
+            await prisma.workflowTemplate.findUnique({
+              where: { id: workflow.installation.workflowTemplateId },
+              select: { name: true },
+            })
+          )?.name
+        : null) ??
+      'workflow'
+
+    const metadata = {
+      workflowRun: {
+        installationId: workflow.installation.id,
+        status,
+        workflowRunId: workflow.run.id,
+      },
+    }
+
+    // Dedupe by content identity: a card for this (run, status) may already
+    // exist when a terminal transition is applied exactly once but the card
+    // write raced a retry of the emitting path. The terminal-status write is
+    // guarded (applied: false on a repeat), so this is only a backstop.
+    const existing = await prisma.message.findFirst({
+      where: {
+        threadId,
+        metadata: {
+          path: ['workflowRun', 'workflowRunId'],
+          equals: workflow.run.id,
+        },
+      },
+      select: { id: true, metadata: true },
+    })
+    if (
+      existing &&
+      (existing.metadata as { workflowRun?: { status?: string } } | null)?.workflowRun?.status ===
+        status
+    ) {
+      return
+    }
+
+    await prisma.message.create({
+      data: {
+        agentId: null,
+        content: WORKFLOW_RUN_CARD_COPY[status](templateName),
+        metadata,
+        role: 'assistant',
+        threadId,
+        userId: null,
+        ...(workflow.run.replyRootMessageId
+          ? { rootMessageId: workflow.run.replyRootMessageId }
+          : {}),
+      },
+    })
+  } catch (error) {
+    console.error('[workflow-run-card] failed to post channel card', {
+      error,
+      status,
+      workflowRunId: workflow.run.id,
     })
   }
 }

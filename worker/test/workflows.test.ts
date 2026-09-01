@@ -86,8 +86,8 @@ test('mergeStepRunOutput preserves existing object when incoming is undefined', 
   assert.deepEqual(mergeStepRunOutput({ foo: 1 }, undefined), { foo: 1 })
 })
 
-test('resolveWorkflowStepInput binds workflow input and previous step output references', () => {
-  const resolved = resolveWorkflowStepInput(
+test('resolveWorkflowStepInput binds workflow input and previous step output references', async () => {
+  const resolved = await resolveWorkflowStepInput(
     {
       details: 'Watch {{workflow.input.url}} with {{workflow.bindings.channelId}}',
       nested: {
@@ -131,15 +131,14 @@ test('resolveWorkflowStepInput binds workflow input and previous step output ref
   })
 })
 
-test('resolveWorkflowStepInput throws when a binding cannot be resolved', () => {
-  assert.throws(
-    () =>
-      resolveWorkflowStepInput('{{steps.missing.output}}', {
-        stepSnapshots: {},
-        workflowBindings: {},
-        workflowConfig: {},
-        workflowInput: {},
-      }),
+test('resolveWorkflowStepInput throws when a binding cannot be resolved', async () => {
+  await assert.rejects(
+    resolveWorkflowStepInput('{{steps.missing.output}}', {
+      stepSnapshots: {},
+      workflowBindings: {},
+      workflowConfig: {},
+      workflowInput: {},
+    }),
     /WORKFLOW_BINDING_NOT_FOUND:steps\.missing\.output/,
   )
 })

@@ -1,4 +1,5 @@
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { computeFingerprint } from './fingerprint.js'
@@ -19,6 +20,18 @@ export type CaptureThoughtInput = {
   channelId?: string
   threadId?: string
   userId?: string
+  sessionId?: string
+  taskId?: string
+  runId?: string
+  agentId?: string
+  agentKind?: 'personal_assistant' | 'shared' | 'system'
+  actorId?: string
+  actorType?: 'user' | 'agent' | 'service' | 'system'
+  requestId?: string
+  correlationId?: string
+  systemComponent?: string
+  toolCallId?: string
+  inferenceAttribution?: LedgerAttribution
   visibility?: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
   memoryType?: ThoughtMemoryType
@@ -73,8 +86,6 @@ const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility
   organization: 'organization',
 }
 
-const CURRENT_EMBEDDING_DIMS = 1536
-const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small'
 
 const CATEGORY_BY_METADATA_TYPE: Record<ThoughtMetadata['type'], ThoughtMemoryCategory> = {
   constraint: 'constraint',
@@ -171,20 +182,34 @@ const resolveAudience = (
   }
 }
 
-// Attribution for the embedding/extraction model calls, derived from the
-// capture input the memory already carries (owner is the actor; the scope is the
-// tenant). Lets memory usage be billed without threading actorContext through
-// every caller.
-const buildCaptureAttribution = (input: CaptureThoughtInput): LedgerAttribution => ({
-  organizationId: input.organizationId,
-  projectId: input.projectId ?? null,
-  teamId: input.teamId ?? null,
-  channelId: input.channelId ?? null,
-  threadId: input.threadId ?? null,
-  actorId: input.ownerId,
-  actorType: input.ownerType,
-  agentId: input.privateToAgentId ?? (input.ownerType === 'agent' ? input.ownerId : null),
-})
+// Attribution for the embedding/extraction model calls. Ordinary captures
+// derive it from the memory owner/scope; durable background jobs provide an
+// immutable inferenceAttribution so storage scope cannot replace billing scope.
+const buildCaptureAttribution = (input: CaptureThoughtInput): LedgerAttribution =>
+  input.inferenceAttribution ?? ({
+    organizationId: input.organizationId,
+    userId:
+      input.userId
+      ?? (input.ownerType === 'user' ? input.ownerId : null),
+    projectId: input.projectId ?? null,
+    teamId: input.teamId ?? null,
+    channelId: input.channelId ?? null,
+    threadId: input.threadId ?? null,
+    sessionId: input.sessionId ?? null,
+    taskId: input.taskId ?? null,
+    runId: input.runId ?? null,
+    actorId: input.actorId ?? input.ownerId,
+    actorType: input.actorType ?? input.ownerType,
+    agentId:
+      input.agentId
+      ?? input.privateToAgentId
+      ?? (input.ownerType === 'agent' ? input.ownerId : null),
+    agentKind: input.agentKind ?? null,
+    requestId: input.requestId ?? null,
+    correlationId: input.correlationId ?? null,
+    systemComponent: input.systemComponent ?? 'memory-capture',
+    ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+  })
 
 export const captureThought = async (
   input: CaptureThoughtInput,
@@ -322,8 +347,8 @@ export const captureThought = async (
         importance,
         mergedMetadata ? JSON.stringify(mergedMetadata) : null,
         input.privateToAgentId ?? null,
-        embedding ? CURRENT_EMBEDDING_MODEL : null,
-        embedding ? CURRENT_EMBEDDING_DIMS : null,
+        embedding ? config.modelClient.embeddingModel : null,
+        embedding ? EMBEDDING_DIMENSIONS : null,
         memoryType,
         memoryCategory,
       ],

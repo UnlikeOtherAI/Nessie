@@ -28,11 +28,17 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "resources/executor-runtime/": "executor-runtime/"
+    },
     "targets": "all",
     "publisher": "UnlikeOtherAI",
     "copyright": "Copyright (c) 2026 UnlikeOtherAI",
@@ -47,7 +53,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "10.13",
+      "minimumSystemVersion": "15.0",
       "signingIdentity": null
     },
     "windows": {

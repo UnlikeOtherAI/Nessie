@@ -76,7 +76,7 @@ Ship the first version that feels like a real product:
   - Docker mode
   - non-Docker mode with `nessie local doctor`
 - JWT-based auth with:
-  - local bootstrap path for first-user creation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a)
+  - local bootstrap path for first-user creation (see [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) section 4.3a)
   - Fastify `preHandler` auth middleware producing `AuthorizedActionContext` (see section 4.3c)
   - hosted default path
   - self-hosted/local configurable providers
@@ -274,14 +274,14 @@ These are Phase 1 code assumptions that **must be fixed** before or during Phase
 
 #### Critical — security / correctness
 
-1. **WebSocket subscriptions bypass channel privacy.** Events are published at org scope (`worker/src/run/execute.ts`, `api/src/index.ts`), and the hub delivers on org match alone (`api/src/realtime/hub.ts`). Phase 2 must filter WS events by channel membership/privacy before delivery. **Status: NOT FIXED.**
+1. **WebSocket subscriptions bypass channel privacy.** Events were once published at org scope and delivered on org match alone. **Status: FIXED (re-verified 2026-07-23).** All three realtime delivery paths now enforce channel privacy both at subscribe time and at delivery: (a) WS (`api/src/routes/activity.ts:81`) filters requested scopes through `filterAuthorizedScopes` (`api/src/lib/request-helpers.ts:446`) before registration, and delivery re-checks every channel scope via `shouldDeliverWsNotification` + `canAccessChannelEvent` (`api/src/realtime/hub.ts:63,173`); (b) user SSE (`api/src/routes/events.ts:31`) derives scopes from the caller's own memberships via `resolveUserChannelRealtimeScopes` (`api/src/services/realtime-events.ts:73`), delivery re-checks with `getVisibleChannel`, and the `Last-Event-ID` replay (`realtimeEventStore.listAfter`) is scoped to the connection's authorized `channelIds` + org; (c) thread SSE (`api/src/routes/threads.ts:289`) authorizes at subscribe with `findThreadForUser` (public-or-member, org-scoped; `api/src/services/messages.ts:121`) and its `listThreadEvents` replay is bound to that one authorized thread. Regression coverage: `api/test/security-scoping.test.ts` (delivery filter) + `api/test/realtime-subscription-authz.test.ts` (subscribe-time authz).
 2. **Shared-agent REST endpoints leak cross-channel history.** Agent status/activity/messages loaders return global history without channel scoping (`api/src/services/agents.ts`). Phase 2 must scope agent data queries to the caller's accessible channels. **Status: NOT FIXED.**
-3. **Agent binding has no authorization check.** Any user who can see a channel can bind any known agent (`api/src/index.ts`, `api/src/services/agents.ts:498`). Phase 2 must enforce policy check on `agent.bind`. **Status: NOT FIXED.**
+3. **Agent binding has no authorization check.** **Status: FIXED (re-verified 2026-07-23).** `POST/DELETE /api/agents/:agentId/bindings` (`api/src/routes/agents.ts:222,281`) now require channel membership (`getChannelIfMember`), the `owner` role (`requireOwner`), and an `agent`/`bind` policy verdict (`checkPolicy`) before mutating. The service (`bindAgentToChannel`, `api/src/services/agent-bindings.ts:15`) looks up BOTH the agent and the channel scoped to the caller's `organizationId`, so a cross-tenant agent or channel yields `null` and no binding is written. System-managed agents and the Personal Assistant DM are refused. Regression coverage: `api/test/realtime-subscription-authz.test.ts` (cross-org agent bind rejected).
 4. **`NESSIE_AUTH_SECRET` fallback to per-process random breaks multi-instance.** API falls back to in-memory random (`api/src/index.ts:150`). On Cloud Run with multiple instances, tokens from one instance fail on another. Phase 2 must require a persistent shared secret or use Cloud KMS. **Status: NOT FIXED.**
 
 #### High — architectural prerequisites
 
-5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec.md). **Status: NOT FIXED.**
+5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec/overview.md). **Status: NOT FIXED.**
 6. **Login and SSO auto-provision hardcode bootstrap org/project/team IDs.** All auth paths issue reserved bootstrap container IDs. Phase 2 must resolve user's actual memberships from DB. **Status: NOT FIXED.**
 7. **Worker ignores `actorContext`.** Jobs carry context (`packages/schemas`) but `executeRunJob` only unpacks `sessionId`/`userId` (`worker/src/run/execute.ts:532–571`) — never uses it for policy, approval, audit, or ledger. Phase 2 must propagate and enforce. **Status: PARTIAL — carried but unused.**
 8. **Run execution is not idempotent.** `QueueJob.idempotencyKey` field exists in Prisma schema but no "already completed" guard in worker. At-least-once queue retries can duplicate output. Phase 2 must add idempotency boundaries per control-plane invariant #2. **Status: PARTIAL — schema field exists, enforcement missing.**
@@ -325,7 +325,7 @@ Schema partially done: `Project`, `Team`, `ProjectMember`, `TeamMember` models e
 - Identity Platform integration for hosted auth default
 - Fix `NESSIE_AUTH_SECRET` random fallback (prerequisite #4): require persistent shared secret or Cloud KMS
 - Fix bootstrap org/project/team ID hardcoding in login/SSO paths (prerequisite #6)
-- See [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- See [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 
 #### Step 2: Channel privacy and membership-aware discovery
 
@@ -438,7 +438,7 @@ The agent column browser, agent designer studio, and agent categories UI are alr
 - [model-provider-connector-spec.md](./model-provider-connector-spec.md) — inference connectors, routing, mediation, and evals
 - [organization-governance-spec.md](./organization-governance-spec.md) — multi-tenant governance model
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) — shared type contracts (Phase 2 additions)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) — auth modes and deployment modes
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) — auth modes and deployment modes
 
 ## Phase 3: Tooling and Knowledge Platform MVP
 
@@ -504,7 +504,7 @@ These are Phase 2 code assumptions that **must be fixed** before or during Phase
 
 #### Critical -- secrets
 
-5. **Model API keys read from raw env vars.** `packages/config/src/index.ts` reads `NESSIE_MODEL_API_KEY`, `OPENAI_API_KEY`, `MINIMAX_API_KEY` directly from environment. Phase 3 must integrate secret vault with encrypted storage, `secretRef` resolution, and audit.
+5. **Model API keys read from raw env vars.** `packages/config/src/index.ts` reads `NESSIE_MODEL_API_KEY`, `OPENAI_API_KEY`, and provider-specific fallbacks directly from environment. Phase 3 must integrate secret vault with encrypted storage, `secretRef` resolution, and audit.
 6. **OAuth client secrets unencrypted in config.** `api/src/services/external-auth.ts` stores provider credentials in plain config. Phase 3 must use `SecretRecord` for provider secrets.
 
 #### High -- verification and auth
@@ -739,6 +739,28 @@ At the end of phase 5, an organization should be able to:
 
 Phase 5 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots, hosted/self-hosted deployment paths, and enterprise control surfaces.
 
+## 2.1) Individual Communications Connector phases
+
+A cross-cutting workstream (independent of the Phase 1–5 platform milestones)
+that lets each user connect their own Slack / Google / Microsoft account so
+their external communications flow into the shared `CommsEvent` model as a
+Chief-of-Staff observation source. The connector layer is strictly
+auth/retrieval/sync/normalization — no business intelligence. Foundation
+(Prisma models, the `@nessie/comms-connect` provider-agnostic core, and the
+worker sync/renewal pipeline) lands first; provider adapters, OAuth routes, and
+UI build on it. See
+[plans/2026-07-21-individual-communications-connector.md](./plans/2026-07-21-individual-communications-connector.md).
+
+- **Phase 1 — Gmail + Slack (personal):** per-user OAuth connect, history
+  back-fill, incremental sync, and webhook/watch ingestion for a single user's
+  Gmail and Slack.
+- **Phase 2 — Microsoft Graph:** Teams chats/channels and Outlook mail/folders
+  via Microsoft Graph, including Graph subscription renewal.
+- **Phase 3 — enterprise admin:** org-admin-scoped installs, tenant-wide
+  consent, and per-workspace governance over which resources sync.
+- **Phase 4 — additional systems:** further communication and collaboration
+  sources normalized into the same event model.
+
 ## 3) MVP definition
 
 For this roadmap, the MVP is Phase 1 plus the minimum hosted packaging needed to demo it credibly.
@@ -797,7 +819,7 @@ This must be built first. Nothing else can import types or config until this exi
 ### Step 2: API service
 
 - `/api` on Fastify
-- Fastify auth middleware with JWT validation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3c)
+- Fastify auth middleware with JWT validation (see [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) section 4.3c)
 - bootstrap endpoint: `POST /api/auth/bootstrap`
 - auth endpoints: `GET /api/auth/providers`, `POST /api/auth/session`, `DELETE /api/auth/session`, `GET /api/auth/me`
 - CRUD endpoints:
@@ -878,7 +900,7 @@ Minimum gate set:
 ## 6) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
 - [phase1-prisma-schema.md](./phase1-prisma-schema.md)

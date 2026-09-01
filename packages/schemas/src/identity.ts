@@ -5,6 +5,7 @@ import {
   OrganizationIdSchema,
   ProjectIdSchema,
   TeamIdSchema,
+  ThreadIdSchema,
   UserIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
@@ -19,6 +20,14 @@ export const AuthProviderResponseTypeSchema = z.enum([
 export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSchema>
 
 const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
+const HttpUrlSchema = z.string().url().refine(
+  (value) => {
+    const protocol = new URL(value).protocol
+    return protocol === 'http:' || protocol === 'https:'
+  },
+  { message: 'URL must use HTTP or HTTPS' },
+)
 
 const isIanaTimeZone = (value: string): boolean => {
   try {
@@ -38,12 +47,50 @@ export const PushQuietHoursSchema = z.object({
 })
 export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
 
+// A structured, foreground destination. This is intentionally not a free-form
+// URL: delivery can only suppress a notification for a concrete surface it
+// already understands how to target.
+export const PushSurfaceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('channel'),
+    channelId: ChannelIdSchema,
+    // A channel can host more than one independent conversation. Presence must
+    // identify the exact thread so one open conversation never hides a banner
+    // or a native push for another.
+    threadId: ThreadIdSchema,
+    // `null` is the channel's top-level feed; a UUID is one message-level
+    // reply conversation within that thread container.
+    // Defaulting absent values keeps already-installed clients safe during the
+    // server-first rollout: old feed heartbeats mean the main channel feed.
+    rootMessageId: z.string().uuid().nullable().default(null),
+  }),
+  z.object({ kind: z.literal('ops_usage') }),
+  z.object({ kind: z.literal('project_board'), projectId: ProjectIdSchema }),
+  z.object({ kind: z.literal('knowledge_space'), spaceId: z.string().uuid() }),
+])
+export type PushSurface = z.infer<typeof PushSurfaceSchema>
+
 export const UserPreferencesSchema = z.object({
   starred: z.array(z.object({
     type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
   })).optional(),
   pushEnabled: z.boolean().optional(),
+  // Focus is a deliberate, across-device pause: the client mutes in-app
+  // attention cues while the worker withholds system push delivery.
+  focusModeEnabled: z.boolean().optional(),
+  // Per-event delivery controls default to enabled when absent so existing
+  // users retain the current important-notifications behaviour.
+  pushMessages: z.boolean().optional(),
+  pushMentions: z.boolean().optional(),
+  pushIncomingCalls: z.boolean().optional(),
+  pushBudgetAlerts: z.boolean().optional(),
+  // A scheduled task that stopped running. Its own switch rather than a share
+  // of budget alerts: silencing spend warnings must not silence the discovery
+  // that automation has died, which is a different question entirely.
+  pushTriggerHealth: z.boolean().optional(),
+  pushAssignedWork: z.boolean().optional(),
+  pushPublishedKnowledge: z.boolean().optional(),
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
   pushQuietHours: PushQuietHoursSchema.nullish(),
   theme: z.enum([
@@ -63,18 +110,17 @@ export const UserPreferencesSchema = z.object({
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 
-// Avatar precedence (resolved by the client): `avatarAttachmentId` (a
-// user-uploaded custom avatar, served via GET /api/attachments/:id) overrides
-// `avatarUrl` (the provider/Google picture), which overrides `gravatarUrl`
-// (derived from the email, served with d=404 so a missing Gravatar falls through
-// to initials).
+// Avatar precedence (resolved by the client): the UnlikeOtherAI-hosted picture
+// (relayed at GET /api/users/:id/avatar, 404 for an unlinked user) comes first
+// — UOA owns the profile — then `avatarAttachmentId` (a locally uploaded
+// avatar, only reachable in deployments with no UOA), then `avatarUrl` (the
+// provider/Google picture), then initials.
 export const MeUserSchema = z.object({
   id: UserIdSchema,
   email: z.string().email(),
   displayName: NonEmptyStringSchema,
   avatarUrl: z.string().url().optional(),
   avatarAttachmentId: z.string().uuid().optional(),
-  gravatarUrl: z.string().url().optional(),
   pronouns: z.string().optional(),
   roleIds: z.array(NonEmptyStringSchema),
   superAdmin: z.boolean().default(false),
@@ -84,8 +130,10 @@ export type MeUser = z.infer<typeof MeUserSchema>
 
 export const UpdatePreferencesSchema = UserPreferencesSchema
 
-// Set or clear the signed-in user's custom avatar. `null` clears it, reverting
-// to the provider picture / Gravatar. Mirrors UpdateOrganizationLogoRequest.
+// Set or clear the signed-in user's local avatar. `null` clears it, reverting
+// to the provider picture / initials. Refused for a UOA session, whose profile
+// picture is owned by UOA and changed through the relay
+// (PUT/DELETE /api/auth/me/avatar/uoa).
 export const UpdateMyAvatarRequestSchema = z.object({
   avatarAttachmentId: z.string().uuid().nullable(),
 })
@@ -97,6 +145,28 @@ export const MeSessionSchema = z.object({
   expiresAt: TimestampSchema.optional(),
 })
 export type MeSession = z.infer<typeof MeSessionSchema>
+
+// A native shell names itself when it creates or renews a session. Browser
+// sessions deliberately remain null: their browser and device are derived
+// from the user-agent at the presentation boundary.
+export const SessionClientTypeSchema = z.enum([
+  'native-desktop',
+  'native-ios',
+  'native-android',
+  'native-mobile',
+])
+export type SessionClientType = z.infer<typeof SessionClientTypeSchema>
+
+export const SessionSummarySchema = z.object({
+  sessionId: z.string().uuid(),
+  userAgent: z.string().nullable(),
+  clientType: SessionClientTypeSchema.nullable(),
+  createdAt: z.string().datetime(),
+  lastUsedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  current: z.boolean(),
+})
+export type SessionSummary = z.infer<typeof SessionSummarySchema>
 
 export const MeContextSchema = z.object({
   organizationId: OrganizationIdSchema,
@@ -129,6 +199,33 @@ export const MeMembershipSchema = z.object({
 })
 export type MeMembership = z.infer<typeof MeMembershipSchema>
 
+export const UoaWorkspaceDirectoryEntrySchema = z.object({
+  organizationId: z.string().min(1),
+  teamId: z.string().min(1),
+  // The local team id is only present when this person belongs to the Nessie
+  // environment that mirrors the UOA workspace. It authorizes the workspace
+  // picker to use the membership-scoped company-avatar relay.
+  avatarTeamId: TeamIdSchema.optional(),
+  // Public UOA-hosted image for directory entries that have not yet been
+  // materialized as local Nessie teams. UOA may return a root-relative value,
+  // but the API always exposes it here as an absolute HTTP(S) URL.
+  avatarImageUrl: HttpUrlSchema.optional(),
+  label: z.string().min(1),
+  orgName: z.string().min(1).optional(),
+  active: z.boolean(),
+})
+export type UoaWorkspaceDirectoryEntry = z.infer<typeof UoaWorkspaceDirectoryEntrySchema>
+
+export const UoaPendingWorkspaceInviteSchema = z.object({
+  inviteId: z.string().min(1),
+  organizationId: z.string().min(1),
+  teamId: z.string().min(1),
+  teamName: z.string().min(1),
+  invitedBy: z.string().min(1).optional(),
+  expiresAt: TimestampSchema.optional(),
+})
+export type UoaPendingWorkspaceInvite = z.infer<typeof UoaPendingWorkspaceInviteSchema>
+
 export const SetChannelMuteRequestSchema = z.object({
   muted: z.boolean(),
 })
@@ -140,6 +237,10 @@ export const MeResponseSchema = z.object({
   context: MeContextSchema,
   auth: MeAuthSchema,
   memberships: z.array(MeMembershipSchema).optional(),
+  uoaWorkspaces: z.array(UoaWorkspaceDirectoryEntrySchema).optional(),
+  // Present (including as []) only when this process has a verified UOA
+  // directory response. A cold-cache local fallback has no invite knowledge.
+  uoaPendingInvites: z.array(UoaPendingWorkspaceInviteSchema).optional(),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
@@ -148,6 +249,7 @@ export const OrganizationSummarySchema = z.object({
   name: z.string(),
   role: z.string(),
   logoAttachmentId: z.string().uuid().nullable(),
+  stripImageMetadata: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 
@@ -157,17 +259,25 @@ export const UpdateOrganizationLogoRequestSchema = z.object({
 })
 export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
 
-// Owners/admins update the org profile: rename and/or set/clear the logo. Each
-// field is optional so a name-only or logo-only PATCH leaves the other intact;
+// Owners/admins update the org profile: rename, set/clear the logo, and/or
+// toggle EXIF/GPS metadata stripping on image uploads (default on). Each field
+// is optional so a name-only or logo-only PATCH leaves the others intact;
 // at least one must be present.
 export const UpdateOrganizationRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
     logoAttachmentId: z.string().uuid().nullable().optional(),
+    stripImageMetadata: z.boolean().optional(),
   })
-  .refine((body) => body.name !== undefined || body.logoAttachmentId !== undefined, {
-    message: 'Provide a name or logoAttachmentId to update',
-  })
+  .refine(
+    (body) =>
+      body.name !== undefined ||
+      body.logoAttachmentId !== undefined ||
+      body.stripImageMetadata !== undefined,
+    {
+      message: 'Provide a name, logoAttachmentId or stripImageMetadata to update',
+    },
+  )
 export type UpdateOrganizationRequest = z.infer<typeof UpdateOrganizationRequestSchema>
 
 export const FeedbackRecordSchema = z.object({

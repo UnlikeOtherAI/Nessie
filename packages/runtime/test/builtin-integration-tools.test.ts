@@ -6,14 +6,42 @@ import {
   DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION,
 } from '../src/index.js'
 
-test('Deep Water run update is a Personal Assistant builtin tool', () => {
+test('Deep Water run update is grantable to any agent (not PA-only)', () => {
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.id, 'deep_water_run_update')
-  assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.personalAssistantOnly, true)
+  // Not PA-only: a granted shared agent may write the durable run record back.
+  assert.notEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.personalAssistantOnly, true)
+  // Default off: exposure requires an explicit per-agent grant.
+  assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.requiresExplicitGrant, true)
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.safe, true)
+  assert.match(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.description,
+    /exact full Nessie runId from the server-built launch message/,
+  )
+  assert.match(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.runId?.description ?? '',
+    /Exact full Nessie product_integration_runs UUID from the server-built Deep Water launch message/,
+  )
   assert.deepEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.required, [
     'runId',
     'status',
   ])
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.reportUrl,
+    undefined,
+  )
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.sourceCount,
+    undefined,
+  )
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.totalCost,
+    undefined,
+  )
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.currency,
+    undefined,
+  )
+  assert.match(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.description, /UOA/)
 })
 
 test('builtin registry includes the Deep Water run update tool', () => {
@@ -23,5 +51,5 @@ test('builtin registry includes the Deep Water run update tool', () => {
 
   assert.ok(tool)
   assert.equal(tool.label, 'Deep Water Run Update')
-  assert.equal(tool.personalAssistantOnly, true)
+  assert.notEqual(tool.personalAssistantOnly, true)
 })

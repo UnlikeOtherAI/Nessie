@@ -231,6 +231,6 @@ This spec targets **Phase 3**.
 - [policy-enforcement-spec.md](./policy-enforcement-spec.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [implementation-phases.md](./implementation-phases.md)
 - [functionality.md](./functionality.md)

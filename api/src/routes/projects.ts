@@ -8,6 +8,8 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { defaultColumnCreateData } from '../services/board.js'
+import { canAccessAttachment } from '../services/attachments.js'
+import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
 const projectCountsInclude = {
@@ -18,6 +20,8 @@ const projectCountsInclude = {
 type ProjectWithCounts = {
   id: string
   name: string
+  avatarEmoji: string | null
+  avatarAttachmentId: string | null
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
@@ -27,6 +31,8 @@ type ProjectWithCounts = {
 const toProjectRecord = (project: ProjectWithCounts) => ({
   id: project.id,
   name: project.name,
+  avatarEmoji: project.avatarEmoji,
+  avatarAttachmentId: project.avatarAttachmentId,
   organizationId: project.organizationId,
   memberCount: project.members.length,
   teamCount: project.teams.length,
@@ -35,14 +41,29 @@ const toProjectRecord = (project: ProjectWithCounts) => ({
 })
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+  const {
+    config,
+    prisma,
+    requireActorContext,
+    requireOwner,
+    resolveMembershipRole,
+    MEMBERSHIP_ROLES,
+    isProjectAccessibleToActor,
+    listAccessibleProjectIds,
+  } = deps
 
   app.get('/api/projects', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
+    // Non-owners only see the projects they are a member of.
+    const accessible = await listAccessibleProjectIds(actorContext)
     const projects = await prisma.project.findMany({
-      where: { organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        organizationId: actorContext.tenant.organizationId,
+        ...(accessible === 'all' ? {} : { id: { in: accessible } }),
+      },
       include: projectCountsInclude,
       orderBy: { createdAt: 'asc' },
     })
@@ -57,8 +78,16 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: projectCountsInclude,
     })
     if (!project) {
@@ -74,8 +103,16 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: {
         members: {
           include: { user: { select: { id: true, displayName: true, email: true } } },
@@ -131,6 +168,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return reply.code(201).send(createApiResponse(ProjectRecordSchema.parse({
       id: project.id,
       name: project.name,
+      avatarEmoji: project.avatarEmoji,
+      avatarAttachmentId: project.avatarAttachmentId,
       organizationId: project.organizationId,
       memberCount: 1,
       teamCount: 0,
@@ -150,6 +189,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const project = await prisma.project.findFirst({
       where: {
+        channelRoot: false,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -160,9 +200,41 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    if (body.avatarAttachmentId) {
+      const attachment = await prisma.attachment.findUnique({
+        where: { id: body.avatarAttachmentId },
+      })
+      if (
+        !attachment
+        || !(await canAccessAttachment(prisma, attachment, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }))
+      ) {
+        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+        return reply
+      }
+      if (attachment.kind !== 'image') {
+        sendApiError(reply, 400, 'INVALID_PROJECT_AVATAR', 'Project photo must be an image')
+        return reply
+      }
+    }
+
+    const avatarIdentity = body.avatarAttachmentId
+      ? { avatarAttachmentId: body.avatarAttachmentId, avatarEmoji: null }
+      : body.avatarEmoji
+        ? { avatarAttachmentId: null, avatarEmoji: body.avatarEmoji }
+        : {
+            ...(body.avatarAttachmentId === null ? { avatarAttachmentId: null } : {}),
+            ...(body.avatarEmoji === null ? { avatarEmoji: null } : {}),
+          }
+
     const updatedProject = await prisma.project.update({
       where: { id: project.id },
-      data: { name: body.name },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...avatarIdentity,
+      },
       include: projectCountsInclude,
     })
 
@@ -184,7 +256,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const { projectId } = request.params as { projectId: string }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: projectCountsInclude,
     })
     if (!project) {
@@ -220,6 +296,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
@@ -234,9 +311,28 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const project = await prisma.project.findUnique({ where: { id: projectId } })
-    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+    const project = await prisma.project.findFirst({
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+    })
+    if (!project) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    // `userId` is raw request body. Confirm it belongs to this organisation so a
+    // foreign-tenant id cannot be written into the membership table.
+    const targetIsOrgMember = await prisma.organizationMember.count({
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        userId: body.userId,
+      },
+    })
+    if (targetIsOrgMember === 0) {
+      sendApiError(reply, 404, 'USER_NOT_FOUND', 'User is not a member of this organization')
       return reply
     }
 
@@ -255,10 +351,15 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { projectId, userId } = request.params as { projectId: string; userId: string }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       select: { id: true },
     })
     if (!project) {

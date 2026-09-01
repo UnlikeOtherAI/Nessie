@@ -7,6 +7,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 // schema, never bypass access.
 export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_search',
+  summary: 'Search accessible knowledge pages by semantic and keyword matching.',
   label: 'KB Search',
   description:
     'Search the knowledge base (hybrid semantic + keyword). Returns compact ' +
@@ -41,6 +42,7 @@ export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_page_read',
+  summary: 'Read the full text of one knowledge-base page.',
   label: 'KB Page Read',
   description: "Read a knowledge page's full text content.",
   parameters: {
@@ -55,6 +57,7 @@ export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_list',
+  summary: 'List knowledge spaces, page trees, or task documents you can access.',
   label: 'KB List',
   description:
     'List knowledge spaces you can access, the page tree of one space, or the ' +
@@ -84,6 +87,7 @@ export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 // even though the mutation itself only ever produces a draft.
 export const KB_DRAFT_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_draft_write',
+  summary: 'Create a rich-text page draft or a new draft version for review.',
   label: 'KB Draft Write',
   description:
     'Create a knowledge page or add a new draft version to an existing page. ' +
@@ -129,8 +133,112 @@ export const KB_DRAFT_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: false,
 }
 
+/**
+ * The tool id is referenced by the worker's document-stream recorder, which
+ * decides from the streaming tool name alone whether to open a live document
+ * session. Keep them in one place so the two can never drift.
+ */
+export const KB_DOCUMENT_COMPOSE_TOOL_ID = 'kb_document_compose'
+
+// Writes a markdown file rather than a rich-text page: the artifact is the .md
+// itself, so nothing here converts to HTML. Arguments are ordered
+// location-then-body deliberately — models emit them in schema order, which
+// lets the live popup show the title and destination while the body is still
+// arriving.
+export const KB_DOCUMENT_COMPOSE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: KB_DOCUMENT_COMPOSE_TOOL_ID,
+  summary: 'Live-write a complete markdown document as a new knowledge-base file.',
+  label: 'KB Document Compose',
+  description:
+    'Write a complete markdown document and save it as a .md file in the knowledge base. '
+    + 'Agree the destination with the person first (use kb_list to resolve names to ids). '
+    + 'The person watches the document appear live as you write it, so put the finished '
+    + 'document in `markdown` with no preamble, commentary, or wrapper fences.',
+  parameters: {
+    type: 'object',
+    properties: {
+      spaceId: {
+        type: 'string',
+        description: 'Knowledge-base space id to save the document in',
+      },
+      parentPageId: {
+        type: 'string',
+        description: 'Optional folder/page id to nest the document under',
+      },
+      title: {
+        type: 'string',
+        description: 'Document title. The saved file is named "<title>.md".',
+      },
+      summary: { type: 'string', description: 'Optional one-line summary' },
+      labels: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional labels (max 16)',
+        maxItems: 16,
+      },
+      taskId: { type: 'string', description: 'Optional ticket id to bind the document to' },
+      changeComment: { type: 'string', description: 'Optional note describing this document' },
+      markdown: {
+        type: 'string',
+        description: 'The complete document body, in GitHub-flavored markdown',
+      },
+    },
+    required: ['spaceId', 'title', 'markdown'],
+  },
+  safe: false,
+}
+
+export const KB_DOCUMENT_EDIT_TOOL_ID = 'kb_document_edit'
+
+// Targeted edits rather than a rewrite: the person watches each change land in
+// place in the existing document, and only the changed passages are generated.
+export const KB_DOCUMENT_EDIT_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: KB_DOCUMENT_EDIT_TOOL_ID,
+  summary: 'Apply targeted exact-match edits to an existing markdown document.',
+  label: 'KB Document Edit',
+  description:
+    'Change parts of an existing markdown document in place. Prefer this over rewriting: '
+    + 'give only the passages that change. Each edit finds an exact snippet of the current '
+    + 'document and replaces it, so `find` must match the file exactly once — include '
+    + 'enough surrounding text to be unambiguous. An empty `replace` deletes the snippet. '
+    + 'The person watches each change appear where it belongs, so edit in document order.',
+  parameters: {
+    type: 'object',
+    properties: {
+      pageId: { type: 'string', description: 'Id of the .md document page to edit' },
+      changeComment: {
+        type: 'string',
+        description: 'Optional short note describing this revision',
+      },
+      edits: {
+        type: 'array',
+        description: 'Edits to apply, in document order',
+        items: {
+          type: 'object',
+          properties: {
+            find: {
+              type: 'string',
+              description:
+                'Exact snippet of the current document to replace. Must occur exactly once.',
+            },
+            replace: {
+              type: 'string',
+              description: 'Replacement text. Empty string deletes the snippet.',
+            },
+          },
+          required: ['find', 'replace'],
+        },
+        maxItems: 40,
+      },
+    },
+    required: ['pageId', 'edits'],
+  },
+  safe: false,
+}
+
 export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_file',
+  summary: 'Move, rename, or relabel a knowledge-base draft.',
   label: 'KB File',
   description: 'File a draft: move it in the tree, rename it, or set labels.',
   parameters: {
@@ -157,6 +265,7 @@ export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_PUBLISH_REQUEST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_publish_request',
+  summary: 'Request human review and publication of a knowledge-page draft.',
   label: 'KB Publish Request',
   description: 'Request human review + publication of a draft page you wrote.',
   parameters: {
@@ -175,6 +284,8 @@ export const KB_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   KB_PAGE_READ_TOOL_DEFINITION,
   KB_LIST_TOOL_DEFINITION,
   KB_DRAFT_WRITE_TOOL_DEFINITION,
+  KB_DOCUMENT_COMPOSE_TOOL_DEFINITION,
+  KB_DOCUMENT_EDIT_TOOL_DEFINITION,
   KB_FILE_TOOL_DEFINITION,
   KB_PUBLISH_REQUEST_TOOL_DEFINITION,
 ]

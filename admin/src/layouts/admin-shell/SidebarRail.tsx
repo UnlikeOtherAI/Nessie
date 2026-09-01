@@ -1,159 +1,132 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserAvatar } from '../../components/primitives/UserAvatar';
-import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
-import { useCurrentOrganization } from '../../facades/organization/hooks';
-import { useAuthedObjectUrl } from '../../lib/uploads';
-import { useAuthSession } from '../../providers/AuthSessionProvider';
+import { useViewport } from '../../hooks/useViewport';
+import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
-import { UserMenuPopover } from './UserMenuPopover';
+import { resolveSectionNavTarget } from './section-route-memory';
+import { RailTooltip } from './RailTooltip';
+import { UserMenuTrigger } from './UserMenuTrigger';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { useFocusMode } from '../../providers/FocusModeProvider';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
-
 type SidebarRailProps = {
+  onCreateChannel: () => void;
+  onCreateMessage: () => void;
+  onCreateProject: () => void;
   onLogout: () => void;
   pathname: string;
 };
 
-export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
-  const { token, me } = useAuthSession();
-  const { data: organization } = useCurrentOrganization();
-  const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token);
-  const avatarButtonRef = useRef<HTMLButtonElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+export const SidebarRail = ({
+  onCreateChannel,
+  onCreateMessage,
+  onCreateProject,
+  onLogout,
+  pathname,
+}: SidebarRailProps) => {
+  const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
+  const { capabilities } = useViewport();
+  const focusButtonRef = useRef<HTMLButtonElement>(null);
+  const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
+  const dismissFocusTooltip = useCallback((): void => setFocusTooltipOpen(false), []);
 
+  useEffect(() => {
+    if (
+      !focusTooltipOpen
+      || capabilities.hover
+      || !capabilities.coarsePointer
+    ) {
+      return undefined;
+    }
+
+    // Touch browsers can retain focus after a tap, leaving this otherwise
+    // hover-only affordance visible. Give it a short, predictable lifetime.
+    const timeoutId = window.setTimeout(dismissFocusTooltip, 5_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [capabilities.coarsePointer, capabilities.hover, dismissFocusTooltip, focusTooltipOpen]);
+
+  const showFocusTooltip = (): void => {
+    setFocusTooltipOpen(true);
+  };
+  const focusTooltipTitle = focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode';
+  const focusTooltipDescription = focusModeEnabled
+    ? 'Resume notifications and attention cues.'
+    : 'Pause notifications and reduce badging and bolding.';
   return (
     <aside
       className={[
-        'flex h-full w-[65px] flex-col items-center overflow-hidden',
+        'flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
         'bg-[color:var(--rail)] px-2 py-2',
       ].join(' ')}
     >
-      <Link
-        className={[
-          'mb-4 flex h-9 w-9 items-center justify-center overflow-hidden',
-          logoUrl ? 'rounded-full' : 'rounded-xl',
-        ].join(' ')}
-        style={
-          logoUrl
-            ? undefined
-            : { background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }
-        }
-        title={organization?.name}
-        to="/channels"
-      >
-        {logoUrl ? (
-          <img
-            alt={organization?.name ?? 'Workspace'}
-            className="h-full w-full object-cover"
-            src={logoUrl}
-          />
-        ) : (
-          <svg
-            fill="none"
-            height="22"
-            stroke="var(--on-accent)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            width="22"
-          >
-            <path
-              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-              fill="var(--overlay)"
-            />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" x2="9.01" y1="9" y2="9" />
-            <line x1="15" x2="15.01" y1="9" y2="9" />
-          </svg>
-        )}
-      </Link>
+      <WorkspaceSwitcher />
 
-      {SIDEBAR_RAIL_ITEMS.map((item) => {
-        const Icon = item.icon;
-        return (
-          <Link
-            className={`admin-rail-btn ${item.isActive(pathname) ? 'active' : ''}`}
-            key={item.id}
-            to={item.to}
-          >
-            <span className="admin-rail-btn-icon">
-              <Icon />
-            </span>
-            <span className="admin-rail-btn-label">{item.label}</span>
-          </Link>
-        );
-      })}
-
-      <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
-
-      <Link
-        className={`admin-rail-btn ${pathname.startsWith('/feedback') ? 'active' : ''}`}
-        to="/feedback"
-      >
-        <span className="admin-rail-btn-icon">
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
-          >
-            <path d="m3 11 18-5v12L3 14v-3z" strokeLinecap="round" strokeLinejoin="round" />
-            <path
-              d="M11.6 16.8a3 3 0 1 1-5.8-1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-        <span className="admin-rail-btn-label">Feedback</span>
-      </Link>
+      <nav aria-label="Main navigation" className="w-full shrink-0">
+        {SIDEBAR_RAIL_ITEMS.map((item) => {
+          const Icon = item.icon;
+          // Return to where the reader last stood in this section rather than its
+          // root, so switching tabs and coming back restores the exact page and
+          // its URL state. The active section's own button resolves to the
+          // current location, which is a harmless no-op navigation.
+          return (
+            <Link
+              className={`admin-rail-btn ${item.isActive(pathname) ? 'active' : ''}`}
+              key={item.id}
+              to={resolveSectionNavTarget(item.id, item.to)}
+            >
+              <span className="admin-rail-btn-icon">
+                <Icon />
+              </span>
+              <span className="admin-rail-btn-label">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       <div className="flex-1" />
 
-      <DebugTokenButton />
+      <div className="flex w-full shrink-0 flex-col items-center">
+        <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
 
-      {me && (
-        <>
-          <button
-            aria-haspopup="menu"
-            aria-label="Account menu"
-            className={[
-              'rounded-full transition-shadow',
-              menuOpen
-                ? 'ring-2 ring-[color:var(--accent)]'
-                : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
-            ].join(' ')}
-            onClick={() => setMenuOpen((open) => !open)}
-            ref={avatarButtonRef}
-            title={me.user.displayName}
-            type="button"
-          >
-            <UserAvatar
-              avatarAttachmentId={me.user.avatarAttachmentId}
-              avatarUrl={me.user.avatarUrl}
-              displayName={me.user.displayName}
-              gravatarUrl={me.user.gravatarUrl}
-              ringColor="var(--rail)"
-              size={32}
-              token={token}
-              userId={me.user.id}
-            />
-          </button>
-          {menuOpen && (
-            <UserMenuPopover
-              anchorRef={avatarButtonRef}
-              auth={me.auth}
-              onClose={() => setMenuOpen(false)}
-              onLogout={onLogout}
-              token={token}
-              user={me.user}
-            />
-          )}
-        </>
-      )}
+        <button
+          aria-describedby={focusTooltipOpen ? 'focus-mode-tooltip' : undefined}
+          aria-label={focusTooltipTitle}
+          aria-pressed={focusModeEnabled}
+          className={`admin-rail-btn ${focusModeEnabled ? 'active' : ''}`}
+          disabled={updating}
+          onClick={toggleFocusMode}
+          onBlur={dismissFocusTooltip}
+          onFocus={showFocusTooltip}
+          onMouseEnter={showFocusTooltip}
+          onMouseLeave={dismissFocusTooltip}
+          ref={focusButtonRef}
+          type="button"
+        >
+          <span className="admin-rail-btn-icon">
+            <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M21.75 15.002A9.72 9.72 0 0 1 12 21.75C6.615 21.75 2.25 17.385 2.25 12c0-4.14 2.58-7.678 6.223-9.094a.75.75 0 0 1 .983.868 7.5 7.5 0 0 0 9.402 9.402.75.75 0 0 1 .892.826Z" />
+            </svg>
+          </span>
+          <span className="admin-rail-btn-label">Focus</span>
+        </button>
+
+        <RailTooltip
+          anchorRef={focusButtonRef}
+          description={focusTooltipDescription}
+          id="focus-mode-tooltip"
+          open={focusTooltipOpen}
+          title={focusTooltipTitle}
+        />
+
+        <CreateMenuTrigger
+          onCreateChannel={onCreateChannel}
+          onCreateMessage={onCreateMessage}
+          onCreateProject={onCreateProject}
+        />
+
+        <UserMenuTrigger onLogout={onLogout} />
+      </div>
     </aside>
   );
 };

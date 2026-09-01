@@ -41,6 +41,7 @@ const emojiPickerThemeStyle: EmojiPickerThemeStyle = {
 }
 
 type EmojiPickerPanelProps = {
+  autoFocusSearch?: boolean
   onSelect: (value: string) => void
 }
 
@@ -49,7 +50,10 @@ const readStoredSkinTone = (): SkinTones => {
   return stored && skinToneValues.has(stored) ? (stored as SkinTones) : NEUTRAL_SKIN_TONE
 }
 
-export const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
+export const EmojiPickerPanel = ({
+  autoFocusSearch = true,
+  onSelect,
+}: EmojiPickerPanelProps) => {
   const defaultSkinTone = readStoredSkinTone()
 
   const pickEmoji = (emojiData: EmojiClickData) => {
@@ -70,7 +74,7 @@ export const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
       }
     >
       <FullEmojiPicker
-        autoFocusSearch
+        autoFocusSearch={autoFocusSearch}
         defaultSkinTone={defaultSkinTone}
         emojiStyle={'native' as EmojiStyle}
         height={360}

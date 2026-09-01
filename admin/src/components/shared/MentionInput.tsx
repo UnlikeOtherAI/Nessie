@@ -7,6 +7,16 @@ import {
   useRef,
   useState,
 } from 'react'
+import {
+  decorateMarkdownEditor,
+  extractEditorText,
+  insertMarkdownEditorText,
+} from '../../lib/markdown-editor'
+import { useConcealedFenceInput } from '../../hooks/useConcealedFenceInput'
+import {
+  readPersonalAssistantMentions,
+  type PersonalAssistantMention,
+} from './mention-input-personal-assistant'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -16,14 +26,23 @@ export type MentionEntity = {
   detail?: string
   glyph?: string
   id: string
+  // The canonical token to put in message content. A PA owner sees a friendly
+  // label in the picker, but everyone stores the same public form.
+  insertName?: string
   name: string
+  // Present only for a PA presence. Together with `id` this is the structural
+  // address sent with the message, never a display-name inference.
+  principalUserId?: string
   trigger: '@' | '#'
   type: 'user' | 'agent' | 'channel'
 }
 
+export type { PersonalAssistantMention } from './mention-input-personal-assistant'
+
 export type MentionInputHandle = {
   clear: () => void
   focus: () => void
+  getAgentMentions: () => PersonalAssistantMention[]
   getText: () => string
   insertAtSign: () => void
   insertHashSign: () => void
@@ -35,32 +54,13 @@ type Props = {
   maxLength?: number
   onChange?: (text: string) => void
   onOversizePaste?: (paste: string) => void
-  onSubmit: (text: string) => void
+  onSubmit: (text: string, agentMentions: PersonalAssistantMention[]) => void
   placeholder: string
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function extractText(node: Node): string {
-  let out = ''
-  for (const child of node.childNodes) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      out += child.textContent ?? ''
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const el = child as HTMLElement
-      if (el.dataset.mentionId) {
-        out += el.textContent ?? ''
-      } else if (el.tagName === 'BR') {
-        out += '\n'
-      } else {
-        out += extractText(el)
-      }
-    }
-  }
-  return out
-}
 
 function clearChildren(el: HTMLElement): void {
   while (el.firstChild) {
@@ -144,7 +144,7 @@ function getEntityIcon(entity: MentionEntity): string {
 }
 
 function matchesEntityQuery(entity: MentionEntity, query: string): boolean {
-  return `${entity.name} ${entity.detail ?? ''}`
+  return `${entity.name} ${entity.insertName ?? ''} ${entity.detail ?? ''}`
     .toLowerCase()
     .includes(query.toLowerCase())
 }
@@ -160,6 +160,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
   ) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
+    const composingRef = useRef(false)
     const [mentionContext, setMentionContext] = useState<{
       query: string
       trigger: '@' | '#'
@@ -204,7 +205,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     const sync = useCallback(() => {
       const el = editorRef.current
       if (!el) return
-      const text = extractText(el)
+      const text = extractEditorText(el)
+      if (!composingRef.current) decorateMarkdownEditor(el, text)
       setHasContent(text.trim().length > 0)
       onChange?.(text)
     }, [onChange])
@@ -220,6 +222,38 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         setMentionContext(null)
       }
     }, [])
+
+    const onEdit = useCallback(
+      (text: string) => {
+        setHasContent(text.trim().length > 0)
+        onChange?.(text)
+        checkMention()
+      },
+      [checkMention, onChange],
+    )
+
+    useConcealedFenceInput(editorRef, onEdit)
+
+    // Everything the component inserts on the author's behalf — toolbar
+    // triggers, pastes, suggestions — goes through the same splice as typing,
+    // so it lands where the caret is rather than wherever the browser would
+    // put a raw execCommand.
+    const applyInsertion = useCallback(
+      (insertion: string) => {
+        const el = editorRef.current
+        if (!el) return
+        onEdit(insertMarkdownEditorText(el, insertion))
+      },
+      [onEdit],
+    )
+
+    const insertTrigger = useCallback(
+      (trigger: '@' | '#') => {
+        editorRef.current?.focus()
+        applyInsertion(trigger)
+      },
+      [applyInsertion],
+    )
 
     const insertMention = useCallback(
       (entity: MentionEntity) => {
@@ -242,8 +276,11 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         span.contentEditable = 'false'
         span.dataset.mentionId = entity.id
         span.dataset.mentionType = entity.type
+        if (entity.principalUserId) {
+          span.dataset.mentionPrincipalUserId = entity.principalUserId
+        }
         span.className = 'mention-tag'
-        span.textContent = `${entity.trigger}${entity.name}`
+        span.textContent = `${entity.trigger}${entity.insertName ?? entity.name}`
 
         const range = sel.getRangeAt(0)
         range.insertNode(span)
@@ -279,23 +316,16 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         editorRef.current?.focus()
       },
       getText() {
-        return editorRef.current ? extractText(editorRef.current) : ''
+        return editorRef.current ? extractEditorText(editorRef.current) : ''
+      },
+      getAgentMentions() {
+        return readPersonalAssistantMentions(editorRef.current)
       },
       insertAtSign() {
-        const el = editorRef.current
-        if (!el) return
-        el.focus()
-        document.execCommand('insertText', false, '@')
-        sync()
-        checkMention()
+        insertTrigger('@')
       },
       insertHashSign() {
-        const el = editorRef.current
-        if (!el) return
-        el.focus()
-        document.execCommand('insertText', false, '#')
-        sync()
-        checkMention()
+        insertTrigger('#')
       },
       insertText(text: string) {
         const el = editorRef.current
@@ -309,8 +339,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         const sel = window.getSelection()
         sel?.removeAllRanges()
         sel?.addRange(range)
-        document.execCommand('insertText', false, text)
-        sync()
+        applyInsertion(text)
       },
     }))
 
@@ -327,7 +356,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           >
             {filtered.map((entity, i) => (
               <button
-                key={entity.id}
+                key={`${entity.type}:${entity.id}:${entity.principalUserId ?? ''}`}
                 className={[
                   'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
                   i === selectedIdx
@@ -372,6 +401,14 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ].join(' ')}
           contentEditable
           data-placeholder={placeholder}
+          onCompositionEnd={() => {
+            composingRef.current = false
+            sync()
+            checkMention()
+          }}
+          onCompositionStart={() => {
+            composingRef.current = true
+          }}
           onBlur={() => {
             // Delay so mouseDown on popup fires first
             setTimeout(() => setMentionContext(null), 150)
@@ -411,19 +448,26 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               }
             }
 
+            if (e.key === 'Enter' && e.shiftKey) {
+              e.preventDefault()
+              applyInsertion('\n')
+              return
+            }
+
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               const editor = editorRef.current
               if (!editor) return
-              const text = extractText(editor).trim()
+              const text = extractEditorText(editor).trim()
               if (!text) return
+              const agentMentions = readPersonalAssistantMentions(editor)
               // Clear synchronously BEFORE notifying the caller so a second
               // Enter keystroke can't re-read the same text.
               clearChildren(editor)
               setHasContent(false)
               setMentionContext(null)
               onChange?.('')
-              onSubmit(text)
+              onSubmit(text, agentMentions)
             }
           }}
           onPaste={(e) => {
@@ -431,14 +475,14 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             const text = e.clipboardData.getData('text/plain')
             if (maxLength && onOversizePaste) {
               const currentLength = editorRef.current
-                ? extractText(editorRef.current).length
+                ? extractEditorText(editorRef.current).length
                 : 0
               if (currentLength + text.length > maxLength) {
                 onOversizePaste(text)
                 return
               }
             }
-            document.execCommand('insertText', false, text)
+            applyInsertion(text)
           }}
           role="textbox"
           suppressContentEditableWarning

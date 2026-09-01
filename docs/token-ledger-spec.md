@@ -227,7 +227,185 @@ Every pricing override change must emit an audit event to the audit trail (see [
 
 The `GET /api/ledger/tokens/pricing/{profileId}/audit` endpoint queries the audit trail filtered by `resourceType=pricing` and `resourceId={profileId}`.
 
-## 10) Cross-links
+## 10) Customer usage metering
+
+The local Nessie token/connector/file ledgers above are operational telemetry;
+they are not the invoice authority or a customer billing source. Ledger's
+versioned raw-metering reader is restricted to UOA's dedicated billing-service
+principal. Nessie has no Ledger billing-reader credential, customer metering
+route, or parallel raw-metering panel. It never consumes the deprecated Ledger
+schema-v4 billing response.
+
+Nessie's builtin web search follows the same metering boundary. Agent,
+delegated sub-agent, and workflow `web_search` calls use the Nessie app key
+against Ledger's `/v1/serper/search`; Ledger alone injects the Serper credential
+and records the raw search unit/provider cost. Every call carries signed
+user/org/team/agent/run/tool-call provenance. Workflow jobs first bind the
+queued actor context to the durable workflow actor and installation scope.
+There is no direct `google.serper.dev` or `SERPER_API_KEY` fallback. The
+corresponding Nessie `ConnectorUsageEvent` remains useful operational telemetry
+but is not an invoice input and must never be rated locally. UOA queries
+Ledger's strict raw contract for the signed billing period, product,
+organization, and team, then produces the canonical statement below. That
+statement is Nessie's only customer service/team/user usage and billing view.
+The owner-only `/ops/usage` page is the sole admin surface for Nessie's local
+token summaries, model-pricing overrides, estimates, projections, connector
+telemetry, file usage, and budgets. The customer `/tokens` route is labelled
+Credits & Billing and contains only UOA-authored credit, add-on, statement, and
+action view models. Local operational calculations are never rendered beside
+the customer balance or statement.
+
+### 10.1 SSO-owned commercial billing
+
+Nessie does not create, edit, copy, cache, or calculate commercial tariffs and
+does not hold Stripe customer, subscription, invoice, Price, credit balance,
+top-up policy, payment consent, recurring add-on, statement, adjustment,
+entitlement, or cancellation-intent state. UOA remains the sole commercial
+authority and publishes the open protocol at
+`GET /schemas/billing-statement-v2.json`. Active-team UOA billing managers use
+these Nessie proxy endpoints:
+
+- `GET /api/billing/statement`;
+- `POST /api/billing/actions/upgrade`;
+- `POST /api/billing/actions/portal`;
+- `POST /api/billing/cancellation/preview`;
+- `POST /api/billing/cancellation/confirm`.
+
+Every active exact-team member may also read UOA's customer-safe funding
+projections through:
+
+- `GET /api/billing/credits`;
+- `GET /api/billing/recurring-addons`.
+
+The credit view always leads with the selected team's remaining credits and
+then shows pending, added, and consumed credits for the current period,
+connected-service consumption, recent activity, and automatic top-up status.
+UOA fixes 1,000 credits to US$1 and supplies display-ready credit and money
+values. Nessie never reads raw Ledger billing data or converts tokens, provider
+cost, or money into credits. The account belongs to the UOA team, not Nessie,
+so a customer sees the same balance through every connected product.
+Credit quantities are whole credits: UOA retains sub-credit rated remainders
+internally and deducts another displayed credit only once the cumulative amount
+reaches it. Nessie displays those values without rounding, accumulating, or
+rating them.
+
+UOA discriminates the response by viewer authority. A billing manager receives
+the full per-user breakdown, payment-method display, consent record, funding
+offers, and frozen top-up/automatic-top-up actions. An ordinary member receives
+only their own usage plus anonymous other-team-member and unattributed totals.
+Their pending-payment amount and funding policy are absent; automatic top-up
+contains only payment-method status without details and no mutation action.
+Recurring add-on
+offers and active states are readable by the team, while subscribe and cancel
+remain manager-only frozen actions. The corresponding Nessie mutation routes
+accept only local action references or UOA's opaque cancellation confirmation;
+they re-fetch the projection and relay the exact UOA-authored action. Nessie
+stores no credit balance, top-up policy, payment consent, or add-on state.
+
+The API resolves the exact linked UOA user/organization/team and rejects
+local/UOA workspace drift. It then calls UOA with Nessie's dedicated
+`UOA_BILLING_APP_KEY_NESSIE` and a fresh RS256
+`X-UOA-Actor` whose subject, product, organization, and team exactly match the
+request and whose lifetime is 45 seconds. This key is distinct from Nessie's
+Ledger execution key and from every sibling product key.
+UOA independently re-checks membership and billing-manager authority.
+Nessie obtains an effective billing capability from that exact UOA projection
+before rendering manager-only statement controls; it never infers authority
+from a local `OrganizationMember` role. The browser keys credits, add-ons, and
+statement data by UOA user, organization, team, and credential epoch, and
+treats the capability as immediately stale. A user who manages Team A and is a
+member or contractor in Team B therefore never sees Team A's projection after
+switching active teams.
+
+The consumer contract is the public MIT-licensed
+`@unlikeotherai/billing-statement-protocol` 1.2.0 package authored by UOA.
+Nessie vendors that package byte-for-byte from UOA commit
+`698765f`; the root lint gate verifies its
+complete SHA-256 manifest. API responses and requests are validated with the
+package's exported JSON Schemas, while the admin imports its exported view-model
+types. Nessie must not keep an independently editable schema or type copy.
+
+After a direct Nessie SSO token exchange has resolved and synchronized the
+linked UOA workspace, the API calls UOA
+`POST /billing/v1/service-access/confirm` with the exact
+`nessie`/user/organization/team subject before issuing the local session. UOA
+must return `204` with `Cache-Control: no-store`; otherwise login fails closed.
+This seam is never called by connector, agent, DeepWater, workflow, or
+background execution, so indirect usage cannot be mistaken for direct product
+access during cancellation planning.
+
+The version-2 statement is the complete customer view model: UOA supplies
+display-ready money, plan and markup copy, commercial lines, totals,
+per-service/per-user usage, access classifications, action labels, and disabled
+reasons. Nessie displays those fields and never derives tariff or customer
+charges. It may arrange rows, but does not sum, multiply, re-rate, rename money,
+or decide action availability. Its `connected_service_usage` is derived by UOA
+from the same single, exact Ledger `metering-portfolio-v1` `group_by=user`
+snapshot used for rating. It includes every connected service's team total,
+origin products, per-user usage, raw provider cost, and UOA-authored share
+copy. Nessie validates the requested billing month, exact plan-to-pinned-tariff
+identity/version, and snapshot identity before rendering those display fields
+verbatim; it does not aggregate services or calculate percentages. Customer
+actions and cancellation payloads remain on the frozen version-1 action
+contract.
+
+Cancellation is preview then confirm. UOA evaluates direct service access
+across every user in the exact organization/team, relates only subscriptions
+on the same account, distinguishes indirect Ledger use, and returns the exact
+dialog copy and choices. A team that only used DeepWater through Nessie receives
+no fabricated DeepWater cancellation choice; a team with any direct DeepWater
+access receives UOA's cross-service choice. The preview token is opaque,
+short-lived, single-use, subject-bound, and backed by locked state
+revalidation/idempotency in UOA. Nessie relays only that token, the
+UOA-generated idempotency key, and the selected UOA choice.
+
+For Checkout, Portal, and cancellation preview, Nessie's API re-fetches the
+canonical statement, permits only each frozen action-id/path pair, checks the
+exact subject, and forwards UOA's server-produced request body unchanged.
+Browser-supplied action bodies and return URLs are ignored or rejected. The
+browser receives no UOA app key or actor assertion, and the API accepts no
+arbitrary upstream path.
+
+### 10.2 Ledger refusal during inference
+
+UOA and Ledger remain the sole authority for commercial credits at the point an
+inference call is made. Nessie does not preflight a credit balance, cache or
+persist one, translate local token telemetry into credits, or call UOA's
+direct-service-access confirmation seam for an agent, workflow, delegated
+sub-agent, connector, or any other indirect execution. The only direct-access
+confirmation remains the post-SSO-login call described above.
+
+Every connector carries a non-success provider response as a typed HTTP status
+and, when supplied, a structured provider code. A connector also stamps whether
+the request was routed through Ledger. Only a Ledger-routed `402` or
+`budget_exceeded` is an authoritative exhausted-credit refusal, not a
+retryable provider outage and never provider prose to show a person. A direct
+provider's `402` remains a provider-account billing failure. An interactive
+agent run follows ordinary failed-run terminalization and posts:
+
+> Your team has no AI credits remaining. Ask a billing manager to add credits
+> or update billing in Credits & billing (`/tokens`), then try again.
+
+The model-judged channel engagement router normally fails open to no action
+when its own model call fails. It rethrows only this typed credit refusal, so
+the worker can post the same one in-thread “request was not run” notice even
+though no agent run was created. Structural @mentions and personal-assistant
+DMs remain on their existing run paths. The Design Assistant sends the same
+safe message over SSE. Generic provider billing or quota failures retain their
+separate provider-account guidance and do not claim that the team's UOA credits
+are exhausted.
+
+UOA pins Stripe Checkout returns to Nessie's root route with exactly one
+`uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
+parameter. The root route preserves the complete query while redirecting those
+two values to `/tokens`. The Credits & Billing page shows a neutral return notice
+and explicitly refetches the canonical UOA statement, credits, and recurring
+add-ons; those projections, rather than the query value, remain the authority
+for any confirmed change. Missing, duplicate, or unknown `uoa_billing` values
+follow the ordinary `/channels` landing path and do not show a notice or trigger
+a billing refetch.
+
+## 11) Cross-links
 
 - [functionality.md](./functionality.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)

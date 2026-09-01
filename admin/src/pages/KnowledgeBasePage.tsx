@@ -1,23 +1,51 @@
 import { useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useKnowledge } from '../components/features/knowledge/KnowledgeProvider'
+import { useKnowledgePageDeepLink } from '../components/features/knowledge/useKnowledgePageDeepLink'
 import { KnowledgeWorkspace } from '../components/features/knowledge/KnowledgeWorkspace'
 import { MobileSectionHeader } from '../layouts/admin-shell/MobileSectionHeader'
 
 export const KnowledgeBasePage = () => {
+  const { productView, spaceId } = useParams<{
+    productView?: string
+    spaceId?: string
+  }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { openPageDeepLink } = useKnowledge()
-  const deepLinkSpaceId = searchParams.get('spaceId')
-  const deepLinkPageId = searchParams.get('pageId')
+  const {
+    activeProductView,
+    selectedSpaceId,
+    selectProductView,
+    selectSpace,
+  } = useKnowledge()
+  const deepLinkView = searchParams.get('view')
 
-  // Deep link from elsewhere (an approval's "Open page" link, a search
-  // result): jump straight to the page, then clear the params so navigating
-  // away and back doesn't re-trigger the jump.
+  // Deep link from elsewhere (an approval's "Open page" link, a search result,
+  // a DeepWater research run's native Knowledge document) — shared with the
+  // project Docs tab, which accepts the same `?spaceId=&pageId=` params.
+  useKnowledgePageDeepLink()
+
+  // Phone list selections have addressable child routes so the shell can keep
+  // and animate the outgoing list. Sync those routes back into the shared
+  // Knowledge workspace as well, so a cold deep link opens the same content.
   useEffect(() => {
-    if (!deepLinkSpaceId || !deepLinkPageId) return
-    openPageDeepLink({ pageId: deepLinkPageId, spaceId: deepLinkSpaceId })
+    if (spaceId && selectedSpaceId !== spaceId) {
+      selectSpace(spaceId)
+    }
+  }, [selectedSpaceId, selectSpace, spaceId])
+
+  useEffect(() => {
+    if (productView && activeProductView !== productView) {
+      selectProductView(productView)
+    }
+  }, [activeProductView, productView, selectProductView])
+
+  // Deep link to a product Documents view (e.g. the Integrations page's "Open
+  // Research" link → /knowledge-base?view=deep-water-research).
+  useEffect(() => {
+    if (!deepLinkView) return
+    selectProductView(deepLinkView)
     setSearchParams({}, { replace: true })
-  }, [deepLinkPageId, deepLinkSpaceId, openPageDeepLink, setSearchParams])
+  }, [deepLinkView, selectProductView, setSearchParams])
 
   return (
     <div className="flex h-full flex-col">

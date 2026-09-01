@@ -52,7 +52,8 @@ This avoids context pollution while still allowing sub-agents to discover what e
    - small `k` with short snippets
    - no automatic full-document injection
    - explicit `read` required to get full body
-   - project-aware default scope using `projectId`
+   - project-aware **opt-in** scope using `projectId` — the default scope is the
+     organization, narrowed per space by visibility (see §5)
 7. Full content access should support read-level policy checks.
    - cross-project reads require explicit sharing/allow policy.
 8. Thread-local ephemeral retrieval must be supported:
@@ -249,6 +250,31 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     to the token ledger.
   - Both modes enforce viewer access with an in-SQL readable-spaces pre-filter
     (`readableSpaceIdsSql`, mirrors `canReadSpace`) — no post-filtering.
+- `GET /api/knowledge-base/recent-pages` (implemented,
+  `api/src/routes/knowledge-recent-pages.ts`)
+  - query: `projectId` (**required**, UUID), `limit` (optional; defaults to 5,
+    clamped server-side to 20 — an over-large ask is capped, not rejected).
+  - answers "what was last written down in this project", across **every space
+    of that project the caller may read**. It is a recency read, not a search:
+    no query text, no snippets, no scoring.
+  - response `data`: `[{ id, spaceId, spaceName, title, kind, status,
+    updatedAt }]`, ordered `updatedAt DESC, id DESC`, served by the
+    `(organization_id, project_id, updated_at DESC, id DESC)` index on
+    `knowledge_pages`. Deliberately no `summary` and no version envelope — the
+    contract is exactly what a capped list renders.
+  - excludes soft-deleted pages, pages in soft-deleted spaces, and pages with
+    `status = 'archived'`.
+  - access: the `knowledge_page:view` policy gate, then the project-reach gate
+    the project/board/iteration reads use (a project the caller cannot reach
+    404s as `PROJECT_NOT_FOUND` rather than returning an empty list), then the
+    same in-SQL readable-spaces pre-filter as search
+    (`readableSpaceIdsSqlForViewer`, mirrors `canReadSpace`) — one access rule,
+    not a second one. Provider seam:
+    `KnowledgeProvider.listRecentPages` (`packages/knowledge/src/native-recent-pages.ts`).
+  - why server-side: the client alternative is `GET /spaces?projectId=` plus one
+    `GET /spaces/:id/pages` per space (1 + N, N unbounded), each returning full
+    page lists only to keep five rows, re-deriving access filtering the server
+    already owns.
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
@@ -289,9 +315,25 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     org member reads; only members + creator write.
   - **Project** — `visibility = project`: members of the space's `projectId`
     (via `ProjectMember`) read and write.
-  - **Private** — `visibility = private`: only listed `KnowledgeSpaceMember`s +
-    creator read and write.
-  The creator always has full access. `listSpaces` filters to readable spaces;
+  - **Private** — ordinary `visibility = private` spaces admit only listed
+    `KnowledgeSpaceMember`s plus their human creator. An agent-owned private
+    home (`ownerAgentId` set) instead admits human viewers who can see its
+    owning agent, plus explicit members; its agent proprietor, subtask children,
+    and explicitly granted agents follow the agent access rules. It never falls
+    through to ordinary private-space creator access.
+  Ordinary-space creators always have full access. **Visibility is the only
+  scope for ordinary spaces; an agent-owned space derives its audience from its
+  owning agent.** The
+  space list (`GET /api/knowledge-base/spaces`), search, and summarize are
+  organization-wide and narrow only when the caller passes an explicit
+  `projectId`; they never fall back to the session's `proj` claim, which is just
+  the caller's oldest `ProjectMember` row (`session-issuers.ts`) and has nothing
+  to do with entitlement. Scoping the list to it hid spaces the caller was
+  entitled to read — org-visibility spaces filed in a sibling project, their own
+  personal "My Docs" when it was provisioned under a different project — and,
+  because the admin treats an empty list as a first visit, made it seed a second
+  "General" space beside the real one.
+  `listSpaces` filters to readable spaces;
   `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
   move/restore return 403 to non-writers; search drops unreadable hits. The space
   record exposes the caller's effective `canWrite`. Non-human actors (agents /
@@ -307,7 +349,9 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 ## 7) Release safety scenario
 
 - Each project can bind an isolated knowledge corpus for release workflows.
-- Searches and reads default to project namespace and may not leak across projects by default.
+- Isolation comes from `visibility = project` on the space (readable only by
+  that project's `ProjectMember`s), not from an ambient list/search filter — a
+  space marked `organization` is org-wide by definition and is listed as such.
 - Project-specific document links can be promoted/denied to other projects through explicit grants only.
 
 ## 8) Additional enterprise scenarios
@@ -338,13 +382,18 @@ that column):
 - The second column is **only the Spaces list** — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
   `CreateSpaceDialog` modal). No pages live here.
-- The main area uses shared `KnowledgePane` chrome (a 50px header with optional
-  **Back** + title + centered view switcher + actions: **Upload file**, **New
-  folder**, **New page**). The root browsing state is a filesystem-style view
-  with folders first, then files, and every row starts with a folder/file icon:
-  - The centered segmented switcher offers **Full page**, **Column**, and
-    **Tree** views. **Column** is the default and the selected view persists in a
-    cookie.
+- The main area uses `KnowledgePane` with the shared `ResponsivePageHeader`: a
+  50px leading title/back region and a declarative, right-aligned action list.
+  It measures the actual action widths with `ResizeObserver`, keeps the primary
+  action visible, and moves low-priority actions into an accessible **More**
+  menu rather than allowing a narrow project Documents tab to overlap controls.
+  The view choice is a radio menu (**Full page**, **Column**, **Tree**), and
+  remains available from **More** when constrained. **Column** is the default
+  and the selected view persists in a cookie. This same header is used by page,
+  file, and product-document views. Organization storage usage lives in the
+  global Knowledge sidebar rather than the per-space action row. The root
+  browsing state is a filesystem-style view with folders first, then files, and
+  every row starts with a folder/file icon:
   - **Folders** sort first and carry a right chevron to signal they drill in. A
     folder is any page flagged `metadata.folder` (an empty folder created via
     **New folder**) **or** any page that already has children — so folders never
@@ -372,7 +421,28 @@ that column):
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
-route outlet on the Knowledge route. The page hierarchy is derived client-side
+route outlet on the Knowledge route.
+
+On a phone, `/knowledge-base` owns the Spaces/product-views list as the first
+screen. Selecting a row pushes the same workspace into view at the addressable
+`/knowledge-base/spaces/:spaceId` or `/knowledge-base/views/:productView`
+route, with a deterministic Back action to the list. The returned phone list
+does not mark the previously viewed space as active: it is a picker rather than
+an open workspace. Tablet and desktop keep the sidebar and workspace side by
+side; they update the shared provider state without changing to the phone child
+route.
+
+**Two surfaces, one workspace.** `KnowledgeProvider` takes an optional
+`projectId`, which puts it in *project scope* — the **Docs** tab of a project
+(`/projects/:projectId/docs`, `ProjectDocsTab`). In that scope the space list is
+fetched with `?projectId=`, the caller's personal "My Docs" space is neither
+ensured nor listed (it belongs to the person, not the project, even though it is
+filed under whichever project provisioned it), first-visit seeding is off (an
+empty project means "nothing filed here", never "no knowledge base"), a new
+space is created in the project being viewed rather than the session's project,
+and the org-wide storage meter is hidden. Everything else is the same code: the
+space rows are the shared `KnowledgeSpaceList` and the document area is the same
+`KnowledgeWorkspace` the Knowledge section renders. The page hierarchy is derived client-side
 from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`.
 That list **omits each page's latest-version body** (it can be large and the
 tree/column/preview-header views never need it); the body is fetched on demand
@@ -383,7 +453,10 @@ initialises from — and cannot save over — an empty body.
 ### First-visit seeding
 
 When the spaces list loads empty, `KnowledgeProvider` seeds a **"General"** space
-with one example page (`useSeedKnowledgeBase`, fired once via a ref guard). The
+with one example page (`useSeedKnowledgeBase`, fired once via a ref guard) —
+org-scope only, and only because the list is now genuinely org-wide: while it
+was filtered to the session's project this seeded a duplicate "General" beside
+spaces the caller already had (see §5). The
 example page (`example-page.ts`) is authored as HTML and demonstrates the editor.
 
 ### Page bodies are rich HTML (TipTap)
@@ -527,7 +600,7 @@ Each chunk stores `pageId`, `versionId`, `chunkIndex`, `content`,
 `contentHash`, plain-text offsets, approximate token count, and the full
 KnowledgePage scoping envelope (`organizationId`, project/team/channel/thread/
 user, `visibility`, `sensitivityTier`, `privateToAgentId`). The table also
-declares optional `embedding vector(1536)`, `embeddingModel`, `dims`, and a
+declares optional `embedding vector(1024)`, `embeddingModel`, `dims`, and a
 generated `searchVector` with HNSW/GIN indexes.
 
 Embeddings are now populated asynchronously: every version save enqueues a

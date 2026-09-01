@@ -20,6 +20,10 @@ type ThreadSseConnection = {
   pending: Extract<RealtimeNotificationPayload, { kind: 'sse' }>[]
   response: ServerResponse
   hydrating: boolean
+  // True while the socket's write buffer is backed up. Ephemeral events are
+  // dropped for the duration instead of queued: they carry no sequence, so
+  // memory spent holding them buys nothing a re-bootstrap does not.
+  saturated: boolean
   threadId: string
 }
 
@@ -52,8 +56,34 @@ type AddUserSseConnectionInput = {
   userId: string
 }
 
-const formatSseEvent = (notification: Extract<RealtimeNotificationPayload, { kind: 'sse' }>) =>
-  `id: ${notification.sequence}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification.data)}\n\n`
+const formatSseEvent = (notification: Extract<RealtimeNotificationPayload, { kind: 'sse' }>) => {
+  // An ephemeral notification has no `thread_stream_events` row, so its
+  // `sequence` is a placeholder: writing it as `id:` would rewind the client's
+  // Last-Event-ID and make the next reconnect replay from the wrong point.
+  const idLine = notification.ephemeral ? '' : `id: ${notification.sequence}\n`
+  return `${idLine}event: ${notification.event}\ndata: ${JSON.stringify(notification.data)}\n\n`
+}
+
+// Per-connection backpressure. A slow reader must never grow an unbounded
+// in-process buffer, so once the socket reports a full write buffer every
+// ephemeral event is dropped for that connection until it drains; the client
+// sees a `seq` gap and re-bootstraps over REST. Durable events keep Node's
+// own buffering, which the replay watermark already makes recoverable.
+const writeThreadSseEvent = (
+  connection: ThreadSseConnection,
+  notification: Extract<RealtimeNotificationPayload, { kind: 'sse' }>,
+): void => {
+  if (notification.ephemeral && connection.saturated) {
+    return
+  }
+
+  if (!connection.response.write(formatSseEvent(notification)) && !connection.saturated) {
+    connection.saturated = true
+    connection.response.once('drain', () => {
+      connection.saturated = false
+    })
+  }
+}
 
 const formatUserSseEvent = (event: RealtimeReplayEvent) =>
   `id: ${event.id.toString()}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`
@@ -70,6 +100,16 @@ export const shouldDeliverWsNotification = async (
   const notificationChannelScopes = input.notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
   )
+  const notificationUserScopes = input.notificationScopes.filter(
+    (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
+  )
+  if (notificationUserScopes.length > 0) {
+    return input.connectionScopes.some((scope) =>
+      scope.kind === 'user' && notificationUserScopes.some((target) =>
+        target.userId === scope.userId && target.organizationId === scope.organizationId,
+      ),
+    )
+  }
   const notificationScopeKeys = new Set(input.notificationScopes.map(toScopeKey))
 
   if (notificationChannelScopes.length > 0) {
@@ -111,21 +151,31 @@ export const createRealtimeHub = async (input: {
 
   const deliverNotification = async (notification: RealtimeNotificationPayload) => {
     if (notification.kind === 'sse') {
+      const ephemeral = notification.ephemeral === true
       for (const connection of threadSseConnections) {
-        if (
-          connection.threadId !== notification.threadId ||
-          connection.lastSequence >= notification.sequence
-        ) {
+        if (connection.threadId !== notification.threadId) {
+          continue
+        }
+        // Sequence filtering and the watermark only apply to durable events;
+        // an ephemeral notification's sequence is a placeholder.
+        if (!ephemeral && connection.lastSequence >= notification.sequence) {
           continue
         }
 
         if (connection.hydrating) {
-          connection.pending.push(notification)
+          // The pending buffer is sequence-sorted, so an ephemeral event has no
+          // place in it and is dropped — the bootstrap the client runs after
+          // connecting covers the gap by construction.
+          if (!ephemeral) {
+            connection.pending.push(notification)
+          }
           continue
         }
 
-        connection.response.write(formatSseEvent(notification))
-        connection.lastSequence = notification.sequence
+        writeThreadSseEvent(connection, notification)
+        if (!ephemeral) {
+          connection.lastSequence = notification.sequence
+        }
       }
       return
     }
@@ -208,6 +258,7 @@ export const createRealtimeHub = async (input: {
       pending: [],
       hydrating: true,
       response,
+      saturated: false,
       threadId,
     }
 
@@ -220,14 +271,22 @@ export const createRealtimeHub = async (input: {
           continue
         }
 
-        // stream.start, stream.reasoning, and stream.delta are ephemeral — don't replay from backlog.
-        // A reconnecting client missed the live stream; the final message is already
-        // in the messages table. Replaying live chunks would show a zombie pending
-        // message or orphaned reasoning until stream.done arrives.
+        // stream.start, stream.reasoning, stream.thinking.tool, stream.delta and
+        // stream.document.delta are live-only — don't replay from backlog. A
+        // reconnecting client missed the live stream; the final message is already
+        // in the messages table, an in-flight run's thought log is re-fetched over
+        // REST (GET /api/threads/:threadId/thinking) and a composing document over
+        // GET /api/threads/:threadId/document-streams/:sessionId. Replaying live
+        // chunks would show a zombie pending message, orphaned reasoning, or
+        // duplicated document text until the terminator arrives. The document
+        // start/meta/done/error/target events deliberately stay replayable, like
+        // stream.done: a reconnect must still learn a session began or ended.
         if (
           event.event === 'stream.start' ||
           event.event === 'stream.reasoning' ||
-          event.event === 'stream.delta'
+          event.event === 'stream.thinking.tool' ||
+          event.event === 'stream.delta' ||
+          event.event === 'stream.document.delta'
         ) {
           connection.lastSequence = event.sequence
           continue
@@ -283,6 +342,7 @@ export const createRealtimeHub = async (input: {
         afterEventId: connection.lastEventId,
         channelIds: [...connection.channelIds],
         organizationId: connection.organizationId,
+        userId: connection.userId,
       })
       for (const event of backlog) {
         if (event.id <= connection.lastEventId) {

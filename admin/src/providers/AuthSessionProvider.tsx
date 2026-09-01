@@ -10,153 +10,536 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
+  captureWorkspaceSessionSource,
+  classifyWorkspaceSessionPayload,
   createAuthSessionApi,
-  type AuthProviderDescriptor,
+  createSessionMutationCoordinator,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
+  type ExpectedWorkspaceTarget,
+  type ExternalLoginInput,
   type LoginInput,
+  type RecoverWorkspaceSessionInput,
+  type SessionPayload,
+  type SwitchContextInput,
+  type SwitchUoaWorkspaceInput,
 } from '@nessie/client-core'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   clearStoredToken,
   loadStoredToken,
+  loadStoredTokenMode,
   storeToken,
+  type StoredTokenMode,
 } from '../lib/storage'
 import { getBaseUrl } from '../lib/api-client'
+import { getSessionClientType } from '../lib/session-client'
+import {
+  clearSessionIfCurrent,
+  createImportedSessionApplyTracker,
+  IMPORTED_SESSION_SCOPE_MESSAGE,
+  isSessionCredentialCurrent,
+  resolveSessionRefreshAction,
+  resolveTerminatingSessionCredential,
+  type SessionCredentialSnapshot,
+} from '../lib/imported-session-policy'
+import { resolveImportedSession } from '../lib/session-debug-import'
+import {
+  NATIVE_PUSH_UNREGISTER_EVENT,
+} from '../lib/native-push-registration'
+import { isReactNativeWebView } from '../lib/mobile-shell'
+import { createAmbientRefreshGateHost } from './ambient-refresh-gate-host'
+import {
+  createSessionQueryBoundary,
+  isCurrentSessionResponse,
+} from './auth-session-query-reset'
+import { performTerminalSessionLogout } from './terminal-session-logout'
+import { useAccessTokenRenewal } from './useAccessTokenRenewal'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
   bootstrap: (input: BootstrapInput) => Promise<void>
   bootstrapState: BootstrapModeResponse | null
   devLogin: () => Promise<void>
+  importAccessToken: (accessToken: string) => Promise<void>
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
   me: MeResponse | null
-  providers: AuthProviderDescriptor[]
-  refreshAccessToken: () => Promise<string | null>
+  reconcileSession: () => Promise<SessionPayload | null>
+  /**
+   * Complete an external-auth code exchange for a workspace-switch
+   * reauthorization. Unlike `login` this never applies the exchanged session
+   * until the payload proves it is scoped to exactly `expectedWorkspace`; a
+   * mismatch leaves the current session, token, and query cache untouched.
+   * Returns the applied payload.
+   */
+  recoveryExchange: (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ) => Promise<SessionPayload>
+  refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   refreshSession: () => Promise<void>
+  sessionMode: StoredTokenMode
   sessionState: AuthSessionState
+  switchContext: (input: SwitchContextInput) => Promise<void>
+  switchUoaWorkspace: (input: SwitchUoaWorkspaceInput) => Promise<void>
   token: string | null
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
 
+const RETRY_DELAYS_MS = [1_000, 2_500, 5_000, 10_000, 30_000] as const
+const retryDelay = (attempt: number): number =>
+  RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 30_000
+const unregisterNativePushDevice = (): Promise<void> =>
+  new Promise((resolve) => {
+    window.dispatchEvent(
+      new CustomEvent(NATIVE_PUSH_UNREGISTER_EVENT, { detail: { complete: resolve } }),
+    )
+  })
+
 // Admin (web) supplies the Vite-resolved base URL; @nessie/client-core stays
 // env-agnostic. localStorage is the web TokenStore backing.
-const authApi = createAuthSessionApi(getBaseUrl())
+const authApi = createAuthSessionApi(getBaseUrl(), { sessionClient: getSessionClientType })
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
+  const queryClient = useQueryClient()
   const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
+  // Session restoration is one lifecycle, not a side effect of token changes:
+  // keep its callback stable while still reading the latest login/logout token.
+  const tokenRef = useRef(token)
+  tokenRef.current = token
+  const importedSessionTokenRef = useRef<string | null>(
+    token && loadStoredTokenMode() === 'imported' ? token : null,
+  )
+  const importedMutationsInFlightRef = useRef(0)
+  const importedApplyTracker = useMemo(() => createImportedSessionApplyTracker(), [])
+  const sessionMode: StoredTokenMode = token && importedSessionTokenRef.current === token
+    ? 'imported'
+    : 'renewable'
   const [me, setMe] = useState<MeResponse | null>(null)
+  const meRef = useRef(me)
+  meRef.current = me
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
-  const [providers, setProviders] = useState<AuthProviderDescriptor[]>([])
-  const pendingRefresh = useRef<Promise<string | null> | null>(null)
+
+  const resetTenantQueries = useCallback(async (): Promise<void> => {
+    await queryClient.cancelQueries().catch(() => undefined)
+    queryClient.clear()
+  }, [queryClient])
+
+  const sessionQueryBoundary = useMemo(
+    () => createSessionQueryBoundary({
+      readCurrentMe: () => meRef.current,
+      resetTenantQueries,
+    }),
+    [resetTenantQueries],
+  )
 
   const applySession = useCallback((payload: { me: MeResponse; token: string }): void => {
-    storeToken(payload.token)
+    const imported = importedApplyTracker.has(payload.token)
+    storeToken(payload.token, imported ? 'imported' : 'renewable')
+    tokenRef.current = payload.token
+    importedSessionTokenRef.current = imported ? payload.token : null
+    meRef.current = payload.me
     setToken(payload.token)
     setMe(payload.me)
     setBootstrapState(null)
     setSessionState('authenticated')
-  }, [])
+  }, [importedApplyTracker])
 
-  const clearSession = useCallback((): void => {
-    clearStoredToken()
+  // Synchronously remove every local bearer/auth reference; safe to call
+  // before returning control to a remote finalizer.
+  const commitSessionClear = useCallback((): void => {
+    tokenRef.current = null
+    importedSessionTokenRef.current = null
+    meRef.current = null
     setToken(null)
     setMe(null)
     setBootstrapState(null)
     setSessionState('unauthenticated')
+    try {
+      clearStoredToken()
+    } catch {
+      // In-memory auth is already gone when browser storage is unavailable.
+    }
   }, [])
 
-  // Single-flight access-token renewal from the refresh cookie. Concurrent 401s
-  // share one in-flight request so the refresh token rotates exactly once.
-  const refreshAccessToken = useCallback((): Promise<string | null> => {
-    if (pendingRefresh.current) {
-      return pendingRefresh.current
-    }
-    const run = (async (): Promise<string | null> => {
-      try {
-        const payload = await authApi.refresh()
-        if (payload) {
-          applySession(payload)
-          return payload.token
-        }
-      } catch {
-        // fall through to the signed-out state below
-      }
-      clearSession()
-      return null
-    })()
-    pendingRefresh.current = run
-    void run.finally(() => {
-      pendingRefresh.current = null
+  const clearSession = useCallback((): Promise<void> => {
+    // Start cancelling tenant work, then synchronously remove every local
+    // bearer/auth reference before returning control to a remote finalizer.
+    const clearingQueries = sessionQueryBoundary.clear().catch(() => undefined)
+    commitSessionClear()
+    return clearingQueries
+  }, [commitSessionClear, sessionQueryBoundary])
+
+  const clearImportedSession = useCallback(async (expectedToken: string): Promise<void> => {
+    await clearSessionIfCurrent({
+      clearQueries: sessionQueryBoundary.clear,
+      commit: commitSessionClear,
+      expectedToken,
+      readCurrentToken: () => tokenRef.current,
     })
-    return run
-  }, [applySession, clearSession])
+  }, [commitSessionClear, sessionQueryBoundary])
 
-  const refreshSession = async (): Promise<void> => {
-    setSessionState('loading')
+  // A foreign-session fence or logout permanently terminates its coordinator.
+  // That coordinator stays fenced forever, but the PROVIDER is not dead: once
+  // the terminal clear completes, the generation bumps so a later explicit
+  // login or workspace recovery — after React re-renders — runs against a
+  // fresh coordinator. An ordinary refresh that returns null is not terminal
+  // and never bumps it.
+  const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
+  // Synchronous ambient gate host, outside React state so it is exact even
+  // before a re-render commits. From the terminal-START hook (the moment a
+  // logout or foreign fence begins — before its awaited DELETE/revocation)
+  // until a successfully APPLIED explicit login/bootstrap/dev login or valid
+  // explicit recovery, the public refresh/reconcile facades refuse, so a
+  // remount mid-finalization cannot consume an ambient refresh cookie whose
+  // logout may still be pending or may have failed. Explicit run/runGuarded
+  // mutations are never gated, so a later explicit login still works and its
+  // apply reopens the gate synchronously — ahead of React's commit. The gate
+  // also persists beside the token store and initializes from that marker,
+  // so a full remount (web page, Tauri, mobile WebView) of a terminated-
+  // but-not-revoked session starts blocked.
+  const ambientRefreshGate = useMemo(() => createAmbientRefreshGateHost(), [])
+  // Login, startup restore, every API 401, and workspace switching share this
+  // exact coordinator. Both refresh cookies are single-use, so no other path
+  // may mutate the session concurrently or apply an older response afterwards.
+  const sessionMutations = useMemo(
+    () =>
+      createSessionMutationCoordinator({
+        applySession,
+        beforeApply: sessionQueryBoundary.beforeApply,
+        clearLocal: clearSession,
+        clearSession,
+        // A foreign session that missed its guarded target must never live on
+        // beside the rotated HTTP-only cookie family: revoke that exact family
+        // using the foreign payload's own bearer as the proof.
+        onForeignSession: async (payload) => {
+          await authApi.logout(payload.token)
+        },
+        // The ambient gate is set by onTerminalStart, the moment terminate
+        // or a foreign fence begins — before any awaited DELETE/revocation —
+        // so a remount during that pending work already reads the persisted
+        // fence. This post-clear notification only retires the coordinator:
+        // bump the generation so a later explicit login/recovery, after
+        // React re-renders, builds a fresh one.
+        onTerminalStart: ambientRefreshGate.onTerminalStart,
+        onTerminal: () => {
+          setCoordinatorGeneration((generation) => generation + 1)
+        },
+        isAmbientRefreshBlocked: ambientRefreshGate.isBlocked,
+        refresh: authApi.refresh,
+      }),
+    // coordinatorGeneration is not read inside the factory; it only re-runs
+    // the memo after the previous coordinator went terminal.
+    [ambientRefreshGate, applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
+  )
+  const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no refresh-cookie consumption until an explicit login/recovery applies.
+    if (ambientRefreshGate.isBlocked()) return Promise.resolve(null)
+    const expected = { mode: sessionMode, token }
+    const action = resolveSessionRefreshAction({
+      currentImportedToken: importedSessionTokenRef.current,
+      currentToken: tokenRef.current,
+      expected,
+      importInFlight: importedMutationsInFlightRef.current > 0,
+    })
+    if (action !== 'refresh') {
+      return Promise.resolve(null)
+    }
+    return sessionMutations.reconcile()
+  }, [sessionMode, sessionMutations, token])
 
-    setProviders(await authApi.fetchProviders())
+  const refreshAccessToken = useCallback(async (
+    expected?: SessionCredentialSnapshot,
+  ): Promise<string | null> => {
+    if (ambientRefreshGate.isBlocked()) return null
+    const currentToken = tokenRef.current
+    const action = resolveSessionRefreshAction({
+      currentImportedToken: importedSessionTokenRef.current,
+      currentToken,
+      expected,
+      importInFlight: importedMutationsInFlightRef.current > 0,
+    })
+    if (action === 'refresh') return sessionMutations.refresh()
+    if (currentToken && action === 'clear-imported') {
+      // A pasted dump never contains the httpOnly refresh credential. Do not
+      // pair its bearer with whichever cookie happens to be in this WebView.
+      await clearImportedSession(currentToken)
+    }
+    return null
+  }, [clearImportedSession, sessionMutations])
 
-    const snapshot = await authApi.fetchSession(token)
+  const readSessionCredential = useCallback((): SessionCredentialSnapshot => {
+    const currentToken = tokenRef.current
+    return {
+      mode: currentToken && importedSessionTokenRef.current === currentToken
+        ? 'imported'
+        : 'renewable',
+      token: currentToken,
+    }
+  }, [])
+
+  const refreshSessionFor = useCallback(async (
+    expected: SessionCredentialSnapshot,
+  ): Promise<void> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no startup-restore fetch, no refresh-cookie consumption.
+    if (ambientRefreshGate.isBlocked()) return
+    const isCurrent = (): boolean => isSessionCredentialCurrent({
+      currentImportedToken: importedSessionTokenRef.current,
+      currentToken: tokenRef.current,
+      expected,
+    })
+    if (!isCurrent()) return
+    setSessionState((current) => current === 'authenticated' ? current : 'loading')
+    let snapshot: Awaited<ReturnType<typeof authApi.fetchSession>>
+    try {
+      snapshot = await authApi.fetchSession(expected.token)
+    } catch (error) {
+      if (!isCurrent()) return
+      throw error
+    }
+    if (!isCurrent()) return
 
     if (snapshot.kind === 'unauthenticated') {
       // The access token may simply have expired — try the refresh cookie before
       // giving up, so a returning user with a live refresh token stays signed in.
-      const renewed = await authApi.refresh()
-      if (renewed) {
-        applySession(renewed)
-        return
-      }
-      clearSession()
+      await refreshAccessToken(expected)
       return
     }
 
     if (snapshot.kind === 'bootstrap') {
+      await sessionQueryBoundary.clear()
+      if (!isCurrent()) return
       setBootstrapState(snapshot.bootstrap)
+      meRef.current = null
       setMe(null)
       setSessionState('bootstrap')
       return
     }
 
     setBootstrapState(null)
+    meRef.current = snapshot.me
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }
+  }, [ambientRefreshGate, refreshAccessToken, sessionQueryBoundary])
+
+  const refreshSession = useCallback(
+    (): Promise<void> => refreshSessionFor(readSessionCredential()),
+    [readSessionCredential, refreshSessionFor],
+  )
 
   useEffect(() => {
-    void refreshSession().catch(() => {
-      setSessionState('unauthenticated')
-      setMe(null)
-      setBootstrapState(null)
-      setToken(null)
-      clearStoredToken()
-    })
-  }, [])
+    // Safari can revive a document from its back/forward cache while its
+    // startup /auth/me request was suspended during an external SSO launch.
+    // Reconcile again when that document becomes live; otherwise the shell can
+    // remain in its loading state forever with no request in flight.
+    const reconcileReturnedDocument = (event: PageTransitionEvent): void => {
+      if (!event.persisted) return
+      void refreshSession().catch(() => undefined)
+    }
+
+    window.addEventListener('pageshow', reconcileReturnedDocument)
+    return () => window.removeEventListener('pageshow', reconcileReturnedDocument)
+  }, [refreshSession])
+
+  // A network outage, rate limit, or server error during restore is not a
+  // logout. Keep the bearer token in localStorage and retry until the API is
+  // reachable. An explicit refresh 401 resolves normally after clearSession,
+  // so it does not enter this retry loop.
+  useEffect(() => {
+    const expected = readSessionCredential()
+    let cancelled = false
+    let restoring = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let attempt = 0
+
+    const restoreSession = async (): Promise<void> => {
+      if (cancelled || restoring || ambientRefreshGate.isBlocked()) return
+      restoring = true
+      try {
+        await refreshSessionFor(expected)
+        attempt = 0
+      } catch {
+        if (cancelled) return
+        const delay = retryDelay(attempt)
+        attempt += 1
+        retryTimer = setTimeout(() => void restoreSession(), delay)
+      } finally {
+        restoring = false
+      }
+    }
+
+    const retryWhenOnline = (): void => {
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      void restoreSession()
+    }
+
+    window.addEventListener('online', retryWhenOnline)
+    void restoreSession()
+    return () => {
+      cancelled = true
+      window.removeEventListener('online', retryWhenOnline)
+      if (retryTimer) clearTimeout(retryTimer)
+    }
+  }, [readSessionCredential, refreshSessionFor])
+
+  useAccessTokenRenewal({
+    clearImportedSession,
+    refreshAccessToken,
+    sessionMode,
+    token,
+  })
 
   const applyMeResponse = (nextMe: MeResponse): void => {
+    if (!isCurrentSessionResponse(meRef.current, nextMe)) return
+    meRef.current = nextMe
     setMe(nextMe)
     setBootstrapState(null)
     setSessionState('authenticated')
   }
 
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
-    applySession(await authApi.bootstrap(input))
+    await sessionMutations.run(() => authApi.bootstrap(input))
+    // Applied explicit session creation reopens ambient refresh.
+    ambientRefreshGate.reopen()
   }
 
   const devLogin = async (): Promise<void> => {
-    applySession(await authApi.devLogin())
+    await sessionMutations.run(() => authApi.devLogin())
+    ambientRefreshGate.reopen()
   }
 
+  const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
+    importedMutationsInFlightRef.current += 1
+    importedApplyTracker.add(accessToken)
+    try {
+      await sessionMutations.run(
+        () => resolveImportedSession(accessToken, authApi.fetchSession),
+      )
+    } finally {
+      importedApplyTracker.delete(accessToken)
+      importedMutationsInFlightRef.current -= 1
+    }
+  }, [importedApplyTracker, sessionMutations])
+
   const login = async (input: LoginInput): Promise<void> => {
-    applySession(await authApi.login(input))
+    await sessionMutations.run(() => authApi.login(input))
+    ambientRefreshGate.reopen()
+  }
+
+  const recoveryExchange = async (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ): Promise<SessionPayload> => {
+    if (input.providerId !== 'uoa') {
+      throw new Error('Workspace session recovery is only supported for the UOA provider.')
+    }
+    // The bearer AND the source session are captured lexically inside the
+    // queued thunk — immediately before the request is sent — so the
+    // classification compares against the session that is current when the
+    // mutation actually runs, not when it was enqueued. The guard closure
+    // reads that same lexical binding for BOTH the direct payload and the one
+    // opaque-refresh winner, whose raw response carries no request-local
+    // proof — nothing is ever attached to the payload itself.
+    let capturedSource: ReturnType<typeof captureWorkspaceSessionSource> = null
+    const recovered = sessionMutations.runGuarded(
+      () => {
+        const currentToken = tokenRef.current
+        if (typeof currentToken !== 'string' || currentToken.length === 0) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const currentMe = meRef.current
+        if (!currentMe) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const source = captureWorkspaceSessionSource(currentMe)
+        if (!source) {
+          throw new Error('Workspace session recovery is only supported for the UOA provider.')
+        }
+        capturedSource = source
+        const recoveryInput: RecoverWorkspaceSessionInput = {
+          code: input.code,
+          codeVerifier: input.codeVerifier,
+          expectedWorkspace,
+          providerId: 'uoa',
+          redirectUri: input.redirectUri,
+          ...(input.theme === undefined ? {} : { theme: input.theme }),
+        }
+        return authApi.recoverWorkspaceSession(currentToken, recoveryInput)
+      },
+      (payload) => {
+        // Defense in depth behind the API's pre-issuance rejection, as a
+        // three-way classification against the lexically captured source:
+        // exact target succeeds; the preserved source session is applied but
+        // the recovery rejects as a non-switch; anything else is foreign. If
+        // the thunk never captured a source the guard fails closed (foreign).
+        if (!capturedSource) {
+          return {
+            kind: 'foreign',
+            message: 'The renewed session could not be verified. Try switching again.',
+          }
+        }
+        return classifyWorkspaceSessionPayload(payload, expectedWorkspace, capturedSource)
+      },
+    )
+    const payload = await recovered
+    // A valid explicit recovery — exact target applied — reopens ambient
+    // refresh; a rejected non-switch or foreign payload never does.
+    ambientRefreshGate.reopen()
+    return payload
+  }
+
+  const switchContext = async (input: SwitchContextInput): Promise<void> => {
+    if (
+      tokenRef.current
+      && importedSessionTokenRef.current === tokenRef.current
+    ) {
+      throw new Error(IMPORTED_SESSION_SCOPE_MESSAGE)
+    }
+    await sessionMutations.run(() => authApi.switchContext(tokenRef.current, input))
+  }
+
+  const switchUoaWorkspace = async (input: SwitchUoaWorkspaceInput): Promise<void> => {
+    if (
+      tokenRef.current
+      && importedSessionTokenRef.current === tokenRef.current
+    ) {
+      throw new Error(IMPORTED_SESSION_SCOPE_MESSAGE)
+    }
+    await sessionMutations.run(() => authApi.switchUoaWorkspace(tokenRef.current, input))
   }
 
   const logout = async (): Promise<void> => {
-    await authApi.logout(token)
-    clearSession()
+    // Capture the ending credential before terminate synchronously clears
+    // tokenRef; the terminal payload's bearer (if any) still wins. Native
+    // cleanup must start while the authenticated bridge is still mounted, so
+    // its gate reads the initiating snapshot (an imported bearer never
+    // registered native push and never revokes a remote session).
+    const initiating = readSessionCredential()
+    const pendingImportedTokens = importedApplyTracker.tokens()
+    await performTerminalSessionLogout({
+      currentBearer: initiating.token,
+      isNative: isReactNativeWebView() && initiating.mode !== 'imported',
+      logout: async (bearer) => {
+        const ending = resolveTerminatingSessionCredential({
+          initiating,
+          pendingImportedTokens,
+          terminalToken: bearer,
+        })
+        if (ending.mode === 'imported') return
+        await authApi.logout(ending.token)
+      },
+      terminate: (finalize) => sessionMutations.terminate(finalize),
+      unregisterNative: unregisterNativePushDevice,
+    })
   }
 
   const value = useMemo<AuthSessionContextValue>(
@@ -165,16 +548,31 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       bootstrap,
       bootstrapState,
       devLogin,
+      importAccessToken,
       login,
       logout,
       me,
-      providers,
+      reconcileSession,
+      recoveryExchange,
       refreshAccessToken,
       refreshSession,
+      sessionMode,
       sessionState,
+      switchContext,
+      switchUoaWorkspace,
       token,
     }),
-    [bootstrapState, me, providers, refreshAccessToken, sessionState, token],
+    [
+      bootstrapState,
+      importAccessToken,
+      me,
+      reconcileSession,
+      refreshAccessToken,
+      refreshSession,
+      sessionMode,
+      sessionState,
+      token,
+    ],
   )
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>
@@ -188,3 +586,7 @@ export const useAuthSession = (): AuthSessionContextValue => {
 
   return context
 }
+
+/** For read-only facades that can also render inside isolated component tests. */
+export const useOptionalAuthSession = (): AuthSessionContextValue | null =>
+  useContext(AuthSessionContext)

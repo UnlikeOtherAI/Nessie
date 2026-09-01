@@ -53,6 +53,9 @@ const makeRegistryEntry = (overrides: Partial<ToolRegistryRow>): ToolRegistryRow
   createdBy: overrides.createdBy ?? 'system',
   enabled: overrides.enabled ?? true,
   builtin: overrides.builtin ?? true,
+  managedProductSlug: overrides.managedProductSlug ?? null,
+  policyKey: overrides.policyKey ?? overrides.toolId ?? 'http_fetch',
+  requiresExplicitGrant: overrides.requiresExplicitGrant ?? false,
   createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
   updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
 })

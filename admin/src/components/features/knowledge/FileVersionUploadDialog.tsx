@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { faCloudArrowUp } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useFileDrop } from './useFileDrop'
+import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
 // Modal for uploading a new version of a file node. Its body is a drop zone on
 // desktop and a tap-to-open native picker on touch devices. The actual upload
@@ -28,9 +28,12 @@ export const FileVersionUploadDialog = ({
     setPickedName(file.name)
     onPick(file)
   }
-  const { isDragging, dropHandlers } = useFileDrop(handleFile, uploading)
+  const { isDragging, dropHandlers } = useFileDrop(firstFileOnly(handleFile), uploading)
 
   return (
+    // Not the shared `Dialog`: a `rounded-2xl` / `--main` / `p-5` card with a
+    // drop shadow and a text "Close" control — none of which the shell's
+    // `.create-channel-panel` chrome expresses.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--scrim-strong)] p-4"
       onClick={onClose}

@@ -1,42 +1,45 @@
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
+import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
+import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
+import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runAgentListTool,
+  runAgentTriggerCreateTool,
   runAuthoredMessageSearchTool,
+  runCallStartTool,
   runChannelArchiveTool,
+  runChannelCreateTool,
   runChannelFindTool,
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
-  runConnectorAuthorizeTool,
-  runConnectorDiscoverTool,
-  runConnectorInstallTool,
-  runConnectorLibrarySearchTool,
-  runConnectorListTool,
-  runConnectorSetSecretTool,
-  runConnectorTestTool,
-  runConnectorUninstallTool,
+  runCommsConnectCardTool,
   runDeepWaterRunUpdateTool,
-  runKbCommentAddTool,
-  runKbCommentReplyTool,
-  runKbCommentResolveTool,
-  runKbCommentsListTool,
-  runKbDraftWriteTool,
-  runKbFileTool,
-  runKbListTool,
-  runKbNoteAddTool,
-  runKbPageReadTool,
-  runKbPublishRequestTool,
-  runKbSearchTool,
+  runDemonstrationStartTool,
+  runDemonstrationStopTool,
   runMessageDeleteTool,
+  runReactTool,
   runMessageEditTool,
   runMessageSearchTool,
+  runMeetingLinkCreateTool,
   runPeopleSearchTool,
+  runPersonalAssistantJoinChannelTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
+  runTodoStartTool,
+  runTodoStepUpdateTool,
+  runTodoTemplateProposeTool,
+  runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
+import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
+import { executorManagementTool } from './pa-tools/executor-dispatch.js'
 import {
   runCancelScheduledTaskTool,
   runListScheduledTasksTool,
@@ -58,8 +61,9 @@ import {
   runWebSearchTool,
 } from './content-tools.js'
 import { runSpawnSubtaskTool } from './subtask-tools.js'
-import { summarizeToolInput, truncateToolResult } from './tool-util.js'
-import type { BuiltinToolRuntimeContext, ToolExecutionUsage } from './tool-types.js'
+import { summarizeToolInput, truncateToolResult, wrapTool } from './tool-util.js'
+import { dispatchKbTool } from './kb-tool-dispatch.js'
+import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 
 // Re-exported so existing importers keep using the './tools.js' entry point.
 export {
@@ -75,33 +79,7 @@ export {
   type WorkflowBuiltinToolRuntimeContext,
 } from './workflow-builtin-tools.js'
 
-export type AgenticToolResult = {
-  connectorUsage?: ToolExecutionUsage
-  inputSummary: string
-  output: string
-  success: boolean
-}
-
-const wrapTool = async (
-  inputSummary: string,
-  fn: () => Promise<{ connectorUsage?: ToolExecutionUsage; outputPreview: string }>,
-): Promise<AgenticToolResult> => {
-  try {
-    const result = await fn()
-    return {
-      connectorUsage: result.connectorUsage,
-      inputSummary,
-      output: truncateToolResult(result.outputPreview),
-      success: true,
-    }
-  } catch (error) {
-    return {
-      inputSummary,
-      output: 'Tool error: ' + (error instanceof Error ? error.message : String(error)),
-      success: false,
-    }
-  }
-}
+export type { AgenticToolResult } from './tool-types.js'
 
 const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
 
@@ -154,12 +132,18 @@ const wrapBuiltinResult = (
     },
   )
 
-export const executeBuiltinTool = async (
+const executeBuiltinToolUncorrected = async (
   toolName: string,
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
+  const executorTool = executorManagementTool(toolName, args, context)
+  if (executorTool) return wrapTool(inputSummary, executorTool)
+  const connectorTool = connectorManagementTool(toolName, args, context)
+  if (connectorTool) return wrapTool(inputSummary, connectorTool)
+  const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
+  if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {
     case 'workspace_search':
       return wrapTool(inputSummary, () =>
@@ -184,6 +168,14 @@ export const executeBuiltinTool = async (
           threadId:
             typeof args.threadId === 'string' ? args.threadId : undefined,
         }),
+      )
+    case 'workflow_transform_preview':
+      return wrapTool(inputSummary, () =>
+        runWorkflowTransformPreviewTool(
+          context,
+          String(args.expression ?? ''),
+          args.sampleJson,
+        ),
       )
     case 'update_preferences':
       return wrapTool(inputSummary, () =>
@@ -233,9 +225,54 @@ export const executeBuiltinTool = async (
           channelId: String(args.channelId ?? ''),
         }),
       )
+    // Workspace provisioning. These validate their own arguments with zod
+    // (the same create-trigger body the route parses), so they take `args` whole.
+    case 'channel_create':
+      return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
+    case 'agent_create':
+      return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
+    case 'agent_list':
+      return wrapTool(inputSummary, () => runAgentListTool(context, args))
+    case 'agent_bind_channel':
+      return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
+    case 'agent_trigger_create':
+      return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    // To-do execution. Arguments are validated in the shared-operation callers
+    // so context-derived agent/run ids can never be supplied by the model.
+    case 'todo_start':
+      return wrapTool(inputSummary, () => runTodoStartTool(context, args))
+    case 'todo_step_update':
+      return wrapTool(inputSummary, () => runTodoStepUpdateTool(context, args))
+    case 'todo_template_propose':
+      return wrapTool(inputSummary, () => runTodoTemplateProposeTool(context, args))
+    case 'demonstration_start':
+      return wrapTool(inputSummary, () => runDemonstrationStartTool(context, args))
+    case 'demonstration_stop':
+      return wrapTool(inputSummary, () => runDemonstrationStopTool(context, args))
+    case 'pa_join_channel':
+      return wrapTool(inputSummary, () => runPersonalAssistantJoinChannelTool(context, args))
+    // Dashboards. Grantable to any agent (not PA-only), so the gate is the
+    // agent's tool policy; each call runs the same service function the REST
+    // route runs and inherits its authorization.
+    case 'dashboard_list':
+    case 'dashboard_create':
+    case 'dashboard_source_list':
+    case 'dashboard_source_probe':
+    case 'dashboard_source_create':
+    case 'dashboard_source_set_credential':
+    case 'dashboard_widget_add':
+    case 'dashboard_widget_update':
+    case 'dashboard_widget_move':
+    case 'dashboard_widget_remove':
+    case 'dashboard_read':
+    case 'dashboard_widget_post':
+      return wrapTool(inputSummary, async () => {
+        const services = await resolveDashboardToolServices(context.prisma)
+        return runDashboardTool(toolName, context, args, services)
+      })
     case 'web_search':
       return wrapTool(inputSummary, () =>
-        runWebSearchTool(String(args.query ?? ''), coercePage(args.page)),
+        runWebSearchTool(context, String(args.query ?? ''), coercePage(args.page)),
       )
     case 'web_fetch':
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
@@ -274,6 +311,14 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () =>
         runMessageDeleteTool(context, {
           messageId: String(args.messageId ?? ''),
+        }),
+      )
+    case 'react':
+      return wrapTool(inputSummary, () =>
+        runReactTool(context, {
+          emoji: String(args.emoji ?? ''),
+          messageId: String(args.messageId ?? ''),
+          ...(args.remove === true ? { remove: true } : {}),
         }),
       )
     case 'attachment_upload':
@@ -337,158 +382,30 @@ export const executeBuiltinTool = async (
         )
         return runFileGlob(args, transportConfig)
       })
-    case 'kb_comments_list':
-      return wrapTool(inputSummary, () =>
-        runKbCommentsListTool(context, {
-          pageId: String(args.pageId ?? ''),
-          kind:
-            args.kind === 'comment' || args.kind === 'note' ? args.kind : undefined,
-        }),
-      )
-    case 'kb_comment_add':
-      return wrapTool(inputSummary, () =>
-        runKbCommentAddTool(context, {
-          pageId: String(args.pageId ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_comment_reply':
-      return wrapTool(inputSummary, () =>
-        runKbCommentReplyTool(context, {
-          annotationId: String(args.annotationId ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_comment_resolve':
-      return wrapTool(inputSummary, () =>
-        runKbCommentResolveTool(context, {
-          annotationId: String(args.annotationId ?? ''),
-          state: args.state === 'open' ? 'open' : 'resolved',
-        }),
-      )
-    case 'kb_note_add':
-      return wrapTool(inputSummary, () =>
-        runKbNoteAddTool(context, {
-          pageId: String(args.pageId ?? ''),
-          quote: String(args.quote ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_search':
-      return wrapTool(inputSummary, () =>
-        runKbSearchTool(context, {
-          query: String(args.query ?? ''),
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-          limit: args.limit,
-        }),
-      )
-    case 'kb_page_read':
-      return wrapTool(inputSummary, () =>
-        runKbPageReadTool(context, { pageId: String(args.pageId ?? '') }),
-      )
-    case 'kb_list':
-      return wrapTool(inputSummary, () =>
-        runKbListTool(context, {
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-        }),
-      )
-    case 'kb_draft_write':
-      return wrapTool(inputSummary, () =>
-        runKbDraftWriteTool(context, {
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
-          title: typeof args.title === 'string' ? args.title : undefined,
-          body: String(args.body ?? ''),
-          summary: typeof args.summary === 'string' ? args.summary : undefined,
-          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
-          parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
-        }),
-      )
-    case 'kb_file':
-      return wrapTool(inputSummary, () =>
-        runKbFileTool(context, {
-          pageId: String(args.pageId ?? ''),
-          // Distinguish "omitted" (no move) from "explicit null" (move to the
-          // space root) — both would otherwise collapse to undefined.
-          parentPageId:
-            'parentPageId' in args
-              ? (typeof args.parentPageId === 'string' ? args.parentPageId : null)
-              : undefined,
-          position: typeof args.position === 'number' ? args.position : undefined,
-          title: typeof args.title === 'string' ? args.title : undefined,
-          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
-        }),
-      )
-    case 'connector_list':
-      return wrapTool(inputSummary, () => runConnectorListTool(context))
-    case 'connector_library_search':
-      return wrapTool(inputSummary, () =>
-        runConnectorLibrarySearchTool(context, {
-          query: String(args.query ?? ''),
-        }),
-      )
-    case 'connector_discover':
-      return wrapTool(inputSummary, () =>
-        runConnectorDiscoverTool(context, { url: String(args.url ?? '') }),
-      )
-    case 'connector_install':
-      return wrapTool(inputSummary, () =>
-        runConnectorInstallTool(context, {
-          catalogEntryId:
-            typeof args.catalogEntryId === 'string' ? args.catalogEntryId : undefined,
-          name: typeof args.name === 'string' ? args.name : undefined,
-          label: typeof args.label === 'string' ? args.label : undefined,
-          description:
-            typeof args.description === 'string' ? args.description : undefined,
-          url: typeof args.url === 'string' ? args.url : undefined,
-          transport: typeof args.transport === 'string' ? args.transport : undefined,
-          authMethod:
-            typeof args.authMethod === 'string' ? args.authMethod : undefined,
-          scope: typeof args.scope === 'string' ? args.scope : undefined,
-          scopeId: typeof args.scopeId === 'string' ? args.scopeId : undefined,
-        }),
-      )
-    case 'connector_authorize':
-      return wrapTool(inputSummary, () =>
-        runConnectorAuthorizeTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
-    case 'connector_test':
-      return wrapTool(inputSummary, () =>
-        runConnectorTestTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
-    case 'connector_set_secret':
-      return wrapTool(inputSummary, () =>
-        runConnectorSetSecretTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-          secret: String(args.secret ?? ''),
-          shared: typeof args.shared === 'boolean' ? args.shared : undefined,
-        }),
-      )
-    case 'connector_uninstall':
-      return wrapTool(inputSummary, () =>
-        runConnectorUninstallTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
-    case 'kb_publish_request':
-      return wrapTool(inputSummary, () =>
-        runKbPublishRequestTool(context, {
-          pageId: String(args.pageId ?? ''),
-          reason: typeof args.reason === 'string' ? args.reason : undefined,
-        }),
-      )
+    case 'comms_connect_card':
+      return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
+    case 'meeting_link_create':
+      return wrapTool(inputSummary, () => runMeetingLinkCreateTool(context, args))
+    case 'call_start':
+      return wrapTool(inputSummary, () => runCallStartTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }
+}
+
+export const executeBuiltinTool = async (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: BuiltinToolRuntimeContext,
+  stubbedIds: ReadonlySet<string> = new Set(),
+): Promise<AgenticToolResult> => {
+  const result = await executeBuiltinToolUncorrected(toolName, args, context)
+  return appendStubbedBuiltinSchema(
+    toolName,
+    result,
+    stubbedIds,
+    BUILTIN_TOOL_DEFINITIONS,
+  )
 }

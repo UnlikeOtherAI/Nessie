@@ -1,6 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 
-import type { FastifyCorsOptions } from '@fastify/cors'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
 import {
@@ -14,18 +13,31 @@ import {
   type BootstrapTokenState,
 } from '../auth/bootstrap.js'
 import {
-  issueSessionToken,
+  isSessionTokenRevoked,
   verifySessionToken,
   type SessionTokenClaims,
 } from '../auth/session.js'
-import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { sendApiError } from './api.js'
 import {
-  LOCAL_AUTH_PROVIDER_ID,
   buildMeResponse,
   createActorContextFromClaims,
 } from '../services/auth.js'
+import { hasActiveUserSession } from '../services/refresh-session-management.js'
+import { createSessionIssuers } from '../services/session-issuers.js'
+import { createRequestRateLimitChecker } from './rate-limit.js'
 import { createRequestHelpers } from './request-helpers.js'
+import { createRateLimiter } from '../services/rate-limit.js'
+import { parseOriginList } from './server-origin-policy.js'
+
+export {
+  createFastifyTrustProxyConfig,
+  getRateLimitClientId,
+} from './rate-limit.js'
+export {
+  buildStreamCorsHeaders,
+  createCorsOriginChecker,
+  isOriginAllowed,
+} from './server-origin-policy.js'
 
 export type AppConfig = ReturnType<typeof loadConfig>
 
@@ -41,111 +53,8 @@ export type RequestWithRawBody = FastifyRequest & {
 
 const DEFAULT_LOCAL_PROVIDER_TYPE = 'local-bootstrap'
 
-const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
-  const origins = new Set<string>()
-  for (const value of values) {
-    for (const origin of value?.split(',') ?? []) {
-      const trimmed = origin.trim().replace(/\/$/, '')
-      if (trimmed) {
-        origins.add(trimmed)
-      }
-    }
-  }
-  return origins
-}
-
-const localCorsOrigins = new Set([
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5455',
-  'http://localhost:3000',
-  'http://localhost:5455',
-])
-
-// Fixed Tauri WKWebView/WebView2 origins for the Nessie desktop app.
-const desktopAppCorsOrigins = new Set([
-  'tauri://localhost',
-  'http://tauri.localhost',
-])
-
-type OriginPolicy = {
-  origin: string | undefined
-  allowedOrigins: Set<string>
-  mode: AppConfig['mode']
-}
-
-/**
- * Single source of truth for "may this Origin make a credentialed request?".
- * A missing Origin (same-origin / non-browser caller) is always allowed.
- * Used by both the `@fastify/cors` origin checker and the SSE header builder so
- * the streaming endpoints can never drift from the normal CORS policy.
- */
-export const isOriginAllowed = (input: OriginPolicy): boolean => {
-  if (!input.origin) {
-    return true
-  }
-  const normalizedOrigin = input.origin.replace(/\/$/, '')
-  return (
-    input.allowedOrigins.has(normalizedOrigin)
-    || desktopAppCorsOrigins.has(normalizedOrigin)
-    || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
-  )
-}
-
-export const createCorsOriginChecker = (input: {
-  allowedOrigins: Set<string>
-  mode: AppConfig['mode']
-}): NonNullable<FastifyCorsOptions['origin']> =>
-  (origin, callback) => {
-    callback(
-      null,
-      isOriginAllowed({
-        origin: origin ?? undefined,
-        allowedOrigins: input.allowedOrigins,
-        mode: input.mode,
-      }),
-    )
-  }
-
-/**
- * CORS headers for hijacked SSE responses. `reply.hijack()` takes the response
- * out of Fastify's lifecycle, so `@fastify/cors` never runs and the manual
- * `reply.raw.writeHead` would otherwise ship no `Access-Control-Allow-Origin` —
- * silently breaking every cross-origin EventSource. Spread the result into the
- * handler's `writeHead`. Returns `{}` when the origin is absent or not allowed,
- * matching `@fastify/cors`, which then emits no allow-origin header.
- */
-export const buildStreamCorsHeaders = (input: OriginPolicy): Record<string, string> => {
-  if (!input.origin || !isOriginAllowed(input)) {
-    return {}
-  }
-  return {
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Origin': input.origin,
-    Vary: 'Origin',
-  }
-}
-
 const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]
-
-type RateLimitRule = {
-  keyPrefix: string
-  max: number
-  windowMs: number
-}
-
-type RateLimitBucket = {
-  count: number
-  resetAt: number
-}
-
-export const createFastifyTrustProxyConfig = (
-  trustedProxyHops: number,
-): false | number => trustedProxyHops > 0 ? trustedProxyHops : false
-
-export const getRateLimitClientId = (
-  request: Pick<FastifyRequest, 'ip'>,
-): string => request.ip
 
 /**
  * Server context: owns config, the shared Prisma client, auth secret + bootstrap
@@ -283,6 +192,28 @@ export const createServerContext = () => {
 
     if (!user) {
       sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
+      return null
+    }
+
+    // Revocation: a forced sign-out bumps User.tokenVersion, which
+    // invalidates every access token minted at an older generation.
+    if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
+      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
+      return null
+    }
+
+    // Exact-session revocation: logout revokes only the bearer's `sid`, never
+    // the whole user generation, so the live check must be per-session. With
+    // no unrevoked, unexpired refresh row for this exact `sid`, the session
+    // was logged out and its access token stops working now, not at expiry.
+    if (
+      !(await hasActiveUserSession(
+        prisma,
+        verification.claims.sub,
+        verification.claims.sid,
+      ))
+    ) {
+      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
       return null
     }
 
@@ -466,114 +397,14 @@ export const createServerContext = () => {
     return timingSafeEqual(leftBuffer, rightBuffer)
   }
 
-  const buildLocalSession = async (
-    userId: string,
-    roles: string[],
-    provider?: { providerId: string; providerType: SessionTokenClaims['providerType'] },
-    // Passed by /api/auth/refresh to keep the login's session id stable across
-    // its rotation chain; omitted on a fresh login so a new id is minted.
-    sessionId?: string,
-  ) => {
-    // Resolve user's actual memberships from DB instead of hardcoded bootstrap IDs
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        organizationMembers: { orderBy: { createdAt: 'asc' }, select: { organizationId: true, role: true } },
-        projectMembers: { orderBy: { createdAt: 'asc' }, select: { projectId: true } },
-        teamMembers: { orderBy: { createdAt: 'asc' }, select: { teamId: true } },
-      },
-    })
-
-    const orgId = user?.organizationMembers[0]?.organizationId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.organizationId
-    const projId = user?.projectMembers[0]?.projectId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.projectId
-    const teamId = user?.teamMembers[0]?.teamId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId
-    const resolvedRoles = roles.length > 0 ? roles : [user?.organizationMembers[0]?.role ?? 'member']
-
-    return issueSessionToken(
-      {
-        sub: userId,
-        org: orgId,
-        proj: projId,
-        team: teamId,
-        roles: resolvedRoles,
-        providerId: provider?.providerId ?? LOCAL_AUTH_PROVIDER_ID,
-        providerType: provider?.providerType ?? DEFAULT_LOCAL_PROVIDER_TYPE,
-      },
-      authSecret,
-      config.auth.tokenTtlSeconds,
-      sessionId,
-    )
-  }
-
-  const buildSessionForUser = (input: {
-    organizationId: string
-    projectId: string
-    providerId: string
-    providerType: SessionTokenClaims['providerType']
-    roles: string[]
-    teamId: string
-    userId: string
-  }) =>
-    issueSessionToken(
-      {
-        sub: input.userId,
-        org: input.organizationId,
-        proj: input.projectId,
-        team: input.teamId,
-        roles: input.roles,
-        providerId: input.providerId,
-        providerType: input.providerType,
-      },
-      authSecret,
-      config.auth.tokenTtlSeconds,
-    )
-
-  const rateLimitBuckets = new Map<string, RateLimitBucket>()
-
-  const resolveRateLimitRule = (request: FastifyRequest): RateLimitRule | null => {
-    const method = request.method.toUpperCase()
-    const routePath = request.routeOptions.url ?? new URL(request.url, 'http://localhost').pathname
-
-    if (method === 'POST' && (routePath === '/api/auth/session' || routePath === '/api/auth/bootstrap')) {
-      return { keyPrefix: `${method}:${routePath}`, max: 10, windowMs: 10 * 60 * 1000 }
-    }
-
-    if (method === 'POST' && routePath === '/api/threads/:threadId/messages') {
-      return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
-    }
-
-    if (routePath.startsWith('/api/agents') && ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method)) {
-      return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
-    }
-
-    return null
-  }
-
-  const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } | null => {
-    const rule = resolveRateLimitRule(request)
-    if (!rule) {
-      return null
-    }
-
-    const now = Date.now()
-    const key = `${rule.keyPrefix}:${getRateLimitClientId(request)}`
-    const existingBucket = rateLimitBuckets.get(key)
-    const bucket =
-      existingBucket && existingBucket.resetAt > now
-        ? existingBucket
-        : { count: 0, resetAt: now + rule.windowMs }
-
-    bucket.count += 1
-    rateLimitBuckets.set(key, bucket)
-
-    if (bucket.count <= rule.max) {
-      return null
-    }
-
-    return {
-      retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
-    }
-  }
+  const { buildLocalSession, buildSessionForUser } = createSessionIssuers({
+    authSecret,
+    defaultProviderType: DEFAULT_LOCAL_PROVIDER_TYPE,
+    prisma,
+    tokenTtlSeconds: config.auth.tokenTtlSeconds,
+  })
+  const checkRateLimit = createRequestRateLimitChecker()
+  const rateLimiter = createRateLimiter(prisma)
 
   const requestHelpers = createRequestHelpers(prisma)
 
@@ -603,6 +434,7 @@ export const createServerContext = () => {
     buildLocalSession,
     buildSessionForUser,
     checkRateLimit,
+    rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,
   }

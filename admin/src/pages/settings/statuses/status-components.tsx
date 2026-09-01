@@ -7,6 +7,7 @@ import type {
   UserStatusRuleRecord,
   UserStatusScheduleRecord,
 } from '../../../lib/api-client'
+import { Pill } from '../../../components/primitives/Pill'
 import { hoverCardClass } from '../settings-shared'
 
 export const dayLabels = [
@@ -86,9 +87,9 @@ export const StatusList = ({
             </div>
           </div>
           {status.activeNow && (
-            <span className="rounded bg-[color:var(--success-soft)] px-2 py-1 text-xs text-[color:var(--success-text)]">
+            <Pill radius="chip" tone="success" uppercase={false}>
               Active
-            </span>
+            </Pill>
           )}
         </div>
       </Link>

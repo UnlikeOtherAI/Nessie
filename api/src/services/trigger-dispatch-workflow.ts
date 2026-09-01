@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isWorkflowInstallationRunnable } from './workflow-templates.js'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
@@ -8,6 +9,7 @@ import {
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
+import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import {
   type DispatchTriggerResult,
@@ -45,7 +47,10 @@ export const dispatchWorkflowTrigger = async (
   },
 ): Promise<DispatchTriggerResult> => {
   const installation = input.trigger.workflowInstallation
-  if (!installation || !installation.active || installation.status === 'disabled') {
+  // W8: `paused` must actually pause. Anything but an unambiguous active
+  // installation refuses to fire, through the same predicate the API uses —
+  // the check was inlined here, so the two could disagree.
+  if (!installation || !isWorkflowInstallationRunnable(installation)) {
     return { kind: 'rejected', reason: 'workflow_installation_not_ready' }
   }
 
@@ -110,12 +115,18 @@ export const dispatchWorkflowTrigger = async (
         },
       })
 
+      const pinnedGraph = await resolveInstallationPinnedGraph(tx, installation.id)
+
       const workflowRun = await tx.workflowRun.create({
         data: {
           installationId: installation.id,
           organizationId: installation.organizationId,
+          // W4: freeze the installed graph this run executes from.
+          graphSnapshot: pinnedGraph,
           triggerId: input.trigger.id,
           triggerDeliveryId: delivery.id,
+          // W25: trigger fires originate in the installation's channel.
+          originChannelId: installation.channelId,
           input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
             ? (input.payload as Record<string, unknown>)
             : { payload: input.payload ?? null }) as Prisma.InputJsonValue,

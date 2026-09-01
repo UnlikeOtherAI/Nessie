@@ -169,6 +169,8 @@ export const KnowledgeColumns = ({
   const resizeCleanup = useRef<(() => void) | null>(null)
   useEffect(() => () => resizeCleanup.current?.(), [])
 
+  // Keyboard adjustments are each a complete interaction, so they persist
+  // immediately; the pointer drag below writes the cookie once, on release.
   const adjustWidth = (next: number) => {
     const clamped = clampWidth(next)
     setColumnWidth(clamped)
@@ -204,23 +206,49 @@ export const KnowledgeColumns = ({
     const startX = event.clientX
     const startWidth = columnWidth
     let lastWidth = startWidth
+    let cancelled = false
 
-    const move = (moveEvent: globalThis.PointerEvent) => {
-      lastWidth = clampWidth(startWidth + (moveEvent.clientX - startX))
+    // Coalesce each burst of pointermoves into one width update per frame,
+    // and persist to the cookie once at interaction end, not per move.
+    let frame: number | undefined
+    let pendingClientX: number | null = null
+    const flush = () => {
+      frame = undefined
+      if (pendingClientX === null) return
+      const clientX = pendingClientX
+      pendingClientX = null
+      lastWidth = clampWidth(startWidth + (clientX - startX))
       setColumnWidth(lastWidth)
     }
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      pendingClientX = moveEvent.clientX
+      if (frame === undefined) frame = requestAnimationFrame(flush)
+    }
+    // Runs for every termination — pointerup, pointercancel, window blur,
+    // unmount mid-drag — so the body cursor/userSelect can never stick.
+    // A cancel drops the pending frame and keeps the last applied width.
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('blur', cancel)
+      if (frame !== undefined) cancelAnimationFrame(frame)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      if (!cancelled) flush()
       setCookie(COLUMN_WIDTH_COOKIE, String(lastWidth))
       resizeCleanup.current = null
+    }
+    const cancel = () => {
+      cancelled = true
+      stop()
     }
 
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
-    resizeCleanup.current = stop
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('blur', cancel)
+    resizeCleanup.current = cancel
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }

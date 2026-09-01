@@ -1,0 +1,15 @@
+{
+  "name": "rate-limited",
+  "description": "Failure injection: every first turn fails with a 429 rate-limit shape, for exercising provider-error handling and queue retry paths.",
+  "turns": [
+    {
+      "error": {
+        "code": "rate_limit_exceeded",
+        "latencyMs": 5,
+        "message": "Rate limit exceeded for mock-model",
+        "status": 429,
+        "type": "rate_limit_error"
+      }
+    }
+  ]
+}

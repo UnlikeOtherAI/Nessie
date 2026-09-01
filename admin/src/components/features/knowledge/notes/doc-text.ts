@@ -29,12 +29,3 @@ export const offsetToPos = (docText: DocText, offset: number): number | null => 
   }
   return null
 }
-
-export const posToOffset = (docText: DocText, pos: number): number | null => {
-  for (const segment of docText.segments) {
-    if (pos >= segment.pos && pos <= segment.pos + segment.length) {
-      return segment.offset + (pos - segment.pos)
-    }
-  }
-  return null
-}

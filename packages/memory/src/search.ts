@@ -23,6 +23,18 @@ export type SearchThoughtsInput = {
   mode?: ThoughtSearchMode
   sessionId?: string
   channelId?: string
+  projectId?: string | null
+  teamId?: string | null
+  threadId?: string | null
+  taskId?: string | null
+  runId?: string | null
+  agentId?: string | null
+  agentKind?: 'personal_assistant' | 'shared' | null
+  actorId?: string
+  actorType?: 'user' | 'agent' | 'service' | 'system' | null
+  requestId?: string | null
+  correlationId?: string | null
+  systemComponent?: string | null
 }
 
 type ReasoningRow = {
@@ -207,10 +219,21 @@ export const searchThoughts = async (
     try {
       queryEmbedding = await getEmbedding(input.query, config.modelClient, {
         organizationId: input.organizationId,
+        userId: input.userId,
+        projectId: input.projectId ?? null,
+        teamId: input.teamId ?? null,
         channelId: input.channelId ?? null,
         sessionId: input.sessionId ?? null,
-        actorId: input.userId,
-        actorType: 'user',
+        threadId: input.threadId ?? null,
+        taskId: input.taskId ?? null,
+        runId: input.runId ?? null,
+        agentId: input.agentId ?? null,
+        agentKind: input.agentKind ?? null,
+        actorId: input.actorId ?? input.userId,
+        actorType: input.actorType ?? 'user',
+        requestId: input.requestId ?? null,
+        correlationId: input.correlationId ?? null,
+        systemComponent: input.systemComponent ?? 'memory-search',
       })
     } catch (err) {
       throw new SearchEmbeddingError(
@@ -272,6 +295,17 @@ export type SearchThoughtsInScopesInput = {
   includeReasoning?: boolean
   sessionId?: string
   channelId?: string
+  projectId?: string | null
+  teamId?: string | null
+  threadId?: string | null
+  taskId?: string | null
+  runId?: string | null
+  agentId?: string | null
+  agentKind?: 'personal_assistant' | 'shared' | null
+  actorId?: string
+  actorType?: 'user' | 'agent' | 'service' | 'system' | null
+  requestId?: string | null
+  correlationId?: string | null
 }
 
 const IN_SCOPES_MODE: ThoughtSearchMode = 'hybrid'
@@ -292,11 +326,20 @@ export const searchThoughtsInScopes = async (
   try {
     queryEmbedding = await getEmbedding(input.query, config.modelClient, {
       organizationId: input.organizationId,
+      userId: input.userId,
+      projectId: input.projectId ?? null,
+      teamId: input.teamId ?? null,
       channelId: input.channelId ?? null,
       sessionId: input.sessionId ?? null,
-      agentId: input.runningAgentId,
-      actorId: input.userId ?? input.runningAgentId,
-      actorType: input.userId ? 'user' : 'agent',
+      threadId: input.threadId ?? null,
+      taskId: input.taskId ?? null,
+      runId: input.runId ?? null,
+      agentId: input.agentId ?? input.runningAgentId,
+      agentKind: input.agentKind ?? null,
+      actorId: input.actorId ?? input.userId ?? input.runningAgentId,
+      actorType: input.actorType ?? (input.userId ? 'user' : 'agent'),
+      requestId: input.requestId ?? null,
+      correlationId: input.correlationId ?? null,
     })
   } catch (err) {
     throw new SearchEmbeddingError(

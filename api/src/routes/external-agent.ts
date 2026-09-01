@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
-import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import { attributionFromActorContext } from '@nessie/runtime'
+import { isAdminActor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
@@ -11,6 +12,7 @@ import {
   syncExternalAgentChannel,
 } from '../services/external-agent-sync.js'
 import {
+  ProductWebhookSecretError,
   resolveSignedWebhookOrg,
   setProductWebhookSecret,
 } from '../services/product-webhook-secret.js'
@@ -18,6 +20,7 @@ import {
   DEEPSIGNAL_SLUG,
   handleDeepSignalInsightSurfaced,
 } from '../services/deepsignal-webhook.js'
+import type { SignalDigestOptions } from '../services/deepsignal-digest.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -44,16 +47,39 @@ const syncErrorStatus = (code: string): number => {
       return 400
     case EXTERNAL_AGENT_SYNC_ERROR_CODES.UPSTREAM_UNAVAILABLE:
       return 502
+    case EXTERNAL_AGENT_SYNC_ERROR_CODES.IDENTITY_UNAVAILABLE:
+      return 503
     default:
       return 400
   }
 }
 
-const isAdminOrOwner = (roles: string[] | undefined): boolean =>
-  Boolean(roles?.some((role) => role === 'owner' || role === 'admin'))
-
 const firstHeader = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value
+
+/**
+ * Non-negative-integer env override, else undefined (service default applies).
+ * `0` is a valid, distinct value — notably `NESSIE_SIGNAL_BUDGET_MAX=0` suppresses
+ * every fresh proactive digest. Negatives and fractions are rejected (fall back
+ * to the default) rather than silently coerced.
+ */
+const envNonNegativeInt = (name: string): number | undefined => {
+  const raw = process.env[name]
+  if (raw === undefined || raw.trim() === '') return undefined
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 0 ? value : undefined
+}
+
+/**
+ * Delivery-shaping options for the proactive digest, from env. Absent vars leave
+ * the service's heuristic defaults (coalesce ~1h, budget ~6 fresh digests / 24h)
+ * in force — deliberate, overridable defaults, not hard rules.
+ */
+const digestOptionsFromEnv = (): SignalDigestOptions => ({
+  coalesceWindowMs: envNonNegativeInt('NESSIE_SIGNAL_DIGEST_WINDOW_MS'),
+  budgetWindowMs: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_WINDOW_MS'),
+  budgetMax: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_MAX'),
+})
 
 export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -63,6 +89,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     authSecret,
     isJsonContentType,
     realtimeHub,
+    deepSignalMcpIdentity,
     buildChannelRealtimeScopes,
     getChannelIfMember,
   } = deps
@@ -105,7 +132,14 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
       const result = await syncExternalAgentChannel(
         prisma,
         channel,
-        { organizationId: actorContext.tenant.organizationId, userId: actorContext.actor.actorId },
+        {
+          attribution: attributionFromActorContext(actorContext, {
+            systemComponent: 'api-deepsignal-history-sync',
+          }),
+          deepSignalIdentity: deepSignalMcpIdentity,
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
         secretResolver,
       )
       return createApiResponse(result)
@@ -123,7 +157,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
-    if (!isAdminOrOwner(actorContext.actor.roles)) {
+    if (!isAdminActor(actorContext)) {
       sendApiError(reply, 403, 'FORBIDDEN', 'Admin or owner access required')
       return reply
     }
@@ -133,11 +167,19 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     const body = parseInput(WebhookSecretBodySchema, request.body, reply)
     if (!body) return reply
 
-    await setProductWebhookSecret(prisma, authSecret ?? '', {
-      organizationId: actorContext.tenant.organizationId,
-      productSlug: params.productSlug,
-      secret: body.secret,
-    })
+    try {
+      await setProductWebhookSecret(prisma, authSecret ?? '', {
+        organizationId: actorContext.tenant.organizationId,
+        productSlug: params.productSlug,
+        secret: body.secret,
+      })
+    } catch (error) {
+      if (error instanceof ProductWebhookSecretError) {
+        sendApiError(reply, 400, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
     return createApiResponse({ ok: true })
   })
 
@@ -185,6 +227,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
         prisma,
         organizationId,
         payload as Record<string, unknown>,
+        digestOptionsFromEnv(),
       )
 
       await publishInsightDeliveries(realtimeHub, buildChannelRealtimeScopes, organizationId, result)
@@ -198,7 +241,11 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
   )
 }
 
-/** Best-effort live notification for each posted insight message. */
+/**
+ * Best-effort live notification, only for a *freshly posted* digest message.
+ * Coalesced/suppressed insights update an existing message in place, so they must
+ * not re-emit `message.new` — that is the whole point of batching over interrupts.
+ */
 const publishInsightDeliveries = async (
   realtimeHub: RouteDeps['realtimeHub'],
   buildChannelRealtimeScopes: RouteDeps['buildChannelRealtimeScopes'],
@@ -206,6 +253,7 @@ const publishInsightDeliveries = async (
   result: Awaited<ReturnType<typeof handleDeepSignalInsightSurfaced>>,
 ): Promise<void> => {
   for (const delivery of result.deliveries) {
+    if (delivery.mode !== 'posted') continue
     try {
       await realtimeHub.publishWs(
         buildChannelRealtimeScopes({
@@ -218,7 +266,7 @@ const publishInsightDeliveries = async (
             agentId: delivery.agentId ? parseAgentId(delivery.agentId) : undefined,
             authorUserId: undefined,
             channelId: parseChannelId(delivery.channelId),
-            contentPreview: 'New insight surfaced',
+            contentPreview: 'New signals from DeepSignal',
             messageId: delivery.messageId,
             role: 'assistant',
             threadId: parseThreadId(delivery.threadId),

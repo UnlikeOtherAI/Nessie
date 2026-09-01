@@ -1,21 +1,39 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  collectWorkflowTaintedRefs,
+  evaluateWorkflowJmespath,
+  isWorkflowJmespathTruthy,
+  parseWorkflowBindingTemplate,
+  redactWorkflowSecretValues,
+  releaseNextQueuedWorkflowRun,
+  withWorkflowOverlapLock,
+  type WorkflowBindingScope,
+  type WorkflowBindingTemplate,
+} from '@nessie/workspace-admin'
+import type { LedgerIdentityService } from '@nessie/runtime'
+import {
   parseChannelId,
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
 import { enqueueQueueJob } from '../queue.js'
 import {
+  WORKFLOW_STEP_LEASE_HEARTBEAT_MS,
+  bumpWorkflowRunAttempt,
   ensureWorkflowStepRuns,
+  heartbeatWorkflowStepLease,
   listWorkflowStepRuns,
   loadWorkflowGraph,
   markWorkflowRunFinished as markWorkflowRunFinishedRaw,
   markWorkflowRunStarted,
   markWorkflowStepRunFinished as markWorkflowStepRunFinishedRaw,
   markWorkflowStepRunQueued,
+  markWorkflowStepRunSkipped,
   markWorkflowStepRunStarted,
+  reconcileWorkflowRunGraphSnapshot,
 } from '../run/workflows.js'
 import {
   executeWorkflowBuiltinTool,
@@ -24,7 +42,12 @@ import {
 import {
   buildWorkflowRunEventContext,
   emitWorkflowRunTerminalEvent,
+  postWorkflowRunCard,
 } from './workflow-run-events.js'
+import {
+  evaluateWorkflowJmespathAtSink,
+  executeWorkflowTransformStep,
+} from './workflow-transform.js'
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -46,13 +69,23 @@ type WorkflowStepSnapshot = {
 }
 
 type WorkflowBindingContext = {
+  /** W0: refs the workflow's own bindings marked secret. Never leave a sink. */
+  taintedRefs?: ReadonlySet<string>
   workflowBindings: unknown
   workflowConfig: unknown
   workflowInput: unknown
   stepSnapshots: Record<string, WorkflowStepSnapshot>
 }
 
-const TOKEN_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g
+export const buildWorkflowBindingContext = (input: {
+  stepSnapshots: Record<string, WorkflowStepSnapshot>
+  workflowBindings: unknown
+  workflowConfig: unknown
+  workflowInput: unknown
+}): WorkflowBindingContext => ({
+  ...input,
+  taintedRefs: collectWorkflowTaintedRefs(input.workflowBindings),
+})
 
 const getPathValue = (value: unknown, path: string[]): unknown => {
   let current: unknown = value
@@ -80,54 +113,42 @@ const getPathValue = (value: unknown, path: string[]): unknown => {
   return current
 }
 
-const resolveWorkflowBindingReference = (
-  expression: string,
-  context: WorkflowBindingContext,
+const resolveWorkflowBindingScope = (
+  reference: WorkflowBindingScope,
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
 ): unknown => {
-  const parts = expression.split('.').filter((part) => part.length > 0)
-  if (parts.length === 0) {
+  if (reference.kind === 'workflow') {
+    const source =
+      reference.scope === 'config'
+        ? context.workflowConfig
+        : reference.scope === 'bindings'
+          ? context.workflowBindings
+          : context.workflowInput
+    // W0 sink 2/3: a tainted ref reached through workflow.* never reaches the
+    // rendered message body or the transform context.
+    return redactWorkflowSecretValues(getPathValue(source, reference.path), context.taintedRefs)
+  }
+
+  const stepSnapshot = context.stepSnapshots[reference.stepId]
+  if (!stepSnapshot) {
     return undefined
   }
-
-  const root = parts[0]
-  if (root === 'workflow') {
-    const scope = parts[1]
-    if (scope === 'run' && parts[2] === 'input') {
-      return getPathValue(context.workflowInput, parts.slice(3))
-    }
-    if (scope === 'input') {
-      return getPathValue(context.workflowInput, parts.slice(2))
-    }
-    if (scope === 'config') {
-      return getPathValue(context.workflowConfig, parts.slice(2))
-    }
-    if (scope === 'bindings') {
-      return getPathValue(context.workflowBindings, parts.slice(2))
-    }
-    return undefined
+  if (reference.scope === 'input') {
+    return redactWorkflowSecretValues(
+      getPathValue(stepSnapshot.input, reference.path),
+      context.taintedRefs,
+    )
   }
-
-  if (root === 'steps') {
-    const stepKey = parts[1]
-    const stepSnapshot = stepKey ? context.stepSnapshots[stepKey] : undefined
-    if (!stepSnapshot) {
-      return undefined
-    }
-
-    const scope = parts[2]
-    if (scope === 'input') {
-      return getPathValue(stepSnapshot.input, parts.slice(3))
-    }
-    if (scope === 'output') {
-      return getPathValue(stepSnapshot.output, parts.slice(3))
-    }
-    if (scope === 'status') {
-      return stepSnapshot.status
-    }
+  if (reference.scope === 'output') {
+    return redactWorkflowSecretValues(
+      getPathValue(stepSnapshot.output, reference.path),
+      context.taintedRefs,
+    )
   }
-
-  return undefined
+  return stepSnapshot.status
 }
+
+
 
 const stringifyWorkflowBindingValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -149,44 +170,125 @@ const stripWorkflowDesignerConfig = (
     Object.entries(value).filter(([key]) => key !== 'workflowDesigner'),
   )
 
-const resolveWorkflowTemplateString = (
+const formatBindingExpression = (segments: string[]): string => segments.join('.')
+
+// W16: the `when:` document is the same redacted scope the binding resolver
+// uses — bindings/config/input plus the previous steps' snapshots. W17's
+// inline `jmespath:` form evaluates against the same document, so an inline
+// expression and a `when:` guard see identical data.
+const buildWorkflowWhenDocument = (
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): Record<string, unknown> => ({
+  steps: Object.fromEntries(
+    Object.entries(context.stepSnapshots).map(([stepId, snapshot]) => [
+      stepId,
+      { input: snapshot.input, output: snapshot.output, status: snapshot.status },
+    ]),
+  ),
+  workflow: {
+    bindings: context.workflowBindings,
+    config: context.workflowConfig,
+    input: context.workflowInput,
+  },
+})
+
+// W17: the one added branch in input resolution — `jmespath:<expr>` runs
+// through the same evaluator as the transform step, at sink scope (redacted
+// in, redacted out). The prefix check happens after binding-token expansion
+// too: `jmespath:{{ … }}` would slip past a literal startsWith. Compiled at
+// save time, so a failure here is a data-dependent run-time error.
+const isJmespathPrefixed = (value: string): boolean => value.startsWith('jmespath:')
+
+const resolveWorkflowTemplateString = async (
   value: string,
-  context: WorkflowBindingContext,
-): unknown => {
-  const exactMatch = value.match(/^\s*\{\{\s*([^}]+?)\s*\}\}\s*$/)
-  if (exactMatch?.[1]) {
-    const resolved = resolveWorkflowBindingReference(exactMatch[1], context)
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): Promise<unknown> => {
+  // Same grammar as save-time validation (W9): invalid syntax here means the
+  // template was authored before the validator existed or bypassed it.
+  // A `jmespath:` string is JMESPath source, not binding syntax, so the
+  // binding grammar does not apply to it — its own compiler runs at save
+  // time. (The prefix check runs again after token expansion, covering the
+  // `jmespath:{{ … }}` shape.)
+  const prefixed = isJmespathPrefixed(value)
+  const template: WorkflowBindingTemplate = parseWorkflowBindingTemplate(value)
+  if (prefixed) {
+    // JMESPath source: no binding expansion; the loop below is skipped.
+  } else if (template.kind === 'literal') {
+    return value
+  } else if (template.kind === 'invalid') {
+    throw new Error(`WORKFLOW_BINDING_INVALID:${template.error}`)
+  }
+
+  if (!prefixed && template.kind === 'exact') {
+    const resolved = resolveWorkflowBindingScope(template.token.reference, context)
     if (resolved === undefined) {
-      throw new Error(`WORKFLOW_BINDING_NOT_FOUND:${exactMatch[1]}`)
+      throw new Error(
+        `WORKFLOW_BINDING_NOT_FOUND:${formatBindingExpression(template.token.segments)}`,
+      )
     }
     return resolved
   }
 
-  return value.replace(TOKEN_PATTERN, (_match, expression: string) => {
-    const resolved = resolveWorkflowBindingReference(expression, context)
+  let resolved_value = value
+  for (const token of template.kind === 'mixed' ? template.tokens : []) {
+    const resolved = resolveWorkflowBindingScope(token.reference, context)
     if (resolved === undefined) {
-      throw new Error(`WORKFLOW_BINDING_NOT_FOUND:${expression}`)
+      throw new Error(
+        `WORKFLOW_BINDING_NOT_FOUND:${formatBindingExpression(token.segments)}`,
+      )
     }
-    return stringifyWorkflowBindingValue(resolved)
-  })
+    resolved_value = resolved_value.replace(token.raw, stringifyWorkflowBindingValue(resolved))
+  }
+
+  if (prefixed || isJmespathPrefixed(resolved_value)) {
+    const expression = resolved_value.slice('jmespath:'.length)
+    // The document is the same redacted scope the `when:` guard and the
+    // transform default-source form see.
+    const evaluated = await evaluateWorkflowJmespathAtSink(
+      expression,
+      buildWorkflowWhenDocument(context),
+      context.taintedRefs,
+    )
+    if (!evaluated.ok) {
+      throw new Error(`WORKFLOW_JMESPATH_INVALID:${evaluated.error}`)
+    }
+    return evaluated.value
+  }
+
+  return resolved_value
 }
 
 export const resolveWorkflowStepInput = (
   value: unknown,
   context: WorkflowBindingContext,
-): unknown => {
+): Promise<unknown> => {
+  // Taint is derived lazily so unit callers can pass the pre-W0 context shape;
+  // production builds the context through buildWorkflowBindingContext, which
+  // always supplies the set.
+  const taintedRefs =
+    context.taintedRefs ?? collectWorkflowTaintedRefs(context.workflowBindings)
+  const derived = { ...context, taintedRefs }
+  return resolveWorkflowStepInputInner(value, derived)
+}
+
+const resolveWorkflowStepInputInner = async (
+  value: unknown,
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): Promise<unknown> => {
   if (typeof value === 'string') {
     return resolveWorkflowTemplateString(value, context)
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => resolveWorkflowStepInput(entry, context))
+    return Promise.all(value.map((entry) => resolveWorkflowStepInputInner(entry, context)))
   }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        resolveWorkflowStepInput(entry, context),
-      ]),
+      await Promise.all(
+        Object.entries(value as Record<string, unknown>).map(async ([key, entry]) => [
+          key,
+          await resolveWorkflowStepInputInner(entry, context),
+        ] as const),
+      ),
     )
   }
   return value
@@ -206,11 +308,16 @@ const buildWorkflowStepSnapshots = (
     ]),
   )
 
-const buildAgentTaskBody = (
+export const buildAgentTaskBody = (
   stepInput: Record<string, unknown>,
   workflowInput: unknown,
+  taintedRefs: ReadonlySet<string>,
 ): string => {
-  const publicStepInput = stripWorkflowDesignerConfig(stepInput)
+  // W0: the prompt is a sink. A pre-boundary persisted step input can still
+  // carry a ref verbatim; redact before the body reaches the agent.
+  const publicStepInput = stripWorkflowDesignerConfig(
+    redactWorkflowSecretValues(stepInput, taintedRefs) as Record<string, unknown>,
+  )
   const prompt = typeof publicStepInput['prompt'] === 'string' ? publicStepInput['prompt'].trim() : ''
   if (prompt) {
     return prompt
@@ -219,7 +326,7 @@ const buildAgentTaskBody = (
   return JSON.stringify(
     {
       step: publicStepInput,
-      workflowInput,
+      workflowInput: redactWorkflowSecretValues(workflowInput, taintedRefs),
     },
     null,
     2,
@@ -266,7 +373,7 @@ const buildWorkflowExecutionActorContext = (input: {
 })
 
 const createWorkflowMailboxMessage = async (
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   input: {
     actorId: string
     actorType: 'agent' | 'service' | 'user'
@@ -322,62 +429,60 @@ const createWorkflowMailboxMessage = async (
   }
 }
 
-const validateWorkflowAgentTaskTarget = async (
-  prisma: PrismaClient,
+// W28: the agent_task target check runs INSIDE the mailbox transaction (a
+// channel or binding deleted between a pre-check and the insert was a race)
+// and fails with one org-generic message — the old per-check error strings
+// confirmed or denied the existence of channel, thread and binding ids
+// across the org boundary. Locked (FOR UPDATE) inside the tx so a
+// concurrent unbind/delete cannot slip between the read and the insert.
+const assertWorkflowAgentTaskTargetInTransaction = async (
+  tx: Prisma.TransactionClient,
   input: {
     channelId: string
     organizationId: string
     threadId?: string
     toAgentId: string
   },
-): Promise<{ threadId?: string }> => {
-  const channel = await prisma.channel.findFirst({
-    where: {
-      id: input.channelId,
-      organizationId: input.organizationId,
-      systemChannelType: null,
-    },
-    select: { id: true },
-  })
-  if (!channel) {
-    throw new Error('WORKFLOW_AGENT_TASK_CHANNEL_NOT_FOUND')
-  }
+): Promise<void> => {
+  // Sequential, in a fixed lock order (channel → binding → thread) so two
+  // concurrent runs cannot deadlock against each other.
+  const channels = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM channels
+    WHERE id = ${input.channelId}::uuid
+      AND organization_id = ${input.organizationId}::uuid
+      AND system_channel_type IS NULL
+    FOR UPDATE
+  `
+  const bindings =
+    channels.length > 0
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT ab.id FROM agent_bindings ab
+          JOIN agents a ON a.id = ab.agent_id AND a.agent_kind = 'shared'
+          WHERE ab.agent_id = ${input.toAgentId}::uuid
+            AND ab.channel_id = ${input.channelId}::uuid
+          FOR UPDATE OF ab
+        `
+      : []
+  const threads =
+    channels.length > 0 && input.threadId
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT t.id FROM threads t
+          WHERE t.id = ${input.threadId}::uuid
+            AND t.channel_id = ${input.channelId}::uuid
+          FOR UPDATE OF t
+        `
+      : input.threadId
+        ? []
+        : [{ id: '' }]
 
-  if (input.threadId) {
-    const thread = await prisma.thread.findFirst({
-      where: {
-        id: input.threadId,
-        channelId: input.channelId,
-        channel: {
-          organizationId: input.organizationId,
-        },
-      },
-      select: { id: true },
-    })
-    if (!thread) {
-      throw new Error('WORKFLOW_AGENT_TASK_THREAD_NOT_FOUND')
-    }
-  }
-
-  const binding = await prisma.agentBinding.findFirst({
-    where: {
-      agentId: input.toAgentId,
-      channelId: input.channelId,
-      agent: {
-        agentKind: 'shared',
-      },
-      channel: {
-        organizationId: input.organizationId,
-      },
-    },
-    select: { id: true },
-  })
-  if (!binding) {
-    throw new Error('WORKFLOW_AGENT_TASK_BINDING_NOT_FOUND')
-  }
-
-  return {
-    threadId: input.threadId,
+  if (
+    channels.length === 0 ||
+    bindings.length === 0 ||
+    threads.length === 0
+  ) {
+    // Org-generic on purpose: which leg failed must not leak whether the
+    // referenced channel/thread/binding exists in another organization.
+    throw new Error('Agent task target is unavailable for this workflow run.')
   }
 }
 
@@ -442,6 +547,20 @@ const markWorkflowStepRunFinished = async (
 ): ReturnType<typeof markWorkflowStepRunFinishedRaw> => {
   const result = await markWorkflowStepRunFinishedRaw(prisma, input)
 
+  // The guarded transition lost to a concurrent terminalization (cancel or a
+  // sibling step failure): that transition owns the terminal event, so emit
+  // nothing for a write that never landed.
+  if (!result.applied) {
+    return result
+  }
+
+  // W26: a `queue`-policy installation withholds follow-on runs while one is
+  // active; the transition that just freed the slot releases the next one
+  // (bounded depth at admission, FIFO here).
+  if (!result.continueWorkflow) {
+    await releaseWorkflowOverlapSlot(prisma, workflow.installation.id, workflow.run.id)
+  }
+
   if (!input.success) {
     await emitWorkflowRunTerminalEvent(
       prisma,
@@ -449,8 +568,11 @@ const markWorkflowStepRunFinished = async (
       'failed',
       input.summary,
     )
+    // W21: the failure card in the origin channel.
+    await postWorkflowRunCard(prisma, workflow, 'failed')
   } else if (result.workflowRunCompleted) {
     await emitWorkflowRunTerminalEvent(prisma, buildWorkflowRunEventContext(workflow), 'completed')
+    await postWorkflowRunCard(prisma, workflow, 'completed')
   }
 
   return result
@@ -461,19 +583,68 @@ const markWorkflowRunFinished = async (
   workflow: LoadedWorkflowGraph,
   input: Parameters<typeof markWorkflowRunFinishedRaw>[1],
 ): ReturnType<typeof markWorkflowRunFinishedRaw> => {
-  await markWorkflowRunFinishedRaw(prisma, input)
+  const result = await markWorkflowRunFinishedRaw(prisma, input)
+  if (!result.applied) {
+    return result
+  }
+  await releaseWorkflowOverlapSlot(prisma, workflow.installation.id, workflow.run.id)
   await emitWorkflowRunTerminalEvent(
     prisma,
     buildWorkflowRunEventContext(workflow),
     input.success ? 'completed' : 'failed',
     input.summary,
   )
+  await postWorkflowRunCard(prisma, workflow, input.success ? 'completed' : 'failed')
+  return result
+}
+
+
+// W26: release one withheld pending run and enqueue its execution under the
+// overlap lock, so the release cannot race a fresh admission for the same
+// slot.
+const releaseWorkflowOverlapSlot = async (
+  prisma: PrismaClient,
+  installationId: string,
+  workflowRunId: string,
+): Promise<void> => {
+  try {
+    const released = await withWorkflowOverlapLock(prisma, installationId, async (tx) => {
+      const next = await releaseNextQueuedWorkflowRun(tx, installationId)
+      if (next) {
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `workflow-run:start:${next.id}`,
+          payload: { workflowRunId: next.id },
+          topic: 'workflow.run.execute',
+        })
+      }
+      return next
+    })
+    if (released) {
+      console.info(
+        `[worker.workflow-overlap] released queued run ${released.id} after run ${workflowRunId} (installation ${installationId})`,
+      )
+    }
+  } catch (error) {
+    // A failed release must not fail the transition that already landed; the
+    // withheld run is released by the next terminal transition (or stays
+    // pending, diagnosable by its summary).
+    console.error('[worker.workflow-overlap] release failed', error)
+  }
 }
 
 export const executeWorkflowRun = async (
-  prisma: PrismaClient,
-  workflowRunId: string,
+  execution: {
+    actorContext: AuthorizedActionContext
+    ledgerIdentity: LedgerIdentityService | null
+    prisma: PrismaClient
+    workflowRunId: string
+  },
 ): Promise<void> => {
+  const {
+    ledgerIdentity,
+    prisma,
+    workflowRunId,
+  } = execution
   const workflow = await loadWorkflowGraph(prisma, workflowRunId)
   if (!workflow) {
     return
@@ -482,14 +653,109 @@ export const executeWorkflowRun = async (
     return
   }
 
-  await ensureWorkflowStepRuns(prisma, {
+  const claimedTenant = execution.actorContext.tenant
+  const durableActorType = parseWorkflowStartedByActorType(
+    workflow.run.startedByActorType,
+  )
+  const identityMismatch =
+    execution.actorContext.actor.actorId !== workflow.run.startedByActorId
+    || execution.actorContext.actor.actorType !== durableActorType
+  const scopeMismatch =
+    claimedTenant.organizationId !== workflow.run.organizationId
+    || Boolean(
+      claimedTenant.teamId
+      && workflow.installation.teamId
+      && claimedTenant.teamId !== workflow.installation.teamId,
+    )
+    || Boolean(
+      claimedTenant.projectId
+      && workflow.installation.projectId
+      && claimedTenant.projectId !== workflow.installation.projectId,
+    )
+    || Boolean(
+      claimedTenant.channelId
+      && workflow.installation.channelId
+      && claimedTenant.channelId !== workflow.installation.channelId,
+    )
+  if (identityMismatch || scopeMismatch) {
+    await markWorkflowRunFinished(prisma, workflow, {
+      workflowRunId,
+      success: false,
+      summary: identityMismatch
+        ? 'Workflow execution actor does not match its durable origin.'
+        : 'Workflow execution scope does not match its durable installation.',
+    })
+    return
+  }
+
+  const actorContext: AuthorizedActionContext = {
+    ...execution.actorContext,
+    tenant: {
+      ...claimedTenant,
+      organizationId: parseOrganizationId(workflow.run.organizationId),
+      ...(workflow.installation.projectId
+        ? { projectId: parseProjectId(workflow.installation.projectId) }
+        : {}),
+      ...(workflow.installation.teamId
+        ? { teamId: parseTeamId(workflow.installation.teamId) }
+        : {}),
+      ...(workflow.installation.channelId
+        ? { channelId: parseChannelId(workflow.installation.channelId) }
+        : {}),
+    },
+    actionContext: {
+      ...execution.actorContext.actionContext,
+      ...(workflow.installation.channelId
+        ? { channelId: parseChannelId(workflow.installation.channelId) }
+        : {}),
+    },
+  }
+
+  const materialization = await ensureWorkflowStepRuns(prisma, {
     workflowRunId,
     steps: workflow.graph.steps,
   })
 
+  // Step rows already materialized but their identities disagree with the
+  // snapshot: only possible when the backfill migration froze the CURRENT
+  // template onto a run suspended mid-flight (its rows came from the OLD
+  // template). Treat the template the rows came from as the run's graph and
+  // re-pin it, so the continuation does not interleave old and new steps.
+  // Pre-snapshot rows executing from the live template (graph_snapshot NULL)
+  // take loadWorkflowGraph's fallback and never reach this branch.
+  if (materialization.alreadyMaterialized && workflow.installation.pinnedGraphJson == null) {
+    const stepRuns = await listWorkflowStepRuns(prisma, workflowRunId)
+    const snapshotKeys = workflow.graph.steps.map((step) => step.id)
+    const drifted =
+      snapshotKeys.length !== stepRuns.length ||
+      stepRuns.some((stepRun, index) => stepRun.stepKey !== snapshotKeys[index])
+    if (drifted) {
+      const materializedGraph = {
+        steps: stepRuns.map((stepRun) => ({
+          id: stepRun.stepKey,
+          input:
+            stepRun.input && typeof stepRun.input === 'object' && !Array.isArray(stepRun.input)
+              ? (stepRun.input as Record<string, unknown>)
+              : {},
+          title: stepRun.title,
+          type: stepRun.stepType,
+        })),
+      }
+      await reconcileWorkflowRunGraphSnapshot(prisma, {
+        graph: materializedGraph,
+        workflowRunId,
+      })
+      workflow.graph = materializedGraph
+    }
+  }
+
   if (workflow.run.status === 'pending') {
     await markWorkflowRunStarted(prisma, workflowRunId)
   }
+  // W18: every dispatch is a new attempt — a retried step writes state under
+  // a different writer identity than the crashed attempt it repeats.
+  await bumpWorkflowRunAttempt(prisma, workflowRunId)
+  workflow.run.attempt += 1
 
   while (true) {
     const stepRuns = await listWorkflowStepRuns(prisma, workflowRunId)
@@ -519,14 +785,48 @@ export const executeWorkflowRun = async (
       return
     }
 
+    const bindingContext = buildWorkflowBindingContext({
+      stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
+      workflowBindings: workflow.installation.resolvedBindings,
+      workflowConfig: workflow.installation.config,
+      workflowInput: workflow.run.input,
+    })
+
+    // W16: a falsy `when:` guard marks the step skipped — never a failure —
+    // and the run continues to the next step. The predicate evaluates off the
+    // event loop (plan §5 envelope) against the same redacted document the
+    // binding resolver sees.
+    if (typeof stepDefinition.when === 'string' && stepDefinition.when.trim()) {
+      const evaluated = await evaluateWorkflowJmespath(
+        stepDefinition.when,
+        buildWorkflowWhenDocument(
+          bindingContext as WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+        ),
+      )
+      if (!evaluated.ok) {
+        await markWorkflowStepRunFinished(prisma, workflow, {
+          workflowRunId,
+          stepRunId: nextStep.id,
+          success: false,
+          summary: `Workflow step guard could not be evaluated: ${evaluated.error}`,
+        })
+        return
+      }
+      if (!isWorkflowJmespathTruthy(evaluated.value)) {
+        await markWorkflowStepRunSkipped(prisma, {
+          stepRunId: nextStep.id,
+          summary: 'Skipped: when guard evaluated falsy.',
+        })
+        continue
+      }
+    }
+
     let resolvedStepInput: unknown
     try {
-      resolvedStepInput = resolveWorkflowStepInput(stepDefinition.input ?? {}, {
-        stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
-        workflowBindings: workflow.installation.resolvedBindings,
-        workflowConfig: workflow.installation.config,
-        workflowInput: workflow.run.input,
-      })
+      resolvedStepInput = await resolveWorkflowStepInput(
+        stepDefinition.input ?? {},
+        bindingContext,
+      )
     } catch (error) {
       await markWorkflowStepRunFinished(prisma, workflow, {
         workflowRunId,
@@ -562,19 +862,6 @@ export const executeWorkflowRun = async (
           ? 'agent_task'
           : stepDefinition.type
 
-    if (runtimeStepType === 'trigger') {
-      await markWorkflowStepRunFinished(prisma, workflow, {
-        output: {
-          skipped: true,
-        },
-        workflowRunId,
-        stepRunId: nextStep.id,
-        success: true,
-        summary: 'Trigger node is visual-only at runtime.',
-      })
-      continue
-    }
-
     if (runtimeStepType === 'tool_call') {
       const toolName = typeof stepInput['toolName'] === 'string' ? stepInput['toolName'] : ''
       if (!toolName) {
@@ -593,8 +880,10 @@ export const executeWorkflowRun = async (
         ),
       )
 
+      const leaseOwnerId = randomUUID()
       await markWorkflowStepRunStarted(prisma, {
         input: stepInput,
+        leaseOwnerId,
         output: {
           input: toolArgs,
           toolName,
@@ -602,13 +891,30 @@ export const executeWorkflowRun = async (
         stepRunId: nextStep.id,
       })
 
+      // Heartbeat while the tool runs so a legitimately long call is never
+      // reclaimed; a crashed worker stops heartbeating and the reaper takes
+      // the step by its expired lease.
+      const leaseHeartbeat = setInterval(() => {
+        void heartbeatWorkflowStepLease(prisma, {
+          ownerId: leaseOwnerId,
+          stepRunId: nextStep.id,
+        }).catch((error) => {
+          console.error('[worker.workflow-step-lease] heartbeat failed', error)
+        })
+      }, WORKFLOW_STEP_LEASE_HEARTBEAT_MS)
+      leaseHeartbeat.unref()
+
       try {
         const toolContext: WorkflowBuiltinToolRuntimeContext = {
+          actorContext,
+          ledgerIdentity,
           organizationId: workflow.run.organizationId,
           prisma,
           workflowInstallationId: workflow.installation.id,
           workflowRunId,
           workflowStepRunId: nextStep.id,
+          installationChannelId: workflow.installation.channelId,
+          workflowRunAttempt: workflow.run.attempt,
         }
         const toolResult = await executeWorkflowBuiltinTool(toolName, toolArgs, toolContext)
 
@@ -637,6 +943,8 @@ export const executeWorkflowRun = async (
               : `Workflow tool call failed: ${toolName}`,
         })
         return
+      } finally {
+        clearInterval(leaseHeartbeat)
       }
 
       continue
@@ -660,12 +968,36 @@ export const executeWorkflowRun = async (
         return
       }
 
+      // W28: validation + mailbox insert in one transaction. A throw rolls
+      // both back; the step is then finished below (outside the tx) with the
+      // org-generic message.
+      let mailboxMessage: { id: string }
       try {
-        await validateWorkflowAgentTaskTarget(prisma, {
-          organizationId: workflow.run.organizationId,
-          toAgentId,
-          channelId,
-          threadId,
+        mailboxMessage = await prisma.$transaction(async (tx) => {
+          await assertWorkflowAgentTaskTargetInTransaction(tx, {
+            organizationId: workflow.run.organizationId,
+            toAgentId,
+            channelId,
+            threadId,
+          })
+          return createWorkflowMailboxMessage(tx, {
+            actorId: workflow.run.startedByActorId,
+            actorType: parseWorkflowStartedByActorType(workflow.run.startedByActorType),
+            organizationId: workflow.run.organizationId,
+            workflowRunId,
+            workflowStepRunId: nextStep.id,
+            fromAgentId:
+              workflow.run.startedByActorType === 'agent' ? workflow.run.startedByActorId : null,
+            toAgentId,
+            channelId,
+            threadId,
+            subject: typeof stepInput['subject'] === 'string' ? stepInput['subject'] : undefined,
+            body: buildAgentTaskBody(
+              stepInput,
+              workflow.run.input,
+              collectWorkflowTaintedRefs(workflow.installation.resolvedBindings),
+            ),
+          })
         })
       } catch (error) {
         await markWorkflowStepRunFinished(prisma, workflow, {
@@ -677,21 +1009,6 @@ export const executeWorkflowRun = async (
         return
       }
 
-      const mailboxMessage = await createWorkflowMailboxMessage(prisma, {
-        actorId: workflow.run.startedByActorId,
-        actorType: parseWorkflowStartedByActorType(workflow.run.startedByActorType),
-        organizationId: workflow.run.organizationId,
-        workflowRunId,
-        workflowStepRunId: nextStep.id,
-        fromAgentId:
-          workflow.run.startedByActorType === 'agent' ? workflow.run.startedByActorId : null,
-        toAgentId,
-        channelId,
-        threadId,
-        subject: typeof stepInput['subject'] === 'string' ? stepInput['subject'] : undefined,
-        body: buildAgentTaskBody(stepInput, workflow.run.input),
-      })
-
       await markWorkflowStepRunQueued(prisma, {
         input: stepInput,
         workflowRunId,
@@ -702,6 +1019,57 @@ export const executeWorkflowRun = async (
         },
       })
       return
+    }
+
+    if (runtimeStepType === 'transform') {
+      // W17: deterministic reshape, no LLM. The module decides the document
+      // (explicit `source`, else the full binding context); the envelope and
+      // the W0 redaction live behind the shared evaluator seam.
+      const expression =
+        typeof stepInput['expression'] === 'string' ? stepInput['expression'] : ''
+      if (!expression.trim()) {
+        await markWorkflowStepRunFinished(prisma, workflow, {
+          workflowRunId,
+          stepRunId: nextStep.id,
+          success: false,
+          summary: 'Transform step requires a non-empty expression.',
+        })
+        return
+      }
+
+      await markWorkflowStepRunStarted(prisma, {
+        input: stepInput,
+        stepRunId: nextStep.id,
+      })
+
+      const transform = await executeWorkflowTransformStep({
+        expression,
+        source: stepInput['source'],
+        sourceProvided: 'source' in stepInput && stepInput['source'] !== undefined,
+        stepInput,
+        stepSnapshots: bindingContext.stepSnapshots,
+        taintedRefs:
+          bindingContext.taintedRefs ??
+          collectWorkflowTaintedRefs(workflow.installation.resolvedBindings),
+        workflowBindings: workflow.installation.resolvedBindings,
+        workflowConfig: workflow.installation.config,
+        workflowInput: workflow.run.input,
+      })
+
+      const finishResult = await markWorkflowStepRunFinished(prisma, workflow, {
+        output: transform.ok ? { result: transform.value } : undefined,
+        workflowRunId,
+        stepRunId: nextStep.id,
+        success: transform.ok,
+        summary: transform.ok
+          ? 'Transform step completed.'
+          : `Workflow transform could not be evaluated: ${transform.error}`,
+      })
+
+      if (!transform.ok || !finishResult.continueWorkflow) {
+        return
+      }
+      continue
     }
 
     if (runtimeStepType === 'environment_launch') {

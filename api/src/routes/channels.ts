@@ -5,19 +5,15 @@ import {
   AddChannelMemberBodySchema,
   ChannelRecordSchema,
   CreateChannelBodySchema,
-  PersonalAssistantBootstrapResponseSchema,
   StartChannelConversationBodySchema,
   UpdateChannelBodySchema,
 } from '../contracts.js'
-import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { emitAuditEvent } from '../services/audit.js'
 import {
   addMemberToChannel,
   removeMemberFromChannel,
 } from '../services/channel-members.js'
 import {
-  createGroupFromDm,
   findOrCreatePrivateConversationChannel,
   findOrCreateDmChannel,
 } from '../services/channel-dms.js'
@@ -30,7 +26,7 @@ import {
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
-import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
+import { registerPersonalAssistantRoutes } from './personal-assistant.js'
 import type { RouteDeps } from './types.js'
 
 export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -39,9 +35,10 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     requireActorContext,
     requireOwner,
     requireUserActor,
-    loadPersonalAssistantState,
     getChannelIfMember,
   } = deps
+
+  registerPersonalAssistantRoutes(app, deps)
 
   app.get('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -62,67 +59,6 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
   })
 
-  app.get('/api/personal-assistant', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-    if (!requireUserActor(actorContext, reply)) {
-      return reply
-    }
-
-    return createApiResponse(await loadPersonalAssistantState(actorContext))
-  })
-
-  app.post('/api/personal-assistant/bootstrap', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-    if (!requireUserActor(actorContext, reply)) {
-      return reply
-    }
-
-    const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId:
-        actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
-      userId: actorContext.actor.actorId,
-    })
-    const state = await loadPersonalAssistantState(actorContext)
-    if (!state?.agent || !state.channel || !state.thread) {
-      sendApiError(
-        reply,
-        500,
-        'PERSONAL_ASSISTANT_BOOTSTRAP_FAILED',
-        'Failed to load personal assistant state after bootstrap',
-      )
-      return reply
-    }
-
-    await emitAuditEvent(prisma, {
-      actorContext,
-      action: 'personal_assistant.bootstrap' as Parameters<typeof emitAuditEvent>[1]['action'],
-      outcome: 'success',
-      resourceId: bootstrap.agentId,
-      resourceType: 'agent',
-    })
-
-    return reply.code(200).send(
-      createApiResponse(
-        PersonalAssistantBootstrapResponseSchema.parse({
-          agent: state.agent,
-          channel: state.channel,
-          configSummary: state.configSummary,
-          instance: null,
-          thread: state.thread,
-        }),
-      ),
-    )
-  })
-
   app.post('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -140,11 +76,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         label: body.label,
         visibility: body.visibility ?? 'public',
         organizationId: actorContext.tenant.organizationId,
-        teamId:
-          body.teamId
-          ?? actorContext.tenant.teamId
-          ?? actorContext.actionContext.teamId
-          ?? '00000000-0000-4000-8000-000000000003',
+        ...(body.scope === 'standalone'
+          ? { scope: 'standalone' as const }
+          : {
+              teamId:
+                body.teamId
+                ?? actorContext.tenant.teamId
+                ?? actorContext.actionContext.teamId
+                ?? '00000000-0000-4000-8000-000000000003',
+            }),
         userId: actorContext.actor.actorId,
       })
     } catch (error) {
@@ -357,27 +297,18 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    // If the channel is a DM, create a new group channel instead of mutating the DM
+    // A DM is a fixed pair. Adding a third participant would either mutate a
+    // private two-person history into something its participants never agreed
+    // to, or silently fork it into a different channel; both are surprises. Use
+    // a channel instead.
     if (channel.type === 'dm') {
-      let group
-      try {
-        group = await createGroupFromDm(prisma, {
-          dmChannelId: channelId,
-          newUserId: body.userId,
-          currentUserId: actorContext.actor.actorId,
-        })
-      } catch (error) {
-        if (error instanceof ChannelSlugConflictError) {
-          sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
-          return reply
-        }
-        throw error
-      }
-      if (!group) {
-        sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
-        return reply
-      }
-      return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_DM_MEMBERS_FIXED',
+        'Direct messages are between two participants. Create a channel to include more people.',
+      )
+      return reply
     }
 
     const added = await addMemberToChannel(prisma, channelId, body.userId)
@@ -410,6 +341,17 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         403,
         'CHANNEL_SYSTEM_MANAGED',
         'Personal Assistant DMs cannot be modified',
+      )
+      return reply
+    }
+    // Symmetrical to the add path: removing either half of a pair would leave a
+    // conversation with one participant and no way back.
+    if (channel.type === 'dm') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_DM_MEMBERS_FIXED',
+        'Direct messages are between two participants and cannot be changed.',
       )
       return reply
     }

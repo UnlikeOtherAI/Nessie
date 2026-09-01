@@ -16,6 +16,7 @@ import { ensureDefaultThread } from './channels.js'
 import { markDelegationStepQueued } from '../run/plans.js'
 import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
+import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
 
@@ -45,7 +46,10 @@ const buildMailboxActorContext = (input: {
   channelId: string
   organizationId: string
   targetAgentId: string
-  taskId: string
+  // Omitted while the (agent, thread) slot claim is still unresolved: the
+  // pending-marker path has no task, and the claimed path injects the fresh
+  // task id once the task exists.
+  taskId?: string
   threadId: string
 }): AuthorizedActionContext => ({
   actor: {
@@ -59,7 +63,7 @@ const buildMailboxActorContext = (input: {
     correlationId: undefined,
     purpose: 'mailbox.delivery',
     requestId: randomUUID(),
-    taskId: parseTaskId(input.taskId),
+    ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
     threadId: parseThreadId(input.threadId),
   },
   tenant: {
@@ -260,51 +264,80 @@ export const dispatchNextMailboxMessage = async (
       select: { id: true },
     })
 
-    const run = await tx.run.create({
-      data: {
-        agentId: message.toAgentId,
-        status: 'pending',
-        threadId: targetThreadId,
-      },
-      select: { id: true },
+    const baseActorContext = buildMailboxActorContext({
+      actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
+      actorType: resolveMailboxActorType(message),
+      channelId: thread.channelId,
+      organizationId: message.organizationId,
+      targetAgentId: message.toAgentId,
+      threadId: targetThreadId,
     })
 
-    const task = await tx.task.create({
-      data: {
-        agentId: message.toAgentId,
-        organizationId: message.organizationId,
-        purpose: (message.subject ?? message.body).slice(0, 200),
-        runId: run.id,
-        status: 'inbox',
-      },
-      select: { id: true },
-    })
-
-    await enqueueRunExecution(
-      tx,
-      {
-        actorContext: buildMailboxActorContext({
-          actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
-          actorType: resolveMailboxActorType(message),
-          channelId: thread.channelId,
-          organizationId: message.organizationId,
-          targetAgentId: message.toAgentId,
-          taskId: task.id,
-          threadId: targetThreadId,
-        }),
-        agentId: parseAgentId(message.toAgentId),
+    // Same per-(agent, thread) claim as chat replies and trigger fires: with
+    // a run already in flight the delivery pends for the batched follow-up
+    // instead of spawning a concurrent run. The mailbox message is still
+    // marked delivered — the pending marker IS the durable delivery.
+    const claim = await claimThreadRunOrPend(tx, {
+      agentId: message.toAgentId,
+      threadId: targetThreadId,
+      pending: {
+        actorContext: baseActorContext,
+        channelId: thread.channelId,
+        // Agent-to-agent mail is automation, never a live human turn.
+        interactive: false,
         messageId: promptMessage.id,
-        parentPlanId: message.planId ?? undefined,
-        parentPlanStepId: message.planStepId ?? undefined,
-        parentWorkflowRunId: message.workflowRunId ?? undefined,
-        parentWorkflowStepRunId: message.workflowStepRunId ?? undefined,
-        promptOverride: message.body,
-        runId: parseRunId(run.id),
-        taskId: parseTaskId(task.id),
-        threadId: parseThreadId(targetThreadId),
       },
-      `mailbox:${message.id}`,
-    )
+    })
+
+    let run: { id: string } | null = null
+    let task: { id: string } | null = null
+    if (claim === 'claimed') {
+      run = await tx.run.create({
+        data: {
+          agentId: message.toAgentId,
+          status: 'pending',
+          threadId: targetThreadId,
+        },
+        select: { id: true },
+      })
+
+      task = await tx.task.create({
+        data: {
+          agentId: message.toAgentId,
+          organizationId: message.organizationId,
+          purpose: (message.subject ?? message.body).slice(0, 200),
+          runId: run.id,
+          status: 'inbox',
+        },
+        select: { id: true },
+      })
+
+      await enqueueRunExecution(
+        tx,
+        {
+          actorContext: buildMailboxActorContext({
+            actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
+            actorType: resolveMailboxActorType(message),
+            channelId: thread.channelId,
+            organizationId: message.organizationId,
+            targetAgentId: message.toAgentId,
+            taskId: task.id,
+            threadId: targetThreadId,
+          }),
+          agentId: parseAgentId(message.toAgentId),
+          messageId: promptMessage.id,
+          parentPlanId: message.planId ?? undefined,
+          parentPlanStepId: message.planStepId ?? undefined,
+          parentWorkflowRunId: message.workflowRunId ?? undefined,
+          parentWorkflowStepRunId: message.workflowStepRunId ?? undefined,
+          promptOverride: message.body,
+          runId: parseRunId(run.id),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(targetThreadId),
+        },
+        `mailbox:${message.id}`,
+      )
+    }
 
     await tx.agentMailboxMessage.update({
       where: { id: message.id },
@@ -314,25 +347,29 @@ export const dispatchNextMailboxMessage = async (
       },
     })
 
-    await markDelegationStepQueued(tx, {
-      artifacts: {
-        childRunId: run.id,
-        mailboxMessageId: message.id,
-        targetAgentId: message.toAgentId,
-      },
-      planId: message.planId,
-      planStepId: message.planStepId,
-    })
-    await markWorkflowStepRunQueued(tx, {
-      output: {
-        childRunId: run.id,
-        mailboxMessageId: message.id,
-        targetAgentId: message.toAgentId,
-        taskId: task.id,
-      },
-      workflowRunId: message.workflowRunId,
-      workflowStepRunId: message.workflowStepRunId,
-    })
+    // Plan/workflow queue-markers reference the child run, so they only apply
+    // when this delivery claimed the slot and created one.
+    if (run && task) {
+      await markDelegationStepQueued(tx, {
+        artifacts: {
+          childRunId: run.id,
+          mailboxMessageId: message.id,
+          targetAgentId: message.toAgentId,
+        },
+        planId: message.planId,
+        planStepId: message.planStepId,
+      })
+      await markWorkflowStepRunQueued(tx, {
+        output: {
+          childRunId: run.id,
+          mailboxMessageId: message.id,
+          targetAgentId: message.toAgentId,
+          taskId: task.id,
+        },
+        workflowRunId: message.workflowRunId,
+        workflowStepRunId: message.workflowStepRunId,
+      })
+    }
 
     const childAgent = await tx.agent.findUnique({
       where: { id: message.toAgentId },
@@ -341,6 +378,7 @@ export const dispatchNextMailboxMessage = async (
     return {
       messageId: promptMessage.id,
       spawned:
+        run && task &&
         childAgent?.parentAgentId === message.fromAgentId && spawnedEvent
           ? {
               childId: parseAgentId(message.toAgentId),

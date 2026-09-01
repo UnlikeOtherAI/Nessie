@@ -1,7 +1,12 @@
 import crypto from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import { decryptWithKey, deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import {
+  DEEPSIGNAL_MCP_CREDENTIAL_REF,
+  decryptWithKey,
+  deriveSecretKey,
+  encryptWithKey,
+} from '@nessie/runtime'
 
 /**
  * Per-organization inbound-webhook signing secret store (DeepSignal §6).
@@ -15,11 +20,46 @@ import { decryptWithKey, deriveSecretKey, encryptWithKey } from '@nessie/runtime
  * URL serves every org without leaking which org a request targeted.
  */
 
+export class ProductWebhookSecretError extends Error {
+  readonly code = 'PRODUCT_WEBHOOK_SECRET_REUSES_APP_CREDENTIAL'
+
+  constructor() {
+    super('A webhook signing secret must be distinct from every application credential.')
+    this.name = 'ProductWebhookSecretError'
+  }
+}
+
+const sameSecret = (left: string, right: string): boolean => {
+  const leftDigest = crypto.createHash('sha256').update(left).digest()
+  const rightDigest = crypto.createHash('sha256').update(right).digest()
+  return crypto.timingSafeEqual(leftDigest, rightDigest)
+}
+
+const assertWebhookSecretIsIndependent = (
+  input: { productSlug: string; secret: string },
+  env: NodeJS.ProcessEnv = process.env,
+): void => {
+  if (input.productSlug !== 'deepsignal') return
+  const reservedNames = [
+    DEEPSIGNAL_MCP_CREDENTIAL_REF,
+    'LEDGER_PROXY_TOKEN',
+    'NESSIE_MODEL_API_KEY',
+    'UOA_CLIENT_SECRET',
+    'NESSIE_AUTH_SECRET',
+  ]
+  const reused = reservedNames.some((name) => {
+    const value = env[name]?.trim()
+    return Boolean(value && sameSecret(value, input.secret))
+  })
+  if (reused) throw new ProductWebhookSecretError()
+}
+
 export const setProductWebhookSecret = async (
   prisma: PrismaClient,
   encryptionSecret: string,
   input: { organizationId: string; productSlug: string; secret: string },
 ): Promise<void> => {
+  assertWebhookSecretIsIndependent(input)
   const key = deriveSecretKey(encryptionSecret)
   const { ciphertext, iv, authTag } = encryptWithKey(key, input.secret)
   await prisma.productWebhookSecret.upsert({

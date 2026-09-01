@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 
 const NonEmptyStringSchema = z.string().trim().min(1)
 const UuidSchema = z.string().uuid()
@@ -48,24 +49,9 @@ export const KnowledgeResponseEnvelopeSchema = z.object({
   visibilityReason: NonEmptyStringSchema,
 })
 
-export const KnowledgeSpaceRecordSchema = OptionalScopeSchema.extend({
-  id: UuidSchema,
-  name: NonEmptyStringSchema,
-  description: z.string().nullable(),
-  metadata: JsonRecordSchema.nullable(),
-  writeRestricted: z.boolean(),
-  memberUserIds: z.array(UuidSchema),
-  // The requesting actor's effective write permission on this space.
-  canWrite: z.boolean(),
-  organizationId: UuidSchema,
-  projectId: UuidSchema,
-  visibility: KnowledgeVisibilitySchema,
-  sensitivityTier: KnowledgeSensitivityTierSchema,
-  createdBy: NonEmptyStringSchema,
-  deletedAt: z.string().nullable(),
-  createdAt: NonEmptyStringSchema,
-  updatedAt: NonEmptyStringSchema,
-}).merge(KnowledgeResponseEnvelopeSchema)
+// Shared with the admin facade so ownerAgentId and every future response field
+// cross the API boundary under one compile-time contract.
+export const KnowledgeSpaceRecordSchema = KnowledgeSpaceResponseSchema
 
 export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   id: UuidSchema,
@@ -177,6 +163,26 @@ export const MyDocsSpaceResponseSchema = z.object({
 export const CreateTaskDocumentBodySchema = z.object({
   title: NonEmptyStringSchema.max(240),
   body: z.string().nullable().optional(),
+})
+
+// GET /api/knowledge-base/recent-pages — "what was written down lately in this
+// project". projectId is required: this list is always about one project, never
+// a silently-narrowed org-wide read.
+// `limit` is clamped by the provider (default 5, ceiling 20) rather than
+// rejected here: an over-large ask is a capped list, not a client error.
+export const KnowledgeRecentPagesQuerySchema = z.object({
+  projectId: UuidSchema,
+  limit: z.coerce.number().int().positive().optional(),
+})
+
+export const KnowledgeRecentPageRecordSchema = z.object({
+  id: UuidSchema,
+  spaceId: UuidSchema,
+  spaceName: NonEmptyStringSchema,
+  title: NonEmptyStringSchema,
+  kind: z.enum(['document', 'file']),
+  status: KnowledgePageStatusSchema,
+  updatedAt: NonEmptyStringSchema,
 })
 
 export const KnowledgeListQuerySchema = z.object({

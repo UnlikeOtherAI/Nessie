@@ -1,6 +1,7 @@
 import type {
   InvocationUsage,
   NormalizedFinishReason,
+  ProviderImage,
   ProviderMessage,
   ProviderToolCall,
   ToolSchemaDescriptor,
@@ -220,9 +221,12 @@ export const collectChatStream = async function* (
             yieldedDelta = true
             outputText += deltaText
             yield { type: 'output_text.delta', text: deltaText }
-            continue
           }
 
+          // Not an `else`: a chunk may legitimately carry both content and tool
+          // fragments, and skipping the tool loop for those chunks used to drop
+          // the fragment from the accumulation map too — corrupting the very
+          // arguments the tool was about to be called with.
           for (const toolCallDelta of choice?.delta?.tool_calls ?? []) {
             const existing = toolCalls.get(toolCallDelta.index) ?? {
               args: '',
@@ -238,15 +242,21 @@ export const collectChatStream = async function* (
               existing.name = toolCallDelta.function.name
             }
 
+            toolCalls.set(toolCallDelta.index, existing)
+
             if (toolCallDelta.function?.arguments) {
               existing.args += toolCallDelta.function.arguments
               yield {
-                type: 'tool_call.delta',
+                // Identity comes from the accumulated call, never this chunk:
+                // the id and name arrive in a first chunk whose `arguments` is
+                // empty, which yields no event at all.
+                id: existing.id,
+                index: toolCallDelta.index,
                 text: toolCallDelta.function.arguments,
+                toolName: existing.name,
+                type: 'tool_call.delta',
               }
             }
-
-            toolCalls.set(toolCallDelta.index, existing)
           }
 
           const messageText = choice?.message?.content ?? ''
@@ -317,8 +327,29 @@ export const mapToolCallsFromOpenAi = (
     toolName: toolCall.function.name,
   }))
 
+// A user turn carrying images becomes the multi-part content form every
+// OpenAI-compatible chat endpoint accepts. Bytes go inline as a data URI —
+// attachment bytes are private, so a URL would be unfetchable for the provider.
+const toOpenAiUserContent = (
+  message: { content: string; images?: ProviderImage[] },
+): string | Array<Record<string, unknown>> => {
+  if (!message.images?.length) {
+    return message.content
+  }
+  return [
+    ...(message.content ? [{ text: message.content, type: 'text' }] : []),
+    ...message.images.map((image) => ({
+      image_url: { url: `data:${image.mime};base64,${image.dataBase64}` },
+      type: 'image_url',
+    })),
+  ]
+}
+
 export const mapMessagesToOpenAi = (
   messages: ProviderMessage[],
+  // Off unless the caller's model can see: a text-only model rejects the
+  // multi-part form outright, so its turns keep the plain string content.
+  options: { vision?: boolean } = {},
 ): Array<Record<string, unknown>> =>
   messages.map((message) => {
     if (message.role === 'assistant') {
@@ -344,5 +375,12 @@ export const mapMessagesToOpenAi = (
       }
     }
 
-    return message
+    if (message.role === 'user') {
+      return {
+        content: options.vision ? toOpenAiUserContent(message) : message.content,
+        role: 'user',
+      }
+    }
+
+    return { content: message.content, role: 'system' }
   })

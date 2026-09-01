@@ -1,5 +1,5 @@
 import { useFontScale, type FontScale } from '../../../providers/FontScaleProvider'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const PREVIEW_SIZE: Record<FontScale, string> = {
   small: '14px',
@@ -12,7 +12,7 @@ export const TypePanel = () => {
 
   return (
     <section className="admin-card max-w-3xl p-4">
-      <div className={sectionTitleClass}>Text size</div>
+      <SectionLabel>Text size</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Sets the text size across every page. Saved to your account.
       </div>

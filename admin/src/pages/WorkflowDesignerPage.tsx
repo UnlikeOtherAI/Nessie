@@ -9,6 +9,7 @@ import { useWorkflowCanvasInteractions } from './workflow-designer/useWorkflowCa
 import { useWorkflowDesignerState } from './workflow-designer/useWorkflowDesignerState'
 import { useWorkflowGraphIo } from './workflow-designer/useWorkflowGraphIO'
 import { useWorkflowTestRun } from './workflow-designer/useWorkflowTestRun'
+import { useWorkflowStepSamples } from '../facades/workflows/hooks'
 
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
   `${pathname}${search}${hash}`
@@ -59,9 +60,11 @@ export const WorkflowDesignerPage = () => {
     workflowTemplateId: graphIo.workflowTemplateId,
   })
 
-  const handleMenuItemClick = (item: ToolbarMenuItem) => {
-    canvas.setOpenMenu(null)
+  // §5: the redacted samples behind the transform node's field picker and
+  // live preview. Owner-gated server-side; a 404 reads as "no samples yet".
+  const stepSamples = useWorkflowStepSamples(graphIo.workflowTemplateId)
 
+  const handleMenuItemClick = (item: ToolbarMenuItem) => {
     if (item.nodeType) {
       state.addNodeFromItem(item)
       return
@@ -103,10 +106,8 @@ export const WorkflowDesignerPage = () => {
       />
 
       <WorkflowToolbar
-        toolbarActions={state.toolbarActions}
-        openMenu={canvas.openMenu}
-        setOpenMenu={canvas.setOpenMenu}
         onMenuItemClick={handleMenuItemClick}
+        toolbarActions={state.toolbarActions}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -141,6 +142,7 @@ export const WorkflowDesignerPage = () => {
               ? testRun.stepRunsByNodeId.get(state.selectedNodeId)
               : undefined
           }
+          selectedNodeStepSamples={stepSamples.data}
           selectedNodeUpstreamSteps={state.selectedNodeUpstreamSteps}
           onLabelChange={state.handleSelectedNodeLabelChange}
           onSourceChange={state.handleSelectedNodeSourceChange}

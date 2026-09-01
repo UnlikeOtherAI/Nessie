@@ -1,3 +1,5 @@
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
+import { isLedgerEndpoint } from '../../ledger-identity.js'
 import type {
   ModelCapabilitySnapshot,
   ModelProviderConfig,
@@ -16,6 +18,7 @@ import {
   createInvocationRecord,
   nowIso,
   providerError,
+  providerHttpError,
 } from './connector-invocations.js'
 import { createBaseSnapshot } from './model-capabilities.js'
 import {
@@ -42,6 +45,7 @@ export const createOpenAiLikeConnector = (
   }
 
   const baseUrl = config.baseUrl ?? 'https://api.openai.com/v1'
+  const ledgerRouted = isLedgerEndpoint(baseUrl)
   const headers = {
     Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
@@ -50,18 +54,30 @@ export const createOpenAiLikeConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_OPENAI_MODEL
 
+  // OpenAI's chat endpoint — and the OpenAI-compatible endpoints Nessie routes
+  // through Ledger — take inline image parts. DeepSeek's chat API is text-only
+  // and rejects them, so its turns stay plain strings.
+  const supportsVision = provider !== 'deepseek'
+
   const invokeRequest = async (
     body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       body: JSON.stringify(body),
-      headers,
+      headers: { ...requestHeaders, ...headers },
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`${provider} model error ${response.status}: ${errorText}`)
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'chat',
+        provider,
+        response,
+      })
     }
 
     return response
@@ -110,6 +126,12 @@ export const createOpenAiLikeConnector = (
       // Stateless HTTP connector.
     },
 
+    // `dimensions` is sent on every embed call, not left to the model's
+    // default: the destination column is `vector(EMBEDDING_DIMENSIONS)`, so a
+    // provider that would answer at some other width has to say so by
+    // rejecting the request rather than by returning vectors the database
+    // silently refuses later. OpenAI's text-embedding-3-* and Jina v3 both
+    // honour it.
     async embed(
       request: ProviderEmbeddingRequest,
     ): Promise<ProviderEmbeddingResult> {
@@ -119,16 +141,21 @@ export const createOpenAiLikeConnector = (
       try {
         const response = await fetch(`${baseUrl}/embeddings`, {
           body: JSON.stringify({
+            dimensions: EMBEDDING_DIMENSIONS,
             input: request.input.slice(0, 8000),
             model,
           }),
-          headers,
+          headers: { ...request.requestHeaders, ...headers },
           method: 'POST',
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+          throw await providerHttpError({
+            ledgerRouted,
+            operation: 'embedding',
+            provider,
+            response,
+          })
         }
 
         const json = (await response.json()) as OpenAiEmbeddingResponse
@@ -173,16 +200,21 @@ export const createOpenAiLikeConnector = (
       try {
         const response = await fetch(`${baseUrl}/embeddings`, {
           body: JSON.stringify({
+            dimensions: EMBEDDING_DIMENSIONS,
             input: request.input.map((text) => text.slice(0, 8000)),
             model,
           }),
-          headers,
+          headers: { ...request.requestHeaders, ...headers },
           method: 'POST',
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+          throw await providerHttpError({
+            ledgerRouted,
+            operation: 'embedding',
+            provider,
+            response,
+          })
         }
 
         const json = (await response.json()) as OpenAiEmbeddingResponse
@@ -229,8 +261,11 @@ export const createOpenAiLikeConnector = (
       }
     },
 
-    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
-      return invokeRequest(body)
+    async fetchCompletion(
+      body: Record<string, unknown>,
+      requestHeaders?: Record<string, string>,
+    ): Promise<Response> {
+      return invokeRequest(body, requestHeaders)
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
@@ -239,6 +274,7 @@ export const createOpenAiLikeConnector = (
         provider,
         structuredOutputMode: 'native-json',
         supportsEmbeddings: true,
+        supportsVision,
         systemPromptMode: 'native',
         toolCallingMode: 'native',
         toolResultMode: 'native-tool-message',
@@ -263,16 +299,19 @@ export const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: mapMessagesToOpenAi(request.messages),
+          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           // Routes requests with the same prefix to the same prompt cache for a
           // higher hit rate (undefined is dropped by JSON.stringify).
           prompt_cache_key: request.promptCacheKey,
+          // Dropped from the JSON body when undefined; providers reject unknown
+          // reasoning-effort values, so callers pass an already-clamped value.
+          reasoning_effort: request.reasoningEffort,
           response_format: request.responseFormat,
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.requestHeaders, request.signal)
 
         const json = (await response.json()) as OpenAiChatResponse
         const outputText = json.choices?.[0]?.message?.content ?? ''
@@ -327,16 +366,17 @@ export const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: mapMessagesToOpenAi(request.messages),
+          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           prompt_cache_key: request.promptCacheKey,
+          reasoning_effort: request.reasoningEffort,
           response_format: request.responseFormat,
           stream: true,
           stream_options: { include_usage: true },
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.requestHeaders, request.signal)
 
         const stream = collectChatStream(response)
         let next = await stream.next()

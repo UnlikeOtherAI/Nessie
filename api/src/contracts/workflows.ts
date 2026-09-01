@@ -35,6 +35,9 @@ export const WorkflowStepDefinitionSchema = z.object({
   input: z.record(z.unknown()).optional(),
   title: z.string().optional(),
   type: NonEmptyStringSchema,
+  // W16: step-level predicate. Falsy marks the step `skipped`; the run
+  // continues. Compiled at save time, evaluated off the event loop at run time.
+  when: z.string().optional(),
 })
 export type WorkflowStepDefinition = z.infer<typeof WorkflowStepDefinitionSchema>
 
@@ -54,12 +57,37 @@ export const WorkflowTemplateRecordSchema = z.object({
   variableSchema: z.unknown(),
   bindingSchema: z.unknown(),
   requiredEnvironmentTemplateIds: z.array(z.string().uuid()),
+  source: z.enum(['authored', 'demonstration']),
+  demonstrationId: z.string().uuid().nullish(),
+  adoptedAt: TimestampSchema.nullish(),
   createdByActorType: NonEmptyStringSchema,
   createdByActorId: NonEmptyStringSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
 export type WorkflowTemplateRecord = z.infer<typeof WorkflowTemplateRecordSchema>
+
+// §5 stepSamples: provenance + redacted per-step output from the last
+// successful designer test run. Served only behind the owner-gated samples
+// route; never embedded in the generic template record.
+export const WorkflowStepSamplesRecordSchema = z.object({
+  templateVersion: z.number().int().positive(),
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid(),
+  capturedAt: TimestampSchema,
+  steps: z.record(z.unknown()),
+})
+export type WorkflowStepSamplesRecord = z.infer<typeof WorkflowStepSamplesRecordSchema>
+
+export const RecordWorkflowStepSamplesBodySchema = z.object({
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid(),
+  stepOutputs: z.record(z.unknown()),
+})
+
+export const RecordWorkflowStepSamplesResultSchema = z.object({
+  result: z.enum(['recorded', 'quota_exceeded']),
+})
 
 export const CreateWorkflowTemplateBodySchema = z.object({
   name: NonEmptyStringSchema,
@@ -73,6 +101,15 @@ export const CreateWorkflowTemplateBodySchema = z.object({
 
 export const UpdateWorkflowTemplateBodySchema = CreateWorkflowTemplateBodySchema
 
+// W26: { limit, onOverlap } — parseWorkflowConcurrency in workspace-admin
+// supplies the defaults at enforcement time, so an empty object is valid.
+export const WorkflowConcurrencySchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).optional(),
+    onOverlap: z.enum(['skip', 'queue', 'parallel']).optional(),
+  })
+  .default({})
+
 export const WorkflowInstallationRecordSchema = z.object({
   id: z.string().uuid(),
   workflowTemplateId: z.string().uuid(),
@@ -85,6 +122,8 @@ export const WorkflowInstallationRecordSchema = z.object({
   active: z.boolean(),
   resolvedBindings: z.record(z.unknown()).default({}),
   config: z.record(z.unknown()).default({}),
+  // W26: overlap policy, defaulting to { limit: 1, onOverlap: 'skip' }.
+  concurrency: WorkflowConcurrencySchema,
   createdByActorType: NonEmptyStringSchema,
   createdByActorId: NonEmptyStringSchema,
   createdAt: TimestampSchema,
@@ -98,6 +137,28 @@ export const InstallWorkflowTemplateBodySchema = z.object({
   status: WorkflowInstallationStatusSchema.optional(),
   resolvedBindings: z.record(z.unknown()).optional(),
   config: z.record(z.unknown()).optional(),
+  concurrency: WorkflowConcurrencySchema.optional(),
+})
+
+// W8: the pause/resume/disable path. Same lifecycle fields as install;
+// contradictory active/status combinations are rejected by the service.
+export const UpdateWorkflowInstallationBodySchema = z.object({
+  channelId: ChannelIdSchema.optional(),
+  active: z.boolean().optional(),
+  status: WorkflowInstallationStatusSchema.optional(),
+  resolvedBindings: z.record(z.unknown()).optional(),
+  config: z.record(z.unknown()).optional(),
+  concurrency: WorkflowConcurrencySchema.optional(),
+})
+
+// W24: cursor pagination for the workflow list endpoints. `channelId` is the
+// channel Automations tab's explicit filter (W20); `status` is the failed-runs
+// triage filter (W29).
+export const WorkflowListQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+  cursor: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  status: WorkflowRunStatusSchema.optional(),
 })
 
 export const WorkflowRunRecordSchema = z.object({
@@ -106,6 +167,11 @@ export const WorkflowRunRecordSchema = z.object({
   organizationId: OrganizationIdSchema,
   triggerId: z.string().uuid().nullish(),
   triggerDeliveryId: z.string().uuid().nullish(),
+  // W25: where the run was asked for (conversation origin + reply target).
+  originChannelId: z.string().uuid().nullish(),
+  originMessageId: z.string().uuid().nullish(),
+  originThreadId: z.string().uuid().nullish(),
+  replyRootMessageId: z.string().uuid().nullish(),
   parentRunId: RunIdSchema.nullish(),
   retriedFromWorkflowRunId: z.string().uuid().nullish(),
   planId: z.string().uuid().nullish(),
@@ -163,6 +229,10 @@ export type WorkflowStateEntryRecord = z.infer<typeof WorkflowStateEntryRecordSc
 
 export const CreateWorkflowRunBodySchema = z.object({
   input: z.record(z.unknown()).optional(),
+  originChannelId: z.string().uuid().optional(),
+  originMessageId: z.string().uuid().optional(),
+  originThreadId: z.string().uuid().optional(),
+  replyRootMessageId: z.string().uuid().optional(),
   triggerId: z.string().uuid().optional(),
   triggerDeliveryId: z.string().uuid().optional(),
   parentRunId: RunIdSchema.optional(),

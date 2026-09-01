@@ -69,8 +69,8 @@ instances may use HTTP/SSE remote endpoints only. Nessie does not spawn
 catalog-provided stdio subprocesses in the cloud API or worker. HTTP/SSE
 endpoint URLs and OAuth authorization/token URLs are checked by a DNS-backed
 SSRF guard before save or use; private, local, link-local, and metadata-network
-targets are rejected. Use Remote MCP Servers for private networks, developer
-laptops, or local subprocess-based servers.
+targets are rejected. Use a paired executor for private networks, developer
+machines, or local execution; it is not a cloud-side stdio exception.
 
 ### MCP Server Installation
 
@@ -130,7 +130,7 @@ Rules:
   - "project" scope → only agents bound to that project
   - "team" scope → only agents bound to that team
   - "channel" scope → only agents in that channel
-  - "user" scope → only one specific user's agents
+  - "user" scope → only runs whose effective requesting user is that user
 
 By default, placement visibility follows that hierarchy. Additional explicit grants or bindings are a union on top of placement. Do not treat all visibility as inheritance-only; shared resources may also be made visible through binding rows.
 
@@ -139,7 +139,9 @@ Example:
   - All organization-scoped servers (e.g., "GitHub" for the whole org)
   - All team-scoped servers for the sales team (e.g., "Salesforce" for sales)
   - All channel-scoped servers for #sales-team (e.g., "HubSpot" for that channel)
-  - NOT personal servers belonging to individual users
+  - NOT a personal server belonging to another user; a shared agent can only
+    use a user's server while acting for that same user and with its explicit
+    capability grant
   - NOT servers scoped to other teams/channels
 ```
 
@@ -175,16 +177,51 @@ Example:
          Agents can now discover and use these tools
 ```
 
+**Where step 8 happens.** Owner review of discovered tools lives on
+`/agents/tools`. The list can be narrowed with
+`?status=pending_review&instance=<instanceId>` when an API or the personal
+assistant needs to send an owner to one connector's unreviewed tools.
+`GET /api/mcp/instances` carries `pendingToolCount` per instance (counted only
+over instances the caller is already entitled to see).
+- On `/agents/tools`, reviewable rows carry a checkbox plus **Select all
+  shown**, and a review bar offers **Approve selected** / **Disable selected**.
+  The selected tool's detail column also has single **Approve** / **Disable**
+  buttons.
+- Both call `POST /api/mcp/tools/status` (owner-gated) with
+  `{ status: 'active' | 'disabled', toolRegistryEntryIds: [...] }`.
+
+Three properties of that route are deliberate. Ids are **explicit** rather
+than "everything matching a filter", because one connector routinely projects
+dozens of tools and may expose `database_reset` beside `sites_list` — an
+approval must only ever cover rows the reviewer had on screen, so unchecking
+the dangerous one actually means something. The verdict enum **excludes
+`pending_review`**: only the projection sets that state, so "pending" always
+means "the server said something new that nobody has looked at yet". And ids
+belonging to a **first-party integration** instance (DeepWater, DeepSignal)
+are refused with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`, because those
+projections are managed as a bundle from Integrations and their readiness
+check reads the same registry rows.
+
+Review is recurring, not one-time install ceremony: a re-probe that finds a
+tool's schema or description has drifted flips it back to `pending_review`
+(and a tool that disappeared upstream likewise), so the same surface is the
+post-approval supply-chain checkpoint — an approved tool whose remote
+definition later changes stops reaching agents until someone looks again.
+
 **User-scope installs are self-service.** Tools discovered from a `user`-scoped
 instance project as `active` immediately (and drift re-activates rather than
 re-flagging): the installer is the only person whose runs can ever reach those
 tools, so an org-owner review gate would only break the "paste a link, start
 using it" flow. The worker enforces the reach rule at toolset assembly
-(`worker/src/run/mcp-toolset.ts`): user-scope instances surface **only** in
-the installing user's delegated personal-assistant runs — never in shared
-agents' channels; org/system instances surface to every run in the org; and
-team/project/channel instances follow the run's context. An explicit per-agent
-`toolPolicy` verdict overrides the scope default in either direction.
+(`worker/src/run/mcp-toolset.ts`): user-scope instances surface only while the
+run's live effective user is the installer. A shared agent may use one only
+with its normal explicit tool grant; a run for anyone else never receives the
+tool or resolves the credential. Org/system instances surface to every run in
+the org; team/project/channel instances follow the run's context. An explicit
+per-agent `toolPolicy` verdict may only NARROW that reach: a `false` verdict
+hides a tool that scope would expose, while a `true` verdict exposes a tool
+only when the install scope already reaches the run — install scope is a hard
+ceiling that policy can never broaden.
 
 ### Connector Library & Link Discovery
 
@@ -212,11 +249,15 @@ configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
   into a catalog entry: private self-published for members, or (owners with
   `shareToOrg: true`) published straight into the org store.
 
-The admin Connectors page exposes these as the **Library** tab (search +
-"Only have a link?" box + one-click guided install: pick "Just me" / "Whole
-organisation", then either paste the API key — stored encrypted — or, for
-OAuth connectors, approve access in the sign-in tab that opens; the flow ends
-with a connection test + tool discovery either way).
+The personal assistant and the remote API use these for guided setup. In the
+browser, `/apps` owns the human path: **Add a custom app** accepts the address,
+then its detail view completes the caller's own connection with an encrypted
+key or OAuth sign-in as required.
+
+Custom catalogue rows remain private to their author and organisation. Their
+internal name is therefore unique per `(organizationId, ownerUserId)`, so a
+person can add an identically named private app in another workspace without
+revealing or being blocked by the first workspace's connector.
 
 ### OAuth (dynamic, MCP authorization spec)
 
@@ -287,25 +328,52 @@ makes a connector available to the whole team/org" — and everyone manages
 their own `user` scope. Instance listing for non-owners returns their own
 installs plus shared-scope installs they can reach.
 
+**Credential-reference boundary.** Public instance creation never accepts a
+`credentialRef`, and instance/override responses never return one. The UI or PA
+submits a raw token once to the encrypted `SecretStore`; the server mints an
+opaque `secret_*` reference and attaches it internally. Per-principal override
+writes follow the same rule (`secret`, not `credentialRef`). Environment-backed
+references are reserved for the exact first-party values provisioned by
+integration code (`DEEPSIGNAL_MCP_APP_KEY` and `LEDGER_PROXY_TOKEN`); arbitrary
+environment names are rejected before lookup or network access.
+
 ### Self-Hosted MCP Servers
 
 Organizations can connect MCP servers not in the marketplace:
 
 ```
-POST /api/mcp-servers
+POST /api/mcp/catalog
 {
-  "name": "Internal Analytics DB",
+  "name": "internal-analytics-db",
+  "label": "Internal Analytics DB",
   "protocol": "http",
-  "endpoint": "https://mcp.company.example/analytics",
-  "auth_method": "bearer",
-  "credential_ref": "secret_analytics_token_xyz",
-  "scope_type": "project",
-  "scope_id": "project-uuid-123"
+  "authMethod": "bearer",
+  "authConfig": { "method": "bearer" },
+  "defaultTransportConfig": {
+    "transport": "http",
+    "url": "https://mcp.company.example/analytics"
+  }
+}
+
+POST /api/mcp/instances
+{
+  "catalogEntryId": "catalog-entry-uuid",
+  "scopeType": "project",
+  "scopeId": "project-uuid-123"
+}
+
+POST /api/mcp/instances/:instanceId/secret
+{
+  "secret": "<token>",
+  "shared": true
 }
 ```
 
-Same flow as marketplace install, but no catalog_id. The endpoint must be
-public-routable and pass SSRF validation. For internal-only hosts, on-prem
+The credential is then submitted once through
+`POST /api/mcp/instances/:instanceId/secret`; its opaque reference remains
+server-side. Unlike a marketplace install, this flow first creates a private
+catalog entry rather than selecting an existing public one. The endpoint must
+be public-routable and pass SSRF validation. For internal-only hosts, on-prem
 networks, or local subprocesses, register a Remote MCP Server instead. The
 system still discovers tools, creates registry entries, and requires approval.
 
@@ -324,8 +392,7 @@ Connector shape:
   "name": "deep-agent-crawl",
   "protocol": "sse",
   "endpoint": "https://deep-agent.example.com/mcp/sse",
-  "auth_method": "bearer",
-  "credential_ref": "DEEP_AGENT_CRAWL_BEARER_TOKEN"
+  "auth_method": "bearer"
 }
 ```
 
@@ -352,15 +419,69 @@ Operational rules:
 Some first-party products (e.g. **DeepSignal**) are surfaced not as a *toolset
 inside* an agent run but as a **peer conversation** — a per-user DM channel whose
 bound agent has `executionMode = external_mcp`. Nessie runs **no inference** for
-these turns: each message is proxied directly to the product's MCP endpoint under
-the acting user's own UOA token, and the reply + activity/generative cards are
-rendered verbatim. Full design: `docs/plans/2026-07-09-deepsignal-integration.md`.
+these turns. Each message is proxied directly to the product's MCP endpoint and
+the reply + activity/generative cards are rendered verbatim.
 
-The connector plumbing is the ordinary MCP path — a first-party catalog entry, a
-user-scoped `McpServerInstance`, dynamic OAuth, the encrypted secret store, and
-the SSRF guard all apply unchanged. What differs is execution + two extra
-surfaces, both of which reuse the shared `@nessie/mcp-manage` "connect + call one
-tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
+DeepSignal authenticates Nessie with a single DeepSignal-issued, Nessie-only
+`dsk_` application key resolved from `DEEPSIGNAL_MCP_APP_KEY`. Activation
+requires an already linked UOA subject with an active organization/team and
+provisions a system-managed **user-scoped** instance pinned to that exact env
+reference. Only the public catalog entry linked from the canonical
+`IntegratedProduct.slug=deepsignal` row can back that instance, and outbound
+identity signing is pinned to `https://api.deepsignal.live`; same-name catalogs
+and alternate origins fail closed. That global first-party catalog is immutable
+through generic update/delete/publish/deprecate/review/lock controls and is not
+listed in the generic connector library. The plaintext key never enters
+Postgres or the browser. Every
+initial/follow-up chat, history read, insight digest, and action call carries
+three independent proofs:
+
+1. `Authorization: Bearer <dsk_...>` authenticates the Nessie application.
+2. `X-UOA-Delegation` is an exact `ai.invoke` token exchange for
+   `product=nessie`, resource `https://api.deepsignal.live`, and the linked
+   subject's active UOA organization/team. Every renewable UOA login requires
+   nonnegative `tv` and signs immutable `{sub, org, team, tv}` proof into the
+   Nessie session. Delegation assertions and cache keys use that proof, while
+   the mutable product-link row is checked only as a current-liveness mirror.
+   The separate billing `X-UOA-Actor` assertion carries the same session epoch
+   for UOA's online recheck; products never infer or increment it.
+3. A fresh, maximum-five-minute RS256 `X-Nessie-Context` binds that subject to
+   Nessie's local user/org/team/agent/run plus request and stable tool-call ids.
+
+The current Nessie team's `externalOrgId`/`externalWorkspaceId` must exactly
+match the link's active UOA org/team on activation and on every outbound call,
+the effective user must still be a current member of that local team, and the
+team's DeepSignal enablement is re-read before dispatch. Conversation
+DM keys include the active external workspace
+(`extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`), so switching teams
+creates a distinct channel/thread/conversation. Legacy team-less channels and
+channel/workspace mismatches are archived or rejected before DeepSignal is
+called. Webhook fan-out selects that same workspace-keyed channel.
+
+No user OAuth token, per-user override, or generic connector credential may
+replace the dsk bearer. Startup rejects equality with any configured
+secret-bearing environment credential, including decoded DB/Redis URL userinfo
+and plural key/token lists, and with any encrypted per-org DeepSignal webhook
+HMAC secret. Pre-existing identity headers are rejected case-insensitively
+before fresh values are attached. Missing hosted/self-hosted app-key or UOA
+signer configuration fails process startup; incomplete request provenance fails
+before network dispatch.
+Implementation seams are `packages/runtime/src/deepsignal-mcp-identity.ts`,
+`api/src/services/integration-plugin-manifests.ts`,
+`api/src/services/external-agent-activation.ts`,
+`api/src/services/external-agent-instance.ts`,
+`api/src/services/deepsignal-signals.ts`, and
+`worker/src/run/external-conversation.ts`. Full design:
+`docs/plans/2026-07-09-deepsignal-integration.md`.
+
+The connector still reuses the shared MCP transport builder, secret resolver,
+SSRF guard, and one-shot caller, but its lifecycle is integration-owned.
+Generic install, probe/test/refresh/healthcheck/delete, OAuth completion, and
+secret-write paths reject the linked first-party instance. The activation
+toggle is its only lifecycle path. Ordinary non-managed connectors keep the
+existing dynamic OAuth and encrypted-secret flows unchanged. Chat, history, and
+Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
+(`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
 `probeConnection`):
 
 - **History hydration** — `POST /api/channels/:channelId/external-sync` pulls the
@@ -373,8 +494,386 @@ tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
   timing-safe). The per-org signing secret is set by an admin/owner via
   `PUT /api/integrations/products/:productSlug/webhook-secret` (stored encrypted in
   `product_webhook_secrets`); DeepSignal returns that secret once at webhook
-  registration and the admin pastes it. On `insight.surfaced` the receiver posts one
-  idempotent agent-authored insight card into each linked recipient's channel.
+  registration and the admin pastes it. On `insight.surfaced` the receiver
+  resolves the signed payload's `teamId` through the exact enabled
+  `ProductTeamEnablement.externalTeamId` and the matching Nessie
+  `Team.externalWorkspaceId`/`externalOrgId`. It then selects only linked,
+  active members whose UOA link is active in that same external organization
+  and team. Unknown, disabled, mismatched, or team-less payloads deliver
+  nothing. Accepted events are coalesced into a budgeted rolling digest per
+  linked recipient rather than posting one card per event.
+- **Signals digest** — insight digests remain in the recipient's DeepSignal
+  conversation. There is no separate Signals API or custom navigation surface;
+  product integrations cannot add entries to the left rail.
+
+### First-Party Team-Enabled Products (DeepWater)
+
+DeepWater is the inverse of the DeepSignal pattern: instead of proxying turns to
+an external agent, its `research_*` tools are exposed as a **grantable toolset**
+that any *permitted* agent can call. Enabling DeepWater for a team (owner-only
+`PATCH /api/integrations/products/deep-water/team-enablement`) provisions a
+**team-scoped** tool-projecting `McpServerInstance` from the `deep-water`
+catalog entry (`api/src/services/deepwater-activation.ts`,
+`ensureDeepWaterTeamInstance`), resolves the Ledger-only MCP adapter from the
+manifest-declared **`LEDGER_DEEPWATER_MCP_URL`** env var (canonical hosted
+endpoint `https://ledger.unlikeotherai.com/v1/mcp/deepwater`), installs an
+`{ transport: 'http', url }` bearer transport, and projects `research_start`,
+`research_status`, `research_report`, `research_list`, and `research_cancel`
+into `ToolRegistryEntry`; disabling removes the instance and its tool rows.
+There is deliberately no direct-provider fallback.
+
+- **Default OFF — explicit per-agent grant required.** The projected DeepWater
+  rows are flagged `requiresExplicitGrant` (metadata) and the
+  `deep_water_run_update` builtin sets the same flag on its
+  `BuiltinToolDefinition`. Team scope alone does **not** expose them: an agent
+  (personal assistant or shared) sees them ONLY when its per-agent `toolPolicy`
+  carries an explicit allow (`toolPolicy[key] === true`) **and** the
+  team-scoped instance reaches that run. A grant is an additional gate, never a
+  way around tenancy; an absent/inherited verdict is a denial. This is the "any
+  agent can use DeepWater only as long as it allows it" gate — see `isExposed`
+  (`worker/src/run/mcp-toolset.ts`) and
+  `authorizeToolCall` (`worker/src/run/tool-policy.ts`). **Other connectors are
+  unchanged** — they remain exposed by install scope unless a policy denies them;
+  only `requiresExplicitGrant`-flagged tools default off. The owner Tools and
+  Integrations surfaces render DeepWater off-by-default and write explicit
+  allows through the targeted
+  `PATCH /api/mcp/tools/:toolRegistryEntryId/policy-targets/:agentId` route.
+  That mutation merges only the selected policy key, so a grant/revoke cannot
+  replace unrelated `true` or `false` verdicts. Canonical DeepWater projections
+  take the team transition lock, re-read the exact projection generation, then
+  take the per-agent PostgreSQL advisory lock; a concurrent disable/re-enable
+  therefore cannot persist a stale registry id. `GET
+  /api/mcp/tools/policy-targets` is an owner-only,
+  organization-scoped minimal projection that includes ordinary shared agents
+  plus the system-managed Personal Assistant without widening `/api/agents` or
+  exposing its private DM bindings/activity.
+  Generic agent create/PUT is not an alternate grant writer: it rejects every
+  `requiresExplicitGrant` key and DeepWater provenance marker, and a PUT made
+  from a stale ordinary-tool snapshot preserves protected values from the
+  freshly locked row. Clones and delegated subtask children remove those values
+  because a grant belongs to one exact agent; Personal Assistant bootstrap
+  config cannot inject them. Server provenance markers are also redacted from
+  generic agent responses even though the locked database row retains them.
+  Agent Designer hides the protected switches and links owners to
+  Tools/Integrations.
+- **The launcher has a six-entry readiness gate.** The five team projections
+  plus `deep_water_run_update` are managed as one explicit bundle by
+  `GET/PATCH /api/integrations/products/deep-water/agent-access`. Owners can
+  grant or revoke all six for the Personal Assistant or a shared agent; the
+  individual switches remain available at `/agents/tools`. The Personal
+  Assistant grant action bootstraps it first when necessary. The research
+  launcher shows the exact granted count, disables **Run research** until the
+  PA has all six, and the API independently returns
+  `DEEP_WATER_PERSONAL_ASSISTANT_ACCESS_REQUIRED` before creating a durable run
+  if a caller bypasses the UI. The updater counts toward readiness only when
+  its registry row is enabled and active, exactly matching worker exposure; a
+  retained policy allow on a disabled builtin cannot authorize a launch.
+  Members can read only PA readiness; the
+  organization-wide shared-agent list and every mutation remain owner-only.
+  Bundle grant/revoke takes the team transition lock, re-resolves the current
+  projection generation, then takes the agent-policy lock. Bundle grants carry
+  server-only team provenance. Revoking one team removes
+  every still-linked current-team projection (including a partial or drifted
+  set) but preserves the org-wide updater while another team bundle or a manual
+  updater grant needs it. Accordingly, the updater's individual OFF control is
+  disabled and explained until its dependent projections/bundles are revoked.
+  Readiness callability and cleanup identity are separate: the canonical updater
+  row is always loaded for revocation, even while disabled/inactive, so a later
+  registry re-enable cannot silently revive an agent's old protected allow.
+  Bundle and individual lifecycle-tool revocation return 409 while any linked
+  run is `queued`, `running`, or `needs_setup`; there is no force override that
+  can strand an accepted Ledger job. The error points to the PA channel and
+  `research_cancel` when attached, otherwise to explicit operator recovery.
+  The Integrations link filters Tools by both the exact provisioned instance and
+  its first-party `deep-water` product binding, never by a caller-controlled
+  name alone.
+- **The launcher asks one question and offers one choice.** "What do you want
+  to research?" is the whole ask — no title is collected, because a report's
+  name belongs to Deep Water rather than to whoever typed the prompt. Depth is
+  chosen as **Light · Standard · Heavy · Custom**
+  (`admin/src/components/features/integrations/deep-water-research-options.ts`).
+  Each preset carries a complete set of Ledger/Deep Water-accepted values
+  (depth, chapter detail, output tier, search quality, sections, searches per
+  pillar, recency, destination), so choosing one answers every question the
+  form used to ask; **Custom** reveals the full historical control set
+  unchanged, including the six-way depth grid
+  (`DeepWaterResearchCustomControls.tsx`). Which mode is active is *derived*
+  from the values, never stored, so a chat card whose preset matches a mode
+  exactly opens on that mode and any other preset opens on Custom with its
+  settings visible. `DeepWaterResearchLaunchRequest` no longer carries `title`;
+  a chat card is named by its query, the run history falls back to
+  `queryPreview`, and rows launched before the change keep the title they were
+  launched with. `DeepWaterResearchLauncherPreset` still *tolerates* a `title`
+  key, because that schema is strict and stored card metadata from before the
+  change would otherwise fail to render.
+- **Ledger's MCP `research_start` is the ceiling on what any of this can send.**
+  It accepts exactly `query`, `context`, `depth`
+  (`light|standard|deep|heavy`), and `recency` (`any|recent`); the rich
+  `deepwater.research-config.v1` envelope — which carries a typed `languages`
+  set, `output_language`, `chapter_depth`, `sections`, `searches_per_pillar`,
+  and `search_quality` — exists only on Ledger's REST `POST /v1/research`
+  direct-application path, which Nessie does not use. Every launcher control
+  beyond depth and recency therefore travels as a labelled line inside
+  `context` (`api/src/routes/integrations/handoff-builders.ts`), which Ledger
+  forwards to the research pipeline verbatim. Those lines are also documented in
+  the projected `research_start` tool description
+  (`api/src/services/integration-plugin-manifests/deep-water.ts`), so a granted
+  agent — the Personal Assistant or any shared agent holding the explicit grant
+  — composes the same instructions by hand that the launcher composes for it.
+  Keep the two lists in step. A multi-select **search language** control is
+  deliberately *not* built: until `research_start` accepts the typed set, it
+  would be a control for something the API cannot receive.
+  `DeepWaterResearchCustomControls` is where it lands when that contract
+  arrives. Two known gaps live in the same place: Nessie's `thesis` and
+  `dissertation` depths both collapse to `heavy` at the Ledger boundary (they
+  remain in Custom, but they are not distinct tiers), and the finer
+  `day|week|month|year` recency collapses to `recent` without stating the
+  window.
+- **Launch authorization is one serialized boundary.** The launch transaction
+  takes the org/team transition lock, resolves the exact first-party active
+  instance, then takes the PA policy lock. It repeats the 6/6 check and inserts
+  the durable run before releasing either lock, so a concurrent disable or
+  revoke cannot create an unauthorized or orphaned launch. Disable returns
+  `LEDGER_DEEPWATER_ACTIVE_RUNS` (409) while a run for that connector is
+  `queued`, `running`, or `needs_setup`. Operators/users must cancel or recover
+  interrupted work, or wait for a terminal state, then retry disable.
+  PA message creation, durable-run attachment, PA run/task creation, and the
+  `run.execute` enqueue commit in one transaction. Product handoffs never pass
+  through model-based chat engagement, so task text such as Swift's
+  `@MainActor` cannot be mistaken for an unresolved agent mention and suppress
+  the launch. The message-and-agent queue key protects one dispatch unit from a
+  duplicate queue insertion; it does not make a repeated HTTP launch request
+  idempotent. A queue-key collision is an error that rolls back that
+  message/run/task unit. If attachment or enqueue fails, the whole unit rolls
+  back and the previously inserted product run is marked failed without
+  leaving a queue job that might call Ledger.
+  Ordinary channel and PA chat messages continue through `orchestrate.decide`.
+  Realtime publication happens after commit and is non-fatal. Ambiguous work
+  remains blocking even when `externalRunId` is null: a worker may already be
+  inside the idempotent
+  `research_start`, so guessing “unaccepted” could orphan accepted Ledger work.
+  The 409 points to an attached chat where PA can invoke `research_cancel`;
+  an interrupted run without a chat requires explicit operator recovery.
+- **Fail loud and transition atomically.** When
+  `LEDGER_DEEPWATER_MCP_URL` is unset the enable route returns
+  `LEDGER_DEEPWATER_MCP_URL_UNSET` (503) instead of creating a dead or
+  direct-provider instance. Missing `LEDGER_PROXY_TOKEN` or UOA signing/client
+  settings return `LEDGER_PROXY_TOKEN_UNSET` or
+  `LEDGER_IDENTITY_UNCONFIGURED`; a missing linked first-party public catalog
+  returns `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` (all 503). Nessie never
+  persists `enabled=true` without a callable, attributable connector. Every
+  org/team enable or disable acquires a PostgreSQL
+  transaction-scoped advisory lock, serializing opposite transitions across
+  API processes; connector rows and the enablement row mutate in that same
+  transaction and roll back together. Teardown finds the instance through the
+  first-party product's linked public catalog entry so a rename cannot orphan
+  it and a private same-name entry cannot be deleted.
+- **Client integration data is identity scoped.** Integrated-product state,
+  DeepWater readiness/runs, DeepSignal digests, registry rows, and policy
+  targets use cache keys containing the signed-in user, organization, team, and
+  owner/member privilege where applicable. Team switches and targeted grants
+  invalidate every affected surface, preventing a tenant/team switch from
+  reusing privileged or stale readiness data.
+  Agent-access data continues loading when the integration is disabled, so a
+  fresh page still shows retained bundle provenance and its **Revoke all**
+  action; disabling launch never creates a circular cleanup dead end.
+- **Projected tools are `active`, not `pending_review`.** DeepWater is a
+  first-party entry the team's owner explicitly enabled, so that enable stands
+  in for the manual install + admin-approve review that shared-scope projections
+  otherwise defer. Re-enable preserves richer probe schemas only when the
+  discovered tool-name set exactly matches the current Ledger contract; a
+  legacy direct-provider contract is removed, reprojected, and must be
+  explicitly re-granted.
+- **Deterministic contract, app authentication, signed delegated identity.**
+  The team instance has `authMethod=bearer` and resolves
+  `LEDGER_PROXY_TOKEN`, which is Nessie's dedicated, product-bound Ledger app
+  API key. It authenticates Nessie as the calling application only; it never
+  defines research ownership and must not be reused by DeepWater, DeepSignal,
+  DeepTest, or another product. Every DeepWater dispatch adds two independent,
+  short-lived signed headers:
+  `X-Nessie-Context` is an RS256 JWT with the originating
+  org/project/team/user/channel/thread/task/run/agent/request envelope. Its
+  user/org/team/agent/run fields are always non-null; named system work derives
+  stable UUID agent/run values from a persisted user/team origin and fails
+  before provider dispatch when that origin cannot be recovered.
+  `X-UOA-Delegation` is a five-minute RS256 access token obtained from UOA's
+  token-exchange endpoint for the linked `ProductAccountLink.uoaSub`. The
+  exchange assertion uses Nessie's existing UOA config-JWT key and domain-hash
+  bearer credential, has a maximum 60-second lifetime, and targets Ledger as
+  its resource. New renewable UOA sessions require a nonnegative `tv`
+  authentication epoch and preserve immutable `{sub, org, team, tv}` proof
+  through access sessions, refreshes, durable run attribution, signed
+  assertions, and delegation cache keys. The current product-account link must
+  exactly match the stable subject and credential epoch, but cannot supply or
+  upgrade session identity. Its active org/team fields are last-seen UI
+  metadata only, so simultaneous sessions in different teams cannot invalidate
+  or rebind one another. The exact signed workspace must independently match
+  the local Team's external mapping. Legacy UOA refresh families without
+  encrypted family proof must sign in again. The stable UOA subject is
+  required. The selected UOA org/team
+  comes from `active` or, when UOA auto-skips its chooser, the sole active team
+  membership; the centralized resolution is projected into the Nessie
+  workspace, while product links retain only stable account/epoch authority.
+  Multiple teams without `active`
+  remain ambiguous and fail closed. Nessie's signed local organization/team remain the
+  authoritative research and raw-usage scope, so the two ID namespaces are never
+  compared or substituted. Ledger verifies both assertions before assigning a
+  job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
+  though its MCP transport uses Nessie's app API key, ensuring first login
+  creates the per-user account link. A missing UOA link fails DeepWater closed.
+  Webhook callback signing secrets are separate per-app credentials and are
+  never accepted as the outbound Ledger app API key.
+  The generic secret REST route and PA `connector_set_secret` refuse managed
+  DeepWater instances. Generic instance test, refresh, healthcheck, and delete
+  operations fail with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; PA probe and
+  uninstall operations explain the same ownership rule. The Integrations team
+  toggle is the sole lifecycle path, so deleting an instance can never leave
+  the product toggle enabled and pointing at nothing. The Integrations surface
+  is the sole lifecycle control, and migration removes old per-user overrides
+  so none can shadow the product-bound app API key.
+- **Research retries preserve provider idempotency.** Each DeepWater dispatch
+  forwards the model provider's stable `tool_call_id` in the signed context.
+  `research_start` rejects a missing ID, and retrying the same logical tool call
+  reuses the same value instead of generating a new research job.
+- **All Nessie inference uses the same Ledger chokepoint.** In hosted
+  production, `NESSIE_MODEL_BASE_URL` is
+  `https://ledger.unlikeotherai.com/v1/openai` and
+  `NESSIE_MODEL_API_KEY` contains Nessie's product-bound Ledger app API key.
+  This is the configured
+  chokepoint, not a forced provider: the runtime rewrites the final path to
+  Ledger's generic `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi,
+  or custom stage. The shared model client and
+  agentic inference paths attach a fresh `X-Nessie-Context` and, when the
+  effective user is UOA-linked, `X-UOA-Delegation` to chat, streaming, raw
+  designer, and embedding calls. A deployment-wide base URL still wins over a
+  provider-record URL. When no deployment-wide base is configured, routing
+  resolves the approved organization provider record first and then decides
+  whether to sign: an effective Ledger URL receives the same complete
+  attribution, and missing signing identity fails before the network request.
+  Nessie's local token and connector ledgers also persist `user_id` separately
+  from `actor_id`, because an agent is often the actor while a human is the
+  effective caller. Every Ledger request requires non-null
+  user/org/team/agent/run fields. Knowledge embedding/extraction jobs persist
+  that origin in their queue payload; for a teamless project space the API
+  carries the authenticated request's active team rather than guessing from
+  project membership. Post-run memory consolidation follows the same rule: its
+  queue payload freezes the launch org/project/team/user and source
+  agent/channel/thread/task, then derives stable, distinct
+  `memory-consolidation` system agent/run UUIDs and a source-run-bound operation
+  ID. Queue consumers rederive those UUIDs from the immutable source and require
+  exact system actor/agent/run matches before database or model access; arbitrary
+  queue UUIDs are never accepted as signed identity. Background consolidation
+  deliberately omits the interactive correlation ID rather than trusting an
+  unbound queue value. The PA system channel's team/project scope only controls
+  where the memory is stored; it never replaces the launch team attributed by
+  Ledger. The consumer validates the persisted source locator before reading
+  message history, and never infers the billed user from a thread participant.
+  Each Fastify request
+  owns a separate async context rooted at `onRequest`, so interleaved uploads
+  cannot borrow another request's user or team. A request with no real team
+  returns `KNOWLEDGE_INFERENCE_ORIGIN_REQUIRED`, and malformed legacy jobs fail
+  validation before storage or model access.
+- `deep_water_run_update` (the builtin that writes the durable
+  `product_integration_runs` record) is **not PA-only** — any *granted* agent
+  (PA or shared) writes the run record back. Its tenancy is taken strictly from
+  the run context: the update is scoped to the caller's **team** and the
+  **thread** the run is attached to (no unattached-run escape), and any
+  `knowledgePageId` is validated to belong to the org before it is stored — so a
+  prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
+  usage attribution. The server-built launch message gives the PA the durable run's exact
+  full UUID for every write-back; the launch card may abbreviate that UUID for
+  display only and is never the write-back authority. Ledger's DeepWater REST
+  and MCP status, report, and list responses intentionally expose no cost,
+  price, charge, tariff, or currency. The handoff rejects those fields, and UOA
+  alone supplies customer-commercial amounts. The external
+  report URL is captured only from the authenticated Ledger `research_start`
+  structured response after its origin and exact research-job path are
+  validated, then persisted atomically with that ticket. Source count is
+  captured only from the authenticated `research_report` references array
+  before the result is returned to the agent. Both fields require server-only
+  provenance markers before API mapping exposes them. Legacy or agent-authored
+  values therefore stay hidden, and `deep_water_run_update` cannot supply,
+  replace, or mark either value as trusted. Source persistence also repairs the
+  exact per-run connector-usage event atomically, so a same-batch terminal
+  update cannot permanently record empty units by winning a race with the
+  report call. Deployment migration
+  `20260720150000_deepwater_report_metadata_provenance` clears historical
+  connector-usage units without that provenance and backfills only
+  already-trusted counts. Migration
+  `20260720234500_retire_deepwater_local_cost_mirror` clears every historical
+  DeepWater amount/currency from Product runs and connector events, preserves
+  only a cost-free server-only dispatch-recovery marker, drops the obsolete
+  Product-run cost columns, and installs a database trigger that rejects future
+  DeepWater connector-event cost writes. A terminal run remains readable after team disable
+  removes its managed connector; accepting a fresh start still requires a valid
+  configured Ledger origin.
+  Updates take a PostgreSQL row lock: identical delivery retries are accepted,
+  while replacing
+  an established external run id, or moving a terminal run to a
+  different status, returns an explicit immutable-conflict error. A terminal
+  status captured on the start ticket is enforced under that same lock:
+  `complete` can project only to `completed`, while `failed`, `cancelled`, and
+  `timed_out` can project only to `failed`. Operational reconciliation always
+  attributes the call and authenticated source units to the run's immutable
+  launch `requestedByUserId`, even when a different granted agent or user
+  submits the terminal update. Nessie never estimates, mirrors, aggregates, or
+  renders a DeepWater amount; UOA rates Ledger's raw metering independently.
+- **Long-running jobs do not busy-poll.** The launch handoff starts the Ledger
+  job, persists its id + `running` state, optionally reads status once, tells the
+  user it is running, and ends the bounded agent turn. For the exact
+  `product_integration_runs` row attached to the current launch message, the
+  worker first validates the server-authored
+  `integrationLaunch: { productSlug: 'deep-water', runId }` message marker.
+  Ordinary messages without that marker are unguarded; marked messages query by
+  the exact durable run id, message, organization, team, and thread, and fail
+  closed when any field does not match. The
+  worker atomically claims the queued row as `running` and stores the provider's
+  first tool-call id plus exact arguments before transport. A still-clean row
+  moves to `failed` only for a validated Ledger-local pre-start rejection
+  (`invalid_request` 400/401, `budget_exceeded` 402, or `forbidden` 403), or for
+  Nessie's own budget block while it remains truly queued, uncorrelated, and
+  undispatched; this writes only a generic sanitized status detail. Conflicts,
+  upstream rejections, 5xx, malformed errors or malformed
+  successful tickets, throws, timeouts, uncertain claim responses, and
+  uncertain ticket writes are ambiguous and abort the Nessie run for queue
+  retry without marking the Product run failed. Recovery dispatches the same
+  logical start with the exact persisted id and arguments. Ledger success must
+  contain matching structured `id` and `job_id` values in the `rs_...`
+  namespace plus one exact supported status. The external id and status are
+  persisted synchronously before success reaches the model. If execution dies
+  after that persistence, the retry returns the stored ticket and status
+  locally without another network call. Managed DeepWater reserves the
+  canonical five `mcp_research_*` exposed names against private connector
+  collisions. Same-batch status/report/cancel calls
+  are pinned to the persisted id, while `research_list` and delegation remain
+  blocked for the launch turn. `deep_water_run_update` and Knowledge writes remain blocked
+  until exact start-result delivery; a timeout latches the abandoned attempt so late
+  same-batch promises cannot escape that gate. The invocation-specific start
+  result is acknowledged only after connector telemetry, tool-end recording,
+  and tool-message incorporation, so a timeout during definitive-failure
+  persistence or post-ticket delivery remains fatal.
+  Ordinary setup, inference, and callback failures are promoted to the same
+  retry path while unresolved. Budget blocking may settle only a truly
+  uncorrelated queued Product row before the Nessie run becomes terminal;
+  correlated running work remains recovery-safe. A late definitive rejection
+  may settle an exact correlated `needs_setup` row.
+  The run cannot complete while its attached handoff remains unattempted,
+  recoverable, or ambiguous. Non-final fatal outcomes leave the Nessie run
+  `running` and nack the queue job; final exhaustion moves every exact clean
+  candidate to `needs_setup` before terminalizing the Nessie run. Duplicate
+  exact attachments and malformed persisted external ids fail closed before
+  inference. Because an outer timeout cannot cancel a transport promise that is
+  already in flight, a validated ticket that settles after final recovery is
+  still attached atomically, clears the stale recovery detail, preserves its
+  exact Ledger status, and keeps the Product run `running` until mandatory
+  terminal reconciliation. Fatal tool calls emit their paired sanitized end
+  event before propagation, and every started same-batch tool wrapper settles
+  before the queue attempt is released. Rows with
+  external/dispatch/report/Knowledge evidence are never erased or falsely
+  failed, and ordinary DeepWater calls not attached to a product launch are
+  unchanged. A later
+  user/status turn performs one status read and fetches `research_report` only after completion;
+  autonomous polling remains future completion-wrapper work.
 
 ### MCP Server Lifecycle
 
@@ -386,470 +885,28 @@ pending_setup → active → paused → active (or) → error
 
 Health checks run every 5 minutes. If a server fails 3 consecutive health checks, it moves to `error` and its tools are temporarily unavailable. The system retries, and if the server recovers, tools become available again without admin intervention.
 
-### Remote MCP Servers (Self-Hosted Runners)
-
-Nessie runs in the cloud, but users need agents to interact with machines behind firewalls, on-prem servers, developer laptops, or air-gapped environments. Remote MCP servers solve this by **reversing the connection direction** — the remote machine connects *to* Nessie, not the other way around.
-
-This is the same `mcp_server_instances` model with `protocol: "remote"`. Same tool discovery, same credential model, same scoping. The only difference: the machine initiates and maintains the connection.
-
-> **Canonical spec.** This section is the single source of truth for remote workers. The previous standalone `remote-worker-spec.md` has been merged here.
-
-#### How It Works
-
-```
-1. Admin creates a remote MCP server registration in Nessie:
-   POST /api/mcp-servers
-   {
-     "name": "Build Server (on-prem)",
-     "protocol": "remote",
-     "scope_type": "team",
-     "scope_id": "team-engineering-uuid"
-   }
-   → Returns: { server_id: "uuid", registration_token: "nessie_reg_xxx..." }
-
-2. User installs the Nessie CLI on the remote machine:
-   $ curl -fsSL https://install.nessie.ai/cli | sh
-
-3. User registers the CLI with the token:
-   $ nessie-agent register --token nessie_reg_xxx...
-   ✓ Registered as "Build Server (on-prem)"
-   ✓ Connected to org "Acme Corp"
-   ✓ Advertising 12 tools
-
-4. CLI starts heartbeat polling:
-   POST /api/remote-workers/{server_id}/heartbeat  (every 60s)
-   → Server responds: { hasWork: false, retryAfterMs: 60000 }
-   
-   When work arrives:
-   → Server responds: { hasWork: true, wsTicket: "...", retryAfterMs: 5000 }
-   → CLI opens WebSocket: wss://api.nessie.ai/remote/{server_id}/ws?ticket=...
-   → Tool calls flow over the WebSocket
-   → When work completes, WebSocket closes, CLI returns to polling
-```
-
-#### Connection Model — Poll When Idle, WebSocket When Active
-
-The CLI does **not** hold a permanent WebSocket open. Instead:
-
-- **Idle**: HTTP heartbeat poll every 60s (server may adjust via `retryAfterMs`)
-- **Active**: WebSocket opened only when there's pending work, closed when done
-- **Why**: Permanent WebSocket wastes resources on machines that may go hours between tool calls. Poll is cheap and keeps the machine discoverable.
-
-```
-Remote machine (behind firewall/NAT)              Nessie Cloud
-┌───────────────────────────────┐                ┌──────────────────────┐
-│  nessie-agent CLI              │                │                      │
-│                                │                │                      │
-│  IDLE MODE:                    │   HTTP POST    │                      │
-│  heartbeat every 60s           │───────────────→│  /heartbeat          │
-│  "I'm alive, no policy change" │←──── 200 ─────│  { hasWork: false }  │
-│                                │                │                      │
-│  ACTIVE MODE (work pending):   │   WSS outbound │                      │
-│  opens WebSocket               │───────────────→│  /ws?ticket=...      │
-│  receives tool calls           │←── tool call ──│                      │
-│  executes locally              │── result ─────→│                      │
-│  WebSocket closes when done    │                │                      │
-│  returns to idle polling       │                │                      │
-└───────────────────────────────┘                └──────────────────────┘
-
-Key: the remote machine only makes OUTBOUND connections.
-No inbound ports, no firewall rules, no VPN required.
-```
-
-Heartbeat response shape:
-
-```json
-{
-  "hasWork": true,
-  "retryAfterMs": 5000,
-  "wsTicket": "short-lived-ticket-abc",
-  "sessionId": "sess_123",
-  "policyChanged": false,
-  "policyVersion": "pol_v12"
-}
-```
-
-#### Protocol: "remote" on mcp_server_instances
-
-No new table. Remote servers use the existing `mcp_server_instances` schema with these specifics:
-
-```
-mcp_server_instances row for a remote server:
-  protocol         = "remote"
-  endpoint         = null (the CLI connects to us, not the other way around)
-  
-  -- Remote-specific fields in transport_config:
-  transport_config = {
-    "registration_token_ref": "secret_reg_token_xxx",  -- secretRef, one-time use
-    "heartbeat_interval_s": 60,                         -- default, server may adjust
-    "heartbeat_timeout_s": 180,                         -- 3 missed heartbeats → disconnected
-    "reconnect_max_backoff_s": 300,                     -- CLI retries with exponential backoff
-    "max_concurrent_calls": 5,                          -- limit parallel tool calls
-    "machine_id": "build-server-01",                    -- reported by CLI on connect
-    "machine_info": {                                   -- reported by CLI
-      "os": "linux",
-      "arch": "amd64",
-      "hostname": "build-01.internal.acme.com",
-      "platform": "linux"
-    },
-    "local_policy_version": "pol_v12",                  -- current local policy digest
-    "cloud_policy_version": "pol_v15"                   -- last synced cloud policy
-  }
-  
-  -- Status reflects connection state (extended for remote):
-  status = "active"    -- heartbeat received, accepting work
-         | "idle"      -- heartbeat received, no active sessions
-         | "busy"      -- WebSocket open, executing tool calls
-         | "draining"  -- finishing current work, not accepting new
-         | "paused"    -- user-paused
-         | "offline"   -- no heartbeat within timeout
-         | "revoked"   -- admin revoked, CLI must re-register
-         | "error"     -- connection or policy error
-  
-  health_status = "healthy" | "degraded" | "down"
-```
-
-#### Three-Layer Policy Model
-
-Every remote tool call is authorized by the intersection of three policy layers. If **any** layer denies, the action is denied. The local machine owner's policy is a hard floor that the cloud can never expand beyond.
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ 1. LOCAL HARD POLICY (machine owner controls)            │
-│    Set in nessie-agent.yaml on the remote machine.       │
-│    Cloud CANNOT override or expand these limits.         │
-│                                                          │
-│    Examples:                                             │
-│    - allowed_roots: ["/app", "/var/log"]                 │
-│    - denied_roots: ["/etc", "/root", "/home"]            │
-│    - command_allowlist: ["make", "npm", "docker"]        │
-│    - command_denylist: ["rm -rf", "dd", "mkfs"]          │
-│    - disable_write_tools: false                          │
-│    - disable_ssh: true                                   │
-│    - disable_interactive_sessions: false                 │
-│    - max_runtime_s: 3600                                 │
-│    - max_output_bytes: 10485760 (10MB)                   │
-│    - max_concurrent_sessions: 3                          │
-│    - working_hours_only: false                           │
-│    - env_allowlist: ["NODE_ENV", "PATH"]                 │
-│    - env_denylist: ["AWS_SECRET_*"]                      │
-└─────────────────────┬───────────────────────────────────┘
-                      │ intersected with
-┌─────────────────────▼───────────────────────────────────┐
-│ 2. CLOUD POLICY (Nessie admin controls)                  │
-│    Set per org/project/team/channel/agent in Nessie.     │
-│    Can only NARROW, never expand local policy.           │
-│                                                          │
-│    Examples:                                             │
-│    - agent "deploy-bot" may use shell.run on this worker │
-│    - channel "incident-response" gets read-only access   │
-│    - project "backend" can discover this worker          │
-│    - project "frontend" cannot discover this worker      │
-│    - all write operations require approval               │
-└─────────────────────┬───────────────────────────────────┘
-                      │ intersected with
-┌─────────────────────▼───────────────────────────────────┐
-│ 3. ACTOR CONTEXT (runtime — who's asking, why)           │
-│    Evaluated at execution time per request.              │
-│                                                          │
-│    Inputs: agent ID, user ID, channel, project,          │
-│    tool being called, arguments, time of day             │
-│                                                          │
-│    Decision: allowed | denied | requires_approval        │
-│              | requires_step_up_verification             │
-│                                                          │
-│    Reason codes:                                         │
-│    - REMOTE_WORKER_OFFLINE                               │
-│    - LOCAL_POLICY_DENY                                   │
-│    - CLOUD_POLICY_DENY                                   │
-│    - MISSING_AGENT_BINDING                               │
-│    - TOOL_NOT_EXPOSED                                    │
-│    - PATH_OUTSIDE_ALLOWED_ROOT                           │
-│    - COMMAND_NOT_IN_ALLOWLIST                             │
-│    - MAX_CONCURRENT_SESSIONS_REACHED                     │
-│    - OUTSIDE_WORKING_HOURS                               │
-└─────────────────────────────────────────────────────────┘
-```
-
-Policy sync happens on every heartbeat. The CLI sends its local policy digest; the server sends the current cloud policy. If either has changed, capabilities and bindings are re-evaluated before any new work is dispatched.
-
-#### CLI Tool Discovery
-
-The CLI exposes tools to Nessie using the standard MCP `tools/list` protocol. What the CLI exposes depends on what's installed/configured on the remote machine and what local policy allows:
-
-```
-nessie-agent can expose these capability surfaces:
-
-  1. Shell execution:
-     - shell.run: One-shot command execution
-     - shell.session: Long-lived interactive terminal session (if enabled by local policy)
-
-  2. File operations:
-     - file.read: Read files (within allowed_roots)
-     - file.write: Write files (within allowed_roots, if write enabled)
-     - file.glob: Search for files by pattern
-
-  3. Process management:
-     - process.list: List running processes
-     - process.signal: Send signals to processes (if enabled)
-
-  4. SSH (if enabled):
-     - ssh.run: Execute commands on another machine via SSH
-     - ssh.session: Interactive SSH session
-
-  5. MCP proxy:
-     - mcp.proxy: Proxy local MCP servers through the connection to Nessie
-     
-  6. CLI wrappers (declared in nessie-agent.yaml):
-     - Named commands with parameters, timeouts, risk levels
-
-All surfaces are filtered by local hard policy before being advertised.
-If local policy says disable_ssh: true, ssh.* surfaces are never exposed.
-```
-
-Declared tools in `nessie-agent.yaml`:
-
-```yaml
-# Local hard policy
-policy:
-  allowed_roots: ["/app", "/var/log", "/tmp/builds"]
-  denied_roots: ["/etc/shadow", "/root"]
-  command_allowlist: ["make", "npm", "docker", "kubectl"]
-  disable_ssh: true
-  disable_interactive_sessions: false
-  max_runtime_s: 3600
-  max_output_bytes: 10485760
-  max_concurrent_sessions: 3
-
-# Custom tool declarations
-tools:
-  - name: run_build
-    description: "Run the CI build pipeline"
-    command: "cd /app && make build"
-    timeout: 600
-    risk_level: medium
-  
-  - name: deploy_staging
-    description: "Deploy current build to staging"
-    command: "/scripts/deploy.sh staging"
-    timeout: 300
-    risk_level: high
-    requires_approval: true
-  
-  - name: read_logs
-    description: "Read application logs"
-    command: "tail -n {{lines}} /var/log/app/{{service}}.log"
-    parameters:
-      lines: { type: integer, default: 100 }
-      service: { type: string, enum: [api, worker, scheduler] }
-    risk_level: low
-
-# Local MCP servers to proxy
-mcp_servers:
-  - name: local-postgres
-    command: "npx @modelcontextprotocol/server-postgres"
-    env:
-      DATABASE_URL: "{{secret:local_db_url}}"
-```
-
-#### Security Model
-
-Remote servers execute commands on real machines. The security model has multiple layers:
-
-```
-1. REGISTRATION
-   - One-time token, expires after 24 hours, scoped to one server record
-   - After registration, CLI receives short-lived access token + refresh policy
-   - Registration token revoked immediately after use
-   - Worker-scoped API key — never org-level keys on the machine
-   - Long-lived org keys must NEVER be embedded in worker config
-
-2. TOOL APPROVAL
-   - All tools discovered from a remote server start as pending_review
-   - Admin must approve each tool before agents can use it
-   - Tools with risk_level: "high" always require per-invocation approval
-   - shell.run requires explicit admin opt-in (disabled by default)
-   - shell.session (interactive) requires separate opt-in
-
-3. CREDENTIAL ISOLATION
-   - Local credentials (DB passwords, API keys) stay on the machine
-   - CLI resolves local secrets from its own config, not Nessie's secret store
-   - Nessie never sees local credentials — sends tool call args, CLI injects locally
-   - Exception: Nessie-managed secrets resolved and sent over encrypted WebSocket
-   - Secrets NEVER pushed in plaintext over chat — only secretRef resolution at execution time
-
-4. NETWORK SECURITY
-   - All connections are outbound TLS (WSS for active, HTTPS for heartbeat)
-   - Client certificate or short-lived token authentication
-   - CLI validates Nessie's server certificate (no self-signed)
-   - Worker does NOT accept inbound connections from the public internet
-
-5. POLICY ENFORCEMENT
-   - Three-layer policy evaluated on every tool call (see above)
-   - Local policy changes are integrity-protected before parent accepts them
-   - Policy version mismatch → re-sync before accepting new work
-
-6. AUDIT
-   - Every tool call logged in Nessie's audit system with full context:
-     actor, project, channel, agent, tool, arguments (redacted secrets)
-   - CLI also logs locally to /var/log/nessie-agent/audit.log
-   - Admin can view remote execution history in Nessie admin UI
-
-7. REVOCATION
-   - Admin can revoke a worker immediately
-   - Revocation blocks new sessions and invalidates reconnect tokens
-   - Active sessions can be interrupted or drained per policy
-```
-
-#### Remote Server Lifecycle
-
-```
-Registration:
-  Admin creates server → gets token → user runs nessie-agent register
-  → CLI starts heartbeat polling → tools discovered → admin approves → ready
-
-Idle:
-  CLI polls heartbeat endpoint every 60s
-  Server responds: { hasWork: false }
-  Nessie knows the machine is alive
-
-Active:
-  Server responds: { hasWork: true, wsTicket: "..." }
-  CLI opens WebSocket with ticket
-  Tool calls flow over WebSocket
-  CLI executes → returns results
-  When done, WebSocket closes → returns to idle polling
-
-Draining:
-  Admin or policy triggers drain
-  → CLI finishes current work
-  → Does not accept new WebSocket sessions
-  → Returns to idle (or offline if deregistering)
-
-Disconnection:
-  CLI stops heartbeating (network issue, machine restart, crash)
-  → Nessie marks as offline after 180s (3 missed heartbeats)
-  → Tools from this server become temporarily unavailable
-  → Agents see: "Build Server (on-prem): offline" in capability directory
-  → CLI reconnects automatically with exponential backoff (max 300s)
-  → On reconnect: tools/list re-run, policy synced, health restored
-
-Revocation:
-  Admin revokes the worker
-  → CLI receives revocation on next heartbeat or active WebSocket
-  → All sessions terminated
-  → Reconnect tokens invalidated
-  → CLI must re-register with a new token to resume
-
-Deregistration:
-  $ nessie-agent deregister
-  → CLI closes connection, removes local credentials
-  → Or: admin deletes the server in Nessie → CLI receives deregister signal
-```
-
-#### Remote Worker API
-
-```
-POST   /api/remote-workers/register                     — bootstrap registration
-POST   /api/remote-workers/{id}/heartbeat               — heartbeat poll (returns hasWork)
-POST   /api/remote-workers/{id}/policy-sync             — sync local ↔ cloud policy
-GET    /api/remote-workers/{id}/ws?ticket=...            — WebSocket for active work
-POST   /api/remote-workers/{id}/drain                   — graceful drain
-POST   /api/remote-workers/{id}/revoke                  — immediate revocation
-GET    /api/remote-workers                              — list all workers (admin)
-GET    /api/remote-workers/{id}                         — get worker details
-GET    /api/remote-workers/{id}/policy/effective         — computed effective policy
-POST   /api/remote-workers/{id}/access/check            — test whether a specific call would be allowed
-```
-
-#### CLI Management Commands
-
-```
-$ nessie-agent register --token <token>     Register with Nessie
-$ nessie-agent status                        Show connection status, registered tools, policy
-$ nessie-agent tools                         List tools this agent exposes
-$ nessie-agent logs                          Tail local execution logs
-$ nessie-agent policy                        Show effective policy (local + cloud)
-$ nessie-agent deregister                    Disconnect and clean up
-$ nessie-agent run                           Start the agent (foreground, for systemd/launchd)
-$ nessie-agent install-service               Install as a system service (systemd/launchd)
-```
-
-#### Admin UI — Resources Page
-
-Remote workers appear in the admin as **Resources** — a dedicated page showing all connected machines, their status, tools, and policy.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Admin > Resources                                                    │
-│                                                                      │
-│ Scope: [Organization ▾]  [All statuses ▾]  [Search...]              │
-│                                                                      │
-│ ┌──────────────────┬──────────┬────────┬───────┬──────────────────┐  │
-│ │ Name             │ Status   │ Scope  │ Tools │ Last Seen        │  │
-│ ├──────────────────┼──────────┼────────┼───────┼──────────────────┤  │
-│ │ Build Server 01  │ 🟢 idle  │ Org    │ 12    │ 30s ago          │  │
-│ │ Staging Deploy   │ 🔵 busy  │ Team   │ 5     │ active now       │  │
-│ │ Dev Laptop (Joe) │ 🟢 idle  │ Personal│ 8    │ 2m ago           │  │
-│ │ GPU Cluster      │ ⚫ offline│ Project│ 3    │ 4h ago           │  │
-│ │ Ops Monitor      │ 🟢 idle  │ Channel│ 4    │ 1m ago           │  │
-│ └──────────────────┴──────────┴────────┴───────┴──────────────────┘  │
-│                                                                      │
-│ [+ Register New Resource]                                            │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-Resource detail page:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Build Server 01                                    [Drain] [Revoke] │
-│                                                                      │
-│ Status: 🟢 idle          Machine: linux/amd64                        │
-│ Scope: Organization      Hostname: build-01.internal.acme.com        │
-│ Registered: 2026-03-15   Last heartbeat: 30s ago                     │
-│                                                                      │
-│ ┌─ Tools (12) ──────────────────────────────────────────────────┐    │
-│ │ ✓ run_build          medium    approved                       │    │
-│ │ ✓ deploy_staging     high      approved (requires approval)   │    │
-│ │ ✓ read_logs          low       approved                       │    │
-│ │ ○ shell.run          high      pending review                 │    │
-│ │ ...                                                           │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│ ┌─ Policy ──────────────────────────────────────────────────────┐    │
-│ │ Local policy version: pol_v12                                 │    │
-│ │ Cloud policy version: pol_v15                                 │    │
-│ │ Allowed roots: /app, /var/log, /tmp/builds                    │    │
-│ │ Command allowlist: make, npm, docker, kubectl                 │    │
-│ │ SSH: disabled   Interactive: enabled   Write: enabled         │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│ ┌─ Bindings ────────────────────────────────────────────────────┐    │
-│ │ Agent: deploy-bot         → shell.run, deploy_staging         │    │
-│ │ Channel: #incident-resp   → read_logs (read-only)             │    │
-│ │ Team: Engineering         → all approved tools                │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│ ┌─ Recent Activity ─────────────────────────────────────────────┐    │
-│ │ 14:30  deploy-bot called deploy_staging → success (42s)       │    │
-│ │ 14:25  build-agent called run_build → success (3m12s)         │    │
-│ │ 13:50  ops-agent called read_logs → success (1s)              │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-Scoping works the same as all other capabilities:
-- **Organization** scope → all agents in the org can use this resource
-- **Project** scope → only agents in that project
-- **Team** scope → only agents bound to that team
-- **Channel** scope → only agents in that channel
-- **User** scope → only one user's agents
-
-Resources that are **system** scoped are visible everywhere and should be platform-managed. Organization-scoped resources are visible within one organization and may still have read-only or restricted tool access via cloud policy. Resources scoped to a team or channel are only discoverable by agents in that scope. The admin who registered the resource controls the scope; the machine owner controls the local policy.
-
----
-
+### Paired Executors
+
+The former remote-worker proposal that modelled a reverse-connected machine as
+`McpServerInstance(protocol: "remote")` is superseded and must not be
+implemented. A paired local machine is an **executor**, with its own scope,
+pairing key, capability descriptor, local policy ceiling, run binding, and
+recovery protocol. It is intentionally not an MCP server instance, and it does
+not use MCP credentials, generic instance lifecycle, arbitrary stdio, or a
+public machine endpoint.
+
+The authoritative protocol and threat model is
+[Executor Protocol and Threat Model](executor-protocol.md). It defines the
+outbound-only connection, private/project/organization scope, exact
+agent-operation grants, durable command receipts, forced egress gateway,
+credential broker, and the only host-write boundary. The approved delivery
+sequence is [Executor Integration Plan](plans/2026-08-11-executor-integration.md).
+
+MCP remains the connector substrate for HTTP/SSE/OAuth and the existing managed
+integrations. A future local-MCP capability, if introduced, is projected by an
+executor adapter through `@nessie/mcp-manage`; it must not revive the retired
+`protocol: "remote"` lifecycle or accept cloud-side stdio/private-network
+connectors.
 ## 3. Custom API Connector Builder
 
 For services without MCP support, agents need to call arbitrary HTTP APIs. The connector builder lets admins define API endpoints entirely in the database — no code required.
@@ -1139,7 +1196,11 @@ prefix. User-provided secrets enter through `POST
 /api/mcp/instances/:id/secret` (admin UI) or the PA's `connector_set_secret`
 tool — one shared implementation (`storeInstanceSecret`): own user-scope
 instance → the instance credential; shared instance + manage rights +
-`shared: true` → the shared default; otherwise a per-user override.
+`shared: true` → the shared default only when the catalog's `authMethod` and
+`authConfig` validate an `api_key`; otherwise a per-user override. A shared
+instance using OAuth, bearer, basic, a malformed config, or a legacy non-key
+default never falls back to its instance/default principal credential: it
+resolves only the effective user's own override.
 
 ```
 Agent calls MCP tool "stripe_create_customer"
@@ -1177,14 +1238,43 @@ mcp_server_credential_overrides
   @@unique([server_id, principal_type, principal_id])
 ```
 
-Resolution order:
+For a catalog entry with a validated `api_key` auth config, resolution order is:
 1. User-specific credential (personal API key for GitHub)
 2. Agent-specific credential (agent's own Stripe account)
 3. Channel-specific credential
 4. Team-specific credential
 5. Project-specific credential
 6. Organization-specific credential
-7. Connector/server default credential (organization-wide)
+7. Connector/server default credential
+
+For every other auth method, a shared-scope instance resolves **only** the
+effective user's user override. It never consumes an instance default or an
+agent/channel/team/project/organization override, including records left by an
+older release. An auth-requiring tool without a resolved plaintext credential
+is not dispatched; user-scoped product and external-conversation callers
+surface their normal setup-required state instead.
+
+The install scope is a hard ceiling, checked **before** the override chain: for
+a `user`-scoped instance the caller's effective user must equal the instance's
+scope id before any credential can be considered. A shared agent may therefore
+use that person's connection only while acting for that same person and only
+when its normal capability policy permits it. A different person gets no tool
+and no credential resolution (`MCP_CREDENTIAL_USER_SCOPE_MISMATCH`).
+
+OAuth completion always writes a user credential (a user-scope instance
+credential or a user override on a shared instance); it never creates a shared
+OAuth default. When a tool consumes such a credential, the run records that
+user scope as disclosure provenance, so any reply derived from its output is
+visible only to that person even if the agent lives in a shared channel.
+
+API-key connections have a separate, explicit choice. The default is a
+personal user override; an authorized scope manager may choose **shared** only
+for a catalog entry whose `authMethod` and parsed `authConfig` both prove it is
+an `api_key` connector, which stores an instance default usable by everyone who
+can reach that connection. OAuth, bearer and other personal tokens cannot be
+promoted to shared credentials. Probes (test/refresh/healthcheck) always
+resolve as a concrete probe user, so an owner or admin may manage a
+user-scoped instance but never probe it with the installer's credential.
 
 Example: GitHub MCP server is org-scoped, but each developer has their own PAT. The org installs GitHub MCP once, and each user adds their own credential override. When an agent acts on behalf of user A, it uses user A's PAT. When acting on behalf of user B, it uses user B's PAT.
 

@@ -82,6 +82,9 @@ const baseState = (tokens: TokenRow[], creds: CredRow[] = [apnsCred(), fcmCred()
 
 const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
   ({
+    agent: {
+      findMany: async () => [],
+    },
     pushCredential: {
       findMany: async () => state.creds,
     },
@@ -89,7 +92,11 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.tokens.map((token) => ({ userId: token.userId, muted: false })),
     },
     deviceToken: {
-      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+      findMany: async ({
+        where,
+      }: {
+        where: { organizationId: string; userId: { in: string[] } }
+      }) =>
         state.tokens.filter((token) => where.userId.in.includes(token.userId)),
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         state.deleted.push(...where.id.in)
@@ -99,6 +106,14 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     channel: {
       findUnique: async () => ({ label: 'General' }),
     },
+    message: {
+      findUnique: async () => ({
+        agent: null,
+        agentId: null,
+        basisScopes: [],
+        user: { displayName: 'Author' },
+      }),
+    },
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
         state.secrets.find((secret) => secret.ref === where.ref) ?? null,
@@ -106,12 +121,20 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     user: {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
         where.id.in.map((id) => ({ id, preferences: null })),
+      findUnique: async () => ({ displayName: 'Author' }),
     },
     pushDelivery: {
       create: async ({ data }: { data: DeliveryRow }) => {
         state.deliveries.push(data)
         return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
+    },
+    $queryRaw: async () => [{ unread_count: 0 }],
+    userAlert: {
+      count: async () => 0,
+    },
+    userPushSurfacePresence: {
+      findMany: async () => [],
     },
   }) as unknown as PushDispatchPrisma
 

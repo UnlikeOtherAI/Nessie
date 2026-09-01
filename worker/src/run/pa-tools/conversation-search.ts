@@ -1,9 +1,12 @@
+import { Prisma } from '@prisma/client'
+import { buildPrefixTsQuery } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
   resolveAccessibleChannelIds,
 } from './access.js'
 import {
+  buildChannelLink,
   buildSnippet,
   clampLimit,
   formatChannelRef,
@@ -12,6 +15,65 @@ import {
   MAX_SEARCH_RESULTS,
   truncate,
 } from './tool-output.js'
+import {
+  recordMessageChannelRead,
+  UNRESTRICTED_MESSAGES_ONLY,
+} from './message-search-basis.js'
+
+type MessageIdRow = { id: string }
+
+/**
+ * Candidate message ids for an agent content search, matched through the
+ * message full-text index rather than a `contains` (ILIKE) predicate, which
+ * Postgres cannot serve from an index and which therefore scanned every message
+ * the agent could reach. Access scoping is unchanged: the caller supplies either
+ * an explicit accessible-channel id list or the visible-channel predicate, and
+ * both are applied inside this query.
+ */
+const searchMessageIdsByContent = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    authorUserId?: string
+    channelIds?: string[]
+    query: string
+    take: number
+    visibleChannelWhere?: Prisma.ChannelWhereInput
+  },
+): Promise<string[]> => {
+  const prefixQuery = buildPrefixTsQuery(input.query)
+  if (!prefixQuery) return []
+
+  // The visible-channel form is a Prisma predicate, so resolve it to ids first
+  // and keep one SQL shape for both callers.
+  const channelIds = input.channelIds
+    ?? (input.visibleChannelWhere
+      ? (
+        await context.prisma.channel.findMany({
+          where: input.visibleChannelWhere,
+          select: { id: true },
+        })
+      ).map((channel) => channel.id)
+      : [])
+  if (channelIds.length === 0) return []
+
+  const rows = await context.prisma.$queryRaw<MessageIdRow[]>(Prisma.sql`
+    SELECT m."id"
+      FROM "messages" m
+      JOIN "threads" t ON t."id" = m."thread_id"
+     WHERE t."channel_id" IN (${Prisma.join(
+       channelIds.map((id) => Prisma.sql`${id}::uuid`),
+     )})
+       AND m."deleted_at" IS NULL
+       AND to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})
+       AND ${UNRESTRICTED_MESSAGES_ONLY}
+       ${input.authorUserId
+         ? Prisma.sql`AND m."user_id" = ${input.authorUserId}::uuid`
+         : Prisma.empty}
+     ORDER BY m."created_at" DESC
+     LIMIT ${input.take}
+  `)
+  return rows.map((row) => row.id)
+}
 
 export const runWorkspaceSearchTool = async (
   context: BuiltinToolRuntimeContext,
@@ -34,7 +96,16 @@ export const runWorkspaceSearchTool = async (
   }
 
   const channelFilter = { id: { in: channelIds } }
+  // Channel and thread *labels* are short and few, so a contains match is fine.
+  // Message *content* is the big table: match it through the FTS index
+  // (messages_content_fts_idx) instead of an un-indexable ILIKE that scans every
+  // message the agent can see.
   const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
+  const messageIds = await searchMessageIdsByContent(context, {
+    channelIds,
+    query: searchQuery,
+    take,
+  })
 
   const [channels, threads, messages] = await Promise.all([
     context.prisma.channel.findMany({
@@ -88,17 +159,13 @@ export const runWorkspaceSearchTool = async (
       take,
     }),
     context.prisma.message.findMany({
-      where: {
-        content: textFilter,
-        thread: {
-          channelId: { in: channelIds },
-        },
-      },
+      where: { id: { in: messageIds } },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         content: true,
         createdAt: true,
+        rootMessageId: true,
         thread: {
           select: {
             id: true,
@@ -107,6 +174,7 @@ export const runWorkspaceSearchTool = async (
               select: {
                 id: true,
                 label: true,
+                visibility: true,
                 team: {
                   select: {
                     name: true,
@@ -134,6 +202,21 @@ export const runWorkspaceSearchTool = async (
     }),
   ])
 
+  // Labels, titles and snippets are all content from somewhere. Record every
+  // non-public channel this search actually surfaced, so a reply built on it
+  // inherits that scope.
+  recordMessageChannelRead(context, [
+    ...channels.map((channel) => ({ id: channel.id, visibility: channel.visibility })),
+    ...threads.map((thread) => ({
+      id: thread.channel.id,
+      visibility: thread.channel.visibility,
+    })),
+    ...messages.map((message) => ({
+      id: message.thread.channel.id,
+      visibility: message.thread.channel.visibility,
+    })),
+  ])
+
   const lines: string[] = []
 
   const channelLines = channels.map((channel, index) => {
@@ -143,12 +226,14 @@ export const runWorkspaceSearchTool = async (
       thread
         ? `   threadId=${thread.id}${thread.title ? ` | thread="${thread.title}"` : ''}`
         : '   threadId=none',
+      `   link=${buildChannelLink(channel.id)}`,
     ].join('\n')
   })
   const threadLines = threads.map((thread, index) =>
     [
       `${index + 1}. ${formatChannelRef(thread.channel)} / ${thread.title ?? '(untitled)'} | threadId=${thread.id}`,
       `   channelId=${thread.channel.id} | visibility=${thread.channel.visibility}`,
+      `   link=${buildChannelLink(thread.channel.id)}`,
     ].join('\n'),
   )
   const messageLines = messages.map((message, index) =>
@@ -157,9 +242,11 @@ export const runWorkspaceSearchTool = async (
         message.user?.displayName ??
         message.agent?.name ??
         'Unknown',
+      channelId: message.thread.channel.id,
       channelLabel: formatChannelRef(message.thread.channel),
       createdAt: message.createdAt.toISOString(),
       messageId: message.id,
+      rootMessageId: message.rootMessageId,
       snippet: buildSnippet(message.content, searchQuery),
       threadLabel: message.thread.title ?? null,
       threadId: message.thread.id,
@@ -213,21 +300,23 @@ export const runAuthoredMessageSearchTool = async (
     context.channel.organizationId,
     userId,
   )
-  const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
+  // Same reasoning as workspace_search: FTS the candidate ids, then hydrate them
+  // through the rich select below.
+  const messageIds = await searchMessageIdsByContent(context, {
+    authorUserId: userId,
+    query: searchQuery,
+    take,
+    visibleChannelWhere,
+  })
 
   const messages = await context.prisma.message.findMany({
-    where: {
-      userId,
-      content: textFilter,
-      thread: {
-        channel: visibleChannelWhere,
-      },
-    },
+    where: { id: { in: messageIds } },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       content: true,
       createdAt: true,
+      rootMessageId: true,
       thread: {
         select: {
           id: true,
@@ -236,6 +325,7 @@ export const runAuthoredMessageSearchTool = async (
             select: {
             id: true,
             label: true,
+            visibility: true,
             team: {
               select: {
                 name: true,
@@ -250,12 +340,28 @@ export const runAuthoredMessageSearchTool = async (
     take,
   })
 
+  // The acting user may read these, but the room the reply lands in may not:
+  // an owner's own #board post relayed into #general is still a disclosure.
+  recordMessageChannelRead(
+    context,
+    messages.map((message) => ({
+      id: message.thread.channel.id,
+      visibility: message.thread.channel.visibility,
+    })),
+  )
+
   const messageLines = messages.map((message, index) =>
-    [
-      `${index + 1}. ${formatChannelRef(message.thread.channel)} / ${message.thread.title ?? '(untitled)'}`,
-      `   ${message.createdAt.toISOString()} | messageId=${message.id} | threadId=${message.thread.id}`,
-      `   ${buildSnippet(message.content, searchQuery)}`,
-    ].join('\n'),
+    formatMessageLine({
+      author: 'You',
+      channelId: message.thread.channel.id,
+      channelLabel: formatChannelRef(message.thread.channel),
+      createdAt: message.createdAt.toISOString(),
+      messageId: message.id,
+      rootMessageId: message.rootMessageId,
+      snippet: buildSnippet(message.content, searchQuery),
+      threadLabel: message.thread.title ?? null,
+      threadId: message.thread.id,
+    }).replace(/^-\s/, `${index + 1}. `),
   )
 
   return {

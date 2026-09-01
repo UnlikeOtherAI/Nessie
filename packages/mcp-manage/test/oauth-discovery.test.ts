@@ -154,14 +154,18 @@ test('registerDynamicClient posts RFC 7591 metadata and strips echoed secrets', 
   assert.equal(result.raw['registration_access_token'], undefined)
 })
 
-test('registerDynamicClient surfaces registration failures', async () => {
-  const fetchImpl = (async () => new Response('nope', { status: 400 })) as typeof fetch
+test('registerDynamicClient surfaces registration failures with their status', async () => {
+  const fetchImpl = (async () => new Response('nope', { status: 403 })) as typeof fetch
   await assert.rejects(
     registerDynamicClient(
       { registrationEndpoint: `${AS}/register`, redirectUris: [], clientName: 'Nessie' },
       { fetchImpl },
     ),
-    (error: unknown) => error instanceof OAuthDiscoveryError,
+    (error: unknown) => {
+      assert.ok(error instanceof OAuthDiscoveryError)
+      assert.equal(error.status, 403)
+      return true
+    },
   )
 })
 

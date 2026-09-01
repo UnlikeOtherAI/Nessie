@@ -2,11 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  IntegrationPluginManifestSchema,
+  ProductSurfaceSchema,
+} from '../integration-plugin.js'
+import {
   BuildMeProjectHandoffRequestSchema,
+  DeepWaterAgentAccessResponseSchema,
   DeepWaterResearchRunRecordSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
+  IntegrationUiCardSchema,
   IntegratedProductResponseSchema,
+  SetDeepWaterAgentAccessRequestSchema,
   SetProductTeamEnablementRequestSchema,
 } from '../integrations.js'
 
@@ -58,17 +65,6 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
       updatedAt: '2026-07-08T12:00:00.000Z',
     },
     updatedAt: '2026-07-08T12:00:00.000Z',
-    usageSummary: {
-      currency: 'USD',
-      failureCount: 1,
-      lastOperation: 'research_create',
-      lastUsedAt: '2026-07-08T12:04:00.000Z',
-      monthStart: '2026-07-01T00:00:00.000Z',
-      successCount: 7,
-      totalCalls: 8,
-      totalCost: 3.25,
-      totalUnits: 42,
-    },
   })
 
   assert.equal(parsed.teamEnablement?.enabled, true)
@@ -76,8 +72,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
   assert.equal(parsed.teamEnablement?.externalTeamId, 'uoa-team-1')
   assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
   assert.equal(parsed.mcpInstallation?.toolCount, 5)
-  assert.equal(parsed.usageSummary.totalCalls, 8)
-  assert.equal(parsed.usageSummary.lastOperation, 'research_create')
+  assert.equal('usageSummary' in parsed, false)
 })
 
 test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', () => {
@@ -85,6 +80,52 @@ test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', ()
     enabled: false,
   })
   assert.equal(SetProductTeamEnablementRequestSchema.safeParse({ enabled: 'yes' }).success, false)
+})
+
+test('Deep Water agent access requires typed bundle targets and exact counts', () => {
+  const response = DeepWaterAgentAccessResponseSchema.parse({
+    configured: true,
+    personalAssistant: {
+      agentId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d901',
+      agentKind: 'personal_assistant',
+      enabled: true,
+      grantedToolCount: 6,
+      name: 'Personal Assistant',
+      revocableGrantCount: 6,
+      requiredToolCount: 6,
+      role: 'assistant',
+    },
+    requiredToolCount: 6,
+    sharedAgents: [],
+  })
+  assert.equal(response.personalAssistant?.enabled, true)
+  assert.equal(response.personalAssistant?.grantedToolCount, 6)
+
+  assert.deepEqual(
+    SetDeepWaterAgentAccessRequestSchema.parse({
+      enabled: true,
+      target: 'personal_assistant',
+    }),
+    {
+      enabled: true,
+      target: 'personal_assistant',
+    },
+  )
+  assert.equal(
+    SetDeepWaterAgentAccessRequestSchema.safeParse({
+      enabled: true,
+      target: 'agent',
+    }).success,
+    false,
+  )
+  assert.equal(
+    SetDeepWaterAgentAccessRequestSchema.safeParse({
+      enabled: true,
+      extra: 'replace-policy',
+      target: 'personal_assistant',
+    }).success,
+    false,
+  )
 })
 
 test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', () => {
@@ -100,6 +141,9 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
   assert.equal(parsed.outputTier, 'full')
   assert.equal(parsed.artifactDestination, 'knowledge_draft')
   assert.equal(parsed.searchQuality, 'premium')
+  // A launch carries no title: the question is the whole ask and Deep Water
+  // names its own report.
+  assert.equal('title' in parsed, false)
   const withBudget = DeepWaterResearchLaunchRequestSchema.parse({
     budgetUsd: 100,
     depth: 'deep',
@@ -115,6 +159,61 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
   )
 })
 
+test('Deep Water chat cards can prefill the reviewed research launcher only', () => {
+  const card = IntegrationUiCardSchema.parse({
+    actions: [
+      {
+        label: 'Review research',
+        preset: {
+          depth: 'deep',
+          outputLanguage: 'fr',
+          query: 'Compare European geothermal funding models.',
+          searchesPerPillar: 6,
+          sections: 10,
+        },
+        type: 'open_deep_water_research_launcher',
+        variant: 'primary',
+      },
+    ],
+    kind: 'deep_research',
+    productSlug: 'deep-water',
+    status: 'idle',
+    title: 'Geothermal funding research',
+  })
+
+  assert.equal(card.actions?.[0]?.type, 'open_deep_water_research_launcher')
+  assert.equal(card.actions?.[0]?.preset?.outputLanguage, 'fr')
+  assert.equal(card.actions?.[0]?.preset?.sections, 10)
+  // Cards authored before titles were dropped still render: the preset schema
+  // is strict, so rejecting their stored `title` would blank an old message.
+  assert.equal(
+    IntegrationUiCardSchema.safeParse({
+      actions: [
+        {
+          label: 'Run again',
+          preset: { depth: 'deep', query: 'x', title: 'Legacy card title' },
+          type: 'open_deep_water_research_launcher',
+        },
+      ],
+      kind: 'deep_research',
+      productSlug: 'deep-water',
+      status: 'idle',
+      title: 'Legacy card',
+    }).success,
+    true,
+  )
+  assert.equal(
+    IntegrationUiCardSchema.safeParse({
+      actions: [{ label: 'Open launcher', type: 'open_deep_water_research_launcher' }],
+      kind: 'integration',
+      productSlug: 'deeptest',
+      status: 'idle',
+      title: 'Wrong product',
+    }).success,
+    false,
+  )
+})
+
 test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection', () => {
   const parsed = DeepWaterResearchRunRecordSchema.parse({
     id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d801',
@@ -123,7 +222,6 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
     completedAt: null,
     connectorId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d803',
     createdAt: '2026-07-10T10:30:00.000Z',
-    currency: null,
     depth: 'deep',
     externalRunId: null,
     knowledgePageId: null,
@@ -142,7 +240,6 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
     teamId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d501',
     threadId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d805',
     title: 'Geothermal risk map',
-    totalCost: 4.25,
     updatedAt: '2026-07-10T10:30:00.000Z',
   })
 
@@ -182,6 +279,76 @@ test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => 
     }).success,
     false,
   )
+})
+
+test('ProductSurfaceSchema validates supported surfaces and gating', () => {
+  const chat = ProductSurfaceSchema.parse({
+    type: 'chat_assistant',
+    channelKind: 'external_agent',
+    productSlug: 'deepsignal',
+    label: 'DeepSignal',
+    requires: { capability: 'external_agent', linked: true },
+  })
+  assert.equal(chat.type, 'chat_assistant')
+  assert.equal(chat.requires.linked, true)
+
+  const docs = ProductSurfaceSchema.parse({
+    type: 'documents_section',
+    id: 'research',
+    label: 'Research',
+    view: 'deep-water-research',
+    requires: { connectorActive: true },
+  })
+  assert.equal(docs.type === 'documents_section' ? docs.view : null, 'deep-water-research')
+
+  // Unknown surface types, including removed rail pages, are rejected.
+  assert.equal(
+    ProductSurfaceSchema.safeParse({ type: 'sidebar_widget', id: 'x', label: 'X' }).success,
+    false,
+  )
+  assert.equal(ProductSurfaceSchema.safeParse({ type: 'nav_page' }).success, false)
+})
+
+test('IntegrationPluginManifestSchema defaults surfaces to an empty array', () => {
+  const manifest = {
+    apiVersion: 'integrations.nessie.io/v1',
+    kind: 'NessieIntegrationPlugin',
+    manifestRef: 'first-party/test',
+    productSlug: 'test',
+    name: 'Test',
+    version: '0.0.1',
+    vendor: 'UnlikeOtherAI',
+    install: [
+      {
+        mode: 'link_out',
+        availability: 'both',
+        label: 'Open',
+        requiredForAgentUse: false,
+        setup: 'Open the workspace.',
+      },
+    ],
+    mcp: { catalogTemplate: null, toolBundleRef: null, tools: [] },
+    ui: { pages: [], cards: [], controls: [] },
+    artifacts: [],
+    privacy: {
+      dataBoundary: 'none',
+      defaultImportPolicy: 'none',
+      prohibitedByDefault: [],
+    },
+    usage: { ledger: 'none', connectorType: null, costFields: [] },
+  }
+  assert.deepEqual(IntegrationPluginManifestSchema.parse(manifest).surfaces, [])
+  const withSurface = IntegrationPluginManifestSchema.parse({
+    ...manifest,
+    surfaces: [{
+      type: 'chat_assistant',
+      channelKind: 'external_agent',
+      productSlug: 'test',
+      label: 'Test assistant',
+      requires: { linked: true },
+    }],
+  })
+  assert.equal(withSurface.surfaces[0]?.type, 'chat_assistant')
 })
 
 test('BuildMeProjectHandoffRequestSchema rejects board sync payload fields', () => {

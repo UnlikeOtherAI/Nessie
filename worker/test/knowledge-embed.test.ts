@@ -2,8 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelClient } from '@nessie/runtime'
-import { KNOWLEDGE_EMBEDDING_DIMS, KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import { executeKnowledgeEmbedJob } from '../src/control/knowledge-embed.js'
+
+// The model name is now whatever the deployment resolved, carried on the
+// client, so the job records and matches on it rather than on a constant.
+const EMBEDDING_MODEL = 'jina-embeddings-v3'
 
 type SqlLike = { sql: string; values: unknown[] }
 type CapturedCall = { sql: string; values: unknown[] }
@@ -26,6 +30,16 @@ const PAGE: PageRow = {
 
 const PAYLOAD = {
   organizationId: '44444444-4444-4444-4444-444444444444',
+  origin: {
+    actorId: '77777777-7777-4777-8777-777777777777',
+    actorType: 'user' as const,
+    agentId: '88888888-8888-4888-8888-888888888888',
+    requestId: 'knowledge-request-1',
+    runId: '99999999-9999-4999-8999-999999999999',
+    systemComponent: 'knowledge-indexer',
+    teamId: '33333333-3333-3333-3333-333333333333',
+    userId: '77777777-7777-4777-8777-777777777777',
+  },
   pageId: PAGE.id,
   versionId: '55555555-5555-5555-5555-555555555555',
 }
@@ -53,6 +67,36 @@ const buildPrismaStub = (opts: {
     },
   }) as unknown as PrismaClient
 
+test('executeKnowledgeEmbedJob rejects missing origin before any provider call', async () => {
+  let prismaCalls = 0
+  let embedManyCalls = 0
+  const prisma = {
+    knowledgePage: {
+      findFirst: async () => {
+        prismaCalls += 1
+        return PAGE
+      },
+    },
+  } as unknown as PrismaClient
+  const modelClient = {
+    embedMany: async () => {
+      embedManyCalls += 1
+      return []
+    },
+    embeddingModel: EMBEDDING_MODEL,
+  } as unknown as ModelClient
+  const invalidPayload = {
+    ...PAYLOAD,
+    origin: undefined,
+  } as unknown as typeof PAYLOAD
+
+  await assert.rejects(
+    executeKnowledgeEmbedJob({ modelClient, prisma }, invalidPayload),
+  )
+  assert.equal(prismaCalls, 0)
+  assert.equal(embedManyCalls, 0)
+})
+
 test('executeKnowledgeEmbedJob returns early with no writes when the page is missing', async () => {
   const executeRawCalls: CapturedCall[] = []
   const queryRawCalls: CapturedCall[] = []
@@ -69,6 +113,7 @@ test('executeKnowledgeEmbedJob returns early with no writes when the page is mis
       embedManyCalls += 1
       return []
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
@@ -94,6 +139,7 @@ test('executeKnowledgeEmbedJob makes no model calls when the copy step satisfies
       embedManyCalls += 1
       return []
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
@@ -120,23 +166,61 @@ test('executeKnowledgeEmbedJob batches embedding calls at 64 chunks and cleans u
   })
 
   const batchSizes: number[] = []
+  const usages: unknown[] = []
   const modelClient = {
-    embedMany: async (texts: string[]) => {
+    embedMany: async (texts: string[], options: unknown) => {
       batchSizes.push(texts.length)
-      return texts.map(() => Array<number>(KNOWLEDGE_EMBEDDING_DIMS).fill(0.1))
+      usages.push(options)
+      return texts.map(() => Array<number>(EMBEDDING_DIMENSIONS).fill(0.1))
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
 
   assert.deepEqual(batchSizes, [64, 6])
+  assert.deepEqual(
+    usages.map((entry) => (entry as { usage: unknown }).usage),
+    [
+      {
+        actorId: PAYLOAD.origin.actorId,
+        actorType: PAYLOAD.origin.actorType,
+        agentId: PAYLOAD.origin.agentId,
+        channelId: PAGE.channelId,
+        correlationId: null,
+        organizationId: PAYLOAD.organizationId,
+        projectId: PAGE.projectId,
+        requestId: PAYLOAD.origin.requestId,
+        runId: PAYLOAD.origin.runId,
+        systemComponent: PAYLOAD.origin.systemComponent,
+        teamId: PAYLOAD.origin.teamId,
+        threadId: PAGE.threadId,
+        userId: PAYLOAD.origin.userId,
+      },
+      {
+        actorId: PAYLOAD.origin.actorId,
+        actorType: PAYLOAD.origin.actorType,
+        agentId: PAYLOAD.origin.agentId,
+        channelId: PAGE.channelId,
+        correlationId: null,
+        organizationId: PAYLOAD.organizationId,
+        projectId: PAGE.projectId,
+        requestId: PAYLOAD.origin.requestId,
+        runId: PAYLOAD.origin.runId,
+        systemComponent: PAYLOAD.origin.systemComponent,
+        teamId: PAYLOAD.origin.teamId,
+        threadId: PAGE.threadId,
+        userId: PAYLOAD.origin.userId,
+      },
+    ],
+  )
   // copy step + 2 batch UPDATEs + stale-version delete
   assert.equal(executeRawCalls.length, 4)
   const updateCalls = executeRawCalls.filter((c) => c.sql.includes('embedding = v.embedding::vector'))
   assert.equal(updateCalls.length, 2)
   for (const call of updateCalls) {
-    assert.ok(call.values.includes(KNOWLEDGE_EMBEDDING_MODEL))
-    assert.ok(call.values.includes(KNOWLEDGE_EMBEDDING_DIMS))
+    assert.ok(call.values.includes(EMBEDDING_MODEL))
+    assert.ok(call.values.includes(EMBEDDING_DIMENSIONS))
   }
   assert.ok(executeRawCalls.at(-1)!.sql.includes('DELETE FROM knowledge_page_chunks'))
 })
@@ -157,9 +241,10 @@ test('executeKnowledgeEmbedJob skips vectors with the wrong dims without throwin
 
   const modelClient = {
     embedMany: async () => [
-      Array<number>(KNOWLEDGE_EMBEDDING_DIMS).fill(0.1),
-      Array<number>(KNOWLEDGE_EMBEDDING_DIMS - 1).fill(0.1),
+      Array<number>(EMBEDDING_DIMENSIONS).fill(0.1),
+      Array<number>(EMBEDDING_DIMENSIONS - 1).fill(0.1),
     ],
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   const originalConsoleError = console.error

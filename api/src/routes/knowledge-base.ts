@@ -22,6 +22,7 @@ import {
   actorAuthorType,
   attachPageEnvelope,
   attachSpaceEnvelope,
+  canManageKnowledgeSpaceAccess,
   createKnowledgeAccess,
   policyTrace,
   requireKnowledgePolicy,
@@ -52,15 +53,25 @@ export const registerKnowledgeBaseRoutes = (
     )
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
+    // Org-wide by default, narrowed only when the caller explicitly asks for a
+    // project. The session's `proj` claim is just the caller's oldest project
+    // membership (session-issuers.ts) — falling back to it here silently hid
+    // spaces the caller is fully entitled to read: org-visibility spaces filed
+    // in a sibling project, their own personal "My Docs" when it was
+    // provisioned under a different project, and any project's "Project
+    // Documents" they belong to. Worse, the admin reads an empty list as "first
+    // visit" and seeds a fresh "General" space, so the narrowing manufactured
+    // duplicate spaces. What the caller may see is `canReadSpace`'s decision,
+    // applied inside listSpaces — never the session's incidental project.
     const result = await provider.listSpaces({
       organizationId: actorContext.tenant.organizationId,
-      projectId: query.projectId ?? actorContext.tenant.projectId ?? undefined,
+      projectId: query.projectId,
       cursor: query.cursor,
       limit: query.limit,
       viewer,
     })
     return createApiResponse(
-      result.data.map((space) => attachSpaceEnvelope(space, decision, viewer)),
+      result.data.map((space) => attachSpaceEnvelope(space, decision, viewer, actorContext)),
       result.meta,
     )
   })
@@ -115,7 +126,9 @@ export const registerKnowledgeBaseRoutes = (
       metadata: { name: space.name },
       ...requestIds(request),
     })
-    return reply.code(201).send(createApiResponse(attachSpaceEnvelope(space, decision, viewer)))
+    return reply.code(201).send(
+      createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext)),
+    )
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -127,7 +140,7 @@ export const registerKnowledgeBaseRoutes = (
     const viewer = await buildViewer(actorContext)
     const space = await accessSpace(actorContext, spaceId, viewer, 'read', reply)
     if (!space) return reply
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.patch('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -139,7 +152,29 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
+    const changesAccess = body.writeRestricted !== undefined
+      || body.memberUserIds !== undefined
+      || body.memberAgentIds !== undefined
+    // Access administrators must be able to reverse writeRestricted even when
+    // it has removed their ordinary content-write permission. Read remains the
+    // floor: no administrator may configure a space they cannot discover.
+    const currentSpace = await accessSpace(
+      actorContext,
+      spaceId,
+      viewer,
+      changesAccess ? 'read' : 'write',
+      reply,
+    )
+    if (!currentSpace) return reply
+    if (changesAccess && !canManageKnowledgeSpaceAccess(currentSpace, actorContext)) {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Knowledge base access denied: SPACE_ADMIN_REQUIRED',
+      )
+      return reply
+    }
     let space: KnowledgeSpaceRecord | null
     try {
       space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
@@ -159,7 +194,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.delete('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -180,7 +215,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId/pages', async (request, reply) => {
@@ -252,7 +287,10 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
     const organizationId = actorContext.tenant.organizationId
-    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    // Explicit-only, for the same reason the space list is org-wide: the
+    // viewer's own read rules already gate every hit (readableSpaceIdsSql), so
+    // defaulting to the session's project only hid pages the caller may read.
+    const projectId = body.projectId
     const query = body.query?.trim()
     // Hybrid needs query text and provider support; force keyword mode
     // otherwise. Both paths pass `viewer` through so the provider applies the
@@ -410,6 +448,7 @@ export const registerKnowledgeBaseRoutes = (
     let page: KnowledgePageRecord | null
     try {
       page = await provider.publishPage({
+        actorUserId: actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
         organizationId: actorContext.tenant.organizationId,
         pageId,
       })

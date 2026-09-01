@@ -76,7 +76,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
   return (
     <div className="relative" ref={rootRef}>
       <button
-        className="admin-input flex w-full items-center justify-between gap-2 text-left"
+        className="admin-input flex items-center justify-between gap-2 text-left"
         id={id}
         onClick={() => setOpen((value) => !value)}
         type="button"

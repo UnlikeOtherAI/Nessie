@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Nessie Connected Browser",
+  "version": "0.1.0",
+  "description": "Lets you approve one visible Chrome tab for a Nessie executor session.",
+  "permissions": ["activeTab", "debugger", "nativeMessaging", "tabs"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Connect this tab to Nessie" }
+}

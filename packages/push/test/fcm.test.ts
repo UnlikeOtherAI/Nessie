@@ -70,22 +70,27 @@ test('parseServiceAccount throws on invalid JSON', () => {
   assert.throws(() => parseServiceAccount('{nope'), /could not be parsed/)
 })
 
-test('buildFcmBody includes token, notification, data, and collapse keys', () => {
+test('buildFcmBody combines the subtitle into Android notification title', () => {
   const body = JSON.parse(
     buildFcmBody('dev-token', {
       title: 'Hi',
+      subtitle: '# General',
       body: 'There',
       data: { url: 'nessie://x' },
+      badge: 7,
       collapseId: 'chan-1',
     }),
   )
   assert.deepEqual(body, {
     message: {
       token: 'dev-token',
-      notification: { title: 'Hi', body: 'There' },
+      notification: { title: 'Hi · # General', body: 'There' },
       data: { url: 'nessie://x' },
-      android: { collapse_key: 'chan-1' },
-      apns: { headers: { 'apns-collapse-id': 'chan-1' } },
+      android: { collapse_key: 'chan-1', notification: { notification_count: 7 } },
+      apns: {
+        headers: { 'apns-collapse-id': 'chan-1' },
+        payload: { aps: { badge: 7 }, body: { url: 'nessie://x' } },
+      },
     },
   })
 })
@@ -188,4 +193,28 @@ test('token exchange failure → ok false, status 0', async () => {
   assert.equal(result.status, 0)
   assert.equal(result.deadToken, false)
   assert.match(result.error ?? '', /token exchange failed/)
+})
+
+test('default transport refuses to follow redirects (a 307 is not replayed)', async () => {
+  // The token exchange POST carries the service-account JWT and the message
+  // POST carries the OAuth bearer — neither may be replayed cross-origin.
+  const calls: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.redirect, 'manual')
+    calls.push(String(input))
+    return new Response(null, {
+      status: 307,
+      headers: { location: 'https://attacker.example.com/collect' },
+    })
+  }) as typeof globalThis.fetch
+  try {
+    const result = await new FcmClient(creds()).send({ token: 'dev' }, { title: 'T', body: 'B' })
+    assert.equal(result.ok, false)
+    assert.equal(result.status, 0)
+    assert.match(result.error ?? '', /token exchange failed \(307\)/)
+    assert.deepEqual(calls, ['https://oauth2.googleapis.com/token'])
+  } finally {
+    globalThis.fetch = realFetch
+  }
 })

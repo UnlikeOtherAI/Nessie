@@ -4,25 +4,9 @@ import type {
   PersonalAssistantBootstrapResponse,
   PersonalAssistantStateResponse,
 } from '../../lib/api-client'
+import { channelKeys, personalAssistantKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-const personalAssistantQueryKey = ['personal-assistant'] as const
-
-const upsertChannel = (
-  current: ChannelRecord[] | undefined,
-  channel: ChannelRecord,
-): ChannelRecord[] => {
-  if (!current) {
-    return [channel]
-  }
-
-  const existingIndex = current.findIndex((entry) => entry.id === channel.id)
-  if (existingIndex === -1) {
-    return [channel, ...current]
-  }
-
-  return current.map((entry) => (entry.id === channel.id ? channel : entry))
-}
+import { upsertChannel } from '../channels/channel-cache'
 
 export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): boolean =>
   channel?.systemChannelType === 'personal_assistant'
@@ -41,13 +25,14 @@ export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
   channel?.type === 'dm'
   && !isPersonalAssistantChannel(channel)
   && !isExternalAgentChannel(channel)
+  && Boolean(channel.dmUserId)
 
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<PersonalAssistantStateResponse | null>({
     enabled,
-    queryKey: personalAssistantQueryKey,
+    queryKey: personalAssistantKeys.all,
     queryFn: () => apiClient.get('/api/personal-assistant'),
     retry: false,
     staleTime: 30_000,
@@ -63,18 +48,47 @@ export const usePersonalAssistantBootstrap = () => {
       apiClient.post<PersonalAssistantBootstrapResponse>('/api/personal-assistant/bootstrap'),
     onSuccess: (response) => {
       queryClient.setQueryData<ChannelRecord[] | undefined>(
-        ['channels'],
+        channelKeys.all,
         (current) => upsertChannel(current, response.channel),
       )
-      queryClient.setQueryData(personalAssistantQueryKey, {
+      queryClient.setQueryData(personalAssistantKeys.all, {
         agent: response.agent,
         channel: response.channel,
         configSummary: response.configSummary,
         instance: response.instance ?? null,
         thread: response.thread,
       } satisfies PersonalAssistantStateResponse)
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.invalidateQueries({ queryKey: personalAssistantQueryKey })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({ queryKey: personalAssistantKeys.all })
+    },
+  })
+}
+
+// PA presence is a channel-member action, not generic agent binding. Keeping
+// its mutation beside the PA facade prevents a caller from accidentally using
+// the ordinary binding route (which correctly refuses the singleton PA).
+export const useAddPersonalAssistantPresence = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      apiClient.post(`/api/channels/${channelId}/personal-assistant`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+    },
+  })
+}
+
+export const useRemovePersonalAssistantPresence = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      apiClient.delete(`/api/channels/${channelId}/personal-assistant`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }

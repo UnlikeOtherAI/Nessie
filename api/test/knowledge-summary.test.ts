@@ -200,6 +200,7 @@ const makeProvider = (overrides: Partial<KnowledgeProvider> = {}): KnowledgeProv
     getPage: async () => null,
     getSpace: async () => null,
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,
@@ -220,6 +221,7 @@ const makeApp = (
     $queryRaw: async () => [policyRow('allow')],
     auditLog: { create: async () => {} },
     projectMember: { findMany: async () => [{ projectId }] },
+    agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   } as unknown as PrismaClient

@@ -1,10 +1,14 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
-import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDialog'
-import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
+import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
+import { ProjectAvatar } from '../../components/primitives/ProjectAvatar'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
+import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 
 type ProjectsSidebarNavProps = {
@@ -14,37 +18,73 @@ type ProjectsSidebarNavProps = {
 
 type ProjectNavSectionId = 'projects'
 
+type ProjectMenuPosition = {
+  left: number
+  top: number
+}
+
 const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['projects']
 
 const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
 
-const FolderIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-    <path
-      d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
 export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProps) => {
-  const navigate = useNavigate()
+  const { token } = useAuthSession()
+  const nativeTouchShell = isReactNativeWebView()
+  const phoneLayout = usePhoneLayout()
   const { data: projects = [] } = useProjects()
   const deleteProject = useDeleteProject()
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [renameTarget, setRenameTarget] = useState<ProjectRecord | null>(null)
-  const [membersTarget, setMembersTarget] = useState<ProjectRecord | null>(null)
+  const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null)
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null)
+  const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
     PROJECT_NAV_SECTION_IDS,
     projectNavCookieName,
   )
 
-  const handleDelete = (project: ProjectRecord) => {
+  const closeMenu = useCallback(() => {
     setMenuProjectId(null)
-    if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return
+    setMenuPosition(null)
+  }, [])
+
+  const openMenu = useCallback((projectId: string) => {
+    const rect = menuButtonRefs.current.get(projectId)?.getBoundingClientRect()
+    if (!rect) return
+    setMenuProjectId(projectId)
+    setMenuPosition({ left: rect.left, top: rect.bottom + 4 })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!menuPosition) return undefined
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        closeMenu()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('resize', closeMenu)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('resize', closeMenu)
+    }
+  }, [closeMenu, menuPosition])
+
+  // Opening the confirm is the whole of the menu action. The mutation lives in
+  // `runDelete`, which nothing but the dialog's confirm control can reach.
+  const handleDelete = (project: ProjectRecord) => {
+    closeMenu()
+    setDeleteTarget(project)
+  }
+
+  const runDelete = (project: ProjectRecord) => {
+    setDeleteTarget(null)
     deleteProject.mutate(project.id, {
       onError: (error) =>
         window.alert(error instanceof Error ? error.message : 'Failed to delete project'),
@@ -54,14 +94,11 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
   return (
     <aside
       className={[
-        'flex h-full w-[220px] flex-col overflow-hidden',
+        'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+        nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="flex h-[50px] items-center px-4">
-        <span className="text-[15px] font-bold text-[color:var(--tx)]">Projects</span>
-      </div>
-
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
         <SidebarMenuSection
           action={
@@ -88,14 +125,25 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
               const isActive =
                 pathname === `/projects/${project.id}`
                 || pathname.startsWith(`/projects/${project.id}/`)
+              const projectPath = phoneLayout
+                ? `/projects/${project.id}/board`
+                : `/projects/${project.id}`
 
               return (
                 <div key={project.id} className="group relative">
                   <Link
-                    className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
-                    to={`/projects/${project.id}`}
+                    className={[
+                      'admin-sb-item sidebar-project-tile pr-10',
+                      isActive ? 'active' : '',
+                    ].join(' ')}
+                    to={projectPath}
                   >
-                    <FolderIcon />
+                    <ProjectAvatar
+                      avatarAttachmentId={project.avatarAttachmentId}
+                      avatarEmoji={project.avatarEmoji}
+                      size={18}
+                      token={token}
+                    />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   </Link>
                   {isOwner ? (
@@ -105,58 +153,62 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                         'admin-sidebar-more absolute right-3 top-1/2 -translate-y-1/2',
                         'opacity-0 group-hover:opacity-100',
                       ].join(' ')}
-                      onClick={() => setMenuProjectId((id) => (id === project.id ? null : project.id))}
+                      aria-expanded={menuProjectId === project.id}
+                      aria-haspopup="menu"
+                      onClick={() =>
+                        menuProjectId === project.id ? closeMenu() : openMenu(project.id)
+                      }
+                      ref={(element) => {
+                        if (element) {
+                          menuButtonRefs.current.set(project.id, element)
+                        } else {
+                          menuButtonRefs.current.delete(project.id)
+                        }
+                      }}
                       type="button"
                     >
                       ⋯
                     </button>
                   ) : null}
 
-                  {menuProjectId === project.id ? (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setMenuProjectId(null)}
-                        role="presentation"
-                      />
-                      <div className="admin-sidebar-menu admin-sidebar-menu-project">
-                        <button
-                          onClick={() => {
-                            setMenuProjectId(null)
-                            setRenameTarget(project)
-                          }}
-                          type="button"
-                        >
-                          Rename
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMenuProjectId(null)
-                            setMembersTarget(project)
-                          }}
-                          type="button"
-                        >
-                          Members
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMenuProjectId(null)
-                            void navigate(`/projects/${project.id}/settings`)
-                          }}
-                          type="button"
-                        >
-                          Settings
-                        </button>
-                        <button
-                          className="admin-sidebar-menu-danger"
-                          onClick={() => handleDelete(project)}
-                          type="button"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
+                  {menuProjectId === project.id && menuPosition
+                    ? createPortal(
+                        <>
+                          <button
+                            aria-hidden="true"
+                            className="fixed inset-0 z-[60] cursor-default"
+                            onClick={closeMenu}
+                            tabIndex={-1}
+                            type="button"
+                          />
+                          <div
+                            className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[61]"
+                            role="menu"
+                            style={menuPosition}
+                          >
+                            <button
+                              onClick={() => {
+                                closeMenu()
+                                setEditTarget(project)
+                              }}
+                              role="menuitem"
+                              type="button"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="admin-sidebar-menu-danger"
+                              onClick={() => handleDelete(project)}
+                              role="menuitem"
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>,
+                        document.body,
+                      )
+                    : null}
                 </div>
               )
             })
@@ -165,19 +217,22 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
       </nav>
 
       <CreateProjectDialog onClose={() => setCreateOpen(false)} open={createOpen} />
-      {renameTarget ? (
-        <RenameProjectDialog
-          currentName={renameTarget.name}
-          onClose={() => setRenameTarget(null)}
+      {editTarget ? (
+        <EditProjectDialog
+          onClose={() => setEditTarget(null)}
           open
-          projectId={renameTarget.id}
+          project={editTarget}
         />
       ) : null}
-      {membersTarget ? (
-        <ProjectMembersDialog
-          isOwner={isOwner}
-          onClose={() => setMembersTarget(null)}
-          project={membersTarget}
+      {deleteTarget ? (
+        <ConfirmDialog
+          body="This cannot be undone."
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => runDelete(deleteTarget)}
+          open
+          title={`Delete project "${deleteTarget.name}"?`}
         />
       ) : null}
     </aside>

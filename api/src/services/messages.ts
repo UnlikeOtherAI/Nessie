@@ -1,13 +1,22 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
 import {
+  buildPrefixTsQuery,
+  canUserReadDisclosureBasis,
+  partitionByDisclosure,
+  viewerSatisfiesBasis,
+} from '@nessie/runtime'
+import { resolveMessageViewer } from './disclosure-viewer.js'
+import { resolveGrantedScopeKeys } from './disclosure-grants.js'
+import {
   parseAgentId,
   parseChannelId,
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
+
+export type { ChannelAgent, CreateThreadMessageResult } from './message-create.js'
 
 // Hydrate every message with its reactions and the authoring user's identity so
 // the client can render the real sender name + avatar without a second lookup.
@@ -23,14 +32,78 @@ export const messageInclude = {
       avatarAttachmentId: true,
     },
   },
+  // Disclosure basis: zero rows means unrestricted, which is the common case.
+  // Loaded with the message so the list can withhold content the caller is not
+  // entitled to without a second round trip.
+  basisScopes: { select: { scopeType: true, scopeId: true } },
 } satisfies Prisma.MessageInclude
 
-type MessageWithReactions = Prisma.MessageGetPayload<{ include: typeof messageInclude }>
+export type MessageWithReactions = Prisma.MessageGetPayload<{
+  include: typeof messageInclude
+}>
 
-const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRecord => ({
+/**
+ * How many attachments each of these messages carries.
+ *
+ * One grouped query per page — the feed previously mounted an attachment fetch
+ * per rendered row, so a 200-message channel issued 200 requests to learn that
+ * 199 of them had nothing. `Attachment.messageId` is deliberately a bare
+ * indexed column with no FK relation (adding one would change delete
+ * semantics), so this groups by that column rather than using an include.
+ */
+export const loadAttachmentCounts = async (
+  prisma: PrismaClient,
+  messageIds: string[],
+): Promise<Map<string, number>> => {
+  if (messageIds.length === 0) {
+    return new Map()
+  }
+  const rows = await prisma.attachment.groupBy({
+    by: ['messageId'],
+    where: { messageId: { in: messageIds } },
+    _count: { _all: true },
+  })
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    if (row.messageId) {
+      counts.set(row.messageId, row._count._all)
+    }
+  }
+  return counts
+}
+
+const mapThreadMessageRecord = (
+  message: MessageWithReactions,
+  // Omitted when the caller genuinely cannot know: the client then falls back
+  // to fetching the attachment list, so a real attachment is never hidden.
+  attachmentCount?: number,
+  // True when the caller does not satisfy this message's disclosure basis. The
+  // row is still returned — the client renders a placeholder — but never its
+  // content. Withholding the row entirely would leave an unexplained gap.
+  withheld = false,
+  // Whether the caller satisfies the basis *directly*, rather than through a
+  // grant someone gave them. Only a direct reader may share onward: a grant
+  // recipient's share is refused by the server anyway, so offering them the
+  // control was an affordance that could only fail. Defaults true for callers
+  // that cannot distinguish, which is the pre-existing behaviour.
+  readableWithoutGrant = true,
+): ThreadMessageRecord => ({
+  attachmentCount: withheld ? 0 : attachmentCount,
+  ...(withheld
+    ? { restricted: true as const }
+    : message.basisScopes.length > 0 && readableWithoutGrant
+      // Readable on their own entitlement, and drew on restricted sources — so
+      // this reader is the one who can share it. Private material offers no
+      // standing rule.
+      ? {
+          restrictedSources: true as const,
+          canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
+        }
+      : {}),
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
+  onBehalfOfUserId: message.onBehalfOfUserId ?? undefined,
   userId: message.userId ? parseUserId(message.userId) : undefined,
   author: message.user
     ? {
@@ -38,85 +111,50 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
         displayName: message.user.displayName,
         avatarUrl: message.user.avatarUrl ?? undefined,
         avatarAttachmentId: message.user.avatarAttachmentId ?? undefined,
-        gravatarUrl: buildGravatarUrl(message.user.email),
       }
     : undefined,
   role: message.role,
   // Soft-deleted rows are returned as tombstones — content is already blanked
   // at delete time, but never surface stale content even if that changes.
-  content: message.deletedAt ? '' : message.content,
+  // A withheld message is the same shape: the row exists, the content does not.
+  content: message.deletedAt || withheld ? '' : message.content,
   createdAt: message.createdAt.toISOString(),
+  // Reply threads (#233): set on replies; the materialized reply metadata is
+  // carried on root messages.
+  rootMessageId: message.rootMessageId ?? undefined,
+  replyCount: message.replyCount,
+  lastReplyAt: message.lastReplyAt ? message.lastReplyAt.toISOString() : undefined,
   editedAt: message.editedAt ? message.editedAt.toISOString() : null,
   deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
+  // Metadata is derived from the content it accompanies — tool activity, watch
+  // status text, run-stop reasons, document references, embed ids — and the
+  // admin renders cards from it *outside* the placeholder branch, including an
+  // actionable Continue button. A withheld row carries none of it.
   metadata:
-    message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+    !withheld
+    && message.metadata
+    && typeof message.metadata === 'object'
+    && !Array.isArray(message.metadata)
       ? (message.metadata as Record<string, unknown>)
       : undefined,
-  reactions: message.reactions.map((r) => ({
+  // The social envelope names people, not just volume: who reacted to material
+  // you cannot read, and who is in the sub-conversation about it. `replyCount`
+  // and `lastReplyAt` stay — replies carry their own basis and are gated
+  // independently, so a reader may well be entitled to some of them, and a
+  // placeholder that admits a conversation exists is honest.
+  replyParticipantIds: withheld ? [] : message.replyParticipantIds,
+  reactions: withheld ? [] : message.reactions.map((r) => ({
     id: r.id,
     messageId: r.messageId,
     agentId: r.agentId ? parseAgentId(r.agentId) : undefined,
+    onBehalfOfUserId: r.onBehalfOfUserId ?? undefined,
     userId: r.userId ? parseUserId(r.userId) : undefined,
     emoji: r.emoji,
     createdAt: r.createdAt.toISOString(),
   })),
 })
 
-// ─── sp-messaging slice: mention resolution ────────────────────────────────
-
-export type MessageMentions = {
-  userIds: string[]
-  agentIds: string[]
-  broadcast: 'here' | 'channel' | 'everyone' | null
-}
-
-const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// Matches a @name token, allowing the name itself to contain spaces (members
-// and agents can have multi-word display names). Same boundary rule the agent
-// orchestrator uses, so resolution is identical on both sides.
-const mentionMatches = (content: string, name: string): boolean => {
-  if (!name) return false
-  const re = new RegExp(`@${escapeRegExp(name)}(?:\\s|$|[^\\w])`, 'i')
-  return re.test(content)
-}
-
-export const resolveMessageMentions = (
-  content: string,
-  input: { members: Array<{ userId: string; displayName: string }> },
-): MessageMentions => {
-  const userIds: string[] = []
-  let broadcast: MessageMentions['broadcast'] = null
-
-  if (content.includes('@')) {
-    for (const member of input.members) {
-      if (mentionMatches(content, member.displayName)) {
-        userIds.push(member.userId)
-      }
-    }
-    // Literal broadcast tokens. `@everyone` wins over `@channel` over `@here`
-    // if multiple are present, mirroring Slack's escalation order.
-    if (/@everyone(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'everyone'
-    } else if (/@channel(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'channel'
-    } else if (/@here(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'here'
-    }
-  }
-
-  return { userIds: [...new Set(userIds)], agentIds: [], broadcast }
-}
-
-export const mentionedAgentIdsFromContent = (
-  content: string,
-  agents: Array<{ id: string; name: string }>,
-): string[] => {
-  if (!content.includes('@')) return []
-  const ids = agents.filter((a) => mentionMatches(content, a.name)).map((a) => a.id)
-  return [...new Set(ids)]
-}
+// ─── sp-messaging slice: mention resolution lives in message-create.ts ─────
 
 export const findThreadForUser = async (
   prisma: PrismaClient,
@@ -185,13 +223,26 @@ export const listThreadMessages = async (
     after?: string
     limit?: number
     senderId?: string
+    rootMessageId?: string
+    /**
+     * Who is reading. Required for the disclosure predicate; omitting them
+     * yields an autonomous viewer, which sees unrestricted messages only.
+     */
+    organizationId?: string
+    viewerUserId?: string
   } = {},
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
   // Internal `system`-role messages (e.g. the personal assistant's scheduled
   // kickoff prompt) drive a run but are never rendered in the thread feed.
-  const where: Prisma.MessageWhereInput = { threadId, role: { not: 'system' } }
+  // The default feed lists top-level posts only (rootMessageId null); passing
+  // a root id lists that root's replies (#233).
+  const where: Prisma.MessageWhereInput = {
+    threadId,
+    role: { not: 'system' },
+    rootMessageId: options.rootMessageId ?? null,
+  }
   const andClauses: Prisma.MessageWhereInput[] = []
 
   if (options.before) {
@@ -238,9 +289,62 @@ export const listThreadMessages = async (
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const oldest = page.at(-1)
+  const attachmentCounts = await loadAttachmentCounts(prisma, page.map((row) => row.id))
+
+  // Disclosure predicate: a caller who does not satisfy a message's basis gets
+  // the row without its content, so the feed shows a placeholder rather than an
+  // unexplained hole.
+  const viewer = options.organizationId
+    ? await resolveMessageViewer(prisma, options.organizationId, options.viewerUserId)
+    : ({ kind: 'autonomous' } as const)
+
+  // Grants are consulted only for the messages the predicate would otherwise
+  // withhold, so an unrestricted page costs no extra queries at all.
+  const provisional = partitionByDisclosure(page, viewer)
+  const grantChannelId = provisional.withheld.length > 0
+    ? (await prisma.thread.findUnique({
+      where: { id: threadId },
+      select: { channelId: true },
+    }))?.channelId ?? null
+    : null
+  const withheldIds = new Set<string>()
+  // Everything the predicate admitted without consulting grants is read on the
+  // caller's own entitlement, so it stays shareable.
+  const grantOnlyIds = new Set<string>()
+  for (const row of provisional.withheld) {
+    const granted = options.organizationId && viewer.kind === 'user' && grantChannelId
+      ? await resolveGrantedScopeKeys(prisma, {
+        agentId: row.agentId,
+        basis: row.basisScopes,
+        channelId: grantChannelId,
+        messageId: row.id,
+        organizationId: options.organizationId,
+        viewerChannelIds: viewer.scopes
+          .filter((scope) => scope.scopeType === 'channel')
+          .map((scope) => scope.scopeId),
+        viewerUserId: viewer.userId,
+      })
+      : new Set<string>()
+    if (viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+      // Readable only because a grant said so — readable, but not theirs to
+      // pass on.
+      grantOnlyIds.add(row.id)
+    } else {
+      withheldIds.add(row.id)
+    }
+  }
 
   return {
-    data: page.slice().reverse().map(mapThreadMessageRecord),
+    data: page
+      .slice()
+      .reverse()
+      .map((row) =>
+        mapThreadMessageRecord(
+          row,
+          attachmentCounts.get(row.id) ?? 0,
+          withheldIds.has(row.id),
+          !grantOnlyIds.has(row.id),
+        )),
     meta: {
       cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
       hasMore,
@@ -251,174 +355,203 @@ export const listThreadMessages = async (
 export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
+    organizationId: string
+    rootMessageId?: string
+    lastReadMessageId?: string
     threadId: string
     userId: string
   },
-): Promise<void> => {
-  const latestMessage = await prisma.message.findFirst({
-    where: { threadId: input.threadId },
-    orderBy: { createdAt: 'desc' },
-    select: { createdAt: true },
-  })
-
-  await prisma.threadReadState.upsert({
+): Promise<boolean> => {
+  // The original per-container cursor remains a safe baseline while existing
+  // installs migrate. New acknowledgements always write the precise root
+  // cursor instead, so opening reply A cannot make reply B look read.
+  const legacyReadState = await prisma.threadReadState.findUnique({
     where: {
       threadId_userId: {
         threadId: input.threadId,
         userId: input.userId,
       },
     },
-    create: {
-      threadId: input.threadId,
-      userId: input.userId,
-      lastReadAt: latestMessage?.createdAt ?? new Date(),
-    },
-    update: {
-      lastReadAt: latestMessage?.createdAt ?? new Date(),
-    },
-  })
-}
-
-export type ChannelAgent = {
-  id: string
-  name: string
-  role: string
-  systemPrompt: string | null
-}
-
-export type CreateThreadMessageResult =
-  | {
-      kind: 'created'
-      message: MessageWithReactions
-      channelAgents: ChannelAgent[]
-      // Agents @mentioned in the message that are not members of the channel.
-      // They are NOT dispatched; the client offers to invite them.
-      pendingAgentInvites: { id: string; name: string }[]
-    }
-  | {
-      kind: 'thread_not_found'
-    }
-
-export const createThreadMessage = async (
-  prisma: PrismaClient,
-  input: {
-    content: string
-    threadId: string
-    userId: string
-  },
-): Promise<CreateThreadMessageResult> => {
-  const thread = await prisma.thread.findUnique({
-    where: { id: input.threadId },
-    select: {
-      channel: {
-        select: {
-          agentBindings: {
-            include: {
-              agent: {
-                select: { id: true, name: true, role: true, systemPrompt: true },
-              },
-            },
-            orderBy: { createdAt: 'asc' },
-          },
-          members: {
-            select: {
-              user: { select: { id: true, displayName: true } },
-            },
-          },
-          organizationId: true,
-          systemChannelType: true,
-        },
-      },
-    },
+    select: { lastReadAt: true },
   })
 
-  if (!thread) {
-    return { kind: 'thread_not_found' }
-  }
-
-  // Resolve human + broadcast mentions on the inbound content. Agent mentions
-  // are resolved below for engagement; here we record every mention class on
-  // message.metadata.mentions so clients can highlight/notify deterministically.
-  const mentions = resolveMessageMentions(input.content, {
-    members: thread.channel.members.map((m) => ({
-      userId: m.user.id,
-      displayName: m.user.displayName,
-    })),
-  })
-
-  const message = await prisma.message.create({
-    data: {
-      threadId: input.threadId,
-      userId: input.userId,
-      role: 'user',
-      content: input.content,
-      metadata: { mentions } as Prisma.InputJsonValue,
-    },
-    include: messageInclude,
-  })
-
-  const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
-    id: b.agent.id,
-    name: b.agent.name,
-    role: b.agent.role,
-    systemPrompt: b.agent.systemPrompt,
-  }))
-  const resolvedChannelAgents =
-    thread.channel.systemChannelType === 'personal_assistant'
-      ? channelAgents.slice(0, 1)
-      : channelAgents
-
-  // An @mention of an agent that is NOT a member (bound) of this channel does
-  // not silently pull it in: only members participate. Such mentions are
-  // surfaced as pending invites so the client can offer to add the agent to the
-  // channel (after which it participates like any other member). Agent names can
-  // contain spaces, so we match each candidate name against the content with the
-  // same escape rule the orchestrator uses rather than splitting on whitespace.
-  const pendingAgentInvites: { id: string; name: string }[] = []
-  if (input.content.includes('@')) {
-    const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
-    const candidates = await prisma.agent.findMany({
+  if (input.rootMessageId) {
+    const root = await prisma.message.findFirst({
       where: {
-        agentKind: 'shared',
-        id: { notIn: [...boundIds] },
-        organizationId: thread.channel.organizationId,
-        systemManaged: false,
+        id: input.rootMessageId,
+        rootMessageId: null,
+        threadId: input.threadId,
+        deletedAt: null,
       },
-      select: { id: true, name: true },
+      select: {
+        agentId: true,
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+        createdAt: true,
+        id: true,
+      },
     })
+    if (!root) return false
 
-    for (const agent of candidates) {
-      const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
-      if (mentionRe.test(input.content)) {
-        pendingAgentInvites.push({ id: agent.id, name: agent.name })
+    // A stale or deep-linked panel can still name a root whose disclosure
+    // basis the caller cannot read. Never let that placeholder advance a
+    // durable cursor: it would turn a future grant into an already-read reply.
+    const candidates = input.lastReadMessageId
+      ? await prisma.message.findMany({
+        where: {
+          id: input.lastReadMessageId,
+          threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
+        },
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
+        },
+      })
+      : await prisma.message.findMany({
+        where: {
+          threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
+        },
+      })
+    if (input.lastReadMessageId && candidates.length === 0) return false
+
+    const disclosureMayApply = root.basisScopes.length > 0
+      || candidates.some((message) => message.basisScopes.length > 0)
+    const viewer = disclosureMayApply
+      ? await resolveMessageViewer(prisma, input.organizationId, input.userId)
+      : null
+    let channelId: string | null = null
+    const canRead = async (message: {
+      agentId: string | null
+      basisScopes: Array<{ scopeId: string; scopeType: string }>
+      id: string
+    }): Promise<boolean> => {
+      if (!viewer || message.basisScopes.length === 0) return true
+      if (partitionByDisclosure([message], viewer).withheld.length === 0) return true
+      if (!channelId) {
+        const thread = await prisma.thread.findUnique({
+          where: { id: input.threadId },
+          select: { channelId: true },
+        })
+        channelId = thread?.channelId ?? null
       }
+      const grants = channelId && viewer.kind === 'user'
+        ? await resolveGrantedScopeKeys(prisma, {
+          agentId: message.agentId,
+          basis: message.basisScopes,
+          channelId,
+          messageId: message.id,
+          organizationId: input.organizationId,
+          viewerChannelIds: viewer.scopes
+            .filter((scope) => scope.scopeType === 'channel')
+            .map((scope) => scope.scopeId),
+          viewerUserId: input.userId,
+        })
+        : new Set<string>()
+      return viewerSatisfiesBasis(message.basisScopes, viewer, grants)
     }
+    if (!(await canRead(root))) return false
+
+    const latestMessage = input.lastReadMessageId
+      ? candidates[0]
+      : (await Promise.all(candidates.map(async (message) =>
+        (await canRead(message)) ? message : null,
+      ))).find((message) => message !== null)
+    if (input.lastReadMessageId && latestMessage && !(await canRead(latestMessage))) return false
+
+    const cursorCandidates = [
+      { at: root.createdAt, id: root.id },
+      ...(latestMessage ? [{ at: latestMessage.createdAt, id: latestMessage.id }] : []),
+      ...(legacyReadState ? [{ at: legacyReadState.lastReadAt, id: '' }] : []),
+    ]
+    const cursor = cursorCandidates.reduce((latest, candidate) =>
+      candidate.at > latest.at || (candidate.at.getTime() === latest.at.getTime() && candidate.id > latest.id)
+        ? candidate
+        : latest,
+    )
+
+    // A read acknowledgement can arrive late from another tab or device. The
+    // database, rather than timing in the browser, owns the monotonic cursor:
+    // conflicting writes keep the lexicographically greatest (time, message)
+    // pair, including Postgres timestamp(3) ties.
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "message_conversation_read_states" (
+        "id", "root_message_id", "user_id", "last_read_at", "last_read_message_id", "created_at", "updated_at"
+      ) VALUES (
+        gen_random_uuid(),
+        ${input.rootMessageId}::uuid,
+        ${input.userId}::uuid,
+        ${cursor.at},
+        ${cursor.id || null}::uuid,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT ("root_message_id", "user_id") DO UPDATE
+      SET
+        "last_read_at" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_at"
+          ELSE "message_conversation_read_states"."last_read_at"
+        END,
+        "last_read_message_id" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_message_id"
+          ELSE "message_conversation_read_states"."last_read_message_id"
+        END,
+        "updated_at" = CURRENT_TIMESTAMP
+    `)
+    return true
   }
 
-  // Record which agents the message @mentioned (bound or freshly resolved).
-  // Only persist a metadata update when there are agent mentions to add —
-  // human/broadcast mentions were already written at create time.
-  const mentionedAgentIds = mentionedAgentIdsFromContent(
-    input.content,
-    resolvedChannelAgents,
-  )
-  let persistedMessage = message
-  if (mentionedAgentIds.length > 0) {
-    const merged = { ...mentions, agentIds: mentionedAgentIds }
-    persistedMessage = await prisma.message.update({
-      where: { id: message.id },
-      data: { metadata: { mentions: merged } as Prisma.InputJsonValue },
-      include: messageInclude,
-    })
-  }
-
-  return {
-    kind: 'created',
-    message: persistedMessage,
-    channelAgents: resolvedChannelAgents,
-    pendingAgentInvites,
-  }
+  // The main feed shows roots but not their replies. Advance every visible
+  // root only to its own creation time (or the old safe baseline), leaving
+  // replies unread until their exact panel is opened.
+  const baseline = legacyReadState?.lastReadAt ?? new Date(0)
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "message_conversation_read_states" (
+      "id", "root_message_id", "user_id", "last_read_at", "created_at", "updated_at"
+    )
+    SELECT
+      gen_random_uuid(),
+      m.id,
+      ${input.userId}::uuid,
+      GREATEST(m.created_at, ${baseline}),
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    FROM "messages" m
+    WHERE m.thread_id = ${input.threadId}::uuid
+      AND m.root_message_id IS NULL
+    ON CONFLICT ("root_message_id", "user_id") DO UPDATE
+      SET "last_read_at" = GREATEST(
+        "message_conversation_read_states"."last_read_at",
+        EXCLUDED."last_read_at"
+      ),
+      "updated_at" = CURRENT_TIMESTAMP
+  `)
+  return true
 }
 
 // ─── sp-messaging slice: edit, soft-delete, full-text search ───────────────
@@ -488,8 +621,51 @@ export const softDeleteMessage = async (
   return { kind: 'deleted', message }
 }
 
-export const mapMessageRecord = (message: MessageWithReactions): ThreadMessageRecord =>
-  mapThreadMessageRecord(message)
+export const mapMessageRecord = (
+  message: MessageWithReactions,
+  attachmentCount?: number,
+): ThreadMessageRecord => mapThreadMessageRecord(message, attachmentCount)
+
+/** `mapMessageRecord` for a single row whose attachment count is not yet known. */
+export const mapMessageRecordWithAttachments = async (
+  prisma: PrismaClient,
+  message: MessageWithReactions,
+  // Who is reading, for the disclosure predicate. The list endpoint has always
+  // withheld restricted content; this single-message read did not, because the
+  // mapper was called with two arguments and `withheld` fell to its `false`
+  // default — handing the caller the verbatim content of a reply they are not
+  // entitled to, plus the share affordance for it. The admin hits this route on
+  // a cold deep-link into a reply thread, so it was reachable from the product.
+  // Omitting `viewer` keeps the unrestricted behaviour for internal callers that
+  // have already authorized the read.
+  viewer?: { channelId: string; organizationId: string; userId: string },
+): Promise<ThreadMessageRecord> => {
+  const counts = await loadAttachmentCounts(prisma, [message.id])
+  const count = counts.get(message.id) ?? 0
+  if (!viewer || message.basisScopes.length === 0) {
+    return mapThreadMessageRecord(message, count)
+  }
+  // Two questions, not one: may they read it, and is that on their own
+  // entitlement? A grant recipient reads it but may not pass it on.
+  const messageViewer = await resolveMessageViewer(
+    prisma,
+    viewer.organizationId,
+    viewer.userId,
+  )
+  const direct = viewerSatisfiesBasis(message.basisScopes, messageViewer)
+  if (direct) {
+    return mapThreadMessageRecord(message, count, false, true)
+  }
+  const readable = await canUserReadDisclosureBasis(prisma, {
+    agentId: message.agentId,
+    basis: message.basisScopes,
+    channelId: viewer.channelId,
+    messageId: message.id,
+    organizationId: viewer.organizationId,
+    userId: viewer.userId,
+  })
+  return mapThreadMessageRecord(message, count, !readable, false)
+}
 
 type MessageSearchRow = {
   id: string
@@ -549,16 +725,7 @@ export const searchMessages = async (
     return []
   }
 
-  // Predictive full-text query: each term gets a `:*` prefix match so a partial
-  // word like "tick" finds "ticket". Sanitized down to bare word tokens so the
-  // raw input can never inject tsquery operators.
-  const prefixQuery = input.query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((term) => `${term}:*`)
-    .join(' & ')
+  const prefixQuery = buildPrefixTsQuery(input.query)
   if (!prefixQuery) {
     return []
   }
@@ -569,6 +736,15 @@ export const searchMessages = async (
       channelIds.map((id) => Prisma.sql`${id}::uuid`),
     )})`,
     Prisma.sql`to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})`,
+    // Fail closed on disclosure. Search returns content snippets scoped by
+    // channel membership alone, and unlike the thread list it has nowhere to
+    // render a withheld placeholder — so anything carrying a basis is excluded
+    // outright rather than evaluated. Every other disclosure hole needs an agent
+    // or a race; this one is a text box. Entitlement-aware search can relax this
+    // once the predicate is expressible in SQL.
+    Prisma.sql`NOT EXISTS (
+      SELECT 1 FROM "message_basis_scopes" mbs WHERE mbs."message_id" = m."id"
+    )`,
   ]
   if (input.senderId) {
     conditions.push(

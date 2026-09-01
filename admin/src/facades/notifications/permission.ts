@@ -1,3 +1,5 @@
+import { requestDesktopNotificationPermission } from './desktop-native-notification'
+
 export const getNotificationApi = (): typeof Notification | null =>
   typeof window === 'undefined' || typeof window.Notification === 'undefined'
     ? null
@@ -11,6 +13,9 @@ export const getNotificationApi = (): typeof Notification | null =>
  * unsupported or permission has already been decided (granted/denied).
  */
 export const requestNotificationPermission = (): void => {
+  if (requestDesktopNotificationPermission()) {
+    return
+  }
   const api = getNotificationApi()
   if (!api || api.permission !== 'default') {
     return

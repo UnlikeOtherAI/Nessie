@@ -2,7 +2,10 @@ import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { activateAgentTodoTemplate } from '@nessie/workspace-admin'
 import { emitAuditEvent } from './audit.js'
+import { resumeRunFromApproval } from './approval-resume.js'
+import { createKnowledgePublicationAttention } from './push-attention.js'
 
 // The minimal shape runApprovalEffect needs from an approval row — matches
 // the return of approvals.ts's mapApproval structurally, so callers can pass
@@ -23,6 +26,13 @@ const KnowledgePagePublishContextSchema = z.object({
   spaceId: z.string().uuid(),
   title: z.string(),
 })
+const AgentTodoTemplatePublishContextSchema = z.object({
+  templateId: z.string().uuid(),
+  version: z.number().int().positive(),
+})
+const WorkflowTemplateAdoptContextSchema = z.object({
+  workflowTemplateId: z.string().uuid(),
+})
 
 // Executes the actual publish once a human has approved the request. Guards
 // against staleness: the draft may have picked up a newer version between
@@ -40,7 +50,9 @@ const runKnowledgePagePublishEffect = async (
   }
   const { pageId, versionId } = parsed.data
 
-  const provider = createNativeKnowledgeProvider(prisma)
+  const provider = createNativeKnowledgeProvider(prisma, {
+    onPagePublished: async (tx, event) => createKnowledgePublicationAttention(tx, event),
+  })
   const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
   if (!page) {
     return { note: 'page no longer exists' }
@@ -50,6 +62,7 @@ const runKnowledgePagePublishEffect = async (
   }
 
   const published = await provider.publishPage({
+    actorUserId: actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
     organizationId: actorContext.tenant.organizationId,
     pageId,
   })
@@ -69,6 +82,70 @@ const runKnowledgePagePublishEffect = async (
   return { note: 'published' }
 }
 
+const runAgentTodoTemplatePublishEffect = async (
+  prisma: PrismaClient,
+  approval: ApprovalForEffect,
+  actorContext: AuthorizedActionContext,
+): Promise<ApprovalEffectResult> => {
+  const parsed = AgentTodoTemplatePublishContextSchema.safeParse(approval.context)
+  if (!parsed.success) return { note: 'approval context malformed — publication not attempted' }
+  const template = await prisma.agentTodoTemplate.findFirst({
+    select: { agentId: true },
+    where: {
+      id: parsed.data.templateId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+  })
+  if (!template) return { note: 'template no longer exists' }
+  const published = await activateAgentTodoTemplate(prisma, {
+    agentId: template.agentId,
+    organizationId: actorContext.tenant.organizationId,
+    templateId: parsed.data.templateId,
+    version: parsed.data.version,
+  })
+  if (!published) return { note: 'draft superseded or already handled — publication not attempted' }
+
+  await emitAuditEvent(prisma, {
+    actorContext,
+    action: 'agent.todo_template.published',
+    metadata: { approvalId: approval.id, version: published.version },
+    outcome: 'success',
+    resourceId: published.id,
+    resourceType: 'agent_todo_template',
+  })
+  // The approval claim is deliberately separate from this effect. If a process
+  // crashes here, an owner can publish or edit the draft in the Designer.
+  return { note: 'published' }
+}
+
+const runWorkflowTemplateAdoptEffect = async (
+  prisma: PrismaClient,
+  approval: ApprovalForEffect,
+  actorContext: AuthorizedActionContext,
+): Promise<ApprovalEffectResult> => {
+  const parsed = WorkflowTemplateAdoptContextSchema.safeParse(approval.context)
+  if (!parsed.success) return { note: 'approval context malformed — adoption not attempted' }
+  const adopted = await prisma.workflowTemplate.updateMany({
+    data: { adoptedAt: new Date() },
+    where: {
+      id: parsed.data.workflowTemplateId,
+      organizationId: actorContext.tenant.organizationId,
+      source: 'demonstration',
+      adoptedAt: null,
+    },
+  })
+  if (adopted.count === 0) return { note: 'learned workflow no longer needs adoption' }
+  await emitAuditEvent(prisma, {
+    actorContext,
+    action: 'workflow.template.adopted',
+    metadata: { approvalId: approval.id },
+    outcome: 'success',
+    resourceId: parsed.data.workflowTemplateId,
+    resourceType: 'workflow_template',
+  })
+  return { note: 'learned workflow adopted' }
+}
+
 // Runs the side effect an approved ApprovalRequest triggers, dispatched on
 // its `action`. Unknown actions (approvals that gate something other than a
 // concrete follow-up mutation) are a deliberate no-op — approving them is the
@@ -79,8 +156,27 @@ export const runApprovalEffect = async (
   actorContext: AuthorizedActionContext,
 ): Promise<ApprovalEffectResult> => {
   switch (approval.action) {
+    case 'tool.invoke': {
+      const result = await resumeRunFromApproval(prisma, approval.id)
+      switch (result.kind) {
+        case 'resumed':
+          return { note: `resumed run ${result.runId}` }
+        case 'run_not_waiting':
+          return { note: 'run no longer waiting' }
+        case 'already_resumed':
+          return { note: 'checkpoint was already consumed' }
+        case 'busy':
+          return { note: 'thread became busy before resume' }
+        case 'invalid_resume_state':
+          return { note: 'resume state is invalid — run not resumed' }
+      }
+    }
     case 'knowledge.page.publish':
       return runKnowledgePagePublishEffect(prisma, approval, actorContext)
+    case 'agent.todo_template.publish':
+      return runAgentTodoTemplatePublishEffect(prisma, approval, actorContext)
+    case 'workflow.template.adopt':
+      return runWorkflowTemplateAdoptEffect(prisma, approval, actorContext)
     default:
       return {}
   }

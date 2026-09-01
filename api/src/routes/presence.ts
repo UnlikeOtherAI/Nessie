@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-
+import type { PushSurface } from '@nessie/schemas'
 import {
   PresenceEntrySchema,
   PresenceHeartbeatBodySchema,
   PresenceListResponseSchema,
+  PushSurfaceHeartbeatBodySchema,
   SetManualPresenceBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput } from '../lib/api.js'
@@ -13,6 +14,7 @@ import {
   recordHeartbeat,
   setManualState,
 } from '../services/presence.js'
+import { recordPushSurfacePresence } from '../services/push-surface-presence.js'
 import type { RouteDeps } from './types.js'
 
 export const registerPresenceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -24,6 +26,7 @@ export const registerPresenceRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!requireUserActor(actorContext, reply)) return null
     return {
       organizationId: actorContext.tenant.organizationId,
+      sessionId: actorContext.actionContext.sessionId ?? '',
       userId: actorContext.actor.actorId,
     }
   }
@@ -60,6 +63,29 @@ export const registerPresenceRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!body) return reply
 
     await recordHeartbeat(prisma, actor.userId, actor.organizationId, body.active)
+    return createApiResponse({ ok: true })
+  })
+
+  // A short-lived per-session page signal for push suppression. The payload is
+  // structured (channel or ops page), never a caller-controlled URL.
+  app.post('/api/push-surfaces/heartbeat', async (request, reply) => {
+    const actor = actorFromRequest(request, reply)
+    if (!actor) return reply
+
+    const body = parseInput(PushSurfaceHeartbeatBodySchema, request.body, reply)
+    if (!body) return reply
+
+    await recordPushSurfacePresence(prisma, {
+      clientId: body.clientId,
+      organizationId: actor.organizationId,
+      sequence: BigInt(body.sequence),
+      sessionId: actor.sessionId,
+      // parseInput has already validated this schema; its generic boundary
+      // intentionally returns unbranded strings, so preserve the validated
+      // PushSurface output type without parsing the same body twice.
+      surface: body.surface as PushSurface | null,
+      userId: actor.userId,
+    })
     return createApiResponse({ ok: true })
   })
 }

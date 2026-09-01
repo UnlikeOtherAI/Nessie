@@ -3,8 +3,14 @@ import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveAccessibleChannelIds } from './access.js'
 import {
+  recordMessageChannelRead,
+  UNRESTRICTED_MESSAGES_ONLY,
+} from './message-search-basis.js'
+import { insertMessageBasis, resolveToolPostBasis } from './tool-message-basis.js'
+import {
   buildSnippet,
   clampLimit,
+  formatMessageLine,
   formatSection,
   MAX_SEARCH_RESULTS,
 } from './tool-output.js'
@@ -14,11 +20,13 @@ type MessageSearchRow = {
   thread_id: string
   channel_id: string
   channel_label: string
+  channel_visibility: string
   content: string
   created_at: Date
   author_name: string | null
   project_name: string
   team_name: string
+  root_message_id: string | null
 }
 
 export const runMessageSearchTool = async (
@@ -49,8 +57,10 @@ export const runMessageSearchTool = async (
     SELECT
       m."id",
       m."thread_id",
+      m."root_message_id",
       c."id" AS channel_id,
       c."label" AS channel_label,
+      c."visibility" AS channel_visibility,
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
@@ -64,18 +74,38 @@ export const runMessageSearchTool = async (
     LEFT JOIN "users" u ON u."id" = m."user_id"
     LEFT JOIN "agents" a ON a."id" = m."agent_id"
     WHERE m."deleted_at" IS NULL
-      AND t."channel_id" IN (${Prisma.join(channelIds)})
+      AND t."channel_id" IN (${Prisma.join(
+        // `threads.channel_id` is `uuid`; Prisma sends a bare string parameter
+        // as `text`, and Postgres has no `uuid = text` operator, so an uncast
+        // list fails the whole query with 42883 at runtime. Cast each element,
+        // matching `conversation-search.ts`.
+        channelIds.map((id) => Prisma.sql`${id}::uuid`),
+      )})
       AND to_tsvector('english', m."content") @@ plainto_tsquery('english', ${searchQuery})
+      AND ${UNRESTRICTED_MESSAGES_ONLY}
     ORDER BY m."created_at" DESC
     LIMIT ${take}
   `)
 
+  // The snippets below are content from these channels, so the run's reply
+  // inherits their scope.
+  recordMessageChannelRead(
+    context,
+    rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
+  )
+
   const lines = rows.map((row, index) =>
-    [
-      `${index + 1}. ${row.author_name ?? 'Unknown'} | #${row.channel_label} (${row.project_name} / ${row.team_name})`,
-      `   ${row.created_at.toISOString()} | messageId=${row.id} | threadId=${row.thread_id}`,
-      `   ${buildSnippet(row.content, searchQuery)}`,
-    ].join('\n'),
+    formatMessageLine({
+      author: row.author_name ?? 'Unknown',
+      channelId: row.channel_id,
+      channelLabel: `#${row.channel_label} (${row.project_name} / ${row.team_name})`,
+      createdAt: row.created_at.toISOString(),
+      messageId: row.id,
+      rootMessageId: row.root_message_id,
+      snippet: buildSnippet(row.content, searchQuery),
+      threadId: row.thread_id,
+      threadLabel: null,
+    }).replace(/^-\s/, `${index + 1}. `),
   )
 
   return {
@@ -106,16 +136,34 @@ export const runMessageEditTool = async (
 
   // Agents may only edit messages they authored themselves.
   const existing = await context.prisma.message.findFirst({
-    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
-    select: { id: true },
+    where: {
+      id: input.messageId,
+      agentId: context.agentId,
+      deletedAt: null,
+      onBehalfOfUserId: context.run.principalUserId,
+    },
+    select: { id: true, thread: { select: { channelId: true } } },
   })
   if (!existing) {
     throw new Error('Message not found or not authored by this agent.')
   }
 
-  await context.prisma.message.update({
-    where: { id: input.messageId },
-    data: { content, editedAt: new Date() },
+  // An edit is a second write path into an existing row, and swapping
+  // unrestricted text for privileged text must not inherit the original's empty
+  // basis. Resolved against the edited message's own channel, not the run's:
+  // the edit may target a message in another thread.
+  const basis = await resolveToolPostBasis(context, existing.thread.channelId)
+
+  await context.prisma.$transaction(async (tx) => {
+    await tx.message.update({
+      where: { id: input.messageId },
+      data: { content, editedAt: new Date() },
+    })
+    await insertMessageBasis(tx, {
+      basis,
+      messageId: input.messageId,
+      organizationId: String(context.channel.organizationId),
+    })
   })
 
   return {
@@ -134,7 +182,12 @@ export const runMessageDeleteTool = async (
   }
 
   const existing = await context.prisma.message.findFirst({
-    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
+    where: {
+      id: input.messageId,
+      agentId: context.agentId,
+      deletedAt: null,
+      onBehalfOfUserId: context.run.principalUserId,
+    },
     select: { id: true },
   })
   if (!existing) {
@@ -150,5 +203,80 @@ export const runMessageDeleteTool = async (
     inputSummary: `messageId=${input.messageId}`,
     outputPreview: `Deleted messageId=${input.messageId}`,
     toolName: 'message_delete',
+  }
+}
+
+/**
+ * React to a message — the same emoji buttons a person clicks.
+ *
+ * A reaction is how a colleague says "seen", "agreed", "on it" without adding
+ * a message nobody needs to read. Reacting is a real reaction row, not an
+ * emoji typed into a reply: text renders as text, and a paragraph containing
+ * 👍 is still a paragraph.
+ *
+ * Scoped to messages the run can already reach — the same accessible-channel
+ * set that governs conversation search — so an agent cannot annotate a
+ * conversation it could not read.
+ */
+export const runReactTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { messageId: string; emoji: string; remove?: boolean },
+): Promise<ToolExecutionResult> => {
+  const emoji = input.emoji.trim()
+  if (!input.messageId) {
+    throw new Error('messageId is required.')
+  }
+  if (!emoji) {
+    throw new Error('emoji is required.')
+  }
+  if ([...emoji].length > 8) {
+    throw new Error('emoji must be a single emoji, not text.')
+  }
+
+  const channelIds = await resolveAccessibleChannelIds(context)
+  const message = channelIds.length
+    ? await context.prisma.message.findFirst({
+        select: { id: true, threadId: true },
+        where: {
+          deletedAt: null,
+          id: input.messageId,
+          thread: { channelId: { in: channelIds } },
+        },
+      })
+    : null
+  if (!message) {
+    throw new Error('Message not found in a conversation this agent can see.')
+  }
+
+  const summary = `messageId=${input.messageId} emoji=${emoji}`
+  if (input.remove) {
+    await context.prisma.messageReaction.deleteMany({
+      where: {
+        agentId: context.agentId,
+        emoji,
+        messageId: message.id,
+        onBehalfOfUserId: context.run.principalUserId,
+      },
+    })
+    return {
+      inputSummary: summary,
+      outputPreview: `Removed ${emoji} from messageId=${message.id}`,
+      toolName: 'react',
+    }
+  }
+
+  await context.prisma.messageReaction.createMany({
+    data: [{
+      agentId: context.agentId,
+      emoji,
+      messageId: message.id,
+      onBehalfOfUserId: context.run.principalUserId,
+    }],
+    skipDuplicates: true,
+  })
+  return {
+    inputSummary: summary,
+    outputPreview: `Reacted ${emoji} to messageId=${message.id}`,
+    toolName: 'react',
   }
 }

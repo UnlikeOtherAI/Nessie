@@ -9,22 +9,26 @@ type AvatarBadgesProps = {
   // Diameter of the wrapped avatar in px.
   size: number
   children: ReactNode
+  focusPresence?: boolean
   showPresence?: boolean
   showStatus?: boolean
   // Background the avatar sits on, used for the badges' separating ring.
   ringColor?: string
+  ringWidth?: number
 }
 
 // Overlays the active-status emoji (top-right) and the presence dot
-// (bottom-right) on any circular avatar. Reads live state from PresenceProvider
+// (bottom-right) on any avatar tile. Reads live state from PresenceProvider
 // so every human avatar across the app stays in sync.
 export const AvatarBadges = ({
   userId,
   size,
   children,
+  focusPresence = false,
   showPresence = true,
   showStatus = true,
   ringColor = 'var(--panel)',
+  ringWidth = 2,
 }: AvatarBadgesProps) => {
   const presence = useUserPresence(userId)
 
@@ -62,7 +66,13 @@ export const AvatarBadges = ({
       )}
       {showPresence && (
         <span className="absolute" style={{ bottom: -1, right: -1 }}>
-          <PresenceBadge ringColor={ringColor} size={dotSize} state={presence.state} />
+          <PresenceBadge
+            focusModeEnabled={focusPresence}
+            ringColor={ringColor}
+            ringWidth={ringWidth}
+            size={dotSize}
+            state={presence.state}
+          />
         </span>
       )}
     </span>

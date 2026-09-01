@@ -79,6 +79,18 @@ test('discoverMcpEndpoint proposes bearer auth when the endpoint rejects with 40
   assert.match(result.proposal?.note ?? '', /OAuth/)
 })
 
+test('discoverMcpEndpoint proposes bearer auth for an underscored MCP unauthorized error code', async () => {
+  const result = await discoverMcpEndpoint(`${BASE}/mcp`, {
+    managerFactory: () =>
+      fakeManager(() => ({ error: 'MCP probe failed: {"error":"mcp_unauthorized"}' })),
+    fetchImpl: (async () => new Response('', { status: 401 })) as typeof fetch,
+    probeTimeoutMs: 2_000,
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.proposal?.authMethod, 'bearer')
+  assert.equal(result.attempts[0]?.outcome, 'auth_required')
+})
+
 test('discoverMcpEndpoint blocks private addresses via the SSRF guard', async () => {
   const result = await discoverMcpEndpoint('https://192.168.1.10/mcp', {
     managerFactory: () => fakeManager(() => ({ tools: [] })),

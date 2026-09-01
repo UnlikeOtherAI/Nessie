@@ -36,6 +36,12 @@ export type WsEventMessage = {
 export type RealtimeNotificationPayload =
   | ({
       kind: 'sse'
+      /**
+       * Notify-only: no `thread_stream_events` row exists, so `sequence` is a
+       * placeholder the hub must not surface as an SSE `id:` or store as a
+       * connection watermark. Reconnecting clients repair over REST instead.
+       */
+      ephemeral?: boolean
     } & ThreadStreamEvent)
   | {
       kind: 'ws'
@@ -250,6 +256,33 @@ export class PgRealtimeTransport {
       ...record,
     })
     return record
+  }
+
+  /**
+   * Publish without persisting.
+   *
+   * Live document deltas arrive once per provider chunk. Giving each one a
+   * durable row (as `stream.delta` does) costs an INSERT plus a NOTIFY per
+   * token and buys nothing: a client that missed them rebuilds from the
+   * document-stream bootstrap route, which is cheaper and exact. Ordering
+   * still holds — the caller serializes its own publishes.
+   */
+  async publishSseEphemeral(
+    threadId: string,
+    event: SseEvent['event'],
+    data: SseEvent['data'],
+  ): Promise<void> {
+    const parsed = SseEventSchema.parse({ event, data })
+    await notify(this.pool, this.channel, {
+      data: parsed.data,
+      ephemeral: true,
+      event: parsed.event,
+      kind: 'sse',
+      // No row, so no real sequence. `ephemeral` is what the hub branches on.
+      sequence: 0,
+      threadId,
+      ts: new Date().toISOString(),
+    })
   }
 
   async publishWs(

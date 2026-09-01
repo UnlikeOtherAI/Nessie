@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client'
 import {
-  DEFAULT_BOOTSTRAP_PROJECT_ID,
   type SidebarPerson,
   type SidebarProject,
   type StarredItem,
@@ -63,7 +62,6 @@ export const useVisibleStarredEntries = ({
 
     for (const item of starred) {
       if (item.type === 'project') {
-        if (item.id === DEFAULT_BOOTSTRAP_PROJECT_ID) continue
         const project = projectById.get(item.id)
         if (project) {
           addProjectEntry(project, project.channels, true)
@@ -75,7 +73,7 @@ export const useVisibleStarredEntries = ({
         const channel = channelById.get(item.id)
         if (!channel) continue
 
-        if (channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID) {
+        if (channel.scope === 'standalone') {
           entries.push({ channel, type: 'channel' })
           continue
         }

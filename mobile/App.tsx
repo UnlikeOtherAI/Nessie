@@ -1,385 +1,507 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   AppState,
-  type AppStateStatus,
-  type ImageSourcePropType,
+  Dimensions,
+  Linking,
   Platform,
   StyleSheet,
   View,
+  useWindowDimensions,
 } from 'react-native'
-import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
-import * as WebBrowser from 'expo-web-browser'
-import TabView from 'react-native-bottom-tabs'
+import * as ScreenOrientation from 'expo-screen-orientation'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { captureScreen } from 'react-native-view-shot'
-import WebView, { type WebViewMessageEvent } from 'react-native-webview'
-
-import { ADMIN_URL } from './src/config'
+import WebView from 'react-native-webview'
+import type { ShouldStartLoadRequest, WebViewMessageEvent } from 'react-native-webview/lib/WebViewTypes'
+import { ADMIN_URL, CALL_JITSI_DOMAIN } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
-import { TABS, tabIndexForPath } from './src/lib/tabs'
-import { useShake } from './src/lib/use-shake'
-import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
-  DEFAULT_TOOLBAR_STATE,
-  IpadNativeToolbar,
-  type ToolbarAction,
-  type ToolbarState,
-} from './src/components/IpadNativeToolbar'
-
-// Deep-link callback the OS browser redirects to after external sign-in. Must
-// match the admin's externalAuthRedirectUri and the API's allow-listed URL.
-const AUTH_CALLBACK_URL = 'nessie://auth/callback'
-
-// The native tab bar sits beside the WebView; reserve room for it so the
-// WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
-// iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
-const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
-const IPAD_TAB_BAR_HEIGHT = 50
+  dismissNativeNotificationCards,
+  getNativePushRegistration,
+  reconcileNativeAttentionPresentation,
+  subscribeToCallPushCancellation,
+  subscribeToPushTokenChanges,
+  type NativePushRegistration,
+} from './src/lib/push-notifications'
+import { useNativePushNavigation } from './src/lib/native-push-navigation'
+import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
+import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
+import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
+import {
+  createNativePushSurfaceClientId,
+  nativeAppForegroundScript,
+  nativePhoneTabBarClearanceScript,
+  nativePushPathScript,
+  nativeShellInfoScript,
+  wrapNativeWebViewScript,
+} from './src/lib/native-shell'
+import type { NativeShellMessage } from './src/lib/native-shell-message'
+import { isDark } from './src/lib/webview-inject'
+import { statusBarStyleForNativeBackdrop } from './src/lib/status-bar'
+import { openAllowedCallExternalUrl, webViewNavigationDisposition } from './src/lib/call-external-url'
+import { openConnectorAuthorizationUrl } from './src/lib/connector-authorization'
+import { handleNativeShellMessage } from './src/lib/native-shell-message-handler'
+import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
+import {
+  createIpadNativeChromeTheme,
+  getIpadChromeTop,
+  getIpadWindowedLeadingControlsClearance,
+  isIpadWindowed,
+  withOpacity,
+} from './src/lib/ipad-native-chrome'
+import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock'
+import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
+import { IpadNativeChrome } from './src/components/IpadNativeChrome'
+import { MobileAdminWebView } from './src/components/MobileAdminWebView'
+import {
+  NativePhoneConversationMenuChrome,
+} from './src/components/NativePhoneConversationMenuChrome'
+import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
+import { completeExternalAuth } from './src/lib/external-auth-session'
+import {
+  createNativeExternalAuthDeliveryQueue,
+  flushNativeExternalAuthDelivery,
+} from './src/lib/external-auth-delivery'
+import { createNativeWebviewActions } from './src/lib/native-webview-actions'
+import {
+  DEFAULT_NATIVE_SHELL_PRESENTATION,
+  reduceNativeShellPresentation,
+} from './src/components/native-shell-presentation'
+import {
+  createNativeTabNavigationState,
+  getNativePhoneHeaderHeight,
+  getNativeWebviewFrameInsets,
+  isAuthGateRoute,
+  isFullScreenTaskRoute,
+  isNativePhoneChannelsRootRoute,
+  isNativePhoneTabRootRoute,
+  shouldShowNativePhoneHeader,
+} from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
-const NATIVE_SHELL_INFO_SCRIPT = `
-window.__nessieNativeShell = { platform: ${JSON.stringify(Platform.OS)}, formFactor: ${
-  IS_IPAD ? "'ipad'" : "'phone'"
-} };
-try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}
-true;
-`
-
-const DEFAULT_ACTIVE_TINT = '#7c3aed'
-const DEFAULT_INACTIVE_TINT = '#8a8f98'
-const ANDROID_ICON_SIZE = 26
-
-// iOS reclaims the WKWebView content process while the app is backgrounded, so a
-// long background (e.g. overnight) foregrounds to a blank white screen. After this
-// much time in the background, reload on foreground so the workspace is always
-// present and up to date when brought back. Shorter backgrounds keep their state.
-const RELOAD_AFTER_BACKGROUND_MS = 30_000
-
-// If the admin never reports itself mounted (it posts a `nessie:route` message on
-// boot) within this window after a load finishes, the WebView is blank/white —
-// reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
-// one referencing a JS bundle that 404s after a deploy), which boots to white; a
-// changed URL forces a fresh fetch. Capped so a genuinely broken page can't loop.
-const BOOT_TIMEOUT_MS = 9000
-const MAX_BOOT_RETRIES = 4
-
-// The tab bar only makes sense once the user is inside the workspace; hide it on
-// the login / bootstrap screens (reported via nessie:route).
-const isAuthGateRoute = (path: string): boolean =>
-  path.startsWith('/login') || path.startsWith('/bootstrap')
-
-type AndroidIconSet = { active: Record<string, ImageSourcePropType>; inactive: Record<string, ImageSourcePropType> }
+const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
-  const [bg, setBg] = useState(DEFAULT_BG)
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
+  const screenDimensions = Dimensions.get('screen')
+  const largePhoneLandscapeCapable = supportsLargePhoneLandscape({
+    height: screenDimensions.height,
+    isPad: IS_IPAD,
+    platform: Platform.OS,
+    width: screenDimensions.width,
+  })
+  const largePhoneLandscape = largePhoneLandscapeCapable && isLandscape({
+    height: windowHeight,
+    width: windowWidth,
+  })
+  const nativeFormFactor = IS_IPAD ? 'ipad' : largePhoneLandscape ? 'large-phone-landscape' : 'phone'
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
-  const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
-  const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
-  const [androidIcons, setAndroidIcons] = useState<AndroidIconSet | null>(null)
-  const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
-  // Bumping this remounts the WebView — used to recover Android after its render
-  // process is killed (the instance is unusable until recreated).
-  const [webviewKey, setWebviewKey] = useState(0)
-  // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
-  // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
-  const [reloadNonce, setReloadNonce] = useState(0)
-  const capturing = useRef(false)
-  const backgroundedAt = useRef<number | null>(null)
-  const adminBooted = useRef(false)
-  const bootRetries = useRef(0)
-  const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [presentation, dispatchPresentation] = useReducer(
+    reduceNativeShellPresentation,
+    DEFAULT_NATIVE_SHELL_PRESENTATION,
+  )
+  const [dismissCreationMenuVersion, dismissNativeMenus] = useReducer(
+    (version: number) => version + 1,
+    0,
+  )
+  const {
+    accent,
+    attentionBadges,
+    background: bg,
+    chromeSurface: ipadChromeSurface,
+    inactive,
+    nativeAccount,
+    phoneHeaderSurface,
+    phoneHeaderText,
+    phoneOnAccent,
+    phoneText,
+    phoneTextMuted,
+    statusBarStyle,
+    strongAccent,
+    toolbarState,
+    workspaceAvatarUrl: nativeWorkspaceAvatarUrl,
+    workspaceName: ipadWorkspaceName,
+  } = presentation
+  const currentPathRef = useRef<string | null>(null)
+  const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
+  const nativeAppForeground = useRef(AppState.currentState === 'active')
+  const nativePushRegistration = useRef<NativePushRegistration | null>(null)
+  const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
+  const externalAuthDeliveries = useRef(createNativeExternalAuthDeliveryQueue())
 
-  const sourceUri =
-    reloadNonce === 0
-      ? ADMIN_URL
-      : `${ADMIN_URL}${ADMIN_URL.includes('?') ? '&' : '?'}__boot=${reloadNonce}`
-
-  const clearBootTimer = useCallback((): void => {
-    if (bootTimer.current) {
-      clearTimeout(bootTimer.current)
-      bootTimer.current = null
-    }
+  const runScript = useCallback((script: string): void => {
+    webRef.current?.injectJavaScript(wrapNativeWebViewScript(script))
   }, [])
 
-  const loadFreshWebView = useCallback((): void => {
-    clearBootTimer()
-    setReloadNonce((nonce) => nonce + 1)
-  }, [clearBootTimer])
+  const flushExternalAuthDelivery = useCallback((): void => {
+    flushNativeExternalAuthDelivery(externalAuthDeliveries.current, runScript)
+  }, [runScript])
 
-  // Reload the WebView fresh after a blank/failed load, capped so a persistently
-  // broken page doesn't loop forever.
-  const recoverBlankWebView = (): void => {
-    if (adminBooted.current || bootRetries.current >= MAX_BOOT_RETRIES) return
-    bootRetries.current += 1
-    loadFreshWebView()
-    setWebviewKey((key) => key + 1)
+  useEffect(() => {
+    if (IS_IPAD || Platform.OS !== 'ios') return
+    const orientation = largePhoneLandscapeCapable
+      ? ScreenOrientation.unlockAsync()
+      : ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+    void orientation.catch(() => undefined)
+  }, [largePhoneLandscapeCapable])
+
+  useEffect(() => {
+    if (IS_IPAD || Platform.OS !== 'ios') return
+    runScript(nativePhoneTabBarClearanceScript(insets.bottom))
+  }, [insets.bottom, runScript])
+
+  const nativeBackForwardGestures = largePhoneLandscape || allowsNativeBackForwardGestures({
+    heightDp: windowHeight,
+    widthDp: windowWidth,
+  })
+  const bootRecovery = useNativeBootRecovery(currentPathRef)
+  const phoneBack = useNativePhoneBack(
+    IS_ANDROID && !nativeBackForwardGestures,
+    runScript,
+  )
+
+  const cachePushPath = useCallback((path: string): void => {
+    runScript(nativePushPathScript(path))
+  }, [runScript])
+  const {
+    acknowledgePushPath,
+    initialPushPathResolved,
+    pendingPushPath,
+    replayPendingPushPath,
+  } = useNativePushNavigation({
+    cachePushPath,
+  })
+
+  // Orientation changes keep the WebView mounted. Re-publish the shell shape
+  // so the hosted admin switches between the phone stack and fixed two-column
+  // layout without relying on a reload.
+  useEffect(() => {
+    runScript(nativeShellInfoScript({
+      bottomInset: insets.bottom,
+      clientId: pushSurfaceClientId.current,
+      formFactor: nativeFormFactor,
+      pendingPushPath,
+      platform: Platform.OS,
+    }))
+  }, [insets.bottom, nativeFormFactor, pendingPushPath, runScript])
+  const sourceUri = bootRecovery.reloadNonce === 0
+    ? ADMIN_URL
+    : (() => {
+      const url = new URL(bootRecovery.reloadPath ?? '/', ADMIN_URL)
+      url.searchParams.set('__boot', String(bootRecovery.reloadNonce))
+      return url.toString()
+    })()
+
+  const navigateTo = useCallback((path: string): void => {
+    runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
+  }, [runScript])
+
+  const sendNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
+    runScript(
+      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NATIVE_PUSH_TOKEN_EVENT)}, { detail: ${
+        JSON.stringify(registration)
+      } }));`,
+    )
+  }, [runScript])
+
+  const publishNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
+    nativePushRegistration.current = registration
+    const current = currentPathRef.current
+    if (current && !isAuthGateRoute(current)) {
+      sendNativePushRegistration(registration)
+    }
+  }, [sendNativePushRegistration])
+
+  const ensureNativePushRegistration = (): void => {
+    if (nativePushRegistration.current) {
+      sendNativePushRegistration(nativePushRegistration.current)
+      return
+    }
+    if (nativePushRegistrationPromise.current) {
+      return
+    }
+    const registrationPromise = getNativePushRegistration()
+    nativePushRegistrationPromise.current = registrationPromise
+    void registrationPromise
+      .then((registration) => {
+        if (!registration) return
+        publishNativePushRegistration(registration)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (nativePushRegistrationPromise.current === registrationPromise) {
+          nativePushRegistrationPromise.current = null
+        }
+      })
   }
 
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
-    return () => {
-      if (bootTimer.current) clearTimeout(bootTimer.current)
-    }
   }, [])
 
-  // Keep the WebView populated and fresh across app backgrounding. iOS can reclaim
-  // the WKWebView content process while backgrounded (blank screen on return), so
-  // reload once enough time has passed in the background. onContentProcessDid
-  // Terminate / onRenderProcessGone below handle an outright process loss.
+  useEffect(
+    () => subscribeToPushTokenChanges(publishNativePushRegistration),
+    [publishNativePushRegistration],
+  )
+
+  useEffect(() => subscribeToCallPushCancellation(), [])
+
+  // WKWebView does not reliably emit `visibilitychange` while React Native is
+  // backgrounding the app. Tell the hosted admin explicitly so it clears its
+  // page-aware push target before iOS suspends the WebView.
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active') {
-        const since = backgroundedAt.current
-        backgroundedAt.current = null
-        if (since != null && Date.now() - since >= RELOAD_AFTER_BACKGROUND_MS) {
-          loadFreshWebView()
-        }
-      } else if (next === 'background') {
-        backgroundedAt.current = backgroundedAt.current ?? Date.now()
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      nativeAppForeground.current = nextState === 'active'
+      runScript(nativeAppForegroundScript(nativeAppForeground.current))
+      if (nativeAppForeground.current) {
+        // ASWebAuthenticationSession may finish before WKWebView is ready to
+        // execute injected JavaScript. The result stays in the native queue
+        // until the SPA acknowledges it, so app activation is the exact event
+        // that safely replays an unacknowledged callback.
+        flushExternalAuthDelivery()
+        void dismissNativeNotificationCards().catch(() => undefined)
       }
     })
     return () => subscription.remove()
-  }, [loadFreshWebView])
+  }, [flushExternalAuthDelivery, runScript])
 
-  // Android tab icons are Material glyphs rendered to image sources (SF Symbols
-  // are iOS-only); re-render them whenever the theme tints change.
-  useEffect(() => {
-    if (!IS_ANDROID) return undefined
-    let cancelled = false
-    const resolve = async (): Promise<void> => {
-      const activeIcons: Record<string, ImageSourcePropType> = {}
-      const inactiveIcons: Record<string, ImageSourcePropType> = {}
-      await Promise.all(
-        TABS.map(async (tab) => {
-          const [activeIcon, inactiveIcon] = await Promise.all([
-            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, accent),
-            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, inactive),
-          ])
-          if (activeIcon) activeIcons[tab.key] = activeIcon
-          if (inactiveIcon) inactiveIcons[tab.key] = inactiveIcon
-        }),
-      )
-      if (!cancelled) setAndroidIcons({ active: activeIcons, inactive: inactiveIcons })
-    }
-    void resolve()
-    return () => {
-      cancelled = true
-    }
-  }, [accent, inactive])
+  const nativeActions = createNativeWebviewActions(runScript)
 
-  const runScript = (script: string): void => {
-    webRef.current?.injectJavaScript(`${script} true;`)
+  const runExternalAuth = async (authorizeUrl: string, state?: string): Promise<void> => {
+    const terminal = await completeExternalAuth(authorizeUrl, state)
+    externalAuthDeliveries.current.enqueue(terminal.callbackUrl)
+    flushExternalAuthDelivery()
   }
-
-  const navigateTo = (path: string): void => {
-    runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
-  }
-
-  const openSearchOverlay = (): void => {
-    runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
-  }
-
-  const closeSearchOverlay = (): void => {
-    runScript('window.__nessieCloseSearchOverlay && window.__nessieCloseSearchOverlay();')
-  }
-
-  const runToolbarAction = (action: ToolbarAction): void => {
-    runScript(
-      `window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`,
-    )
-  }
-
-  // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
-  // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
-  // then deliver the deep-link callback back into the webview to finish.
-  const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
-    const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, AUTH_CALLBACK_URL)
-    if (result.type === 'success' && result.url) {
-      const payload = JSON.stringify(result.url)
-      runScript(`window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload});`)
-    }
-  }
-
-  // Shake to file feedback: capture the current screen and hand it to the admin
-  // feedback composer, which previews and attaches it.
-  const onShake = async (): Promise<void> => {
-    if (capturing.current) return
-    capturing.current = true
-    try {
-      const uri = await captureScreen({ format: 'png', quality: 0.9, result: 'data-uri' })
-      const payload = JSON.stringify(uri)
-      runScript(
-        `window.__nessieNavigate && window.__nessieNavigate('/feedback');` +
-          `window.__nessieShakeScreenshot && window.__nessieShakeScreenshot(${payload});`,
-      )
-    } catch {
-      // Capture can fail transiently (e.g. mid-transition); ignore and let the
-      // next shake try again.
-    } finally {
-      capturing.current = false
-    }
-  }
-  useShake(() => {
-    void onShake()
-  })
 
   const onMessage = (event: WebViewMessageEvent): void => {
-    let msg: {
-      type?: string
-      color?: string
-      url?: string
-      path?: string
-      accent?: string
-      inactive?: string
-      active?: boolean
-      canBack?: boolean
-      canForward?: boolean
-      recentOpen?: boolean
-    }
+    let msg: NativeShellMessage
     try {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
       return
     }
-    if (msg.type === 'bg' && typeof msg.color === 'string') {
-      const rgb = parseRgb(msg.color)
-      if (rgb && rgb[3] !== 0) setBg(msg.color)
+    if (msg.type === 'nessie:full-refresh') {
+      bootRecovery.fullRefreshWebView()
       return
     }
-    if (msg.type === 'theme') {
-      if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
-      if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
-      return
-    }
-    if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
-      void runExternalAuth(msg.url)
-      return
-    }
-    if (msg.type === 'nessie:search-overlay') {
-      if (msg.active) {
-        const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
-        if (searchIndex !== -1) setIndex(searchIndex)
-      } else {
-        setIndex(tabIndexForPath(currentPath ?? '/channels'))
-      }
-      return
-    }
-    if (msg.type === 'nessie:toolbar-state') {
-      setToolbarState({
-        canBack: Boolean(msg.canBack),
-        canForward: Boolean(msg.canForward),
-        recentOpen: Boolean(msg.recentOpen),
-      })
-      return
-    }
-    if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
-      // The admin only emits this once React has mounted, so it doubles as the
-      // "booted" signal that defuses the blank-screen watchdog.
-      adminBooted.current = true
-      bootRetries.current = 0
-      clearBootTimer()
-      setCurrentPath(msg.path)
-      const next = tabIndexForPath(msg.path)
-      setIndex((current) => (current === next ? current : next))
-    }
+    handleNativeShellMessage(msg, {
+      acknowledgeExternalAuthDelivery: (id) => externalAuthDeliveries.current.acknowledge(id),
+      acknowledgePushPath,
+      currentPath,
+      currentPathRef,
+      dismissNativeMenus,
+      dismissNotifications: () => void dismissNativeNotificationCards().catch(() => undefined),
+      dispatchPresentation,
+      ensureNativePushRegistration,
+      flushExternalAuthDelivery,
+      markBooted: bootRecovery.markBooted,
+      noteBackState: phoneBack.noteBackState,
+      openConnectorAuthorization: (url) => openConnectorAuthorizationUrl(
+        url,
+        (targetUrl) => Linking.openURL(targetUrl),
+      ),
+      openExternalUrl: (url) => openAllowedCallExternalUrl(
+        url,
+        { jitsiDomain: CALL_JITSI_DOMAIN },
+        (targetUrl) => Linking.openURL(targetUrl),
+      ),
+      reconcileNativeAttention: async (total) => reconcileNativeAttentionPresentation(total),
+      replayPendingPushPath,
+      runExternalAuth,
+      runScript,
+      setCurrentPath,
+      setIndex,
+    })
   }
 
-  const onIndexChange = (next: number): void => {
-    setIndex(next)
-    if (IS_IPAD && TABS[next]?.key === 'search') {
-      openSearchOverlay()
-      return
+  const onIndexChange = (next: number): void => applyNativeTabIndexChange({
+    closeSearchOverlay: nativeActions.closeSearchOverlay,
+    closeTransientMenus: nativeActions.closeTransientMenus,
+    dismissNativeMenus,
+    isIpad: IS_IPAD,
+    navigateTo,
+    next,
+    openSearchOverlay: nativeActions.openSearchOverlay,
+    runScript,
+    setIndex,
+  })
+
+  const onShouldStartLoadWithRequest = (request: ShouldStartLoadRequest): boolean => {
+    const disposition = webViewNavigationDisposition(request, {
+      adminUrl: ADMIN_URL,
+      jitsiDomain: CALL_JITSI_DOMAIN,
+    })
+    if (disposition === 'externalize') {
+      openAllowedCallExternalUrl(
+        request.url,
+        { jitsiDomain: CALL_JITSI_DOMAIN },
+        (targetUrl) => Linking.openURL(targetUrl),
+      )
+    } else if (disposition === 'block') {
+      console.warn('[mobile] blocked top-level WebView navigation outside Nessie')
     }
-    closeSearchOverlay()
-    navigateTo(TABS[next].path)
+    return disposition === 'allow'
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
-  const showBar = currentPath != null && !isAuthGateRoute(currentPath)
+  const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
+  const showNativePhoneHeader = shouldShowNativePhoneHeader({
+    isIpad: IS_IPAD,
+    largePhoneLandscape,
+    path: currentPath,
+    showBar,
+  })
+  const showNativePhoneCreationActions = showNativePhoneHeader
+    && isNativePhoneTabRootRoute(currentPath)
+    && isNativePhoneChannelsRootRoute(currentPath)
 
-  // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
-  // native tab bar when it's shown (top on iPad, bottom elsewhere).
-  const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
-  const bottomInset =
-    showBar && !IS_IPAD ? TAB_BAR_BASE_HEIGHT + insets.bottom : IS_ANDROID ? insets.bottom : 0
-  const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
-
-  const navigationState = {
-    index,
-    routes: TABS.map((tab) => ({ key: tab.key, title: tab.title, role: tab.role })),
-  }
+  // The native frame owns all unsafe edges. In particular, a phone tab root is
+  // not always a direct aside/main child in the web DOM, so relying on injected
+  // CSS can leave its first row beneath the status bar.
+  const ipadChromeTop = getIpadChromeTop(insets.top)
+  const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(
+    IS_IPAD && isIpadWindowed({
+      screenHeight: screenDimensions.height,
+      screenWidth: screenDimensions.width,
+      windowHeight,
+      windowWidth,
+    }),
+  )
+  const webviewInsets = getNativeWebviewFrameInsets({
+    ipadChromeTop,
+    isIpad: IS_IPAD,
+    platform: Platform.OS,
+    safeArea: insets,
+    nativePhoneHeaderHeight: getNativePhoneHeaderHeight(largePhoneLandscape),
+    showNativePhoneHeader,
+    showTabBar: showBar,
+  })
+  const webviewLayerStyle = { ...styles.webviewLayer, top: webviewInsets.top, bottom: webviewInsets.bottom }
+  const ipadChromeTheme = createIpadNativeChromeTheme({
+    activeTintColor: accent,
+    dark: isDark(bg),
+    inactiveTintColor: inactive,
+    surfaceColor: ipadChromeSurface,
+  })
+  const navigationState = createNativeTabNavigationState(index, attentionBadges)
+  const hasNativeStatusBackdrop = showNativePhoneHeader || (IS_IPAD && showBar)
+  const nativeStatusBackdropIsDark = showNativePhoneHeader
+    ? isDark(phoneHeaderSurface)
+    : isDark(bg)
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
+      <StatusBar style={statusBarStyleForNativeBackdrop(
+        hasNativeStatusBackdrop,
+        nativeStatusBackdropIsDark,
+        statusBarStyle,
+      )} />
 
-      {showBar && (
-        <View style={StyleSheet.absoluteFill}>
-          <TabView
-            getIcon={({ route, focused }) => {
-              const tab = TABS.find((item) => item.key === route.key)
-              if (!tab) return undefined
-              if (IS_ANDROID) {
-                if (!androidIcons) return undefined
-                return focused ? androidIcons.active[tab.key] : androidIcons.inactive[tab.key]
-              }
-              return { sfSymbol: tab.sfSymbol }
-            }}
-            navigationState={navigationState}
-            onIndexChange={onIndexChange}
-            renderScene={() => <View style={styles.scene} />}
-            tabBarActiveTintColor={accent}
-            tabBarInactiveTintColor={inactive}
-            translucent
-          />
-        </View>
-      )}
+      {showBar && IS_ANDROID ? (
+        <AndroidTabletTabBar
+          activeIndex={index}
+          badgeCounts={attentionBadges}
+          activeIndicatorColor={withOpacity(accent, 0.14)}
+          activeTintColor={accent}
+          bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
+          dark={isDark(bg)}
+          inactiveTintColor={inactive}
+          onIndexChange={onIndexChange}
+          rippleColor={withOpacity(accent, 0.18)}
+        />
+      ) : null}
 
       <View style={webviewLayerStyle}>
-        <WebView
-          allowsBackForwardNavigationGestures
-          domStorageEnabled
-          injectedJavaScriptBeforeContentLoaded={NATIVE_SHELL_INFO_SCRIPT}
-          injectedJavaScript={`${NATIVE_SHELL_INFO_SCRIPT}\n${INJECTED}`}
-          key={webviewKey}
-          mediaPlaybackRequiresUserAction={false}
-          onContentProcessDidTerminate={() => webRef.current?.reload()}
-          onError={recoverBlankWebView}
-          onHttpError={recoverBlankWebView}
-          onLoadEnd={() => {
-            // Page finished loading; give the admin a window to report itself
-            // mounted before assuming the WebView is blank/white.
-            clearBootTimer()
-            if (!adminBooted.current) {
-              bootTimer.current = setTimeout(recoverBlankWebView, BOOT_TIMEOUT_MS)
-            }
-          }}
-          onLoadStart={() => {
-            adminBooted.current = false
-          }}
+        <MobileAdminWebView
+          backgroundColor={bg}
+          bottomInset={insets.bottom}
+          formFactor={nativeFormFactor}
+          initialPushPathResolved={initialPushPathResolved}
+          nativeAppForeground={nativeAppForeground}
+          nativeBackForwardGestures={nativeBackForwardGestures}
+          onError={bootRecovery.recoverBlankWebView}
+          onHttpError={bootRecovery.recoverBlankWebView}
+          onLoadEnd={() => { flushExternalAuthDelivery(); bootRecovery.noteLoadEnd() }}
+          onLoadStart={bootRecovery.noteLoadStart}
           onMessage={onMessage}
-          onRenderProcessGone={() => setWebviewKey((value) => value + 1)}
-          originWhitelist={['*']}
-          pullToRefreshEnabled
-          ref={webRef}
-          sharedCookiesEnabled
-          source={{ uri: sourceUri }}
-          style={[styles.fill, { backgroundColor: bg }]}
+          onRenderProcessGone={bootRecovery.remountWebView}
+          onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+          pendingPushPath={pendingPushPath}
+          platform={Platform.OS}
+          pushSurfaceClientId={pushSurfaceClientId.current}
+          runScript={runScript}
+          sourceUri={sourceUri}
+          webRef={webRef}
+          webviewKey={bootRecovery.webviewKey}
         />
       </View>
 
+      {showBar && !IS_IPAD && !IS_ANDROID ? (
+        <IphoneNativeTabBar
+          activeTintColor={accent}
+          bottomInset={insets.bottom}
+          inactiveTintColor={inactive}
+          navigationState={navigationState}
+          onIndexChange={onIndexChange}
+        />
+      ) : null}
+
+      {showNativePhoneHeader ? (
+        <NativePhoneConversationMenuChrome
+          accentColor={accent}
+          accountAvatarUrl={nativeAccount.avatarUrl}
+          accountFocusModeEnabled={nativeAccount.focusModeEnabled}
+          accountName={nativeAccount.name}
+          accountPresence={nativeAccount.presence}
+          bottomInset={insets.bottom}
+          creationAccentColor={strongAccent}
+          dismissCreationMenuVersion={dismissCreationMenuVersion}
+          headerSurface={phoneHeaderSurface}
+          headerText={phoneHeaderText}
+          landscape={largePhoneLandscape}
+          onAccentColor={phoneOnAccent}
+          onAccountPress={nativeActions.toggleAccountMenu}
+          onToggleFocusMode={nativeActions.toggleFocusMode}
+          onCreationMenuOpen={nativeActions.closeTransientMenus}
+          onCreateAction={nativeActions.createFromPhoneMenu}
+          onToolbarAction={nativeActions.runToolbarAction}
+          onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
+          safeTop={insets.top}
+          sheetMutedText={phoneTextMuted}
+          sheetText={phoneText}
+          sheetSurface={ipadChromeSurface}
+          platform={IS_ANDROID ? 'android' : 'ios'}
+          showCreationActions={showNativePhoneCreationActions}
+          toolbarState={toolbarState}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
+          workspaceName={ipadWorkspaceName}
+        />
+      ) : null}
+
       {showBar && IS_IPAD ? (
-        <IpadNativeToolbar
-          canBack={toolbarState.canBack}
-          canForward={toolbarState.canForward}
-          onAction={runToolbarAction}
-          recentOpen={toolbarState.recentOpen}
-          top={insets.top + 6}
+        <IpadNativeChrome
+          activeIndex={index}
+          account={nativeAccount}
+          badgeCounts={attentionBadges}
+          onIndexChange={onIndexChange}
+          onToggleAccountMenu={nativeActions.toggleAccountMenu}
+          onToggleFocusMode={nativeActions.toggleFocusMode}
+          onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
+          onToolbarAction={nativeActions.runToolbarAction}
+          insetLeft={insets.left}
+          insetRight={insets.right}
+          leadingReservedWidth={ipadLeadingControlsClearance}
+          theme={ipadChromeTheme}
+          toolbarState={toolbarState}
+          top={ipadChromeTop}
+          windowWidth={windowWidth}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
+          workspaceName={ipadWorkspaceName}
         />
       ) : null}
     </View>
@@ -396,6 +518,5 @@ export default function App(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  scene: { flex: 1 },
   webviewLayer: { position: 'absolute', right: 0, left: 0 },
 })

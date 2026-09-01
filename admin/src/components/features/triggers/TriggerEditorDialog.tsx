@@ -26,7 +26,9 @@ import { IntervalTriggerFields } from './IntervalTriggerFields'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
+import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -160,11 +162,10 @@ export const TriggerEditorDialog = ({
     onClose()
   }
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget && !isSubmitting) {
-      handleClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(() => {
+    if (isSubmitting) return
+    handleClose()
+  })
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -256,9 +257,11 @@ export const TriggerEditorDialog = ({
   const webhookUrl = `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
+    // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
+    // renders a description at `text-xs`, and its panel is 680px wide, which is
+    // not one of the three geometries the shell ships.
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,
@@ -355,7 +358,7 @@ export const TriggerEditorDialog = ({
               Description <span className="normal-case tracking-normal opacity-70">(optional)</span>
             </label>
             <textarea
-              className="admin-input min-h-20 resize-y"
+              className="admin-input min-h-20"
               id="trigger-description"
               onChange={(nextEvent) =>
                 setForm((current) => ({
@@ -369,9 +372,7 @@ export const TriggerEditorDialog = ({
           </div>
 
           {formError ? (
-            <div className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-3 text-sm text-[var(--danger-text)]">
-              {formError}
-            </div>
+            <Notice padding="lg" radius="xl" tone="danger">{formError}</Notice>
           ) : null}
 
           <div className="flex items-center justify-between gap-3 pt-1">

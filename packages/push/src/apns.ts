@@ -35,11 +35,20 @@ interface CachedJwt {
 /** Build the standard APNs JSON body for a payload. */
 export const buildApnsBody = (payload: PushPayload): string => {
   const aps: Record<string, unknown> = {
-    alert: { title: payload.title, body: payload.body },
+    alert: {
+      title: payload.title,
+      ...(payload.subtitle ? { subtitle: payload.subtitle } : {}),
+      body: payload.body,
+    },
   }
   if (payload.badge !== undefined) aps.badge = payload.badge
   if (payload.collapseId !== undefined) aps['thread-id'] = payload.collapseId
-  return JSON.stringify({ aps, ...(payload.data ?? {}) })
+  if (payload.category !== undefined) aps.category = payload.category
+  // expo-notifications serializes an APNs remote notification's `userInfo.body`
+  // as `content.data`. Keep all routing metadata under that one key so a direct
+  // APNs payload reaches the native deep-link bridge instead of just showing an
+  // alert with no actionable destination.
+  return JSON.stringify({ aps, ...(payload.data ? { body: payload.data } : {}) })
 }
 
 const parseReason = (body: string): string | undefined => {
@@ -99,6 +108,9 @@ export class ApnsClient {
     }
     if (payload.collapseId !== undefined) {
       headers['apns-collapse-id'] = payload.collapseId
+    }
+    if (payload.priority === 'high') {
+      headers['apns-priority'] = '10'
     }
 
     let status: number

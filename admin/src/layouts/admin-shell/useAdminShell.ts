@@ -1,32 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
-import { useChannels, useOpenDm } from '../../facades/channels/hooks';
+import { useChannels } from '../../facades/channels/hooks';
+import { useNavigateToDm } from '../../facades/channels/dm-navigation';
 import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
+import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import {
-  isExternalAgentChannel,
   isPersonalAssistantChannel,
-  isUserDmChannel,
   usePersonalAssistant,
   usePersonalAssistantBootstrap,
 } from '../../facades/personal-assistant/hooks';
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import type { AgentRecord } from '../../lib/api-client';
-import { getDmStyle } from '../../lib/avatar';
+import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
+import { useIsOwner } from '../../components/shared/OwnerGate';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from './nav-items';
+import { useSidebarDms } from './useSidebarDms';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
 import { useVisibleStarredEntries } from './useVisibleStarredEntries';
 import {
   type CreateChannelTarget,
   type PreferenceStarredItem,
-  type RenameProjectTarget,
-  type SidebarAgentDm,
+  type EditProjectTarget,
   type SidebarMenu,
-  type SidebarPerson,
   type StarredItem,
 } from './types';
 
@@ -39,20 +39,29 @@ export const useAdminShell = () => {
   const navigate = useNavigate();
   const { logout, me, sessionState } = useAuthSession();
   const { data: channels = [] } = useChannels();
-  const { data: projects = [] } = useProjects();
+  const projectsQuery = useProjects();
+  const projects = projectsQuery.data ?? [];
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
   const { data: favorites = [] } = useFavorites();
   const setFavorite = useSetFavorite();
-  const isOwner = me?.user.roleIds.includes('owner') ?? false;
+  const isAdmin = me?.user.roleIds.includes('admin') ?? false;
+  const isOwner = useIsOwner();
   const isSuperAdmin = me?.user.superAdmin ?? false;
+  // UOA owns membership on an UnlikeOtherAI session, which changes who the
+  // Members doorway belongs to (any active member reads the roster).
+  const isUoaSession = me?.auth.providerType === 'uoa';
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
-  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
+  // Dashboards render inside the Knowledge section (they are filed between
+  // My Docs and Spaces), so they share its secondary column rather than
+  // owning one.
+  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base')
+    || location.pathname.startsWith('/dashboards');
   const isProjectsRoute = location.pathname.startsWith('/projects');
-  const isIntegrationsRoute = location.pathname.startsWith('/integrations');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
+  const productSurfaces = useProductSurfaces();
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const currentChannelsProjectId = parseChannelProjectIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
@@ -73,7 +82,6 @@ export const useAdminShell = () => {
       ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
-  const openDm = useOpenDm();
   const activeDmChannel = currentChannelId
       ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
     : undefined;
@@ -81,7 +89,7 @@ export const useAdminShell = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
+  const [editProjectTarget, setEditProjectTarget] = useState<EditProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const initialStarred = useMemo<PreferenceStarredItem[]>(
@@ -139,6 +147,10 @@ export const useAdminShell = () => {
     () => new Set(starred.filter((item) => item.type === 'channel').map((item) => item.id)),
     [starred],
   );
+  const starredAgentIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'agent').map((item) => item.id)),
+    [starred],
+  );
   const starredProjectIds = useMemo(
     () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
     [starred],
@@ -176,12 +188,12 @@ export const useAdminShell = () => {
 
   const {
     channelById,
-    defaultProjectChannels,
-    defaultProjectTeamId,
     projectById,
+    sidebarProjects,
     standardChannels,
     teamIdByProjectId,
     visibleSidebarProjects,
+    standaloneChannels,
   } = useSidebarTree({
     channels,
     projects,
@@ -199,7 +211,7 @@ export const useAdminShell = () => {
 
   const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
     setSidebarMenu(null);
-    setCreateChannelTarget(target ?? {});
+    setCreateChannelTarget(target ?? { scope: 'standalone' });
   }, []);
   const closeCreateChannel = useCallback(() => setCreateChannelTarget(null), []);
   const openCreateProject = useCallback(() => {
@@ -207,11 +219,11 @@ export const useAdminShell = () => {
     setCreateProjectOpen(true);
   }, []);
   const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
-  const openRenameProject = useCallback((target: RenameProjectTarget) => {
+  const openEditProject = useCallback((target: EditProjectTarget) => {
     setSidebarMenu(null);
-    setRenameProjectTarget(target);
+    setEditProjectTarget(target);
   }, []);
-  const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
+  const closeEditProject = useCallback(() => setEditProjectTarget(null), []);
   const openMobileDrawer = useCallback(() => setMobileDrawerOpen(true), []);
   const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
@@ -221,6 +233,17 @@ export const useAdminShell = () => {
 
   const scopedAgents = agents;
 
+  // The general agent list and the PA-state request resolve independently.
+  // Prefer the purpose-built PA state, but retain the managed agent record from
+  // the general list so the Direct-messages entry never falls back to its glyph
+  // while its starred counterpart already has an uploaded/generated avatar.
+  const personalAssistantAgent = useMemo(
+    () => personalAssistantState?.agent
+      ?? agents.find((agent) => agent.agentKind === 'personal_assistant')
+      ?? null,
+    [agents, personalAssistantState?.agent],
+  );
+
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
@@ -229,11 +252,11 @@ export const useAdminShell = () => {
   const agentById = useMemo(() => {
     const byId = new Map<string, AgentRecord>();
     agents.forEach((agent) => byId.set(agent.id, agent));
-    if (personalAssistantState?.agent) {
-      byId.set(personalAssistantState.agent.id, personalAssistantState.agent);
+    if (personalAssistantAgent) {
+      byId.set(personalAssistantAgent.id, personalAssistantAgent);
     }
     return byId;
-  }, [agents, personalAssistantState?.agent]);
+  }, [agents, personalAssistantAgent]);
 
   const selectAgent = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
@@ -243,45 +266,26 @@ export const useAdminShell = () => {
     setSelectedAgentId(null);
   }, []);
 
-  const navigateToDm = useCallback((userId: string) => {
-    if (userId === me?.user.id) {
-      openDm.mutate(userId, {
-        onSuccess: (channel) => {
-          void navigate(`/channels/${channel.id}`);
-        },
-      });
-      return;
-    }
-
-    const targetUser = users.find((u) => u.id === userId);
-    if (targetUser) {
-      const dmChannel = channels.find(
-        (c) => isUserDmChannel(c) && targetUser.channelIds.includes(c.id),
-      );
-      if (dmChannel) {
-        void navigate(`/channels/${dmChannel.id}`);
-        return;
-      }
-    }
-    openDm.mutate(userId, {
-      onSuccess: (channel) => {
-        void navigate(`/channels/${channel.id}`);
-      },
-    });
-  }, [channels, me?.user.id, navigate, openDm, users]);
+  const navigateToDm = useNavigateToDm();
 
   const navigateToChannel = useCallback((channelId: string) => {
     void navigate(`/channels/${channelId}`);
   }, [navigate]);
 
-  const navigateHome = useCallback(() => {
-    void navigate('/channels');
+  const navigateToThreads = useCallback(() => {
+    void navigate('/threads');
+  }, [navigate]);
+
+  const navigateToUnreadMessages = useCallback(() => {
+    void navigate('/unread-messages');
   }, [navigate]);
 
   const navigateToNewConversation = useCallback(() => {
     setSidebarMenu(null);
-    void navigate('/channels/new');
-  }, [navigate]);
+    void navigate('/channels/new', {
+      state: newChannelComposeLocationState(`${location.pathname}${location.search}${location.hash}`),
+    });
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const navigateToSettings = useCallback((subPage?: string) => {
     void navigate(subPage ? `/settings/${subPage}` : '/settings');
@@ -295,75 +299,13 @@ export const useAdminShell = () => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const sidebarPeople = useMemo<SidebarPerson[]>(() => {
-    if (!me) {
-      return [];
-    }
-
-    const currentUser = users.find((u) => u.id === me.user.id);
-    const people = [
-      {
-        id: me.user.id,
-        label: me.user.displayName,
-        avatarUrl: currentUser?.avatarUrl ?? me.user.avatarUrl ?? null,
-        avatarAttachmentId: currentUser?.avatarAttachmentId ?? me.user.avatarAttachmentId ?? null,
-        gravatarUrl: currentUser?.gravatarUrl ?? me.user.gravatarUrl ?? null,
-        channelIds: currentUser?.channelIds ?? [],
-      },
-      ...users
-        .filter((u) => u.id !== me.user.id)
-        .map((user) => ({
-          id: user.id,
-          label: user.displayName,
-          avatarUrl: user.avatarUrl,
-          avatarAttachmentId: user.avatarAttachmentId,
-          gravatarUrl: user.gravatarUrl,
-          channelIds: user.channelIds,
-        })),
-    ];
-
-    return people.slice(0, 4).map((person, index) => ({
-      id: person.id,
-      label: person.label,
-      style: getDmStyle(index),
-      avatarUrl: person.avatarUrl,
-      avatarAttachmentId: person.avatarAttachmentId,
-      gravatarUrl: person.gravatarUrl,
-      dmChannelId: person.id === me.user.id
-        ? undefined
-        : channels.find(
-          (c) => isUserDmChannel(c) && person.channelIds.includes(c.id),
-        )?.id,
-    }));
-  }, [me, users, channels]);
-
-  const sidebarAgentDms = useMemo<SidebarAgentDm[]>(
-    () =>
-      channels
-        .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
-        .flatMap((channel) => {
-          const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
-          if (agent) {
-            return [{
-              dmChannelId: channel.id,
-              id: agent.id,
-              label: agent.name,
-            }];
-          }
-          // External agents (DeepSignal, ...) bind a system-managed `Agent`
-          // row that the general agent list excludes, so it never resolves
-          // above — fall back to the channel's own label, keyed by channel id.
-          if (isExternalAgentChannel(channel)) {
-            return [{
-              dmChannelId: channel.id,
-              id: channel.id,
-              label: channel.label,
-            }];
-          }
-          return [];
-        }),
-    [agents, channels],
-  );
+  const { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+    agents,
+    channels,
+    chatAssistants: productSurfaces.chatAssistants,
+    me,
+    users,
+  });
 
   const visibleStarredEntries = useVisibleStarredEntries({
     agentById,
@@ -424,30 +366,30 @@ export const useAdminShell = () => {
     closeAgentDrawer,
     closeCreateChannel,
     closeCreateProject,
-    closeRenameProject,
+    closeEditProject,
     createChannelTarget,
     createProjectOpen,
     currentChannelId,
     currentProjectId,
-    defaultProjectChannels,
-    defaultProjectTeamId,
     dmCollapsed,
     isAdminRoute,
     isAgentsRoute,
     isFeedbackRoute,
-    isIntegrationsRoute,
     isKnowledgeRoute,
     isProjectsRoute,
     isOwner,
+    isAdmin,
     isSuperAdmin,
+    isUoaSession,
     logoutAndRedirect,
     me,
     mobileDrawerOpen,
     openMobileDrawer,
     closeMobileDrawer,
-    navigateHome,
     navigateToAgent,
     navigateToChannel,
+    navigateToThreads,
+    navigateToUnreadMessages,
     navigateToDm,
     navigateToAgentDesigner,
     navigateToNewConversation,
@@ -456,14 +398,15 @@ export const useAdminShell = () => {
     openCreateChannel,
     openCreateProject,
     openPersonalAssistant,
-    openRenameProject,
+    openEditProject,
     pathname: location.pathname,
+    personalAssistantAgent,
     personalAssistantBootstrapping: personalAssistantBootstrap.isPending,
     personalAssistantChannelId: personalAssistantChannel?.id,
     personalAssistantUnreadCount: personalAssistantChannel?.unreadCount ?? 0,
     projectsCollapsed,
     realtime,
-    renameProjectTarget,
+    editProjectTarget,
     scopedAgents,
     selectAgent,
     selectedAgent,
@@ -472,7 +415,12 @@ export const useAdminShell = () => {
     setSidebarMenu,
     sidebarMenu,
     sidebarAgentDms,
+    sidebarGroupDms,
+    sidebarProjects,
+    sidebarProjectsLoaded: projectsQuery.isSuccess,
     sidebarPeople,
+    sidebarProductAssistants,
+    starredAgentIds,
     starredChannelIds,
     starredCollapsed,
     starredProjectIds,
@@ -486,5 +434,6 @@ export const useAdminShell = () => {
     unreadCountByChannelId,
     visibleSidebarProjects,
     visibleStarredEntries,
+    standaloneChannels,
   };
 };

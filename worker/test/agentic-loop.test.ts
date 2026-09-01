@@ -38,9 +38,10 @@ test('runAgenticLoop executes tool calls and feeds tool results into the next tu
       },
       onBudgetExhausted: async () => {},
     },
-    executeTool: async (toolName, args) => {
+    executeTool: async (toolName, args, toolCallId) => {
       assert.equal(toolName, 'document_read')
       assert.deepEqual(args, { query: 'docs/provider-system-and-frontend-architecture.md' })
+      assert.equal(toolCallId, 'call_1')
       return {
         inputSummary: 'document query',
         output: 'Architecture guidance',
@@ -284,8 +285,9 @@ test('circuit breaker resets on success', async () => {
 
   const result = await runAgenticLoop({
     budget: {
-      maxIterations: 6,
-      maxToolCalls: 6,
+      // Six iterations of real work plus the reserved graceful-stop headroom.
+      maxIterations: 8,
+      maxToolCalls: 8,
       maxWallclockMs: 10_000,
     },
     callbacks: {

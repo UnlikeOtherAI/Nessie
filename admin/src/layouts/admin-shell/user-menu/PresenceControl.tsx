@@ -1,6 +1,7 @@
 import type { PresenceManualState } from '../../../lib/api-client'
 import { PresenceBadge } from '../../../components/primitives/PresenceBadge'
 import { useSelfPresence } from '../../../providers/PresenceProvider'
+import { useFocusMode } from '../../../providers/FocusModeProvider'
 
 type Choice = { key: string; label: string; manual: PresenceManualState | null }
 
@@ -20,6 +21,7 @@ const STATE_LABEL: Record<string, string> = {
 // override (Auto reverts to automatic activity detection).
 export const PresenceControl = () => {
   const self = useSelfPresence()
+  const { focusModeEnabled } = useFocusMode()
   if (!self) return null
 
   const current = self.manual ?? 'auto'
@@ -27,7 +29,7 @@ export const PresenceControl = () => {
   return (
     <div className="px-2 py-1.5">
       <div className="mb-1.5 flex items-center gap-2 text-xs text-[color:var(--tx3)]">
-        <PresenceBadge ringColor="var(--panel)" size={9} state={self.state} />
+        <PresenceBadge focusModeEnabled={focusModeEnabled} ringColor="var(--panel)" size={9} state={self.state} />
         <span>Availability — {STATE_LABEL[self.state] ?? 'Active'}</span>
       </div>
       <div className="flex gap-1 rounded-lg bg-[color:var(--overlay-weak)] p-0.5">

@@ -1,4 +1,6 @@
 import {
+  constrainScopesToDestination,
+  loadThoughtAudiences,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
   type ScopeResolutionMode,
@@ -10,6 +12,29 @@ import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
 const MIN_REFERENCE_TOKENS = 5
+
+const CONTAINMENT_DISABLED = new Set(['0', 'false', 'off', 'no'])
+
+/**
+ * Recall containment is ON by default. It is the safe floor the full disclosure
+ * boundary is built behind, so disabling it is an explicit deployment act and
+ * should only happen once that boundary ships.
+ */
+export const isContainmentEnabled = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean =>
+  !CONTAINMENT_DISABLED.has(
+    (env['NESSIE_DISCLOSURE_CONTAINMENT'] ?? '').trim().toLowerCase(),
+  )
+
+// PA identity decides whose accessible scopes are considered; the destination
+// decides whether those scopes must be contained. Only the server-managed PA
+// DM is owner-only, so a shared PA presence stays contained like any room.
+export const requiresMemoryDestinationContainment = (
+  systemChannelType: string | null,
+  containmentEnabled = isContainmentEnabled(),
+): boolean =>
+  containmentEnabled && systemChannelType !== 'personal_assistant'
 
 const truncateForContext = (value: string, maxLength: number): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
@@ -117,7 +142,9 @@ export const retrieveRelevantMemories = async (
   const isPersonalAssistant =
     context.channel.systemChannelType === 'personal_assistant'
     || context.agent.agentKind === 'personal_assistant'
-
+  // Scope resolution follows PA identity everywhere it acts. The containment
+  // exemption is narrower: only the owner-only PA DM implies the owner's
+  // private estate. A PA presence is still a shared-room destination.
   // The personal assistant acts as its owner, so it recalls everything that
   // user can; without a user there is nothing to act as.
   if (isPersonalAssistant && !effectiveUserId) {
@@ -131,7 +158,7 @@ export const retrieveRelevantMemories = async (
       : 'autonomous'
 
   try {
-    const scopes = await resolveAccessibleScopes(
+    const reachableScopes = await resolveAccessibleScopes(
       {
         agentId: context.agent.id,
         mode,
@@ -140,6 +167,23 @@ export const retrieveRelevantMemories = async (
       },
       deps.searchConfig.pool,
     )
+
+    // Containment (default on): a shared or autonomous run recalls only what the
+    // destination room's own scope chain already implies, so cross-scope material
+    // never enters the run — and therefore cannot reach the transcript, the
+    // realtime wire, consolidated memory, or any artifact derived from the run.
+    // The personal assistant is exempt: it acts as its owner, in a DM whose only
+    // human is that owner, and its owner's private memories are the point.
+    // See docs/plans/2026-08-11-disclosure-boundaries-build.md.
+    const scopes =
+      requiresMemoryDestinationContainment(context.channel.systemChannelType)
+        ? constrainScopesToDestination(reachableScopes, {
+          channelId: context.channel.id,
+          organizationId: context.channel.organizationId,
+          projectId: context.channel.projectId,
+          teamId: context.channel.teamId,
+        })
+        : reachableScopes
 
     if (scopes.audienceTypes.length === 0) {
       return []
@@ -153,15 +197,42 @@ export const retrieveRelevantMemories = async (
         includeReasoning: false,
         limit: MAX_MEMORY_RESULTS,
         organizationId: context.channel.organizationId,
+        projectId: payload.actorContext.tenant.projectId ?? null,
         query: prompt,
         runningAgentId: context.agent.id,
         sessionId: payload.actorContext.actionContext.sessionId,
+        teamId:
+          payload.actorContext.tenant.teamId
+          ?? payload.actorContext.actionContext.teamId
+          ?? null,
+        threadId: context.run.threadId,
+        taskId: context.task.id,
+        runId: context.run.id,
+        agentId: context.agent.id,
+        agentKind: context.agent.agentKind,
+        actorId: payload.actorContext.actor.actorId,
+        actorType: payload.actorContext.actor.actorType,
+        requestId: payload.actorContext.actionContext.requestId,
+        correlationId: payload.actorContext.actionContext.correlationId ?? null,
         userId: effectiveUserId ?? null,
       },
       deps.searchConfig,
     )
 
-    return results.filter((result) => !isSuppressedMemory(result.metadata))
+    const retained = results.filter((result) => !isSuppressedMemory(result.metadata))
+
+    // Record what this run actually consumed. The basis of anything the run
+    // later materialises is computed from this sink, so a memory that reached
+    // the model is provenance even if the model never quotes it.
+    if (retained.length > 0) {
+      const audiences = await loadThoughtAudiences(
+        deps.searchConfig.pool,
+        retained.map((result) => result.id),
+      )
+      context.consumedSources.addAll(audiences)
+    }
+
+    return retained
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',

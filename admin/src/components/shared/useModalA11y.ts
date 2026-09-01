@@ -11,16 +11,21 @@ const FOCUSABLE_SELECTOR = [
 
 /**
  * Minimal modal a11y for a panel rendered as `role="dialog" aria-modal="true"`:
- * moves focus into the panel on mount, traps Tab within it, closes on Escape,
- * and restores focus to the previously-focused element on unmount. The panel
- * element should carry `tabIndex={-1}` so it can receive focus when it has no
- * focusable children yet.
+ * moves focus into the panel on mount (or its supplied initial control), traps
+ * Tab within it, closes on Escape, and restores focus to the previously-focused
+ * element on unmount. The panel element should carry `tabIndex={-1}` so it can
+ * receive focus when it has no focusable children yet.
  */
 export const useModalA11y = (
   panelRef: RefObject<HTMLElement | null>,
   onClose: () => void,
+  enabled = true,
+  initialFocusRef?: RefObject<HTMLElement | null>,
 ): void => {
   useEffect(() => {
+    if (!enabled) {
+      return
+    }
     const panel = panelRef.current
     if (!panel) {
       return
@@ -32,11 +37,15 @@ export const useModalA11y = (
         (element) => element.offsetParent !== null,
       )
 
-    ;(focusables()[0] ?? panel).focus()
+    ;(initialFocusRef?.current ?? focusables()[0] ?? panel).focus()
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        // A modal owns Escape exclusively: without this, the same keypress
+        // also reaches window-level listeners (e.g. the reply panel's
+        // close-on-Escape) and dismisses the surface under the dialog.
+        event.stopPropagation()
         onClose()
         return
       }
@@ -64,5 +73,5 @@ export const useModalA11y = (
       panel.removeEventListener('keydown', onKeyDown)
       previouslyFocused?.focus?.()
     }
-  }, [panelRef, onClose])
+  }, [enabled, initialFocusRef, panelRef, onClose])
 }

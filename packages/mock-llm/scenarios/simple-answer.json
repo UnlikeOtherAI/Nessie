@@ -1,0 +1,12 @@
+{
+  "name": "simple-answer",
+  "description": "Single-turn scripted answer with streaming simulation (small chunks with a short delay).",
+  "turns": [
+    {
+      "latencyMs": 10,
+      "stream": { "chunkDelayMs": 1, "chunkSize": 8 },
+      "text": "This is a deterministic mock answer, streamed in fixed-size chunks.",
+      "usage": { "inputTokens": 60, "outputTokens": 14 }
+    }
+  ]
+}

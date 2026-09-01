@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { KnowledgeSearchHit } from '../search/hooks'
+import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 const WIKILINK_SUGGESTION_LIMIT = 6
@@ -12,7 +13,7 @@ export const useWikilinkSuggestions = (query: string, enabled: boolean) => {
   const trimmed = query.trim()
 
   return useQuery<KnowledgeSearchHit[]>({
-    queryKey: ['knowledge-wikilink-suggestions', trimmed],
+    queryKey: knowledgeKeys.wikilinkSuggestions(trimmed),
     queryFn: () =>
       apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', {
         query: trimmed,

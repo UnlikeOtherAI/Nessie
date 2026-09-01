@@ -10,18 +10,20 @@ import {
   usePageAttachments,
   useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
-import { DropZoneOverlay } from './DropZoneOverlay'
+import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { iconForMime } from './file-icons'
-import { useFileDrop } from './useFileDrop'
+import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
 // Right-hand attachments drawer. On desktop it docks as a right rail; on mobile
 // (`open` over a full-screen sheet) it covers the page. Drag-and-drop, a button,
 // and a native picker all upload an attachment to the page.
 export const AttachmentsDrawer = ({
+  canWrite,
   pageId,
   open,
   onClose,
 }: {
+  canWrite: boolean
   pageId: string
   open: boolean
   onClose: () => void
@@ -40,7 +42,10 @@ export const AttachmentsDrawer = ({
       { onSettled: () => setProgress(null) },
     )
   }
-  const { isDragging, dropHandlers } = useFileDrop(handleFile, upload.isPending)
+  const { isDragging, dropHandlers } = useFileDrop(
+    firstFileOnly(handleFile),
+    upload.isPending || !canWrite,
+  )
 
   const attachments = attachmentsQuery.data ?? []
 
@@ -75,7 +80,9 @@ export const AttachmentsDrawer = ({
         />
         {attachments.length === 0 ? (
           <p className="px-1 py-6 text-center text-sm text-[color:var(--tx3)]">
-            No attachments yet. Drop a file here or use the button below.
+            {canWrite
+              ? 'No attachments yet. Drop a file here or use the button below.'
+              : 'No attachments yet.'}
           </p>
         ) : (
           <ul className="grid gap-1">
@@ -111,24 +118,26 @@ export const AttachmentsDrawer = ({
                 >
                   <FontAwesomeIcon className="h-3.5 w-3.5" icon={faDownload} />
                 </button>
-                <button
-                  aria-label={`Delete ${attachment.filename}`}
-                  className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger)]"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(attachment.id)}
-                  type="button"
-                >
-                  <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
-                </button>
+                {canWrite ? (
+                  <button
+                    aria-label={`Delete ${attachment.filename}`}
+                    className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger)]"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate(attachment.id)}
+                    type="button"
+                  >
+                    <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
+      {canWrite ? <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
         <button
-          className="admin-button admin-button-primary w-full rounded-md px-3 py-2 text-xs"
+          className="admin-button admin-button-primary admin-button-compact w-full"
           disabled={upload.isPending}
           onClick={() => inputRef.current?.click()}
           type="button"
@@ -145,7 +154,7 @@ export const AttachmentsDrawer = ({
           ref={inputRef}
           type="file"
         />
-      </div>
+      </div> : null}
     </aside>
   )
 }

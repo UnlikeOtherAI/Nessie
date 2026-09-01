@@ -184,10 +184,8 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
       type: string
     }
   } | null = null
-  let bindingArgs: {
-    create: { agentId: string; channelId: string }
-    where: { agentId_channelId: { agentId: string; channelId: string } }
-  } | null = null
+  const bindingRows: Array<{ agentId: string; channelId: string }> = []
+  let channelCreated = false
 
   const prisma = {
     organizationMember: {
@@ -197,9 +195,22 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
       findFirst: async () => ({ id: agentId, name: 'Planner' }),
     },
     agentBinding: {
-      upsert: async (args: typeof bindingArgs) => {
-        bindingArgs = args
-        return null
+      createMany: async (args: {
+        data: Array<{ agentId: string; channelId: string }>
+        skipDuplicates?: boolean
+      }) => {
+        let count = 0
+        for (const binding of args.data) {
+          const duplicate = bindingRows.some((row) =>
+            row.agentId === binding.agentId && row.channelId === binding.channelId)
+          if (duplicate) {
+            if (args.skipDuplicates) continue
+            throw new Error('agent binding pair must be unique')
+          }
+          bindingRows.push({ ...binding })
+          count += 1
+        }
+        return { count }
       },
     },
     team: {
@@ -213,6 +224,10 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
     channel: {
       upsert: async (args: NonNullable<typeof upsertArgs>) => {
         upsertArgs = args
+        if (!channelCreated) {
+          bindingRows.push({ agentId: args.create.agentBindings.create.agentId, channelId })
+          channelCreated = true
+        }
         return {
           archivedAt: null,
           createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -257,16 +272,16 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   assert.equal(upsertArgs?.create.dmKey, `${organizationId}:${teamId}:${userId}:agent:${agentId}`)
   assert.deepEqual(upsertArgs?.create.members.create, { userId, role: 'owner' })
   assert.deepEqual(upsertArgs?.create.agentBindings.create, { agentId })
-  assert.deepEqual(bindingArgs?.where.agentId_channelId, { agentId, channelId })
+  assert.deepEqual(bindingRows, [{ agentId, channelId }])
 })
 
-test('findOrCreatePrivateConversationChannel creates a private mixed channel', async () => {
+test('findOrCreatePrivateConversationChannel creates a private mixed group DM', async () => {
   let createArgs: {
     data: {
       agentBindings?: { create: Array<{ agentId: string }> }
+      dmKey: string
       label: string
       members: { create: Array<{ role: string; userId: string }> }
-      slug: string
       type: string
       visibility: string
     }
@@ -291,18 +306,17 @@ test('findOrCreatePrivateConversationChannel creates a private mixed channel', a
       }),
     },
     channel: {
-      findMany: async () => [],
-      create: async (args: NonNullable<typeof createArgs>) => {
-        createArgs = args
+      upsert: async (args: { create: NonNullable<typeof createArgs>['data'] }) => {
+        createArgs = { data: args.create }
         return {
           archivedAt: null,
           createdAt: new Date('2026-01-01T00:00:00.000Z'),
           description: null,
-          dmKey: null,
+          dmKey: args.create.dmKey,
           id: channelId,
-          label: args.data.label,
+          label: args.create.label,
           organizationId,
-          slug: args.data.slug,
+          slug: null,
           systemChannelType: null,
           team: {
             name: 'Default Team',
@@ -310,7 +324,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed channel', a
           },
           teamId,
           topic: null,
-          type: 'standard',
+          type: 'dm',
           updatedAt: new Date('2026-01-01T00:00:00.000Z'),
           visibility: 'private',
         }
@@ -331,9 +345,13 @@ test('findOrCreatePrivateConversationChannel creates a private mixed channel', a
   })
 
   assert.equal(channel?.id, channelId)
-  assert.equal(channel?.type, 'standard')
+  assert.equal(channel?.type, 'dm')
+  assert.equal(channel?.isGroupDm, true)
   assert.equal(createArgs?.data.label, 'Member, Planner')
-  assert.equal(createArgs?.data.slug, 'member-planner')
+  assert.equal(
+    createArgs?.data.dmKey,
+    `${organizationId}:${teamId}:group:${userId}:${otherUserId}:agents:${agentId}`,
+  )
   assert.equal(createArgs?.data.visibility, 'private')
   assert.deepEqual(createArgs?.data.members.create, [
     { userId, role: 'owner' },

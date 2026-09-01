@@ -22,74 +22,38 @@ import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
 import {
   createFileService,
+  createDeepSignalMcpIdentityServiceFromEnv,
+  createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
   getStorage,
+  isLedgerEndpoint,
   ModelUsageTracker,
-  recordInferenceUsage,
 } from '@nessie/runtime'
-import { sendApiError } from './lib/api.js'
+import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
-import { sweepExpiredApprovals } from './services/approvals.js'
+import {
+  runRefreshCredentialSweep,
+  startApiMaintenance,
+} from './services/api-maintenance.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
+import { runKnowledgeInferenceRequestContext } from './services/knowledge-inference-origin.js'
+import { recordModelUsage } from './services/model-usage-recorder.js'
 import {
   createCorsOriginChecker,
   createFastifyTrustProxyConfig,
   createServerContext,
   type RequestWithRawBody,
 } from './lib/server-context.js'
+import { registerApiRoutes } from './register-api-routes.js'
 import type { RouteDeps } from './routes/types.js'
-import { registerActivityRoutes } from './routes/activity.js'
-import { registerAgentRoutes } from './routes/agents.js'
-import { registerApprovalRoutes } from './routes/approvals.js'
-import { registerAuditLogRoutes } from './routes/audit-log.js'
-import { registerAuthRoutes } from './routes/auth.js'
-import { registerCallRoutes } from './routes/calls.js'
-import { registerCapabilityRoutes } from './routes/capabilities.js'
-import { registerChannelRoutes } from './routes/channels.js'
-import { registerDesignerRoutes } from './routes/designer.js'
-import { registerDeviceRoutes } from './routes/devices.js'
-import { registerEventRoutes } from './routes/events.js'
-import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
-import { registerFavoriteRoutes } from './routes/favorites.js'
-import { registerHealthRoutes } from './routes/health.js'
+import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
-import { registerIntegrationRoutes } from './routes/integrations.js'
-import { registerExternalAgentRoutes } from './routes/external-agent.js'
-import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
-import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
-import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
-import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
-import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
-import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
-import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
-import { registerLedgerRoutes } from './routes/ledger.js'
-import { registerMailboxRoutes } from './routes/mailbox.js'
-import { registerFeedbackRoutes } from './routes/feedback.js'
 import { registerMcpRoutes } from './routes/mcp.js'
-import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
-import { registerPlanRoutes } from './routes/plans.js'
-import { registerPolicyRoutes } from './routes/policy.js'
-import { registerBoardRoutes } from './routes/board.js'
-import { registerIterationRoutes } from './routes/iterations.js'
-import { registerPresenceRoutes } from './routes/presence.js'
-import { registerProjectRoutes } from './routes/projects.js'
-import { registerResourceLockRoutes } from './routes/resource-locks.js'
-import { registerSearchRoutes } from './routes/search.js'
-import { registerStatusRoutes } from './routes/statuses.js'
-import { registerTaskRoutes } from './routes/tasks.js'
-import { registerTeamRoutes } from './routes/teams.js'
-import { registerThoughtRoutes } from './routes/thoughts.js'
-import { registerThreadRoutes } from './routes/threads.js'
-import { registerUploadRoutes } from './routes/uploads.js'
 import { registerToolBundleRoutes } from './routes/tools-bundles.js'
-import { registerToolRoutes } from './routes/tools.js'
-import { registerTriggerRoutes } from './routes/triggers.js'
-import { registerUserRoutes } from './routes/users.js'
-import { registerWorkflowRoutes } from './routes/workflows.js'
 
 export { createCorsOriginChecker } from './lib/server-context.js'
 
@@ -108,6 +72,7 @@ const {
   requireSuperAdmin,
   canAccessChannelRealtimeEvent,
   checkRateLimit,
+  rateLimiter,
   disconnectPrismaClient,
 } = serverContext
 
@@ -115,6 +80,7 @@ const apiUsageTracker = new ModelUsageTracker()
 let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
+  let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
     trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
     logger: {
@@ -152,32 +118,56 @@ export const buildApp = async () => {
   )
 
   // Create a single shared model client for all LLM calls (orchestrator, designer, memory)
-  const modelApiKey =
-    process.env.OPENAI_API_KEY
-    ?? process.env.OPENAI_CHAT_API_KEY
-    ?? config.model.apiKey
-    ?? ''
+  const modelApiKey = isLedgerEndpoint(config.model.baseUrl)
+    ? config.model.apiKey ?? ''
+    : config.model.apiKey
+      ?? process.env.OPENAI_API_KEY
+      ?? process.env.OPENAI_CHAT_API_KEY
+      ?? ''
   if (modelApiKey) {
+    // Signing is attached whenever this deployment has a signer; without one the
+    // Ledger API key is the whole credential and Ledger decides for itself
+    // whether that token also demands signed provenance.
+    const configuredLedgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
+    ledgerIdentity = configuredLedgerIdentity
+    // Say which of the two modes this process actually resolved. The signer is
+    // all-or-nothing across five variables, so a single typo silently produces
+    // the unsigned mode; an operator who meant to sign needs to see that at boot
+    // rather than infer it from missing provenance later.
+    if (isLedgerEndpoint(config.model.baseUrl)) {
+      app.log.info(
+        configuredLedgerIdentity
+          ? 'Ledger inference: signing identity configured; calls carry signed provenance.'
+          : 'Ledger inference: no signing identity configured; calls authenticate with '
+            + 'the Ledger API key alone. Set all five UOA_* variables to enable signing.',
+      )
+    }
     sharedModelClient = createModelClient(
       {
+        ...config.model,
         apiKey: modelApiKey,
-        provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi',
       },
       {
+        embedding: config.embedding,
         tracker: apiUsageTracker,
-        // Persist every billable call (designer, orchestrator, memory, thoughts)
-        // that supplies attribution to the shared token ledger. Log (never throw)
-        // on failure so a dropped cost event is visible rather than silent.
-        recordUsage: async (invocations, attribution) => {
-          try {
-            await recordInferenceUsage(prisma, { attribution, invocations })
-          } catch (err) {
-            app.log.warn({ err }, 'ledger: token usage write failed')
-          }
-        },
+        recordUsage: (invocations, attribution) =>
+          recordModelUsage(prisma, app.log, invocations, attribution),
+        requestHeaders:
+          isLedgerEndpoint(config.model.baseUrl) && configuredLedgerIdentity
+            ? (attribution) =>
+                configuredLedgerIdentity.requestHeaders(attribution, {
+                  requireUoaIdentity: true,
+                })
+            : undefined,
+        systemComponent: 'api-model-service',
       },
     )
   } else {
+    if (isLedgerEndpoint(config.model.baseUrl)) {
+      throw new Error(
+        'Ledger-routed inference requires NESSIE_MODEL_API_KEY; direct-provider keys are not accepted.',
+      )
+    }
     app.log.warn('No model API key configured — orchestrator, designer, and memory will fail')
   }
 
@@ -269,26 +259,20 @@ export const buildApp = async () => {
 
   app.decorateRequest('actorContext', null)
 
+  // Root every Fastify request in its own async context before authentication.
+  // Knowledge routes fill in the authenticated actor later; transactional
+  // provider hooks then inherit it without concurrent requests sharing state.
+  app.addHook('onRequest', (_request, _reply, done) => {
+    runKnowledgeInferenceRequestContext(done)
+  })
+
   app.addHook('onClose', async () => {
     await realtimeHub.close()
     await memoryPool.end()
     await disconnectPrismaClient()
   })
 
-  app.addHook('preHandler', async (request, reply) => {
-    const rateLimit = checkRateLimit(request)
-    if (rateLimit) {
-      reply.header('retry-after', String(rateLimit.retryAfterSeconds))
-      sendApiError(reply, 429, 'RATE_LIMITED', 'Too many requests')
-      return
-    }
-
-    if (request.routeOptions.config.public === true) {
-      return
-    }
-
-    await authenticateRequest(request, reply)
-  })
+  registerGlobalAuthHook(app, { authenticateRequest, checkRateLimit })
 
   // Per-domain route modules. Each `register<Domain>Routes(app, deps)` closes
   // over the shared `RouteDeps` (server context + buildApp-local resources),
@@ -298,6 +282,18 @@ export const buildApp = async () => {
     storage: getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
   })
+  const deepSignalMcpIdentity =
+    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+  await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
+
+  // Wire the Individual Communications Connector adapters into the shared
+  // registry so the OAuth callback (`connect`) and disconnect paths resolve.
+  const commsProviders = registerCommsConnectorsFromEnv(process.env)
+  console.log(
+    `[api] comms connectors registered: ${
+      commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
+    }`,
+  )
 
   const deps: RouteDeps = {
     ...serverContext,
@@ -305,55 +301,12 @@ export const buildApp = async () => {
     sharedModelClient,
     messageMemoryCaptureConfig,
     thoughtService,
+    ledgerIdentity,
+    deepSignalMcpIdentity,
     fileService,
   }
 
-  registerHealthRoutes(app, deps)
-  registerAuthRoutes(app, deps)
-  registerChannelRoutes(app, deps)
-  registerCallRoutes(app, deps)
-  registerAgentRoutes(app, deps)
-  registerTriggerRoutes(app, deps)
-  registerPlanRoutes(app, deps)
-  registerWorkflowRoutes(app, deps)
-  registerExecutionEnvironmentRoutes(app, deps)
-  registerMailboxRoutes(app, deps)
-  registerResourceLockRoutes(app, deps)
-  registerToolRoutes(app, deps)
-  // File uploads / attachments slice (Slack-parity files).
-  registerUploadRoutes(app, deps)
-  registerDeviceRoutes(app, deps)
-  registerCapabilityRoutes(app, deps)
-  registerUserRoutes(app, deps)
-  registerStatusRoutes(app, deps)
-  registerPresenceRoutes(app, deps)
-  registerFavoriteRoutes(app, deps)
-  registerOrganizationRoutes(app, deps)
-  registerFeedbackRoutes(app, deps)
-  registerIntegrationRoutes(app, deps)
-  registerExternalAgentRoutes(app, deps)
-  registerProjectRoutes(app, deps)
-  registerBoardRoutes(app, deps)
-  registerIterationRoutes(app, deps)
-  registerTeamRoutes(app, deps)
-  registerEventRoutes(app, deps)
-  registerThreadRoutes(app, deps)
-  registerSearchRoutes(app, deps)
-  registerActivityRoutes(app, deps)
-  registerThoughtRoutes(app, deps)
-  registerDesignerRoutes(app, deps)
-  registerAuditLogRoutes(app, deps)
-  registerPolicyRoutes(app, deps)
-  registerApprovalRoutes(app, deps)
-  registerKnowledgeBaseRoutes(app, deps)
-  registerKnowledgeBaseFileRoutes(app, deps)
-  registerKnowledgeCommentRoutes(app, deps)
-  registerKnowledgeLibrarianRoutes(app, deps)
-  registerKnowledgeLinkRoutes(app, deps)
-  registerKnowledgeSummaryRoutes(app, deps)
-  registerKnowledgeTaskRoutes(app, deps)
-  registerTaskRoutes(app, deps)
-  registerLedgerRoutes(app, deps)
+  registerApiRoutes(app, deps)
 
   // ─── Inference control plane routes ─────────────────────────────────────
   registerInferenceControlPlaneRoutes(app, {
@@ -369,6 +322,8 @@ export const buildApp = async () => {
   // guard — a deploy without this store fails loud at startup.
   registerMcpRoutes(app, {
     prisma,
+    config,
+    rateLimiter,
     requireActorContext,
     requireOwner,
     oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),
@@ -398,19 +353,9 @@ export const buildApp = async () => {
     encryptionSecret: authSecret ?? '',
   })
 
-  // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
-
-  // Run approval expiry sweep every 60 seconds
-  const approvalSweepInterval = setInterval(async () => {
-    try {
-      await sweepExpiredApprovals(prisma)
-    } catch {
-      console.error('[approval-sweep] Failed to sweep expired approvals')
-    }
-  }, 60_000)
-
+  const stopApiMaintenance = startApiMaintenance(prisma)
   app.addHook('onClose', () => {
-    clearInterval(approvalSweepInterval)
+    stopApiMaintenance()
   })
 
   return app
@@ -418,6 +363,7 @@ export const buildApp = async () => {
 
 export const startApiServer = async () => {
   const app = await buildApp()
+  await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
     logBootstrapUrl(initialBootstrapState)

@@ -9,11 +9,15 @@ import { KnowledgePane } from './KnowledgePane'
 import { PageNotesLayer } from './notes/PageNotesLayer'
 import { isAgentDraft, pageStatusTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type PagePreviewProps = {
   // True while the page body is still being fetched on demand (the list omits it).
   bodyPending?: boolean
-  onBack: () => void
+  canWrite: boolean
+  // On a phone the workspace owns the doorway through the local-back
+  // registry and passes no onBack; wider layouts keep the pane's own Back.
+  onBack?: () => void
   onCreateChild: () => void
   onDrill: (childPageId: string) => void
   onEdit: () => void
@@ -35,6 +39,7 @@ const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
 
 export const PagePreview = ({
   bodyPending,
+  canWrite,
   onBack,
   onCreateChild,
   onDrill,
@@ -51,43 +56,43 @@ export const PagePreview = ({
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
   }
+  const headerActions: PageHeaderAction[] = [
+    {
+      icon: faPaperclip,
+      id: 'attachments',
+      label: 'Attachments',
+      onSelect: onToggleAttachments,
+      priority: 60,
+    },
+    {
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 50,
+    },
+    ...(canWrite
+      ? [
+          {
+            id: 'edit',
+            label: 'Edit',
+            onSelect: onEdit,
+            priority: 40,
+          },
+          {
+            disabled: publishPending,
+            id: 'publish',
+            label: 'Publish',
+            onSelect: onPublish,
+            primary: true,
+            priority: 100,
+          },
+        ] satisfies PageHeaderAction[]
+      : []),
+  ]
 
   return (
     <KnowledgePane
-      actions={
-        <>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onToggleAttachments}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faPaperclip} />
-            Attachments
-          </button>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onOpenHistory}
-            type="button"
-          >
-            History
-          </button>
-          <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-            onClick={onEdit}
-            type="button"
-          >
-            Edit
-          </button>
-          <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
-            disabled={publishPending}
-            onClick={onPublish}
-            type="button"
-          >
-            Publish
-          </button>
-        </>
-      }
+      actions={headerActions}
       onBack={onBack}
       title={page.title}
     >
@@ -99,6 +104,7 @@ export const PagePreview = ({
         <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
         {page.summary ? <p className="mt-2 text-[color:var(--tx2)]">{page.summary}</p> : null}
         <ReviewPanel
+          canWrite={canWrite}
           onPublish={onPublish}
           onRequestChanges={focusComments}
           page={page}
@@ -124,31 +130,37 @@ export const PagePreview = ({
         ) : page.latestVersion?.body ? (
           <PageNotesLayer
             body={page.latestVersion.body}
+            canWrite={canWrite}
             pageId={page.id}
             versionId={page.latestVersion.id}
           />
         ) : (
           <div className="mt-6">
-            <p className="text-sm text-[color:var(--tx3)]">No content yet. Press Edit to start writing.</p>
+            <p className="text-sm text-[color:var(--tx3)]">
+              {canWrite ? 'No content yet. Press Edit to start writing.' : 'No content yet.'}
+            </p>
           </div>
         )}
 
         <BacklinksPanel pageId={page.id} />
 
-        <CommentsSection composerRef={commentsComposerRef} pageId={page.id} />
+        <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
 
         <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
           <div className="flex items-center justify-between">
+            {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
               Sub-pages
             </span>
-            <button
-              className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
-              onClick={onCreateChild}
-              type="button"
-            >
-              New sub-page
-            </button>
+            {canWrite ? (
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={onCreateChild}
+                type="button"
+              >
+                New sub-page
+              </button>
+            ) : null}
           </div>
           <div className="mt-3 grid gap-1">
             {subPages.length === 0 ? (

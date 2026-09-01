@@ -1,6 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  McpTransportConfigSchema,
+  type AuthorizedActionContext,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
 import { createInstance, type McpInstanceRow } from '@nessie/mcp-manage'
+import {
+  DEEPSIGNAL_MCP_CREDENTIAL_REF,
+  DEEPSIGNAL_MCP_ORIGIN,
+} from '@nessie/runtime'
 
 import {
   ensureExternalAgentBootstrap,
@@ -12,9 +20,9 @@ import { upsertProductAccountLink } from './integrations.js'
 /**
  * Per-user activation / deactivation of an external-agent product (§3 of the
  * DeepSignal integration plan). Three idempotent steps behind one button:
- * team-gate check → user-scoped MCP instance (+ OAuth sign-in) → conversation
- * channel bootstrap. Keyed by product slug so a second external agent is a data
- * change, not a code fork.
+ * team-gate check → linked UOA identity → integration-managed user-scoped MCP
+ * instance → conversation channel bootstrap. DeepSignal's static app key is a
+ * deployment credential; it never enters the browser or per-user secret store.
  */
 
 export const EXTERNAL_AGENT_ACTIVATION_ERROR_CODES = {
@@ -22,6 +30,8 @@ export const EXTERNAL_AGENT_ACTIVATION_ERROR_CODES = {
   TEAM_CONTEXT_REQUIRED: 'EXTERNAL_AGENT_TEAM_CONTEXT_REQUIRED',
   TEAM_NOT_ENABLED: 'EXTERNAL_AGENT_TEAM_NOT_ENABLED',
   CATALOG_ENTRY_NOT_FOUND: 'EXTERNAL_AGENT_CATALOG_ENTRY_NOT_FOUND',
+  CATALOG_CONTRACT_INVALID: 'EXTERNAL_AGENT_CATALOG_CONTRACT_INVALID',
+  SSO_LINK_REQUIRED: 'EXTERNAL_AGENT_SSO_LINK_REQUIRED',
 } as const
 
 export type ExternalAgentActivationErrorCode =
@@ -42,19 +52,11 @@ export type ExternalAgentActivationContext = {
   organizationId: string
   userId: string
   teamId: string | null
-  /**
-   * Begin the MCP OAuth handshake for the user-scoped instance and return the
-   * provider authorization URL. Injected so the orchestration stays free of the
-   * HTTP/network layer; the route wires it to `@nessie/mcp-manage` `startOAuth`
-   * with the encrypted secret store, pg-backed state, and shared callback URL.
-   */
-  startInstanceOAuth: (instanceId: string) => Promise<string>
 }
 
 export type ExternalAgentActivationResult = {
   channelId: string
   instanceId: string
-  authorizeUrl?: string
 }
 
 export type ExternalAgentDeactivationResult = {
@@ -86,7 +88,7 @@ const requireTeamId = (teamId: string | null): string => {
 const assertTeamEnabled = async (
   prisma: PrismaClient,
   input: { organizationId: string; teamId: string; productSlug: string },
-): Promise<void> => {
+): Promise<{ externalOrgId: string; externalTeamId: string }> => {
   const enablement = await prisma.productTeamEnablement.findUnique({
     where: {
       organizationId_teamId_productSlug: {
@@ -95,30 +97,139 @@ const assertTeamEnabled = async (
         productSlug: input.productSlug,
       },
     },
-    select: { enabled: true },
+    select: {
+      enabled: true,
+      externalOrgId: true,
+      externalTeamId: true,
+    },
   })
-  if (!enablement?.enabled) {
+  if (
+    !enablement?.enabled
+    || !enablement.externalOrgId
+    || !enablement.externalTeamId
+  ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED,
-      `${input.productSlug} is not enabled for your team`,
+      `${input.productSlug} is not enabled for your current SSO team`,
     )
+  }
+  return {
+    externalOrgId: enablement.externalOrgId,
+    externalTeamId: enablement.externalTeamId,
   }
 }
 
-type CatalogEntry = { id: string; authMethod: string }
+const assertLinkedSsoIdentity = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    teamId: string
+    userId: string
+    productSlug: string
+    sessionIdentity: UoaSessionIdentity | undefined
+    externalOrgId: string
+    externalTeamId: string
+  },
+): Promise<{ workspaceId: string }> => {
+  const [link, team] = await Promise.all([
+    prisma.productAccountLink.findUnique({
+      where: {
+        organizationId_userId_productSlug: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          productSlug: input.productSlug,
+        },
+      },
+      select: {
+        status: true,
+        uoaSub: true,
+        uoaTokenVersion: true,
+      },
+    }),
+    prisma.team.findFirst({
+      where: {
+        id: input.teamId,
+        members: { some: { userId: input.userId } },
+        project: { organizationId: input.organizationId },
+      },
+      select: {
+        externalOrgId: true,
+        externalWorkspaceId: true,
+      },
+    }),
+  ])
+  if (
+    !team?.externalOrgId
+    || !team.externalWorkspaceId
+    || input.externalOrgId !== team.externalOrgId
+    || input.externalTeamId !== team.externalWorkspaceId
+  ) {
+    throw new ExternalAgentActivationError(
+      EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED,
+      `${input.productSlug} enablement does not match the selected SSO team`,
+    )
+  }
+  if (
+    link?.status !== 'linked'
+    || !link.uoaSub
+    || !input.sessionIdentity
+    || input.sessionIdentity.tokenVersion === null
+    || link.uoaSub !== input.sessionIdentity.subject
+    || link.uoaTokenVersion !== input.sessionIdentity.tokenVersion
+    || input.sessionIdentity.organizationId !== team.externalOrgId
+    || input.sessionIdentity.teamId !== team.externalWorkspaceId
+  ) {
+    throw new ExternalAgentActivationError(
+      EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.SSO_LINK_REQUIRED,
+      'Sign in to Nessie with UnlikeOtherAI SSO and select an active organization/team first.',
+    )
+  }
+  return { workspaceId: input.sessionIdentity.teamId }
+}
+
+type CatalogEntry = {
+  id: string
+  authMethod: string
+  defaultTransportConfig: unknown
+}
 
 const loadFirstPartyCatalogEntry = async (
   prisma: PrismaClient,
   productSlug: string,
 ): Promise<CatalogEntry> => {
   const entry = await prisma.mcpCatalogEntry.findFirst({
-    where: { name: productSlug, visibility: 'public', status: 'published' },
-    select: { id: true, authMethod: true },
+    where: {
+      name: productSlug,
+      organizationId: null,
+      visibility: 'public',
+      status: 'published',
+      integratedProducts: { some: { slug: productSlug } },
+    },
+    select: { id: true, authMethod: true, defaultTransportConfig: true },
   })
   if (!entry) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND,
       `No published first-party catalog entry named "${productSlug}"`,
+    )
+  }
+  if (entry.authMethod !== 'bearer') {
+    throw new ExternalAgentActivationError(
+      EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.CATALOG_CONTRACT_INVALID,
+      'The first-party DeepSignal connector is not configured for its product app key.',
+    )
+  }
+  const transport = McpTransportConfigSchema.safeParse(
+    entry.defaultTransportConfig,
+  )
+  if (
+    !transport.success
+    || transport.data.transport === 'stdio'
+    || new URL(transport.data.url).origin !== DEEPSIGNAL_MCP_ORIGIN
+  ) {
+    throw new ExternalAgentActivationError(
+      EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.CATALOG_CONTRACT_INVALID,
+      `The first-party DeepSignal connector must target ${DEEPSIGNAL_MCP_ORIGIN}.`,
     )
   }
   return entry
@@ -138,12 +249,32 @@ const ensureUserInstance = async (
     },
   })
   if (existing) {
-    return existing
+    await prisma.mcpServerCredentialOverride.deleteMany({
+      where: { instanceId: existing.id },
+    })
+    return prisma.mcpServerInstance.update({
+      where: { id: existing.id },
+      data: {
+        credentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
+        lifecycleState: 'active',
+        transportConfig: {},
+      },
+    })
   }
-  return createInstance(prisma, ctx.actorContext, {
+  const created = await createInstance(prisma, ctx.actorContext, {
     catalogEntryId,
+    credentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
+    managedProvision: true,
     scopeType: 'user',
     scopeId: ctx.userId,
+  })
+  return prisma.mcpServerInstance.update({
+    where: { id: created.id },
+    data: {
+      credentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
+      lifecycleState: 'active',
+      transportConfig: {},
+    },
   })
 }
 
@@ -154,30 +285,29 @@ export const activateExternalAgentProduct = async (
 ): Promise<ExternalAgentActivationResult> => {
   const product = resolveProduct(productSlug)
   const teamId = requireTeamId(ctx.teamId)
-  await assertTeamEnabled(prisma, {
+  const enabledWorkspace = await assertTeamEnabled(prisma, {
     organizationId: ctx.organizationId,
     teamId,
     productSlug: product.slug,
+  })
+  const ssoIdentity = await assertLinkedSsoIdentity(prisma, {
+    organizationId: ctx.organizationId,
+    teamId,
+    userId: ctx.userId,
+    productSlug: product.slug,
+    sessionIdentity: ctx.actorContext.actionContext.uoaIdentity,
+    externalOrgId: enabledWorkspace.externalOrgId,
+    externalTeamId: enabledWorkspace.externalTeamId,
   })
 
   const catalogEntry = await loadFirstPartyCatalogEntry(prisma, product.slug)
   const instance = await ensureUserInstance(prisma, ctx, catalogEntry.id)
 
-  // Dynamic OAuth: a fresh instance is `pending_setup` until the user signs in.
-  // Surface the authorize link and record the link as `needs_auth`; an already
-  // active instance (token in place) is `linked`.
-  const needsAuth =
-    catalogEntry.authMethod === 'oauth2' && instance.lifecycleState !== 'active'
-  let authorizeUrl: string | undefined
-  if (needsAuth) {
-    authorizeUrl = await ctx.startInstanceOAuth(instance.id)
-  }
-
   await upsertProductAccountLink(prisma, {
     organizationId: ctx.organizationId,
     userId: ctx.userId,
     productSlug: product.slug,
-    status: needsAuth ? 'needs_auth' : 'linked',
+    status: 'linked',
   })
 
   const bootstrap = await ensureExternalAgentBootstrap(prisma, {
@@ -185,12 +315,12 @@ export const activateExternalAgentProduct = async (
     product,
     teamId,
     userId: ctx.userId,
+    workspaceId: ssoIdentity.workspaceId,
   })
 
   return {
     channelId: bootstrap.channelId,
     instanceId: instance.id,
-    ...(authorizeUrl ? { authorizeUrl } : {}),
   }
 }
 
@@ -206,7 +336,11 @@ export const deactivateExternalAgentProduct = async (
       organizationId: ctx.organizationId,
       scopeType: 'user',
       scopeId: ctx.userId,
-      catalogEntry: { name: product.slug, visibility: 'public' },
+      catalogEntry: {
+        name: product.slug,
+        visibility: 'public',
+        integratedProducts: { some: { slug: product.slug } },
+      },
     },
     select: { id: true },
   })
@@ -229,20 +363,26 @@ export const deactivateExternalAgentProduct = async (
     data: { status: 'revoked', lastVerifiedAt: new Date() },
   })
 
-  const dmKey = `extagent:${product.slug}:${ctx.organizationId}:${ctx.userId}`
-  const channel = await prisma.channel.findUnique({
-    where: { dmKey },
+  const channels = await prisma.channel.findMany({
+    where: {
+      dmKey: {
+        startsWith: `extagent:${product.slug}:${ctx.organizationId}:${ctx.userId}`,
+      },
+    },
     select: { id: true, archivedAt: true },
   })
-  if (channel && !channel.archivedAt) {
-    await prisma.channel.update({
-      where: { id: channel.id },
+  const liveChannelIds = channels
+    .filter((channel) => !channel.archivedAt)
+    .map((channel) => channel.id)
+  if (liveChannelIds.length > 0) {
+    await prisma.channel.updateMany({
+      where: { id: { in: liveChannelIds } },
       data: { archivedAt: new Date() },
     })
   }
 
   return {
-    channelId: channel?.id ?? null,
+    channelId: channels[0]?.id ?? null,
     instanceId: instance?.id ?? null,
   }
 }

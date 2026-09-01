@@ -1,8 +1,11 @@
 # DeepSignal Integration — External Agent over MCP
 
-Status: Proposal (2026-07-09). Counterpart doc: `deepsignal.live/docs/plans/nessie-integration.md`
-(the DeepSignal-side work). Related: `docs/plans/2026-07-08-esc-integration-unification-plan.md`
-(ESC framework this plan builds on).
+Status: Nessie boundary implemented (2026-07-19); matching DeepSignal verifier
+must be deployed from the counterpart plan.
+Counterpart doc: `deepsignal.live/docs/plans/nessie-integration.md`
+(the DeepSignal-side work). Related:
+`docs/plans/2026-07-08-esc-integration-unification-plan.md` (ESC framework this
+plan builds on).
 
 ## Goal
 
@@ -38,7 +41,7 @@ Out of scope: embedding any DeepSignal code in Nessie; DeepWater deep-research i
 - **MCP connector management** (`@nessie/mcp-manage`) — catalog + instances, **user-scope
   installs that are visible only to the installing user** (`worker/src/run/mcp-toolset.ts`,
   `scopeMatchesRun`), dynamic OAuth (RFC 9728/8414 discovery, RFC 7591 DCR, PKCE, per-user
-  token placement, auto-refresh), encrypted secret store, SSRF guard, curated library
+  token placement, auto-refresh), encrypted secret store, SSRF guard, generic curated library
   (`packages/mcp-manage/src/library.ts` `CURATED_MCP_LIBRARY`) and first-party catalog
   migrations (`api/prisma/migrations/20260708161000_first_party_mcp_catalog_entries/`).
 - **PA surface pattern** — per-user private DM channel (`dmKey = pa:${orgId}:${userId}`,
@@ -73,53 +76,75 @@ Phases 2+ here.
 - New `IntegratedProduct` row `deepsignal` (migration, mirroring the deep-water row) and a
   `NessieIntegrationPlugin` manifest entry in `integration-plugin-manifests.ts`.
 - First-party `McpCatalogEntry` for DeepSignal — `protocol: http` (streamable HTTP; SSE
-  fallback), `authMethod: oauth2` — back-linked from the product row
+  fallback), `authMethod: bearer` — back-linked from the product row
   (`integrated_products.mcp_catalog_entry_id`), same migration pattern as
   `20260708161000_first_party_mcp_catalog_entries`. Also appended to `CURATED_MCP_LIBRARY`
-  so it is discoverable in the Library tab and installable conversationally via the PA's
-  `connector_install`.
+  for discovery. Its instance cannot be installed or mutated through generic
+  connector controls; activation owns its lifecycle.
 
-### 2. Identity — one SSO, per-user tokens (no partner mapping)
+### 2. Identity — application key plus delegated SSO actor
 
-Both products trust UOA, so the user's `sub`, team, and org are identical on both sides.
-The connection is authorized per user with standard OAuth against UOA:
+Both products trust UOA, so the user's `sub`, team, and org are identical on
+both sides.
 
-- The DeepSignal MCP endpoint publishes **RFC 9728 protected-resource metadata** naming UOA
-  as its authorization server; UOA publishes **RFC 8414 AS metadata** (+ RFC 7591 DCR or a
-  pre-registered Nessie client).
-- With that in place, Nessie's **existing dynamic-OAuth machinery does the rest**: install →
-  "Sign in" → UOA consent (one click — the user already has a UOA session) → per-user token
-  placement in the encrypted secret store → automatic refresh at probe/dispatch. No new auth
-  code paths in Nessie.
-- Every MCP request therefore carries a UOA access token **minted for that Nessie user with
-  audience DeepSignal**; DeepSignal resolves it to the same `Principal` its own console
-  would use. Nessie never impersonates users and holds no shared service credential for chat.
-- `ProductAccountLink` (`organizationId, userId, productSlug='deepsignal'`, `uoaSub`,
-  `status`) records link state for the Integrations UI, kept in sync by the existing
-  `syncUoaProductAccountLinks` flow.
+- DeepSignal issues Nessie one product-bound `dsk_` key. API and worker load it
+  only from `DEEPSIGNAL_MCP_APP_KEY`; the user-scoped instance stores that env
+  reference, never plaintext. Hosted/self-hosted processes fail startup when
+  the key is absent/malformed, reused by any configured environment/stored
+  webhook credential, or UOA signing/exchange config is incomplete. The
+  instance must resolve through the canonical product-linked public catalog,
+  and the key is signed/dispatched only to `https://api.deepsignal.live`.
+- Each outbound MCP call retains
+  `Authorization: Bearer <DEEPSIGNAL_MCP_APP_KEY>` and adds
+  `X-UOA-Delegation`: exact `product=nessie`, `scope=ai.invoke`, resource
+  `https://api.deepsignal.live`, stable subject, and required active UOA
+  organization/team.
+- The same call adds a fresh RS256 `X-Nessie-Context` with issuer/source
+  `api.nessie.works`, DeepSignal audience, and non-null user/org/team/agent/run,
+  request, and stable tool-call provenance. Context and delegation never
+  overwrite `Authorization`; stale identity headers are rejected regardless of
+  casing before fresh headers are attached.
+- DeepSignal accepts no user OAuth/access token or personal credential as the
+  app-to-app proof. Generic connectors continue to use Nessie's ordinary
+  dynamic OAuth implementation.
+- `ProductAccountLink` (`organizationId, userId, productSlug='deepsignal'`,
+  `uoaSub`, credential epoch, `status`) records stable delegated-account
+  liveness for the Integrations UI, kept in sync by
+  `syncUoaProductAccountLinks`. Its active org/team columns are last-seen
+  metadata only; one user's simultaneous team sessions must not overwrite one
+  another's authority.
+- The signed session's active org/team must exactly match the selected internal
+  team's `externalOrgId`/`externalWorkspaceId`. Enablement derives its external
+  tuple from that Team row, and both are revalidated on every call before
+  exchange/dispatch; a team switch cannot reuse a channel or conversation from
+  the previous workspace.
+- DeepSignal's inbound-webhook HMAC secret remains per-org and separate from
+  every outbound application key. Nessie rejects an attempted equal secret.
 
 ### 3. Per-user activation
 
-Activation = three idempotent steps behind one button (Integrations page) or one PA sentence
-(`connector_install`):
+Activation = three idempotent steps behind the Integrations-page button:
 
 1. **Team gate:** `ProductTeamEnablement` for `deepsignal` must be on for the user's team
    (owner/admin controlled — this is how an org limits who *can* activate).
-2. **User-scoped `McpServerInstance`** (`scopeType: user`, `scopeId: userId`) created from the
-   first-party catalog entry + OAuth sign-in (§2). User-scope semantics already guarantee the
-   connector is invisible to every other user and to shared agent runs.
-3. **Conversation channel bootstrap** (§4).
+2. **System-managed user-scoped `McpServerInstance`** (`scopeType: user`,
+   `scopeId: userId`) created from the first-party bearer catalog entry, pinned
+   to `DEEPSIGNAL_MCP_APP_KEY`, after confirming the linked UOA subject and
+   active workspace (§2). User-scope semantics keep it private; managed-product
+   gates block generic OAuth, lifecycle, probe, and secret paths.
+3. **Conversation channel bootstrap** (§4), keyed by active UOA team so each
+   workspace owns a distinct thread/conversation.
 
-Deactivation: uninstall the instance (revokes tokens), mark the `ProductAccountLink`
-`revoked`, archive the channel. The catalog entry participates in the existing admin
-lock mechanism if an org wants to forbid installs entirely.
+Deactivation removes the managed instance, marks the `ProductAccountLink`
+`revoked`, and archives the channel. Reactivation revalidates SSO state and
+recreates/normalizes the single instance.
 
 ### 4. Conversation surface — external-agent DM channel
 
 Mirror the PA channel pattern with a new system channel type:
 
 - `ChannelSystemType` gains `external_agent`; the bootstrap creates a private DM channel
-  `dmKey = extagent:deepsignal:${orgId}:${userId}` with exactly one member, labelled
+  `dmKey = extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}` with exactly one member, labelled
   "DeepSignal".
 - A system-managed `Agent` row represents DeepSignal in bindings/UI, with a new
   **`executionMode = external_mcp`** column (default `inference` for all existing agents).
@@ -135,8 +160,10 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
 - When a message is posted to a channel whose bound agent has `executionMode = external_mcp`,
   the worker routes to `runExternalConversation` instead of the agent loop.
 - The driver resolves the user's **user-scoped DeepSignal MCP instance** (same resolution +
-  credential path as `buildMcpToolset`, including auto-refresh and the SSRF guard), and calls
-  the DeepSignal MCP tool **`chat`** with `{ conversationId, input }`.
+  credential path as `buildMcpToolset`, with the SSRF guard), verifies the exact
+  managed credential ref and active bearer contract, attaches UOA + signed
+  provenance without replacing the dsk bearer, and calls the DeepSignal MCP
+  tool **`chat`** with `{ conversationId, input }`.
   - `conversationId` is stored on the thread (`Thread.metadata.deepsignal.conversationId`);
     first turn omits it and stores the id DeepSignal returns. First-turn dispatch is
     serialized per thread by an in-process lock (`external-conversation-store.ts`
@@ -157,11 +184,14 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
     history sync (§6),
   and emits `stream.done`.
 - **No inference, no token-ledger model spend.** Each turn writes a `ConnectorUsageEvent`
-  (connector type `mcp`, product-tagged) so usage is visible in the ESC usage surface; cost
-  accounting for the model spend belongs to DeepSignal's side of the wall.
-- Failure modes are surfaced honestly in-channel: token expired → `needs_setup` card with a
-  re-auth action; DeepSignal unreachable → `failed` card with retry; never a silent fallback
-  to Nessie's own LLM.
+  (connector type `mcp`, product-tagged) for owner-only operational telemetry at
+  `/ops/usage`; the public integration response and ESC product page expose no
+  local usage summary. Customer credits and cost accounting for model spend
+  belong to UOA and DeepSignal's side of the wall.
+- Failure modes are surfaced honestly in-channel: missing/wrong managed
+  instance → `needs_setup`; rejected app key → failed administrator-repair card;
+  DeepSignal unreachable → `failed` card with retry. There is never a user-login,
+  generic credential, or Nessie-LLM fallback.
 
 ### 6. History & proactive signals — DeepSignal is the source of truth
 
@@ -192,50 +222,61 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
   inserted tagged with its history `id`, so console-originated turns dedupe on reopen too.
 - **Proactive insights ("the things you don't want to miss"):** Nessie registers one
   DeepSignal **webhook** per linked org (`insight.surfaced`, HMAC-verified) at
-  `POST /api/integrations/deepsignal/events`. The receiver resolves the target user by
-  `uoaSub`, posts an agent message with an insight `uiCard` (headline, why-it-matters,
-  actions: open in DeepSignal / mark done / snooze — the latter proxied back over MCP) into
-  that user's DeepSignal channel, and lets normal channel notifications do delivery. This is
-  what makes DeepSignal feel autonomous *inside* Nessie.
-- Deeper surfaces (pursuit boards, digest page) can later hang off the same MCP tools
-  (`pursuit_list`, `insight_digest`) as read-only ESC `ui.pages`; not in the first cut.
+  `POST /api/integrations/deepsignal/events`. The signed payload's external
+  `teamId` must map to the exact enabled Nessie team and its UOA
+  organization/workspace binding. The receiver selects only active linked
+  members whose UOA link remains on that same team (and narrows by `uoaSub`
+  when a future payload supplies recipient subjects), coalesces the insight
+  into each recipient's rolling digest, and lets the budgeted channel
+  notification path do delivery. Unknown, disabled, or mismatched teams are a
+  no-delivery result. Done/snooze/mute/reopen actions flow back through signed
+  `insight_act` calls. This is what makes DeepSignal feel autonomous *inside*
+  Nessie without one interruption per event.
+- Deeper surfaces (for example pursuit boards) can hang off the same signed MCP
+  boundary. The digest/Signals Overview and Inbox are already implemented.
 
 ### 7. DeepWater boundary (parallel integration — do not overlap)
 
-DeepWater (deep research) is being integrated into Nessie **directly** as its own ESC product
-by a separate effort. DeepSignal also *consumes* DeepWater internally, but only ever holds
-**report references (ids)** — it never embeds report content. Boundary rules:
+DeepWater (deep research) is integrated into Nessie as its own ESC product, but every Nessie
+research call goes through **Ledger's DeepWater MCP adapter** for token-owned isolation,
+budget enforcement, audit, and raw usage metering. UOA alone rates the usage
+and supplies customer statements. DeepSignal also
+*consumes* DeepWater internally, but
+only ever holds **report references (ids)** — it never embeds report content. Boundary rules:
 
 - Research initiated **by DeepSignal** (autonomously or in its chat) stays on DeepSignal's
   org key, billing, and audit; Nessie just renders the reference card, deep-linking into the
   DeepWater report (dedupe key = DeepWater report id).
-- Research initiated **in Nessie** uses Nessie's own DeepWater integration, untouched by this
-  plan. No shared code, no shared credentials, no double-billing.
+- Research initiated **in Nessie** uses Nessie's dedicated, product-bound
+  Ledger app API key through the team-scoped connector plus a signed UOA
+  delegation and Nessie org/team/user/agent/run context. Ledger binds ownership
+  and raw usage to the verified delegated subject rather than the transport key.
+  There is no double-billing.
 
 ## Execution Plan
 
-- **Phase 0 — DeepSignal service prerequisites** *(pending; specified in the counterpart
-  doc)*: streamable-HTTP MCP endpoint with UOA bearer auth resolving real per-user
-  principals; conversation persistence + `chat(conversationId)` / `conversation_history` /
-  `conversation_list` tools; RFC 9728 metadata; UOA audience support.
+- **Phase 0 — DeepSignal service prerequisites** *(counterpart deployment)*:
+  streamable-HTTP MCP endpoint that verifies the Nessie-only dsk bearer, exact
+  UOA delegation, and signed Nessie provenance; conversation persistence +
+  `chat(conversationId)` / `conversation_history` / `conversation_list` tools.
 - **Phase 1 — Registration & activation (Nessie)** *(backend + admin UI implemented)*:
-  `deepsignal` product row + manifest + first-party catalog entry + curated
-  library entry — all shipped (`20260709121000_deepsignal_product` migration,
-  `integration-plugin-manifests.ts`, `CURATED_MCP_LIBRARY`). Per-user activation backend
-  shipped: `POST /api/integrations/products/deepsignal/activate` and `.../deactivate`
-  (`external-agent-activation.ts`) — team-gate check → user-scoped `McpServerInstance` +
-  dynamic-OAuth start → `ProductAccountLink` (`linked` / `needs_auth`) → channel bootstrap,
-  returning `{ channelId, instanceId, authorizeUrl? }`. The Integrations page Activate card
-  is shipped (`ExternalAgentActivationSection.tsx`, keyed off
-  `capabilities.includes('external_agent')` so a second external agent needs no new
-  component): activate → open the authorize tab when returned → "I've signed in" re-calls
-  the same idempotent endpoint → linked state with an "Open channel" link and Deactivate.
+  `deepsignal` product row + manifest + first-party catalog entry — all shipped
+  (`20260709121000_deepsignal_product` migration and
+  `integration-plugin-manifests.ts`). DeepSignal is intentionally absent from
+  `CURATED_MCP_LIBRARY`: its managed app credential and catalog lifecycle are
+  available only through Integrations. Per-user activation backend
+  shipped: `POST /api/integrations/products/deepsignal/activate` and
+  `.../deactivate` (`external-agent-activation.ts`) — team-gate check → linked
+  UOA subject/active workspace check → managed user-scoped bearer instance
+  pinned to `DEEPSIGNAL_MCP_APP_KEY` → channel bootstrap, returning
+  `{ channelId, instanceId }`. The Integrations card uses the existing SSO
+  identity and never opens a secondary OAuth tab.
 - **Phase 2 — Conversation surface & driver (Nessie)** *(driver + channel UI
   implemented)*: `external_agent` `ChannelSystemType` value and the
   `Agent.executionMode = external_mcp` enum + column landed additively
   (`20260709120000_agent_execution_mode_external_agent`), plus the idempotent per-user DM
   bootstrap service `external-agent.ts` (system-managed `Agent` + private DM channel keyed
-  `extagent:deepsignal:${orgId}:${userId}` + default thread + binding). The worker
+  `extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}` + default thread + binding). The worker
   `runExternalConversation` driver is now shipped (`worker/src/run/external-conversation.ts`
   + `external-conversation-cards.ts`): `run-job` branches on
   `agent.executionMode === 'external_mcp'` **before** any inference setup and hands the turn
@@ -247,15 +288,15 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   `metadata.external = { product, conversationId, turnId }`. The conversation id round-trips
   through `Thread.metadata.<slug>.conversationId` (new additive `threads.metadata` JSONB
   column, `20260709122000_thread_metadata`). Missing/unauthorized connector → `needs_setup`
-  card + clean completion; expired auth → `needs_setup`; transport error → `failed` card +
-  failed run. **No inference is ever invoked** (asserted in
+  card + clean completion; invalid app credential → admin-repair failure;
+  transport error → `failed` card + failed run. **No inference is ever invoked** (asserted in
   `worker/src/run/external-conversation.test.ts` via a model client that throws on access).
   The channel UI is shipped too: `ChannelMessageFeed`/`ChannelMessageRow` render an
   `external_agent` channel as a first-class agent conversation (author label + "thinking"
   pending wording derived from the channel's own name, mirroring the Personal Assistant
   special-casing so a second external agent needs no code change), and the sidebar DM list
   (`useAdminShell.ts` `sidebarAgentDms`) surfaces the channel by its label since the
-  system-managed `Agent` row is excluded from the general agent list. Kelpie visual
+  system-managed `Agent` row is excluded from the general agent list. Playwright visual
   verification is still owed once a dev stack is available (not possible in the remote
   implementation environment).
 - **Phase 3 — History & proactive delivery** *(backend + admin hook implemented)*:
@@ -290,22 +331,27 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
     `PUT /api/integrations/products/:productSlug/webhook-secret` and stored encrypted
     (AES-256-GCM) in the new `product_webhook_secrets` table
     (`20260709123000_product_webhook_secret`). On `insight.surfaced` the receiver
-    resolves recipients (payload UOA subs via `ProductAccountLink.uoaSub` when
-    present, else every `linked` DeepSignal user in the org) and posts ONE
-    agent-authored message per recipient — a short headline + one `integration`
-    insight card (why-it-matters + key facts + an "Open in DeepSignal" action when
-    the payload carries a URL) with `metadata.external = { product, insightId }`.
-    Idempotent per insight per channel; realtime `message.new` is published
-    best-effort so open channels update live.
+    first resolves the payload `teamId` through an enabled
+    `ProductTeamEnablement`, requiring its external org/team to match the
+    linked Nessie `Team`. It then selects active exact-team members with a
+    stable linked UOA account (narrowed by payload subjects when present), and
+    delivers only where that team-specific channel already exists. Mutable
+    last-seen account-link workspace metadata is not routing authority. It
+    coalesces insights into one rolling digest message per recipient. Insight
+    ids remain the unbounded idempotency keys; new digest
+    notifications are budgeted per user/window, while over-budget events still
+    update the durable digest.
   - **Manual registration step:** DeepSignal returns the webhook signing secret
     exactly once when the webhook is registered on its side. A Nessie org admin
     pastes that secret via the webhook-secret endpoint (Integrations UI equivalent
     is future work) before insights can be verified/delivered.
-  - **Not in this slice (future work):** snooze/done/mute/reopen worklist actions
-    proxied back over the MCP `insight_act` tool from the insight card, and an
-    Integrations-page control for pasting the webhook secret.
+  - **Signals surface** — the Overview/Inbox reads `insight_digest`; its
+    snooze/done/mute/reopen actions proxy through `insight_act`. Both use the
+    same exact app-key/delegation/provenance call seam and reject stale generic
+    credentials.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity
-  cards / incremental status; usage metering surfaced in ESC usage UI; admin lock/e2e tests;
+  cards / incremental status; preserve owner-only operational telemetry at
+  `/ops/usage` and UOA-only customer credits at `/tokens`; admin lock/e2e tests;
   update `CLAUDE.md`/`AGENTS.md` (MCP surface + new run mode) and `docs/functionality.md`.
 
 ## Non-Negotiable Boundaries
@@ -314,34 +360,37 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   `runInferenceGraph` entirely; there is no fallback path to local inference.
 - **Per-user privacy:** the DeepSignal connector is user-scoped; its tools and its channel
   are reachable only by the linked user. No shared/org-scope install of the chat surface.
-- **Per-user identity:** every MCP call carries the acting user's own UOA token. No service
-  account impersonation, no partner-token user mapping.
+- **Independent app and user identity:** every MCP call carries the Nessie-only
+  DeepSignal app key, exact UOA delegation for the linked subject/active
+  workspace, and signed Nessie provenance. No service-account impersonation,
+  partner-token mapping, user OAuth bearer, or credential substitution.
+- **Workspace isolation:** team enablement, local-to-UOA workspace mapping, and
+  the workspace-qualified channel key are checked before every outbound call.
+  Legacy team-less channels fail closed.
 - **DeepSignal owns the data.** Nessie mirrors turns for display/notification only, keyed by
   DeepSignal ids; edits/actions flow back over MCP, never applied locally-only.
-- All existing MCP guardrails apply unchanged: SSRF guard on the endpoint, stdio banned,
-  encrypted secret store, `ConnectorUsageEvent` accounting.
+- Shared MCP guardrails still apply: SSRF guard, stdio ban, and
+  `ConnectorUsageEvent` accounting. Generic encrypted-secret/OAuth flows remain
+  for ordinary connectors but are blocked for this managed instance.
 
 ## Open Questions
 
-1. **UOA scope model** — exact OAuth scopes/audience UOA mints for "Nessie acting for user X
-   against DeepSignal" (DeepSignal's own docs flag MCP token scopes as an open decision).
-   Needs a UOA decision before Phase 0 completes.
-2. **Streaming fidelity** — are MCP progress notifications enough for perceived liveness, or
+1. **Streaming fidelity** — are MCP progress notifications enough for perceived liveness, or
    does DeepSignal need token-level streaming (SSE side-channel) in a later phase? Start
    request/response; measure.
-3. **History depth** — hydrate full history or last N turns with paging? Recommend last 50 +
+2. **History depth** — hydrate full history or last N turns with paging? Recommend last 50 +
    backfill-on-scroll.
-4. **Per-user spend caps** — `Budget` has no user scope; DeepSignal spend is on DeepSignal's
+3. **Per-user spend caps** — `Budget` has no user scope; DeepSignal spend is on DeepSignal's
    side anyway, so v1 relies on DeepSignal-side quotas + `ConnectorUsageEvent` visibility.
    Revisit if orgs ask for Nessie-side per-user caps.
 
 ## Definition Of Done
 
-- A team-enabled user can activate DeepSignal in one flow (Integrations page or PA chat),
-  sign in via UOA once, and get a private "DeepSignal" DM channel.
-- Chatting in that channel round-trips through DeepSignal's MCP endpoint under the user's own
-  identity, with zero Nessie inference calls (assert in tests), rendering reply + activity
-  cards.
+- A team-enabled user can activate DeepSignal in one Integrations-page flow,
+  reuse their linked UOA identity, and get a private "DeepSignal" DM channel.
+- Initial and follow-up chat round-trip through DeepSignal under the dedicated
+  dsk app key + delegated user/workspace + signed provenance, with zero Nessie
+  inference calls, rendering reply + activity cards.
 - Turns made on the DeepSignal console appear in the Nessie channel after hydration;
   proactive insights arrive in-channel via webhook.
 - Other users see nothing: no connector, no tools, no channel.

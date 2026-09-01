@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { isWithinPushQuietHours } from '../src/control/push-preferences.js'
+import {
+  isWithinPushQuietHours,
+  shouldSuppressPushForPreferences,
+} from '../src/control/push-preferences.js'
 
 test('quiet hours include a same-day window start and exclude its end', () => {
   const quietHours = { start: '09:00', end: '10:00', timezone: 'UTC' }
@@ -22,4 +25,36 @@ test('quiet hours evaluate now in the user timezone', () => {
   const quietHours = { start: '09:00', end: '10:00', timezone: 'America/New_York' }
 
   assert.equal(isWithinPushQuietHours(quietHours, new Date('2026-06-07T13:30:00.000Z')), true)
+})
+
+test('per-event preferences are enabled by default and suppress only their own event', () => {
+  const now = new Date('2026-06-07T12:00:00.000Z')
+  const pushKinds = [
+    'messages',
+    'mentions',
+    'budgetAlerts',
+    'assignedWork',
+    'incomingCalls',
+    'publishedKnowledge',
+    'triggerHealth',
+  ] as const
+
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'messages'), false)
+  for (const kind of pushKinds) {
+    assert.equal(shouldSuppressPushForPreferences({ focusModeEnabled: true }, now, kind), true)
+  }
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'mentions'), false)
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'budgetAlerts'), false)
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'assignedWork'), false)
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'publishedKnowledge'), false)
+  assert.equal(shouldSuppressPushForPreferences({ pushIncomingCalls: false }, now, 'incomingCalls'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'messages'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'mentions'), false)
+  assert.equal(shouldSuppressPushForPreferences({ pushMentions: false }, now, 'mentions'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushBudgetAlerts: false }, now, 'budgetAlerts'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushAssignedWork: false }, now, 'assignedWork'), true)
+  assert.equal(
+    shouldSuppressPushForPreferences({ pushPublishedKnowledge: false }, now, 'publishedKnowledge'),
+    true,
+  )
 })

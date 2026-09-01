@@ -3,7 +3,9 @@ export { patchAgentStatusRecord } from './keys'
 export {
   useAgentActivity,
   useAgentChildren,
+  useAgentDocuments,
   useAgentMessages,
+  useAgentModelOptions,
   useAgents,
   useAgentStatus,
   useRunToolCalls,
@@ -12,6 +14,7 @@ export {
   useBindAgent,
   useCloneAgent,
   useCreateAgent,
+  useGenerateAgentAvatar,
   useUnbindAgent,
   useUpdateAgent,
   useUpdateAgentAvatar,

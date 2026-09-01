@@ -3,6 +3,8 @@ import { z } from 'zod'
 import {
   McpServerInstanceIdSchema,
 } from './mcp.js'
+import { ImplementedExecutorOperationKeySchema } from './executor.js'
+import { AgentIdSchema } from './ids.js'
 
 /**
  * Tool registry contracts for the MCP universal connector (Slice B).
@@ -50,6 +52,7 @@ export const ToolRegistrySourceSchema = z.enum([
   'custom',
   'mcp-remote',
   'interactive-session',
+  'executor',
 ])
 export type ToolRegistrySource = z.infer<typeof ToolRegistrySourceSchema>
 
@@ -59,6 +62,7 @@ export const ToolRegistryTransportSchema = z.enum([
   'http',
   'stdio',
   'pty',
+  'executor',
 ])
 export type ToolRegistryTransport = z.infer<typeof ToolRegistryTransportSchema>
 
@@ -69,6 +73,46 @@ export const ToolRegistryEntryStatusSchema = z.enum([
 ])
 export type ToolRegistryEntryStatus = z.infer<
   typeof ToolRegistryEntryStatusSchema
+>
+
+/**
+ * Owner review verdict on a discovered MCP tool.
+ *
+ * A strict subset of `ToolRegistryEntryStatus`: `pending_review` is
+ * deliberately absent because only the projection sets it — when a
+ * shared-scope install first discovers a tool, or when a re-probe finds an
+ * already-approved tool's schema has drifted. A reviewer moves a tool *out* of
+ * that state, never back into it, so "pending" always means "the server said
+ * something new that nobody has looked at yet".
+ *
+ * Distinct from `ToolBundleStatusSchema` below, which governs tool *bundles*
+ * and has its own approved/rejected vocabulary.
+ */
+export const ToolReviewVerdictSchema = z.enum(['active', 'disabled'])
+export type ToolReviewVerdict = z.infer<typeof ToolReviewVerdictSchema>
+
+/**
+ * Bulk review of discovered MCP tools.
+ *
+ * Ids are explicit rather than "everything matching a filter": one connector
+ * routinely projects dozens of tools, some of them destructive, so an approval
+ * must only ever cover rows the reviewer actually had on screen. A one-element
+ * array is the single-tool case — there is no separate per-tool route.
+ */
+export const SetToolRegistryStatusRequestSchema = z.object({
+  status: ToolReviewVerdictSchema,
+  toolRegistryEntryIds: z.array(z.string().uuid()).min(1).max(200),
+})
+export type SetToolRegistryStatusRequest = z.infer<
+  typeof SetToolRegistryStatusRequestSchema
+>
+
+export const SetToolRegistryStatusResponseSchema = z.object({
+  status: ToolReviewVerdictSchema,
+  updatedIds: z.array(z.string().uuid()),
+})
+export type SetToolRegistryStatusResponse = z.infer<
+  typeof SetToolRegistryStatusResponseSchema
 >
 
 export const ToolBundleStatusSchema = z.enum([
@@ -84,6 +128,35 @@ export type ToolGrantState = z.infer<typeof ToolGrantStateSchema>
 
 export const ToolGrantSourceSchema = z.enum(['role', 'agent-override'])
 export type ToolGrantSource = z.infer<typeof ToolGrantSourceSchema>
+
+// ─── Per-agent tool-policy mutation ────────────────────────────────────────
+
+/**
+ * Minimal owner-facing agent projection for targeted tool-policy edits.
+ *
+ * This is deliberately separate from `GET /api/agents`: the ordinary agent
+ * list excludes the organization-wide, system-managed Personal Assistant so
+ * its private DM bindings and activity never leak into shared agent surfaces.
+ * The tool-policy surface needs only identity + policy state.
+ */
+export const AgentToolPolicyTargetSchema = z.object({
+  id: AgentIdSchema,
+  agentKind: z.enum(['personal_assistant', 'shared']),
+  name: z.string().min(1),
+  role: z.string().min(1),
+  toolPolicy: z.record(z.string(), z.boolean()),
+})
+export type AgentToolPolicyTarget = z.infer<typeof AgentToolPolicyTargetSchema>
+
+/**
+ * Mutates one registry entry in one agent's policy. `enabled=false` revokes an
+ * explicit allow without replacing the rest of the JSON policy.
+ */
+export const SetAgentToolPolicyEntryRequestSchema = z.object({
+  enabled: z.boolean(),
+}).strict()
+export type SetAgentToolPolicyEntryRequest =
+  z.infer<typeof SetAgentToolPolicyEntryRequestSchema>
 
 // ─── Transport config (per ToolRegistryEntry.transport) ─────────────────────
 
@@ -131,12 +204,25 @@ export type PtyTransportRegistryConfig = z.infer<
   typeof PtyTransportRegistryConfigSchema
 >
 
+/**
+ * The registry records a logical executor operation only. The server resolves
+ * and fences the actual executor for the run; callers never supply a machine.
+ */
+export const ExecutorTransportRegistryConfigSchema = z.object({
+  transport: z.literal('executor'),
+  operationKey: ImplementedExecutorOperationKeySchema,
+}).strict()
+export type ExecutorTransportRegistryConfig = z.infer<
+  typeof ExecutorTransportRegistryConfigSchema
+>
+
 export const ToolTransportConfigSchema = z.discriminatedUnion('transport', [
   DirectTransportConfigSchema,
   McpTransportRegistryConfigSchema,
   HttpTransportRegistryConfigSchema,
   StdioTransportRegistryConfigSchema,
   PtyTransportRegistryConfigSchema,
+  ExecutorTransportRegistryConfigSchema,
 ])
 export type ToolTransportConfig = z.infer<typeof ToolTransportConfigSchema>
 

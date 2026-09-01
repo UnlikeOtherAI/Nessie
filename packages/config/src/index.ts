@@ -33,15 +33,22 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
-export const ModelProviderSchema = z.enum(['openai', 'minimax', 'kimi'])
+export const ModelProviderSchema = z.enum(['openai', 'kimi', 'deepseek'])
 export type ModelProvider = z.infer<typeof ModelProviderSchema>
 
 export const ModelConfigSchema = z.object({
   provider: ModelProviderSchema,
   apiKey: z.string().min(1).optional(),
+  baseUrl: z.string().url().optional(),
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
+  // When set, agent-avatar image generation routes through this Ledger Purpose
+  // API (`/v1/purpose/:id/images/generations`) instead of the direct
+  // `/v1/openai/images/generations` service route, so Ledger owns the image
+  // provider fallback chain (e.g. Gemini primary, OpenAI fallback). Unset keeps
+  // the direct OpenAI route.
+  imagePurposeApiId: z.string().min(1).optional(),
   backends: z.array(
     z.string().url(),
   ).default([]).refine(
@@ -57,6 +64,38 @@ export const ModelConfigSchema = z.object({
   ),
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
+
+// Embeddings do not have to come from the chat provider. Chat routes through
+// whichever model the deployment picked (DeepSeek, Kimi, …); embeddings need a
+// provider that actually serves an embeddings endpoint at the width
+// `EMBEDDING_DIMENSIONS` pins. Every field is optional and every unset field
+// falls back to the chat provider's, so a deployment that configures none of
+// these embeds exactly as it did before this block existed.
+export const EmbeddingProviderSchema = z.enum([
+  'openai',
+  'kimi',
+  'deepseek',
+  'openai-compatible',
+])
+export type EmbeddingProvider = z.infer<typeof EmbeddingProviderSchema>
+
+export const EmbeddingConfigSchema = z.object({
+  provider: EmbeddingProviderSchema.optional(),
+  apiKey: z.string().min(1).optional(),
+  baseUrl: z.string().url().optional(),
+  modelName: z.string().min(1).optional(),
+  // Ledger's provider proxy is `/v1/:serviceId/*`. A Ledger base URL is
+  // rewritten to this segment, which is how embeddings reach `/v1/jina` while
+  // chat stays on `/v1/deepseek`. Defaults to the provider name, which is only
+  // meaningful for a provider Ledger exposes under its own name.
+  serviceId: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/).optional(),
+})
+export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>
+
+const RateLimitRuleSchema = z.object({
+  max: z.number().int().positive(),
+  windowMs: z.number().int().positive(),
+})
 
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
@@ -99,10 +138,28 @@ export const NessieConfigSchema = z.object({
     projectId: z.string().min(1).optional(),
   }),
   model: ModelConfigSchema,
+  embedding: EmbeddingConfigSchema.default({}),
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5454),
     trustedProxyHops: z.number().int().nonnegative().default(0),
+    // Brute-force limits for auth-sensitive endpoints (api/src/services/rate-limit.ts).
+    // Fixed-window counters stored in Postgres (`rate_limit_buckets`); every rule is
+    // `{max, windowMs}` and independently env-tunable. Defaults below mirror
+    // DEFAULT_RATE_LIMIT_CONFIG and docs/deployment.md.
+    rateLimit: z.object({
+      loginIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      loginAccount: RateLimitRuleSchema.default({ max: 5, windowMs: 10 * 60_000 }),
+      refreshIp: RateLimitRuleSchema.default({ max: 30, windowMs: 10 * 60_000 }),
+      refreshAccount: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      bootstrapIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      mcpOauthIp: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      mcpSecretWriteIp: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      mcpSecretWriteAccount: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      executorDaemonIp: RateLimitRuleSchema.default({ max: 60, windowMs: 10 * 60_000 }),
+      stepUpIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      stepUpAccount: RateLimitRuleSchema.default({ max: 5, windowMs: 10 * 60_000 }),
+    }).default({}),
     // Public origin of the API as reachable from a user's browser (e.g.
     // https://api.nessie.works). Used to build OAuth redirect URIs minted
     // outside an HTTP request (the worker's personal assistant). Defaults to
@@ -121,6 +178,17 @@ export const NessieConfigSchema = z.object({
       repo: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/).default('Nessie'),
     })
     .default({ owner: 'UnlikeOtherAI', repo: 'Nessie' }),
+  // Web Push (browser notifications) VAPID application-server keys. One key
+  // pair per instance, generated via `node scripts/generate-vapid-keys.mjs`.
+  // The public key is served to browsers so they can subscribe; the private
+  // key signs the per-request VAPID JWT in the worker. Absent ⇒ web push off.
+  webPush: z
+    .object({
+      publicKey: z.string().min(1).optional(),
+      privateKey: z.string().min(1).optional(),
+      subject: z.string().min(1).optional(),
+    })
+    .default({}),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -154,17 +222,49 @@ export const ConfigEnvMap = {
   NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
   NESSIE_MODEL_PROVIDER: 'model.provider',
   NESSIE_MODEL_API_KEY: 'model.apiKey',
+  NESSIE_MODEL_BASE_URL: 'model.baseUrl',
   NESSIE_MODEL_MAX_TOKENS: 'model.maxTokens',
   NESSIE_MODEL_NAME: 'model.modelName',
   NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
+  NESSIE_LEDGER_IMAGE_PURPOSE_API_ID: 'model.imagePurposeApiId',
+  NESSIE_EMBEDDING_PROVIDER: 'embedding.provider',
+  NESSIE_EMBEDDING_API_KEY: 'embedding.apiKey',
+  NESSIE_EMBEDDING_BASE_URL: 'embedding.baseUrl',
+  NESSIE_EMBEDDING_MODEL: 'embedding.modelName',
+  NESSIE_EMBEDDING_SERVICE_ID: 'embedding.serviceId',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
   NESSIE_API_TRUSTED_PROXY_HOPS: 'api.trustedProxyHops',
+  NESSIE_RATE_LIMIT_LOGIN_IP_MAX: 'api.rateLimit.loginIp.max',
+  NESSIE_RATE_LIMIT_LOGIN_IP_WINDOW_MS: 'api.rateLimit.loginIp.windowMs',
+  NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX: 'api.rateLimit.loginAccount.max',
+  NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS: 'api.rateLimit.loginAccount.windowMs',
+  NESSIE_RATE_LIMIT_REFRESH_IP_MAX: 'api.rateLimit.refreshIp.max',
+  NESSIE_RATE_LIMIT_REFRESH_IP_WINDOW_MS: 'api.rateLimit.refreshIp.windowMs',
+  NESSIE_RATE_LIMIT_REFRESH_ACCOUNT_MAX: 'api.rateLimit.refreshAccount.max',
+  NESSIE_RATE_LIMIT_REFRESH_ACCOUNT_WINDOW_MS: 'api.rateLimit.refreshAccount.windowMs',
+  NESSIE_RATE_LIMIT_BOOTSTRAP_IP_MAX: 'api.rateLimit.bootstrapIp.max',
+  NESSIE_RATE_LIMIT_BOOTSTRAP_IP_WINDOW_MS: 'api.rateLimit.bootstrapIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_OAUTH_IP_MAX: 'api.rateLimit.mcpOauthIp.max',
+  NESSIE_RATE_LIMIT_MCP_OAUTH_IP_WINDOW_MS: 'api.rateLimit.mcpOauthIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_IP_MAX: 'api.rateLimit.mcpSecretWriteIp.max',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_IP_WINDOW_MS: 'api.rateLimit.mcpSecretWriteIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_MAX: 'api.rateLimit.mcpSecretWriteAccount.max',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_WINDOW_MS: 'api.rateLimit.mcpSecretWriteAccount.windowMs',
+  NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_IP_MAX: 'api.rateLimit.executorDaemonIp.max',
+  NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_IP_WINDOW_MS: 'api.rateLimit.executorDaemonIp.windowMs',
+  NESSIE_RATE_LIMIT_STEP_UP_IP_MAX: 'api.rateLimit.stepUpIp.max',
+  NESSIE_RATE_LIMIT_STEP_UP_IP_WINDOW_MS: 'api.rateLimit.stepUpIp.windowMs',
+  NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_MAX: 'api.rateLimit.stepUpAccount.max',
+  NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_WINDOW_MS: 'api.rateLimit.stepUpAccount.windowMs',
   NESSIE_API_PUBLIC_URL: 'api.publicUrl',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
   NESSIE_GITHUB_REPO: 'github.repo',
+  NESSIE_WEBPUSH_PUBLIC_KEY: 'webPush.publicKey',
+  NESSIE_WEBPUSH_PRIVATE_KEY: 'webPush.privateKey',
+  NESSIE_WEBPUSH_SUBJECT: 'webPush.subject',
 } as const
 
 export type LoadConfigOptions = {
@@ -218,15 +318,30 @@ const DEFAULT_CONFIG: NessieConfig = {
     temperature: 0.2,
     backends: [],
   },
+  embedding: {},
   api: {
     host: '0.0.0.0',
     port: 5454,
     trustedProxyHops: 0,
+    rateLimit: {
+      loginIp: { max: 10, windowMs: 10 * 60_000 },
+      loginAccount: { max: 5, windowMs: 10 * 60_000 },
+      refreshIp: { max: 30, windowMs: 10 * 60_000 },
+      refreshAccount: { max: 20, windowMs: 10 * 60_000 },
+      bootstrapIp: { max: 10, windowMs: 10 * 60_000 },
+      mcpOauthIp: { max: 20, windowMs: 10 * 60_000 },
+      mcpSecretWriteIp: { max: 20, windowMs: 10 * 60_000 },
+      mcpSecretWriteAccount: { max: 10, windowMs: 10 * 60_000 },
+      executorDaemonIp: { max: 60, windowMs: 10 * 60_000 },
+      stepUpIp: { max: 10, windowMs: 10 * 60_000 },
+      stepUpAccount: { max: 5, windowMs: 10 * 60_000 },
+    },
   },
   github: {
     owner: 'UnlikeOtherAI',
     repo: 'Nessie',
   },
+  webPush: {},
 }
 
 const isJsonObject = (value: unknown): value is JsonObject =>
@@ -304,22 +419,32 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
 
   for (const [envKey, configPath] of Object.entries(ConfigEnvMap)) {
     const value = env[envKey]
-    if (value !== undefined) {
+    // An explicitly emptied variable (`DATABASE_URL= pnpm test` unsets the
+    // database for a run) means "no override", not the empty string — only
+    // `undefined` marks a variable unset, and an empty string would fail the
+    // schema's `min(1)` checks and crash every process that loads config.
+    if (value !== undefined && value !== '') {
       setByPath(overrides, configPath, coerceScalar(value))
     }
   }
 
-  if (env.NESSIE_DB_URL === undefined && env.DATABASE_URL !== undefined) {
+  if (
+    (env.NESSIE_DB_URL === undefined || env.NESSIE_DB_URL === '') &&
+    env.DATABASE_URL !== undefined &&
+    env.DATABASE_URL !== ''
+  ) {
     setByPath(overrides, 'database.url', env.DATABASE_URL)
   }
 
+  const firstNonEmpty = (...values: Array<string | undefined>): string | undefined =>
+    values.find((value) => value !== undefined && value !== '')
+
   const modelProvider =
-    env.NESSIE_MODEL_PROVIDER ??
-    env.LLM_PROVIDER ??
+    firstNonEmpty(env.NESSIE_MODEL_PROVIDER, env.LLM_PROVIDER) ??
     (env.KIMI_API_KEY !== undefined
       ? 'kimi'
-      : env.MINIMAX_API_KEY !== undefined
-        ? 'minimax'
+      : env.DEEPSEEK_API_KEY !== undefined
+          ? 'deepseek'
         : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
           ? 'openai'
           : undefined)
@@ -328,16 +453,17 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     setByPath(overrides, 'model.provider', modelProvider)
   }
 
-  if (env.NESSIE_MODEL_NAME !== undefined) {
-    setByPath(overrides, 'model.modelName', env.NESSIE_MODEL_NAME)
+  const modelName = firstNonEmpty(env.NESSIE_MODEL_NAME)
+  if (modelName !== undefined) {
+    setByPath(overrides, 'model.modelName', modelName)
   }
 
   const modelApiKey =
-    env.NESSIE_MODEL_API_KEY ??
+    firstNonEmpty(env.NESSIE_MODEL_API_KEY) ??
     (modelProvider === 'kimi'
       ? env.KIMI_API_KEY
-      : modelProvider === 'minimax'
-        ? env.MINIMAX_API_KEY
+      : modelProvider === 'deepseek'
+          ? env.DEEPSEEK_API_KEY
         : modelProvider === 'openai'
           ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY
           : undefined)

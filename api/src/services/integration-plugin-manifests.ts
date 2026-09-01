@@ -3,128 +3,10 @@ import {
   type IntegrationPluginManifest,
 } from '@nessie/schemas'
 
+import { deepWaterIntegrationPluginManifest } from './integration-plugin-manifests/deep-water.js'
+
 const rawManifests = [
-  {
-    apiVersion: 'integrations.nessie.io/v1',
-    kind: 'NessieIntegrationPlugin',
-    manifestRef: 'first-party/deep-water',
-    productSlug: 'deep-water',
-    name: 'Deep Water',
-    version: '0.1.0',
-    vendor: 'UnlikeOtherAI',
-    install: [
-      {
-        mode: 'hosted_preinstall',
-        availability: 'hosted',
-        label: 'Hosted native research',
-        requiredForAgentUse: true,
-        setup: 'Bind the Deep Water OAuth MCP server to the active team/workspace.',
-      },
-      {
-        mode: 'api_key',
-        availability: 'self_hosted',
-        label: 'Self-hosted API credential',
-        requiredForAgentUse: true,
-        setup: 'Store a Deep Water API key as a secret ref and install the MCP catalog entry.',
-      },
-    ],
-    mcp: {
-      catalogTemplate: {
-        name: 'deep-water',
-        label: 'Deep Water',
-        protocol: 'http',
-        authMethod: 'oauth2',
-        transport: { transport: 'http', urlEnv: 'DEEP_WATER_MCP_URL' },
-        auth: { method: 'oauth2', scopes: ['research:create', 'research:read', 'research:scope'] },
-      },
-      toolBundleRef: 'first-party/deep-water-tools',
-      tools: [
-        {
-          name: 'research_create',
-          label: 'Create research',
-          description: 'Start an async Deep Water research run from an approved agent.',
-          privacyTier: 'sensitive',
-          status: 'available',
-        },
-        {
-          name: 'research_get',
-          label: 'Poll research',
-          description: 'Read run progress, completion state, and report metadata.',
-          privacyTier: 'sensitive',
-          status: 'available',
-        },
-        {
-          name: 'research_list',
-          label: 'List research',
-          description: 'List the authenticated user research jobs for native history and follow-up.',
-          privacyTier: 'normal',
-          status: 'available',
-        },
-        {
-          name: 'research_scope_start',
-          label: 'Start scoping',
-          description: 'Open an interactive Deep Water scoping conversation before launch.',
-          privacyTier: 'sensitive',
-          status: 'available',
-        },
-        {
-          name: 'research_scope_send',
-          label: 'Refine scoping',
-          description: 'Continue a Deep Water scoping conversation with agent/user context.',
-          privacyTier: 'sensitive',
-          status: 'available',
-        },
-        {
-          name: 'research_scope_submit',
-          label: 'Submit scoped research',
-          description: 'Launch research from an approved scoping session.',
-          privacyTier: 'sensitive',
-          status: 'available',
-        },
-      ],
-    },
-    ui: {
-      pages: [
-        { id: 'research-launcher', label: 'Research launcher', status: 'available' },
-        { id: 'research-runs', label: 'Research runs', status: 'planned' },
-        { id: 'research-sources', label: 'Sources and evidence', status: 'planned' },
-      ],
-      cards: [
-        { kind: 'deep_research', label: 'Research progress/result', status: 'available' },
-        { kind: 'integration', label: 'Usage and setup status', status: 'available' },
-      ],
-      controls: [
-        { id: 'research-depth', label: 'Depth', status: 'available' },
-        { id: 'research-search-quality', label: 'Search quality', status: 'available' },
-        { id: 'artifact-destination', label: 'Knowledge destination', status: 'available' },
-        { id: 'budget-cap', label: 'Budget cap', status: 'planned' },
-      ],
-    },
-    artifacts: [
-      {
-        kind: 'knowledge_page',
-        label: 'Research report',
-        defaultDestination: 'Knowledge',
-        fileServiceRequired: false,
-      },
-      {
-        kind: 'source_bundle',
-        label: 'Source and evidence bundle',
-        defaultDestination: 'Knowledge attachments',
-        fileServiceRequired: true,
-      },
-    ],
-    privacy: {
-      dataBoundary: 'Research prompts, sources, and reports may enter Nessie after user or agent launch.',
-      defaultImportPolicy: 'Import completed reports and source metadata into Knowledge only after the run completes.',
-      prohibitedByDefault: ['raw credential values', 'unapproved private source dumps'],
-    },
-    usage: {
-      ledger: 'connector_usage_events',
-      connectorType: 'mcp',
-      costFields: ['providerReportedCost', 'currency', 'runId'],
-    },
-  },
+  deepWaterIntegrationPluginManifest,
   {
     apiVersion: 'integrations.nessie.io/v1',
     kind: 'NessieIntegrationPlugin',
@@ -206,6 +88,7 @@ const rawManifests = [
         { id: 'share-safe-import', label: 'Share-safe import', status: 'available' },
       ],
     },
+    surfaces: [],
     artifacts: [
       {
         kind: 'share_safe_report',
@@ -241,11 +124,14 @@ const rawManifests = [
     vendor: 'UnlikeOtherAI',
     install: [
       {
-        mode: 'remote_mcp_oauth',
+        mode: 'hosted_preinstall',
         availability: 'both',
         label: 'Per-user external agent',
         requiredForAgentUse: true,
-        setup: 'Activate DeepSignal for yourself and sign in with your account so each turn is proxied to DeepSignal over MCP under your own identity.',
+        setup:
+          'Activate DeepSignal using your linked Nessie SSO identity. '
+          + 'Nessie authenticates with its dedicated DeepSignal app key and '
+          + 'delegates your active organization/team on every request.',
       },
     ],
     mcp: {
@@ -253,9 +139,9 @@ const rawManifests = [
         name: 'deepsignal',
         label: 'DeepSignal',
         protocol: 'http',
-        authMethod: 'oauth2',
+        authMethod: 'bearer',
         transport: { transport: 'http', url: 'https://api.deepsignal.live/mcp' },
-        auth: { method: 'oauth2' },
+        auth: { method: 'bearer' },
       },
       toolBundleRef: 'first-party/deepsignal-tools',
       tools: [
@@ -315,6 +201,27 @@ const rawManifests = [
         { id: 'activate', label: 'Activate for me', status: 'available' },
       ],
     },
+    conversationStarters: [
+      'What signals need my attention today?',
+      "Summarize this week's risks and opportunities",
+      'What changed since I last checked?',
+    ],
+    surfaces: [
+      {
+        type: 'chat_assistant',
+        channelKind: 'external_agent',
+        productSlug: 'deepsignal',
+        label: 'DeepSignal',
+        // A non-human product glyph (not a person avatar) + a function-first
+        // one-liner: lead with what it does, per Slack agent-design.
+        iconGlyph: '◎',
+        description: "Surfaces the signals and decisions you shouldn't miss",
+        // The per-user private DeepSignal channel appears under the Personal
+        // Assistant only once the user has activated + signed in (account
+        // linked) and the external-agent capability is present.
+        requires: { capability: 'external_agent', linked: true },
+      },
+    ],
     artifacts: [
       {
         kind: 'research_reference',
@@ -394,6 +301,7 @@ const rawManifests = [
         { id: 'conflict-policy', label: 'Conflict policy', status: 'blocked' },
       ],
     },
+    surfaces: [],
     artifacts: [
       {
         kind: 'external_project_link',

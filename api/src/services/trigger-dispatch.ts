@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildTriggerPrompt } from '@nessie/runtime'
 import {
+  prepareScheduledAgentTodoTrigger,
+} from '@nessie/workspace-admin'
+import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -13,6 +16,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { claimThreadRunOrPend } from '@nessie/db'
 import { dispatchWorkflowTrigger } from './trigger-dispatch-workflow.js'
 import {
   type DispatchTriggerResult,
@@ -37,6 +41,16 @@ export const dispatchAgentTrigger = async (
     triggerId: string
   },
 ): Promise<DispatchTriggerResult> => {
+  // Dedupe keys share one per-trigger namespace, and the scheduler's are
+  // predictable: `scheduled:<triggerId>:<next run ISO>`. A caller who supplied
+  // that exact string could pre-create the delivery for a future occurrence,
+  // and the sweep's existing-delivery short-circuit would then skip that run —
+  // silently cancelling a schedule from a member-level endpoint. Callers only
+  // ever name a key *within* their own route's namespace.
+  const dedupeKey = input.dedupeKey
+    ? `${input.source}:${input.dedupeKey}`
+    : undefined
+
   const loadTrigger = () =>
     prisma.agentTrigger.findUnique({
       where: { id: input.triggerId },
@@ -76,7 +90,7 @@ export const dispatchAgentTrigger = async (
   if (trigger.workflowInstallationId) {
     return dispatchWorkflowTrigger(prisma, {
       actorContext: input.actorContext,
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       loadTrigger,
       payload: input.payload,
       prompt: input.prompt,
@@ -131,13 +145,13 @@ export const dispatchAgentTrigger = async (
     threadId: trigger.targetThreadId,
   }
 
-  if (input.dedupeKey) {
+  if (dedupeKey) {
     const existing = await loadExistingDeliveryRun(prisma, {
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       triggerId: input.triggerId,
     })
 
-    if (existing?.runId) {
+    if (existing) {
       return {
         kind: 'queued',
         delivery: mapTriggerDeliveryRecord({
@@ -145,7 +159,7 @@ export const dispatchAgentTrigger = async (
           run: existing.delivery.run,
         }),
         existing: true,
-        runId: parseRunId(existing.runId),
+        runId: existing.runId ? parseRunId(existing.runId) : undefined,
         trigger: mapTriggerRecord(trigger),
       }
     }
@@ -182,13 +196,17 @@ export const dispatchAgentTrigger = async (
     source: input.source,
     triggerType: trigger.type,
   })
+  const scheduledTodo = prepareScheduledAgentTodoTrigger({
+    config: trigger.config,
+    triggerId: trigger.id,
+  })
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       const delivery = await tx.agentTriggerDelivery.create({
         data: {
           payload: normalizedPayload,
-          dedupeKey: input.dedupeKey,
+          dedupeKey,
           source: input.source,
           status: 'pending',
           triggerId: trigger.id,
@@ -203,51 +221,90 @@ export const dispatchAgentTrigger = async (
       const message = await tx.message.create({
         data: {
           content,
-          role: 'user',
+          // Internal kickoff, not a post a human made — see the matching
+          // comment in `worker/src/control/trigger-run.ts`. `system` keeps the
+          // row for audit and restart replay while excluding it from the
+          // channel feed and later model context; the run still gets this
+          // content as its prompt via `payload.messageId`, which ignores role.
+          role: 'system',
           threadId: threadTarget.threadId,
+          ...(scheduledTodo
+            ? { metadata: scheduledTodo.metadata }
+            : {}),
         },
       })
 
-      const run = await tx.run.create({
-        data: {
-          agentId,
-          status: 'pending',
-          threadId: threadTarget.threadId,
+      // Same per-(agent, thread) claim as the worker's chat/trigger paths:
+      // with a run already in flight the kickoff message pends for the batched
+      // follow-up instead of spawning a concurrent run — the fire is batched,
+      // not dropped. The pending row carries the trigger linkage so the drain
+      // can attach it to the follow-up run.
+      const claim = await claimThreadRunOrPend(tx, {
+        agentId,
+        threadId: threadTarget.threadId,
+        pending: {
+          actorContext,
+          channelId: threadTarget.channelId,
+          // A trigger fire is automation, never a live human turn.
+          interactive: false,
+          messageId: message.id,
           triggerId: trigger.id,
           triggerDeliveryId: delivery.id,
+          ...(scheduledTodo ? { todoTemplateId: scheduledTodo.todoTemplateId } : {}),
         },
       })
 
-      const task = await tx.task.create({
-        data: {
-          agentId,
-          organizationId: agent.organizationId ?? threadTarget.organizationId,
-          purpose: content.slice(0, 200),
-          runId: run.id,
-          status: 'inbox',
-        },
-      })
-
-      const queuePayload = {
-        actorContext: {
-          ...actorContext,
-          actionContext: {
-            ...actorContext.actionContext,
-            agentId: parseAgentId(agentId),
-            channelId: parseChannelId(threadTarget.channelId),
-            taskId: parseTaskId(task.id),
-            threadId: parseThreadId(threadTarget.threadId),
+      let run: { id: string } | null = null
+      if (claim === 'claimed') {
+        run = await tx.run.create({
+          data: {
+            agentId,
+            // A trigger fire is a standalone contribution to the room, not an
+            // answer owed to the kickoff. Paired with the `system` message
+            // above: threading under a hidden root would drop the reply out
+            // of the channel entirely.
+            replyPlacement: 'channel',
+            status: 'pending',
+            threadId: threadTarget.threadId,
+            triggerId: trigger.id,
+            triggerDeliveryId: delivery.id,
           },
-        },
-        agentId: parseAgentId(agentId),
-        messageId: message.id,
-        runId: parseRunId(run.id),
-        taskId: parseTaskId(task.id),
-        threadId: parseThreadId(threadTarget.threadId),
+        })
+
+        const task = await tx.task.create({
+          data: {
+            agentId,
+            organizationId: agent.organizationId ?? threadTarget.organizationId,
+            purpose: content.slice(0, 200),
+            runId: run.id,
+            status: 'inbox',
+          },
+        })
+
+        const queuePayload = {
+          actorContext: {
+            ...actorContext,
+            actionContext: {
+              ...actorContext.actionContext,
+              agentId: parseAgentId(agentId),
+              channelId: parseChannelId(threadTarget.channelId),
+              taskId: parseTaskId(task.id),
+              threadId: parseThreadId(threadTarget.threadId),
+            },
+          },
+          agentId: parseAgentId(agentId),
+          messageId: message.id,
+          runId: parseRunId(run.id),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(threadTarget.threadId),
+        }
+
+        await enqueueRunExecution(tx, queuePayload, `run:${run.id}`)
       }
 
-      await enqueueRunExecution(tx, queuePayload, `run:${run.id}`)
-
+      // The fire itself is durably recorded in both outcomes: claimed (run
+      // created above) or pended (pending marker + this delivered delivery;
+      // the drain attaches the follow-up run).
       const completedDelivery = await tx.agentTriggerDelivery.update({
         where: { id: delivery.id },
         data: {
@@ -275,21 +332,21 @@ export const dispatchAgentTrigger = async (
       kind: 'queued',
       delivery: mapTriggerDeliveryRecord(result.completedDelivery),
       existing: false,
-      runId: parseRunId(result.run.id),
+      runId: result.run ? parseRunId(result.run.id) : undefined,
       trigger: mapTriggerRecord(trigger),
     }
   } catch (error) {
     if (
-      input.dedupeKey &&
+      dedupeKey &&
       error instanceof Prisma.PrismaClientKnownRequestError &&
       isTriggerDeliveryDedupeConflict(error)
     ) {
       const existing = await loadExistingDeliveryRun(prisma, {
-        dedupeKey: input.dedupeKey,
+        dedupeKey,
         triggerId: input.triggerId,
       })
 
-      if (existing?.runId) {
+      if (existing) {
         const latestTrigger = await loadTrigger()
         if (!latestTrigger) {
           return { kind: 'rejected', reason: 'trigger_not_found' }
@@ -302,7 +359,7 @@ export const dispatchAgentTrigger = async (
             run: existing.delivery.run,
           }),
           existing: true,
-          runId: parseRunId(existing.runId),
+          runId: existing.runId ? parseRunId(existing.runId) : undefined,
           trigger: mapTriggerRecord(latestTrigger),
         }
       }
@@ -311,7 +368,7 @@ export const dispatchAgentTrigger = async (
     // sp-webhook: persist a retryable failed delivery so the worker retry poller
     // can re-attempt with backoff, then surface the error to the caller.
     await recordTriggerDeliveryFailure(prisma, {
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       error,
       payload: normalizedPayload,
       source: input.source,

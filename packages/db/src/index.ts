@@ -1,5 +1,42 @@
 import { type Prisma, PrismaClient } from '@prisma/client'
 
+export {
+  buildCanonicalAuditPayload,
+  computeEntryHash,
+  stableStringify,
+  verifyAuditChain,
+  writeAuditEntry,
+  writeAuditEntryInTransaction,
+  type AuditActorType,
+  type AuditChainVerification,
+  type AuditEntryInput,
+  type AuditOutcome,
+} from './audit-chain.js'
+
+export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
+export {
+  buildAgentVisibilityWhere,
+  buildOwnedAgentWhere,
+  buildVisibleAgentWhere,
+  listVisibleAgentIdsForUser,
+  type AgentVisibilityScope,
+  type VisibleAgentWhereInput,
+} from './agent-visibility.js'
+export {
+  visibleKnowledgeSpaceWhere,
+  type VisibleKnowledgeSpaceWhereInput,
+} from './knowledge-space-visibility.js'
+export { visibleUserAlertWhere } from './user-alerts.js'
+
+export {
+  claimThreadRunOrPend,
+  drainPendingThreadMessages,
+  drainPendingThreadMessagesBestEffort,
+  isThreadRunSlotBusy,
+  sweepPendingThreadMessages,
+  type ThreadRunClaimOutcome,
+} from './thread-serialization.js'
+
 // Single source of truth for the Prisma connection across api/, worker/, and the
 // seed CLI. A module-scoped singleton means that when the worker runs embedded in
 // the API process (local mode), both halves share ONE connection pool instead of

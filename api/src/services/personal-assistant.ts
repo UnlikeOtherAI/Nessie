@@ -1,7 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread } from './channel-records.js'
-import { loadChannelTeamProject } from './channel-slugs.js'
+import {
+  acquireAgentToolPolicyLock,
+  assertGenericAgentToolPolicyInput,
+  ensureDefaultThread,
+  loadChannelTeamProject,
+  mergeGenericAgentToolPolicy,
+} from '@nessie/workspace-admin'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_CHANNEL_TYPE = 'personal_assistant' as const
@@ -129,25 +134,49 @@ export const ensurePersonalAssistantAgent = async (
         systemManaged: true,
       },
       orderBy: { createdAt: 'asc' },
-      select: {
-        id: true,
-        model: true,
-        provider: true,
-        role: true,
-        systemPrompt: true,
-        toolPolicy: true,
-      },
+      select: { id: true },
     })
 
     if (existing) {
+      await acquireAgentToolPolicyLock(tx, existing.id)
+      // Re-read after taking the shared per-agent policy lock. A targeted
+      // grant may have committed after the org-level bootstrap lookup.
+      const current = await tx.agent.findUniqueOrThrow({
+        where: { id: existing.id },
+        select: {
+          id: true,
+          model: true,
+          provider: true,
+          role: true,
+          systemPrompt: true,
+          toolPolicy: true,
+        },
+      })
+      const safeConfig = config?.toolPolicy === undefined
+        ? config
+        : {
+            ...config,
+            toolPolicy: await mergeGenericAgentToolPolicy(
+              tx,
+              current.toolPolicy,
+              config.toolPolicy,
+            ),
+          }
       const agent = await tx.agent.update({
         where: { id: existing.id },
-        data: createPersonalAssistantAgentData(organizationId, config, existing),
+        data: createPersonalAssistantAgentData(
+          organizationId,
+          safeConfig,
+          current,
+        ),
         select: { id: true },
       })
       return parseAgentId(agent.id)
     }
 
+    if (config?.toolPolicy !== undefined) {
+      await assertGenericAgentToolPolicyInput(tx, config.toolPolicy)
+    }
     const agent = await tx.agent.create({
       data: createPersonalAssistantAgentData(organizationId, config),
       select: { id: true },
@@ -286,18 +315,9 @@ export const ensurePersonalAssistantBinding = async (
     channelId: string
   },
 ): Promise<void> => {
-  await prisma.agentBinding.upsert({
-    where: {
-      agentId_channelId: {
-        agentId: input.agentId,
-        channelId: input.channelId,
-      },
-    },
-    create: {
-      agentId: input.agentId,
-      channelId: input.channelId,
-    },
-    update: {},
+  await prisma.agentBinding.createMany({
+    data: [{ agentId: input.agentId, channelId: input.channelId }],
+    skipDuplicates: true,
   })
 }
 

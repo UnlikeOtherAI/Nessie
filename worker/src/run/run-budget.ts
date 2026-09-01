@@ -1,0 +1,176 @@
+import type { PrismaClient } from '@prisma/client'
+import { AgentRunLimitsSchema, type AgentRunLimits } from '@nessie/schemas'
+import { DEFAULT_CACHE_READ_WEIGHT, type BudgetLimits } from './loop-budget.js'
+
+// Effective run budget.
+//
+// `Agent.effort` maps ONLY to the provider's reasoning effort; it is no longer a
+// spend cap. Every dimension resolves as:
+//
+//   effective[dim] = agent.runLimits?.[dim] ?? backstop[dim]
+//
+// The backstop is deployment law (a safety envelope), not a user budget: it is
+// invisible until an enormous run reaches it, and even then the work is
+// checkpointed rather than lost. See
+// docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §2.
+
+const TOOL_TIMEOUT_MS = 75_000
+
+export const RUN_BACKSTOP_DEFAULTS = {
+  maxCostCents: 2_000,
+  maxIterations: 1_000,
+  maxTokens: 500_000,
+  maxToolCalls: 2_000,
+  maxWallclockMs: 2_700_000,
+} as const
+
+export const DEFAULT_AUTO_CONTINUATIONS = 2
+export const DEFAULT_MAX_DELEGATES_PER_RUN = 16
+
+type Env = Record<string, string | undefined>
+
+const positiveInt = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  return Number.isFinite(value) && Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+const nonNegativeInt = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  return Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? value : fallback
+}
+
+export const resolveRunBackstop = (
+  env: Env = process.env,
+): Required<Omit<BudgetLimits, 'toolTimeoutMs'>> => ({
+  maxCostCents: positiveInt(env['NESSIE_RUN_BACKSTOP_MAX_COST_CENTS'], RUN_BACKSTOP_DEFAULTS.maxCostCents),
+  maxIterations: positiveInt(env['NESSIE_RUN_BACKSTOP_MAX_ITERATIONS'], RUN_BACKSTOP_DEFAULTS.maxIterations),
+  maxTokens: positiveInt(env['NESSIE_RUN_BACKSTOP_MAX_TOKENS'], RUN_BACKSTOP_DEFAULTS.maxTokens),
+  maxToolCalls: positiveInt(env['NESSIE_RUN_BACKSTOP_MAX_TOOL_CALLS'], RUN_BACKSTOP_DEFAULTS.maxToolCalls),
+  maxWallclockMs: positiveInt(env['NESSIE_RUN_BACKSTOP_MAX_WALLCLOCK_MS'], RUN_BACKSTOP_DEFAULTS.maxWallclockMs),
+})
+
+// `Agent.runLimits` is operator-authored JSON. A malformed value is treated as
+// "no explicit limits" (the backstop governs) rather than failing the run.
+export const parseAgentRunLimits = (raw: unknown): AgentRunLimits | null => {
+  if (raw === null || raw === undefined) return null
+  const parsed = AgentRunLimitsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+export const resolveEffectiveRunBudget = (
+  runLimits: AgentRunLimits | null | undefined,
+  env: Env = process.env,
+): BudgetLimits => {
+  const backstop = resolveRunBackstop(env)
+  return {
+    maxCostCents: runLimits?.maxCostCents ?? backstop.maxCostCents,
+    maxIterations: runLimits?.maxIterations ?? backstop.maxIterations,
+    maxTokens: runLimits?.maxTokens ?? backstop.maxTokens,
+    maxToolCalls: runLimits?.maxToolCalls ?? backstop.maxToolCalls,
+    maxWallclockMs: runLimits?.maxWallclockMs ?? backstop.maxWallclockMs,
+    toolTimeoutMs: TOOL_TIMEOUT_MS,
+  }
+}
+
+// Delegate sub-agents are a discovery fan-out, not a second full run: their
+// envelope is fixed and small, and the parent run caps how many it may spawn.
+export const DELEGATE_BUDGET: BudgetLimits = {
+  maxCostCents: 100,
+  maxIterations: 6,
+  maxTokens: 30_000,
+  maxToolCalls: 10,
+  maxWallclockMs: 90_000,
+  toolTimeoutMs: 25_000,
+}
+
+export const resolveMaxDelegatesPerRun = (env: Env = process.env): number =>
+  nonNegativeInt(env['NESSIE_MAX_DELEGATES_PER_RUN'], DEFAULT_MAX_DELEGATES_PER_RUN)
+
+export type DelegateGate = {
+  /** False once the run has spent its sub-agent allowance or is winding down. */
+  tryAcquire: () => boolean
+  overLimitMessage: () => string
+  /** Wind-down: no NEW fan-out once the model has been told to finish. */
+  closeForWindDown: () => void
+}
+
+// A structural cap, not a run-killer: an over-cap `delegate` call comes back as
+// an ordinary failed tool result and the run carries on with its own tools.
+export const createDelegateGate = (
+  max: number = resolveMaxDelegatesPerRun(),
+): DelegateGate => {
+  let used = 0
+  let windingDown = false
+  return {
+    closeForWindDown: () => {
+      windingDown = true
+    },
+    overLimitMessage: () =>
+      windingDown
+        ? 'delegate failed: this run is winding down — no new sub-agents. '
+          + 'Deliver your answer with what you already have.'
+        : `delegate failed: this run has already used its ${max} sub-agents. `
+          + 'Finish the work yourself with the tools you have.',
+    tryAcquire: () => {
+      if (windingDown || used >= max) return false
+      used += 1
+      return true
+    },
+  }
+}
+
+export const resolveAutoContinuations = (env: Env = process.env): number =>
+  nonNegativeInt(env['NESSIE_RUN_AUTO_CONTINUATIONS'], DEFAULT_AUTO_CONTINUATIONS)
+
+// Cache-read weight: what a cache read costs relative to a fresh input token on
+// the run's provider+model. It is a *price* ratio, so the org's own pricing rows
+// are the truth when they carry both rates; the env value is the fallback for
+// orgs that never configured pricing. Clamped to [0, 1]: a cache read is never
+// free-with-credit and never dearer than fresh input.
+const clampWeight = (value: number): number => Math.min(1, Math.max(0, value))
+
+export const resolveCacheReadWeightFromEnv = (env: Env = process.env): number => {
+  const raw = env['NESSIE_CACHE_READ_WEIGHT']?.trim()
+  // An empty value is "unset", not "cache reads are free": `Number('')` is 0,
+  // which would silently stop metering re-served context altogether.
+  if (!raw) return DEFAULT_CACHE_READ_WEIGHT
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : DEFAULT_CACHE_READ_WEIGHT
+}
+
+// Best-effort by construction: budget metering must never fail a run, so any
+// lookup error (or missing/zero rates) degrades to the env default. Mirrors the
+// active-profile selection `@nessie/runtime` ledger pricing uses — exact
+// `modelPattern` wins over the `*` catch-all, expired profiles are excluded.
+export const resolveCacheReadWeight = async (
+  prisma: PrismaClient,
+  input: { model: string | null; organizationId: string; provider: string | null },
+  env: Env = process.env,
+): Promise<number> => {
+  const fallback = resolveCacheReadWeightFromEnv(env)
+  if (!input.model || !input.provider) return fallback
+  try {
+    const row = await prisma.modelPricingProfile.findFirst({
+      where: {
+        AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }],
+        organizationId: input.organizationId,
+        OR: [{ modelPattern: input.model }, { modelPattern: '*' }],
+        provider: input.provider,
+      },
+      orderBy: { modelPattern: 'desc' },
+      select: { cacheReadPerMillion: true, inputPerMillion: true },
+    })
+    const cacheRead = row?.cacheReadPerMillion?.toNumber()
+    const fresh = row?.inputPerMillion?.toNumber()
+    if (typeof cacheRead === 'number' && typeof fresh === 'number' && fresh > 0) {
+      return clampWeight(cacheRead / fresh)
+    }
+  } catch (error) {
+    console.warn('[worker] cache-read weight lookup failed; using the configured default', error)
+  }
+  return fallback
+}

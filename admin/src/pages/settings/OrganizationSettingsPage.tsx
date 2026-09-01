@@ -4,17 +4,25 @@ import {
   useCurrentOrganization,
   useUpdateOrganization,
 } from '../../facades/organization/hooks'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
+import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
+import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
 import {
   FeedbackBanner,
-  sectionTitleClass,
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
+  // Team call settings follow their API route: owners and admins can change
+  // them. The organisation's own route authorizes the same two roles, so the
+  // page remains one coherent home for its existing logo and profile controls.
+  const isOwner = useIsOwner()
+  const canManageOrganization = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
 
@@ -35,10 +43,7 @@ export const OrganizationSettingsPage = () => {
     return null
   }
 
-  // Owner-only, matching the owner-gated nav item and the other org-admin
-  // settings (Members). Non-owners are routed back to their profile.
-  const isOwner = me.user.roleIds.includes('owner')
-  if (!isOwner) {
+  if (!canManageOrganization) {
     return <Navigate to="/settings/profile" replace />
   }
 
@@ -63,7 +68,7 @@ export const OrganizationSettingsPage = () => {
     <SettingsPanel eyebrow="Organization" title="General">
       <div className="grid max-w-3xl gap-4">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Profile</div>
+          <SectionLabel>Profile</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
             <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
               Organisation name
@@ -87,6 +92,8 @@ export const OrganizationSettingsPage = () => {
         </section>
 
         <LogoPanel />
+        <WorkspaceAvatarPanel />
+        <CallProviderSettingsPanel />
       </div>
     </SettingsPanel>
   )

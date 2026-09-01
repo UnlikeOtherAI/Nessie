@@ -1,64 +1,57 @@
 import type { PrismaClient } from '@prisma/client'
-import { decryptWithKey, deriveSecretKey } from '@nessie/runtime'
-import type { PushDispatchJobPayload } from '@nessie/schemas'
-import {
-  sendApns,
-  sendFcm,
-  type ApnsCredentials,
-  type FcmCredentials,
-  type PushPayload,
-  type PushResult,
-  type PushTarget,
-} from '@nessie/push'
+import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
+import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
+import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
+import { loadPushBadgeCount, type PushBadgePrisma } from './push-badge.js'
+import { defaultPushRetryDelayMs } from './push-retry.js'
 import {
-  PUSH_MAX_SEND_ATTEMPTS,
-  defaultPushRetryDelayMs,
-  shouldRetryPushFailure,
-  type PushRetryProvider,
-} from './push-retry.js'
+  deliverToRecipients,
+  loadPushCredentials,
+  type PushDeliveryPrisma,
+  type PushDispatchSummary,
+  type PushSenders,
+} from './push-delivery-core.js'
 
 /**
  * Worker consumer for the `push.dispatch` queue topic. Resolves the recipients
- * of a freshly-posted message (channel members minus the author), loads + the
- * decrypts the stored APNs/FCM credentials, and fans a push out to each
- * recipient's registered native device tokens. Tokens the provider reports dead
- * are pruned from the registry.
+ * of a freshly-posted message (channel members minus the author, or the explicit
+ * recipient of an interactive agent reply), then hands the built payload +
+ * recipient set to the shared {@link deliverToRecipients} core, which loads
+ * credentials and fans out over native APNs/FCM + browser Web Push.
  *
- * The senders, prisma client, and the auth secret are injected (see
+ * The senders, prisma client, and auth secret are injected (see
  * {@link PushDispatchDeps}) so the handler is fully unit-testable without any
  * network or live database.
  */
 
-/** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
-export type PushDispatchPrisma = Pick<
-  PrismaClient,
-  | 'pushCredential'
-  | 'channelMember'
-  | 'deviceToken'
-  | 'channel'
-  | 'mcpOAuthSecret'
-  | 'user'
-  | 'pushDelivery'
->
+export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
 
-export type PushSenders = {
-  sendApns: (
-    creds: ApnsCredentials,
-    target: PushTarget,
-    payload: PushPayload,
-  ) => Promise<PushResult>
-  sendFcm: (
-    creds: FcmCredentials,
-    target: PushTarget,
-    payload: PushPayload,
-  ) => Promise<PushResult>
-}
+/** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
+export type PushDispatchPrisma = PushDeliveryPrisma &
+  PushBadgePrisma &
+  Pick<PrismaClient,
+    | 'agent'
+    | 'channelMember'
+    | 'channel'
+    | 'disclosureGrant'
+    | 'message'
+    | 'organizationMember'
+    | 'projectMember'
+    | 'scopeDisclosureGrant'
+    | 'teamMember'
+    | 'user'>
 
 export type PushDispatchDeps = {
   prisma: PushDispatchPrisma
   /** Deployment auth secret — the key the secret store encrypted creds under. */
   authSecret: string
+  /**
+   * VAPID credentials for browser Web Push, populated only when all three
+   * config values are present. When set, recipients' browser subscriptions are
+   * delivered to in addition to native APNs/FCM tokens.
+   */
+  webPush?: WebPushCredentials
   /** Push senders, injected so tests can stub them (default: real network). */
   senders?: PushSenders
   /** Clock injection keeps recipient preference filtering deterministic in tests. */
@@ -67,211 +60,48 @@ export type PushDispatchDeps = {
   retryDelayMs?: (completedAttempt: number) => number
 }
 
-export type PushDispatchSummary = {
-  sent: number
-  failed: number
-  pruned: number
+type PushMessage = {
+  agentId: string | null
+  agent: { name: string } | null
+  basisScopes: BasisScopeRow[]
+  user: { displayName: string } | null
 }
 
-const decryptSecret = async (
-  prisma: PushDispatchPrisma,
-  authSecret: string,
-  secretRef: string,
-): Promise<string | null> => {
-  const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref: secretRef } })
-  if (!row) {
-    return null
-  }
-  return decryptWithKey(deriveSecretKey(authSecret), {
-    ciphertext: row.ciphertext,
-    iv: row.iv,
-    authTag: row.authTag,
-  })
-}
-
-const errorMessageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
-const delay = async (milliseconds: number): Promise<void> => {
-  if (milliseconds <= 0) {
-    return
-  }
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds)
-  })
-}
-
-const resultFromError = (error: unknown): PushResult => ({
-  ok: false,
-  status: 0,
-  deadToken: false,
-  error: errorMessageOf(error),
-})
-
-const errorCodeOf = (result: PushResult): string | null => {
-  if (result.ok) {
-    return null
-  }
-  return result.error ?? `status:${result.status}`
-}
-
-type DeliveryStatus = 'sent' | 'failed' | 'dead'
-
-const deliveryStatusOf = (result: PushResult): DeliveryStatus => {
-  if (result.ok) {
-    return 'sent'
-  }
-  return result.deadToken ? 'dead' : 'failed'
-}
-
-const sendWithRetry = async (
-  input: {
-    provider: PushRetryProvider
-    send: () => Promise<PushResult>
-    retryDelayMs: (completedAttempt: number) => number
-  },
-): Promise<{ attempts: number; result: PushResult }> => {
-  let attempts = 0
-
-  while (attempts < PUSH_MAX_SEND_ATTEMPTS) {
-    attempts += 1
-    const result = await input.send().catch(resultFromError)
-    if (!shouldRetryPushFailure(input.provider, result, attempts)) {
-      return { attempts, result }
-    }
-    await delay(input.retryDelayMs(attempts))
-  }
-
-  throw new Error('push retry loop exhausted without a final result')
-}
-
-type PushDeviceTokenForSend = {
-  platform: 'ios' | 'android'
-  token: string
-}
-
-type PushSendOutcome = {
-  provider: PushRetryProvider
-  attempts: number
-  result: PushResult
-}
-
-const sendConfiguredToken = async (
-  input: {
-    apnsCreds: ApnsCredentials | null
-    fcmCreds: FcmCredentials | null
-    payload: PushPayload
-    retryDelayMs: (completedAttempt: number) => number
-    senders: PushSenders
-    token: PushDeviceTokenForSend
-  },
-): Promise<PushSendOutcome | null> => {
-  if (input.token.platform === 'ios' && input.apnsCreds) {
-    const apnsCreds = input.apnsCreds
-    return {
-      provider: 'apns',
-      ...(await sendWithRetry({
-        provider: 'apns',
-        retryDelayMs: input.retryDelayMs,
-        send: () => input.senders.sendApns(
-          apnsCreds,
-          { token: input.token.token },
-          input.payload,
-        ),
-      })),
-    }
-  }
-
-  if (input.token.platform === 'android' && input.fcmCreds) {
-    const fcmCreds = input.fcmCreds
-    return {
-      provider: 'fcm',
-      ...(await sendWithRetry({
-        provider: 'fcm',
-        retryDelayMs: input.retryDelayMs,
-        send: () => input.senders.sendFcm(
-          fcmCreds,
-          { token: input.token.token },
-          input.payload,
-        ),
-      })),
-    }
-  }
-
-  return null
-}
-
-/**
- * Build the decrypted APNs credentials from the `push_credentials` row + the
- * `.p8` plaintext, or null if the row is incomplete / the secret is missing.
- */
-const loadApnsCreds = async (
-  deps: Pick<PushDispatchDeps, 'prisma' | 'authSecret'>,
-  row: {
-    secretRef: string
-    apnsKeyId: string | null
-    apnsTeamId: string | null
-    apnsTopic: string | null
-    apnsEnvironment: 'sandbox' | 'production' | null
-  },
-): Promise<ApnsCredentials | null> => {
-  if (!row.apnsKeyId || !row.apnsTeamId || !row.apnsTopic) {
-    return null
-  }
-  const p8 = await decryptSecret(deps.prisma, deps.authSecret, row.secretRef)
-  if (!p8) {
-    return null
-  }
-  return {
-    p8,
-    keyId: row.apnsKeyId,
-    teamId: row.apnsTeamId,
-    topic: row.apnsTopic,
-    environment: row.apnsEnvironment ?? 'production',
-  }
-}
-
-const loadFcmCreds = async (
-  deps: Pick<PushDispatchDeps, 'prisma' | 'authSecret'>,
-  row: { secretRef: string },
-): Promise<FcmCredentials | null> => {
-  const serviceAccountJson = await decryptSecret(
-    deps.prisma,
-    deps.authSecret,
-    row.secretRef,
-  )
-  if (!serviceAccountJson) {
-    return null
-  }
-  return { serviceAccountJson }
-}
+const genericReplyBody = 'An agent reply is ready.'
 
 export const handlePushDispatch = async (
   deps: PushDispatchDeps,
   payload: PushDispatchJobPayload,
 ): Promise<PushDispatchSummary> => {
   const summary: PushDispatchSummary = { sent: 0, failed: 0, pruned: 0 }
-  const senders: PushSenders = deps.senders ?? { sendApns, sendFcm }
   const retryDelayMs = deps.retryDelayMs ?? defaultPushRetryDelayMs
+  const webPushEnabled = Boolean(deps.webPush)
 
-  // 1. Load credentials. Nothing to do if neither provider is configured.
-  const credRows = await deps.prisma.pushCredential.findMany()
-  const apnsRow = credRows.find((r) => r.provider === 'apns') ?? null
-  const fcmRow = credRows.find((r) => r.provider === 'fcm') ?? null
-  if (!apnsRow && !fcmRow) {
+  // 1. Load native credentials. Nothing to do when no native provider AND no
+  // web push is configured.
+  const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
+  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
     return summary
   }
 
-  const apnsCreds = apnsRow ? await loadApnsCreds(deps, apnsRow) : null
-  const fcmCreds = fcmRow ? await loadFcmCreds(deps, fcmRow) : null
-  if (!apnsCreds && !fcmCreds) {
-    return summary
-  }
-
-  // 2. Resolve recipients: channel members minus the author, muted members,
-  // disabled push preferences, and users currently inside quiet hours.
+  // 2. Resolve recipients: active organization members of the channel minus
+  // the author, or the structurally-selected requester of an agent reply. In
+  // both cases, muted members, disabled push preferences, and users currently
+  // inside quiet hours are excluded. Channel rows are retained when somebody is
+  // deactivated, so membership alone must never be treated as current access.
+  const recipientUserIds = payload.recipientUserIds
   const members = await deps.prisma.channelMember.findMany({
-    where: { channelId: payload.channelId, userId: { not: payload.authorUserId } },
+    where: {
+      channelId: payload.channelId,
+      userId: recipientUserIds
+        ? { in: recipientUserIds }
+        : { not: payload.authorUserId },
+      user: {
+        organizationMembers: {
+          some: { deactivatedAt: null, organizationId: payload.organizationId },
+        },
+      },
+    },
     select: { muted: true, userId: true },
   })
   const unmutedRecipientIds = members
@@ -285,106 +115,147 @@ export const handlePushDispatch = async (
     where: { id: { in: unmutedRecipientIds } },
     select: { id: true, preferences: true },
   })
-  const now = deps.now?.() ?? new Date()
-  const recipientIds = users
-    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now))
-    .map((user) => user.id)
-  if (recipientIds.length === 0) {
-    return summary
-  }
-
-  // 3. Load the recipients' device tokens.
-  const tokens = await deps.prisma.deviceToken.findMany({
-    where: { userId: { in: recipientIds } },
+  // A protected reply never contains content in a notification. Its requester
+  // receives a generic completion only if they still pass the exact same
+  // basis + grant predicate that gates the conversation feed at this moment.
+  // That makes membership and grant revocation effective before a queued push
+  // can reach a lock screen.
+  const protectedReply = payload.contentVisibility === 'generic'
+  // Resolve the durable author, not an enqueue-time label. Agent replies do
+  // not have a user author, while ordinary messages may have either source.
+  // This gives every platform the familiar sender + destination presentation.
+  const replyMessage: PushMessage | null = await deps.prisma.message.findUnique({
+    where: { id: payload.messageId },
+    select: {
+      agentId: true,
+      agent: { select: { name: true } },
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      user: { select: { displayName: true } },
+    },
   })
-  if (tokens.length === 0) {
+  if (protectedReply && !replyMessage) {
     return summary
   }
-
-  // 4. Build the notification payload (deep-link data + per-channel coalescing).
+  const entitledUsers = protectedReply && replyMessage
+    ? (await Promise.all(users.map(async (user) => ({
+      user,
+      readable: await canUserReadDisclosureBasis(deps.prisma, {
+        agentId: replyMessage.agentId,
+        basis: replyMessage.basisScopes,
+        channelId: payload.channelId,
+        messageId: payload.messageId,
+        organizationId: payload.organizationId,
+        userId: user.id,
+      }),
+    })))).filter((entry) => entry.readable).map((entry) => entry.user)
+    : users
+  if (entitledUsers.length === 0) {
+    return summary
+  }
+  const now = deps.now?.() ?? new Date()
+  // 3. Build sender-first notification payloads (deep-link data + per-channel
+  // coalescing). APNs shows the channel as its subtitle; FCM/Web Push preserve
+  // it by composing that subtitle into their one available title line. Muted
+  // members were filtered out above for everyone — a muted channel suppresses
+  // even mention pushes, but the durable UserAlert row + bell badge are still
+  // created API-side, so a mention is never lost, just quiet.
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
     select: { label: true },
   })
-  const pushPayload: PushPayload = {
-    title: channel?.label ?? 'New message',
-    body: payload.contentSnippet,
+  const channelLabel = channel?.label ?? 'New message'
+  const authorName = payload.authorName
+    ?? replyMessage?.agent?.name
+    ?? replyMessage?.user?.displayName
+    ?? 'Nessie'
+  const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
+  const mentionedRecipientIds = entitledUsers
+    .filter((user) => mentionUserIds.has(user.id))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
+    .map((user) => user.id)
+  const otherRecipientIds = entitledUsers
+    .filter((user) => !mentionUserIds.has(user.id))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
+    .map((user) => user.id)
+
+  // A reply panel is the actionable destination for both a top-level message
+  // and a reply. Older queued jobs simply use their message as the root.
+  const deepLinkUrl = buildChannelMessagePath(payload)
+
+  const buildPayload = (subtitle: string, badge: number): PushPayload => ({
+    badge,
+    title: authorName,
+    subtitle,
+    body: protectedReply
+      ? genericReplyBody
+      : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,
       threadId: payload.threadId,
       messageId: payload.messageId,
+      ...(payload.rootMessageId ? { rootMessageId: payload.rootMessageId } : {}),
+      url: deepLinkUrl,
     },
-    collapseId: payload.channelId,
-  }
+    // Keep distinct reply conversations visible independently while retaining
+    // familiar per-channel coalescing for the main feed.
+    collapseId: payload.rootMessageId ?? payload.threadId,
+  })
 
-  // 5. Deliver per-token; prune dead tokens; never throw out of the loop.
-  const deadTokenIds: string[] = []
-  for (const token of tokens) {
-    let outcome: PushSendOutcome | null = null
-    try {
-      outcome = await sendConfiguredToken({
+  // 4. Deliver over native + Web Push through the shared core. The framing is
+  // grouped, but each recipient gets their own current icon total.
+  const deliver = async (ids: string[], subtitle: string): Promise<PushDispatchSummary> => {
+    const results = await Promise.all(ids.map(async (userId) => {
+      const badge = await loadPushBadgeCount(deps.prisma, {
+        organizationId: payload.organizationId,
+        userId,
+      })
+      return deliverToRecipients({
+        prisma: deps.prisma,
         apnsCreds,
         fcmCreds,
-        payload: pushPayload,
+        ...(deps.webPush ? { webPush: deps.webPush } : {}),
+        ...(deps.senders ? { senders: deps.senders } : {}),
         retryDelayMs,
-        senders,
-        token,
-      })
-    } catch (err) {
-      summary.failed += 1
-      console.error('[push-dispatch] send failed', {
-        tokenId: token.id,
-        platform: token.platform,
-        err,
-      })
-      continue
-    }
-
-    if (!outcome) {
-      // No configured provider for this platform — skip silently.
-      continue
-    }
-
-    if (outcome.result.ok) {
-      summary.sent += 1
-    } else {
-      summary.failed += 1
-    }
-    if (outcome.result.deadToken) {
-      deadTokenIds.push(token.id)
-    }
-
-    try {
-      await deps.prisma.pushDelivery.create({
-        data: {
-          organizationId: payload.organizationId,
-          userId: token.userId,
-          messageId: payload.messageId,
-          provider: outcome.provider,
-          status: deliveryStatusOf(outcome.result),
-          errorCode: errorCodeOf(outcome.result),
-          attempts: outcome.attempts,
+        payload: buildPayload(subtitle, badge),
+        recipientIds: [userId],
+        organizationId: payload.organizationId,
+        deepLinkUrl,
+        messageId: payload.messageId,
+        surface: {
+          channelId: payload.channelId,
+          kind: 'channel',
+          rootMessageId: payload.rootMessageId ?? null,
+          threadId: payload.threadId,
         },
+        now: deps.now ?? (() => new Date()),
       })
-    } catch (err) {
-      console.error('[push-dispatch] delivery log failed', {
-        tokenId: token.id,
-        platform: token.platform,
-        err,
-      })
-    }
+    }))
+    return results.reduce<PushDispatchSummary>((combined, result) => ({
+      failed: combined.failed + result.failed,
+      pruned: combined.pruned + result.pruned,
+      sent: combined.sent + result.sent,
+    }), { sent: 0, failed: 0, pruned: 0 })
   }
 
-  if (deadTokenIds.length > 0) {
-    await deps.prisma.deviceToken.deleteMany({ where: { id: { in: deadTokenIds } } })
-    summary.pruned = deadTokenIds.length
+  if (otherRecipientIds.length > 0) {
+    const delivered = await deliver(otherRecipientIds, `# ${channelLabel}`)
+    summary.sent += delivered.sent
+    summary.failed += delivered.failed
+    summary.pruned += delivered.pruned
+  }
+
+  if (mentionedRecipientIds.length > 0) {
+    const delivered = await deliver(mentionedRecipientIds, `mentioned you in # ${channelLabel}`)
+    summary.sent += delivered.sent
+    summary.failed += delivered.failed
+    summary.pruned += delivered.pruned
   }
 
   console.log('[push-dispatch] done', {
     messageId: payload.messageId,
     channelId: payload.channelId,
-    recipients: recipientIds.length,
-    tokens: tokens.length,
+    recipients: otherRecipientIds.length + mentionedRecipientIds.length,
+    mentioned: mentionedRecipientIds.length,
     sent: summary.sent,
     failed: summary.failed,
     pruned: summary.pruned,

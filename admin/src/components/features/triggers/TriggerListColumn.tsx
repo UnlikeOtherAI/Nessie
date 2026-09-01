@@ -1,11 +1,12 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { ReactNode } from 'react'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import type {
   TriggerStatusCounts,
   TriggerStatusFilter,
   TriggerTypeFilter,
 } from '../../../pages/triggers/useTriggersPageState'
-import { SegmentedControl } from '../../primitives/SegmentedControl'
+import { TabBar } from '../../primitives/TabBar'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
 import {
   TRIGGER_TYPE_ICONS,
@@ -27,6 +28,7 @@ import {
 type TriggerListColumnProps = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
+  leading?: ReactNode
   onCreate: () => void
   onSearchChange: (query: string) => void
   onSelect: (triggerId: string) => void
@@ -104,6 +106,7 @@ const TriggerRow = ({
 export const TriggerListColumn = ({
   effectiveTriggerId,
   filteredTriggers,
+  leading,
   onCreate,
   onSearchChange,
   onSelect,
@@ -117,6 +120,7 @@ export const TriggerListColumn = ({
   typeFilter,
 }: TriggerListColumnProps) => (
   <ColumnBrowserColumn
+    leading={leading}
     headerAction={
       <button
         className="admin-button admin-button-primary"
@@ -139,21 +143,24 @@ export const TriggerListColumn = ({
         value={searchQuery}
       />
 
-      <SegmentedControl
+      <TabBar
         ariaLabel="Filter by status"
-        onChange={onStatusFilterChange}
-        options={[
-          { label: 'All', value: 'all', count: statusCounts.all },
-          { label: 'Active', value: 'active', count: statusCounts.active },
-          { label: 'Paused', value: 'paused', count: statusCounts.paused },
-          { label: 'Error', value: 'error', count: statusCounts.error },
+        fullWidth
+        items={[
+          { count: statusCounts.all, label: 'All', value: 'all' },
+          { count: statusCounts.active, label: 'Active', value: 'active' },
+          { count: statusCounts.paused, label: 'Paused', value: 'paused' },
+          { count: statusCounts.error, label: 'Error', value: 'error' },
         ]}
+        onChange={onStatusFilterChange}
+        role="radiogroup"
+        size="sm"
         value={statusFilter}
       />
 
       <select
         aria-label="Filter by type"
-        className="admin-input py-1.5 text-xs"
+        className="admin-input admin-input-compact"
         onChange={(event) => onTypeFilterChange(event.target.value as TriggerTypeFilter)}
         value={typeFilter}
       >

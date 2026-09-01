@@ -459,14 +459,23 @@ export const listExecutionUsageLedger = async (
   return entries.map(mapExecutionUsageLedger)
 }
 
+/**
+ * Runners with `organizationId: null` are the instance's own shared host fleet:
+ * hostnames, capacity and heartbeats that belong to no tenant. Reading them is
+ * therefore an instance-level decision (`User.superAdmin`), the same boundary
+ * `GET /api/ops/health` and the `organizationId: null` catalog arm draw. An
+ * organisation owner administers exactly one tenant, so by default this returns
+ * that tenant's own runners and nothing else.
+ */
 export const listExecutionRunners = async (
   prisma: PrismaClient,
   organizationId: string,
+  options: { includeInstanceFleet: boolean },
 ): Promise<ExecutionRunnerRecord[]> => {
   const runners = await prisma.executionRunner.findMany({
-    where: {
-      OR: [{ organizationId }, { organizationId: null }],
-    },
+    where: options.includeInstanceFleet
+      ? { OR: [{ organizationId }, { organizationId: null }] }
+      : { organizationId },
     orderBy: [{ createdAt: 'desc' }],
   })
 

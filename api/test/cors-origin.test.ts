@@ -9,6 +9,21 @@ const dbStub = [
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is not used by cors-origin.test.ts")',
   '}',
+  'export const writeAuditEntry = async () => {}',
+  'export const enqueueQueueJob = async () => {}',
+  'export const buildVisibleAgentWhere = () => {',
+  '  throw new Error("agent visibility is not used by cors-origin.test.ts")',
+  '}',
+  'export const buildAgentVisibilityWhere = () => {',
+  '  throw new Error("agent visibility is not used by cors-origin.test.ts")',
+  '}',
+  'export const visibleKnowledgeSpaceWhere = () => {',
+  '  throw new Error("knowledge-space visibility is not used by cors-origin.test.ts")',
+  '}',
+  'export const listVisibleAgentIdsForUser = async () => {',
+  '  throw new Error("agent visibility is not used by cors-origin.test.ts")',
+  '}',
+  'export const writeAuditEntryInTransaction = async () => {}',
 ].join('\n')
 
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`

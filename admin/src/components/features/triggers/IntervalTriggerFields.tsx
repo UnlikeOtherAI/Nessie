@@ -49,6 +49,28 @@ export const IntervalTriggerFields = ({
           value={form.nextRunAt}
         />
       </div>
+
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="trigger-interval-until">
+          Stop after
+        </label>
+        <input
+          className="admin-input"
+          id="trigger-interval-until"
+          onChange={(nextEvent) =>
+            setForm((current) => ({
+              ...current,
+              until: nextEvent.target.value,
+            }))
+          }
+          type="datetime-local"
+          value={form.until}
+        />
+        <p className="text-xs text-[color:var(--tx3)]">
+          Optional. Leave empty to run until you pause it. Past this time the
+          trigger stops firing and shows as paused; extend it to resume.
+        </p>
+      </div>
     </div>
   </section>
 )

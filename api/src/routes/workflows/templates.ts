@@ -2,19 +2,44 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   CreateWorkflowTemplateBodySchema,
+  RecordWorkflowStepSamplesBodySchema,
+  RecordWorkflowStepSamplesResultSchema,
   UpdateWorkflowTemplateBodySchema,
+  WorkflowListQuerySchema,
+  WorkflowStepSamplesRecordSchema,
   WorkflowTemplateRecordSchema,
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  getWorkflowTemplateStepSamples,
+  recordWorkflowStepSamples,
+  WorkflowStepSamplesError,
+} from '../../services/workflow-step-samples.js'
 import {
   createWorkflowTemplate,
   getWorkflowTemplate,
   listWorkflowTemplates,
   updateWorkflowTemplate,
-  WorkflowTemplateValidationError,
-} from '../../services/workflows.js'
+} from '../../services/workflow-templates.js'
+import { WorkflowTemplateValidationError } from '../../services/workflow-validation.js'
+import { auditWorkflowMutation } from '../../services/workflow-audit.js'
+import { isWorkflowAdmin } from '../../services/workflow-entitlement.js'
 import type { FastifyReply } from 'fastify'
 import type { RouteDeps } from '../types.js'
+
+/** W19: authoring/editing/publishing a template is org admin-or-owner; the
+ *  step-samples store follows the template gate exactly (it is served only to
+ *  the role that can already read the template's bindings). */
+const requireWorkflowAdmin = (
+  actorContext: Parameters<typeof isWorkflowAdmin>[0],
+  reply: Parameters<typeof sendApiError>[0],
+): boolean => {
+  if (isWorkflowAdmin(actorContext)) {
+    return true
+  }
+  sendApiError(reply, 403, 'FORBIDDEN', 'Workflow admin access required')
+  return false
+}
 
 /**
  * Shared 4xx mapping for template create/update: step-validation problems are
@@ -43,19 +68,27 @@ const sendTemplateSaveError = (reply: FastifyReply, error: unknown): boolean => 
 }
 
 export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, requireActorContext } = deps
 
   app.get('/api/workflows', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
-    const workflows = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId)
-    return createApiResponse(WorkflowTemplateRecordSchema.array().parse(workflows))
+    const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
+
+    const page = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId, query)
+    return createApiResponse(
+      WorkflowTemplateRecordSchema.array().parse(page.items),
+      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
+    )
   })
 
   app.post('/api/workflows', async (request, reply) => {
@@ -63,7 +96,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -82,6 +115,13 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       throw error
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.created',
+      metadata: { name: workflow.name },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return reply.code(201).send(createApiResponse(WorkflowTemplateRecordSchema.parse(workflow)))
   })
 
@@ -90,7 +130,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -105,6 +145,13 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.updated',
+      metadata: { name: workflow.name, version: workflow.version },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
   })
 
@@ -113,7 +160,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -143,6 +190,75 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.updated',
+      metadata: { name: workflow.name, version: workflow.version },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
   })
+  // §5 stepSamples — owner-gated on both sides: the store is served only to
+  // the role that can already read the template's bindings, and written only
+  // by that same role after a designer test run completes.
+  app.get('/api/workflows/:workflowTemplateId/step-samples', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireWorkflowAdmin(actorContext, reply)) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    const samples = await getWorkflowTemplateStepSamples(
+      prisma,
+      actorContext.tenant.organizationId,
+      workflowTemplateId,
+    )
+    if (!samples) {
+      sendApiError(reply, 404, 'WORKFLOW_STEP_SAMPLES_NOT_FOUND', 'No step samples for this template')
+      return reply
+    }
+
+    return createApiResponse(WorkflowStepSamplesRecordSchema.parse(samples))
+  })
+
+  app.post('/api/workflows/:workflowTemplateId/step-samples', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireWorkflowAdmin(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(RecordWorkflowStepSamplesBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    try {
+      const result = await recordWorkflowStepSamples(
+        prisma,
+        actorContext.tenant.organizationId,
+        {
+          stepOutputs: body.stepOutputs,
+          workflowInstallationId: body.workflowInstallationId,
+          workflowRunId: body.workflowRunId,
+          workflowTemplateId,
+        },
+      )
+      return createApiResponse(RecordWorkflowStepSamplesResultSchema.parse({ result }))
+    } catch (error) {
+      if (error instanceof WorkflowStepSamplesError) {
+        sendApiError(reply, 404, error.message, 'Workflow template or installation not found')
+        return reply
+      }
+      throw error
+    }
+  })
+
 }

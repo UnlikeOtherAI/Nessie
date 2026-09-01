@@ -1,32 +1,48 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import {
+  Navigate,
+  createBrowserRouter,
+  useLocation,
+} from 'react-router-dom'
+import { resolveRootLandingPath } from './facades/billing/checkout-return'
+import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
-import { AgentActivityPage } from './pages/AgentActivityPage'
+import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
+import { AgentDetailPage } from './pages/AgentDetailPage'
 import { AgentsPage } from './pages/AgentsPage'
+import { ExecutorsPage } from './pages/ExecutorsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { ExternalAuthCompletionPage } from './pages/ExternalAuthCompletionPage'
+import { ThreadsPage } from './pages/ThreadsPage'
+import { UnreadMessagesPage } from './pages/UnreadMessagesPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
-import { LoginPage } from './pages/LoginPage'
-import { McpAppStorePage } from './pages/McpAppStorePage'
+import { DashboardsPage } from './pages/DashboardsPage'
+import { DashboardDetailPage } from './pages/DashboardDetailPage'
+import { LoginRoute } from './pages/LoginRoute'
+import { AppDetailPage } from './pages/AppDetailPage'
+import { AppsPage } from './pages/AppsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { OperationalTelemetryPage } from './pages/OperationalTelemetryPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
 import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
+import { ConnectionsPage } from './pages/settings/ConnectionsPage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage'
-import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
+import { SecretsPage } from './pages/settings/SecretsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
 import { StatusesPage } from './pages/settings/StatusesPage'
@@ -36,13 +52,28 @@ import { TriggersPage } from './pages/TriggersPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
+const RootRouteRedirect = () => {
+  const { search } = useLocation()
+  // The native shell injects a tapped notification route before this SPA
+  // starts. Resolve it here, rather than first redirecting to /channels and
+  // replacing the notification destination with the default conversation.
+  return <Navigate to={resolveRootLandingPath(search, readNativePendingPushPath())} replace />
+}
+
+// The Admin tab's first phone page is its existing navigation list. Wider
+// layouts preserve the established direct route to Profile & Session.
+const SettingsRootRoute = () => {
+  const phoneLayout = usePhoneLayout()
+  return phoneLayout ? null : <Navigate to="/settings/profile" replace />
+}
+
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
   {
     path: '/',
-    element: <Navigate to="/channels" replace />,
+    element: <RootRouteRedirect />,
   },
   {
     path: '/bootstrap',
@@ -50,15 +81,15 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    element: <LoginPage />,
+    element: <LoginRoute />,
+  },
+  {
+    path: '/login/completing',
+    element: <ExternalAuthCompletionPage />,
   },
   {
     path: '/workflows',
     element: <Navigate to="/agents/workflows" replace />,
-  },
-  {
-    path: '/threads',
-    element: <Navigate to="/channels" replace />,
   },
   {
     path: '/chats',
@@ -80,19 +111,41 @@ export const router = createBrowserRouter([
     element: <Navigate to="/agents" replace />,
   },
   {
+    path: '/integrations',
+    element: <Navigate to="/settings/integrations" replace />,
+  },
+  {
     element: <AdminShellLayout />,
     children: [
-      {
-        path: '/channels/new',
-        element: <ChannelConversationComposePage />,
-      },
+      { path: '/threads', element: <ThreadsPage /> },
+      { path: '/unread-messages', element: <UnreadMessagesPage /> },
       {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,
       },
       {
-        path: '/channels/:channelId?',
+        // The Channels workspace stays mounted when a new-message sheet opens,
+        // so wider layouts retain the source conversation beneath the composer.
+        path: '/channels',
         element: <ChannelsPage />,
+        children: [
+          { index: true },
+          {
+            path: 'new',
+            element: <ChannelConversationComposePage />,
+          },
+          {
+            // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
+            path: ':channelId/threads/:threadId/replies/:rootMessageId',
+          },
+          // Conversation information is a route, not a transient popup: phone
+          // Back, notification deep links, tablet inspectors, and desktop all
+          // resolve the same explicit hierarchy.
+          { path: ':channelId/info' },
+          { path: ':channelId/info/members' },
+          { path: ':channelId/info/members/add' },
+          { path: ':channelId' },
+        ],
       },
       {
         path: '/projects',
@@ -115,12 +168,24 @@ export const router = createBrowserRouter([
         element: <ProjectView />,
       },
       {
+        path: '/projects/:projectId/docs',
+        element: <ProjectView />,
+      },
+      {
+        path: '/projects/:projectId/executors',
+        element: <ProjectView />,
+      },
+      {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
       },
       {
-        path: '/integrations',
-        element: <IntegrationsPage />,
+        path: '/dashboards',
+        element: <DashboardsPage />,
+      },
+      {
+        path: '/dashboards/:dashboardId',
+        element: <DashboardDetailPage />,
       },
       {
         path: '/agents',
@@ -137,8 +202,12 @@ export const router = createBrowserRouter([
         element: <KnowledgeBasePage />,
       },
       {
-        path: '/agents/activity',
-        element: <AgentActivityPage />,
+        path: '/knowledge-base/spaces/:spaceId',
+        element: <KnowledgeBasePage />,
+      },
+      {
+        path: '/knowledge-base/views/:productView',
+        element: <KnowledgeBasePage />,
       },
       {
         path: '/agents/designer',
@@ -169,12 +238,27 @@ export const router = createBrowserRouter([
         element: <ToolsPage />,
       },
       {
-        path: '/mcp-app-store',
-        element: <McpAppStorePage />,
+        path: '/agents/executors',
+        element: <ExecutorsPage />,
+      },
+      {
+        // Dynamic agent id last: static siblings above outrank it in the
+        // router's ranking, so `/agents/triggers` etc. still resolve to their
+        // own pages while a real agent id lands on the detail page.
+        path: '/agents/:agentId',
+        element: <AgentDetailPage />,
+      },
+      {
+        path: '/apps',
+        element: <AppsPage />,
+      },
+      {
+        path: '/apps/:slug',
+        element: <AppDetailPage />,
       },
       {
         path: '/settings',
-        element: <Navigate to="/settings/profile" replace />,
+        element: <SettingsRootRoute />,
       },
       {
         path: '/settings/profile',
@@ -183,6 +267,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/security',
         element: <SecuritySettingsPage />,
+      },
+      {
+        path: '/settings/secrets',
+        element: <SecretsPage />,
       },
       {
         path: '/settings/organization',
@@ -201,16 +289,20 @@ export const router = createBrowserRouter([
         element: <NotificationsPage />,
       },
       {
+        path: '/settings/connections',
+        element: <ConnectionsPage />,
+      },
+      {
+        path: '/settings/integrations',
+        element: <IntegrationsPage />,
+      },
+      {
         path: '/settings/appearance',
         element: <AppearancePage />,
       },
       {
         path: '/settings/members',
         element: <SettingsMembersPage />,
-      },
-      {
-        path: '/settings/channels',
-        element: <SettingsChannelsPage />,
       },
       {
         path: '/settings/push',
@@ -225,6 +317,10 @@ export const router = createBrowserRouter([
         element: <ApprovalsPage />,
       },
       {
+        path: '/alerts',
+        element: <AlertsPage />,
+      },
+      {
         path: '/tokens',
         element: <TokenUsagePage />,
       },
@@ -235,6 +331,10 @@ export const router = createBrowserRouter([
       {
         path: '/ops',
         element: <OpsHealthPage />,
+      },
+      {
+        path: '/ops/usage',
+        element: <OperationalTelemetryPage />,
       },
       {
         path: '/search',

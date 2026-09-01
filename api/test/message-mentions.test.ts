@@ -3,16 +3,21 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
-import { createThreadMessage } from '../src/services/messages.js'
+import { createThreadMessage } from '../src/services/message-create.js'
 
 // A channel with one bound agent ("Bound"); the org also has a shared agent
 // "Scout" that is NOT a member of this channel.
 const makePrisma = () => {
-  const calls = { agentFindManyWhere: [] as unknown[] }
+  const calls = { agentFindManyWhere: [] as unknown[], messageUpdates: [] as unknown[] }
+  const candidates = [
+    { id: 'agent-scout', name: 'Scout', ownerUserId: null, visibility: 'workspace' },
+    { id: 'agent-secret', name: 'Secret', ownerUserId: 'user-2', visibility: 'private' },
+  ]
   const prisma = {
     thread: {
       findUnique: async () => ({
         channel: {
+          id: 'channel-1',
           agentBindings: [
             {
               agent: {
@@ -41,7 +46,9 @@ const makePrisma = () => {
         user: { id: 'user-1', displayName: 'User One' },
         agent: null,
       }),
-      update: async () => ({
+      update: async (input: unknown) => {
+        calls.messageUpdates.push(input)
+        return {
         id: 'message-1',
         role: 'user',
         content: '@Scout and @Bound please help',
@@ -49,15 +56,38 @@ const makePrisma = () => {
         reactions: [],
         user: { id: 'user-1', displayName: 'User One' },
         agent: null,
-      }),
-    },
-    agent: {
-      findMany: async (args: { where: unknown }) => {
-        calls.agentFindManyWhere.push(args.where)
-        // Candidate non-bound shared agents in the org.
-        return [{ id: 'agent-scout', name: 'Scout' }]
+        }
       },
     },
+    agent: {
+      findMany: async (args: {
+        where: {
+          AND?: Array<{
+            OR?: Array<{ ownerUserId?: string; visibility?: string }>
+          }>
+        }
+      }) => {
+        calls.agentFindManyWhere.push(args.where)
+        // Honour the shared visibility fragment: a cast Prisma fake is part of
+        // the query contract, so it must not return a private row that the real
+        // where-clause would exclude.
+        const privateArm = args.where.AND?.[0]?.OR?.find(
+          (arm) => arm.visibility === 'private',
+        )
+        return candidates
+          .filter((candidate) =>
+            candidate.visibility === 'workspace'
+            || candidate.ownerUserId === privateArm?.ownerUserId)
+          .map(({ id, name }) => ({ id, name }))
+      },
+    },
+    userAlert: {
+      createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }),
+    },
+    messageThreadFollow: {
+      createMany: async () => ({ count: 0 }),
+    },
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
   return { prisma, calls }
 }
@@ -101,4 +131,90 @@ test('createThreadMessage returns no pending invites when no unbound agent is me
     return
   }
   assert.deepEqual(result.pendingAgentInvites, [])
+})
+
+test('createThreadMessage does not expose a non-owner private agent as a pending invite', async () => {
+  const { prisma } = makePrisma()
+
+  const result = await createThreadMessage(prisma, {
+    content: '@Secret please help',
+    threadId: 'thread-1',
+    userId: 'user-1',
+  })
+
+  assert.equal(result.kind, 'created')
+  if (result.kind !== 'created') return
+  assert.deepEqual(result.pendingAgentInvites, [])
+})
+
+test('a PA mention is validated by its binding ids and stored as structured metadata', async () => {
+  const { prisma, calls } = makePrisma()
+  const agentId = '00000000-0000-4000-8000-000000000001'
+  const principalUserId = '00000000-0000-4000-8000-000000000002'
+  const fake = prisma as unknown as {
+    thread: { findUnique: () => Promise<unknown> }
+  }
+  fake.thread.findUnique = async () => ({
+    channel: {
+      id: 'channel-1',
+      agentBindings: [{
+        agent: {
+          agentKind: 'personal_assistant',
+          id: agentId,
+          name: 'Personal Assistant',
+          role: 'assistant',
+          systemPrompt: null,
+        },
+        principalUserId,
+      }],
+      members: [{ user: { id: 'user-1', displayName: 'User One' } }],
+      organizationId: 'org-1',
+      systemChannelType: null,
+    },
+  })
+
+  const mention = { agentId, principalUserId, type: 'agent' as const }
+  const result = await createThreadMessage(prisma, {
+    agentMentions: [mention],
+    content: '@Owner – PA please help',
+    threadId: 'thread-1',
+    userId: 'user-1',
+  })
+
+  assert.equal(result.kind, 'created')
+  if (result.kind !== 'created') return
+  assert.deepEqual(result.agentMentions, [mention])
+  assert.deepEqual(result.channelAgents, [{
+    id: agentId,
+    name: 'Personal Assistant',
+    principalUserId,
+    role: 'assistant',
+    systemPrompt: null,
+  }])
+  const update = calls.messageUpdates[0] as {
+    data: { metadata: { mentions: unknown } }
+  }
+  assert.deepEqual(update.data.metadata.mentions, {
+    agentIds: [],
+    agentMentions: [mention],
+    broadcast: null,
+    userIds: [],
+  })
+})
+
+test('a stale PA mention is rejected before a message is written', async () => {
+  const { prisma } = makePrisma()
+
+  const result = await createThreadMessage(prisma, {
+    agentMentions: [{
+      agentId: '00000000-0000-4000-8000-000000000003',
+      principalUserId: '00000000-0000-4000-8000-000000000004',
+      type: 'agent',
+    }],
+    content: '@PA please help',
+    threadId: 'thread-1',
+    userId: 'user-1',
+  })
+
+  assert.deepEqual(result, { kind: 'invalid_agent_mention' })
 })

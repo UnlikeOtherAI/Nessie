@@ -7,11 +7,15 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   MCP_CATALOG_ERROR_CODES,
   McpCatalogError,
+  REDACTED,
+  canManageEntry,
   createCatalogEntry,
   deprecateCatalogEntry,
   ensureAuthConfigMatchesMethod,
+  getAccessibleCatalogEntry,
   listCatalogEntries,
   publishCatalogEntry,
+  redactConfigSecrets,
   updateCatalogEntry,
   type McpCatalogEntryRow,
 } from '../src/index.js'
@@ -164,9 +168,16 @@ const matchesWhere = (row: McpCatalogEntryRow, where: Record<string, unknown>): 
 
 type CatalogStub = { prisma: PrismaClient; rows: Map<string, McpCatalogEntryRow> }
 
-const makeStub = (initial: McpCatalogEntryRow[]): CatalogStub => {
+const makeStub = (
+  initial: McpCatalogEntryRow[],
+  superAdminIds: string[] = [],
+): CatalogStub => {
   const rows = new Map(initial.map((row) => [row.id, row]))
   const prisma = {
+    user: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        ({ superAdmin: superAdminIds.includes(where.id) }),
+    },
     mcpCatalogEntry: {
       findFirst: async ({ where }: { where: Record<string, unknown> }) =>
         [...rows.values()].find((row) => matchesWhere(row, where)) ?? null,
@@ -292,12 +303,12 @@ test('submitForReview rejects submitting an already-published entry', async () =
   )
 })
 
-// ─── approve / reject (superuser) ───────────────────────────────────────────
+// ─── approve / reject (instance super-admin) ────────────────────────────────
 
 test('approveSubmission publishes a pending submission', async () => {
   const { prisma } = makeStub([
     makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
-  ])
+  ], [ADMIN])
   const result = await approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1')
   assert.equal(result?.status, 'published')
   assert.equal(result?.visibility, 'public')
@@ -316,8 +327,22 @@ test('approveSubmission forbids non-superusers (even the submitter)', async () =
   )
 })
 
+// Publishing shows a connector to every organisation on the deployment, so the
+// reviewer is the instance super-admin — not whoever owns one organisation.
+test('approveSubmission forbids an org owner who is not the instance super-admin', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+  )
+})
+
 test('approveSubmission rejects entries that are not awaiting approval', async () => {
-  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })], [ADMIN])
   await assert.rejects(
     () => approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1'),
     (error: unknown) =>
@@ -329,7 +354,7 @@ test('approveSubmission rejects entries that are not awaiting approval', async (
 test('rejectSubmission reverts to a private rejected draft with the reason', async () => {
   const { prisma } = makeStub([
     makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
-  ])
+  ], [ADMIN])
   const result = await rejectSubmission(
     prisma,
     actorCtx(ADMIN, ['owner']),
@@ -427,4 +452,156 @@ test('listCatalogEntries queue view returns pending submissions', async () => {
   ])
   const entries = await listCatalogEntries(prisma, actorCtx(ADMIN, ['owner']), { view: 'queue' })
   assert.deepEqual(entries.map((entry) => entry.id), ['pending'])
+})
+
+// ─── Cross-tenant isolation ─────────────────────────────────────────────────
+//
+// An org owner is not a superuser. Catalog rows carry plaintext OAuth client
+// secrets and API-key headers, so no read or management path may reach another
+// organisation's rows. Instance-global rows (organizationId: null) are shared
+// by design and stay reachable.
+
+const ORG_B = '00000000-0000-4000-8000-00000000000b'
+
+test('an owner cannot read another tenant private catalog entry', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'foreign', organizationId: ORG_B, ownerUserId: USER_B }),
+  ])
+  const entry = await getAccessibleCatalogEntry(prisma, actorCtx(ADMIN, ['owner']), 'foreign')
+  assert.equal(entry, null)
+})
+
+test('an owner can still read an instance-global catalog entry', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'global', organizationId: null, ownerUserId: null }),
+  ])
+  const entry = await getAccessibleCatalogEntry(prisma, actorCtx(ADMIN, ['owner']), 'global')
+  assert.equal(entry?.id, 'global')
+})
+
+test('an owner can read an entry inside their own tenant', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'mine', organizationId: ORG_A, ownerUserId: USER_A }),
+  ])
+  const entry = await getAccessibleCatalogEntry(prisma, actorCtx(ADMIN, ['owner']), 'mine')
+  assert.equal(entry?.id, 'mine')
+})
+
+test('the all view never returns another tenant entries', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'mine', organizationId: ORG_A, ownerUserId: USER_A }),
+    makeRow({ id: 'global', organizationId: null, ownerUserId: null }),
+    makeRow({ id: 'foreign', organizationId: ORG_B, ownerUserId: USER_B }),
+  ])
+  const entries = await listCatalogEntries(prisma, actorCtx(ADMIN, ['owner']), { view: 'all' })
+  assert.deepEqual(entries.map((entry) => entry.id).sort(), ['global', 'mine'])
+})
+
+test('the queue view never returns another tenant submissions', async () => {
+  const { prisma } = makeStub([
+    makeRow({
+      id: 'mine-pending',
+      organizationId: ORG_A,
+      status: 'pending_approval',
+      visibility: 'public',
+      ownerUserId: USER_A,
+    }),
+    makeRow({
+      id: 'foreign-pending',
+      organizationId: ORG_B,
+      status: 'pending_approval',
+      visibility: 'public',
+      ownerUserId: USER_B,
+    }),
+  ])
+  const entries = await listCatalogEntries(prisma, actorCtx(ADMIN, ['owner']), { view: 'queue' })
+  assert.deepEqual(entries.map((entry) => entry.id), ['mine-pending'])
+})
+
+test('the public store never returns another tenant published entries', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'mine-pub', organizationId: ORG_A, status: 'published', visibility: 'public' }),
+    makeRow({
+      id: 'foreign-pub',
+      organizationId: ORG_B,
+      status: 'published',
+      visibility: 'public',
+    }),
+  ])
+  const entries = await listCatalogEntries(prisma, actorCtx(USER_B), { view: 'store' })
+  assert.deepEqual(entries.map((entry) => entry.id), ['mine-pub'])
+})
+
+test('canManageEntry refuses an owner acting on another tenant entry', async () => {
+  const { prisma } = makeStub([])
+  assert.equal(
+    await canManageEntry(prisma, actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_B })),
+    false,
+  )
+  assert.equal(
+    await canManageEntry(prisma, actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_A })),
+    true,
+  )
+})
+
+// Instance-global (`organizationId: null`) rows are the deployment's own
+// first-party entries and every tenant reads them, so rewriting one is
+// instance administration. Being an owner of one organisation among many is
+// not that; `User.superAdmin` is.
+test('canManageEntry gates an instance-global entry on superAdmin, not org owner', async () => {
+  // `makeRow` coalesces, so build the instance-global row explicitly.
+  const globalRow: McpCatalogEntryRow = {
+    ...makeRow(),
+    organizationId: null,
+    ownerUserId: null,
+  }
+
+  const orgOwnerOnly = makeStub([])
+  assert.equal(
+    await canManageEntry(orgOwnerOnly.prisma, actorCtx(ADMIN, ['owner']), globalRow),
+    false,
+  )
+
+  const superAdmin = makeStub([], [ADMIN])
+  assert.equal(
+    await canManageEntry(superAdmin.prisma, actorCtx(ADMIN, ['owner']), globalRow),
+    true,
+  )
+})
+
+// ─── Secret redaction ───────────────────────────────────────────────────────
+
+test('redactConfigSecrets masks secret values but keeps URLs and ids', () => {
+  const redacted = redactConfigSecrets({
+    transport: 'http',
+    url: 'https://example.com/mcp',
+    headers: {
+      Authorization: 'Bearer sk-live-abcdef',
+      'X-Api-Key': 'super-secret',
+      'X-Trace-Id': 'keep-me',
+    },
+    tokenUrl: 'https://example.com/token',
+    clientId: 'client-123',
+    clientSecret: 'shhh',
+  }) as Record<string, unknown>
+
+  assert.equal(redacted.url, 'https://example.com/mcp')
+  assert.equal(redacted.tokenUrl, 'https://example.com/token')
+  assert.equal(redacted.clientId, 'client-123')
+  assert.equal(redacted.clientSecret, REDACTED)
+  const headers = redacted.headers as Record<string, unknown>
+  assert.equal(headers.Authorization, REDACTED)
+  assert.equal(headers['X-Api-Key'], REDACTED)
+  assert.equal(headers['X-Trace-Id'], 'keep-me')
+})
+
+test('redactConfigSecrets walks nested structures', () => {
+  const redacted = redactConfigSecrets({
+    variants: [{ apiKey: 'a' }, { nested: { password: 'b', name: 'keep' } }],
+  }) as { variants: Array<Record<string, unknown>> }
+
+  assert.equal(redacted.variants[0]?.apiKey, REDACTED)
+  const nested = redacted.variants[1]?.nested as Record<string, unknown>
+  assert.equal(nested.password, REDACTED)
+  assert.equal(nested.name, 'keep')
 })

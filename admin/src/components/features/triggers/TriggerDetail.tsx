@@ -4,12 +4,15 @@ import {
   useDeleteTrigger,
   useFireTrigger,
   usePauseTrigger,
+  useReauthorizeTrigger,
   useResumeTrigger,
   useTriggerHistory,
 } from '../../../facades/triggers/hooks'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import { getBaseUrl } from '../../../lib/api-client'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Notice } from '../../primitives/Notice'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   TRIGGER_TYPE_ICONS,
   formatRelativeTime,
@@ -17,9 +20,9 @@ import {
   formatTriggerTarget,
   getScheduleSummary,
   getTriggerEventNames,
+  getTriggerHealthMessage,
   getTriggerTone,
   getTriggerTypeLabel,
-  sectionTitle,
   type TriggerRegistryMaps,
 } from './trigger-presentation'
 
@@ -86,11 +89,25 @@ const FactRow = ({ label, value }: { label: string; value: string }) => (
 export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerDetailProps) => {
   const pauseTrigger = usePauseTrigger()
   const resumeTrigger = useResumeTrigger()
+  const reauthorizeTrigger = useReauthorizeTrigger()
   const fireTrigger = useFireTrigger()
   const deleteTrigger = useDeleteTrigger()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const { data: history = [] } = useTriggerHistory(trigger.id, 8)
+  // Only while the schedule is actually stopped: a stale reason left over from a
+  // repaired failure would otherwise keep claiming it is broken.
+  // The server refuses a plain repair when the schedule belongs to somebody else
+  // or was created in another workspace, and names which. Offering takeover only
+  // then keeps the ordinary path one click and the attribution-moving path
+  // deliberate.
+  const needsTakeOver =
+    actionError !== null
+    && /belongs to somebody else|active workspace differs/.test(actionError)
+  const healthMessage =
+    trigger.status === 'needs_reauthorization' || trigger.status === 'error'
+      ? getTriggerHealthMessage(trigger)
+      : null
 
   // Reset transient state when switching triggers.
   useEffect(() => {
@@ -109,6 +126,19 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
       {
         onError: (error) =>
           setActionError(error instanceof Error ? error.message : 'Failed to fire trigger.'),
+      },
+    )
+  }
+
+  const handleReauthorize = (takeOver = false) => {
+    setActionError(null)
+    reauthorizeTrigger.mutate(
+      { triggerId: trigger.id, ...(takeOver ? { takeOver: true } : {}) },
+      {
+        onError: (error) =>
+          setActionError(
+            error instanceof Error ? error.message : 'Failed to reauthorize this schedule.',
+          ),
       },
     )
   }
@@ -140,6 +170,28 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
 
   return (
     <div className="grid max-w-3xl gap-5">
+      {healthMessage ? (
+        <div
+          className="rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2.5"
+          role="status"
+        >
+          <div className="text-sm font-medium text-[color:var(--danger-text)]">
+            This schedule has stopped
+          </div>
+          <p className="mt-1 text-sm text-[color:var(--tx2)]">{healthMessage}</p>
+          {needsTakeOver ? (
+            <button
+              className="admin-button admin-button-secondary mt-2"
+              disabled={reauthorizeTrigger.isPending}
+              onClick={() => handleReauthorize(true)}
+              type="button"
+            >
+              Take over and reauthorize
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Header: identity + status, one primary action */}
       <div>
         <div className="flex items-start justify-between gap-4">
@@ -152,9 +204,9 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                   {trigger.name ?? trigger.type}
                 </h2>
-                <StatusPill tone={getTriggerTone(trigger.status)}>
+                <Pill tone={getTriggerTone(trigger.status)}>
                   {trigger.status}
-                </StatusPill>
+                </Pill>
               </div>
               <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
                 {getTriggerTypeLabel(trigger)}
@@ -163,6 +215,16 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2">
+            {trigger.status === 'needs_reauthorization' ? (
+              <button
+                className="admin-button admin-button-primary"
+                disabled={reauthorizeTrigger.isPending}
+                onClick={() => handleReauthorize()}
+                type="button"
+              >
+                {reauthorizeTrigger.isPending ? 'Reauthorizing…' : 'Reauthorize'}
+              </button>
+            ) : null}
             <button
               className="admin-button admin-button-primary"
               disabled={fireTrigger.isPending}
@@ -207,14 +269,14 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
         ) : null}
 
         {fireTrigger.isSuccess && !fireTrigger.isPending ? (
-          <div className="mt-3 rounded-lg border border-[var(--success-border)] bg-[var(--success-soft)] px-3 py-2 text-xs text-[var(--success-text)]">
+          <Notice className="mt-3" radius="lg" size="sm" tone="success">
             Trigger fired — the run appears under recent deliveries below.
-          </div>
+          </Notice>
         ) : null}
         {actionError ? (
-          <div className="mt-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]">
+          <Notice className="mt-3" radius="lg" size="sm" tone="danger">
             {actionError}
-          </div>
+          </Notice>
         ) : null}
       </div>
 
@@ -240,7 +302,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
 
       {trigger.type === 'webhook' ? (
         <section>
-          <div className={sectionTitle}>Webhook endpoint</div>
+          <SectionLabel>Webhook endpoint</SectionLabel>
           <p className="mt-1 text-xs text-[color:var(--tx3)]">
             POST to this endpoint with the API key as a bearer token to fire
             the trigger.
@@ -259,7 +321,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
       ) : null}
 
       <section>
-        <div className={sectionTitle}>Recent deliveries</div>
+        <SectionLabel>Recent deliveries</SectionLabel>
         {history.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
             No deliveries yet. Use “Run now” to test this trigger.
@@ -278,6 +340,14 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                     {delivery.source ?? 'manual'}
                     {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
                   </span>
+                  {/* The delivery reached a worker; whether the run then
+                      succeeded is a different question, and the one the owner
+                      is actually asking when a schedule looks broken. */}
+                  {delivery.runStatus && delivery.runStatus !== 'completed' ? (
+                    <Pill className="flex-shrink-0" radius="chip" size="sm" tone="danger" uppercase={false}>
+                      run {delivery.runStatus}
+                    </Pill>
+                  ) : null}
                   <span className="ml-auto flex-shrink-0 text-xs tabular-nums text-[color:var(--tx3)]">
                     {formatTimestamp(delivery.createdAt)}
                   </span>

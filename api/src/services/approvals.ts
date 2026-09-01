@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { runApprovalEffect } from './approval-effects.js'
+import { terminalizeExpiredToolApproval, terminalizeRejectedToolApproval } from './approval-resume.js'
 import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
@@ -63,9 +64,36 @@ const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null
   return { cursorDate: d, cursorId: idPart }
 }
 
+/**
+ * Which approvals an actor may see. An approval carries a free-text `reason`,
+ * a `context` blob and the originating channel/task ids, so org scope alone
+ * leaks private-channel activity — and the task ids it exposes are usable
+ * against other endpoints. Owners see everything in their org; everyone else
+ * sees what they requested plus what happened in a channel they can reach.
+ */
+export const approvalVisibilityWhere = (
+  actorContext: AuthorizedActionContext,
+): Prisma.ApprovalRequestWhereInput => {
+  if (actorContext.actor.roles?.includes('owner')) return {}
+  const userId = actorContext.actor.actorId
+  return {
+    OR: [
+      { requesterId: userId },
+      {
+        channel: {
+          OR: [
+            { visibility: 'public' },
+            { members: { some: { userId } } },
+          ],
+        },
+      },
+    ],
+  }
+}
+
 export const listApprovalRequests = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   filters?: {
     status?: string
     agentId?: string
@@ -75,7 +103,10 @@ export const listApprovalRequests = async (
   },
 ) => {
   const limit = Math.min(filters?.limit ?? 50, 200)
-  const where: Record<string, unknown> = { organizationId }
+  const where: Record<string, unknown> = {
+    organizationId: actorContext.tenant.organizationId,
+    AND: [approvalVisibilityWhere(actorContext)],
+  }
   if (filters?.status) where['status'] = filters.status
   if (filters?.agentId) where['agentId'] = filters.agentId
   if (filters?.channelId) where['channelId'] = filters.channelId
@@ -111,10 +142,14 @@ export const listApprovalRequests = async (
 export const getApprovalRequest = async (
   prisma: PrismaClient,
   approvalId: string,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
 ) => {
   const approval = await prisma.approvalRequest.findFirst({
-    where: { id: approvalId, organizationId },
+    where: {
+      id: approvalId,
+      organizationId: actorContext.tenant.organizationId,
+      AND: [approvalVisibilityWhere(actorContext)],
+    },
   })
   return approval ? mapApproval(approval) : null
 }
@@ -130,6 +165,10 @@ export const resolveApprovalRequest = async (
     where: {
       id: approvalId,
       organizationId: actorContext.tenant.organizationId,
+      // Resolving is a stronger act than reading, so it takes the same gate:
+      // an org member with no line of sight to the channel must not be able to
+      // approve an agent action inside it.
+      AND: [approvalVisibilityWhere(actorContext)],
     },
   })
 
@@ -166,18 +205,35 @@ export const resolveApprovalRequest = async (
   // concurrent resolve can't be clobbered, and skip writing if it already
   // moved off pending.
   if (approval.expiresAt < new Date()) {
-    await prisma.approvalRequest.updateMany({
+    const expired = await prisma.approvalRequest.updateMany({
       where: { id: approvalId, status: 'pending' },
       data: { status: 'expired' },
     })
-    return { error: 'EXPIRED' as const, approval: mapApproval(approval) }
+    if (expired.count === 1 && approval.action === 'tool.invoke') {
+      await terminalizeExpiredToolApproval(prisma, approval.id)
+    }
+    return {
+      error: 'EXPIRED' as const,
+      approval: mapApproval({ ...approval, status: 'expired' }),
+    }
   }
 
   // Atomic claim: only the first resolver of a still-`pending` request wins.
+  // A tool gate cannot be resolved until its worker has committed the durable
+  // checkpoint and entered `waiting_approval`; otherwise a fast approver could
+  // mark it approved between request creation and suspension, with no future
+  // effect invocation to resume it.
+  const resolutionWhere: Prisma.ApprovalRequestWhereInput = {
+    id: approvalId,
+    status: 'pending',
+  }
+  if (approval.action === 'tool.invoke') {
+    resolutionWhere.run = { is: { status: 'waiting_approval' } }
+  }
   // A second approver racing the same request sees `count === 0` and is told
   // the request is already resolved (re-reading the now-resolved row).
   const { count } = await prisma.approvalRequest.updateMany({
-    where: { id: approvalId, status: 'pending' },
+    where: resolutionWhere,
     data: {
       status: resolution,
       resolution,
@@ -191,6 +247,9 @@ export const resolveApprovalRequest = async (
     const current = await prisma.approvalRequest.findFirst({
       where: { id: approvalId, organizationId: actorContext.tenant.organizationId },
     })
+    if (current?.status === 'pending' && approval.action === 'tool.invoke') {
+      return { error: 'RUN_NOT_WAITING' as const, approval: mapApproval(current) }
+    }
     return {
       error: 'ALREADY_RESOLVED' as const,
       approval: current ? mapApproval(current) : mapApproval(approval),
@@ -201,7 +260,7 @@ export const resolveApprovalRequest = async (
     where: { id: approvalId },
   })
 
-  // The effect (e.g. actually publishing a knowledge page) runs after the
+  // The effect (e.g. resuming a tool-gated run or publishing a knowledge page) runs after the
   // atomic claim above, so a crash mid-effect never leaves the approval
   // un-resolved or double-claimable. A failed effect does not un-approve the
   // request — it stays approved and the failure is appended to the note, so
@@ -232,6 +291,27 @@ export const resolveApprovalRequest = async (
         data: { resolutionNote },
       })
     }
+  } else if (updated.action === 'tool.invoke') {
+    try {
+      const terminalized = await terminalizeRejectedToolApproval(prisma, updated.id)
+      const effectNote = terminalized ? 'run rejected' : 'run no longer waiting'
+      const resolutionNote = updated.resolutionNote
+        ? `${updated.resolutionNote} · effect: ${effectNote}`
+        : `effect: ${effectNote}`
+      updated = await prisma.approvalRequest.update({
+        where: { id: approvalId },
+        data: { resolutionNote },
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const resolutionNote = updated.resolutionNote
+        ? `${updated.resolutionNote} · effect failed: ${message}`
+        : `effect failed: ${message}`
+      updated = await prisma.approvalRequest.update({
+        where: { id: approvalId },
+        data: { resolutionNote },
+      })
+    }
   }
 
   const auditAction = resolution === 'approved' ? 'approval.approved' : 'approval.rejected'
@@ -249,10 +329,14 @@ export const resolveApprovalRequest = async (
 
 export const getPendingApprovalCount = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
 ) => {
   return prisma.approvalRequest.count({
-    where: { organizationId, status: 'pending' },
+    where: {
+      organizationId: actorContext.tenant.organizationId,
+      status: 'pending',
+      AND: [approvalVisibilityWhere(actorContext)],
+    },
   })
 }
 
@@ -266,20 +350,17 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
   })
 
   for (const approval of expired) {
-    await prisma.approvalRequest.update({
-      where: { id: approval.id },
+    const expiredClaim = await prisma.approvalRequest.updateMany({
+      where: { id: approval.id, status: 'pending', expiresAt: { lt: new Date() } },
       data: { status: 'expired' },
     })
+    if (expiredClaim.count !== 1) continue
 
-    // Fail associated runs
-    if (approval.runId) {
-      await prisma.run.updateMany({
-        where: { id: approval.runId, status: 'waiting_approval' },
-        data: { status: 'failed', finishedAt: new Date() },
-      })
+    if (approval.action === 'tool.invoke') {
+      await terminalizeExpiredToolApproval(prisma, approval.id)
+      continue
     }
-
-    // Reset agent to idle
+    // Existing deferred-effect approvals have no suspended run to close.
     await prisma.agent.updateMany({
       where: { id: approval.agentId, status: 'waiting_approval' },
       data: { status: 'idle' },
@@ -333,7 +414,6 @@ const mapApproval = (approval: {
   resolution: approval.resolution,
   resolutionNote: approval.resolutionNote,
   requiredApproverRole: approval.requiredApproverRole,
-  continuationToken: approval.continuationToken,
   expiresAt: approval.expiresAt.toISOString(),
   createdAt: approval.createdAt.toISOString(),
   updatedAt: approval.updatedAt.toISOString(),

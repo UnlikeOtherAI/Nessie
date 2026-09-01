@@ -1,3 +1,4 @@
+import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ChannelRecord } from '../../lib/api-client'
@@ -5,7 +6,9 @@ import {
   useArchiveChannel,
   useUpdateChannel,
 } from '../../facades/channels/hooks'
+import { fieldErrorAria, fieldErrorProps } from './FormFieldError'
 import { useModalA11y } from './useModalA11y'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type ChannelSettingsDialogProps = {
   channel: ChannelRecord
@@ -42,20 +45,18 @@ export const ChannelSettingsDialog = (
     }
   }, [open, channel])
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(onClose)
+  const confirmArchiveDismiss = useOverlayDismiss(() => setConfirmArchive(false))
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!label.trim()) return
+    const nextLabel = toChannelSlug(label)
+    if (!nextLabel) return
 
     try {
       await updateChannel.mutateAsync({
         channelId: channel.id,
-        label: label.trim(),
+        label: nextLabel,
         topic: topic.trim() ? topic.trim() : null,
         description: description.trim() ? description.trim() : null,
       })
@@ -86,9 +87,11 @@ export const ChannelSettingsDialog = (
   if (!open) return null
 
   return (
+    // Not the shared `Dialog`: the archive-confirm overlay below renders as a
+    // sibling of the panel inside this scrim, and the shell has no slot for a
+    // second child outside its panel. It already composes `useModalA11y`.
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,
@@ -155,17 +158,32 @@ export const ChannelSettingsDialog = (
               Name
             </label>
             <input
+              {...fieldErrorAria('channel-settings-name', formError)}
               autoComplete="off"
               className="admin-input"
               id="channel-settings-name"
               onChange={(e) => {
-                setLabel(e.target.value)
+                setLabel(toChannelNameInput(e.target.value))
                 setFormError(null)
               }}
+              onBlur={() => setLabel(toChannelSlug(label))}
               value={label}
             />
+            <div className="text-xs text-[color:var(--tx3)]">
+              Lowercase letters, numbers and hyphens. Spaces become hyphens.
+            </div>
+            {/*
+              Same shape as CreateChannelDialog: the red line is unchanged, and
+              only the id + role="alert" pairing it to the input above is new.
+              Written in the save catch, cleared on the next keystroke.
+            */}
             {formError ? (
-              <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
+              <div
+                className="text-xs text-[color:var(--danger-text)]"
+                {...fieldErrorProps('channel-settings-name')}
+              >
+                {formError}
+              </div>
             ) : null}
           </div>
 
@@ -226,7 +244,7 @@ export const ChannelSettingsDialog = (
                 {isArchived ? 'Unarchive' : 'Archive'}
               </button>
               <button
-                className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+                className="admin-button admin-button-secondary admin-button-danger"
                 disabled={archiveChannel.isPending}
                 onClick={handleDelete}
                 type="button"
@@ -244,7 +262,7 @@ export const ChannelSettingsDialog = (
               </button>
               <button
                 className="admin-button admin-button-primary"
-                disabled={!label.trim() || updateChannel.isPending}
+                disabled={!toChannelSlug(label) || updateChannel.isPending}
                 type="submit"
               >
                 Save
@@ -256,10 +274,7 @@ export const ChannelSettingsDialog = (
 
       {confirmArchive ? (
         <div
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setConfirmArchive(false)
-          }}
-          role="presentation"
+          {...confirmArchiveDismiss}
           style={{
             position: 'fixed',
             inset: 0,

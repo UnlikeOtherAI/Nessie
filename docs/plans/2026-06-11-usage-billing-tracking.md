@@ -71,17 +71,21 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   `connector_usage_events` from API attachment routes, public brand-logo
   delivery, and worker attachment tools. **Remaining:** push connectors. A live
   DB write of both ledgers was confirmed via a smoke test.
-- **Phase 3 — PARTIAL.** Reporting: token summary now supports `runId`/`channel`
-  grouping; `GET /api/ledger/connectors/summary` (owner-only) added. Admin Token
-  Usage page (`/tokens`) shows Connector Usage and File Usage sections. File
-  Usage combines current stored attachment bytes with upload/download byte
-  transfer totals from `GET /api/ledger/files/summary`. **Verification note:**
-  the admin change is build- and lint-verified
-  and the new endpoint is live (returns 401, not 404), but an authenticated
-  visual screenshot is still pending — kelpie renders the local dev SPA blank in
-  this environment (see kelpie issue #79) and the Playwright MCP browser was
-  locked by a concurrent session. **Remaining:** optional agent/channel budget
-  scopes.
+- **2026-07-20 authority correction.** The local rows above are operational
+  telemetry, not customer billing input. `web_search` now dispatches only
+  through Ledger's product-bound Serper adapter with signed
+  user/org/team/agent/run/tool-call provenance for ordinary agents, delegated
+  sub-agents, and workflows. Ledger owns raw units/provider cost and UOA owns
+  every commercial result; Nessie has no direct Serper credential or rating
+  fallback.
+- **Phase 3 — PARTIAL.** Reporting: token summary supports `runId`/`channel`
+  grouping; `GET /api/ledger/connectors/summary` and file-usage reporting are
+  owner-only. These local operational signals now live exclusively on
+  `/ops/usage`; the customer `/tokens` route contains only UOA-authored credits,
+  add-ons, statements, and frozen actions. Product integration responses no
+  longer query or expose connector-usage summaries. Both surfaces were visually
+  verified with headless Playwright on 2026-07-21. **Remaining:** optional
+  agent/channel budget scopes.
 
 ## Phases
 

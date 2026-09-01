@@ -1,12 +1,29 @@
+import type { ProviderReasoningEffort } from '@nessie/schemas'
+import {
+  isSameInferenceHost,
+  resolveEmbeddingProvider,
+  type EmbeddingProviderOverride,
+} from './inference/embedding-provider.js'
+import { buildPromptCacheKey } from './inference/prompt-cache.js'
 import { createInferenceService } from './inference/service.js'
 import type {
+  InferenceService,
   ModelProviderConfig,
   ProviderMessage,
 } from './inference/types.js'
 import type { LedgerAttribution, LedgerInvocation } from './ledger.js'
+import { completeLedgerAttribution } from './ledger-attribution.js'
 import { ModelUsageTracker } from './usage.js'
 
 export type { ModelProviderConfig, ModelProviderName } from './inference/types.js'
+export type {
+  EmbeddingProviderOverride,
+  ResolvedEmbeddingProvider,
+} from './inference/embedding-provider.js'
+export {
+  isSameInferenceHost,
+  resolveEmbeddingProvider,
+} from './inference/embedding-provider.js'
 
 export type ModelMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -23,12 +40,22 @@ export type ModelOptions = {
   temperature?: number
   responseFormat?: { type: 'json_object' }
   // Stable key so repeated calls sharing a prefix hit the same prompt cache.
+  // Omitted, one is derived from the leading system message when there is one.
   promptCacheKey?: string
+  // Sent to OpenAI-compatible providers as `reasoning_effort` when set.
+  reasoningEffort?: ProviderReasoningEffort
   usage?: LedgerAttribution
 }
 
+// No `model` here on purpose. Which model produces embeddings is a deployment
+// decision, not a per-call one: every vector in a pgvector column has to come
+// from the same model or cosine distance across them is meaningless. Callers
+// that need to record or cache by model read `ModelClient.embeddingModel`.
 export type EmbedOptions = {
-  model?: string
+  usage?: LedgerAttribution
+}
+
+export type FetchCompletionOptions = {
   usage?: LedgerAttribution
 }
 
@@ -43,6 +70,13 @@ export type ModelUsageSink = (
 export type CreateModelClientOptions = {
   tracker?: ModelUsageTracker
   recordUsage?: ModelUsageSink
+  systemComponent?: string
+  requestHeaders?: (
+    attribution: LedgerAttribution,
+  ) => Promise<Record<string, string>>
+  // Sends embeddings somewhere other than the chat provider. Omit it and
+  // embeddings go exactly where they went before.
+  embedding?: EmbeddingProviderOverride
 }
 
 export interface ModelClient {
@@ -50,11 +84,23 @@ export interface ModelClient {
   chatJson<T = unknown>(messages: ModelMessage[], options?: ModelOptions): Promise<T>
   embed(text: string, options?: EmbedOptions): Promise<number[]>
   embedMany(texts: string[], options?: EmbedOptions): Promise<number[][]>
+  // The model `embed`/`embedMany` ask for. Persisted alongside stored vectors
+  // and used as the query-embedding cache key, so both sides of a similarity
+  // comparison can prove they came from the same model.
+  readonly embeddingModel: string
+  // The model chat calls default to, from deployment config. Callers that must
+  // name a model in a raw request body (the agent designer) read this instead
+  // of hardcoding one: a literal like `gpt-5-mini` is a guaranteed 403 on a
+  // deployment whose provider is DeepSeek or Kimi.
+  readonly chatModel: string
   stream(
     messages: ModelMessage[],
     options?: ModelOptions,
   ): AsyncGenerator<string, void, undefined>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    options?: FetchCompletionOptions,
+  ): Promise<Response>
   close(): void
   readonly usage: ModelUsageTracker
 }
@@ -93,7 +139,52 @@ export const createModelClient = (
 ): ModelClient => {
   const usageTracker = options.tracker ?? new ModelUsageTracker()
   const recordUsage = options.recordUsage
+  const requestHeaders = options.requestHeaders
+  const systemComponent = options.systemComponent
   const inferenceService = createInferenceService(config)
+
+  // Embeddings get their own connector only when the deployment named a
+  // separate destination; otherwise they share the chat service object, so an
+  // unconfigured deployment behaves as if none of this existed.
+  const embedding = resolveEmbeddingProvider(config, options.embedding)
+  const embeddingService: InferenceService = embedding.config
+    ? createInferenceService(embedding.config)
+    : inferenceService
+
+  // The caller wires a signer for the destination it built this client around.
+  // An embedding override that names its own host is a different destination,
+  // and a UOA delegation assertion must not follow it there — an operator
+  // pointing embeddings at their own inference box would otherwise have one
+  // posted to it. Same host (Ledger's `/v1/jina` beside `/v1/deepseek`) is the
+  // same destination, so it signs exactly as chat does.
+  const embeddingSigner = isSameInferenceHost(
+    embedding.config?.baseUrl ?? config.baseUrl,
+    config.baseUrl,
+  )
+    ? requestHeaders
+    : undefined
+
+  const resolveAttribution = (
+    attribution: LedgerAttribution | undefined,
+  ): LedgerAttribution | undefined => {
+    if (!requestHeaders) {
+      return attribution
+    }
+    if (!attribution) {
+      throw new Error(
+        'Ledger-routed model calls require explicit usage attribution.',
+      )
+    }
+    return completeLedgerAttribution(attribution, systemComponent)
+  }
+
+  const resolveHeaders = (
+    attribution: LedgerAttribution | undefined,
+    signer: CreateModelClientOptions['requestHeaders'],
+  ): Promise<Record<string, string> | undefined> =>
+    signer && attribution
+      ? signer(attribution)
+      : Promise.resolve(undefined)
 
   // Persist invocations to the durable ledger when the caller supplied
   // attribution and a sink is wired. A ledger failure must never break the model
@@ -108,24 +199,44 @@ export const createModelClient = (
     try {
       await recordUsage(invocations, attribution)
     } catch {
-      // best-effort billing capture; do not fail the originating call
+      // Best-effort operational usage capture; do not fail the originating call.
     }
   }
 
+  // A leading system message is a stable, cacheable prefix, so key it by
+  // default: with no key Kimi's connector attaches no cache_control at all and
+  // OpenAI's affinity routing scatters repeated utility calls (engagement
+  // decisions, compaction, designer calls) across cache shards. An explicit
+  // caller key always wins.
+  const defaultPromptCacheKey = (
+    providerMessages: ProviderMessage[],
+    model: string | undefined,
+  ): string | undefined =>
+    providerMessages[0]?.role === 'system'
+      ? buildPromptCacheKey(model ?? config.modelName ?? '', providerMessages, undefined)
+      : undefined
+
   const chat: ModelClient['chat'] = async (messages, options) => {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution, requestHeaders)
+    const providerMessages = toProviderMessages(messages)
     const result = await inferenceService.run({
       maxOutputTokens: options?.maxTokens,
-      messages: toProviderMessages(messages),
+      messages: providerMessages,
       model: options?.model,
-      promptCacheKey: options?.promptCacheKey,
+      promptCacheKey:
+        options?.promptCacheKey
+        ?? defaultPromptCacheKey(providerMessages, options?.model),
+      reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
+      requestHeaders: headers,
       temperature: options?.temperature,
     })
 
     for (const invocation of result.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
-    await ledger(result.invocations, options?.usage)
+    await ledger(result.invocations, attribution)
 
     return result.outputText
   }
@@ -142,8 +253,11 @@ export const createModelClient = (
   }
 
   const embed: ModelClient['embed'] = async (text, options) => {
-    const result = await inferenceService.embed(text, {
-      model: options?.model,
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution, embeddingSigner)
+    const result = await embeddingService.embed(text, {
+      model: embedding.model,
+      requestHeaders: headers,
     })
 
     recordUsageFromModel(
@@ -151,14 +265,17 @@ export const createModelClient = (
       result.invocation.model,
       result.invocation.usage,
     )
-    await ledger([result.invocation], options?.usage)
+    await ledger([result.invocation], attribution)
 
     return result.embedding
   }
 
   const embedMany: ModelClient['embedMany'] = async (texts, options) => {
-    const result = await inferenceService.embedBatch(texts, {
-      model: options?.model,
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution, embeddingSigner)
+    const result = await embeddingService.embedBatch(texts, {
+      model: embedding.model,
+      requestHeaders: headers,
     })
 
     recordUsageFromModel(
@@ -166,18 +283,25 @@ export const createModelClient = (
       result.invocation.model,
       result.invocation.usage,
     )
-    await ledger([result.invocation], options?.usage)
+    await ledger([result.invocation], attribution)
 
     return result.embeddings
   }
 
   const stream: ModelClient['stream'] = async function* (messages, options) {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution, requestHeaders)
+    const providerMessages = toProviderMessages(messages)
     const source = inferenceService.stream?.({
       maxOutputTokens: options?.maxTokens,
-      messages: toProviderMessages(messages),
+      messages: providerMessages,
       model: options?.model,
-      promptCacheKey: options?.promptCacheKey,
+      promptCacheKey:
+        options?.promptCacheKey
+        ?? defaultPromptCacheKey(providerMessages, options?.model),
+      reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
+      requestHeaders: headers,
       temperature: options?.temperature,
     })
 
@@ -200,7 +324,7 @@ export const createModelClient = (
     for (const invocation of next.value.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
-    await ledger(next.value.invocations, options?.usage)
+    await ledger(next.value.invocations, attribution)
   }
 
   return {
@@ -208,10 +332,21 @@ export const createModelClient = (
     chatJson,
     close: () => {
       inferenceService.close()
+      if (embeddingService !== inferenceService) {
+        embeddingService.close()
+      }
     },
     embed,
+    chatModel: config.modelName ?? embedding.model,
+    embeddingModel: embedding.model,
     embedMany,
-    fetchCompletion: (body) => inferenceService.fetchCompletion(body),
+    fetchCompletion: async (body, fetchOptions) => {
+      const attribution = resolveAttribution(fetchOptions?.usage)
+      return inferenceService.fetchCompletion(
+        body,
+        await resolveHeaders(attribution, requestHeaders),
+      )
+    },
     stream,
     usage: usageTracker,
   }

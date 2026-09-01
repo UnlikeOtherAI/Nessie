@@ -8,15 +8,15 @@ import type {
 } from '../lib/api-client'
 import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
+import { SectionLabel } from '../components/primitives/SectionLabel'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import {
   parseGlobalSearchMode,
   useGlobalSearch,
   usePersistedGlobalSearchMode,
   type KnowledgeSearchHit,
 } from '../facades/search/hooks'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { selectBestPassage } from '../lib/highlight-passage'
-import { sectionTitleClass } from './settings/settings-shared'
 
 const rowClass = [
   'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
@@ -66,7 +66,7 @@ interface SearchSectionProps {
 
 const SearchSection = ({ title, children }: SearchSectionProps) => (
   <section className="space-y-1">
-    <h2 className={`${sectionTitleClass} px-3`}>{title}</h2>
+    <SectionLabel as="h2" className="px-3">{title}</SectionLabel>
     <div className="space-y-0.5">{children}</div>
   </section>
 )
@@ -143,10 +143,7 @@ export const SearchPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-3 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <h1 className="text-[17px] font-bold text-[color:var(--tx)]">Search</h1>
-      </header>
+      <AdminPageHeader title="Search" />
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-[color:var(--sep)] p-5">

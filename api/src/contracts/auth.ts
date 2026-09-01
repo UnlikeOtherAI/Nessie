@@ -32,6 +32,7 @@ export const AuthProviderAuthorizeQuerySchema = z.object({
   redirectUri: z.string().url(),
   state: NonEmptyStringSchema,
   theme: SsoThemeSchema.optional(),
+  teamHint: z.string().trim().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/).optional(),
 })
 export type AuthProviderAuthorizeQuery = z.infer<typeof AuthProviderAuthorizeQuerySchema>
 
@@ -55,6 +56,17 @@ export const LoginRequestSchema = z.object({
   code: z.string().min(1).optional(),
   codeVerifier: z.string().min(1).optional(),
   email: z.string().email().optional(),
+  // Strict discriminant for a workspace-switch reauthorization: the exact UOA
+  // org/team the renewed session must land on. Valid ONLY as a complete
+  // providerId=uoa code exchange accompanied by a current Bearer Nessie
+  // session for the same immutable UOA subject — an unauthenticated caller has
+  // no account to recover, so any missing/invalid/revoked/local-session use is
+  // refused before the upstream exchange runs. Identity is the UOA subject,
+  // never the exchanged email.
+  expectedWorkspace: z.object({
+    organizationId: z.string().trim().min(1).max(256),
+    teamId: z.string().trim().min(1).max(256),
+  }).optional(),
   password: z.string().min(1).optional(),
   providerId: NonEmptyStringSchema.optional(),
   redirectUri: z.string().url().optional(),
@@ -66,4 +78,9 @@ export const LoginRequestSchema = z.object({
 export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8),
+})
+
+export const UoaWorkspaceSwitchRequestSchema = z.object({
+  organizationId: z.string().trim().min(1).max(256),
+  teamId: z.string().trim().min(1).max(256),
 })

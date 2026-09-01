@@ -1,7 +1,5 @@
-import { loadConfig } from '@nessie/config'
 import {
   BUILTIN_TOOL_DEFINITIONS,
-  type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
   type ToolSchemaDescriptor,
@@ -12,35 +10,31 @@ import {
   parseRunId,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { DEFAULT_BUDGET, runAgenticLoop, type LoopResult } from '../agentic-loop.js'
+import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { buildContextPlan } from '../context-window.js'
+import { runContextCompaction } from '../context-compaction.js'
+import { estimateToolSchemaTokens } from '../context-management.js'
 import { runDelegate } from '../delegate.js'
-import { runInferenceGraph } from '../inference.js'
+import type { ExecutorToolset } from '../executor-toolset.js'
+import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
-import { authorizeToolCall } from '../tool-policy.js'
+import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
-import {
-  buildToolActorContext,
-  emitWorkerAuditEvent,
-  evaluateToolInvokePolicy,
-  toolDeniedResult,
-} from './policy.js'
+import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
+import type { RunInference } from './run-inference.js'
+import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
-import type {
-  BudgetModelOverride,
-  ExecutionDependencies,
-  RunContext,
-} from './types.js'
-
-const runtimeModelConfig = loadConfig().model
-
-type InferenceCallbacks = {
-  onVisibleReasoningDelta: (chunk: string) => Promise<void>
-  onVisibleTextDelta: (chunk: string) => Promise<void>
-}
+import type { ExecutionDependencies, RunContext } from './types.js'
+import { runReplyIsRestricted } from './agent-message.js'
+import {
+  BUILTIN_TOOL_SPEC_NAME,
+  executeBuiltinToolSpec,
+} from '../builtin-toolset-deferred.js'
 
 export const runExecutionAgentLoop = async (
   deps: ExecutionDependencies,
@@ -48,104 +42,95 @@ export const runExecutionAgentLoop = async (
   context: RunContext,
   input: {
     allowedToolIds: Set<string>
-    budgetModelOverride: BudgetModelOverride | null
+    budget: BudgetLimits
+    // Fraction of the input price a cache read costs on this run's model
+    // (resolved once per run in run-job). Cache reads are metered at this
+    // weight against the token budget instead of at full input price.
+    cacheReadWeight: number
+    // Mid-run org-`Budget` probe (throttled by its factory in budget-gate.ts).
+    checkBudgetBlocked: () => Promise<boolean>
+    deepWaterHandoffGuard: DeepWaterHandoffGuard
+    executorToolset: ExecutorToolset
     initialMessages: ProviderMessage[]
+    inference: RunInference
+    /** DeepWater turns retain their own recovery matrix and never suspend. */
+    isHandoffTurn: boolean
+    // Caller-owned accumulator: every main-loop, sub-agent AND compaction
+    // invocation is pushed here live, so the run's spend is attributable even if
+    // the loop throws before returning (see run-job's failure path).
+    invocationSink: InvocationRecord[]
     mcpToolset: McpToolset
+    /** Called when the run reacts, so the terminal path knows it already spoke. */
+    onReacted?: () => void
     resolvedToolIds: Set<string>
+    stubbedBuiltinToolIds: Set<string>
+    // Durable thought log + coalesced live thinking events for the main agent.
+    // Delegate sub-agents stay silent, exactly as before.
+    thinkingRecorder: ThinkingRecorder
     toolDefs: ToolSchemaDescriptor[]
+    toolSpecEnabled: boolean
     toolPolicy: Record<string, boolean> | null
+    // Wind-down instruction for the main loop, or null to disable (delegate
+    // sub-agents and DeepWater handoff turns; non-interactive runs keep the
+    // silent checkpoint + auto-continue path instead of a chat handover).
+    windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
-  let currentTurnStreamed = false
-  const subAgentInvocations: InvocationRecord[] = []
-
-  const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
-  const subAgentBuiltinIds = new Set(
-    [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
+  // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
+  // for advertisement; execution still passes the authorization gate below.
+  const subAgentBuiltinDescriptors = input.toolDefs.filter(
+    (descriptor) =>
+      descriptor.toolName !== 'delegate'
+      && (
+        input.resolvedToolIds.has(descriptor.toolName)
+        || (input.toolSpecEnabled && descriptor.toolName === BUILTIN_TOOL_SPEC_NAME)
+      ),
+  )
+  const allowedBuiltinDefinitions = BUILTIN_TOOL_DEFINITIONS.filter((definition) =>
+    input.resolvedToolIds.has(definition.id),
+  )
+  const subAgentBuiltinDefinitions = allowedBuiltinDefinitions.filter(
+    (definition) => definition.id !== 'delegate',
   )
   // Per-run MCP view: in deferred mode its descriptor array is LIVE
   // (mcp_load_tools / mcp_drop_tools mutate it), so the model's tool list is
   // recomposed from it on every inference call below.
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
+  const builtinMetaNames = input.toolSpecEnabled ? [BUILTIN_TOOL_SPEC_NAME] : []
+  const externalToolNames = new Set([
+    ...mcpExposedNames,
+    ...input.executorToolset.handledNames,
+    ...builtinMetaNames,
+  ])
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
-  const mainInferenceCallbacks: InferenceCallbacks = {
-    onVisibleReasoningDelta: async (chunk) => {
-      await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
-        content: chunk,
-        runId: parseRunId(context.run.id),
-      })
-    },
-    onVisibleTextDelta: async (chunk) => {
-      currentTurnStreamed = true
-      await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-        content: chunk,
-        runId: parseRunId(context.run.id),
-      })
-    },
-  }
-  const silentInferenceCallbacks: InferenceCallbacks = {
-    onVisibleReasoningDelta: async () => undefined,
-    onVisibleTextDelta: async () => undefined,
-  }
+  const delegateGate = createDelegateGate()
 
-  const runInferenceWithCallbacks = async (
-    messages: ProviderMessage[],
-    tools: ToolSchemaDescriptor[],
-    callbacks: InferenceCallbacks,
-  ): Promise<InferenceResult> => {
-    const mpr = await runInferenceGraph(deps.prisma, {
-      actorContext: payload.actorContext,
-      agent: {
-        id: context.agent.id,
-        model: input.budgetModelOverride?.model ?? context.agent.model,
-        provider: input.budgetModelOverride?.provider ?? context.agent.provider,
-        routingProfileId: null,
-      },
-      baseMessages: messages,
-      modelConfig: runtimeModelConfig,
-      onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
-      onVisibleTextDelta: callbacks.onVisibleTextDelta,
-      organizationId: context.channel.organizationId,
-      toolChoice: 'auto',
-      tools,
-    })
-    if (
-      mpr.status !== 'completed'
-      || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
-    ) {
-      throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
-    }
-    return {
-      correlationId: mpr.correlationId,
-      finishReason: mpr.invocations[0]?.finishReason,
-      invocations: mpr.invocations as unknown as InvocationRecord[],
-      model: mpr.invocations[0]?.model ?? '',
-      outputText: mpr.finalAnswer ?? '',
-      provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'openai-compatible',
-      requestId: mpr.requestId,
-      toolCalls: mpr.toolCalls,
-    }
-  }
-
-  const runMainInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) => {
-    currentTurnStreamed = false
-    return runInferenceWithCallbacks(messages, tools, mainInferenceCallbacks)
-  }
-
-  const runSubAgentInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) =>
-    runInferenceWithCallbacks(messages, tools, silentInferenceCallbacks)
-
-  const buildBuiltinCtx = (toolActorContext: ReturnType<typeof buildToolActorContext>) => ({
+  const buildBuiltinCtx = (
+    toolActorContext: ReturnType<typeof buildToolActorContext>,
+    toolCallId: string,
+  ) => ({
     agentId: context.agent.id,
     agentKind: context.agent.agentKind,
     actorContext: toolActorContext,
+    demonstrationControl: {
+      clearActive: () => {
+        context.activeDemonstrationId = null
+      },
+      setActive: (demonstrationId: string) => {
+        context.activeDemonstrationId = demonstrationId
+      },
+    },
     channel: {
       id: context.channel.id,
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    consumedSources: context.consumedSources,
+    documentStream: deps.documentStream,
+    executorCommandEncryptionSecret: deps.executorCommandEncryptionSecret,
+    ledgerIdentity: deps.ledgerIdentity ?? null,
     mcpSecrets: deps.mcpSecrets,
     memoryCaptureConfig: {
       modelClient: deps.modelClient,
@@ -157,12 +142,274 @@ export const runExecutionAgentLoop = async (
     run: {
       id: context.run.id,
       messageId: payload.messageId,
+      principalUserId: context.run.principalUserId,
+      originatingUserId:
+        toolActorContext.actionContext.effectiveUserId
+        ?? (
+          toolActorContext.actor.actorType === 'user'
+            ? toolActorContext.actor.actorId
+            : null
+        ),
       threadId: context.run.threadId,
     },
+    toolCallId,
   })
 
+  const executeGuardedBuiltin = (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolActorContext: ReturnType<typeof buildToolActorContext>,
+    toolCallId: string,
+  ) =>
+    executeBuiltinTool(
+      toolName,
+      args,
+      buildBuiltinCtx(toolActorContext, toolCallId),
+      input.stubbedBuiltinToolIds,
+    )
+
+  const contextPlan = buildContextPlan({
+    model: context.agent.model,
+    toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
+  })
+
+  const authorizeMainTool = (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+    options: { consumeApprovalProof?: boolean; maySuspendForApproval?: boolean } = {},
+  ) =>
+    authorizeToolExecution(
+      deps.prisma,
+      payload.actorContext,
+      context,
+      toolName,
+      args,
+      toolCallId,
+      {
+        agentKind: context.agent.agentKind,
+        allowedToolIds: input.allowedToolIds,
+        consumeApprovalProof: options.consumeApprovalProof,
+        resolvedBuiltinToolIds: input.resolvedToolIds,
+        externalToolNames,
+        maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
+        parentAgentId: context.agent.parentAgentId,
+        resumeState: {
+          actorContext: payload.actorContext,
+          interactive: payload.interactive === true,
+          messageId: payload.messageId,
+        },
+        toolPolicy: input.toolPolicy,
+      },
+      { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
+    )
+
+  const executeAuthorizedTool = async (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+    authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
+  ) => {
+    if (toolName === BUILTIN_TOOL_SPEC_NAME) {
+      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+    }
+    if (toolName === 'react') {
+      input.onReacted?.()
+    }
+    if (toolName === 'delegate') {
+      if (!delegateGate.tryAcquire()) {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: delegateGate.overLimitMessage(),
+          success: false,
+        }
+      }
+      // Created here rather than inside runDelegate so the authorization
+      // gate can recognize the sub-agent view's exposed MCP names.
+      const subAgentMcpView = input.mcpToolset.createView()
+      const result = await runDelegate(args, {
+        mcpView: subAgentMcpView,
+        mcpToolset: input.mcpToolset,
+        runInference: input.inference.runUtility,
+        authorizeSubAgentTool: (nestedToolName, nestedArgs) =>
+          authorizeToolExecution(
+            deps.prisma,
+            payload.actorContext,
+            context,
+            nestedToolName,
+            nestedArgs,
+            'sub-agent',
+            {
+              agentKind: context.agent.agentKind,
+              allowedToolIds: input.allowedToolIds,
+              resolvedBuiltinToolIds: input.resolvedToolIds,
+              externalToolNames: new Set([
+                ...subAgentMcpView.handledNames,
+                ...builtinMetaNames,
+              ]),
+              maySuspendForApproval: false,
+              parentAgentId: context.agent.parentAgentId,
+              toolPolicy: input.toolPolicy,
+            },
+            {
+              deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+              // The sub-agent's audit/ToolCall recording is out of scope for
+              // this ordering change: nested denials keep the previous
+              // silent behaviour while going through the same gate.
+              emitAudit: async () => undefined,
+            },
+          ),
+        executeBuiltinTool: (n, a, id, toolActorContext) =>
+          n === BUILTIN_TOOL_SPEC_NAME
+            ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
+            : executeGuardedBuiltin(n, a, toolActorContext, id),
+        builtinDescriptors: subAgentBuiltinDescriptors,
+      })
+      input.invocationSink.push(...result.invocations)
+      return {
+        inputSummary: result.inputSummary,
+        output: result.output,
+        success: result.success,
+      }
+    }
+    if (mcpExposedNames.has(toolName)) {
+      return mcpView.dispatch(toolName, args, toolCallId)
+    }
+    if (input.executorToolset.handledNames.has(toolName)) {
+      const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
+      if (toolName === 'executor.browser.act' || toolName === 'executor.command.run') {
+        const metadata = toolName === 'executor.browser.act'
+          ? {
+              action: typeof args.action === 'string' ? args.action : 'unknown',
+              ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
+              runId: context.run.id,
+              toolCallId,
+            }
+          : {
+              program: typeof args.program === 'string' ? args.program : 'unknown',
+              runId: context.run.id,
+              toolCallId,
+            }
+        await emitWorkerAuditEvent(deps.prisma, authorization.toolActorContext, {
+          action: toolName === 'executor.browser.act'
+            ? 'executor.browser.action.dispatched'
+            : 'executor.command.run.dispatched',
+          metadata,
+          outcome: result.success ? 'success' : 'error',
+          resourceId: result.toolCallRecordId,
+          resourceType: 'executor_command',
+        })
+      }
+      return result
+    }
+    return executeBuiltinTool(
+      toolName,
+      args,
+      buildBuiltinCtx(authorization.toolActorContext, toolCallId),
+      input.stubbedBuiltinToolIds,
+    )
+  }
+
+  const suspensionResult = (
+    args: Record<string, unknown>,
+    authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
+  ) => ({
+    inputSummary: summarizeToolInput(args),
+    output: 'Tool execution is waiting for human approval.',
+    pendingApproval: {
+      approvalId: authorization.approval.id,
+      toolName: authorization.approval.toolName,
+    },
+    success: false,
+  })
+
+  const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const authorization = await authorizeMainTool(toolName, args, toolCallId)
+    if (authorization.decision === 'deny') {
+      return authorization.result
+    }
+    if (authorization.decision === 'suspend') {
+      return suspensionResult(args, authorization)
+    }
+    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+  }
+
+  const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    // A preflight verified any proof without consuming it. Re-run the gate at
+    // dispatch to claim the one-time proof only when this tool will run.
+    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
+      maySuspendForApproval: false,
+    })
+    if (authorization.decision === 'deny') {
+      return authorization.result
+    }
+    if (authorization.decision === 'suspend') {
+      throw new Error('Prepared tool authorization unexpectedly requested approval.')
+    }
+    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+  }
+
+  const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
+      consumeApprovalProof: false,
+    })
+    if (authorization.decision === 'suspend') {
+      return {
+        approval: {
+          approvalId: authorization.approval.id,
+          toolName: authorization.approval.toolName,
+        },
+        kind: 'suspend' as const,
+      }
+    }
+    return {
+      execute: async () =>
+        authorization.decision === 'deny'
+          ? authorization.result
+          : executePreparedTool(toolName, args, toolCallId),
+      kind: 'execute' as const,
+    }
+  }
+
   const loopResult = await runAgenticLoop({
-    budget: DEFAULT_BUDGET,
+    budget: input.budget,
+    cacheReadWeight: input.cacheReadWeight,
+    // Cooperative-cancel probe: a cheap status read the loop consults between
+    // iterations and after each tool-call batch. `POST /api/runs/:id/cancel`
+    // stamps `cancelRequestedAt`; the loop then exits and run-job terminalizes
+    // the run as `cancelled` via the classified-stop machinery.
+    checkCancelled: async () => {
+      const row = await deps.prisma.run.findUnique({
+        where: { id: context.run.id },
+        select: { cancelRequestedAt: true },
+      })
+      return row?.cancelRequestedAt != null
+    },
+    checkBudgetBlocked: input.checkBudgetBlocked,
+    ...(input.windDownInstruction
+      ? {
+        windDownInstruction: input.windDownInstruction,
+        // Once the model has been told to finish, new fan-out is refused
+        // structurally as well as by instruction.
+        onWindDown: () => delegateGate.closeForWindDown(),
+      }
+      : {}),
+    compactContext: async ({ messages, targetTokens }) =>
+      runContextCompaction({
+        generateNote: async (prompt) => {
+          const result = await input.inference.runUtility(
+            [{ content: prompt, role: 'user' }],
+            [],
+          )
+          // Compaction is inference the run paid for: it counts in the run's
+          // totals and against the backstop like any other call.
+          input.invocationSink.push(...result.invocations)
+          return result.outputText
+        },
+        messages,
+        targetTokens,
+      }),
+    contextPlan,
     callbacks: {
       onIterationStart: async (iteration) => {
         await deps.realtimeTransport.publishWs(buildScopes(context), {
@@ -176,6 +423,8 @@ export const runExecutionAgentLoop = async (
       },
       onToolCallStart: async (toolName, _args) => {
         const startedAt = new Date()
+        // Tool activity is part of the thought process, not a separate feed.
+        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -195,14 +444,17 @@ export const runExecutionAgentLoop = async (
       },
       onToolCallEnd: async (
         toolName,
+        argumentsValue,
         result,
         durationMs,
         success,
         inputSummary,
         startedAt,
         connectorUsage,
+        toolCallRecordId,
       ) => {
         await recordToolEnd(deps, context, payload.actorContext, {
+          argumentsValue,
           durationMs,
           inputSummary,
           outputPreview: result.slice(0, 1200),
@@ -210,6 +462,7 @@ export const runExecutionAgentLoop = async (
           success,
           toolName,
           connectorUsage,
+          toolCallRecordId,
         })
         await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
         await publishAgentStatus(deps.realtimeTransport, context, {
@@ -218,8 +471,12 @@ export const runExecutionAgentLoop = async (
         })
       },
       onTextDelta: async (delta) => {
-        if (currentTurnStreamed) {
-          currentTurnStreamed = false
+        if (input.inference.consumeStreamedFlag()) {
+          return
+        }
+        // Same gate as the streaming path in `run-inference.ts`: the live lane
+        // is a thread-wide broadcast and cannot withhold per viewer.
+        if (runReplyIsRestricted(context)) {
           return
         }
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
@@ -231,104 +488,17 @@ export const runExecutionAgentLoop = async (
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
     },
-    executeTool: async (toolName, args) => {
-      const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
-      if (toolName === 'delegate') {
-        const result = await runDelegate(args, {
-          mcpToolset: input.mcpToolset,
-          runInference: runSubAgentInference,
-          executeBuiltinTool: (n, a) => executeBuiltinTool(n, a, buildBuiltinCtx(toolActorContext)),
-          builtinDescriptors: subAgentBuiltinDescriptors,
-          allowedBuiltinIds: subAgentBuiltinIds,
-        })
-        subAgentInvocations.push(...result.invocations)
-        return {
-          inputSummary: result.inputSummary,
-          output: result.output,
-          success: result.success,
-        }
-      }
-      if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, args)
-      }
-      const registryDecision = authorizeToolCall(
-        toolName,
-        input.allowedToolIds,
-        BUILTIN_TOOL_DEFINITIONS,
-        input.toolPolicy,
-        context.agent.parentAgentId,
-        context.agent.agentKind,
-      )
-
-      if (!registryDecision.allowed || !input.resolvedToolIds.has(toolName)) {
-        const message = `Tool "${toolName}" is not allowed for this agent.`
-        await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
-          action: 'policy.evaluated',
-          metadata: {
-            agentId: context.agent.id,
-            runId: context.run.id,
-            source: 'worker_tool_authorization',
-            taskId: context.task.id,
-            toolId: toolName,
-          },
-          outcome: 'denied',
-          reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
-          resourceId: toolName,
-          resourceType: 'tool',
-        })
-        return toolDeniedResult(toolName, args, {
-          message,
-          reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
-        })
-      }
-
-      const policyDecision = await evaluateToolInvokePolicy(
-        deps.prisma,
-        toolActorContext,
-        context,
-        toolName,
-      )
-      if (!policyDecision.allowed) {
-        const message =
-          policyDecision.reason === 'approval_required'
-            ? `Tool "${toolName}" requires approval before it can run.`
-            : `Tool "${toolName}" was denied by policy.`
-        await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
-          action: 'policy.evaluated',
-          metadata: {
-            agentId: context.agent.id,
-            approvalActionType: policyDecision.approvalActionType,
-            policyRuleId: policyDecision.policyRuleId,
-            policySource: policyDecision.policySource,
-            runId: context.run.id,
-            source: 'worker_tool_policy',
-            taskId: context.task.id,
-            toolId: toolName,
-          },
-          outcome: 'denied',
-          reason: policyDecision.reason,
-          resourceId: toolName,
-          resourceType: 'tool',
-        })
-        return toolDeniedResult(toolName, args, {
-          approvalActionType: policyDecision.approvalActionType,
-          message,
-          policyRuleId: policyDecision.policyRuleId,
-          policySource: policyDecision.policySource,
-          reason: policyDecision.reason,
-        })
-      }
-      return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
-    },
+    executeTool: executeMainTool,
     initialMessages: input.initialMessages,
+    invocationSink: input.invocationSink,
+    prepareTool: prepareMainTool,
     runInference: (messages) =>
-      runMainInference(messages, [...input.toolDefs, ...mcpView.descriptors]),
+      input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
+    toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })
 
-  if (subAgentInvocations.length > 0) {
-    loopResult.invocations.push(...subAgentInvocations)
-  }
-
+  // Main-loop, delegate and compaction invocations were all accumulated into
+  // the shared sink, which backs loopResult.invocations — nothing to append.
   return loopResult
 }

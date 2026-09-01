@@ -29,6 +29,13 @@ export type McpHttpSpec = {
   transport: 'http'
   url: string
   headers?: Record<string, string>
+  /**
+   * Override the outbound transport. Defaults to the SSRF-safe, IP-pinned
+   * fetch, which is what every production caller wants. Tests that talk to a
+   * controlled loopback fixture pass the platform fetch instead, since the
+   * guard blocks private addresses by design.
+   */
+  fetchImpl?: typeof globalThis.fetch
 }
 
 /** Legacy SSE transport — separate GET (SSE) + POST endpoint. */
@@ -36,6 +43,8 @@ export type McpSseSpec = {
   transport: 'sse'
   url: string
   headers?: Record<string, string>
+  /** See `McpHttpSpec.fetchImpl`. */
+  fetchImpl?: typeof globalThis.fetch
 }
 
 /**
@@ -52,6 +61,23 @@ export type McpToolDescriptor = {
   inputSchema: Record<string, unknown>
   outputSchema?: Record<string, unknown>
   annotations?: Record<string, unknown>
+}
+
+/**
+ * What the server advertised about itself in the `initialize` handshake,
+ * reduced to the only question a caller can act on: does this listing exist at
+ * all.
+ *
+ * MCP advertises by presence — `{ resources: {} }` means supported, an absent
+ * key means not — and that convention is the SDK's to know, not every caller's.
+ * A `null` capability set (see `McpClientManager.serverCapabilities`) means the
+ * handshake produced no advertisement, which is an absence of knowledge and
+ * never a claim that the server offers nothing.
+ */
+export type McpServerCapabilities = {
+  tools: boolean
+  resources: boolean
+  prompts: boolean
 }
 
 /** Output shape of `tools/call` after normalisation. */

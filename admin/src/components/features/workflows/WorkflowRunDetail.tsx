@@ -6,7 +6,9 @@ import {
   useUnblockWorkflowStepRun,
   useWorkflowRun,
 } from '../../../facades/workflows/hooks'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Notice } from '../../primitives/Notice'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   formatDuration,
   formatTimestamp,
@@ -14,7 +16,6 @@ import {
   getStepStatusColor,
   isActiveRun,
   isTerminalRun,
-  sectionTitle,
 } from './presentation'
 
 /**
@@ -47,7 +48,7 @@ const JsonDetails = ({ label, value }: { label: string; value: unknown }) => {
 }
 
 const stepActionButton =
-  'admin-button admin-button-secondary px-2.5 py-1 text-xs'
+  'admin-button admin-button-secondary admin-button-compact'
 
 export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
   const { data, isLoading } = useWorkflowRun(workflowRunId)
@@ -77,7 +78,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
               <h2 className="text-lg font-semibold text-[var(--tx)]">
                 Run {run.id.slice(0, 8)}
               </h2>
-              <StatusPill tone={getRunTone(run.status)}>{run.status}</StatusPill>
+              <Pill tone={getRunTone(run.status)}>{run.status}</Pill>
             </div>
             <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
               started {formatTimestamp(run.startedAt ?? run.createdAt)}
@@ -114,9 +115,9 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
           </div>
         </div>
         {run.errorMessage ? (
-          <div className="mt-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]">
+          <Notice className="mt-3" radius="lg" size="sm" tone="danger">
             {run.errorMessage}
-          </div>
+          </Notice>
         ) : null}
         <div className="mt-3 grid gap-2">
           <JsonDetails label="Run input" value={run.input} />
@@ -125,7 +126,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
       </div>
 
       <section>
-        <div className={sectionTitle}>Steps</div>
+        <SectionLabel>Steps</SectionLabel>
         {steps.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
             No step runs recorded yet.

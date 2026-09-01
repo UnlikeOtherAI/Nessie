@@ -32,7 +32,13 @@ export interface FcmCredentials {
 
 /** The notification content to deliver, platform-agnostic. */
 export interface PushPayload {
+  /** Person or agent that produced the notification. */
   title: string
+  /**
+   * Context for platforms that support a second alert line (APNs). Other
+   * platforms compose it into the title so the destination is never lost.
+   */
+  subtitle?: string
   body: string
   /** Optional badge count (source of truth is the caller). */
   badge?: number
@@ -40,12 +46,36 @@ export interface PushPayload {
   data?: Record<string, string>
   /** Coalescing id (APNs collapse-id / FCM collapse_key). */
   collapseId?: string
+  /** Delivery urgency, used for calls that need immediate device attention. */
+  priority?: 'normal' | 'high'
+  /** Native notification category/channel identifier. */
+  category?: string
 }
 
 /** A single device to deliver to. */
 export interface PushTarget {
   /** The native APNs/FCM device token (not an Expo token). */
   token: string
+}
+
+/** VAPID application-server credentials for Web Push, already decoded. */
+export interface WebPushCredentials {
+  /** base64url uncompressed P-256 public point (65 bytes). */
+  publicKey: string
+  /** base64url raw P-256 private scalar (32 bytes). */
+  privateKey: string
+  /** Contact `sub` claim — a `mailto:` or `https:` URI. */
+  subject: string
+}
+
+/** A single browser Web Push subscription to deliver to (the PushSubscription). */
+export interface WebPushTarget {
+  /** The push-service endpoint URL the browser handed us. */
+  endpoint: string
+  /** base64url subscription public key (`keys.p256dh`). */
+  p256dh: string
+  /** base64url subscription auth secret (`keys.auth`). */
+  auth: string
 }
 
 /** The outcome of a single delivery attempt. */

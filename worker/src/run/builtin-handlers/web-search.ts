@@ -1,10 +1,18 @@
 import { z } from 'zod'
+import type {
+  LedgerAttribution,
+  LedgerIdentityService,
+} from '@nessie/runtime'
 
-const SERPER_ENDPOINT = 'https://google.serper.dev/search'
-const SERPER_TIMEOUT_MS = 15_000
+const LEDGER_SERPER_PATH = '/v1/serper/search'
+const LEDGER_SERPER_TIMEOUT_MS = 15_000
 const DEFAULT_RESULT_COUNT = 5
 const MAX_RESULT_COUNT = 10
 const MAX_PAGE = 10
+const ALLOWED_IDENTITY_HEADERS = new Set([
+  'x-nessie-context',
+  'x-uoa-delegation',
+])
 
 export class WebSearchError extends Error {
   override readonly name = 'WebSearchError'
@@ -26,6 +34,16 @@ export type WebSearchOutput = {
   answer: string | null
   results: WebSearchResult[]
   text: string
+}
+
+export type WebSearchOptions = {
+  attribution: LedgerAttribution
+  count?: number
+  env?: NodeJS.ProcessEnv
+  fetchImpl?: typeof fetch
+  ledgerIdentity: LedgerIdentityService | null | undefined
+  page?: number
+  toolCallId: string
 }
 
 const SerperOrganicSchema = z.object({
@@ -59,22 +77,48 @@ const resolveAnswer = (
   null
 
 /**
- * Search the public web via serper.dev (Google results). Requires
- * `SERPER_API_KEY` to be configured — there is no scraping fallback.
+ * Search the public web through Nessie's product-bound Ledger proxy. Ledger
+ * injects the provider credential and records the raw Serper unit against the
+ * signed user/team/agent/run/tool provenance. There is deliberately no direct
+ * provider-key or scraping fallback.
  */
 export const runWebSearch = async (
   query: string,
-  options: { count?: number; page?: number; fetchImpl?: typeof fetch } = {},
+  options: WebSearchOptions,
 ): Promise<WebSearchOutput> => {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) {
     throw new WebSearchError('Web search requires a non-empty query.')
   }
 
-  const apiKey = process.env.SERPER_API_KEY?.trim()
-  if (!apiKey) {
+  const env = options.env ?? process.env
+  const ledgerBaseUrl = env.LEDGER_PUBLIC_URL?.trim()
+  const ledgerProxyToken = env.LEDGER_PROXY_TOKEN?.trim()
+  if (!ledgerBaseUrl || !ledgerProxyToken) {
     throw new WebSearchError(
-      'Web search is not configured: set SERPER_API_KEY to enable serper.dev search.',
+      'Web search requires LEDGER_PUBLIC_URL and LEDGER_PROXY_TOKEN.',
+    )
+  }
+  if (!options.ledgerIdentity) {
+    throw new WebSearchError(
+      'Web search requires configured Ledger signing identity.',
+    )
+  }
+  const toolCallId = options.toolCallId.trim()
+  if (!toolCallId) {
+    throw new WebSearchError('Web search requires a stable tool call ID.')
+  }
+
+  let endpoint: URL
+  try {
+    const baseUrl = new URL(ledgerBaseUrl)
+    if (baseUrl.protocol !== 'https:' && baseUrl.protocol !== 'http:') {
+      throw new Error('unsupported protocol')
+    }
+    endpoint = new URL(LEDGER_SERPER_PATH, baseUrl.origin)
+  } catch {
+    throw new WebSearchError(
+      'Web search requires LEDGER_PUBLIC_URL to be a valid HTTP(S) URL.',
     )
   }
 
@@ -84,27 +128,43 @@ export const runWebSearch = async (
   )
   const page = Math.min(Math.max(1, Math.trunc(options.page ?? 1)), MAX_PAGE)
   const fetchImpl = options.fetchImpl ?? fetch
+  const identityHeaders = await options.ledgerIdentity.requestHeaders(
+    {
+      ...options.attribution,
+      toolCallId,
+    },
+    { toolCallId },
+  )
+  const headers = new Headers({
+    Authorization: `Bearer ${ledgerProxyToken}`,
+    'Content-Type': 'application/json',
+  })
+  for (const [name, value] of Object.entries(identityHeaders)) {
+    if (!ALLOWED_IDENTITY_HEADERS.has(name.toLowerCase()) || !value.trim()) {
+      throw new WebSearchError(
+        'Ledger signing identity returned an unexpected header.',
+      )
+    }
+    headers.set(name, value)
+  }
 
   let response: Response
   try {
-    response = await fetchImpl(SERPER_ENDPOINT, {
+    response = await fetchImpl(endpoint, {
       method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        'content-type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ q: trimmedQuery, num: count, page }),
-      signal: AbortSignal.timeout(SERPER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(LEDGER_SERPER_TIMEOUT_MS),
     })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    throw new WebSearchError(`serper.dev request failed: ${reason}`)
+    throw new WebSearchError(`Ledger web search request failed: ${reason}`)
   }
 
   if (!response.ok) {
     const body = await response.text().catch(() => '')
     throw new WebSearchError(
-      `serper.dev returned ${response.status} ${response.statusText}${
+      `Ledger web search returned ${response.status} ${response.statusText}${
         body ? `: ${body.slice(0, 200)}` : ''
       }`,
     )
@@ -113,7 +173,9 @@ export const runWebSearch = async (
   const payload = (await response.json().catch(() => null)) as unknown
   const parsed = SerperResponseSchema.safeParse(payload)
   if (!parsed.success) {
-    throw new WebSearchError('serper.dev returned an unexpected response shape.')
+    throw new WebSearchError(
+      'Ledger web search returned an unexpected response shape.',
+    )
   }
 
   const answer = resolveAnswer(parsed.data)

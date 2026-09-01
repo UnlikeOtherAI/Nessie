@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
   useAgentActivity,
   useAgentChildren,
@@ -6,32 +6,95 @@ import {
   useAgentStatus,
 } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { SectionLabel } from '../../primitives/SectionLabel'
+import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 import { AgentAvailableTools } from './AgentAvailableTools'
+import { AgentDocumentsTab } from './AgentDocumentsTab'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
 import { ToolExecutionLog } from './ToolExecutionLog'
+import { AgentTodosTab } from './todos/AgentTodosTab'
+import {
+  useDesignerAssistantPanel,
+  type DesignerPageContext,
+} from './designer/DesignerAssistantPanelContext'
 
-type Tab = 'activity' | 'sub-agents' | 'tools' | 'messages'
+type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'documents' | 'to-dos'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'activity', label: 'Activity' },
-  { id: 'sub-agents', label: 'Sub-Agents' },
-  { id: 'tools', label: 'Tools' },
-  { id: 'messages', label: 'Messages' },
+// To-dos sits first here so that on an owner's view — where Edit is prepended —
+// it reads as the second tab, right beside the configuration it belongs to.
+const FIRST_DETAIL_TAB: Tab = 'to-dos'
+
+const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
+  { label: 'To-dos', value: FIRST_DETAIL_TAB },
+  { label: 'Activity', value: 'activity' },
+  { label: 'Sub-Agents', value: 'sub-agents' },
+  { label: 'Tools', value: 'tools' },
+  { label: 'Messages', value: 'messages' },
+  { label: 'Documents', value: 'documents' },
 ]
 
 const PAGE_SIZE = 10
 
+const pageContextForTab: Record<Tab, DesignerPageContext> = {
+  edit: {
+    actions: ['edit the agent configuration'],
+    description: 'Configure this agent’s identity, model, instructions, and run limits.',
+    title: 'Edit agent',
+  },
+  activity: {
+    actions: [],
+    description: 'Review this agent’s current run, triggers, recent tool calls, and thought stream.',
+    title: 'Activity',
+  },
+  'sub-agents': {
+    actions: [],
+    description: 'Review and navigate this agent’s delegated sub-agents.',
+    title: 'Sub-Agents',
+  },
+  tools: {
+    actions: ['enable or disable tools, then save the changes'],
+    description: 'Review this agent’s available tools and change its tool access.',
+    title: 'Tools',
+  },
+  messages: {
+    actions: [],
+    description: 'Review messages this agent has sent or received.',
+    title: 'Messages',
+  },
+  documents: {
+    actions: ['review and edit the agent’s documents and manage its document space'],
+    description: 'Review the versioned documents this agent keeps and shares with its viewers.',
+    title: 'Documents',
+  },
+  'to-dos': {
+    actions: [],
+    description: 'Review this agent’s reusable checklists and tracked to-dos.',
+    title: 'To-dos',
+  },
+}
+
 type AgentDetailTabsProps = {
   agent: AgentRecord
+  // When provided, an "Edit" tab is prepended and selected first, so the agent
+  // detail page leads with editing and keeps the read-only panels behind it.
+  editSlot?: ReactNode
   onSelectAgent?: (agentId: string) => void
 }
 
-export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) => {
-  const [activeTab, setActiveTab] = useState<Tab>('activity')
+export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailTabsProps) => {
+  const assistantPanel = useDesignerAssistantPanel()
+  const tabs = useMemo(
+    () => (editSlot ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS] : DETAIL_TABS),
+    [editSlot],
+  )
+  // Land on the first tab actually rendered, so the selection and the leading
+  // tab can never disagree when the tab order changes.
+  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : FIRST_DETAIL_TAB)
   const [messagePage, setMessagePage] = useState(0)
 
   const { data: status } = useAgentStatus(agent.id)
@@ -59,46 +122,44 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
     setMessagePage(0)
   }
 
-  const activeIndex = TABS.findIndex((t) => t.id === activeTab)
+  useEffect(() => {
+    assistantPanel?.setPageContext(pageContextForTab[activeTab])
+  }, [activeTab, assistantPanel])
 
   return (
     <div className="flex h-full flex-col">
-      <div className="relative flex-shrink-0 border-b border-[color:var(--sep)]">
-        <div className="flex">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              className={[
-                'flex-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors',
-                activeTab === tab.id
-                  ? 'text-[var(--tx)]'
-                  : 'text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
-              ].join(' ')}
-              onClick={() => handleTabChange(tab.id)}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div
-          className="absolute bottom-0 left-0 flex transition-transform duration-200 ease-out"
-          style={{
-            width: `${100 / TABS.length}%`,
-            transform: `translateX(${activeIndex * 100}%)`,
-          }}
-        >
-          <div className="mx-4 h-[2px] flex-1 rounded-full bg-[var(--accent)]" />
-        </div>
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-4 py-2">
+            <TabBar
+              ariaLabel="Agent sections"
+              fullWidth
+              items={tabs}
+              onChange={handleTabChange}
+              value={activeTab}
+            />
+          </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Kept mounted (hidden when inactive) so switching tabs never
+              discards in-progress edits or the design-assistant conversation. */}
+          {editSlot ? (
+            <div className={activeTab === 'edit' ? 'min-h-0 flex-1' : 'hidden'}>
+              {editSlot}
+            </div>
+          ) : null}
+
+          <div
+            className={
+              activeTab === 'edit'
+                ? 'hidden'
+                : activeTab === 'documents'
+                  ? 'min-h-0 flex-1'
+                  : 'flex-1 overflow-y-auto px-6 py-5'
+            }
+          >
         {activeTab === 'activity' && (
           <div className="grid gap-6">
             <section className="admin-card p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                Current activity
-              </div>
+              <SectionLabel>Current activity</SectionLabel>
               {status?.currentToolName || activity?.currentRun ? (
                 <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
                   {status?.currentToolName
@@ -125,32 +186,27 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
 
         {activeTab === 'tools' && <AgentAvailableTools agent={agent} />}
 
-        {activeTab === 'messages' && (
+        {activeTab === 'to-dos' && <AgentTodosTab agent={agent} />}
+
+            {activeTab === 'messages' && (
           <div className="grid gap-4">
             <AgentMessagePreview messages={messages} />
-            {(messagePage > 0 || hasNextPage) && (
-              <div className="flex items-center justify-between border-t border-[color:var(--sep)] pt-4">
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={messagePage === 0}
-                  onClick={() => setMessagePage((p) => p - 1)}
-                  type="button"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-[color:var(--tx3)]">Page {messagePage + 1}</span>
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={!hasNextPage}
-                  onClick={() => setMessagePage((p) => p + 1)}
-                  type="button"
-                >
-                  Next
-                </button>
-              </div>
-            )}
+            {/* No total to name: the count is never fetched, only whether one
+                more row exists. So the strip hides when neither direction
+                leads anywhere — the only "single page" this side can see. */}
+            <PaginationFooter
+              canNext={hasNextPage}
+              canPrevious={messagePage > 0}
+              className="pt-4"
+              hideWhenSinglePage
+              label={`Page ${messagePage + 1}`}
+              onPageChange={setMessagePage}
+              page={messagePage}
+            />
           </div>
-        )}
+            )}
+            {activeTab === 'documents' && <AgentDocumentsTab agent={agent} />}
+          </div>
       </div>
     </div>
   )

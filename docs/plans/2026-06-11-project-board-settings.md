@@ -76,5 +76,5 @@ layer* keyed off status; the worker is never modified. The worker only ever sets
   burndown (remaining drops on the done-event day, ideal line linear).
 - Worker compiles unchanged; agent tasks auto-place by status (`columnId` null)
   and land in the backlog for scrum.
-- Live UI screenshots still blocked by [kelpie#78](https://github.com/UnlikeOtherAI/kelpie/issues/78);
+- Live UI screenshots still blocked by a since-retired screenshot tool bug;
   eyeball in the authenticated browser until resolved.

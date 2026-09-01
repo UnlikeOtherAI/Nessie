@@ -1,4 +1,8 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
+import { useNavigate } from 'react-router-dom'
+import { deepWaterResearchLauncherNavigationState } from '../../../facades/integrations/deep-water-research-launcher-navigation'
+import { Pill, type PillTone } from '../../primitives/Pill'
+import { AgentActivityTimeline } from './AgentActivityTimeline'
 
 type IntegrationUiCardAction = NonNullable<IntegrationUiCard['actions']>[number]
 
@@ -33,19 +37,16 @@ const productLabel = (slug: string | undefined): string => {
 const statusLabel = (status: IntegrationUiCard['status']): string =>
   status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
-const statusClass = (status: IntegrationUiCard['status']): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'completed'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'failed'
-        ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-        : status === 'warning' || status === 'needs_setup'
-          ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-          : status === 'running' || status === 'queued'
-            ? 'bg-[var(--accent-soft)] text-[var(--thinking)]'
-            : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+const statusTone = (status: IntegrationUiCard['status']): PillTone =>
+  status === 'completed'
+    ? 'success'
+    : status === 'failed'
+      ? 'danger'
+      : status === 'warning' || status === 'needs_setup'
+        ? 'warning'
+        : status === 'running' || status === 'queued'
+          ? 'accent'
+          : 'muted'
 
 const actionClass = (variant: IntegrationUiCardAction['variant']): string =>
   [
@@ -61,13 +62,38 @@ const LaunchIcon = () => (
   </svg>
 )
 
+const DeepWaterResearchLauncherAction = ({
+  action,
+}: {
+  action: IntegrationUiCardAction
+}) => {
+  const navigate = useNavigate()
+
+  return (
+    <button
+      className={`${actionClass(action.variant)} gap-1.5`}
+      data-testid="deep-water-research-launcher-card-action"
+      onClick={() =>
+        navigate('.', {
+          state: deepWaterResearchLauncherNavigationState(action.preset),
+        })
+      }
+      type="button"
+    >
+      {action.label}
+    </button>
+  )
+}
+
 const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
   <div className="rounded-lg border border-[var(--sep)] bg-[var(--panel)] p-3">
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
         {productLabel(card.productSlug)}
       </span>
-      <span className={statusClass(card.status)}>{statusLabel(card.status)}</span>
+      <Pill className="font-semibold" radius="chip" size="sm" tone={statusTone(card.status)} uppercase={false}>
+        {statusLabel(card.status)}
+      </Pill>
     </div>
     <div className="mt-2 text-sm font-semibold text-[var(--tx)]">{card.title}</div>
     {card.summary ? (
@@ -88,7 +114,9 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
     {card.actions?.length ? (
       <div className="mt-3 flex flex-wrap gap-2">
         {card.actions.map((action) =>
-          action.href ? (
+          action.type === 'open_deep_water_research_launcher' ? (
+            <DeepWaterResearchLauncherAction action={action} key={action.label} />
+          ) : action.href ? (
             <a
               className={`${actionClass(action.variant)} gap-1.5`}
               href={action.href}
@@ -115,19 +143,36 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
 
 export const MessageUiCards = ({
   metadata,
+  // External-agent assistant turns render their `role: 'activity'` cards as a
+  // collapsed plan/timeline (the reasoning view); result cards stay flat. For
+  // every other surface all cards render flat, exactly as before.
+  isExternalAgent = false,
 }: {
   metadata: Record<string, unknown> | undefined
+  isExternalAgent?: boolean
 }) => {
   const cards = readIntegrationCards(metadata)
   if (cards.length === 0) {
     return null
   }
 
+  const activities = isExternalAgent
+    ? cards.filter((card) => card.role === 'activity')
+    : []
+  const flatCards = isExternalAgent
+    ? cards.filter((card) => card.role !== 'activity')
+    : cards
+
   return (
-    <div className="mt-2 grid max-w-2xl gap-2">
-      {cards.map((card, index) => (
-        <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} />
-      ))}
-    </div>
+    <>
+      {activities.length > 0 ? <AgentActivityTimeline activities={activities} /> : null}
+      {flatCards.length > 0 ? (
+        <div className="mt-2 grid max-w-2xl gap-2">
+          {flatCards.map((card, index) => (
+            <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} />
+          ))}
+        </div>
+      ) : null}
+    </>
   )
 }

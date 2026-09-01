@@ -1,7 +1,13 @@
 import type { PrismaClient } from '@prisma/client'
+import { KnowledgeInferenceOriginError } from '@nessie/knowledge'
 import { KNOWLEDGE_EXTRACT_TOPIC } from '@nessie/schemas'
 
 import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { emitAuditEvent } from '../services/audit.js'
+import {
+  getKnowledgeInferenceActorContext,
+  requireApiKnowledgeInferenceOrigin,
+} from '../services/knowledge-inference-origin.js'
 
 // File kinds/extensions worth deterministic text extraction. The worker
 // (worker/src/control/knowledge-extract.ts) re-checks extractability
@@ -45,6 +51,11 @@ export const enqueueKnowledgeExtract = async (
 ): Promise<void> => {
   if (!isExtractableUpload(input.filename, input.mime)) return
   try {
+    const origin = await requireApiKnowledgeInferenceOrigin(prisma, {
+      organizationId: input.organizationId,
+      pageId: input.pageId,
+      versionId: input.versionId,
+    }, 'knowledge-file-indexer')
     await enqueueQueueJob(prisma, {
       idempotencyKey: `kb-extract:${input.pageId}:${input.versionId}`,
       payload: {
@@ -52,10 +63,56 @@ export const enqueueKnowledgeExtract = async (
         pageId: input.pageId,
         versionId: input.versionId,
         attachmentId: input.attachmentId,
+        origin,
       },
       topic: KNOWLEDGE_EXTRACT_TOPIC,
     })
   } catch (error) {
+    if (error instanceof KnowledgeInferenceOriginError) {
+      // The route will remove the stored attachment. Roll back the just-created
+      // file version too; if it was the page's only version, remove the empty
+      // file node so an explicit team-context error never leaves broken data.
+      const pageRolledBack = await prisma.$transaction(async (tx) => {
+        const versionCount = await tx.knowledgePageVersion.count({
+          where: { pageId: input.pageId },
+        })
+        if (versionCount <= 1) {
+          const deleted = await tx.knowledgePage.deleteMany({
+            where: {
+              id: input.pageId,
+              organizationId: input.organizationId,
+            },
+          })
+          return deleted.count > 0
+        }
+        await tx.knowledgePageVersion.deleteMany({
+          where: {
+            id: input.versionId,
+            pageId: input.pageId,
+          },
+        })
+        return false
+      })
+      const actorContext = getKnowledgeInferenceActorContext()
+      if (pageRolledBack && actorContext) {
+        // File creation records success before this asynchronous queue seam.
+        // Preserve the history, but append the compensating terminal outcome so
+        // audit consumers never mistake a rolled-back page for a live success.
+        await emitAuditEvent(prisma, {
+          actorContext,
+          action: 'kb.page.created',
+          resourceType: 'knowledge_page',
+          resourceId: input.pageId,
+          outcome: 'error',
+          reason: error.code,
+          metadata: {
+            compensatesOutcome: 'success',
+            rolledBack: true,
+          },
+        })
+      }
+      throw error
+    }
     console.error('[kb.files] Failed to enqueue knowledge.extract:', input.pageId, error)
   }
 }

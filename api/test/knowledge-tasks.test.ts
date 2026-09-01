@@ -103,6 +103,13 @@ const makeApp = (options: MakeAppOptions = {}) => {
 
   const txPrisma = {
     $executeRaw: async () => 0,
+    auditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        auditLogs.push(data)
+      },
+      // The hash-chain audit writer reads the current chain tip first.
+      findFirst: async () => null,
+    },
     knowledgeSpace: {
       findFirst: async (args: { where: Record<string, unknown> }) => {
         // Distinguish the "My Docs" (userId set) vs "Project Documents"
@@ -122,12 +129,8 @@ const makeApp = (options: MakeAppOptions = {}) => {
   const prisma = {
     $queryRaw: async () => (options.policyEffect === 'deny' ? [policyRow('deny')] : [policyRow('allow')]),
     $transaction: async <T>(callback: (tx: typeof txPrisma) => Promise<T>) => callback(txPrisma),
-    auditLog: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        auditLogs.push(data)
-      },
-    },
     projectMember: { findMany: async () => [{ projectId }] },
+    agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
     task: {
@@ -179,12 +182,14 @@ const makeApp = (options: MakeAppOptions = {}) => {
       visibility: 'project',
       sensitivityTier: 'normal',
       privateToAgentId: null,
+      ownerAgentId: null,
       createdBy: userId,
       deletedAt: null,
       createdAt: '2026-07-06T10:00:00.000Z',
       updatedAt: '2026-07-06T10:00:00.000Z',
     }),
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,

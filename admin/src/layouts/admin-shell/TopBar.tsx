@@ -1,11 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { isDesktopApp } from '../../lib/desktop'
-import { useAuthedObjectUrl } from '../../lib/uploads'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
-import { RecentChannelsMenu, useHistoryNav, useRecordRecentChannelVisits } from './topbar-navigation'
+import { RecentChannelsControl, useHistoryNav } from './topbar-navigation'
+import { UserMenuTrigger } from './UserMenuTrigger'
 
 const iconProps = {
   fill: 'none',
@@ -28,91 +25,18 @@ const ChevronRight = () => (
   </svg>
 )
 
-const Clock = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
-const Help = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path
-      d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path d="M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
-// Clock button → quick-jump menu of recently opened channels.
-const RecentMenu = () => {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClick = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        aria-label="Recent channels"
-        className="admin-topbar-btn"
-        onClick={() => setOpen((value) => !value)}
-        title="Recent channels"
-        type="button"
-      >
-        <Clock />
-      </button>
-      {open ? (
-        <RecentChannelsMenu onSelect={() => setOpen(false)} />
-      ) : null}
-    </div>
-  )
-}
-
-// Workspace badge: the org's round logo (or its initial), linking to settings.
-const WorkspaceBadge = () => {
-  const { token } = useAuthSession()
-  const { data: organization } = useCurrentOrganization()
-  const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token)
-
-  return (
-    <Link
-      aria-label="Workspace settings"
-      className="admin-topbar-workspace"
-      title={organization?.name ?? 'Workspace'}
-      to="/settings"
-    >
-      {logoUrl ? (
-        <img alt="" className="h-full w-full object-cover" src={logoUrl} />
-      ) : (
-        <span>{(organization?.name ?? 'N').charAt(0).toUpperCase()}</span>
-      )}
-    </Link>
-  )
-}
-
 type TopBarProps = {
   hideSearch?: boolean
+  onLogout: () => void
+  showAccountMenu: boolean
 }
 
 // Slack-style global top bar. Rendered full-width above the rail and content. On
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
-export const TopBar = ({ hideSearch = false }: TopBarProps) => {
+export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
   const desktop = isDesktopApp()
   const { goBack, goForward, canBack, canForward } = useHistoryNav()
-
-  useRecordRecentChannelVisits()
 
   return (
     <header
@@ -147,7 +71,7 @@ export const TopBar = ({ hideSearch = false }: TopBarProps) => {
         >
           <ChevronRight />
         </button>
-        <RecentMenu />
+        <RecentChannelsControl />
       </div>
 
       {desktop ? (
@@ -160,11 +84,9 @@ export const TopBar = ({ hideSearch = false }: TopBarProps) => {
         <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />
       ) : null}
 
-      <div className="flex items-center gap-1">
-        <WorkspaceBadge />
-        <Link aria-label="Help & feedback" className="admin-topbar-btn" title="Help & feedback" to="/feedback">
-          <Help />
-        </Link>
+      <div className="flex items-center gap-6">
+        <AlertsBell />
+        {showAccountMenu ? <UserMenuTrigger onLogout={onLogout} placement="topbar" /> : null}
       </div>
     </header>
   )

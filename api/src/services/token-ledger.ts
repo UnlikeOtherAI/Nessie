@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext, PricingSource } from '@nessie/schemas'
-import { emitAuditEvent } from './audit.js'
+
+export {
+  createPricingProfile,
+  deletePricingProfile,
+  listPricingProfiles,
+} from './pricing-profiles.js'
 
 export const getTokenUsageSummary = async (
   prisma: PrismaClient,
@@ -12,6 +16,7 @@ export const getTokenUsageSummary = async (
     channelId?: string
     runId?: string
     agentId?: string
+    userId?: string
     actorId?: string
     provider?: string
     model?: string
@@ -44,6 +49,10 @@ export const getTokenUsageSummary = async (
     conditions.push(`"agent_id" = $${paramIdx++}::uuid`)
     params.push(filters.agentId)
   }
+  if (filters?.userId) {
+    conditions.push(`"user_id" = $${paramIdx++}::uuid`)
+    params.push(filters.userId)
+  }
   if (filters?.actorId) {
     conditions.push(`"actor_id" = $${paramIdx++}`)
     params.push(filters.actorId)
@@ -73,6 +82,7 @@ export const getTokenUsageSummary = async (
         runId: '"run_id"',
         channelId: '"channel_id"',
         agentId: '"agent_id"',
+        userId: '"user_id"',
         actorId: '"actor_id"',
         operationType: '"operation_type"',
       }[filters.groupBy] ?? '"provider"'
@@ -159,12 +169,78 @@ export const getTokenUsageSummary = async (
   }
 }
 
+// Owner-only local telemetry: token spend split by the terminal outcome of the
+// run that produced it (completed / failed / cancelled / running / unknown), so
+// spend burned by FAILED runs is visible and attributable rather than lost in
+// the aggregate (buzz #1659). Joins token_ledger_events to runs on run_id; a
+// null/absent run maps to 'unknown'. This is Nessie-local ops data — never UOA
+// customer credits.
+export const getRunOutcomeUsageSummary = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  filters?: { from?: string; to?: string },
+) => {
+  const conditions: string[] = ['e."organization_id" = $1::uuid']
+  const params: unknown[] = [organizationId]
+  let paramIdx = 2
+
+  if (filters?.from) {
+    conditions.push(`e."occurred_at" >= $${paramIdx++}`)
+    params.push(new Date(filters.from))
+  }
+  if (filters?.to) {
+    conditions.push(`e."occurred_at" <= $${paramIdx++}`)
+    params.push(new Date(filters.to))
+  }
+
+  const whereClause = conditions.join(' AND ')
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      outcome: string | null
+      total_tokens: bigint
+      estimated_cost: number
+      event_count: bigint
+      run_count: bigint
+    }>
+  >(
+    `SELECT
+       COALESCE(r."status"::text, 'unknown') as outcome,
+       COALESCE(SUM(e.total_tokens), 0) as total_tokens,
+       COALESCE(SUM(e.estimated_cost_amount), 0) as estimated_cost,
+       COUNT(e.id) as event_count,
+       COUNT(DISTINCT e.run_id) as run_count
+     FROM token_ledger_events e
+     LEFT JOIN runs r ON e.run_id = r.id
+     WHERE ${whereClause}
+     GROUP BY COALESCE(r."status"::text, 'unknown')
+     ORDER BY estimated_cost DESC`,
+    ...params,
+  )
+
+  const outcomes = rows.map((row) => ({
+    outcome: row.outcome ?? 'unknown',
+    totalTokens: Number(row.total_tokens),
+    estimatedCost: Number(row.estimated_cost),
+    eventCount: Number(row.event_count),
+    runCount: Number(row.run_count),
+  }))
+
+  const failed = outcomes.find((o) => o.outcome === 'failed')
+  return {
+    currency: 'USD',
+    outcomes,
+    failedEstimatedCost: failed?.estimatedCost ?? 0,
+    failedTotalTokens: failed?.totalTokens ?? 0,
+  }
+}
+
 export const getConnectorUsageSummary = async (
   prisma: PrismaClient,
   organizationId: string,
   filters?: {
     connectorType?: string
     agentId?: string
+    userId?: string
     channelId?: string
     connectorId?: string
     from?: string
@@ -183,6 +259,10 @@ export const getConnectorUsageSummary = async (
   if (filters?.agentId) {
     conditions.push(`"agent_id" = $${paramIdx++}::uuid`)
     params.push(filters.agentId)
+  }
+  if (filters?.userId) {
+    conditions.push(`"user_id" = $${paramIdx++}::uuid`)
+    params.push(filters.userId)
   }
   if (filters?.channelId) {
     conditions.push(`"channel_id" = $${paramIdx++}::uuid`)
@@ -206,6 +286,7 @@ export const getConnectorUsageSummary = async (
     ? {
         connectorType: '"connector_type"',
         agentId: '"agent_id"',
+        userId: '"user_id"',
         channelId: '"channel_id"',
         connectorId: '"connector_id"',
         operation: '"operation"',
@@ -222,7 +303,16 @@ export const getConnectorUsageSummary = async (
     `SELECT
        COALESCE(SUM(calls), 0) as total_calls,
        COALESCE(SUM(units), 0) as total_units,
-       COALESCE(SUM(cost_amount), 0) as total_cost
+       COALESCE(SUM(
+         CASE
+           WHEN metadata->>'productSlug' = 'deep-water'
+             OR metadata->>'product_slug' = 'deep-water'
+             OR metadata->>'product' = 'deep-water'
+             OR metadata->>'source' = 'deep_water_run_update'
+             THEN 0
+           ELSE cost_amount
+         END
+       ), 0) as total_cost
      FROM connector_usage_events
      WHERE ${whereClause}`,
     ...params,
@@ -249,7 +339,16 @@ export const getConnectorUsageSummary = async (
          ${groupByColumn} as key,
          COALESCE(SUM(calls), 0) as calls,
          COALESCE(SUM(units), 0) as units,
-         COALESCE(SUM(cost_amount), 0) as cost
+         COALESCE(SUM(
+           CASE
+             WHEN metadata->>'productSlug' = 'deep-water'
+               OR metadata->>'product_slug' = 'deep-water'
+               OR metadata->>'product' = 'deep-water'
+               OR metadata->>'source' = 'deep_water_run_update'
+               THEN 0
+             ELSE cost_amount
+           END
+         ), 0) as cost
        FROM connector_usage_events
        WHERE ${whereClause}
        GROUP BY ${groupByColumn}
@@ -370,139 +469,3 @@ export const getMonthlyEstimate = async (
     daysInMonth,
   }
 }
-
-// ─── Pricing Profiles ───────────────────────────────────────────────────────
-
-export const listPricingProfiles = async (
-  prisma: PrismaClient,
-  organizationId: string,
-) => {
-  const profiles = await prisma.modelPricingProfile.findMany({
-    where: {
-      organizationId,
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
-    },
-    orderBy: { effectiveFrom: 'desc' },
-  })
-
-  return profiles.map(mapPricingProfile)
-}
-
-export const createPricingProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  input: {
-    provider: string
-    modelPattern: string
-    currency?: string
-    source: PricingSource
-    inputPerMillion?: number
-    outputPerMillion?: number
-    cachedInputPerMillion?: number
-    cachedOutputPerMillion?: number
-    cacheReadPerMillion?: number
-    cacheWritePerMillion?: number
-  },
-  actorContext: AuthorizedActionContext,
-) => {
-  // At most one ACTIVE profile per (org, provider, modelPattern) — enforced by a
-  // partial unique index. Re-pricing a model supersedes the current active row
-  // instead of erroring, so the editor is a simple "set the price".
-  const profile = await prisma.$transaction(async (tx) => {
-    await tx.modelPricingProfile.updateMany({
-      where: {
-        organizationId,
-        provider: input.provider,
-        modelPattern: input.modelPattern,
-        effectiveTo: null,
-      },
-      data: { effectiveTo: new Date() },
-    })
-    return tx.modelPricingProfile.create({
-      data: {
-        organizationId,
-        provider: input.provider,
-        modelPattern: input.modelPattern,
-        currency: input.currency ?? 'USD',
-        source: input.source as Parameters<typeof tx.modelPricingProfile.create>[0]['data']['source'],
-        inputPerMillion: input.inputPerMillion ?? null,
-        outputPerMillion: input.outputPerMillion ?? null,
-        cachedInputPerMillion: input.cachedInputPerMillion ?? null,
-        cachedOutputPerMillion: input.cachedOutputPerMillion ?? null,
-        cacheReadPerMillion: input.cacheReadPerMillion ?? null,
-        cacheWritePerMillion: input.cacheWritePerMillion ?? null,
-        effectiveFrom: new Date(),
-      },
-    })
-  })
-
-  await emitAuditEvent(prisma, {
-    actorContext,
-    action: 'pricing.created',
-    resourceType: 'pricing',
-    resourceId: profile.id,
-    outcome: 'success',
-    metadata: { provider: input.provider, modelPattern: input.modelPattern },
-  })
-
-  return mapPricingProfile(profile)
-}
-
-export const deletePricingProfile = async (
-  prisma: PrismaClient,
-  profileId: string,
-  organizationId: string,
-  actorContext: AuthorizedActionContext,
-) => {
-  await prisma.modelPricingProfile.update({
-    where: { id: profileId, organizationId },
-    data: { effectiveTo: new Date() },
-  })
-
-  await emitAuditEvent(prisma, {
-    actorContext,
-    action: 'pricing.deleted',
-    resourceType: 'pricing',
-    resourceId: profileId,
-    outcome: 'success',
-  })
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-// Per-million rates are stored as NUMERIC (Prisma Decimal); collapse them to
-// number so the JSON contract stays `number | null`.
-const decimalToNumber = (value: Prisma.Decimal | null): number | null =>
-  value === null ? null : value.toNumber()
-
-const mapPricingProfile = (profile: {
-  id: string
-  organizationId: string
-  provider: string
-  modelPattern: string
-  currency: string
-  source: string
-  inputPerMillion: Prisma.Decimal | null
-  outputPerMillion: Prisma.Decimal | null
-  cachedInputPerMillion: Prisma.Decimal | null
-  cachedOutputPerMillion: Prisma.Decimal | null
-  cacheReadPerMillion: Prisma.Decimal | null
-  cacheWritePerMillion: Prisma.Decimal | null
-  effectiveFrom: Date
-  effectiveTo: Date | null
-}) => ({
-  profileId: profile.id,
-  organizationId: profile.organizationId,
-  provider: profile.provider,
-  modelPattern: profile.modelPattern,
-  currency: profile.currency,
-  source: profile.source,
-  inputPerMillion: decimalToNumber(profile.inputPerMillion),
-  outputPerMillion: decimalToNumber(profile.outputPerMillion),
-  cachedInputPerMillion: decimalToNumber(profile.cachedInputPerMillion),
-  cachedOutputPerMillion: decimalToNumber(profile.cachedOutputPerMillion),
-  cacheReadPerMillion: decimalToNumber(profile.cacheReadPerMillion),
-  cacheWritePerMillion: decimalToNumber(profile.cacheWritePerMillion),
-  effectiveFrom: profile.effectiveFrom.toISOString(),
-  effectiveTo: profile.effectiveTo?.toISOString() ?? null,
-})

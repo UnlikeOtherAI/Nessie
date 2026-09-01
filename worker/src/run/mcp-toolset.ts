@@ -1,32 +1,43 @@
 import {
   buildAuthorizedTransport,
-  resolveCredentialRef,
   EnvSecretResolver,
+  mcpAuthRequiresCredential,
+  resolveCredentialRefWithSource,
   type SecretResolver,
 } from '@nessie/mcp-manage'
-import { recordConnectorUsage, type LedgerAttribution } from '@nessie/runtime'
+import {
+  type LedgerAttribution,
+  type LedgerIdentityService,
+} from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext, McpTransportConfig } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  McpCatalogAuthMethod,
+  McpTransportConfig,
+} from '@nessie/schemas'
 import {
   buildDeferredView,
   buildInlineView,
   DEFAULT_INLINE_TOOL_LIMIT,
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
+import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
+import {
+  createMcpToolNameAllocator,
+  MANAGED_DEEP_WATER_TOOL_NAMES,
+} from './mcp-tool-names.js'
+import { recordMcpConnectorUsage } from './mcp-usage.js'
+import { isFatalToolExecutionError } from './tool-execution-errors.js'
+import {
+  buildMcpRunScopeContext,
+  isMcpRegistryRowExposed,
+} from './mcp-tool-access.js'
 import { dispatchTool } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
+import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
 
 export type McpToolPolicy = Record<string, boolean> | null
-
-const EXPOSE_NAME_PREFIX = 'mcp_'
-
-const sanitizeName = (raw: string): string => {
-  const cleaned = raw.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 60)
-  return cleaned.length > 0 ? cleaned : 'tool'
-}
-
-const exposedNameFor = (toolName: string): string => `${EXPOSE_NAME_PREFIX}${sanitizeName(toolName)}`
 
 type RegistryRow = {
   id: string
@@ -35,6 +46,7 @@ type RegistryRow = {
   description: string
   inputSchema: unknown
   transportConfig: unknown
+  metadata: unknown
   mcpInstanceId: string | null
   mcpInstance: {
     credentialRef: string | null
@@ -43,6 +55,10 @@ type RegistryRow = {
     transportConfig: unknown
     catalogEntry: {
       label: string
+      name: string
+      visibility: string
+      integratedProducts: Array<{ slug: string }>
+      authMethod: McpCatalogAuthMethod
       authConfig: unknown
       defaultTransportConfig: unknown
     }
@@ -52,75 +68,20 @@ type RegistryRow = {
 const stringRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
-type RunScopeContext = {
-  agentKind: 'personal_assistant' | 'shared'
-  effectiveUserId: string | null
-  channelId: string
-  teamId: string | null
-  projectId: string | null
-}
+export const isManagedDeepWaterCatalog = (catalog: {
+  integratedProducts: Array<{ slug: string }>
+  name: string
+  visibility: string
+}): boolean =>
+  catalog.name === 'deep-water'
+  && catalog.visibility === 'public'
+  && catalog.integratedProducts.some((product) => product.slug === 'deep-water')
 
-/**
- * Whether an instance's install scope reaches this run. Shared scopes follow
- * tenancy: org-/system-wide instances reach every run in the org, team /
- * project / channel instances reach runs inside that container. User-scoped
- * instances reach ONLY the installing user's delegated personal-assistant
- * runs — a user's personal connector must never surface in a shared agent's
- * channel where other people could drive it.
- */
-const scopeMatchesRun = (
-  scopeType: string,
-  scopeId: string,
-  ctx: RunScopeContext,
-): boolean => {
-  switch (scopeType) {
-    case 'system':
-    case 'organization':
-      return true
-    case 'project':
-      return ctx.projectId === scopeId
-    case 'team':
-      return ctx.teamId === scopeId
-    case 'channel':
-      return ctx.channelId === scopeId
-    case 'user':
-      return ctx.agentKind === 'personal_assistant' && ctx.effectiveUserId === scopeId
-    default:
-      return false
-  }
-}
-
-/**
- * Exposure rule for one registry entry: an explicit per-agent policy verdict
- * always wins (true exposes, false hides); otherwise the instance's install
- * scope decides. This is what makes an admin's org-scope install available to
- * the whole org, and a member's self-installed connector available to their
- * own personal assistant, without owner-managed per-agent policy edits.
- */
-const isExposed = (
-  toolPolicy: McpToolPolicy,
-  registryEntryId: string,
-  instance: { scopeType: string; scopeId: string },
-  ctx: RunScopeContext,
-): boolean => {
-  const verdict = toolPolicy?.[registryEntryId]
-  if (verdict === true) return true
-  if (verdict === false) return false
-  return scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
-}
-
-const buildRunScopeContext = (
-  actorContext: AuthorizedActionContext,
-  runtimeContext: { agentId: string; agentKind: 'personal_assistant' | 'shared'; channelId: string },
-): RunScopeContext => ({
-  agentKind: runtimeContext.agentKind,
-  effectiveUserId:
-    actorContext.actionContext.effectiveUserId
-    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null),
-  channelId: runtimeContext.channelId,
-  teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null,
-  projectId: actorContext.tenant.projectId ?? null,
-})
+const isManagedDeepWaterRow = (row: RegistryRow): boolean =>
+  Boolean(
+    row.mcpInstance
+    && isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry),
+  )
 
 const extractOriginalToolName = (row: RegistryRow): string | null => {
   const tc = stringRecord(row.transportConfig)
@@ -148,6 +109,12 @@ export type McpToolEntry = {
 export type McpToolset = {
   entries: McpToolEntry[]
   /**
+   * True when the managed DeepWater projections actually reached this run
+   * (granted AND in scope) — the structural fact behind the research routing
+   * block in the system prompt.
+   */
+  hasManagedResearchTools: boolean
+  /**
    * `inline` exposes every tool schema directly (small setups); `deferred`
    * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
    * large connector fleet doesn't flood the model's context with schemas.
@@ -161,7 +128,12 @@ export type McpToolset = {
    */
   createView: () => McpToolsetView
   /** Direct dispatch of a real MCP tool by exposed name (views wrap this). */
-  dispatch: (exposedName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
+  dispatch: (
+    exposedName: string,
+    args: Record<string, unknown>,
+    toolCallId?: string,
+  ) => Promise<AgenticToolResult>
+  timeoutErrorFor: (exposedName: string) => Error | null
 }
 
 const resolveInlineToolLimit = (override?: number): number => {
@@ -172,6 +144,34 @@ const resolveInlineToolLimit = (override?: number): number => {
 
 const defaultSecretResolver = new EnvSecretResolver()
 
+export const addDeepWaterIdentityHeaders = async (
+  transport: McpTransportConfig,
+  ledgerIdentity: LedgerIdentityService | null | undefined,
+  attribution: LedgerAttribution,
+  toolCallId: string,
+): Promise<McpTransportConfig> => {
+  if (!ledgerIdentity) {
+    throw new Error('LEDGER_IDENTITY_UNCONFIGURED')
+  }
+  if (
+    transport.transport === 'stdio'
+    || !transport.headers?.Authorization
+  ) {
+    throw new Error('LEDGER_PROXY_TOKEN_UNSET')
+  }
+  if (!toolCallId.trim()) {
+    throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+  }
+  const identityHeaders = await ledgerIdentity.requestHeaders(
+    attribution,
+    { requireUoaIdentity: true, toolCallId },
+  )
+  return {
+    ...transport,
+    headers: { ...(transport.headers ?? {}), ...identityHeaders },
+  }
+}
+
 export const buildMcpToolset = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -181,11 +181,21 @@ export const buildMcpToolset = async (
     agentId: string
     agentKind: 'personal_assistant' | 'shared'
     channelId: string
+    isPersonalAssistantPresence?: boolean
   },
-  // Attribution for connector usage billing — every dispatched MCP tool call
-  // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
+  // Attribution for operational connector telemetry — every dispatched MCP
+  // tool call writes a cost-free row keyed to its org/agent/channel/run. Ledger
+  // owns raw provider metering and UOA alone supplies customer billing.
   attribution: LedgerAttribution,
-  options: { secretResolver?: SecretResolver; inlineToolLimit?: number } = {},
+  options: {
+    consumedSources?: ConsumedSourceSink
+    /** Test seam for the one worker-side transport call. */
+    dispatchMcpTool?: typeof dispatchTool
+    deepWaterHandoffGuard?: DeepWaterHandoffGuard
+    ledgerIdentity?: LedgerIdentityService | null
+    secretResolver?: SecretResolver
+    inlineToolLimit?: number
+  } = {},
 ): Promise<McpToolset> => {
   const secretResolver = options.secretResolver ?? defaultSecretResolver
   const rows = (await prisma.toolRegistryEntry.findMany({
@@ -202,6 +212,7 @@ export const buildMcpToolset = async (
       description: true,
       inputSchema: true,
       transportConfig: true,
+      metadata: true,
       mcpInstanceId: true,
       mcpInstance: {
         select: {
@@ -210,48 +221,97 @@ export const buildMcpToolset = async (
           scopeId: true,
           transportConfig: true,
           catalogEntry: {
-            select: { label: true, authConfig: true, defaultTransportConfig: true },
+            select: {
+              label: true,
+              name: true,
+              visibility: true,
+              integratedProducts: { select: { slug: true } },
+              authMethod: true,
+              authConfig: true,
+              defaultTransportConfig: true,
+            },
           },
         },
       },
     },
   })) as unknown as RegistryRow[]
 
-  const runScope = buildRunScopeContext(actorContext, runtimeContext)
+  const runScope = buildMcpRunScopeContext(actorContext, runtimeContext)
 
   const entries: McpToolEntry[] = []
   type TransportTarget = {
+    deepWater: boolean
     transport: McpTransportConfig
     originalToolName: string
     instanceId: string
+    /** Present only when the returned tool output is bound to one user. */
+    userCredentialScopeId: string | null
   }
   const transportByExposedName = new Map<string, TransportTarget>()
-  const usedNames = new Set<string>()
+  const managedToolNames = rows.some(isManagedDeepWaterRow)
+    ? MANAGED_DEEP_WATER_TOOL_NAMES
+    : new Set<string>()
+  // Managed DeepWater rows claim the canonical names first, then a fixed key —
+  // Prisma reads unordered, and a reshuffle would re-suffix a colliding tool.
+  const allocationKey = (row: RegistryRow): string =>
+    `${isManagedDeepWaterRow(row) ? 0 : 1} ${row.toolId} ${row.id}`
+  const orderedRows = [...rows].sort((left, right) => (allocationKey(left) < allocationKey(right) ? -1 : 1))
+  const allocateExposedName = createMcpToolNameAllocator(managedToolNames)
 
-  for (const row of rows) {
+  for (const row of orderedRows) {
     if (!row.mcpInstanceId || !row.mcpInstance) continue
-    if (!isExposed(toolPolicy, row.id, row.mcpInstance, runScope)) continue
+    const deepWater = isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry)
+    if (
+      !isMcpRegistryRowExposed(
+        toolPolicy,
+        row.id,
+        row.mcpInstance,
+        runScope,
+        row.metadata,
+      )
+    ) {
+      continue
+    }
 
     const originalToolName = extractOriginalToolName(row)
     if (!originalToolName) continue
+    const exposedName = allocateExposedName(originalToolName, deepWater)
 
-    let exposedName = exposedNameFor(originalToolName)
-    let suffix = 2
-    while (usedNames.has(exposedName)) {
-      exposedName = `${exposedNameFor(originalToolName)}_${suffix}`
-      suffix += 1
-    }
-    usedNames.add(exposedName)
-
-    const credentialRef = await resolveCredentialRef(prisma, row.mcpInstanceId, {
-      userId: runScope.effectiveUserId,
-      agentId: runtimeContext.agentId,
-      channelId: runtimeContext.channelId,
-      teamId: runScope.teamId,
-      projectId: runScope.projectId,
-      organizationId,
-    })
+    const credential = deepWater
+      ? { credentialRef: row.mcpInstance.credentialRef, source: 'instance_default' as const }
+      : await resolveCredentialRefWithSource(prisma, row.mcpInstanceId, {
+        userId: runScope.effectiveUserId,
+        agentId: runtimeContext.agentId,
+        channelId: runtimeContext.channelId,
+        teamId: runScope.teamId,
+        projectId: runScope.projectId,
+        organizationId,
+      })
+    const credentialRef = credential.credentialRef
     const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
+    // A connection requiring credentials is not a callable capability for a
+    // person without a usable one. This is particularly important for shared
+    // OAuth installs: another member must not even see a tool backed by
+    // somebody else's personal override, or a stale secret reference whose
+    // plaintext can no longer be resolved.
+    if (
+      !deepWater
+      && mcpAuthRequiresCredential(
+        row.mcpInstance.catalogEntry.authMethod,
+        row.mcpInstance.catalogEntry.authConfig,
+      )
+      && !secret
+    ) {
+      continue
+    }
+    const userCredentialScopeId = !deepWater
+      && runScope.effectiveUserId
+      && (
+        credential.source === 'user_override'
+        || row.mcpInstance.scopeType === 'user'
+      )
+      ? runScope.effectiveUserId
+      : null
 
     let transport: McpTransportConfig
     try {
@@ -278,37 +338,18 @@ export const buildMcpToolset = async (
       connectorLabel: row.mcpInstance.catalogEntry.label,
     })
     transportByExposedName.set(exposedName, {
+      deepWater,
       transport,
       originalToolName,
       instanceId: row.mcpInstanceId,
-    })
-  }
-
-  // Record one connector_usage_events row per MCP tool call. Best-effort: a
-  // ledger failure must never break the tool dispatch.
-  const recordMcpUsage = async (
-    target: TransportTarget,
-    success: boolean,
-    latencyMs: number,
-  ): Promise<void> => {
-    await recordConnectorUsage(prisma, {
-      attribution,
-      event: {
-        connectorType: 'mcp',
-        connectorId: target.instanceId,
-        target: target.originalToolName,
-        operation: target.originalToolName,
-        success,
-        latencyMs,
-      },
-    }).catch(() => {
-      // best-effort billing capture
+      userCredentialScopeId,
     })
   }
 
   const dispatch = async (
     exposedName: string,
     args: Record<string, unknown>,
+    toolCallId?: string,
   ): Promise<AgenticToolResult> => {
     const inputSummary = summarizeToolInput(args)
     const target = transportByExposedName.get(exposedName)
@@ -316,20 +357,87 @@ export const buildMcpToolset = async (
       return { inputSummary, output: `Unknown MCP tool: ${exposedName}`, success: false }
     }
     const startedAt = Date.now()
+    let transportInvoked = false
+    const recordUserCredentialDisclosure = () => {
+      if (target.userCredentialScopeId) {
+        options.consumedSources?.add({
+          scopeId: target.userCredentialScopeId,
+          scopeType: 'user',
+        })
+      }
+    }
     try {
-      const result = await dispatchTool({
-        spec: { transport: 'mcp', connection: target.transport, toolName: target.originalToolName },
-        args,
-        secret: null,
-      })
-      await recordMcpUsage(target, result.success, Date.now() - startedAt)
+      const dispatchTarget = async (
+        stableToolCallId = toolCallId ?? '',
+        stableArgs = args,
+      ) => {
+        let transport = target.transport
+        if (target.deepWater) {
+          if (!stableToolCallId) {
+            throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+          }
+          transport = await addDeepWaterIdentityHeaders(
+            transport,
+            options.ledgerIdentity,
+            attribution,
+            stableToolCallId,
+          )
+        }
+        transportInvoked = true
+        return (options.dispatchMcpTool ?? dispatchTool)({
+          spec: { transport: 'mcp', connection: transport, toolName: target.originalToolName },
+          args: stableArgs,
+          secret: null,
+        })
+      }
+      const guarded = target.deepWater && options.deepWaterHandoffGuard
+        ? await options.deepWaterHandoffGuard.dispatchDeepWater(
+            target.originalToolName,
+            toolCallId,
+            args,
+            dispatchTarget,
+          )
+        : {
+            deliveryToken: null,
+            result: await dispatchTarget(toolCallId, args),
+            transportInvoked: true,
+      }
+      const { deliveryToken, result } = guarded
+      // A user-specific credential can make its tool result private even when
+      // the agent and destination are shared. Record this immediately before
+      // returning model-visible output; every view (main and delegate) shares
+      // this dispatch closure.
+      recordUserCredentialDisclosure()
+      if (transportInvoked) {
+        await recordMcpConnectorUsage(prisma, attribution, {
+          connectorId: target.instanceId,
+          latencyMs: Date.now() - startedAt,
+          operation: target.originalToolName,
+          success: result.success,
+        })
+      }
       return {
+        ...(target.deepWater && deliveryToken && options.deepWaterHandoffGuard
+          ? {
+              acknowledgeDelivery: () =>
+                options.deepWaterHandoffGuard?.markDelivered(deliveryToken),
+            }
+          : {}),
         inputSummary,
         output: result.output,
         success: result.success,
       }
     } catch (error) {
-      await recordMcpUsage(target, false, Date.now() - startedAt)
+      if (transportInvoked) {
+        recordUserCredentialDisclosure()
+        await recordMcpConnectorUsage(prisma, attribution, {
+          connectorId: target.instanceId,
+          latencyMs: Date.now() - startedAt,
+          operation: target.originalToolName,
+          success: false,
+        })
+      }
+      if (isFatalToolExecutionError(error)) throw error
       const message = error instanceof Error ? error.message : String(error)
       return { inputSummary, output: `MCP dispatch error: ${message}`, success: false }
     }
@@ -342,11 +450,18 @@ export const buildMcpToolset = async (
 
   return {
     entries,
+    hasManagedResearchTools: [...transportByExposedName.values()].some((t) => t.deepWater),
     mode,
     createView: () =>
       mode === 'deferred'
         ? buildDeferredView(entries, dispatch)
         : buildInlineView(entries, dispatch),
     dispatch,
+    timeoutErrorFor: (exposedName) => {
+      const target = transportByExposedName.get(exposedName)
+      return target?.deepWater
+        ? options.deepWaterHandoffGuard?.timeoutErrorFor(target.originalToolName) ?? null
+        : null
+    },
   }
 }

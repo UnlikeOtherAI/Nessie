@@ -1,3 +1,4 @@
+import { toChannelSlug } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
 
 export type ChannelMentionTarget = {
@@ -9,22 +10,18 @@ export type ChannelMentionTarget = {
 }
 
 export const getChannelScopeLabel = (channel: ChannelRecord): string =>
-  `${channel.projectName} / ${channel.teamName}`
+  channel.scope === 'standalone'
+    ? 'Channels'
+    : `${channel.projectName} / ${channel.teamName}`
 
 export const normalizeChannelLabel = (label: string): string => label.trim().toLowerCase()
 
-const toSlug = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-
 const getScopedChannelSlug = (channel: ChannelRecord): string => {
-  const projectSlug = toSlug(channel.projectName)
-  const channelSlug = channel.slug ?? toSlug(channel.label)
+  if (channel.scope === 'standalone') {
+    return channel.slug ?? toChannelSlug(channel.label)
+  }
+  const projectSlug = toChannelSlug(channel.projectName)
+  const channelSlug = channel.slug ?? toChannelSlug(channel.label)
   return projectSlug ? `${projectSlug}/${channelSlug}` : channelSlug
 }
 

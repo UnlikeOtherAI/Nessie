@@ -6,10 +6,9 @@
  * opaque `credentialRef` strings. The actual plaintext lookup happens behind
  * this interface so the service layer never sees raw secret material.
  *
- * The current Phase-3 KMS-backed implementation is out of scope for this
- * slice. We ship a `NullSecretResolver` for use in tests and a stub
- * `EnvSecretResolver` so the worker dispatcher has something to call while the
- * real resolver is being built.
+ * User-authored credentials are always opaque `secret_*` references resolved
+ * by the encrypted Postgres store. Environment-backed references are reserved
+ * for the exact first-party integration credentials provisioned internally.
  */
 export type SecretResolver = {
   resolve(ref: string): Promise<string | null>
@@ -26,19 +25,28 @@ export class NullSecretResolver implements SecretResolver {
 }
 
 /**
- * Stub resolver that looks the ref up as an environment variable name. This is
- * NOT the production resolver — the real implementation will hit the secret
- * manager described in `docs/secret-management-spec.md`. We keep this thin
- * fallback so the dispatcher can be wired end-to-end in local dev until the
- * KMS-backed resolver lands.
- *
- * TODO(phase3): replace with the real KMS-backed resolver from
- * `packages/runtime` once it ships.
+ * Resolve only the exact deployment credentials owned by first-party
+ * integration provisioning. This is deliberately not a general environment
+ * lookup: a caller-supplied ref can never select an arbitrary process secret.
+ * User-authored and OAuth credentials resolve from the encrypted Postgres
+ * store in the layered production resolver.
  */
+export const MCP_OPERATOR_ENV_SECRET_REFS = [
+  'DEEPSIGNAL_MCP_APP_KEY',
+  'LEDGER_PROXY_TOKEN',
+] as const
+
+const operatorEnvSecretRefs = new Set<string>(MCP_OPERATOR_ENV_SECRET_REFS)
+
+export const isOperatorEnvSecretRef = (ref: string): boolean =>
+  operatorEnvSecretRefs.has(ref)
+
 export class EnvSecretResolver implements SecretResolver {
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+
   async resolve(ref: string): Promise<string | null> {
-    if (!ref) return null
-    const value = process.env[ref]
+    if (!isOperatorEnvSecretRef(ref)) return null
+    const value = this.env[ref]
     return typeof value === 'string' && value.length > 0 ? value : null
   }
 }
@@ -46,8 +54,7 @@ export class EnvSecretResolver implements SecretResolver {
 /**
  * Try each resolver in order; first non-null answer wins. Used to compose the
  * encrypted Postgres store (`secret_*` refs minted by OAuth handshakes and
- * assistant-collected credentials) with the env-var convention that predates
- * it, so every dispatch/probe path resolves both kinds of ref.
+ * assistant-collected credentials) with the exact internal env allowlist.
  */
 export const createLayeredSecretResolver = (
   resolvers: SecretResolver[],

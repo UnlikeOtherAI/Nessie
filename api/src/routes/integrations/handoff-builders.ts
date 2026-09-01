@@ -6,37 +6,91 @@ import type {
   DeepWaterLaunchInput,
 } from './route-schemas.js'
 
+const ledgerResearchDepth = (
+  depth: DeepWaterLaunchInput['depth'],
+): 'light' | 'standard' | 'deep' | 'heavy' =>
+  depth === 'thesis' || depth === 'dissertation' ? 'heavy' : depth
+
+const ledgerResearchRecency = (
+  recency: DeepWaterLaunchInput['recency'],
+): 'any' | 'recent' => recency === 'any' ? 'any' : 'recent'
+
+const CARD_TITLE_MAX = 80
+
+/**
+ * A research card is named by the question it asks. Nothing invents a title:
+ * DeepWater owns the report's own name, and until it returns one the question
+ * is the most honest label a card can carry.
+ */
+const researchCardTitle = (query: string): string => {
+  const compact = query.replace(/\s+/gu, ' ').trim()
+  if (!compact) return 'Deep Water research'
+  return compact.length > CARD_TITLE_MAX
+    ? `${compact.slice(0, CARD_TITLE_MAX - 1).trimEnd()}…`
+    : compact
+}
+
+// Ledger's MCP `research_start` takes only query, context, depth, and recency.
+// Every other launcher choice therefore travels as a labelled line inside the
+// optional `context` string, which Ledger forwards to the research pipeline
+// verbatim. Keep this list and the tool description in
+// `integration-plugin-manifests/deep-water.ts` in step, so an agent composing a
+// research request by hand produces the same instructions the launcher does.
 export const buildDeepWaterLaunchMessage = (
   input: DeepWaterLaunchInput,
+  context: { runId: string },
 ): string => {
-  const title = input.title?.trim()
+  const depth = ledgerResearchDepth(input.depth)
+  const recency = ledgerResearchRecency(input.recency)
   const destination =
     input.artifactDestination === 'knowledge_draft'
-      ? 'Draft the completed report and source summary into Knowledge, then request publication.'
+      ? [
+          'Only after the terminal run update succeeds, call kb_list with no arguments and select an accessible writable spaceId returned by that call.',
+          'Call kb_draft_write with that exact spaceId; never invent, guess, or reuse an unlisted spaceId.',
+          'Keep the Knowledge tool call bounded: draft a concise completed-report summary, source summary, and Ledger research job id instead of copying an unbounded report through model-generated tool arguments.',
+          'Request publication for the agent-authored draft.',
+          'After a Knowledge page is created, call deep_water_run_update again with the same Nessie run id, Ledger externalRunId, completed status, and knowledgePageId. This second update only attaches the page.',
+        ].join(' ')
       : 'Summarize the result in this chat without creating a Knowledge draft.'
 
   return [
-    'Run Deep Water research through the approved MCP connector.',
-    '',
-    title ? `Title: ${title}` : null,
-    `Depth: ${input.depth}`,
-    `Chapter depth: ${input.chapterDepth}`,
-    `Output tier: ${input.outputTier}`,
-    `Output language: ${input.outputLanguage}`,
-    `Search quality: ${input.searchQuality}`,
-    `Recency: ${input.recency}`,
-    `Sections: ${input.sections}`,
-    `Searches per pillar: ${input.searchesPerPillar}`,
+    'Run Deep Water research through the approved Ledger MCP connector. Do not call Deep Water directly; Ledger owns authorization, budget enforcement, and raw usage metering.',
     '',
     'Query:',
     input.query,
     '',
-    'Use mcp_research_create with these settings, then poll with mcp_research_get until the job reaches a terminal state.',
-    'After mcp_research_create returns an external Deep Water id, call deep_water_run_update with the Nessie run id, externalRunId, and status=running.',
-    'After each poll with new terminal or cost/source/report data, call deep_water_run_update again with status, sourceCount, totalCost, currency, reportUrl, statusDetail, and knowledgePageId if you drafted a Knowledge page.',
-    'When reporting back, include the Deep Water run id, external run id, status, source count, report link, and any usage/cost fields returned by the tool.',
+    'Nessie durable research run id (use this exact full UUID for every deep_water_run_update call):',
+    context.runId,
+    '',
+    'Ledger MCP arguments:',
+    `Depth: ${depth}`,
+    `Recency: ${recency}`,
+    '',
+    'Pass this launcher detail as the optional context string (not as extra top-level tool arguments):',
+    `Chapter depth: ${input.chapterDepth}`,
+    `Output tier: ${input.outputTier}`,
+    `Output language: ${input.outputLanguage}`,
+    `Search quality: ${input.searchQuality}`,
+    `Sections: ${input.sections}`,
+    `Searches per pillar: ${input.searchesPerPillar}`,
+    '',
+    'Handle this launch in the current agent. Do not use delegate; Nessie keeps delegation blocked for deterministic ticket delivery.',
+    'Call mcp_research_start with query, context, the Ledger depth above, and the Ledger recency above.',
+    'Nessie durably binds the first mcp_research_start tool-call id and exact arguments to this launch and permits only that logical start. A validated Ledger-local invalid-request, permission, or budget rejection is recorded failed automatically; tell the user the research was rejected and stop without calling deep_water_run_update, status, report, or Knowledge tools. A throw, timeout, conflict, upstream rejection, 5xx, malformed error, or successful response without matching usable Ledger id, job_id, and supported status fields is ambiguous, not a confirmed failure: do not retry it yourself or call dependent tools. Nessie retries with the exact saved id and arguments, moves exhausted ambiguity to needs_setup, and may replay an already-persisted Ledger ticket with its exact status as a local successful result.',
+    'After mcp_research_start returns, inspect its status. If status is running, call deep_water_run_update with runId set to the exact full Nessie durable research run id above, externalRunId set to the Ledger id, and status=running. If status is complete, failed, cancelled, or timed_out, never overwrite it with running: call mcp_research_status once with that Ledger id to retrieve authoritative terminal detail, then perform the mandatory mapped terminal deep_water_run_update described below.',
+    'For a running ticket, you may call mcp_research_status once to confirm the job was accepted. Do not busy-poll, wait for completion, or consume this bounded agent run checking a long-running job.',
+    'When the ticket remains running, tell the user the research is running, include the Ledger research job id, and end this turn.',
+    'On a later user status request or follow-up turn, call mcp_research_status once with { id }. If it is still running, report progress and stop. Map Ledger status complete to Nessie status completed; map failed, cancelled, or timed_out to failed.',
+    'Whenever that status response is complete, including after a terminal replay, call mcp_research_report with { id } to read the report and references.',
+    'Nessie independently validates and records the matching report_url from the authenticated mcp_research_start response and the source count from the authenticated mcp_research_report references array. Do not pass, invent, infer, or replace either value in deep_water_run_update.',
+    'Immediately after resolving the terminal status, report, and status detail, call deep_water_run_update with the terminal status. This update is mandatory and must succeed before any optional Knowledge drafting starts.',
+    'If the Ledger status is failed, cancelled, or timed_out, call deep_water_run_update with failed status and the terminal status detail before ending the turn.',
+    'Do not pass a cost, price, charge, tariff, or currency to deep_water_run_update. Ledger exposes raw metering only and UOA is the sole source for commercial amounts.',
+    'Never invent usage fields, reuse another user\'s job id, or bypass Ledger by calling the upstream provider directly.',
+    'When reporting back, include the Nessie run id, Ledger research job id, status, source count, and native Knowledge link when one was created.',
+    'If you set knowledgePageId, also tell the user the report now lives as a native Knowledge document and link it as /knowledge-base?pageId=<knowledgePageId> so they can open it without leaving Nessie.',
     destination,
-  ].filter((line): line is string => line !== null).join('\n')
+  ].join('\n')
 }
 
 export const buildDeepWaterLaunchMetadata = (
@@ -55,6 +109,23 @@ export const buildDeepWaterLaunchMetadata = (
     IntegrationUiCardSchema.parse({
       actions: [
         { href: `/channels/${context.channelId}`, label: 'Open chat', variant: 'primary' },
+        {
+          label: 'Run again',
+          preset: {
+            artifactDestination: input.artifactDestination,
+            chapterDepth: input.chapterDepth,
+            depth: input.depth,
+            outputLanguage: input.outputLanguage,
+            outputTier: input.outputTier,
+            query: input.query,
+            recency: input.recency,
+            searchQuality: input.searchQuality,
+            searchesPerPillar: input.searchesPerPillar,
+            sections: input.sections,
+          },
+          type: 'open_deep_water_research_launcher',
+          variant: 'secondary',
+        },
       ],
       fields: [
         { label: 'Depth', value: input.depth },
@@ -63,14 +134,16 @@ export const buildDeepWaterLaunchMetadata = (
           label: 'Destination',
           value: input.artifactDestination === 'knowledge_draft' ? 'Knowledge draft' : 'Chat',
         },
-        { label: 'Connector', value: 'MCP active' },
+        { label: 'Connector', value: 'Ledger MCP active' },
         { label: 'Run', value: context.runId.slice(0, 8) },
       ],
       kind: 'deep_research',
       productSlug: 'deep-water',
       status: 'queued',
-      summary: 'Personal Assistant will launch this through Deep Water MCP and report progress here.',
-      title: input.title?.trim() || 'Deep Water research',
+      summary: 'Personal Assistant will start this through Ledger MCP; Ledger records the raw research usage for UOA.',
+      // Nobody types a title any more, so the card is named by the question it
+      // asks — the same fallback the run history already uses.
+      title: researchCardTitle(input.query),
     }),
   ],
 })

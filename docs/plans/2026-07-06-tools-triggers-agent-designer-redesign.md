@@ -92,10 +92,12 @@ explicit set of rules; new work on these surfaces should follow them:
   container with hairline dividers and a 2px accent bar for selection
   (`divide-y` + `border-l-2`); status is a colour dot in rows, spelled out
   in the detail.
-- **Filters: one segmented control + quiet selects.** The glanceable,
-  operational dimension (trigger status with counts, tool source) gets the
-  `SegmentedControl` primitive (`components/primitives/SegmentedControl.tsx`);
+- **Filters: one tab bar + quiet selects.** The glanceable, operational
+  dimension (trigger status with counts, tool source) gets the shared `TabBar`
+  primitive (`components/primitives/TabBar.tsx`, `role="radiogroup"`, `fullWidth`);
   narrowing dimensions (type, status, tag) collapse into compact selects.
+  (Until 2026-08-29 this was a separate `SegmentedControl` primitive; it was one
+  of nine forks of the same strip and is now the one `TabBar`.)
 - **Forms ordered by decision weight.** The trigger editor runs
   name → type → target → type-specific config → optional description, with
   the enabled Switch in the footer next to the submit actions.
@@ -111,7 +113,7 @@ the trigger/tool/agent machinery:
 - **`GET /api/workflows` was broken with real data**: the list view replaced
   the stored graph with `{}`, which `WorkflowGraphSchema` (min 1 step)
   rejects — the endpoint 500'd as soon as one template existed. The list now
-  returns the real graph (`api/src/services/workflows.ts`).
+  returns the real graph (`api/src/services/workflow-templates.ts`).
 - **Workflows page IA**: one workflow list (search, derived status pill)
   with drill-down workflow → installation → run; installations are
   subordinate rows in the template detail instead of a parallel top-level
@@ -133,6 +135,12 @@ the trigger/tool/agent machinery:
   minutes. An "Use earlier step output" panel lists upstream steps as
   ready-to-paste `{{steps.<id>.output}}` binding tokens. Raw JSON remains
   under an "Advanced" disclosure.
+- **Authenticated scheduled-trigger provenance**: the agent
+  `TriggerEditorDialog` POST cannot supply identity fields itself. The API
+  strips `createdByUserId`, `launchOrigin`, and `createdViaTool`, then stamps
+  the authenticated org/project/team/user after verifying current team
+  membership. Existing REST schedules without that server-owned origin must be
+  cancelled and recreated; the scheduler rejects them before run enqueue.
 - Template trigger nodes materialise into real installation triggers at
   install time (verified live: scheduled trigger created with correct
   next-run).
@@ -145,7 +153,7 @@ the trigger/tool/agent machinery:
   nodes via `stepKey` = graph step id) and the inspector shows the selected
   node's last-run status, error and output.
 - **Save-time template validation** (`validateWorkflowGraphSteps`,
-  `api/src/services/workflows.ts`): unsupported step types, duplicate step
+  `api/src/services/workflow-validation.ts`): unsupported step types, duplicate step
   ids, unknown tool names, missing/nonexistent agent ids and environment
   steps without a template reference are rejected with a 400
   `WORKFLOW_TEMPLATE_INVALID` listing every issue. Values containing

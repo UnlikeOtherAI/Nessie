@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   McpServerAuthConfigSchema,
+  ORGANIZATION_ADMIN_ROLES,
   type AuthorizedActionContext,
   type McpCatalogAuthMethod,
   type McpCatalogProtocol,
@@ -8,14 +9,21 @@ import {
   type McpCatalogVisibility,
   type McpServerAuthConfig,
 } from '@nessie/schemas'
+import { MCP_CATALOG_ERROR_CODES, McpCatalogError } from './mcp-catalog-errors.js'
 import {
-  McpSecurityError,
-  assertMcpAuthUrlsSafe,
-  assertUserAuthoredMcpTransportSafe,
-} from './mcp-security.js'
+  assertCatalogSecurity,
+  isUniqueViolation,
+  toJsonRecord,
+} from './mcp-catalog-guards.js'
+import { catalogTenancyWhere } from './mcp-catalog-visibility.js'
+import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
+
+// Re-exported so the package's public surface is unchanged by the split.
+export { MCP_CATALOG_ERROR_CODES, McpCatalogError }
+export { isUniqueViolation }
 
 /**
- * MCP App Store catalog service.
+ * Apps catalogue service.
  *
  * Spec: `docs/external-tool-integration.md` §2,
  * `docs/plans/2026-05-30-mcp-store-publishing-approval.md`.
@@ -33,25 +41,6 @@ import {
  * file owns CRUD, listing, the access predicate, and the private self-publish /
  * deprecate transitions.
  */
-
-export const MCP_CATALOG_ERROR_CODES = {
-  NOT_FOUND: 'MCP_CATALOG_ENTRY_NOT_FOUND',
-  AUTH_CONFIG_INVALID: 'MCP_CATALOG_AUTH_CONFIG_INVALID',
-  AUTH_METHOD_MISMATCH: 'MCP_CATALOG_AUTH_METHOD_MISMATCH',
-  TRANSPORT_CONFIG_INVALID: 'MCP_CATALOG_TRANSPORT_CONFIG_INVALID',
-  DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
-  INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
-  FORBIDDEN: 'MCP_CATALOG_ENTRY_FORBIDDEN',
-  LOCKED: 'MCP_CATALOG_ENTRY_LOCKED',
-} as const
-
-export class McpCatalogError extends Error {
-  override readonly name = 'McpCatalogError'
-
-  constructor(public readonly code: string, message: string) {
-    super(message)
-  }
-}
 
 export type McpCatalogEntryRow = {
   id: string
@@ -120,10 +109,6 @@ export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
 export const isOwnerRole = (actorContext: AuthorizedActionContext): boolean =>
   actorContext.actor.roles?.includes('owner') ?? false
 
-/** Owner or org admin — the roles that manage shared connector policy. */
-export const isAdminRole = (actorContext: AuthorizedActionContext): boolean =>
-  isOwnerRole(actorContext) || (actorContext.actor.roles?.includes('admin') ?? false)
-
 /**
  * DB-authoritative admin check for contexts whose JWT roles may be absent or
  * stale (the personal assistant derives its acting-user context in the
@@ -139,7 +124,31 @@ export const isAdminUser = async (
     select: { role: true, deactivatedAt: true },
   })
   if (!membership || membership.deactivatedAt) return false
-  return membership.role === 'owner' || membership.role === 'admin'
+  return ORGANIZATION_ADMIN_ROLES.has(membership.role)
+}
+
+/**
+ * The instance-wide administrator. `User.superAdmin` is a flag on the user row,
+ * deliberately not an organisation membership and not a session claim, so it is
+ * read from the database exactly like `isAdminUser` above.
+ *
+ * This exists because "owner of the shared organisation" used to be the only
+ * thing in Nessie resembling an instance administrator. With one Organization
+ * per UOA organisation an org owner administers exactly one tenant, so the two
+ * catalog decisions that are genuinely instance-wide — mutating an
+ * `organizationId: null` row, and publishing into the shared store — name this
+ * role instead of inheriting one from the old flattened model.
+ */
+export const isSuperAdminUser = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+): Promise<boolean> => {
+  if (actorContext.actor.actorType !== 'user') return false
+  const user = await prisma.user.findUnique({
+    where: { id: actorContext.actor.actorId },
+    select: { superAdmin: true },
+  })
+  return user?.superAdmin ?? false
 }
 
 export const ensureAuthConfigMatchesMethod = (
@@ -160,101 +169,6 @@ export const ensureAuthConfigMatchesMethod = (
     )
   }
   return parsed.data
-}
-
-const toJsonRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-
-export const isUniqueViolation = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && (error as { code?: unknown }).code === 'P2002'
-
-const duplicateNameError = (name: string): McpCatalogError =>
-  new McpCatalogError(
-    MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
-    `An MCP catalog entry named "${name}" already exists in this scope`,
-  )
-
-const transportConfigError = (message: string): McpCatalogError =>
-  new McpCatalogError(MCP_CATALOG_ERROR_CODES.TRANSPORT_CONFIG_INVALID, message)
-
-const mapSecurityError = (error: unknown): never => {
-  if (error instanceof McpSecurityError) {
-    throw transportConfigError(error.message)
-  }
-  throw error
-}
-
-const assertCatalogProtocolSafe = (protocol: McpCatalogProtocol): void => {
-  if (protocol === 'stdio') {
-    throw transportConfigError(
-      'MCP stdio transport is disabled for user-authored connectors',
-    )
-  }
-}
-
-const assertCatalogSecurity = async (
-  input: {
-    authConfig?: McpServerAuthConfig
-    defaultTransportConfig?: unknown
-    protocol?: McpCatalogProtocol
-  },
-): Promise<void> => {
-  if (input.protocol) assertCatalogProtocolSafe(input.protocol)
-  try {
-    if (input.authConfig) {
-      await assertMcpAuthUrlsSafe(input.authConfig)
-    }
-    await assertUserAuthoredMcpTransportSafe(input.defaultTransportConfig)
-  } catch (error) {
-    mapSecurityError(error)
-  }
-}
-
-/**
- * Build the `where` clause that scopes a listing to what `actorContext` may
- * see. Superusers (`owner` role) see everything; everyone else sees the public
- * store plus their own entries.
- */
-const listWhere = (
-  actorContext: AuthorizedActionContext,
-  view: CatalogView,
-): Record<string, unknown> => {
-  const ownerUserId = actorContext.actor.actorId
-  switch (view) {
-    case 'store':
-      return { visibility: 'public', status: 'published' }
-    case 'mine':
-      return { ownerUserId }
-    case 'queue':
-      return { status: 'pending_approval', visibility: 'public' }
-    case 'all':
-      return {}
-  }
-}
-
-export const listCatalogEntries = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  filters: { view?: CatalogView; status?: McpCatalogStatus } = {},
-): Promise<McpCatalogEntryRow[]> => {
-  const view = filters.view ?? 'store'
-  const where = listWhere(actorContext, view)
-  // A caller-supplied status sub-filter only narrows the management views
-  // ('mine', 'all'). 'store' and 'queue' pin status (published /
-  // pending_approval) so a status param can never widen them — otherwise
-  // `?view=store&status=pending_approval` would leak the public review queue.
-  if (filters.status && (view === 'mine' || view === 'all')) {
-    where.status = filters.status
-  }
-  return prisma.mcpCatalogEntry.findMany({
-    where,
-    orderBy: [{ status: 'asc' }, { label: 'asc' }],
-  })
 }
 
 /**
@@ -283,29 +197,46 @@ export const getAccessibleCatalogEntry = async (
   actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  if (isOwnerRole(actorContext)) {
-    return prisma.mcpCatalogEntry.findFirst({ where: { id } })
-  }
-  return prisma.mcpCatalogEntry.findFirst({
-    where: {
-      id,
-      OR: [
-        { visibility: 'public', status: 'published' },
-        { ownerUserId: actorContext.actor.actorId },
-      ],
-    },
+  const entry = await prisma.mcpCatalogEntry.findFirst({
+    where: { id, ...catalogTenancyWhere(actorContext) },
   })
+  if (!entry) return null
+  const visible =
+    isOwnerRole(actorContext)
+    || entry.ownerUserId === actorContext.actor.actorId
+    || (entry.visibility === 'public' && entry.status === 'published')
+  return visible ? entry : null
 }
 
 /**
- * True when `actorContext` may mutate the entry: its owner, or a superuser.
+ * True when `actorContext` may mutate the entry: its author, an org owner
+ * acting on an entry inside their own tenant, or the instance super-admin on an
+ * instance-global row.
+ *
+ * An org owner is NOT a superuser, so ownership of one tenant must never confer
+ * management of another tenant's connector — those rows hold plaintext OAuth
+ * client secrets. The `organizationId: null` rows are the instance's own
+ * first-party/integration entries, readable by *every* tenant
+ * (`catalogTenancyWhere`), so letting any tenant's owner rewrite their
+ * transport URL or auth config is the same cross-tenant escalation in a
+ * different shape. That arm used to lean on `organizationId: null` meaning "the
+ * one shared org's rows"; under per-UOA-org tenancy it names `User.superAdmin`
+ * — the real instance-wide administrator — instead. `assertCatalogLifecycleIsUserManaged`
+ * still fences the managed product slugs on top of this.
  */
-export const canManageEntry = (
+export const canManageEntry = async (
+  prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   entry: McpCatalogEntryRow,
-): boolean =>
-  isOwnerRole(actorContext)
-  || (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId)
+): Promise<boolean> => {
+  if (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId) {
+    return true
+  }
+  if (!isOwnerRole(actorContext)) return false
+  if (entry.organizationId === actorContext.tenant.organizationId) return true
+  if (entry.organizationId !== null) return false
+  return isSuperAdminUser(prisma, actorContext)
+}
 
 const requireManageable = async (
   prisma: PrismaClient,
@@ -314,82 +245,14 @@ const requireManageable = async (
 ): Promise<McpCatalogEntryRow | null> => {
   const entry = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!entry) return null
-  if (!canManageEntry(actorContext, entry)) {
+  if (!(await canManageEntry(prisma, actorContext, entry))) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
       'You do not have permission to modify this catalog entry',
     )
   }
+  await assertCatalogLifecycleIsUserManaged(prisma, id)
   return entry
-}
-
-export const createCatalogEntry = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateCatalogEntryInput,
-): Promise<McpCatalogEntryRow> => {
-  const authConfig = ensureAuthConfigMatchesMethod(input.authMethod, input.authConfig)
-  await assertCatalogSecurity({
-    authConfig,
-    defaultTransportConfig: input.defaultTransportConfig,
-    protocol: input.protocol,
-  })
-
-  // A member must not bypass an admin lock by re-registering the same
-  // endpoint under a fresh name. Owners/admins are exempt.
-  const transportUrl =
-    input.defaultTransportConfig && typeof input.defaultTransportConfig.url === 'string'
-      ? input.defaultTransportConfig.url
-      : null
-  if (transportUrl) {
-    const lock = await findApplicableLock(
-      prisma,
-      actorContext.tenant.organizationId,
-      null,
-      transportUrl,
-    )
-    if (lock) {
-      const isAdmin =
-        isAdminRole(actorContext)
-        || (await isAdminUser(
-          prisma,
-          actorContext.tenant.organizationId,
-          actorContext.actor.actorId,
-        ))
-      if (!isAdmin) {
-        throw new McpCatalogError(
-          MCP_CATALOG_ERROR_CODES.LOCKED,
-          `This endpoint belongs to "${lock.label}", which is locked by your organisation's admins`,
-        )
-      }
-    }
-  }
-
-  try {
-    return await prisma.mcpCatalogEntry.create({
-      data: {
-        organizationId: actorContext.tenant.organizationId,
-        name: input.name,
-        label: input.label,
-        description: input.description ?? '',
-        protocol: input.protocol,
-        authMethod: input.authMethod,
-        authConfig: authConfig as object,
-        defaultTransportConfig: toJsonRecord(input.defaultTransportConfig) as object,
-        iconUrl: input.iconUrl ?? null,
-        vendor: input.vendor ?? null,
-        sourceUrl: input.sourceUrl ?? null,
-        signature: input.signature ?? null,
-        status: 'draft',
-        visibility: 'private',
-        ownerUserId: actorContext.actor.actorId,
-        createdBy: actorContext.actor.actorId,
-      },
-    })
-  } catch (error) {
-    if (isUniqueViolation(error)) throw duplicateNameError(input.name)
-    throw error
-  }
 }
 
 export const updateCatalogEntry = async (
@@ -499,9 +362,25 @@ export const publishCatalogEntry = async (
 }
 
 /**
- * Mark a published entry `deprecated`. Non-destructive: existing
- * `McpServerInstance` rows that point at this catalog id keep working; the flag
- * just hides the entry from new-install pickers. Idempotent.
+ * Retire a published entry: `deprecated` on the connector lifecycle, `hidden`
+ * on the store. Non-destructive — existing `McpServerInstance` rows pointing at
+ * this catalog id keep working — but it is no longer offered anywhere: not in
+ * the new-install pickers, and not as an app card. Idempotent.
+ *
+ * Writing the store state is the fix, rather than teaching `storeCatalogWhere`
+ * to filter `status: 'deprecated'`, for three reasons. The store migration
+ * already maps `deprecated` → `hidden`, so writing it keeps rows retired after
+ * this change identical to rows retired before it, instead of leaving two
+ * populations that differ in the column the store actually reads. The store
+ * asks one question — what did a human decide about listing this? — and a
+ * second lifecycle column in that predicate is precisely the drift the "one
+ * catalogue, two faces" rule forbids: the write path records the decision, the
+ * read path does not re-derive it. And it leaves `approved` admitted
+ * unconditionally, which a top-level status filter would silently qualify.
+ *
+ * Deprecation had previously moved `status` alone, so the store's owner arm
+ * (`curated` + caller-owned) kept listing a retired connector to its owner with
+ * a live Connect action — an install path for something just withdrawn.
  */
 export const deprecateCatalogEntry = async (
   prisma: PrismaClient,
@@ -522,76 +401,6 @@ export const deprecateCatalogEntry = async (
   }
   return prisma.mcpCatalogEntry.update({
     where: { id },
-    data: { status: 'deprecated' },
+    data: { status: 'deprecated', moderationState: 'hidden' },
   })
-}
-
-// ─── Admin locking ───────────────────────────────────────────────────────────
-
-/**
- * Lock/unlock an entry for member self-service (owner or org admin only).
- * A locked entry cannot be installed by members — and its endpoint URL cannot
- * be re-registered by them under a different name — but already-installed
- * instances keep working until removed. Idempotent.
- */
-export const setCatalogEntryLocked = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  id: string,
-  locked: boolean,
-): Promise<McpCatalogEntryRow | null> => {
-  if (!isAdminRole(actorContext)) {
-    throw new McpCatalogError(
-      MCP_CATALOG_ERROR_CODES.FORBIDDEN,
-      'Only organisation owners/admins can lock or unlock connectors',
-    )
-  }
-  const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
-  if (!existing) return null
-  if (existing.locked === locked) return existing
-  return prisma.mcpCatalogEntry.update({
-    where: { id },
-    data: {
-      locked,
-      lockedAt: locked ? new Date() : null,
-      lockedBy: locked ? actorContext.actor.actorId : null,
-    },
-  })
-}
-
-const endpointUrlOf = (entry: { defaultTransportConfig: unknown }): string | null => {
-  const config = entry.defaultTransportConfig
-  if (config && typeof config === 'object' && !Array.isArray(config)) {
-    const url = (config as Record<string, unknown>).url
-    if (typeof url === 'string' && url.length > 0) return url.replace(/\/+$/, '')
-  }
-  return null
-}
-
-/**
- * The lock that applies to installing/re-registering an endpoint, if any:
- * the entry's own lock, or a lock on any org/global entry pointing at the
- * same endpoint URL (so members cannot bypass a lock by importing the same
- * server under a fresh name).
- */
-export const findApplicableLock = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  entry: Pick<McpCatalogEntryRow, 'locked' | 'label' | 'defaultTransportConfig'> | null,
-  endpointUrl?: string | null,
-): Promise<{ label: string } | null> => {
-  if (entry?.locked) return { label: entry.label }
-  const url = endpointUrl?.replace(/\/+$/, '') ?? (entry ? endpointUrlOf(entry) : null)
-  if (!url) return null
-  const lockedEntries = await prisma.mcpCatalogEntry.findMany({
-    where: {
-      locked: true,
-      OR: [{ organizationId }, { organizationId: null }],
-    },
-    select: { label: true, defaultTransportConfig: true },
-  })
-  for (const candidate of lockedEntries) {
-    if (endpointUrlOf(candidate) === url) return { label: candidate.label }
-  }
-  return null
 }

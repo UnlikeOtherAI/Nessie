@@ -1,28 +1,15 @@
 import { WORKFLOW_TRIGGER_TYPE_LABELS } from './constants'
-import { isRecord, readRecord } from './json'
+import { isRecord } from './json'
 import type { WorkflowCanvasNodeType } from './types'
 
+// W13: trigger nodes are labelled entry markers — no cron/timezone/interval
+// config is ever authored on the canvas (the Triggers page owns that), so
+// the marker carries only its type.
 export const getDefaultWorkflowTriggerConfig = (
   triggerType: keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS,
-): Record<string, unknown> => {
-  switch (triggerType) {
-    case 'scheduled':
-      return {
-        cron: '0 * * * *',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        type: triggerType,
-      }
-    case 'interval':
-      return {
-        interval_minutes: 60,
-        type: triggerType,
-      }
-    default:
-      return {
-        type: triggerType,
-      }
-  }
-}
+): Record<string, unknown> => ({
+  type: triggerType,
+})
 
 export const getWorkflowRuntimeStepType = (nodeType: WorkflowCanvasNodeType): string =>
   nodeType === 'agent' ? 'agent_task' : nodeType === 'tool' ? 'tool_call' : nodeType
@@ -34,6 +21,12 @@ export const getWorkflowCanvasNodeType = (stepType: string): WorkflowCanvasNodeT
 
   if (stepType === 'tool' || stepType === 'tool_call') {
     return 'tool'
+  }
+
+  // W17: the deterministic converter is its own canvas node type — not a
+  // tool, so the tool allow-list mirror stays untouched.
+  if (stepType === 'transform') {
+    return 'transform'
   }
 
   if (stepType === 'trigger') {
@@ -60,6 +53,11 @@ export const getWorkflowNodeInitialConfig = (
       return {
         toolName: typeof source.id === 'string' ? source.id : undefined,
       }
+    case 'transform':
+      return {
+        expression: typeof source.expression === 'string' ? source.expression : undefined,
+        source: typeof source.source === 'string' ? source.source : undefined,
+      }
     case 'trigger':
       if (
         typeof source.type === 'string' &&
@@ -71,14 +69,8 @@ export const getWorkflowNodeInitialConfig = (
         )
       }
 
+      // Loaded markers: identity only — schedule config never round-trips.
       return {
-        ...readRecord(source.config),
-        description: source.description,
-        enabled: source.enabled,
-        nextRunAt: source.nextRunAt,
-        status: source.status,
-        targetChannelId: source.targetChannelId,
-        targetThreadId: source.targetThreadId,
         type: source.type,
       }
     default:

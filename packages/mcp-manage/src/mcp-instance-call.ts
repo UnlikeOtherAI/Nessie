@@ -2,7 +2,7 @@ import { McpClientManager, type McpToolResult } from '@nessie/mcp-client'
 import { McpTransportConfigSchema, type McpTransportConfig } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
-import { applyAuthSecretToTransport } from './auth-apply.js'
+import { applyAuthSecretToTransport, mcpAuthRequiresCredential } from './auth-apply.js'
 import { resolveCredentialRef, type CredentialResolutionContext } from './mcp-credentials.js'
 import { MCP_INSTANCE_ERROR_CODES, McpInstanceError } from './mcp-instance-errors.js'
 import { assertMcpTransportSafe } from './mcp-security.js'
@@ -63,8 +63,9 @@ export type ResolvedMcpInstance = {
 /**
  * Load one MCP server instance + its catalog entry, resolve the per-principal
  * credential (7-level chain, OAuth-aware via the injected resolver), and return
- * a transport with auth applied. Returns `null` when the instance is missing so
- * callers can surface a "needs setup" state rather than throw.
+ * a transport with auth applied. Returns `null` when the instance is missing
+ * or an auth-requiring catalog entry has no resolvable credential, so callers
+ * can surface a "needs setup" state rather than making an unauthenticated call.
  */
 export const resolveInstanceMcpTransport = async (
   prisma: PrismaClient,
@@ -88,6 +89,25 @@ export const resolveInstanceMcpTransport = async (
 
   const credentialRef = await resolveCredentialRef(prisma, instanceId, credentialContext)
   const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
+
+  // A pending OAuth instance deliberately reaches the caller without a
+  // credential so it can render its actionable sign-in state from
+  // `lifecycleState`. It remains non-callable: every consumer checks that
+  // state before opening a transport. Other auth-requiring instances fail
+  // closed when their caller has no usable plaintext secret.
+  const pendingOAuth =
+    instance.catalogEntry.authMethod === 'oauth2'
+    && instance.lifecycleState !== 'active'
+  if (
+    mcpAuthRequiresCredential(
+      instance.catalogEntry.authMethod,
+      instance.catalogEntry.authConfig,
+    )
+    && !secret
+    && !pendingOAuth
+  ) {
+    return null
+  }
 
   return {
     transport: buildAuthorizedTransport({

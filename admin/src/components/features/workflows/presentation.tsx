@@ -5,20 +5,6 @@ import type {
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
 
-export const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
-const pillBase =
-  'rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.15em]'
-export const dangerPill =
-  `${pillBase} bg-[var(--danger-soft)] text-[var(--danger-text)] hover:bg-[var(--danger-soft)] disabled:opacity-40`
-export const infoPill =
-  `${pillBase} bg-[var(--info-soft)] text-[var(--info-text)] hover:bg-[var(--info-soft)] disabled:opacity-40`
-const stepActionPillBase =
-  'rounded-full bg-[var(--overlay-weak)] px-3 py-1 text-[11px] font-semibold uppercase'
-export const stepActionPill =
-  `${stepActionPillBase} tracking-[0.12em] text-[color:var(--tx2)] hover:bg-[var(--overlay)] disabled:opacity-30`
-
 export const formatTimestamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '—'
 

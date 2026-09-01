@@ -1,10 +1,31 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  UoaSessionIdentity,
+} from '@nessie/schemas'
 
-// Shared usage-ledger writers. Every billable interaction is recorded once,
-// here, with full attribution (who / where-from / how-much). Two ledgers:
-//   - token_ledger_events    — AI/LLM invocations (tokens + cost)
+export {
+  currentStorageUsageBytes,
+  recordStorageStored,
+} from './storage-usage-ledger.js'
+export type {
+  StorageStoreOperation,
+  StorageUsageScope,
+} from './storage-usage-ledger.js'
+export {
+  recordConnectorUsage,
+  recordStorageTransferUsage,
+} from './connector-usage.js'
+export type {
+  ConnectorType,
+  ConnectorUsage,
+  StorageTransferOperation,
+} from './connector-usage.js'
+
+// Shared operational usage writers. Each metered interaction is attributed for
+// diagnostics/local budgets; UOA is the sole commercial authority. Two ledgers:
+//   - token_ledger_events    — AI/LLM invocations (tokens + internal estimates)
 //   - connector_usage_events — non-AI third-party connectors (calls + units)
 // Both are written from the same flat LedgerAttribution so any call site (the
 // worker agentic loop, the shared model client, the tool dispatcher) attributes
@@ -13,10 +34,11 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 
 export type LedgerActorType = 'user' | 'agent' | 'service' | 'system'
 
-// The who/where-from of a billable interaction. organizationId + actorId are the
+// The who/where-from of a metered interaction. organizationId + actorId are the
 // only hard requirements; everything else is present when known.
 export type LedgerAttribution = {
   organizationId: string
+  userId?: string | null
   projectId?: string | null
   teamId?: string | null
   channelId?: string | null
@@ -25,10 +47,17 @@ export type LedgerAttribution = {
   taskId?: string | null
   runId?: string | null
   agentId?: string | null
+  agentKind?: 'personal_assistant' | 'shared' | 'system' | null
+  systemComponent?: string | null
+  toolCallId?: string | null
   actorId: string
   actorType?: LedgerActorType | null
   requestId?: string | null
   correlationId?: string | null
+  // Immutable external proof captured at the originating UOA login. Durable
+  // work copies this tuple; callers must never replace it with a newer mutable
+  // ProductAccountLink identity after the work/session was created.
+  uoaIdentity?: UoaSessionIdentity
 }
 
 // Structural subset of an inference InvocationRecord the writer needs. Both the
@@ -54,34 +83,6 @@ export type LedgerInvocation = {
   latencyMs: number
   metadata?: Record<string, unknown>
 }
-
-export type ConnectorType =
-  | 'mcp'
-  | 'http'
-  | 'web_search'
-  | 'web_fetch'
-  | 'storage'
-  | 'push'
-  | 'github'
-  | 'oauth'
-  | 'other'
-
-export type ConnectorUsage = {
-  connectorType: ConnectorType
-  connectorId?: string | null
-  target?: string | null
-  operation?: string | null
-  calls?: number
-  units?: number | null
-  unitType?: string | null
-  costAmount?: number | null
-  costCurrency?: string | null
-  success?: boolean | null
-  latencyMs?: number | null
-  metadata?: Record<string, unknown> | null
-}
-
-export type StorageTransferOperation = 'download' | 'upload'
 
 type PrismaOperationType =
   | 'chat'
@@ -233,21 +234,41 @@ const resolveProviderModelIds = async (
  */
 export const attributionFromActorContext = (
   actorContext: AuthorizedActionContext,
-  extra: { agentId?: string | null; runId?: string | null } = {},
+  extra: {
+    agentId?: string | null
+    agentKind?: 'personal_assistant' | 'shared' | 'system' | null
+    runId?: string | null
+    systemComponent?: string | null
+  } = {},
 ): LedgerAttribution => ({
   organizationId: actorContext.tenant.organizationId,
+  userId:
+    actorContext.actionContext.effectiveUserId
+    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null),
   projectId: actorContext.tenant.projectId ?? null,
-  teamId: actorContext.tenant.teamId ?? null,
+  teamId:
+    actorContext.tenant.teamId
+    ?? actorContext.actionContext.teamId
+    ?? null,
   channelId: actorContext.actionContext.channelId ?? null,
   threadId: actorContext.actionContext.threadId ?? null,
   sessionId: actorContext.actionContext.sessionId ?? null,
   taskId: actorContext.actionContext.taskId ?? null,
   runId: extra.runId ?? null,
-  agentId: extra.agentId ?? actorContext.actionContext.agentId ?? null,
+  // Only named system work may clear the authenticated action-context agent.
+  agentId:
+    extra.agentId === null && extra.systemComponent?.trim()
+      ? null
+      : extra.agentId ?? actorContext.actionContext.agentId ?? null,
+  agentKind: extra.agentKind ?? null,
+  systemComponent: extra.systemComponent ?? null,
   actorId: actorContext.actor.actorId,
   actorType: actorContext.actor.actorType,
   requestId: actorContext.actionContext.requestId,
   correlationId: actorContext.actionContext.correlationId ?? null,
+  ...(actorContext.actionContext.uoaIdentity
+    ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+    : {}),
 })
 
 /**
@@ -264,23 +285,50 @@ export const recordInferenceUsage = async (
     return
   }
   const occurredAt = new Date()
+  // A run's invocations almost always share one (provider, model) pair, so look
+  // the pricing profile and catalog ids up once per distinct pair instead of
+  // once per invocation. Promise caches, so concurrent map callbacks for the
+  // same pair await a single query rather than racing duplicates.
+  const pricingByPair = new Map<string, Promise<PricingProfile | null>>()
+  const idsByPair = new Map<
+    string,
+    Promise<{ modelId: string | null; providerId: string | null }>
+  >()
+  const cached = <T>(
+    cache: Map<string, Promise<T>>,
+    key: string,
+    load: () => Promise<T>,
+  ): Promise<T> => {
+    const existing = cache.get(key)
+    if (existing) return existing
+    const pending = load()
+    cache.set(key, pending)
+    return pending
+  }
+
   const rows = await Promise.all(
     input.invocations.map(async (invocation) => {
-      const pricing = await findPricingProfile(
-        prisma,
-        attribution.organizationId,
-        invocation.provider,
-        invocation.model,
+      const pairKey = `${invocation.provider} ${invocation.model}`
+      const pricing = await cached(pricingByPair, pairKey, () =>
+        findPricingProfile(
+          prisma,
+          attribution.organizationId,
+          invocation.provider,
+          invocation.model,
+        ),
       )
-      const { modelId, providerId } = await resolveProviderModelIds(
-        prisma,
-        attribution.organizationId,
-        invocation.provider,
-        invocation.model,
+      const { modelId, providerId } = await cached(idsByPair, pairKey, () =>
+        resolveProviderModelIds(
+          prisma,
+          attribution.organizationId,
+          invocation.provider,
+          invocation.model,
+        ),
       )
       return {
         inferenceInvocationId: invocation.invocationId,
         organizationId: attribution.organizationId,
+        userId: attribution.userId ?? null,
         projectId: attribution.projectId ?? null,
         teamId: attribution.teamId ?? null,
         channelId: attribution.channelId ?? null,
@@ -318,6 +366,15 @@ export const recordInferenceUsage = async (
         metadata: {
           invocationId: invocation.invocationId,
           latencyMs: invocation.latencyMs,
+          ...(attribution.systemComponent
+            ? { systemComponent: attribution.systemComponent }
+            : {}),
+          ...(attribution.agentKind
+            ? { agentKind: attribution.agentKind }
+            : {}),
+          ...(attribution.toolCallId
+            ? { toolCallId: attribution.toolCallId }
+            : {}),
           ...(invocation.metadata ?? {}),
         } as Prisma.InputJsonValue,
       }
@@ -384,146 +441,4 @@ export const recomputeTokenLedgerCosts = async (
   }
 
   return { updatedEvents, pricedPairs, unpricedPairs }
-}
-
-/** Record one connector_usage_events row for a non-AI third-party connector call. */
-export const recordConnectorUsage = async (
-  prisma: PrismaClient,
-  input: { attribution: LedgerAttribution; event: ConnectorUsage },
-): Promise<void> => {
-  const { attribution, event } = input
-  await prisma.connectorUsageEvent.create({
-    data: {
-      organizationId: attribution.organizationId,
-      projectId: attribution.projectId ?? null,
-      teamId: attribution.teamId ?? null,
-      channelId: attribution.channelId ?? null,
-      threadId: attribution.threadId ?? null,
-      taskId: attribution.taskId ?? null,
-      runId: attribution.runId ?? null,
-      agentId: attribution.agentId ?? null,
-      actorId: attribution.actorId,
-      actorType: attribution.actorType ?? null,
-      requestId: attribution.requestId ?? null,
-      correlationId: attribution.correlationId ?? null,
-      connectorType: event.connectorType,
-      connectorId: event.connectorId ?? null,
-      target: event.target ?? null,
-      operation: event.operation ?? null,
-      calls: event.calls ?? 1,
-      units: event.units ?? null,
-      unitType: event.unitType ?? null,
-      costAmount: event.costAmount ?? null,
-      costCurrency: event.costCurrency ?? null,
-      success: event.success ?? null,
-      latencyMs: event.latencyMs ?? null,
-      occurredAt: new Date(),
-      metadata: (event.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-    },
-  })
-}
-
-export const recordStorageTransferUsage = async (
-  prisma: PrismaClient,
-  input: {
-    attribution: LedgerAttribution
-    bytes: number
-    metadata?: Record<string, unknown>
-    operation: StorageTransferOperation
-    success?: boolean
-    target?: string
-    latencyMs?: number
-  },
-): Promise<void> => {
-  await recordConnectorUsage(prisma, {
-    attribution: input.attribution,
-    event: {
-      connectorType: 'storage',
-      target: input.target ?? 'attachment',
-      operation: input.operation,
-      calls: 1,
-      units: input.bytes,
-      unitType: 'bytes',
-      success: input.success ?? true,
-      latencyMs: input.latencyMs ?? null,
-      metadata: input.metadata ?? null,
-    },
-  })
-}
-
-// ─── Stored-bytes ledger ────────────────────────────────────────────────────
-// Distinct from the transfer ledger above (bytes moved) — this tracks bytes
-// AT REST. Each stored file emits a positive delta and each deletion a negative
-// one, so current usage for any scope is just SUM(delta_bytes) filtered by that
-// scope. Written exclusively by the FileService (@nessie/runtime).
-
-export type StorageUsageScope = {
-  organizationId: string
-  projectId?: string | null
-  teamId?: string | null
-  spaceId?: string | null
-  uploaderId?: string | null
-}
-
-export type StorageStoreOperation = 'store' | 'delete'
-
-export const recordStorageStored = async (
-  prisma: PrismaClient,
-  input: {
-    attribution: LedgerAttribution
-    scope: StorageUsageScope
-    // Signed byte delta. BigInt end-to-end so the +store / -delete round-trip
-    // is exact for the full BigInt sizeBytes range (no Number precision loss).
-    deltaBytes: bigint
-    operation: StorageStoreOperation
-    attachmentId?: string | null
-    metadata?: Record<string, unknown> | null
-  },
-): Promise<void> => {
-  const { attribution, scope } = input
-  await prisma.storageUsageEvent.create({
-    data: {
-      organizationId: scope.organizationId,
-      projectId: scope.projectId ?? null,
-      teamId: scope.teamId ?? null,
-      spaceId: scope.spaceId ?? null,
-      uploaderId: scope.uploaderId ?? null,
-      attachmentId: input.attachmentId ?? null,
-      deltaBytes: input.deltaBytes,
-      operation: input.operation,
-      actorId: attribution.actorId,
-      actorType: attribution.actorType ?? null,
-      requestId: attribution.requestId ?? null,
-      correlationId: attribution.correlationId ?? null,
-      occurredAt: new Date(),
-      metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-    },
-  })
-}
-
-/** Sum of stored bytes for a scope (organizationId required; other dims filter). */
-export const currentStorageUsageBytes = async (
-  prisma: PrismaClient,
-  scope: StorageUsageScope,
-): Promise<bigint> => {
-  const where: Prisma.StorageUsageEventWhereInput = {
-    organizationId: scope.organizationId,
-  }
-  if (scope.projectId) {
-    where.projectId = scope.projectId
-  }
-  if (scope.teamId) {
-    where.teamId = scope.teamId
-  }
-  if (scope.spaceId) {
-    where.spaceId = scope.spaceId
-  }
-  if (scope.uploaderId) {
-    where.uploaderId = scope.uploaderId
-  }
-  const result = await prisma.storageUsageEvent.aggregate({
-    _sum: { deltaBytes: true },
-    where,
-  })
-  return result._sum.deltaBytes ?? 0n
 }

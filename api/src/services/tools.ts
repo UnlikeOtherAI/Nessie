@@ -1,6 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseOrganizationId } from '@nessie/schemas'
 import { SYSTEM_TOOL_DEFINITIONS } from '@nessie/runtime'
+import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
+
+// Builtin ids whose exposure requires an explicit per-agent grant (default off).
+// The admin tool catalog reads this to render them off-by-default and to write
+// an explicit allow when the operator enables them — mirroring the worker.
+const EXPLICIT_GRANT_TOOL_IDS = new Set(
+  SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.requiresExplicitGrant).map((tool) => tool.id),
+)
 import type {
   ToolDescriptor,
   ToolRegistryEntry,
@@ -53,10 +61,11 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
   builtin: entry.builtin,
   enabled: entry.enabled,
   handlerKind: entry.handlerKind,
+  requiresExplicitGrant: EXPLICIT_GRANT_TOOL_IDS.has(entry.toolId) || undefined,
 })
 
 export const ensureBuiltinToolsRegistered = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
 ): Promise<void> => {
   await Promise.all(
@@ -100,7 +109,10 @@ export const listToolRegistryEntries = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<ToolRegistryEntry[]> => {
-  await ensureBuiltinToolsRegistered(prisma, organizationId)
+  await Promise.all([
+    ensureBuiltinToolsRegistered(prisma, organizationId),
+    ensureExecutorLogicalTools(prisma, organizationId),
+  ])
 
   const entries = await prisma.toolRegistryEntry.findMany({
     where: {
