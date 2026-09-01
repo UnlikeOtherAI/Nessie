@@ -19,6 +19,7 @@
 // `page-types.ts`. Rulebook: `docs/navigation.md`. Plan: step 3 of
 // `docs/plans/2026-09-01-navigation-motion-system.md` (§4.1).
 
+import type { NavigationLayout } from './layout'
 import type { Surface, SurfaceParent, SurfaceScreen } from './page-types'
 
 
@@ -115,6 +116,7 @@ export const SURFACES: Surface[] = [
     pattern: /^\/channels\/([^/]+)\/info\/members\/add$/,
     root: CHANNELS_ROOT,
     section: 'channels',
+    splitInline: true,
     type: 'nested',
   },
   {
@@ -128,6 +130,7 @@ export const SURFACES: Surface[] = [
     pattern: /^\/channels\/([^/]+)\/info\/members$/,
     root: CHANNELS_ROOT,
     section: 'channels',
+    splitInline: true,
     type: 'nested',
   },
   {
@@ -141,6 +144,7 @@ export const SURFACES: Surface[] = [
     pattern: /^\/channels\/([^/]+)\/info$/,
     root: CHANNELS_ROOT,
     section: 'channels',
+    splitInline: true,
     type: 'nested',
   },
   {
@@ -156,6 +160,7 @@ export const SURFACES: Surface[] = [
     pattern: /^\/channels\/([^/]+)\/threads\/([^/]+)\/replies\/([^/]+)$/,
     root: CHANNELS_ROOT,
     section: 'channels',
+    splitInline: true,
     type: 'nested',
   },
   {
@@ -271,6 +276,7 @@ export const SURFACES: Surface[] = [
     pattern: /^\/settings\/statuses\/([^/]+)$/,
     root: ADMIN_ROOT,
     section: 'admin',
+    splitInline: true,
     type: 'nested',
   },
   {
@@ -435,19 +441,33 @@ export const matchSurface = (pathname: string): SurfaceMatch | null => {
 // The screen a route renders, or null when it renders none: a redirect
 // forwards without ever painting a stage, and an unknown path is not a
 // screen at all (the gates make an unknown path impossible for a real route).
-export const surfaceScreen = (pathname: string): SurfaceScreen | null => {
+//
+// The layout changes two things (docs/navigation.md §5). On `split` the
+// section's list is the pinned column, not a screen, so a root and its
+// details share the stack floor (depth 1): a root → detail is an in-place
+// swap with nothing retained beneath, while a detail → nested still pushes
+// inside the column. And a `splitInline` nested row classifies as its
+// parent's screen there, because its parent's page renders it itself.
+export const surfaceScreen = (
+  pathname: string,
+  layout: NavigationLayout = 'single',
+): SurfaceScreen | null => {
   const matched = matchSurface(pathname)
   if (!matched || matched.surface.type === 'redirect') return null
   const { match, surface } = matched
+  if (layout === 'split' && surface.splitInline && surface.parentOf) {
+    return surfaceScreen(surface.parentOf(match).pathname, layout)
+  }
+  const depth = layout === 'split' ? Math.max(surface.depth, 1) : surface.depth
   if (!surface.identityOf || !surface.keyScope) {
     return {
-      depth: surface.depth,
+      depth,
       key: `root:${surface.section}:${surface.root}`,
       section: surface.section,
     }
   }
   return {
-    depth: surface.depth,
+    depth,
     key: `${surface.section}:${surface.keyScope(surface.identityOf(match))}`,
     section: surface.section,
   }

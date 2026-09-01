@@ -48,6 +48,12 @@ export type Surface = {
   parent?: 'origin'
   // The deterministic parent screen. Absent on roots and redirects.
   parentOf?: (match: RegExpMatchArray) => SurfaceParent
+  // A nested screen that a split layout renders inside its parent's own page
+  // (the conversation's info chain and reply thread, a status's detail
+  // beside the status list). On `split` it classifies as its parent's
+  // screen, so the stack neither pushes nor animates; on `single` it is the
+  // pushed screen it declares. Only meaningful on a `nested` row.
+  splitInline?: true
   pattern: RegExp
   // The section's root path — the tab this route belongs to.
   root: string

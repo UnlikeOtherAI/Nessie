@@ -1,3 +1,4 @@
+import type { NavigationLayout } from '../../navigation/layout'
 import {
   getPhoneNavigationScreen,
   type PhoneNavigationScreen,
@@ -45,8 +46,8 @@ type CommittedRoute = {
 const layerIdentity = (screen: PhoneNavigationScreen): string =>
   `${screen.section}:${screen.depth}:${screen.key}`
 
-const requireScreen = (pathname: string): PhoneNavigationScreen => {
-  const screen = getPhoneNavigationScreen(pathname)
+const requireScreen = (pathname: string, layout: NavigationLayout): PhoneNavigationScreen => {
+  const screen = getPhoneNavigationScreen(pathname, layout)
   if (!screen) {
     throw new Error(`Phone navigation cannot classify ${pathname}`)
   }
@@ -73,11 +74,15 @@ const toCommittedRoute = <Payload>(
   section: entry.section,
 })
 
+// `layout` decides how a route classifies (docs/navigation.md §5): on
+// `split` roots share the floor with their details and in-parent nested
+// rows collapse onto the parent, so the same reducer serves both layouts.
 export const createPhoneNavigationStack = <Payload>(
   pathname: string,
   payload: Payload,
+  layout: NavigationLayout = 'single',
 ): PhoneNavigationStack<Payload> => {
-  const screen = requireScreen(pathname)
+  const screen = requireScreen(pathname, layout)
   return { currentIndex: 0, entries: [toStackEntry(pathname, screen, payload)] }
 }
 
@@ -105,11 +110,12 @@ export const advancePhoneNavigationStack = <Payload>(
   stack: PhoneNavigationStack<Payload>,
   pathname: string,
   payload: Payload,
+  layout: NavigationLayout = 'single',
 ): PhoneNavigationStack<Payload> => {
-  const screen = requireScreen(pathname)
+  const screen = requireScreen(pathname, layout)
   const current = stack.entries[stack.currentIndex]
   if (!current || screen.section !== current.section) {
-    return createPhoneNavigationStack(pathname, payload)
+    return createPhoneNavigationStack(pathname, payload, layout)
   }
 
   const nextEntry = toStackEntry(pathname, screen, payload)

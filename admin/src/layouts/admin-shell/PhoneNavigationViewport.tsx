@@ -32,6 +32,7 @@ import {
   type StackTransitionRun,
 } from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
+import type { NavigationLayout } from '../../navigation/layout'
 import { haptic } from '../../lib/haptics'
 import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
@@ -43,6 +44,11 @@ registerViewportMediaQuery('reducedMotion', REDUCED_MOTION_QUERY)
 
 type PhoneNavigationViewportProps = {
   children: ReactNode
+  // `single` is the one stack over the whole content region; `split` is
+  // the stack inside a pinned list column's detail area, where the root is
+  // the column itself, in-parent nested rows swap in place, and no edge
+  // swipe arms (the column has no edge of its own; docs/navigation.md §5).
+  layout?: NavigationLayout
   pathname: string
 }
 
@@ -82,6 +88,7 @@ const percent = (value: number): string => `${value.toFixed(2)}%`
 // mount this component because AdminShellLayout keeps their columns adjacent.
 export const PhoneNavigationViewport = ({
   children,
+  layout = 'single',
   pathname,
 }: PhoneNavigationViewportProps) => {
   const navigate = useNavigate()
@@ -97,7 +104,7 @@ export const PhoneNavigationViewport = ({
     initialStack.current = createPhoneNavigationStack(pathname, {
       locationContext,
       screen: children,
-    })
+    }, layout)
   }
   const [stack, setStack] = useState<Stack>(initialStack.current)
   const stackRef = useRef(stack)
@@ -135,12 +142,12 @@ export const PhoneNavigationViewport = ({
     const committed = committedPhoneNavigationRoute(current)
     const payload = { locationContext, screen: children }
     if (committed.pathname === pathname) {
-      commitStack(advancePhoneNavigationStack(current, pathname, payload))
+      commitStack(advancePhoneNavigationStack(current, pathname, payload, layout))
       return
     }
 
-    const direction = getPhoneNavigationDirection(committed.pathname, pathname)
-    let next = advancePhoneNavigationStack(current, pathname, payload)
+    const direction = getPhoneNavigationDirection(committed.pathname, pathname, layout)
+    let next = advancePhoneNavigationStack(current, pathname, payload, layout)
     const suppressed = suppressNextRouteAnimation.current === pathname
     suppressNextRouteAnimation.current = null
 
@@ -180,6 +187,7 @@ export const PhoneNavigationViewport = ({
     children,
     commitStack,
     commitTransition,
+    layout,
     locationContext,
     pathname,
     reducedMotion,
@@ -282,7 +290,7 @@ export const PhoneNavigationViewport = ({
   }, [finishTransition, navigate, navigation, pathname])
 
   const gesture = usePhoneBackSwipeGesture({
-    enabled: stack.currentIndex > 0 && transition === null && gestureArmed,
+    enabled: layout === 'single' && stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
     reducedMotion,
     viewportRef,

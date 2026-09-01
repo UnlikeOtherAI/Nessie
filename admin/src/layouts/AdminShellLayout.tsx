@@ -147,9 +147,18 @@ const AuthenticatedAdminShellLayout = () => {
     onSelectAgent: shell.selectAgent,
   });
 
-  const mainContent = (
+  // On `split` the pinned list column is the section's root, and the detail
+  // column is its own navigation stack: a detail → nested push slides inside
+  // this column with the detail retained beneath, exactly as on a phone.
+  const mainContent = phoneLayout ? (
     <main className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
       {outlet}
+    </main>
+  ) : (
+    <main className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
+      <PhoneNavigationViewport layout="split" pathname={shell.pathname}>
+        {outlet}
+      </PhoneNavigationViewport>
     </main>
   );
 

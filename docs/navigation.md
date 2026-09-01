@@ -205,9 +205,25 @@ a phone cannot become multi-column by rotating. The shell frame carries
 `navigation === 'single'`; no page reads a breakpoint to decide its
 container. Pinned by `admin/test/navigation-layout.test.ts`.
 
-Planned in this step: `NavigationStack` in the shell's detail column and in
-the page-owned detail columns on `split`; the thread panel as a nested stage
-on `single` and a `Sheet` on `split`.
+On `split` the shell's detail column (`main`) mounts the same stack
+(`PhoneNavigationViewport layout="split"`), and the registry reads
+differently there (`surfaceScreen(pathname, layout)`):
+
+- The pinned list column *is* the section's root, so a root and its details
+  share the stack floor (depth 1): root → detail swaps in place with nothing
+  retained beneath; detail → nested (`/agents` → `/agents/:id`, `/apps` →
+  `/apps/:slug`, `/dashboards` → `/dashboards/:id`, a designer) pushes inside
+  the column with the detail retained beneath, exactly as on a phone.
+- A nested row whose parent page renders it itself on split declares
+  `splitInline: true` (the conversation's info chain and reply thread, a
+  status's detail) and classifies as its parent's screen there, so it neither
+  pushes nor animates. Declared per row, never inferred.
+- No edge swipe arms on split: the column has no edge of its own, and on
+  iPad the native swipe stays on until step 9.
+
+Planned in this step: the page-owned detail columns (Knowledge, the column
+browsers, Dashboards) mounting the same stack; the thread panel as a nested
+stage on `single` and a `Sheet` on `split`.
 
 ## 6. Native shell contract — **built** (the two bridge pieces)
 

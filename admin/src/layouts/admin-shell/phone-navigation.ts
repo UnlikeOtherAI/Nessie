@@ -1,3 +1,4 @@
+import type { NavigationLayout } from '../../navigation/layout'
 import type { SurfaceParent, SurfaceScreen } from '../../navigation/page-types'
 import {
   matchSurface,
@@ -55,7 +56,8 @@ export const getPhoneTabRootPath = (pathname: string): string =>
 // settings page A → B.
 export const getPhoneNavigationScreen = (
   pathname: string,
-): PhoneNavigationScreen | null => surfaceScreen(pathname)
+  layout: NavigationLayout = 'single',
+): PhoneNavigationScreen | null => surfaceScreen(pathname, layout)
 
 // The shared route-level Back: every phone detail screen returns to a
 // specific parent with a human-readable label. Tab roots return null (they
@@ -69,9 +71,10 @@ export const getPhoneNavigationBackTarget = (
 export const getPhoneNavigationDirection = (
   fromPathname: string,
   toPathname: string,
+  layout: NavigationLayout = 'single',
 ): PhoneNavigationDirection | null => {
-  const from = getPhoneNavigationScreen(fromPathname)
-  const to = getPhoneNavigationScreen(toPathname)
+  const from = getPhoneNavigationScreen(fromPathname, layout)
+  const to = getPhoneNavigationScreen(toPathname, layout)
 
   if (!from || !to || from.section !== to.section || from.depth === to.depth) {
     return null
