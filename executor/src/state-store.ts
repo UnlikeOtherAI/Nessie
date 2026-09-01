@@ -1,9 +1,10 @@
-import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+
+import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
 
 const STATE_FILE = 'executor-state.json'
 const RUNTIME_DIRECTORY = 'runtime'
-const MODE_MASK_GROUP_OR_OTHER = 0o077
 
 export type ExecutorBrowserSandboxConfig = {
   allowedOrigins: string[]
@@ -50,8 +51,6 @@ export type ExecutorLocalState = {
 
 const statePath = (stateDir: string): string => resolve(stateDir, STATE_FILE)
 
-const ownerId = (): number | undefined => process.getuid?.()
-
 const validBrowserSandbox = (value: unknown): value is ExecutorBrowserSandboxConfig => (
   Boolean(value)
   && typeof value === 'object'
@@ -75,26 +74,17 @@ const validCodexSandbox = (value: unknown): value is ExecutorCodexSandboxConfig 
   && typeof (value as ExecutorCodexSandboxConfig).vmHelperPath === 'string'
 )
 
-const assertOwnerOnly = async (
-  path: string,
-  expectedKind: 'directory' | 'file',
-): Promise<void> => {
-  const current = await lstat(path)
-  if (current.isSymbolicLink() || (expectedKind === 'directory' ? !current.isDirectory() : !current.isFile())) {
-    throw new Error(`Executor state path ${path} must be an ordinary ${expectedKind}.`)
-  }
-  if (ownerId() !== undefined && current.uid !== ownerId()) {
-    throw new Error(`Executor state path ${path} must be owned by the current user.`)
-  }
-  if ((current.mode & MODE_MASK_GROUP_OR_OTHER) !== 0) {
-    throw new Error(`Executor state path ${path} must not be accessible by other users.`)
-  }
+/**
+ * Owner-only proof is host-shaped — POSIX mode bits, a Windows DACL — and lives
+ * in one place so the state file and the daemon lease cannot disagree about
+ * what private means.
+ */
+const assertOwnerOnly = async (path: string, expectedKind: 'directory' | 'file'): Promise<void> => {
+  await assertOwnerOnlyStatePath(path, expectedKind)
 }
 
 const assertSecureDirectory = async (stateDir: string): Promise<void> => {
-  const resolved = resolve(stateDir)
-  await mkdir(resolved, { mode: 0o700, recursive: true })
-  await assertOwnerOnly(resolved, 'directory')
+  await ensureOwnerOnlyStateDirectory(stateDir)
 }
 
 export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocalState> => {
@@ -141,8 +131,5 @@ export const saveExecutorState = async (
  */
 export const ensureExecutorRuntimeDirectory = async (stateDir: string): Promise<string> => {
   await assertSecureDirectory(stateDir)
-  const runtimeDir = resolve(stateDir, RUNTIME_DIRECTORY)
-  await mkdir(runtimeDir, { mode: 0o700, recursive: true })
-  await assertOwnerOnly(runtimeDir, 'directory')
-  return runtimeDir
+  return ensureOwnerOnlyStateDirectory(resolve(stateDir, RUNTIME_DIRECTORY))
 }

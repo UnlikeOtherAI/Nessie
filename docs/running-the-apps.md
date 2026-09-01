@@ -177,6 +177,15 @@ final application has a matching Developer ID signature, including the packaged
 executor runtime. Do not replace the app with an ad-hoc-signed copy after this
 step: its executor controls will intentionally remain unavailable.
 
+Every platform pins its own publisher this way, because a runtime hash manifest
+alone is a self-attestation: whoever can rewrite the binary can rewrite the
+manifest beside it. macOS pins a Developer ID team through
+`NESSIE_DESKTOP_SIGNING_TEAM_ID`; Windows pins an Authenticode certificate
+through `NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT` (see **Windows Desktop**);
+Linux has no in-process signature to read, so its trust root is the package
+manager — a root-owned runtime under `/usr/lib` or `/usr/share` that only an
+administrator can produce (see **Linux Desktop**).
+
 For Nessie releases, do not create, install, or describe an ad-hoc-signed app as
 a usable desktop release unless Ondrej explicitly requests that kind of build.
 Before installing an executor-capable build, verify it with
@@ -777,17 +786,48 @@ pnpm --filter @nessie/desktop exec tauri build
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
 
-This is an unsigned development build. There is no signed Windows release
-pipeline yet, and the executor companion answers `unsupported_platform` on
-Windows — the Executors panel says so and names the signed Windows release as
-the remedy, rather than disappearing. A second launch now carries the
-`nessie://` sign-in callback into the running instance. The design for
-the signed release, the frameless custom window chrome, the Executors page's
-availability cards, the desktop app enabled as an executor, and the standalone
-Nessie Executor service with its tray icon is
+To create a build whose executor controls can be used, pin the publisher:
+
+```sh
+NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=<SHA1_THUMBPRINT> \
+  pnpm --filter @nessie/desktop exec tauri build
+```
+
+That variable is the Windows analogue of macOS's
+`NESSIE_DESKTOP_SIGNING_TEAM_ID`: the SHA-1 thumbprint (40 hexadecimal
+characters, case-insensitive) of the code-signing certificate the release is
+signed with, compiled into the build. At runtime the companion verifies its own
+executable with `WinVerifyTrust` and then reads the signer certificate out of
+that verification and compares its thumbprint to the pinned one — `WinVerifyTrust`
+alone answers "trusted", never "by whom", so a build validly signed by anyone
+else is refused exactly like an unsigned one. Sign the bundle with that same
+certificate after building it, and do not replace a pinned build with a
+differently signed copy: its executor controls will intentionally stay
+unavailable. The packaged executor runtime's hash manifest is checked as a
+second gate, as on every platform.
+
+The build above is otherwise an unsigned development build, and without the
+pinned thumbprint the Executors panel reports `unsigned_release` and names the
+remedy rather than disappearing. On a machine with no Hyper-V — Windows Home,
+where it is an edition rather than a setting — the companion pairs as
+`workspace_only`: file review and drafts work, sandboxed commands, browsers and
+coding sessions do not. A second launch carries the `nessie://` sign-in callback
+into the running instance.
+
+The executor's private state under `%LOCALAPPDATA%\Nessie\executors\<id>` is
+owner-only through an explicit, non-inherited DACL granting the signed-in user
+and SYSTEM alone, established and re-verified through the packaged
+`nessie-executor-native.exe` helper — Node reports no uid and a fixed
+`0o666`-shaped mode on Windows, so the POSIX ownership checks would either be
+vacuous or fail closed on every load. Stopping a daemon closes its
+parent-liveness pipe and waits the same ten seconds as every other host; a
+sandbox daemon is never force-killed.
+
+The remaining design — the signed release pipeline, the frameless custom window
+chrome, the Hyper-V sandbox backend, and the standalone Nessie Executor service
+with its tray icon — is
 [docs/plans/2026-09-01-windows-desktop-parity.md](plans/2026-09-01-windows-desktop-parity.md);
-the install, replacement, log-collection, and signature-verification steps
-land here with that work.
+the install, replacement, and log-collection steps land here with that work.
 
 ## Linux Desktop
 

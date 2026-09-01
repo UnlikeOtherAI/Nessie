@@ -1,11 +1,21 @@
-use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use serde::Deserialize;
+use serde::Serialize;
+#[cfg(unix)]
 use std::io;
 
+/// The workspace-promotion protocol below is POSIX-only: it acts on inherited
+/// directory descriptors, which Windows has no equivalent for. Only the state
+/// -security commands and the response shapes are shared by every host.
+#[cfg(unix)]
 pub const PROTOCOL_VERSION: u8 = 1;
+#[cfg(unix)]
 pub const MAX_CHANGES: usize = 100;
 pub const MAX_PATH_LENGTH: usize = 1024;
+#[cfg(unix)]
 pub const MAX_REQUEST_BYTES: u64 = 128 * 1024;
 
+#[cfg(unix)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DigestEntry {
@@ -13,6 +23,7 @@ pub struct DigestEntry {
     pub digest: String,
 }
 
+#[cfg(unix)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeKind {
@@ -21,6 +32,7 @@ pub enum ChangeKind {
     Deleted,
 }
 
+#[cfg(unix)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Change {
@@ -30,6 +42,7 @@ pub struct Change {
     pub path: String,
 }
 
+#[cfg(unix)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreflightRequest {
@@ -42,6 +55,7 @@ pub struct PreflightRequest {
 /// The approval and fence are server-authored command facts. The native helper
 /// records them in its durable journal but deliberately cannot mint or verify
 /// either: only the companion can call it after verifying the signed command.
+#[cfg(unix)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PromotionRequest {
@@ -54,6 +68,7 @@ pub struct PromotionRequest {
     pub run_id: String,
 }
 
+#[cfg(unix)]
 impl PromotionRequest {
     pub fn manifest(&self) -> PreflightRequest {
         PreflightRequest {
@@ -65,6 +80,7 @@ impl PromotionRequest {
     }
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PreflightStatus {
@@ -72,6 +88,7 @@ pub enum PreflightStatus {
     Rejected,
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromotionStatus {
@@ -86,6 +103,23 @@ pub struct PreflightResponse {
     pub manifest_digest: String,
     pub run_id: String,
     pub status: PreflightStatus,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateSecurityStatus {
+    Secured,
+    Verified,
+    Rejected,
+}
+
+/// The state-security answer carries a verdict and, when it refuses, a code —
+/// never the path it was asked about, and never an operating-system message.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StateSecurityResponse {
+    pub code: Option<String>,
+    pub status: StateSecurityStatus,
 }
 
 #[derive(Debug, Serialize)]
@@ -109,6 +143,7 @@ impl NativeError {
     }
 }
 
+#[cfg(unix)]
 impl From<io::Error> for NativeError {
     fn from(_: io::Error) -> Self {
         Self::new("EXECUTOR_PROMOTION_IO_FAILURE")

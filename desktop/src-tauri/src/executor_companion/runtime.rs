@@ -14,9 +14,12 @@ use tauri::{AppHandle, Manager};
 
 pub(super) mod availability;
 pub(super) mod integrity;
+/// The Win32 process-handle probe behind `daemon_is_live` on Windows.
+#[cfg(windows)]
+mod windows_process;
 
 use availability::{classify_availability, virtualization_available};
-use integrity::verified_runtime_directory;
+use integrity::{verified_runtime_directory, VerifiedRuntime};
 
 pub use availability::{CompanionAvailability, ExecutorCompanionAvailability};
 
@@ -32,9 +35,14 @@ pub struct ExecutorCompanionState {
 
 struct ManagedExecutorDaemon {
     child: Child,
-    // Closing this pipe on desktop exit tells `serve` to stop all guest
-    // sessions before it releases the durable daemon lease.
-    _parent_liveness: ChildStdin,
+    // Closing this pipe tells `serve` to stop all guest sessions before it
+    // releases the durable daemon lease. On desktop exit that happens by drop;
+    // on Windows, where there is no signal to send, closing it *is* the stop
+    // request, so it has to be droppable while the child is still held.
+    // Unix never reads it: `SIGTERM` is the stop there and the pipe only has to
+    // stay open until the struct drops.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    parent_liveness: Option<ChildStdin>,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,7 +97,7 @@ pub(super) fn companion_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-pub(super) fn runtime_directory(app: &AppHandle) -> Result<PathBuf, String> {
+pub(super) fn verified_runtime(app: &AppHandle) -> Result<VerifiedRuntime, String> {
     verified_runtime_directory(app).map_err(|failure| failure.reason)
 }
 
@@ -107,8 +115,10 @@ pub(super) fn companion_availability(app: &AppHandle) -> (CompanionAvailability,
 }
 
 pub(super) fn executor_command(app: &AppHandle) -> Result<Command, String> {
-    let runtime = runtime_directory(app)?;
-    let node = runtime.join("node");
+    let runtime = verified_runtime(app)?;
+    // The Node binary's file name is whatever the verified manifest declared —
+    // `node` on POSIX, `node.exe` on Windows — never a guess from this host.
+    let node = runtime.root.join(&runtime.node_executable);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -123,7 +133,7 @@ pub(super) fn executor_command(app: &AppHandle) -> Result<Command, String> {
         }
     }
     let mut command = Command::new(node);
-    command.arg(runtime.join("nessie-executor.cjs"));
+    command.arg(runtime.root.join("nessie-executor.cjs"));
     command.env("NESSIE_EXECUTOR_PACKAGED_CLI", "1");
     // Which supervisor owns this executor id decides which controls a person is
     // offered, so the desktop names itself on every invocation.
@@ -187,7 +197,7 @@ fn start_child(app: &AppHandle, state_dir: &Path) -> Result<ManagedExecutorDaemo
         .map_err(|_| "Nessie Desktop could not start the executor daemon.".to_owned())?;
     let parent_liveness = child.stdin.take()
         .ok_or_else(|| "Nessie Desktop could not supervise the executor daemon.".to_owned())?;
-    Ok(ManagedExecutorDaemon { child, _parent_liveness: parent_liveness })
+    Ok(ManagedExecutorDaemon { child, parent_liveness: Some(parent_liveness) })
 }
 
 fn child_status(children: &mut BTreeMap<String, ManagedExecutorDaemon>, executor_id: &str) -> &'static str {
@@ -197,16 +207,56 @@ fn child_status(children: &mut BTreeMap<String, ManagedExecutorDaemon>, executor
     if !is_running { children.remove(executor_id); "stopped" } else { "running" }
 }
 
-fn unowned_daemon_is_stopping(state_dir: &Path) -> bool {
+/// What a prior daemon's lease file says. A lease that cannot be read the way a
+/// daemon writes it is `Suspect`, never absent: something holds that path.
+#[derive(Debug, PartialEq, Eq)]
+enum DaemonLease {
+    Absent,
+    Held(u32),
+    Suspect,
+}
+
+fn read_daemon_lease(state_dir: &Path) -> DaemonLease {
     let lease = state_dir.join(EXECUTOR_DAEMON_LEASE_FILE);
-    let Ok(metadata) = fs::symlink_metadata(&lease) else { return false; };
-    if metadata.file_type().is_symlink() || !metadata.is_file() { return true; }
-    let Ok(value) = fs::read_to_string(lease) else { return true; };
-    let Ok(pid) = value.trim().parse::<i32>() else { return true; };
-    #[cfg(unix)]
-    return unsafe { libc::kill(pid, 0) } == 0;
-    #[cfg(not(unix))]
-    return true;
+    let Ok(metadata) = fs::symlink_metadata(&lease) else { return DaemonLease::Absent; };
+    if metadata.file_type().is_symlink() || !metadata.is_file() { return DaemonLease::Suspect; }
+    let Ok(value) = fs::read_to_string(lease) else { return DaemonLease::Suspect; };
+    match value.trim().parse::<u32>() {
+        Ok(pid) if pid > 0 => DaemonLease::Held(pid),
+        _ => DaemonLease::Suspect,
+    }
+}
+
+/// The decision itself, so the Windows behaviour is testable on any host. Only
+/// a lease held by a process that is *still alive* blocks a start: returning
+/// `true` for any lease file — as the pre-Windows `not(unix)` arm did — would
+/// let one crashed daemon block every later start forever.
+fn lease_blocks_start(lease: &DaemonLease, daemon_is_live: impl FnOnce(u32) -> bool) -> bool {
+    match lease {
+        DaemonLease::Absent => false,
+        DaemonLease::Suspect => true,
+        DaemonLease::Held(pid) => daemon_is_live(*pid),
+    }
+}
+
+#[cfg(unix)]
+fn daemon_is_live(pid: u32) -> bool {
+    let alive = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    alive == 0
+}
+
+#[cfg(windows)]
+fn daemon_is_live(pid: u32) -> bool {
+    windows_process::process_is_running(pid)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn daemon_is_live(_pid: u32) -> bool {
+    true
+}
+
+fn unowned_daemon_is_stopping(state_dir: &Path) -> bool {
+    lease_blocks_start(&read_daemon_lease(state_dir), daemon_is_live)
 }
 
 pub(super) fn daemon_status(
@@ -247,17 +297,29 @@ pub(super) fn start_daemon(
     Ok("running")
 }
 
-fn signal_stop(child: &Child) -> Result<(), String> {
+/// Asks the daemon to stop, the way this host has of asking. Unix sends
+/// `SIGTERM`; Windows has no signals, so the stop is closing the parent-liveness
+/// pipe the daemon already watches (`waitForExecutorDaemonShutdown`). Neither
+/// path ever terminates the process: a daemon with guests still tearing down is
+/// waited for, and refused after the timeout rather than killed.
+fn signal_stop(daemon: &mut ManagedExecutorDaemon) -> Result<(), String> {
     #[cfg(unix)]
     {
-        if unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) } != 0 {
+        if unsafe { libc::kill(daemon.child.id() as libc::pid_t, libc::SIGTERM) } != 0 {
             return Err("Nessie Desktop could not request a safe executor shutdown.".to_owned());
         }
         Ok(())
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let _ = child;
+        // Dropping the pipe closes the daemon's stdin, which is its shutdown
+        // request. A second stop finds it already taken and is a no-op.
+        daemon.parent_liveness.take();
+        Ok(())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = daemon;
         Err("Nessie Desktop executor shutdown is not supported on this platform.".to_owned())
     }
 }
@@ -270,7 +332,7 @@ pub(super) fn stop_daemon(state: &ExecutorCompanionState, executor_id: &str) -> 
         .map_err(|_| "Nessie Desktop could not inspect the executor daemon.".to_owned())?
         .is_some()
     { return Ok("stopped"); }
-    signal_stop(&daemon.child)?;
+    signal_stop(&mut daemon)?;
     let deadline = Instant::now() + STOP_TIMEOUT;
     while Instant::now() < deadline {
         if daemon.child.try_wait()
@@ -285,6 +347,79 @@ pub(super) fn stop_daemon(state: &ExecutorCompanionState, executor_id: &str) -> 
 
 pub fn shutdown(state: &ExecutorCompanionState) {
     let Ok(mut children) = state.children.lock() else { return; };
-    for daemon in children.values() { let _ = signal_stop(&daemon.child); }
+    for daemon in children.values_mut() { let _ = signal_stop(daemon); }
     children.clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{lease_blocks_start, read_daemon_lease, DaemonLease, EXECUTOR_DAEMON_LEASE_FILE};
+    use std::fs;
+
+    fn state_dir(name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir()
+            .join(format!("nessie-lease-{}-{name}", std::process::id()));
+        fs::create_dir_all(&path).expect("the test state directory must be creatable");
+        path
+    }
+
+    fn write_lease(directory: &std::path::Path, contents: &str) {
+        fs::write(directory.join(EXECUTOR_DAEMON_LEASE_FILE), contents)
+            .expect("the test lease must be writable");
+    }
+
+    #[test]
+    fn no_lease_never_blocks_a_start() {
+        let directory = state_dir("absent");
+        fs::remove_file(directory.join(EXECUTOR_DAEMON_LEASE_FILE)).ok();
+        assert_eq!(read_daemon_lease(&directory), DaemonLease::Absent);
+        assert!(!lease_blocks_start(&DaemonLease::Absent, |_| true));
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn a_lease_naming_a_live_daemon_blocks_and_a_dead_one_does_not() {
+        let directory = state_dir("held");
+        write_lease(&directory, "4242\n");
+        assert_eq!(read_daemon_lease(&directory), DaemonLease::Held(4242));
+        assert!(lease_blocks_start(&DaemonLease::Held(4242), |pid| {
+            assert_eq!(pid, 4242);
+            true
+        }));
+        // The bug this replaces: a stale lease from a crashed daemon used to
+        // block every later start forever on any non-Unix host.
+        assert!(!lease_blocks_start(&DaemonLease::Held(4242), |_| false));
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn an_unreadable_or_malformed_lease_is_suspect_and_blocks() {
+        let directory = state_dir("suspect");
+        for contents in ["", "  ", "0", "-1", "not-a-pid", "12 34"] {
+            write_lease(&directory, contents);
+            assert_eq!(
+                read_daemon_lease(&directory),
+                DaemonLease::Suspect,
+                "lease {contents:?} must be suspect",
+            );
+        }
+        // A suspect lease never consults liveness: there is no pid to ask about.
+        assert!(lease_blocks_start(&DaemonLease::Suspect, |_| {
+            panic!("liveness must not be asked about a lease with no pid")
+        }));
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_lease_is_suspect_rather_than_followed() {
+        let directory = state_dir("symlink");
+        fs::remove_file(directory.join(EXECUTOR_DAEMON_LEASE_FILE)).ok();
+        let target = directory.join("elsewhere.pid");
+        fs::write(&target, "4242\n").expect("the target must be writable");
+        std::os::unix::fs::symlink(&target, directory.join(EXECUTOR_DAEMON_LEASE_FILE))
+            .expect("the symlink must be creatable");
+        assert_eq!(read_daemon_lease(&directory), DaemonLease::Suspect);
+        fs::remove_dir_all(&directory).ok();
+    }
 }
