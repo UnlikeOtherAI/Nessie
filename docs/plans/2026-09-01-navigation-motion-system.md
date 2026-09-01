@@ -573,10 +573,21 @@ level. Commit and push per step.
    layout; the fourteen bespoke dialogs adopt or justify. Rewrite
    `dialog-shell.test.ts` against `useOverlay`; add one test per kind that
    Back closes it before any route change.
-9. **Docs.** `CLAUDE.md` → "Theming / design system" gains "One navigation
-   stack" and "One motion spec"; `AGENTS.md` Rule zero point 4 cites it;
-   `docs/plans/2026-08-13-responsive-coherence.md` Phase 5 marked delivered by
-   this plan; this file moves to `docs/done/` when built.
+9. **Docs — one rulebook, two pointers.** `docs/navigation.md` is the
+   standing reference for how navigation is done: the six page types, the
+   registry, the controller API, the overlay kinds, Back, motion tokens,
+   drafts, deep links, focus, and the gates. It is created in step 1 with the
+   parts that exist and grows with every step, so the pointer is never ahead
+   of the code. `AGENTS.md` and `CLAUDE.md` each get exactly one line, no
+   restatement: *"Anything that moves a person between screens, opens an
+   overlay, or handles Back goes through the navigation framework — read
+   `docs/navigation.md` first; it is the only way, and adding a second one is
+   the defect Rule zero names."* The existing prose in `CLAUDE.md` → "Message
+   reply threads" about panel widths and `T`-opens-thread, and the
+   "One tab bar" / "One dialog shell" bullets, are trimmed to point at the
+   rulebook rather than restate it. `docs/plans/2026-08-13-responsive-coherence.md`
+   Phase 5 is marked delivered by this plan, and this file moves to
+   `docs/done/` when built.
 
 ## 7. Decisions (made 2026-09-01, on usability, safety and stability)
 
