@@ -115,7 +115,7 @@ the *person's agents can now do*, never protocol facts. Primary CTA is
 │ │        ✓ Connected   ← StatusPill tone="success"            │  │
 │ │                                                             │  │
 │ │ [+ Connect another account] ← secondary button              │  │
-│ │ [Manage access] ← secondary, jumps to Agents tab            │  │
+│ │ [Remove] ← destructive, confirms before disconnecting all accounts │  │
 │ └─────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │ TABS: [Overview] [Capabilities (42)] [Connected accounts (2)]    │
@@ -328,6 +328,12 @@ bg-[var(--panel-soft)] px-4 py-3`):
   permanently visible — multiple accounts are a first-class, day-one state,
   not an edge case. The §2 flow runs identically; the resulting row joins the
   list.
+- **Remove app**: the detail hero replaces the redundant **Manage access**
+  shortcut — **Agents with access** is already a peer tab — with a destructive
+  **Remove** action. It is shown only when the caller may disconnect every
+  account the detail page exposes, and confirmation disconnects each of them.
+  When any account is shared and not manageable by the caller, its per-account
+  state remains visible but the app-level action is not offered.
 
 **Disconnect confirmation** uses the shared `ConfirmDialog`, whose dialog
 shell owns focus, Escape, scrim dismissal, and focus restoration:

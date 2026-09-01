@@ -5,16 +5,17 @@ import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
 import { appCardStatus, appUnavailableExplanation } from './app-card-presentation'
 import {
+  appCanBeRemoved,
   appDetailCta,
   appHeroMeta,
-  appIsConnected,
   appProviderLine,
 } from './app-detail-view'
 
 type AppDetailHeroProps = {
   app: AppDetailRecord
   onConnect: () => void
-  onManageAccess: () => void
+  onRemove: () => void
+  removing: boolean
 }
 
 // The hero answers "what is this and what happens if I connect it?" — the app's
@@ -24,12 +25,12 @@ type AppDetailHeroProps = {
 export const AppDetailHero = ({
   app,
   onConnect,
-  onManageAccess,
+  onRemove,
+  removing,
 }: AppDetailHeroProps) => {
   const cta = appDetailCta(app)
   const status = appCardStatus(app)
   const meta = appHeroMeta(app)
-  const connected = appIsConnected(app)
   // Why this person cannot start the app themselves, said out loud.
   //
   // Two shapes reach here. `none` is the state with no control at all
@@ -149,14 +150,15 @@ export const AppDetailHero = ({
                 ) : null}
               </div>
             ) : null}
-            {connected ? (
+            {appCanBeRemoved(app) ? (
               <button
-                className="admin-button admin-button-secondary"
-                data-testid="app-detail-manage-access"
-                onClick={onManageAccess}
+                className="admin-button admin-button-secondary admin-button-danger"
+                data-testid="app-detail-remove"
+                disabled={removing}
+                onClick={onRemove}
                 type="button"
               >
-                Manage access
+                {removing ? 'Removing…' : 'Remove'}
               </button>
             ) : null}
           </div>

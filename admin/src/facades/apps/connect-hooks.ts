@@ -162,6 +162,36 @@ export const useDisconnectAppConnection = () => {
   })
 }
 
+/**
+ * The detail hero removes an app by disconnecting every account it currently
+ * exposes. Each request keeps the server's per-scope authorization boundary:
+ * a client-side list can never remove an account the existing DELETE route
+ * would reject.
+ */
+export const useRemoveAppConnections = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (connectionIds: readonly string[]) => {
+      const results = await Promise.allSettled(
+        connectionIds.map((connectionId) =>
+          apiClient.delete(`/api/app-connections/${encodeURIComponent(connectionId)}`),
+        ),
+      )
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new Error('One or more connected accounts could not be removed')
+      }
+    },
+    onSettled: () => {
+      // A concurrent change can reject one account after another has already
+      // been removed. Wait for every request before re-reading the app, rather
+      // than paint stale rows while sibling deletes are still in flight.
+      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
+    },
+  })
+}
+
 export const useAppConnectFlow = (input: {
   /** Injected by tests and by a native shell; the web popup is the default. */
   launcher?: ExternalAuthLauncher

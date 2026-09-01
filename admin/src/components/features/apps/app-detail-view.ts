@@ -36,6 +36,15 @@ export type AppDetailTabModel = {
 export const appIsConnected = (app: AppDetailRecord): boolean => app.connections.length > 0
 
 /**
+ * Removing an app disconnects every account this detail view exposes. It is
+ * only a coherent action when the caller can manage every one of them; showing
+ * it for a shared account they cannot remove would promise an outcome the
+ * server correctly refuses.
+ */
+export const appCanBeRemoved = (app: AppDetailRecord): boolean =>
+  app.connections.length > 0 && app.connections.every((connection) => connection.canDisconnect)
+
+/**
  * The number of things this app can do. The probed list is the truth once it
  * exists; the stored count covers the window before an app has been probed.
  */

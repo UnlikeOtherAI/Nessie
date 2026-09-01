@@ -6,12 +6,14 @@ import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
 import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
+import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import {
   appDetailTabs,
   appNotFoundMessage,
   resolveAppDetailTab,
   type AppDetailTab,
 } from '../components/features/apps/app-detail-view'
+import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
@@ -36,6 +38,8 @@ export const AppDetailPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: app, isPending } = useApp(slug)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const removeApp = useRemoveAppConnections()
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
 
@@ -109,6 +113,12 @@ export const AppDetailPage = () => {
     setSearchParams(params, { replace: true })
   }
 
+  const closeRemove = () => {
+    if (removeApp.isPending) return
+    removeApp.reset()
+    setRemoveOpen(false)
+  }
+
   return (
     <div className="flex h-full flex-col">
       {header}
@@ -124,7 +134,11 @@ export const AppDetailPage = () => {
           <AppDetailHero
             app={app}
             onConnect={() => setConnectOpen(true)}
-            onManageAccess={() => selectTab('agents')}
+            onRemove={() => {
+              removeApp.reset()
+              setRemoveOpen(true)
+            }}
+            removing={removeApp.isPending}
           />
           <AppDetailTabs
             activeTab={activeTab}
@@ -135,6 +149,31 @@ export const AppDetailPage = () => {
         </div>
       </div>
       <AppConnectDialog app={app} onClose={() => setConnectOpen(false)} open={connectOpen} />
+      <ConfirmDialog
+        body={(
+          <>
+            <p>
+              This disconnects every account for this app. Agents will no longer be able to use it.
+            </p>
+            {removeApp.isError ? (
+              <p className="mt-3 text-sm text-[color:var(--danger-text)]" role="alert">
+                We couldn&apos;t remove this app. Try again.
+              </p>
+            ) : null}
+          </>
+        )}
+        confirmLabel={removeApp.isPending ? 'Removing…' : 'Remove'}
+        destructive
+        onCancel={closeRemove}
+        onConfirm={() => {
+          removeApp.mutate(app.connections.map((connection) => connection.id), {
+            onSuccess: () => setRemoveOpen(false),
+          })
+        }}
+        open={removeOpen}
+        pending={removeApp.isPending}
+        title={`Remove ${app.displayName}?`}
+      />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schema
 
 import {
   agentsAccessEmptyMessage,
+  appCanBeRemoved,
   appCapabilityCount,
   appConnectInFlight,
   appDetailCta,
@@ -121,6 +122,22 @@ test('a tab with nothing to count keeps its label alone rather than reading (0)'
   )
   assert.equal(populated.find((tab) => tab.id === 'capabilities')?.count, 3)
   assert.equal(populated.find((tab) => tab.id === 'agents')?.count, 1)
+})
+
+test('Remove appears only when the caller can disconnect every connected account', () => {
+  assert.equal(appCanBeRemoved(detail()), false)
+  assert.equal(appCanBeRemoved(detail({ connections: [connection()] })), true)
+  assert.equal(
+    appCanBeRemoved(
+      detail({
+        connections: [
+          connection(),
+          connection({ canDisconnect: false, id: 'conn-shared' }),
+        ],
+      }),
+    ),
+    false,
+  )
 })
 
 test('a deep link to a tab this app does not offer falls back to Overview, not a blank panel', () => {
