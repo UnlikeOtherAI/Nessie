@@ -494,6 +494,19 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
 - `pnpm --filter @nessie/admin build` produces the static admin bundle
   (`dist/`); `pnpm --filter @nessie/admin preview` serves it. Prod/CI only —
   use `pnpm dev` for the local loop.
+- **Device builds are always installable release builds.** A request to build an
+  app means building and installing it directly on the user's named iPhone,
+  iPad, or Android device as a durable, normally usable app. Never substitute a
+  debug, development-client, simulator, or emulator build unless the user
+  explicitly asks for one. Use the appropriate signing, provisioning,
+  distribution, and device-install workflow so it continues to launch outside a
+  developer session; when a device, signing identity, profile, or distribution
+  access is missing, report that specific blocker instead of delivering a debug
+  build. **“Development Build”**, **“No development servers found”**, and
+  **“Enter URL manually”** are framework-launcher screens and therefore a
+  failed deployment, never a handoff: replace that build and visually verify the
+  Nessie login or workspace screen on every named physical device before calling
+  the request complete.
 - Worker rebuilds after worker edits, desktop/App Store builds, lint-gated
   root builds, Prisma generation ordering, migration immutability, and all
   test rules (Turbo invocation, `DATABASE_URL`, DB-suite discipline):

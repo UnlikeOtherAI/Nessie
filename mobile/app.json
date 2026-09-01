@@ -8,12 +8,11 @@
     "icon": "./assets/icon.png",
     "scheme": "nessie",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.km.nessie",
       "appleTeamId": "59S95D279D",
-      "buildNumber": "10",
+      "buildNumber": "12",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -29,7 +28,6 @@
     },
     "android": {
       "package": "com.km.nessie",
-      "edgeToEdgeEnabled": true,
       "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -58,7 +56,8 @@
         }
       ],
       "expo-notifications",
-      "react-native-bottom-tabs"
+      "react-native-bottom-tabs",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

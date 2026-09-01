@@ -15,6 +15,11 @@ embeds its JavaScript, loads the hosted Nessie service, and does not need the
 developer Mac or its local network after installation. It does still need normal
 internet access for `https://app.nessie.works`.
 
+The mobile release must use a React version supported by its React Native
+renderer. Nessie's pnpm workspace is hoisted, so changing React requires
+updating the mobile React Native/Expo SDK in the same release rather than letting
+the web workspace's React package drift into an incompatible device bundle.
+
 Apple labels the required direct iOS installation signature **Ad Hoc**. That is
 only the provisioning method: it is a normal standalone app, not the Expo
 development launcher and not TestFlight. The profile pins the hosted
