@@ -5,7 +5,7 @@ import test from 'node:test'
 import { WORKFLOW_TOOL_NODE_IDS } from '../src/lib/workflow-designer/constants'
 
 // W12: one tool allow-list. The runtime exports WORKFLOW_TOOL_IDS
-// (packages/runtime) and the API validates against it; the canvas cannot
+// (packages/runtime) and shared workspace validation consumes it; the canvas cannot
 // import that package, so this test is the derivation: it fails the moment
 // the canvas list and the runtime list drift apart.
 const runtimeToolIds = (() => {
@@ -23,9 +23,9 @@ test('canvas tool list equals the runtime workflow tool ids', () => {
   assert.deepEqual([...WORKFLOW_TOOL_NODE_IDS].sort(), [...runtimeToolIds].sort())
 })
 
-test('the API validates against the same runtime list (no hand-maintained copy)', () => {
+test('shared workspace validation uses the runtime list (no hand-maintained copy)', () => {
   const source = readFileSync(
-    new URL('../../api/src/services/workflow-validation.ts', import.meta.url),
+    new URL('../../packages/workspace-admin/src/workflow-template-validation.ts', import.meta.url),
     'utf8',
   )
   // The allow-list must come from the runtime package, not a literal list.
