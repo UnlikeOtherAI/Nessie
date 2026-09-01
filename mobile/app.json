@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.km.nessie",
       "appleTeamId": "59S95D279D",
-      "buildNumber": "12",
+      "buildNumber": "13",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
