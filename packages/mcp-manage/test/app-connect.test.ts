@@ -547,8 +547,8 @@ test('a probe that fails on an ingested row asks the server what it wants', asyn
   assert.deepEqual(catalogWrites, [{ authConfig: { method: 'oauth2' }, authMethod: 'oauth2' }])
 })
 
-test('a server that wants a key routes to the key panel, not to an error', async () => {
-  const { ctx } = makeStub({
+test('a server that wants a bearer token persists that before opening the key panel', async () => {
+  const { ctx, catalogWrites } = makeStub({
     appSource: 'mcp_registry',
     discoverAuthMethod: 'bearer',
     probe: { failWith: 'connect ECONNREFUSED https://acme.example/mcp' },
@@ -562,6 +562,9 @@ test('a server that wants a key routes to the key panel, not to an error', async
     ),
     { status: 'needs_secret', connectionId: 'instance-1' },
   )
+  // The next Connect loads this catalogue row again. It must therefore know to
+  // inject the saved token into the probe, instead of retrying anonymously.
+  assert.deepEqual(catalogWrites, [{ authConfig: { method: 'bearer' }, authMethod: 'bearer' }])
 })
 
 test('a human-authored row is never re-derived, and a dead listing still reads as one', async () => {

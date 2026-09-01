@@ -166,7 +166,20 @@ const learnAuthFromServer = async (
     })
     return 'oauth2'
   }
-  return method === 'bearer' || method === 'api_key' ? 'secret' : null
+  if (method === 'bearer') {
+    // Bearer discovery is just as durable a fact as OAuth discovery. Without
+    // this write the first probe sends the person to the key panel, but the
+    // retry still treats the server as unauthenticated and omits their key.
+    await ctx.prisma.mcpCatalogEntry.update({
+      data: { authConfig: { method: 'bearer' }, authMethod: 'bearer' },
+      where: { id: entry.id },
+    })
+    return 'secret'
+  }
+  // Discovery can establish that a key is needed, but not which header an
+  // arbitrary API-key server expects. Keep that uncertainty in the temporary
+  // key-panel outcome rather than persisting a guessed API-key configuration.
+  return method === 'api_key' ? 'secret' : null
 }
 
 export const runConnectHandshake = async (
