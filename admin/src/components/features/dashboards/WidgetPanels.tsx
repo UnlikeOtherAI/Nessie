@@ -13,6 +13,7 @@ import type {
   TableWidgetSchema,
 } from '@nessie/schemas'
 import type { z } from 'zod'
+import { ExpandableTable } from '../../shared/ExpandableTable'
 import { formatCell, formatNumber, formatTemporal, toneVars } from './widget-format'
 
 type StatWidget = z.infer<typeof StatWidgetSchema>
@@ -106,38 +107,40 @@ export const TableWidgetView = ({
   const visible = rows.slice(0, binding.maxRows)
 
   return (
-    <div className="h-full overflow-auto">
-      <table className="w-full border-collapse text-xs">
-        <thead>
-          <tr>
-            {binding.columns.map((column) => (
-              <th
-                key={column.key}
-                className="sticky top-0 truncate px-2 py-1.5 text-left font-medium"
-                style={{ background: 'var(--panel)', color: 'var(--tx3)' }}
-              >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((row, index) => (
-            <tr key={index} style={{ borderTop: '1px solid var(--sep)' }}>
+    <div className="flex h-full min-h-0 flex-col">
+      <ExpandableTable className="min-h-0 flex-1" label={widget.presentation.title ?? 'Dashboard table'}>
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
               {binding.columns.map((column) => (
-                <td
+                <th
                   key={column.key}
-                  className="max-w-[240px] truncate px-2 py-1.5 tabular-nums"
-                  style={{ color: 'var(--tx2)' }}
-                  title={render(column.key, row[column.key] ?? null, column.format)}
+                  className="sticky top-0 truncate px-2 py-1.5 text-left font-medium"
+                  style={{ background: 'var(--panel)', color: 'var(--tx3)' }}
                 >
-                  {render(column.key, row[column.key] ?? null, column.format)}
-                </td>
+                  {column.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visible.map((row, index) => (
+              <tr key={index} style={{ borderTop: '1px solid var(--sep)' }}>
+                {binding.columns.map((column) => (
+                  <td
+                    key={column.key}
+                    className="max-w-[240px] truncate px-2 py-1.5 tabular-nums"
+                    style={{ color: 'var(--tx2)' }}
+                    title={render(column.key, row[column.key] ?? null, column.format)}
+                  >
+                    {render(column.key, row[column.key] ?? null, column.format)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ExpandableTable>
       {rows.length > visible.length ? (
         <div className="px-2 py-1.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
           {rows.length - visible.length} more rows

@@ -2,6 +2,7 @@ import React, { useMemo, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { normalizeMessageMarkdown } from '../../../lib/message-markdown'
+import { ExpandableTable } from '../../shared/ExpandableTable'
 
 interface MessageMarkdownProps {
   /**
@@ -109,6 +110,11 @@ export const MessageMarkdown = ({
         <strong {...props}>
           {renderTextChildren(strongChildren, renderInlineText)}
         </strong>
+      ),
+      table: ({ children: tableChildren, node: _node, ...props }) => (
+        <ExpandableTable label="Message table">
+          <table {...props}>{tableChildren}</table>
+        </ExpandableTable>
       ),
       td: ({ children: cellChildren, node: _node, ...props }) => (
         <td {...props}>{renderTextChildren(cellChildren, renderInlineText)}</td>

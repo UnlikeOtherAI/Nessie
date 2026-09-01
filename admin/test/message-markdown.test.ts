@@ -35,6 +35,18 @@ test('renders human and agent post formatting as GitHub-flavoured Markdown', () 
   assert.match(html, /<del>old<\/del>/)
 })
 
+test('gives Markdown tables an expandable, horizontally scrollable viewport', () => {
+  const html = renderMarkdown([
+    '| Prospect | Evidence |',
+    '| --- | --- |',
+    '| Amici Pizza | Multi-site restaurant |',
+  ].join('\n'))
+
+  assert.match(html, /aria-label="Expand Message table"/)
+  assert.match(html, /class="admin-expandable-table__viewport"/)
+  assert.match(html, /<table>/)
+})
+
 test('renders single-backtick code and triple-backtick fenced code', () => {
   const html = renderMarkdown([
     'Use `const ready = true`.',

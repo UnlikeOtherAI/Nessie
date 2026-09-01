@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 import type { AgentRecord } from '../../../../lib/api-client'
 import { Pill } from '../../../primitives/Pill'
+import { ExpandableTable } from '../../../shared/ExpandableTable'
 import {
   changedByLabel,
   formatTodoTimestamp,
@@ -91,48 +92,50 @@ export const TodoInstanceCard = ({
         ) : null}
       </div>
 
-      <table className="admin-table w-full border-collapse border-t border-[color:var(--sep)]">
-        <tbody>
-          {todo.steps.map((step, index) => (
-            <tr className="border-t border-[color:var(--sep)]" key={step.id}>
-              <td className="w-8 py-2 pl-4 pr-0 align-top text-xs text-[color:var(--tx3)]">
-                {index + 1}
-              </td>
-              <td className="min-w-0 px-2 py-2">
-                <div className="truncate text-sm font-medium text-[color:var(--tx)]" title={step.title}>
-                  {step.title}
-                </div>
-                <div
-                  className="truncate text-xs leading-5 text-[color:var(--tx2)]"
-                  title={step.instructions}
-                >
-                  {step.note ? `${step.note} — ` : ''}{step.instructions}
-                </div>
-              </td>
-              <td className="hidden whitespace-nowrap px-2 py-2 text-xs text-[color:var(--tx3)] sm:table-cell">
-                {step.updatedByActorType ? changedByLabel(step.updatedByActorType) : 'not changed yet'}
-              </td>
-              <td className="w-40 py-2 pl-2 pr-4 text-right">
-                {editable ? (
-                  <select
-                    aria-label={`Status for step ${index + 1}: ${step.title}`}
-                    className="admin-input admin-input-sm text-xs"
-                    onChange={(event) =>
-                      onUpdateStep(todo, step.key, event.target.value as AgentTodoStepStatus)}
-                    value={step.status}
+      <ExpandableTable label={`Steps for ${todo.title}`}>
+        <table className="admin-table w-full border-collapse border-t border-[color:var(--sep)]">
+          <tbody>
+            {todo.steps.map((step, index) => (
+              <tr className="border-t border-[color:var(--sep)]" key={step.id}>
+                <td className="w-8 py-2 pl-4 pr-0 align-top text-xs text-[color:var(--tx3)]">
+                  {index + 1}
+                </td>
+                <td className="min-w-0 px-2 py-2">
+                  <div className="truncate text-sm font-medium text-[color:var(--tx)]" title={step.title}>
+                    {step.title}
+                  </div>
+                  <div
+                    className="truncate text-xs leading-5 text-[color:var(--tx2)]"
+                    title={step.instructions}
                   >
-                    {STEP_STATUSES.map((status) => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <Pill size="sm" tone={stepStatusTone(step.status)}>{step.status}</Pill>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                    {step.note ? `${step.note} — ` : ''}{step.instructions}
+                  </div>
+                </td>
+                <td className="hidden whitespace-nowrap px-2 py-2 text-xs text-[color:var(--tx3)] sm:table-cell">
+                  {step.updatedByActorType ? changedByLabel(step.updatedByActorType) : 'not changed yet'}
+                </td>
+                <td className="w-40 py-2 pl-2 pr-4 text-right">
+                  {editable ? (
+                    <select
+                      aria-label={`Status for step ${index + 1}: ${step.title}`}
+                      className="admin-input admin-input-sm text-xs"
+                      onChange={(event) =>
+                        onUpdateStep(todo, step.key, event.target.value as AgentTodoStepStatus)}
+                      value={step.status}
+                    >
+                      {STEP_STATUSES.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Pill size="sm" tone={stepStatusTone(step.status)}>{step.status}</Pill>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ExpandableTable>
     </article>
   )
 }

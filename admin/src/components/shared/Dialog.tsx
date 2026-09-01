@@ -20,12 +20,12 @@ import { useOverlayDismiss } from './useOverlayDismiss'
  * composes {@link useModalA11y} and {@link useOverlayDismiss} unconditionally,
  * so a dialog cannot be built without them.
  *
- * `size` names the three panel geometries the admin actually ships. It is not a
+ * `size` names the four panel geometries the admin actually ships. It is not a
  * general scale: a dialog whose panel is none of these keeps its own markup
- * rather than growing a fourth token here.
+ * rather than growing another token here.
  */
 
-type DialogSize = 'md' | 'lg' | 'xl'
+type DialogSize = 'md' | 'lg' | 'xl' | 'full'
 
 // `md` is the `.create-channel-panel` default (440px, 16px gutter). The other
 // two are the exact inline overrides their call sites already carried.
@@ -37,6 +37,18 @@ const PANEL_STYLE: Record<DialogSize, CSSProperties | undefined> = {
     maxWidth: 'none',
     overflowY: 'auto',
     width: 'min(80vw, 1100px)',
+  },
+  // A table needs to stay within a small viewport gutter while preserving its
+  // columns, not inherit the constrained editor geometry of ordinary dialogs.
+  full: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: 'calc(100dvh - 2rem)',
+    maxHeight: 'none',
+    maxWidth: 'none',
+    minHeight: 0,
+    overflow: 'hidden',
+    width: 'calc(100vw - 2rem)',
   },
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import type { SessionSummary } from '@nessie/schemas'
 import { useRevokeSession } from '../../../facades/auth/hooks'
 import { describeSessionDevice } from '../../../pages/settings/session-device'
+import { ExpandableTable } from '../../shared/ExpandableTable'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 
 type ActiveSessionsTableProps = {
@@ -47,7 +48,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
 
   return (
     <TableFrame>
-      <div className="overflow-x-auto">
+      <ExpandableTable label="Active sessions table">
         <table className="admin-table w-full table-fixed border-collapse">
           <caption className="sr-only">Active devices signed in to your account</caption>
           <thead>
@@ -127,7 +128,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
             )}
           </tbody>
         </table>
-      </div>
+      </ExpandableTable>
       {error ? <div className="border-t border-[color:var(--sep)] px-4 py-2 text-sm text-[color:var(--danger-text)]" role="alert">{error}</div> : null}
       <PaginationFooter
         canNext={!isLoading && visiblePage < totalPages - 1}

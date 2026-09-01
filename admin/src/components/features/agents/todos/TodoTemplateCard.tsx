@@ -1,6 +1,7 @@
 import type { AgentTodoTemplateRecord } from '@nessie/schemas'
 
 import { Pill } from '../../../primitives/Pill'
+import { ExpandableTable } from '../../../shared/ExpandableTable'
 import type { ApprovalRequest } from '../../../../facades/approvals/hooks'
 import { templateStatusTone } from './todo-presentation'
 import { ScheduledTodoTemplate } from './ScheduledTodoTemplate'
@@ -92,25 +93,27 @@ export const TodoTemplateCard = ({
         </div>
       </div>
 
-      <table className="admin-table w-full border-collapse border-t border-[color:var(--sep)]">
-        <tbody>
-          {template.steps.map((step, index) => (
-            <tr className="border-t border-[color:var(--sep)]" key={step.key}>
-              <td className="w-8 py-2 pl-4 pr-0 align-top text-xs text-[color:var(--tx3)]">
-                {index + 1}
-              </td>
-              <td className="min-w-0 px-2 py-2 pr-4">
-                <div className="truncate text-sm font-medium text-[color:var(--tx)]" title={step.title}>
-                  {step.title}
-                </div>
-                <div className="truncate text-xs leading-5 text-[color:var(--tx2)]" title={step.instructions}>
-                  {step.instructions}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ExpandableTable label={`Steps for ${template.name}`}>
+        <table className="admin-table w-full border-collapse border-t border-[color:var(--sep)]">
+          <tbody>
+            {template.steps.map((step, index) => (
+              <tr className="border-t border-[color:var(--sep)]" key={step.key}>
+                <td className="w-8 py-2 pl-4 pr-0 align-top text-xs text-[color:var(--tx3)]">
+                  {index + 1}
+                </td>
+                <td className="min-w-0 px-2 py-2 pr-4">
+                  <div className="truncate text-sm font-medium text-[color:var(--tx)]" title={step.title}>
+                    {step.title}
+                  </div>
+                  <div className="truncate text-xs leading-5 text-[color:var(--tx2)]" title={step.instructions}>
+                    {step.instructions}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ExpandableTable>
 
       {template.status === 'active' && isOwner ? (
         <div className="border-t border-[color:var(--sep)] px-4 py-2.5">

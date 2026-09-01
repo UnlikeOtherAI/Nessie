@@ -1,4 +1,5 @@
 import type { AgentRecord } from '../../../lib/api-client'
+import { ExpandableTable } from '../../shared/ExpandableTable'
 import { AgentListRow } from './AgentListRow'
 
 type AgentsTableProps = {
@@ -12,9 +13,12 @@ type AgentsTableProps = {
 const SKELETON_ROWS = 4
 
 const TableFrame = ({ children }: { children: React.ReactNode }) => (
-  <div className="overflow-hidden rounded-xl border border-[color:var(--sep)]">
+  <ExpandableTable
+    className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
+    label="Agents table"
+  >
     <table className="agents-table w-full border-collapse">{children}</table>
-  </div>
+  </ExpandableTable>
 )
 
 const HeaderRow = () => (

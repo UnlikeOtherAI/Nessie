@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 
 import { Pill, type PillTone } from '../../primitives/Pill'
 import type { SecretRecord, SecretScopeType } from '../../../facades/secrets/hooks'
+import { ExpandableTable } from '../../shared/ExpandableTable'
 
 type SecretMetadataTableProps = {
   isLoading: boolean
@@ -98,11 +99,7 @@ export const SecretMetadataTable = ({
   revokingReference,
   secrets,
 }: SecretMetadataTableProps) => (
-  <div
-    aria-label="Secrets table. Scroll horizontally to view all columns."
-    className="overflow-x-auto"
-    tabIndex={0}
-  >
+  <ExpandableTable label="Secrets table">
     <table className="admin-table min-w-[46rem] w-full border-collapse">
       <caption className="sr-only">Available secret metadata</caption>
       <thead>
@@ -167,5 +164,5 @@ export const SecretMetadataTable = ({
         ))}
       </tbody>
     </table>
-  </div>
+  </ExpandableTable>
 )

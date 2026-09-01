@@ -171,6 +171,43 @@ test('copying a secret reference announces useful feedback', async () => {
   }
 })
 
+test('a table opens in a near-fullscreen dialog and closes again', async () => {
+  const restoreDom = installDom()
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => {
+      root.render(h(SecretMetadataTable, {
+        isLoading: false,
+        onRevoke: () => undefined,
+        revokingReference: null,
+        secrets: [secret],
+      }))
+    })
+    const expand = container.querySelector<HTMLButtonElement>('button[aria-label="Expand Secrets table"]')
+    assert.ok(expand)
+
+    await act(async () => expand.click())
+
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')
+    assert.ok(dialog)
+    assert.equal(dialog.style.width, 'calc(100vw - 2rem)')
+    assert.equal(dialog.style.height, 'calc(100dvh - 2rem)')
+    assert.ok(dialog.querySelector('table'))
+
+    const close = dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
+    assert.ok(close)
+    await act(async () => close.click())
+    assert.equal(container.querySelector('[role="dialog"]'), null)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    restoreDom()
+  }
+})
+
 const SecretDialogHarness = ({ onCreate }: { onCreate: (input: CreateSecretInput) => Promise<unknown> }) => {
   const [open, setOpen] = useState(false)
   return h(
