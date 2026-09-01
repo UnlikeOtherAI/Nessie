@@ -554,7 +554,13 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   One rule from it applies now, ahead of the kit: **no nesting** — a card
   never contains a card, a table never contains a table, a bordered box never
   sits inside a bordered box. Depth is dividers and spacing, not a second
-  frame.
+  frame. A second rule is decided ahead of the kit too: **big elements are
+  one contract from the API to the pixel.** List endpoints paginate through
+  `@nessie/schemas` `PaginationParamsSchema`/`PaginationMetaSchema` (cursor
+  keyset, `limit` ≤ 100, `total` required on admin lists) and the admin
+  consumes them through one facade and `PaginationFooter`; a route that pages,
+  sorts or reports validation errors differently is refactored onto the
+  contract, never accommodated by a second mode in the component.
 - **One tab bar, everywhere.** Every single-select strip in the admin — detail
   tabs, page sections, and filter segments — is
   `components/primitives/TabBar.tsx`. The selected item is a *single sliding

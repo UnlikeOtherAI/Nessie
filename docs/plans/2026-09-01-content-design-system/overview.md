@@ -141,10 +141,24 @@ deliberately non-shared; `ThreadsPage` and `AppCategorySection` hand-roll
 lists that can grow (delivery history, statement lines, tool registry,
 triggers, secrets, members) simply do not paginate.
 
-**Verdict: two variants plus absence. Canonical:** `PaginationFooter` gains a
-`mode="loadMore"` (one centred secondary button with the same label slot), and
-the "Show all" affordance becomes `SectionOverflowHint` (already exists in
-project dashboard) promoted to shared.
+On the API side the picture is the same drift: `@nessie/schemas` already
+defines `PaginationParamsSchema` (`cursor`, `limit`, `direction`) and
+`PaginationMetaSchema` (`cursor`, `total?`, `hasMore`), and
+`createApiResponse(data, meta)` carries it — yet **no route or client imports
+those schemas**. Eleven routes hand-roll their own cursor logic (alerts,
+approvals, apps, apps-registry, audit-log, knowledge-base, policy,
+thread-activity, workflow installations/runs/templates), two use
+`offset`/`page` (agent messages, apps), and roughly ten list endpoints that
+can grow (trigger deliveries, executors, secrets, sessions, statuses, tasks,
+threads, thoughts, knowledge lists) take a bare `limit` with no way to reach
+the rest. Audit log, policy and alerts cap at 50–100 rows and the UI simply
+never shows more.
+
+**Verdict: many variants, on both sides. Canonical:** the single end-to-end
+contract in §4.7. `PaginationFooter` stays the one control (Previous / label /
+Next); the two "Load more" buttons and the in-place "Show all" become
+`PaginationFooter` or `SectionOverflowHint`. No infinite scroll on content
+pages.
 
 ### 3.4 Forms
 
@@ -362,6 +376,11 @@ Design rules, in order of precedence:
    table. The audits found the nested shape in eight files today (§3.1) and
    it is the main reason "admin" and "documents" read as different products:
    one nests boxes three deep, the other draws none.
+8. **A big element is one contract from the API to the pixel.** Pagination,
+   sorting, search, list envelopes and validation errors each have exactly
+   one wire shape and one client consumer. An endpoint that paginates, sorts
+   or reports errors differently is refactored onto the contract; the UI
+   component never grows a second mode to accommodate it (§4.7).
 
 ### 4.1 Layout
 
@@ -399,7 +418,7 @@ The `0.14em`/`0.12em`/`tracking-wide` outliers are migrated onto `sm` or
 | `Input` / `Select` / `Textarea` (`size="default"\|"compact"`, `mono`, `leading` icon slot) — thin wrappers emitting `.admin-input` classes | the five hand-rolled input look-alikes; `.admin-input-sm` is retired in favour of `compact` (one caller) |
 | `Checkbox` (themed, `accent-[var(--accent)]`) | the unthemed raw checkboxes; **`Switch` for on/off settings, `Checkbox` for pick-many** is the rule |
 | `ChoiceGroup` (`variant="segment"\|"card"`, single-select, `role="radiogroup"`) | the three copy-pasted button rows, the appearance radio cards, `CreateSpaceDialog`/`VersionHistory` pickers, `ProjectSettingsPage`'s button pair, `AddWidgetPanel`'s tone picker |
-| `FormActions` (`align="end"\|"start"`) | footer drift; rule: `end` in dialogs (Cancel + primary), `start` for inline page forms (primary only) |
+| `FormActions` | footer drift; one rule everywhere: actions right-aligned, primary rightmost, Cancel to its left only when there is an edit to discard; a page form never saves from the page header |
 | `FieldError` (= `renderFieldError`, the boxed line) and `FormError` (= `Notice tone="danger" role="alert"`) | ~40 bare error lines; the 13 `--danger` text sites |
 | `NotificationToggle` deleted; `PushResultBanner` deleted | duplicates of `Switch` and `Notice` |
 
@@ -428,7 +447,68 @@ person can tell autosave from explicit save.
   stat boxes.
 - `CopyField` (from `TriggerDetail`) promoted to shared.
 
-### 4.7 Scale (to be written into `styles.css` as the header comment of the
+### 4.7 One contract end to end (API ↔ UI)
+
+The list, sort, search and error shapes below are the whole standard. Each
+has one schema in `@nessie/schemas`, one server helper, one client facade and
+one component. Anything that does not fit is refactored to fit.
+
+**Pagination.** Adopt the existing `PaginationParamsSchema`/
+`PaginationMetaSchema` with one amendment: `meta` carries `nextCursor` and
+`prevCursor` (both nullable) instead of a single `cursor`, so Previous and
+Next both work without the client inferring cursors from row ids.
+
+- Request: `?cursor=&limit=&direction=forward|backward`. `limit` defaults to
+  25 and is capped at 100; no page-size picker in the UI.
+- Response: `{ data: T[], meta: { nextCursor, prevCursor, total, hasMore } }`.
+  `total` is **required** for every admin list (it is what makes "1–25 of
+  134" possible, and every admin list is a filtered `count` on an indexed
+  tenant column); it is omitted only for ranked search results.
+- Cursors are opaque, server-encoded keyset cursors (sort key + id), so a
+  row inserted while paging never shifts or duplicates a page. Offset paging
+  is retired.
+- Server: one `paginate(query, { orderBy, where, cursorFields })` helper in
+  `api/src/lib/pagination.ts` that every list route calls; a route may not
+  build `meta` by hand.
+- Client: one `usePagedList(key, fetcher, { limit })` facade returning
+  `{ query, items, meta, next, prev, label }`; `PaginationFooter` takes those
+  props directly. The current `useInfiniteQuery` users (thread activity, app
+  category shelves) migrate to it. The list's cursor lives in the URL
+  (`?cursor=`) so refresh, back and deep links keep the page.
+- Client-side slicing of an already-loaded array is allowed only for lists
+  the server guarantees are bounded (a person's agents, a channel's members);
+  any list that can grow unbounded is server-paged.
+
+Refactor scope, from the route survey: 11 cursor routes onto the helper, 2
+offset routes onto cursors, ~10 unpaged list endpoints gain paging, and the
+3 capped endpoints (audit `limit=50`, policy and alerts `limit=100`) become
+pageable. No external client (mobile, CLI, desktop, macOS, `client-core`)
+sends a pagination parameter today, so the change is additive for them.
+
+**Sorting.** `?sort=<field>&order=asc|desc`, validated against a per-route
+whitelist; default is newest first. `DataTable` column headers with
+`sortable` emit exactly this and render the sort indicator; a sort is a
+server round-trip, never a client re-sort (the apps-catalogue rule, made
+general).
+
+**Search and filters.** `?q=` for free text; named filters as explicit,
+schema-validated query params (`?status=`, `?type=`). The server filters and
+ranks; `ListToolbar` only edits the URL. The client filters nothing.
+
+**List envelope.** Every collection endpoint returns `{ data, meta }`
+through `createApiResponse`; single-resource endpoints return `{ data }`.
+`QueryState` and `EmptyState` key off that envelope, which is what makes
+"failed" and "empty" distinguishable everywhere (§5.1).
+
+**Validation errors.** The existing `VALIDATION_ERROR` envelope (`code`,
+`message`, `field`, `details = zod.flatten()`) becomes the contract: every
+form endpoint parses through `parseInput`, business-rule refusals set
+`field` where one applies, and the client's `useFormSubmit` maps
+`details.fieldErrors[name]` onto `FormField error` and the rest onto
+`FormError`. A form can no longer swallow a failure, because the facade
+owns the error path.
+
+### 4.8 Scale (to be written into `styles.css` as the header comment of the
 content section, and into `CLAUDE.md`)
 
 - Radius by role: card 12px (`.admin-card`), dialog panel 14px, chip
@@ -494,6 +574,15 @@ reference in the same PR so it lands green.
 node test and a Playwright screenshot of a kitchen-sink route under
 `/settings/appearance` (already the design-system home).
 
+**Phase 1b — the API contract (in parallel with Phase 1, `api/` +
+`packages/schemas`).** Amend `PaginationMetaSchema`; add `paginate()` and the
+sort/search query schemas; move the 11 cursor routes onto the helper (byte-
+identical responses except the new `prevCursor`/`total`), convert the 2 offset
+routes, add paging to the ~10 unpaged list endpoints and the 3 capped ones;
+route every form endpoint through `parseInput`. Each route change ships with
+its DB-suite test asserting `meta` and a stable order under concurrent
+inserts. Client side: `usePagedList`, `useFormSubmit`.
+
 **Phase 2 — mechanical adoption by category (one PR per row, cross-slice).**
 
 | Sweep | Approx. sites | Risk |
@@ -508,6 +597,8 @@ node test and a Playwright screenshot of a kitchen-sink route under
 | Flatten nested containers: inner boxes → `KeyValueList`/`StatTile`/`Row`, tables out of cards | 10 files | medium (visible, screenshot every panel) |
 | Raw checkboxes/toggles → `Switch`/`Checkbox`/`ChoiceGroup`; delete `NotificationToggle` | ~15 | low |
 | `style={{ var }}` and `text-[var(` → `text-[color:var(` | 15 files | none (mechanical) |
+| List pages → `usePagedList` + `PaginationFooter` on the API contract; URL-held cursor; sortable `DataTable` headers | ~15 pages | medium (needs Phase 1b) |
+| Forms → `useFormSubmit` so API field errors land on the field | ~25 forms | low |
 
 **Phase 3 — surface-by-surface layout migration (one PR per surface).**
 Order by user-visible inconsistency, which is also the order Ondrej named:
@@ -536,7 +627,7 @@ requires.
 (`.admin-input-sm`, `.glass-panel` if auth adopts the kit), the file-local
 `rowClass`/`sectionHeadingClass`/`fieldLabelClass` constants, the duplicate
 formatters and tone maps; move this document to `docs/done/`; replace the
-"Theming / design system" bullets in `CLAUDE.md` with the scale in §4.7 and a
+"Theming / design system" bullets in `CLAUDE.md` with the scale in §4.8 and a
 one-line rule per component.
 
 Each Phase 2/3 PR is verified with headless Playwright screenshots of every
@@ -551,27 +642,52 @@ Both sessions touch the same page files, so:
   hand-rolled hero headers (`AgentsList`, `AgentDetailPage`, `ExecutorsPage`,
   `DashboardsPage`, `DashboardDetailPage`). `PageBody` is a body-only
   component and composes under any header.
-- Two decisions straddle the line and need one owner: whether list filters
-  live in the body (`ListToolbar`) or as header actions (`AlertsPage`,
-  `ThreadsPage`, `NotificationsPage` Save); and the page hero type size.
-  Recommendation: filters in-body, headers keep only actions.
+- Two items straddle the line and need one owner: moving list filters out of
+  header actions into the body (`AlertsPage`, `ThreadsPage`,
+  `NotificationsPage` Save — decided in §8, item 6), and the page hero type
+  size (theirs).
 - Phase 0 lint rules apply repo-wide and will flag `PhoneBackButton`'s raw
   colours; that file is theirs to fix or exempt.
 - Sequence Phase 3 after the navigation session's header changes have merged
   on each surface, to avoid conflicting edits in the same files.
 
-## 8. Decisions needed
+## 8. Decisions
 
-Recommendations are stated; silence means the recommendation ships.
+The governing principle, stated by Ondrej on 2026-09-01: **the best interface
+for the person using it — the most consistent and the most usable.** Every
+open question below is resolved under it; none needs a second opinion.
 
-1. **One card radius or two?** Recommend one: 12px `.admin-card`, migrating
-   the 16 inline 20px panels deliberately (Phase 3). The alternative is to
-   name the 20px card `Card variant="panel"` and keep both.
-2. **Form footer alignment.** Recommend the two-context rule (end in dialogs,
-   start for inline page forms) rather than forcing one everywhere.
-3. **Exceptions to keep and document:** `.kb-reader` paper palette,
-   `ColoursPanel` swatches, the login/bootstrap glass shell. Recommend keeping
-   the first two, and migrating login/bootstrap onto `Input`/`FormError`
-   while keeping the glass card (the two pages share byte-identical constants
-   today).
-4. **`.admin-input-sm` vs `-compact`.** Recommend retiring `-sm` (one caller).
+Decided:
+
+1. **One card radius.** 12px `.admin-card`; the 16 inline 20px panels migrate
+   in their own pinned PR. Two radii for one object is two objects.
+2. **One form footer rule.** Right-aligned everywhere, primary rightmost,
+   Cancel only when there is an edit to discard; never from the page header.
+   One rule beats a context-dependent one.
+3. **One pagination contract**, end to end, with `total` on every admin list
+   and a fixed page size of 25 (§4.7). Cursor keyset paging because it never
+   shifts rows under the reader; `total` and a range label because a person
+   should always know how much there is.
+4. **No exceptions by habit.** The knowledge reader keeps a distinct reading
+   surface but expresses it through per-theme tokens (`--reader-*`), not raw
+   hex, so it follows the chosen theme. Login and bootstrap keep their glass
+   shell and adopt `Input`/`FormField`/`FormError` inside it. `ColoursPanel`
+   swatches are data, not chrome, and stay literal.
+5. **Retire `.admin-input-sm`** (one caller) in favour of `compact`.
+6. **Filters live in the body** (`ListToolbar`), never as page-header
+   actions; the header keeps actions only. This is the only decision that
+   reaches into the navigation session's files, see below.
+7. **Loading is text, not a spinner,** except for card grids and tables that
+   earn a `Skeleton`; error always offers Retry; empty always says what to do
+   next.
+
+Still needs Ondrej, because it is not a design question:
+
+- **Arbitration with the navigation session.** Decision 6 moves the
+  "Unread only" toggles on `AlertsPage`/`ThreadsPage` and the Save action on
+  `NotificationsPage` out of the header. Those header files are theirs. One
+  of the two sessions has to be told it owns that move, and the merge order
+  on shared page files (their header first, then our body) needs to be
+  agreed rather than discovered in conflicts.
+
+Everything else in this plan proceeds without further sign-off.
