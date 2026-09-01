@@ -173,7 +173,7 @@ half-on.
 - Update `docs/functionality.md`, `docs/the-agents.md`, the Apps catalogue and
   individual-communications plans, disclosure-boundary docs,
   `docs/provider-system-and-frontend-architecture.md`, `docs/architecture.md`,
-  `docs/executor-protocol/overview.md`, `docs/running-the-apps.md`,
+  `docs/executor-protocol/overview.md`, `docs/running-the-apps/overview.md`,
   `docs/deployment.md`,
   `docs/tool-registry-spec.md`, and the relevant `CLAUDE.md`/`AGENTS.md`
   MCP/App/desktop workflow sections in the implementing changes.

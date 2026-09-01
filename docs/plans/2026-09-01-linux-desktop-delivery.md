@@ -9,7 +9,7 @@ frame. "Review and direction changes" at the end records every revision.
 a portable evaluator artifact for the shell only.
 **Related:** [2026-09-01-windows-desktop-parity.md](2026-09-01-windows-desktop-parity.md)
 (adopts the shared contracts below), [2026-06-07-native-apps-and-push.md](2026-06-07-native-apps-and-push.md)
-§"Linux desktop discovery scope", [docs/running-the-apps.md](../running-the-apps.md),
+§"Linux desktop discovery scope", [docs/running-the-apps/overview.md](../running-the-apps/overview.md),
 [docs/executor-protocol/overview.md](../executor-protocol/overview.md).
 
 ## Outcome
@@ -324,7 +324,7 @@ so on the card.
 
 ### Diagnosable failure modes
 
-`docs/running-the-apps.md` gains a Linux section with these, each with the
+`docs/running-the-apps/overview.md` gains a Linux section with these, each with the
 command that proves the cause:
 
 - **Package refuses to install** — the apt error names the missing
@@ -485,7 +485,7 @@ a clean Ubuntu 26.04 x86_64 desktop with KVM:
 - Browser SSO returns through `nessie://` to the existing authenticated app,
   including when the app is already running.
 - A running app shows a native notification for a new message; the
-  click-to-route result is recorded in `docs/running-the-apps.md`.
+  click-to-route result is recorded in `docs/running-the-apps/overview.md`.
 - The desktop app pairs, starts, stops, and reconfigures an executor on
   Linux from **Agents → Executors** with the same native confirmations as
   macOS; a host without KVM pairs as workspace-only and says so.
@@ -493,7 +493,7 @@ a clean Ubuntu 26.04 x86_64 desktop with KVM:
   systemd user service, is online after a reboot with nobody logged in, and
   stops gracefully.
 - A user-writable runtime is refused by both supervisors.
-- `docs/running-the-apps.md` documents install, upgrade, removal, the
+- `docs/running-the-apps/overview.md` documents install, upgrade, removal, the
   standalone daemon's commands, and the seven diagnosable failure modes.
 
 ## Explicit non-goals

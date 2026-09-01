@@ -56,7 +56,7 @@ const AvailabilityCard = ({ status }: { status: ExecutorCompanionStatusResponse 
     <p className="text-xs text-[color:var(--tx3)]">
       Installing, upgrading and verifying the desktop companion is documented in{' '}
       <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">
-        docs/running-the-apps.md
+        docs/running-the-apps/overview.md
       </code>
       .
     </p>

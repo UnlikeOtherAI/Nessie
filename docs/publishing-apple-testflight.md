@@ -6,7 +6,7 @@ the actual mobile app and the current Tauri desktop product, not the legacy
 
 > **Direct device delivery is different from TestFlight publishing.** When the
 > request is to put the latest Nessie build on a physical phone or tablet,
-> follow the [default direct-device delivery policy](running-the-apps.md#default-physical-device-delivery): build the self-contained `device` IPA,
+> follow the [default direct-device delivery policy](running-the-apps/overview.md#default-physical-device-delivery): build the self-contained `device` IPA,
 > install and launch it on each named device, and verify it there. Do not use an
 > Expo development client unless Metro was explicitly requested. Apple calls
 > the direct-install provisioning method Ad Hoc; it is still the normal

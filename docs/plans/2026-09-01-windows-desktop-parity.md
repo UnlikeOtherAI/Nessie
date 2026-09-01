@@ -15,7 +15,7 @@ square corners.
 — its "Shared shell contract" (custom window chrome, single instance + deep
 link, notifications, the Executors page's `availability` cards, no updater)
 and "Shared executor contract" (two supervisors, platform contract, sandbox
-backends, trust roots) are adopted here in full — [docs/running-the-apps.md](../running-the-apps.md),
+backends, trust roots) are adopted here in full — [docs/running-the-apps/overview.md](../running-the-apps/overview.md),
 [docs/executor-protocol/overview.md](../executor-protocol/overview.md).
 
 ## Outcome
@@ -205,7 +205,7 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
   the workflow runs `Get-AuthenticodeSignature` on every artifact and requires
   `Status = Valid` with the expected signer subject before any is retained.
 - **How.** Two supported configurations, one chosen and recorded in
-  `docs/running-the-apps.md`:
+  `docs/running-the-apps/overview.md`:
   1. **Azure Artifact Signing** (formerly Azure Trusted Signing) through
      `bundle.windows.signCommand` — recommended, because no private key is
      ever present on a runner and SmartScreen reputation attaches to the
@@ -237,7 +237,7 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
    `availability`, platform-aware runtime packaging. Build and run against
    `pnpm dev` on a Windows machine; headless Playwright on
    `http://localhost:5455` proves the web build is unchanged.
-2. **Signed release and CI** as above; `docs/running-the-apps.md` replaces
+2. **Signed release and CI** as above; `docs/running-the-apps/overview.md` replaces
    its two-line Windows section with install, replacement, launch, log
    collection, and signature-verification steps beside the Mac instructions.
 3. **Executor platform contract** (shared, phase 3 of the Linux plan).
@@ -286,7 +286,7 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
 - Authentication returns through `nessie://` to the existing app instance,
   including when the app was already running.
 - A running app shows native toasts; click-to-route and badge results are
-  recorded in `docs/running-the-apps.md`.
+  recorded in `docs/running-the-apps/overview.md`.
 - The desktop app pairs, starts, stops, and reconfigures an executor from
   **Agents → Executors** only on a verified release; unsigned or tampered
   builds refuse before local pairing input is read; Home edition pairs as

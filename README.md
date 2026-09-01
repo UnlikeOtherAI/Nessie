@@ -118,7 +118,7 @@ src/           TypeScript backend, orchestrator, tools, MCP, voice client
 |---|---|
 | [Deployment](docs/deployment.md) | **Production deployment** (self-hosted, Hetzner + shared Caddy) |
 | [Apple publishing & direct device delivery](docs/publishing-apple-testflight.md) | TestFlight releases and the default standalone phone/tablet delivery policy |
-| [Running the native apps](docs/running-the-apps.md#default-physical-device-delivery) | Direct installation policy and local development paths |
+| [Running the native apps](docs/running-the-apps/overview.md#default-physical-device-delivery) | Direct installation policy and local development paths |
 | [Product Brief](docs/brief.md) | Vision, modes, architecture, MVP direction |
 | [Build Plan](docs/build-ai-coworker.md) | macOS implementation plan |
 | [Remote Brief](docs/remote/brief.md) | Remote control-plane scope |

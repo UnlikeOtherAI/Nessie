@@ -23,7 +23,7 @@ pub const SERVICE_ACCOUNT: &str = r"NT SERVICE\NessieExecutor";
 /// `S-1-5-32-578`, the built-in Hyper-V Administrators alias, and the composer
 /// that reproduces it from its parts. Neither is called by the running service:
 /// the alias is named by its SID in the installer's authoring and in
-/// `docs/running-the-apps.md`, while the Win32 call below builds it from
+/// `docs/running-the-apps/overview.md`, while the Win32 call below builds it from
 /// `SECURITY_BUILTIN_DOMAIN_RID` and `DOMAIN_ALIAS_RID_HYPER_V_ADMINS`. The test
 /// at the bottom is what ties those three statements together, so a mistyped RID
 /// — which would grant far more than Hyper-V — cannot pass unnoticed.
