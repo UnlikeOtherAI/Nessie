@@ -203,7 +203,44 @@ Planned in this step: `NavigationStack` in the shell's detail column and in
 the page-owned detail columns on `split`; the thread panel as a nested stage
 on `single` and a `Sheet` on `split`.
 
-## 6. Everything else — **planned**
+## 6. Native shell contract — **built** (the two bridge pieces)
+
+The two `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7)
+calls out as their own pieces are **built**; the rest of §4.15/§4.16 (the
+`nessie:screen` message, pull-to-refresh, and every haptic *call site* other
+than the one below) stays **planned** until the pieces that call them (§4 gesture finish, step 9
+headers, step 14 shell polish) land.
+
+- **Android hardware Back installs on every Android form factor.**
+  `shouldInstallNativeBackHandler` (`mobile/src/lib/native-phone-navigation.ts`)
+  is just `isAndroid` now — it used to also require the iOS-only
+  `allowsBackForwardNavigationGestures` WebView prop to read `false`, and that
+  prop happens to read `true` past the tablet breakpoint on Android too (where
+  it has no effect), so an Android tablet had no in-app Back at all: the key
+  backgrounded the app from any depth. Consumption is unchanged
+  (`shouldConsumeNativeBack(hasBackDepth)` off the latest `nessie:back-state`).
+  Android's predictive back gesture is opted in alongside it
+  (`android.predictiveBackGestureEnabled` in `mobile/app.json`, per plan §7):
+  React Native 0.81+ (the installed `react-native` is 0.83) moved `BackHandler`
+  onto the invoked-callback-compatible path so the plain `hardwareBackPress`
+  listener keeps firing with the flag on; the system's predictive-back preview
+  only ever shows the launcher, never an in-app screen, and the in-app motion
+  stays the web stack's.
+- **`nessie:haptic { haptic }` bridge message.** `admin/src/lib/haptics.ts`
+  posts it (`haptic(kind)`, `kind` one of `light | medium | heavy | selection
+  | success | warning | error`) when running inside the native shell, and
+  falls back to the browser's own Vibration API for `warning`/`error` only
+  everywhere else. `mobile/src/lib/haptics.ts` guards the message
+  (`isHapticMessage`) and maps each kind onto one of expo-haptics'
+  `impactAsync` / `selectionAsync` / `notificationAsync` families
+  (`triggerHaptic`), wired through `native-shell-message-handler.ts` and
+  `App.tsx`. Its one caller today is `IncomingCallProvider`'s ring
+  (`warning` on native — a one-shot notification, not a repeating buzz — the
+  browser path keeps its own repeating `navigator.vibrate` pattern via the
+  same helper's fallback); the swipe-commit/sheet-snap/tab-change triggers
+  §4.15 describes are added once the controller exists to call them from.
+
+## 7. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

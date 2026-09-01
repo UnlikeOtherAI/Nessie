@@ -26,6 +26,7 @@ import {
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { shouldInstallNativeBackHandler } from './src/lib/native-phone-navigation'
 import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
@@ -41,6 +42,7 @@ import { isDark } from './src/lib/webview-inject'
 import { statusBarStyleForNativeBackdrop } from './src/lib/status-bar'
 import { openAllowedCallExternalUrl, webViewNavigationDisposition } from './src/lib/call-external-url'
 import { openConnectorAuthorizationUrl } from './src/lib/connector-authorization'
+import { triggerHaptic } from './src/lib/haptics'
 import { handleNativeShellMessage } from './src/lib/native-shell-message-handler'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
@@ -160,7 +162,7 @@ const Shell = (): React.JSX.Element => {
   })
   const bootRecovery = useNativeBootRecovery(currentPathRef)
   const phoneBack = useNativePhoneBack(
-    IS_ANDROID && !nativeBackForwardGestures,
+    shouldInstallNativeBackHandler(IS_ANDROID),
     runScript,
   )
 
@@ -316,6 +318,7 @@ const Shell = (): React.JSX.Element => {
       runScript,
       setCurrentPath,
       setIndex,
+      triggerHaptic,
     })
   }
 

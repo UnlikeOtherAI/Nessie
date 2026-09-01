@@ -8,8 +8,9 @@ import {
 import {
   isConnectorAuthorizationMessage,
 } from './connector-authorization'
+import { isHapticMessage } from './haptics'
 import { isAuthGateRoute } from './native-shell-layout'
-import type { NativeShellMessage } from './native-shell-message'
+import type { HapticKind, NativeShellMessage } from './native-shell-message'
 import { nativePushPathScript } from './native-shell'
 import { tabIndexForPath, TABS } from './tabs'
 
@@ -33,6 +34,7 @@ type Input = {
   runScript: (script: string) => void
   setCurrentPath: (path: string) => void
   setIndex: (value: number | ((current: number) => number)) => void
+  triggerHaptic: (kind: HapticKind) => void
 }
 
 /** Owns typed WebView-to-native bridge messages so the shell stays a layout. */
@@ -85,6 +87,10 @@ export const handleNativeShellMessage = (message: NativeShellMessage, input: Inp
   }
   if (message.type === 'nessie:back-state') {
     input.noteBackState(Boolean(message.hasBackDepth))
+    return
+  }
+  if (isHapticMessage(message)) {
+    input.triggerHaptic(message.haptic)
     return
   }
   if (message.type !== 'nessie:route' || typeof message.path !== 'string') return

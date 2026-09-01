@@ -29,6 +29,7 @@ import { CallRealtimeContext } from '../facades/calls/realtime-context'
 import { getBaseUrl, type CallRecord } from '../lib/api-client'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { isDesktopApp } from '../lib/desktop'
+import { haptic, stopHaptic } from '../lib/haptics'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { openExternalUrl } from '../lib/open-external-url'
 import { readSseStream, type SseFrame } from '../lib/sse'
@@ -134,9 +135,12 @@ const useRingtone = (enabled: boolean): void => {
     gain.gain.value = 0.05
     oscillator.connect(gain).connect(context.destination)
     oscillator.start()
-    navigator.vibrate?.([180, 120, 180])
+    // Native has no repeating-pattern haptic, only one-shot notifications, so
+    // a ring is a single `warning` there; the web keeps its own repeating
+    // vibrate pattern via the same helper's browser fallback.
+    haptic('warning')
     return () => {
-      navigator.vibrate?.(0)
+      stopHaptic()
       oscillator.stop()
       oscillator.disconnect()
       gain.disconnect()
