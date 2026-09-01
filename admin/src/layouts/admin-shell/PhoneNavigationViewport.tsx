@@ -14,7 +14,6 @@ import {
   useViewport,
 } from '../../hooks/useViewport'
 import {
-  getPhoneNavigationBackTarget,
   getPhoneNavigationDirection,
   type PhoneNavigationDirection,
 } from './phone-navigation'
@@ -26,7 +25,9 @@ import {
   dropPhoneNavigationEntriesAboveCurrent,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
-import { PHONE_BACK_SWIPE_UNDERLAY_TRAVEL } from './phone-navigation-gesture'
+import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { beginStackTransition } from '../../navigation/transition-state'
+import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
@@ -54,7 +55,9 @@ type ActiveTransition = {
   toLayerKey: string
 }
 
-const TRANSITION_FALLBACK_MS = 400
+// Closes the lane if the animation's finish never arrives (a discarded
+// animation, a hidden tab): the scripted duration plus slack.
+const TRANSITION_FALLBACK_SLACK_MS = 100
 
 const NavigationScreen = ({ payload }: { payload: ScreenPayload }) => (
   <UNSAFE_LocationContext.Provider value={payload.locationContext}>
@@ -77,7 +80,8 @@ export const PhoneNavigationViewport = ({
 }: PhoneNavigationViewportProps) => {
   const navigate = useNavigate()
   const navigation = usePhoneNavigation()
-  const localBackActive = Boolean(useLocalBackSnapshot()?.active)
+  // Subscribing here re-arms the gesture when an owner registers or leaves.
+  useLocalBackSnapshot()
   const reducedMotion = useViewport().media?.reducedMotion ?? false
   const locationContext = useContext(UNSAFE_LocationContext)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -200,40 +204,76 @@ export const PhoneNavigationViewport = ({
     }
   }, [commitTransition, transition])
 
-  useEffect(() => {
+  // The running phase is the one scripted motion: both layers animate on the
+  // Web Animations API from their static poses to the end poses that the
+  // finishing classes then hold. Cleanup runs when the transition state
+  // changes — in React's commit, before paint — so the static end pose is
+  // already painted when the animation's fill is released, and nothing jumps.
+  useLayoutEffect(() => {
     if (!transition || transition.phase !== 'running') return undefined
+    const viewport = viewportRef.current
+    const layer = (name: string): Element | null =>
+      viewport?.querySelector(`[data-phone-navigation-layer="${name}"]`) ?? null
+    const forward = transition.direction === 'forward'
+    const run: StackTransitionRun = runStackTransition({
+      top: layer(forward ? 'incoming' : 'outgoing'),
+      bottom: layer(forward ? 'outgoing' : 'incoming'),
+      direction: transition.direction,
+      reducedMotion,
+    })
+    const id = transition.id
+    // Anything that must not run mid-slide (a data-arrival redirect, focus
+    // after settle) waits on this signal; it ends with the transition.
+    const endTransition = beginStackTransition()
+    let closed = false
+    void run.finished.then(() => {
+      if (!closed) finishTransition(id)
+    })
     const timer = window.setTimeout(
-      () => finishTransition(transition.id),
-      TRANSITION_FALLBACK_MS,
+      () => finishTransition(id),
+      run.durationMs + TRANSITION_FALLBACK_SLACK_MS,
     )
-    return () => window.clearTimeout(timer)
-  }, [finishTransition, transition])
+    return () => {
+      closed = true
+      window.clearTimeout(timer)
+      run.cancel()
+      endTransition()
+    }
+  }, [finishTransition, reducedMotion, transition])
 
   // The finger settles first; only its completion changes the route. That
   // route commit is marked as already animated, preventing a second keyframe.
+  // The swipe drives the retained route layers, so it arms only when the one
+  // resolver answers with a route Back: an in-page owner (a column, a
+  // knowledge stage) is not a layer yet and would close in place under a
+  // slide that revealed the wrong screen. Owners join the gesture when they
+  // become nested stages (docs/navigation.md).
+  const routeBackAction = navigation?.resolveBackAction(pathname) ?? null
+  const gestureArmed = routeBackAction?.kind === 'route'
+
   const performGestureBack = useCallback(() => {
     const activeTransition = transitionRef.current
     if (activeTransition) finishTransition(activeTransition.id)
-    if (navigation) {
-      // Resolve while the gesture is still armed (and therefore while no
-      // local Back action is active), then execute that immutable route
-      // action. Re-resolving through performBack after the settle could let a
-      // newly mounted local action consume the swipe and leave the route
-      // suppression marker attached to the wrong future navigation.
-      const action = navigation.resolveBackAction(pathname)
-      if (!action) return
+    if (!navigation) {
+      // Outside the controller (isolated tests) fall back to the parent.
+      const action = resolveBack({ pathname, owners: null, ledger: null })
+      if (action?.kind !== 'route') return
       suppressNextRouteAnimation.current = action.to
-      navigation.performBackAction(action)
+      void navigate(action.to)
       return
     }
-    const target = getPhoneNavigationBackTarget(pathname)
-    if (!target) return
-    suppressNextRouteAnimation.current = target.pathname
-    void navigate(target.pathname)
+    // Resolve while the gesture is still armed, then execute that immutable
+    // action. Re-resolving through performBack after the settle could let a
+    // newly mounted owner consume the swipe and leave the route suppression
+    // marker attached to the wrong future navigation.
+    const action = navigation.resolveBackAction(pathname)
+    if (action?.kind !== 'route') return
+    suppressNextRouteAnimation.current = action.to
+    navigation.performBackAction(action)
   }, [finishTransition, navigate, navigation, pathname])
 
   const gesture = usePhoneBackSwipeGesture({
-    enabled: stack.currentIndex > 0 && transition === null && !localBackActive,
+    enabled: stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
     reducedMotion,
     viewportRef,
@@ -244,7 +284,7 @@ export const PhoneNavigationViewport = ({
     : percent(gesture.progress * 100)
   const gestureUnderlayTravel = gesture.progress === null
     ? null
-    : percent(-(1 - gesture.progress) * PHONE_BACK_SWIPE_UNDERLAY_TRAVEL * 100)
+    : percent(-(1 - gesture.progress) * NAV_MOTION.parallax * 100)
 
   const renderLayer = (index: number) => {
     const entry = stack.entries[index]
@@ -293,7 +333,7 @@ export const PhoneNavigationViewport = ({
         classes.push('phone-navigation-screen--current')
         if (gestureTopTravel !== null && stack.currentIndex > 0) {
           style = {
-            boxShadow: '-12px 0 32px var(--scrim)',
+            boxShadow: 'var(--nav-shadow)',
             transform: `translate3d(${gestureTopTravel}, 0, 0)`,
           }
         }
@@ -324,10 +364,6 @@ export const PhoneNavigationViewport = ({
         hidden={hidden || undefined}
         inert={inertLayer || undefined}
         key={entry.layerKey}
-        onAnimationEnd={(event) => {
-          if (event.currentTarget !== event.target || !transition || !isTop) return
-          finishTransition(transition.id)
-        }}
         style={style}
       >
         <NavigationScreen payload={entry.payload} />

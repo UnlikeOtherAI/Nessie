@@ -173,7 +173,7 @@ export const NewFolderRow = ({
   const doneRef = useRef(false)
 
   useEffect(() => {
-    inputRef.current?.focus()
+    inputRef.current?.focus({ preventScroll: true })
   }, [])
 
   const finish = (action: () => void) => {

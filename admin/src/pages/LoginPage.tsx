@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { useRedirect } from '../navigation/redirect'
 import { LoginSessionImportButton } from '../components/shared/LoginSessionImportButton'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
@@ -36,6 +37,7 @@ const errorBoxClass = [
 
 export const LoginPage = () => {
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const { devLogin, login, sessionState } = useAuthSession()
   const { setTheme, theme, themes } = useTheme()
   const { data: providers = [] } = useAuthProviders()
@@ -65,9 +67,9 @@ export const LoginPage = () => {
 
   useEffect(() => {
     if (sessionState === 'authenticated') {
-      void navigate('/channels', { replace: true })
+      redirect('/channels')
     }
-  }, [navigate, sessionState])
+  }, [redirect, sessionState])
 
   // Native cancel/failure results settle this screen's submitting state; the
   // successful callback URL continues through the always-mounted external-auth

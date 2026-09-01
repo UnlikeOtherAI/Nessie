@@ -7,7 +7,8 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { useRedirect } from '../navigation/redirect'
 import {
   WsEventSchema,
   parseChannelId,
@@ -153,7 +154,7 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
   const { me, token } = useAuthSession()
   const { focusModeEnabled } = useFocusMode()
   const location = useLocation()
-  const navigate = useNavigate()
+  const redirect = useRedirect()
   const currentUserId = me?.user.id ?? null
   const [state, dispatch] = useReducer(incomingCallReducer, undefined, initialReducer)
   const [now, setNow] = useState(Date.now())
@@ -334,7 +335,7 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
           const next = new URLSearchParams(location.search)
           next.delete('incomingCall')
           next.delete('acceptCall')
-          void navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' }, { replace: true })
+          redirect({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' })
         }
       }
     }
@@ -342,7 +343,7 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
     return () => {
       cancelled = true
     }
-  }, [apiClient, currentUserId, location.pathname, location.search, navigate])
+  }, [apiClient, currentUserId, location.pathname, location.search, redirect])
 
   const realtimeValue = useMemo(() => ({
     inviteUpdates: state.inviteUpdates,

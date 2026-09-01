@@ -10,12 +10,16 @@ const readSource = (relativePath: string): string =>
 
 test('every phone Back doorway renders through the one shared PhoneBackButton', () => {
   const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
-  assert.match(navigation, /useLocalBackSnapshot/)
-  // Ownership order: local registry first, the route's deterministic Back
-  // second, the section menu at tab roots.
+  // The doorway renders the one resolver's decision and never re-derives it.
+  assert.match(navigation, /resolveBackAction\(location\.pathname\)/)
+  assert.doesNotMatch(navigation, /getPhoneNavigationBackTarget/)
+  // Ownership order lives in the resolver: a registered owner first, the
+  // route's deterministic Back second, nothing at a root.
+  const resolver = readSource('../src/navigation/back.ts')
   assert.ok(
-    navigation.indexOf('if (localBack)') < navigation.indexOf('if (backTarget)'),
-    'local Back must resolve before the route provider',
+    resolver.indexOf('const owner = owners?.active')
+      < resolver.indexOf('const target = getPhoneNavigationBackTarget('),
+    'an owner must resolve before the route parent',
   )
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')

@@ -35,6 +35,7 @@ import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/too
 import type { AgentRecord } from '../lib/api-client'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 
 export const AgentDesignerPage = () => {
   const { agentId } = useParams<{ agentId?: string }>()
@@ -81,6 +82,7 @@ export const AgentDesignerContent = ({
 }: AgentDesignerContentProps) => {
   const location = useLocation()
   const navigate = useNavigate()
+  const navigation = usePhoneNavigation()
   const [searchParams] = useSearchParams()
   const isOwner = useIsOwner()
   const parentId = searchParams.get('parentId') ?? undefined
@@ -187,23 +189,14 @@ export const AgentDesignerContent = ({
     return null
   }, [location.state])
 
+  // The shared smart Back: an explicit return address wins, else a real
+  // previous entry is popped, else the list replaces the cold deep link.
   const handleBack = () => {
-    const historyIndex =
-      typeof window.history.state?.idx === 'number'
-        ? window.history.state.idx
-        : 0
-
-    if (historyIndex > 0) {
-      void navigate(-1)
+    if (navigation) {
+      navigation.back({ returnTo, fallback: '/agents' })
       return
     }
-
-    if (returnTo) {
-      void navigate(returnTo, { replace: true })
-      return
-    }
-
-    void navigate('/agents', { replace: true })
+    void navigate(returnTo ?? '/agents', { replace: true })
   }
 
   const handleSave = async () => {

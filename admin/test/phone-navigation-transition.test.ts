@@ -284,7 +284,7 @@ test('shares the phone Back control across route headers and channel flows', () 
   const composePage = readSource('../src/pages/ChannelConversationComposePage.tsx')
   const infoFlow = readSource('../src/components/features/channels/ConversationInfoFlow.tsx')
 
-  assert.match(navigationButton, /getPhoneNavigationBackTarget/)
+  assert.match(navigationButton, /resolveBackAction\(/)
   assert.match(navigationButton, /<PhoneBackButton/)
   assert.match(backButton, /useNativeIOSPhoneApp/)
   assert.match(channelHeader, /leading=\{<PhoneNavigationButton \/>\}/)
@@ -304,14 +304,47 @@ test('mounts the transition viewport only in the shell phone branch', () => {
   assert.equal(shell.indexOf('<PhoneNavigationViewport', viewport + 1), -1)
 })
 
-test('defines paired push and pop animations under the global reduced-motion rule', () => {
+test('navigation motion is scripted from static poses, never a CSS keyframe', () => {
   const styles = readSource('../src/styles.css')
 
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
-  assert.match(styles, /\.phone-navigation-screen--forward-ready/)
-  assert.match(styles, /transform: translate3d\(100%, 0, 0\)/)
-  assert.match(styles, /@keyframes phone-navigation-forward-out/)
-  assert.match(styles, /@keyframes phone-navigation-forward-in/)
-  assert.match(styles, /@keyframes phone-navigation-back-out/)
-  assert.match(styles, /@keyframes phone-navigation-back-in/)
+  // The poses a layer rests in; the travel between them is runStackTransition.
+  assert.match(styles, /\.phone-navigation-screen--forward-ready \{[\s\S]*?transform: translate3d\(100%, 0, 0\)/)
+  assert.match(styles, /\.phone-navigation-screen--underlay \{[\s\S]*?calc\(-1 \* var\(--nav-parallax\)\)/)
+  assert.equal((styles.match(/@keyframes phone-navigation-/g) ?? []).length, 0)
+  assert.doesNotMatch(styles, /\.phone-navigation-screen[^{]*\{[^}]*animation/)
+
+  const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const swipe = readSource('../src/layouts/admin-shell/use-phone-back-swipe.ts')
+  assert.match(viewport, /runStackTransition\(/)
+  assert.match(swipe, /runStackTransition\(/)
+  assert.doesNotMatch(swipe, /\.animate\(/)
+  assert.doesNotMatch(viewport, /onAnimationEnd/)
+})
+
+test('stack containers clip rather than hide, so no descendant can scroll them', () => {
+  // A hidden-overflow box is still a scroll container: TabBar's mount-time
+  // scrollIntoView() inside a screen parked at translate3d(100%) scrolled the
+  // viewport sideways, and the compositor landed the slide short by that
+  // offset until the next layout clamped it — the "bounce". `clip` is not a
+  // scroll container. Reproduction: docs/plans/2026-09-01-navigation-motion-system/repro.mjs
+  const styles = readSource('../src/styles.css')
+  const viewportRule = styles.slice(
+    styles.indexOf('.phone-navigation-viewport {'),
+    styles.indexOf('.phone-navigation-page {'),
+  )
+  assert.match(viewportRule, /\.phone-navigation-viewport \{[\s\S]*?overflow: clip;/)
+  assert.match(viewportRule, /\.phone-navigation-screen \{[\s\S]*?overflow: clip;/)
+  assert.doesNotMatch(viewportRule, /overflow: hidden/)
+
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  assert.match(shell, /<main className="min-w-0 flex-1 overflow-clip/)
+
+  const columnBrowser = readSource(
+    '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',
+  )
+  assert.match(columnBrowser, /<div className="h-full w-full overflow-clip">/)
+
+  const tabBar = readSource('../src/components/primitives/TabBar.tsx')
+  assert.doesNotMatch(tabBar, /\.scrollIntoView\(/)
+  assert.match(tabBar, /track\.scrollLeft/)
 })

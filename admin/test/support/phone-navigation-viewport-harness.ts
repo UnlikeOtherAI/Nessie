@@ -55,6 +55,62 @@ Object.defineProperty(dom.window.HTMLElement.prototype, 'clientWidth', {
   get: () => 390,
 })
 
+// jsdom has no Web Animations API. Navigation motion runs entirely on
+// element.animate() (admin/src/navigation/motion.ts), so the harness supplies
+// a timeline that finishes after the requested duration on real timers — the
+// same clock the tests' flush() waits on — and can be cancelled or finished
+// early. Tests drive transitions to completion through it, not through the
+// viewport's fallback timer.
+type FakeAnimation = {
+  currentTime: number
+  effect: { getTiming: () => { duration: number } }
+  playState: 'running' | 'finished' | 'idle'
+  onfinish: (() => void) | null
+  oncancel: (() => void) | null
+  finish: () => void
+  cancel: () => void
+}
+const fakeAnimations = new Set<FakeAnimation>()
+Object.defineProperty(dom.window.Element.prototype, 'animate', {
+  configurable: true,
+  writable: true,
+  value: function animate(
+    this: Element,
+    _keyframes: unknown,
+    options?: number | { duration?: number | string },
+  ): FakeAnimation {
+    const duration = typeof options === 'number'
+      ? options
+      : Number(options?.duration ?? 0)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const animation: FakeAnimation = {
+      currentTime: 0,
+      effect: { getTiming: () => ({ duration }) },
+      playState: 'running',
+      onfinish: null,
+      oncancel: null,
+      finish: () => {
+        if (animation.playState !== 'running') return
+        if (timer) clearTimeout(timer)
+        animation.playState = 'finished'
+        animation.currentTime = duration
+        fakeAnimations.delete(animation)
+        animation.onfinish?.()
+      },
+      cancel: () => {
+        if (animation.playState === 'idle') return
+        if (timer) clearTimeout(timer)
+        animation.playState = 'idle'
+        fakeAnimations.delete(animation)
+        animation.oncancel?.()
+      },
+    }
+    fakeAnimations.add(animation)
+    timer = setTimeout(() => animation.finish(), duration)
+    return animation
+  },
+})
+
 const React = await import('react')
 const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useRedirect } from '../../navigation/redirect'
 import { Switch } from '../../components/primitives/Switch'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -34,6 +35,7 @@ export const StatusesPage = () => {
   const { statusId } = useParams()
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
+  const redirect = useRedirect()
   const { data: statuses = [] } = useStatuses()
   const { data: channels = [] } = useChannels()
   const { data: projects = [] } = useProjects()
@@ -82,9 +84,9 @@ export const StatusesPage = () => {
     // and then re-slide it on every Back — the reader could never leave.
     // Wider layouts keep the convenience because the list stays beside it.
     if (!phoneLayout && !statusId && statuses[0]) {
-      navigate(`/settings/statuses/${statuses[0].id}`, { replace: true })
+      redirect(`/settings/statuses/${statuses[0].id}`)
     }
-  }, [navigate, phoneLayout, statusId, statuses])
+  }, [phoneLayout, redirect, statusId, statuses])
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
