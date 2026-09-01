@@ -689,12 +689,11 @@ label metadata proves them; otherwise do a bounded re-sync after consent. The
 current `syncEnabled=true` default is never reinterpreted as renewed mailbox
 consent.
 
-Refactor the route-owned comms OAuth workflow into a shared service, then bind
-its state to the setup request/attempt revision and structured origin anchor.
-Provider denial consumes the attempt; callback errors are sanitized; the
-callback never trusts an arbitrary return URL or starts a run. Web/native return
-signals refetch the request and the signed-in client finalizes it exactly like
-the generic Apps path.
+Refactor the route-owned comms OAuth workflow into a shared service, then bind its state to the
+setup request/attempt revision and structured origin anchor. Provider denial consumes the
+attempt; callback errors are sanitized; the callback never trusts an arbitrary return URL or
+starts a run. Web/native return signals refetch the request and the signed-in client finalizes
+it exactly like the generic Apps path.
 
 Ship these agent-facing Gmail tools against the first-party connector:
 
@@ -914,19 +913,17 @@ is already verified.
 
 ## Authorization and security invariants
 
-- UOA remains the sole identity and membership authority. Persist stable local
-  references only; resolve live membership/roles for every click, grant and
-  continuation. Do not copy email, display name, avatar, org or team hierarchy
-  into the request.
+- UOA remains the sole identity and membership authority: persist stable local references only,
+  resolve live membership/roles for every click, grant and continuation, and never copy email,
+  display name, avatar, org or team hierarchy into the request.
 - A request id is not a capability token. Every route loads it within the
   caller's organization, checks thread entitlement, and separately requires
   `requestedByUserId` for action controls.
-- Candidate ids, selected app, agent id, install scope, connection id and grant
-  keys are re-resolved server-side. Client/message/model values never widen
-  authority.
-- Authorization URLs are returned only as an immediate action response, never
-  stored in message metadata, request JSON, audit metadata, logs, analytics or
-  push payloads. OAuth state remains random, one-shot and short-lived.
+- Candidate ids, selected app, agent id, install scope, connection id and grant keys are
+  re-resolved server-side; client/message/model values never widen authority.
+- Authorization URLs are returned only as an immediate action response, never stored in message
+  metadata, request JSON, audit metadata, logs, analytics or push payloads. OAuth state remains
+  random, one-shot and short-lived.
 - All MCP, authorization, token and redirect endpoints continue through the
   shared SSRF/IP-pinning and redirect policy. The chat layer never calls a URL
   itself.
