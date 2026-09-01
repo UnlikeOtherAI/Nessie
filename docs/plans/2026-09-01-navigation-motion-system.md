@@ -196,7 +196,52 @@ the surface registry (§4.1), and everything else is derived.
 | **Nested detail** | a push from a Detail: channel info → members → add; app → connect flow; folder → document → history → editor; workflow → installation → run; `/ops` → `/ops/usage`; `/settings/statuses` → `:id` | single: pushed; split: pushed **inside the detail column** (list stays) | push / pop | to the previous stage |
 | **Tab host** | a Detail whose sections swap in place: channel Messages/Files/Automations/Agents; project Overview…Settings; agent detail; app detail; executor detail; appearance; knowledge view mode; DeepWater panel | same as its Detail | none (pill slide only) | not a stage; Back leaves the host |
 | **Flow** | a full-screen form or wizard: compose message, document stream, task, launchers, trigger editor, avatar crop, session debug, connect | single: a pushed screen; split: a centred panel | push / pop when a screen; open / close when a panel | closes the flow |
-| **Overlay** | dialog, confirm, drawer, popover, sheet, viewer, search | same at every layout | open / close | closes the overlay, and nothing else |
+| **Overlay** | anything painted over the current stage: modal, sheet, popover, card (§3.1) | same at every layout, presentation per kind | open / close per kind | closes the overlay, and nothing else |
+
+### 3.1 The overlay family
+
+Overlays are not one thing. The census found 50 of them plus the toast stack,
+the call banner and the incoming-call dialog, using fourteen different
+z-index values and five different dismissal contracts. They become four
+kinds, each with one primitive, one motion, one stacking layer and one Back
+rule:
+
+| kind | examples today | anchoring | motion (tokens §4.5) | dismiss | Back / Escape | layer |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Modal** | the 32 centred dialogs and confirms, flow panels on `split`, croppers, viewers, session debug | centred over a scrim; `full` on `single` for viewers and flows | fade + 4 px rise, `--overlay-duration` | close, scrim press-and-release, Escape | registers with the Back registry while open; hardware Back and the edge swipe close it | `--layer-modal` |
+| **Sheet** | the 8 drawers: nav drawer, attachments, agent/user info, agent quick view, thread panel on 900–1279 px, design assistant | edge-anchored (left, right, bottom); `full` width on `single` | slide from its edge, `--drawer-duration`, `--nav-easing` | close, scrim, Escape, swipe toward its edge | registers with Back; one sheet at a time | `--layer-sheet` |
+| **Popover** | account, workspace, create, header menus, alerts bell, emoji and assignee pickers, model combobox, wikilink suggestions, status picker, reaction "who", rail tooltips, header overflow | anchored to a trigger, flipped and clamped to the viewport by one placement helper | fade + 4 px rise, `--popover-duration` | outside press, Escape, trigger toggle | registers with Back **only on `single`** (Android hardware Back closes a menu, never leaves the page); Escape always | `--layer-popover` |
+| **Card** | the toast stack (`NotificationsProvider`, one `ToastViewport`), the in-conversation call banner, the incoming-call ring, the rolling document-stream chips | a fixed viewport region: top-right on `split`, above the tab bar on `single`; the call banner is in-flow in its conversation | slide in from its edge and fade, `--card-duration`; auto-dismiss timer unchanged | tap (opens its target through the controller), dismiss button, timer | never owns Back; never traps focus; `role="status"` stays | `--layer-card` |
+
+Rules for the family:
+
+- **One primitive per kind**: `Modal` (the existing `Dialog`, extended),
+  `Sheet`, `Popover`, `Card`. The fourteen bespoke dialogs and the six
+  overlays with no Escape or focus trap adopt the primitive or keep a
+  carve-out comment naming why (`CLAUDE.md` already lists the legitimate ones:
+  edge-anchored drawers, the full-screen search overlay, the scroll-locking
+  attachment viewer, and the two dialogs that branch their scrim on phone —
+  all four become `Sheet`/`Modal` presentations rather than carve-outs).
+- **One layer scale** replaces `z-40 … z-[110]`, `9999`, `10000`:
+  `--layer-stack` (the navigation layers), `--layer-card`, `--layer-popover`,
+  `--layer-sheet`, `--layer-modal`, `--layer-blocking` (leave-confirm over a
+  streaming document). A card never covers a modal; a popover opened from a
+  modal renders above it because it is portaled into the modal's layer root.
+- **Stacking is explicit.** A modal over a modal (app connect → secret) is a
+  Flow step, not two modals; the primitive refuses to open a second modal and
+  the flow advances in place. A confirm inside a modal (channel settings →
+  archive) is the one sanctioned nesting and renders in `--layer-blocking`.
+- **Every overlay closes through the same registry the stack uses**, so
+  hardware Back, the header button, the edge swipe and Escape agree, and an
+  open overlay is closed before any route change is allowed to slide.
+- **Cards are the one overlay that is transition-aware in the other
+  direction**: a card that arrives during a push waits for the settle before
+  sliding in, so two motions never run at once on a phone.
+- **Placement is one helper.** The popover flip/clamp logic that exists five
+  times (`WorkspaceMenu`, `ReactionPills`, `StatusEmojiPicker`,
+  `WikilinkSuggestionMenu`, `ResponsivePageHeader`) becomes `placePopover`,
+  and the toast viewport's own `max-width: 639.98px` media query — one more
+  breakpoint fork — is replaced by the shell's `navigation` value.
 
 Rules that fall out of the table:
 
@@ -326,8 +371,11 @@ One source of numbers, exposed as CSS tokens so CSS and JS cannot drift:
 | `--nav-easing` | `cubic-bezier(0.22, 1, 0.36, 1)` | the same three, and drawers |
 | `--nav-parallax` | 0.28 | the underlay |
 | `--nav-shadow` | `-12px 0 32px var(--scrim)` | the top layer's edge |
-| `--overlay-duration` | 150 ms | dialog / popover open and close (fade + 4 px rise, no scale) |
-| `--drawer-duration` | 250 ms | drawers and sheets |
+| `--overlay-duration` | 150 ms | modal open and close (fade + 4 px rise, no scale) |
+| `--popover-duration` | 120 ms | popovers, menus, pickers, tooltips |
+| `--drawer-duration` | 250 ms | sheets and drawers, on `--nav-easing` |
+| `--card-duration` | 200 ms | toast and notification cards, call banner, ring |
+| `--layer-*` | stack < card < popover < sheet < modal < blocking | every overlay's z-index; no literal z-index outside these |
 
 `prefers-reduced-motion` sets every duration to 0 through the same code path:
 the transition still runs, still settles, still commits; it just takes no
@@ -335,16 +383,32 @@ time. The blanket 0.01 ms CSS rule is replaced by the tokens reading the media
 query. The gesture's commit thresholds are unchanged (the gesture test pins
 that).
 
-### 4.6 `Overlay` base and `Flow`
+### 4.6 The overlay primitives and `Flow`
 
-`Dialog.tsx` stays the one centred shell and gains: open/close motion on the
-tokens, registration with the Back registry while open, and `presentation:
-'panel' | 'screen'` so a Flow can render through it as a panel on `split`.
-The eight drawers converge on one `Drawer` primitive (side, width, motion on
-the tokens, registry registration, Escape, focus trap). The fourteen fully
-bespoke dialogs either adopt `Dialog` or keep their carve-out with a comment
-that names why (`CLAUDE.md` already lists the legitimate carve-outs). Six
-overlays with no Escape or focus trap get both for free.
+Four primitives, one per kind in §3.1, all in `components/overlays/`, all
+composing the same `useOverlay({ kind, onClose, backOwnership })` hook that
+does the shared work once: registry registration, Escape, focus trap and
+restore (modal and sheet only), scrim press-and-release, layer assignment,
+and the open/close motion on the kind's token with reduced motion at 0 ms.
+
+- **`Modal`** is `Dialog.tsx`, extended with motion, registry, and
+  `presentation: 'panel' | 'full'`, so a Flow renders through it as a panel
+  on `split` and as a full screen on `single` (compose, document stream,
+  task, launchers, trigger editor, connect).
+- **`Sheet`** replaces the eight hand-rolled drawers: `side`, `size`, a
+  swipe-to-close along its axis on touch, and `full` width on `single`.
+- **`Popover`** replaces every menu, picker and tooltip: `anchor`,
+  `placement`, the one `placePopover` helper, outside-press and Escape, and
+  Back registration only on `single`.
+- **`Card`** replaces the toast markup and hosts the call banner and the
+  incoming-call ring: a single `CardViewport` per shell decides the region
+  from `navigation`, queues cards during a stack transition, and keeps the
+  existing auto-dismiss and tap-to-open behaviour, routed through the
+  controller so a tapped card pushes like any link.
+
+Six overlays with no Escape or focus trap today get both from the hook.
+`useModalA11y` and `useOverlayDismiss` become the internals of `useOverlay`
+rather than things a component may compose on its own.
 
 ### 4.7 Scroll and focus discipline
 
@@ -414,8 +478,13 @@ level. Commit and push per step.
    `knowledge-local-back.test.ts` against the registry.
 7. **Tab hosts.** One state model (URL param, `replace`) for all fifteen
    strips; project section switch uses `replace`.
-8. **Overlays and Flows.** `Dialog` motion + registry; one `Drawer`; Flows
-   present per layout; the fourteen bespoke dialogs adopt or justify.
+8. **Overlays and Flows.** The layer scale first (a pure token swap, no
+   behaviour change); then `useOverlay` + `Modal`; then `Sheet` (eight
+   drawers), `Popover` (menus, pickers, tooltips, one placement helper),
+   `Card` (toasts, call banner, incoming-call ring); Flows present per
+   layout; the fourteen bespoke dialogs adopt or justify. Rewrite
+   `dialog-shell.test.ts` against `useOverlay`; add one test per kind that
+   Back closes it before any route change.
 9. **Docs.** `CLAUDE.md` → "Theming / design system" gains "One navigation
    stack" and "One motion spec"; `AGENTS.md` Rule zero point 4 cites it;
    `docs/plans/2026-08-13-responsive-coherence.md` Phase 5 marked delivered by
