@@ -6,9 +6,11 @@ icon beside the clock, the desktop app can enable itself as an executor, and
 the window is fully custom chrome. "Review and direction changes" at the end
 records every revision.
 **Owner:** Desktop
-**Target:** signed Windows 11 x86_64 release — the Nessie desktop app (NSIS
-per-user installer supported; MSI for managed deployment) and the standalone
-**Nessie Executor** MSI.
+**Target:** signed Windows x86_64 release for Windows 11 and Windows 10 —
+the Nessie desktop app (NSIS per-user installer supported; MSI for managed
+deployment) and the standalone **Nessie Executor** MSI. Windows 11 is the
+modern reference presentation; Windows 10 gets the same custom chrome with
+square corners.
 **Related:** [2026-09-01-linux-desktop-delivery.md](2026-09-01-linux-desktop-delivery.md)
 — its "Shared shell contract" (custom window chrome, single instance + deep
 link, notifications, the Executors page's `availability` cards, no updater)
@@ -47,16 +49,29 @@ no CI job, and a companion that refuses every platform but macOS.
 
 The shared shell contract applies. Windows-specific facts:
 
-- **Window.** `decorations: false` and `shadow: true`. Tauri's config
-  documents that an undecorated window then has "a 1px white border, and on
-  Windows 11, it will have a rounded corners" with the OS shadow — which is why
-  Windows 11 is the target and the window is not transparent (a transparent
-  window loses the DWM shadow). `DesktopWindowFrame` renders the drag strip,
-  Nessie's own minimize / maximize / close at the top right, and the resize
-  handles; maximized and fullscreen windows are square-cornered by the OS.
-  Snap Layouts' hover flyout does not appear over a custom maximize button;
+- **Window.** `decorations: false` and `shadow: true` on both Windows
+  versions. Tauri's config documents that an undecorated window then has "a
+  1px white border, and on Windows 11, it will have a rounded corners" with
+  the OS shadow. `DesktopWindowFrame` renders the drag strip, Nessie's own
+  minimize / maximize / close at the top right, and the resize handles;
+  maximized and fullscreen windows are square-cornered by the OS. Snap
+  Layouts' hover flyout does not appear over a custom maximize button;
   Win+Arrow snapping still works. Default 1280 × 800, minimum 1024 × 700,
   `#2e1132` while the hosted admin loads.
+  - **Windows 11:** rounded corners and shadow, both drawn by the Desktop
+    Window Manager. Microsoft's rounded-corner guidance says the system rounds
+    top-level windows on Windows 11 and, for a customized frame, the
+    `DWMWA_WINDOW_CORNER_PREFERENCE` opt-in is the hint — which is what
+    Tauri's `shadow: true` path relies on.
+  - **Windows 10:** the same frameless custom chrome, square corners, OS
+    shadow. Windows 10's DWM never rounds a top-level window, and Microsoft
+    documents the only alternative — per-pixel alpha layering, which is what a
+    transparent window with painted corners is — as a window "the system
+    cannot round" that also gives up the system shadow. A square, shadowed,
+    fully custom window is the better Windows 10 result than a rounded one
+    with no shadow, so the window is not transparent on either version and no
+    per-version code exists in the frame: the OS decides the corner shape.
+    Decided 2026-09-01 after Ondrej asked for Windows 10 support.
 - **No console.** `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`
   in `main.rs` already keeps release launches console-free; `tauri dev`
   showing a terminal is normal.
@@ -238,9 +253,11 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
    control protocol, `nessie-executor-tray.exe`, the MSI with account,
    Hyper-V group, GUID registration, DACLs, and login start.
 7. **Release acceptance on a real Windows 11 Pro desktop:**
-   1. Install the app; Start shows Nessie; one frameless rounded window with
-      Nessie's controls, no console; drag, resize from every edge, double-click
-      to maximize (square), restore (round), F11, close.
+   1. Install the app; Start shows Nessie; one frameless window with Nessie's
+      controls, no console — rounded with a shadow on Windows 11, square with
+      a shadow on Windows 10; drag, resize from every edge, double-click to
+      maximize (square), restore, F11, close. Steps 1–4 and 8–9 repeat on a
+      Windows 10 22H2 machine.
    2. Sign in through the browser; the window returns authenticated. Start a
       second sign-in with the app open; it completes in the existing window.
    3. Launch again from Start; the existing window is focused.
@@ -262,9 +279,10 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
 
 ## Acceptance checklist
 
-- Signed Windows 11 x86_64 NSIS installer (and MSI) opens Nessie from Start
-  without a console in a frameless, rounded, shadowed window with Nessie's own
-  controls, and points production traffic at `https://app.nessie.works`.
+- Signed Windows x86_64 NSIS installer (and MSI) opens Nessie from Start
+  without a console in a frameless, shadowed window with Nessie's own
+  controls — rounded on Windows 11, square on Windows 10 — and points
+  production traffic at `https://app.nessie.works`.
 - Authentication returns through `nessie://` to the existing app instance,
   including when the app was already running.
 - A running app shows native toasts; click-to-route and badge results are
@@ -289,7 +307,8 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
   pairing material in the hosted service.
 - Executor controls from an unsigned or tampered build; calling a manually
   built unsigned installer a production release.
-- Windows 10, ARM64 Windows, or an in-app updater in this release.
+- Rounded corners on Windows 10 through a transparent window; ARM64 Windows;
+  an in-app updater in this release.
 
 ## Review and direction changes (2026-09-01)
 
@@ -304,6 +323,10 @@ and firmware virtualization; Home edition pairs as `workspace_only`.
   Windows title bar; replaced by the frameless `DesktopWindowFrame` with
   `shadow: true`, which Tauri documents as rounding an undecorated window on
   Windows 11.
+- **Windows 10 stays supported.** An interim revision made Windows 11 the
+  only target because of the corner rounding; Ondrej asked for Windows 10.
+  Frameless custom chrome works there; only the corners differ (square, with
+  the OS shadow), by the OS's decision rather than ours.
 
 **Findings from reviewing the first draft against the code and current
 third-party documentation:**
