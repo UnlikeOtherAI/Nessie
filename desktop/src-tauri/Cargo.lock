@@ -2139,6 +2139,7 @@ name = "nessie-desktop"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "nessie-windows-provenance",
  "serde",
  "serde_json",
  "sha2",
@@ -2149,6 +2150,13 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nessie-windows-provenance"
+version = "0.1.0"
+dependencies = [
  "windows-sys 0.61.2",
 ]
 

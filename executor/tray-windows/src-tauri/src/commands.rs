@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 
+use nessie_windows_common::SERVICE_ACCOUNT;
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_opener::OpenerExt;
@@ -19,7 +20,7 @@ use crate::{
     grant::request_workspace_grant,
     invitation::parse_invitation,
     pipe_client::call,
-    service_identity::{EXECUTORS_URL, LOGS_DIRECTORY, SERVICE_ACCOUNT, SERVICE_DIRECTORY_NAME},
+    service_identity::{EXECUTORS_URL, LOGS_DIRECTORY, SERVICE_DIRECTORY_NAME},
     state::ServiceView,
 };
 

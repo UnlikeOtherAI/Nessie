@@ -1,0 +1,15 @@
+[package]
+name = "nessie-windows-common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The names and SID conversion the Nessie Executor service and tray both depend on."
+
+# Only the Win32 surface the SID rendering needs. Everything else in this crate
+# is portable, so it is tested on any host.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+] }

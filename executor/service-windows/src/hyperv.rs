@@ -16,10 +16,6 @@
 //! so it is resolved from its well-known SID), and fail a reinstall (an account
 //! already in the group is the desired state, not an error).
 
-/// The account the service runs as. Windows creates it when the service is
-/// installed with this name and no password.
-pub const SERVICE_ACCOUNT: &str = r"NT SERVICE\NessieExecutor";
-
 /// `S-1-5-32-578`, the built-in Hyper-V Administrators alias, and the composer
 /// that reproduces it from its parts. Neither is called by the running service:
 /// the alias is named by its SID in the installer's authoring and in
@@ -52,7 +48,7 @@ mod imp {
         DOMAIN_ALIAS_RID_HYPER_V_ADMINS, SECURITY_BUILTIN_DOMAIN_RID,
     };
 
-    use super::SERVICE_ACCOUNT;
+    use nessie_windows_common::SERVICE_ACCOUNT;
 
     fn wide(value: &str) -> Vec<u16> {
         std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
@@ -186,7 +182,7 @@ pub use imp::join_hyperv_administrators;
 
 #[cfg(test)]
 mod tests {
-    use super::{well_known_sid_string, HYPERV_ADMINISTRATORS_SID, SERVICE_ACCOUNT};
+    use super::{well_known_sid_string, HYPERV_ADMINISTRATORS_SID};
 
     /// The installer's registry authoring, this module's Win32 call, and the
     /// documentation all name the same alias. This is where they meet.
@@ -198,12 +194,5 @@ mod tests {
         // Not the Administrators alias: a mistyped RID would silently grant far
         // more than Hyper-V.
         assert_ne!(well_known_sid_string(5, &[32, 544]), HYPERV_ADMINISTRATORS_SID);
-    }
-
-    /// The virtual account's name is derived by Windows from the service name,
-    /// so the two have to agree exactly.
-    #[test]
-    fn the_service_account_is_the_virtual_account_of_this_service() {
-        assert_eq!(SERVICE_ACCOUNT, format!(r"NT SERVICE\{}", crate::service::SERVICE_NAME));
     }
 }

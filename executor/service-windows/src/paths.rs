@@ -22,6 +22,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use nessie_windows_common::is_sid_string;
+
 use crate::protocol::valid_identifier;
 
 /// The service's own directory name under `%ProgramData%`.
@@ -123,24 +125,11 @@ pub fn control_client_sids(root: &Path) -> Vec<String> {
     sids
 }
 
-/// A SID in its string form, checked before it is ever handed to Win32 or used
-/// as a file name: `S-1-` followed by dash-separated decimal parts.
-pub fn is_sid_string(value: &str) -> bool {
-    let Some(rest) = value.strip_prefix("S-1-") else {
-        return false;
-    };
-    !rest.is_empty()
-        && value.len() <= 187
-        && rest.split('-').all(|part| {
-            !part.is_empty() && part.len() <= 20 && part.bytes().all(|byte| byte.is_ascii_digit())
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        control_client_sids, executor_state_dir, has_executor_state, is_sid_string,
-        paired_executors, EXECUTOR_STATE_FILE, PAIRED_BY_FILE,
+        control_client_sids, executor_state_dir, has_executor_state, paired_executors,
+        EXECUTOR_STATE_FILE, PAIRED_BY_FILE,
     };
     use std::fs;
 
@@ -194,23 +183,5 @@ mod tests {
         )
         .expect("the recorded SID must be writable");
         assert_eq!(control_client_sids(root), vec![SID.to_owned(), other.to_owned()]);
-    }
-
-    #[test]
-    fn only_a_well_formed_sid_string_is_accepted() {
-        assert!(is_sid_string(SID));
-        assert!(is_sid_string("S-1-5-32-544"));
-        for value in [
-            "",
-            "S-1-",
-            "s-1-5-32-544",
-            "S-1-5-32-",
-            "S-1-5--544",
-            "S-1-5-32-544; DROP",
-            "Everyone",
-            "..\\..\\windows",
-        ] {
-            assert!(!is_sid_string(value), "SID {value:?} must be refused");
-        }
     }
 }
