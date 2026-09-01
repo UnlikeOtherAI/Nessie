@@ -35,5 +35,8 @@ executor/vm/.build/
 # Provisioning profiles are release inputs, never repository content.
 desktop/src-tauri/appstore/
 
+# Desktop shell icons are release inputs compiled into the binary
+!desktop/src-tauri/icons/*.png
+
 # Agent worktrees created by Claude Code tooling
 .claude/worktrees/

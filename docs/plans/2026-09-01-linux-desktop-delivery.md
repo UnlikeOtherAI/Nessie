@@ -92,6 +92,10 @@ bar with traffic lights and the OS's own rounded corners; it is unchanged.
 - **Size and colour are shared:** 1280 × 800 default, 1024 × 700 minimum,
   `#2e1132` behind the document while the hosted admin loads (on Linux this is
   the app root's own background, since the window itself is transparent).
+  Tauri merges `tauri.<platform>.conf.json` with JSON Merge Patch, and a
+  patched array replaces the base array, so each platform file restates the
+  complete `main` window; a Rust unit test (`shell.rs`) fails if the shared
+  half of those three statements drifts.
 
 ### Sign-in and second launch
 
