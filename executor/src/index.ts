@@ -6,6 +6,12 @@ import {
   configureExecutorLocalPolicy,
   pairExecutor,
 } from './pair.js'
+import { assertPackagedExecutorRuntime } from './runtime-integrity.js'
+import {
+  disableExecutorService,
+  enableExecutorService,
+  executorServiceStatus,
+} from './service-linux.js'
 import { loadExecutorState } from './state-store.js'
 
 type ParsedCommand =
@@ -41,6 +47,9 @@ type ParsedCommand =
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; parentLivenessFromStandardInput?: true; stateDir: string }
+  | { assumeYes: boolean; executorId: string; kind: 'enable'; stateDir?: string }
+  | { executorId: string; kind: 'disable' }
+  | { executorId?: string; kind: 'status'; stateRoot?: string }
 
 const usage = (): never => {
   throw new Error(
@@ -61,8 +70,17 @@ const usage = (): never => {
     + '--auth-profile <absolute-owner-only-auth.json> --guest-initrd-builder <absolute-owner-only-file> '
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
-    + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
+    + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor enable <executorId> [--state-dir <owner-only-path>] [--yes]\n'
+    + '       nessie-executor disable <executorId>\n'
+    + '       nessie-executor status [<executorId>] [--state-root <owner-only-path>]',
   )
+}
+
+const positional = (args: string[]): string => {
+  const value = args[1]
+  if (!value || value.startsWith('--')) return usage()
+  return value
 }
 
 const option = (args: string[], name: string): string => {
@@ -189,6 +207,25 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'enable') {
+    return {
+      assumeYes: args.includes('--yes'),
+      executorId: positional(args),
+      kind: 'enable',
+      ...(args.includes('--state-dir') ? { stateDir: option(args, '--state-dir') } : {}),
+    }
+  }
+  if (command === 'disable') {
+    return { executorId: positional(args), kind: 'disable' }
+  }
+  if (command === 'status') {
+    const named = args[1] !== undefined && !args[1].startsWith('--')
+    return {
+      ...(named ? { executorId: positional(args) } : {}),
+      kind: 'status',
+      ...(args.includes('--state-root') ? { stateRoot: option(args, '--state-root') } : {}),
+    }
+  }
   if (command === 'serve') {
     return {
       kind: 'serve',
@@ -215,6 +252,18 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write(
       `Pairing request submitted. Confirm fingerprint ${paired.fingerprint} in Nessie, then run connect.\n`,
     )
+    return
+  }
+  if (command.kind === 'enable') {
+    await enableExecutorService(command)
+    return
+  }
+  if (command.kind === 'disable') {
+    await disableExecutorService(command)
+    return
+  }
+  if (command.kind === 'status') {
+    await executorServiceStatus(command)
     return
   }
   const state = await loadExecutorState(command.stateDir)
@@ -256,6 +305,9 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write('Executor heartbeat accepted.\n')
     return
   }
+  // A packaged daemon proves its release integrity before it serves anything;
+  // outside a package this is a no-op (see runtime-integrity.ts).
+  await assertPackagedExecutorRuntime()
   await serveExecutor(command.stateDir, state, {
     ...(command.parentLivenessFromStandardInput ? { parentLiveness: process.stdin } : {}),
   })
