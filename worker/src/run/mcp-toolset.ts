@@ -1,6 +1,8 @@
 import {
   buildAuthorizedTransport,
   EnvSecretResolver,
+  fingerprintMcpToolDescriptor,
+  mcpToolDescriptorAnnotationsFromMetadata,
   mcpAuthRequiresCredential,
   resolveCredentialRefWithSource,
   type SecretResolver,
@@ -45,8 +47,10 @@ type RegistryRow = {
   label: string
   description: string
   inputSchema: unknown
+  outputSchema: unknown
   transportConfig: unknown
   metadata: unknown
+  grants: Array<{ agentId: string | null; config: unknown; state: string }>
   mcpInstanceId: string | null
   mcpInstance: {
     credentialRef: string | null
@@ -211,8 +215,17 @@ export const buildMcpToolset = async (
       label: true,
       description: true,
       inputSchema: true,
+      outputSchema: true,
       transportConfig: true,
       metadata: true,
+      grants: {
+        where: {
+          agentId: runtimeContext.agentId,
+          roleId: null,
+          state: 'allowed',
+        },
+        select: { agentId: true, config: true, state: true },
+      },
       mcpInstanceId: true,
       mcpInstance: {
         select: {
@@ -260,6 +273,8 @@ export const buildMcpToolset = async (
 
   for (const row of orderedRows) {
     if (!row.mcpInstanceId || !row.mcpInstance) continue
+    const originalToolName = extractOriginalToolName(row)
+    if (!originalToolName) continue
     const deepWater = isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry)
     if (
       !isMcpRegistryRowExposed(
@@ -268,13 +283,20 @@ export const buildMcpToolset = async (
         row.mcpInstance,
         runScope,
         row.metadata,
+        row.grants,
+        runtimeContext.agentId,
+        fingerprintMcpToolDescriptor({
+          annotations: mcpToolDescriptorAnnotationsFromMetadata(row.metadata),
+          description: row.description,
+          inputSchema: row.inputSchema,
+          name: originalToolName,
+          outputSchema: row.outputSchema,
+        }),
       )
     ) {
       continue
     }
 
-    const originalToolName = extractOriginalToolName(row)
-    if (!originalToolName) continue
     const exposedName = allocateExposedName(originalToolName, deepWater)
 
     const credential = deepWater

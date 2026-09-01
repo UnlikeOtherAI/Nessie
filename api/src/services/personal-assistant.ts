@@ -8,6 +8,8 @@ import {
   mergeGenericAgentToolPolicy,
 } from '@nessie/workspace-admin'
 
+import { reconcilePersonalAssistantDefaultToolGrants } from './personal-assistant-default-tool-grants.js'
+
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_CHANNEL_TYPE = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
@@ -169,7 +171,11 @@ export const ensurePersonalAssistantAgent = async (
           safeConfig,
           current,
         ),
-        select: { id: true },
+        select: { id: true, organizationId: true },
+      })
+      await reconcilePersonalAssistantDefaultToolGrants(tx, {
+        agentId: agent.id,
+        organizationId: agent.organizationId,
       })
       return parseAgentId(agent.id)
     }
@@ -179,7 +185,11 @@ export const ensurePersonalAssistantAgent = async (
     }
     const agent = await tx.agent.create({
       data: createPersonalAssistantAgentData(organizationId, config),
-      select: { id: true },
+      select: { id: true, organizationId: true },
+    })
+    await reconcilePersonalAssistantDefaultToolGrants(tx, {
+      agentId: agent.id,
+      organizationId: agent.organizationId,
     })
     return parseAgentId(agent.id)
   })

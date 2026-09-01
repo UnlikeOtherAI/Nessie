@@ -163,6 +163,13 @@ final application has a matching Developer ID signature, including the packaged
 executor runtime. Do not replace the app with an ad-hoc-signed copy after this
 step: its executor controls will intentionally remain unavailable.
 
+For Nessie releases, do not create, install, or describe an ad-hoc-signed app as
+a usable desktop release unless Ondrej explicitly requests that kind of build.
+Before installing an executor-capable build, verify it with
+`codesign --verify --deep --strict` and confirm its authority is `Developer ID
+Application` with the configured signing team. If the certificate or private key
+is absent, leave the installed app untouched and report the signing blocker.
+
 ### Mac TestFlight
 
 Mac TestFlight uses a separate, sandboxed build configuration. It loads the

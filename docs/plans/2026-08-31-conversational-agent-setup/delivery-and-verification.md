@@ -27,26 +27,64 @@ duplicate any of them.
 
 ### Slice 1 — shared contracts and no-behaviour-change refactor
 
+Partial implementation (2026-09-01): the durable
+`AgentAppConnectionRequest` data model and strict first-party
+`AppSetupCardSchema` contract are in place. No request tool, route, card UI,
+OAuth flow, or automatic connection action is exposed by that foundation.
+
+The owner-controlled early-access prerequisite is also in place: every
+organization starts disabled, its summary exposes the read-only state, and
+only a live organization owner can change it at
+`/settings/organization#early-access`. The request tool and every connection
+action remain unimplemented and unavailable while the remaining slices are
+built.
+
 - Add the dedicated organization early-access column,
   `/settings/organization#early-access` switch, live-owner-only dedicated
   endpoint, read-only member DTO field, API/worker gate and disabled-state
   presenter before any setup tool is registered.
+- Make fingerprinted `ToolGrant` rows canonical for every protected registry
+  tool, remove the Personal Assistant implicit-allow worker branch, seed its
+  revocable persisted default grants, and enforce user-scope matching from the
+  live effective user.
+- Add MCP and comms OAuth-state binding to `(requestId, connectAttemptRevision,
+  requestedByUserId)` before any callback can update a setup request.
+- Add credential-resolution provenance as a parallel API while keeping existing
+  callers working, then migrate MCP dispatch to it. This is complete before any
+  personal-connector result can enter a model context.
 - Add `AgentAppConnectionRequest` schema/migration and presenter schemas in
-  `@nessie/schemas`.
+  `@nessie/schemas`, keeping executor setup in its later, separate typed model.
 - Add a privileged first-party `AppSetupCardSchema`; leave external
   `IntegrationUiCardSchema` display-only and unchanged.
 - Extract the reusable connect controller from `useAppConnectFlow`, retaining
-  all existing Apps behaviour and tests.
+  all existing Apps behaviour and tests, while adding the chat adapter's
+  URL-less resume/fresh-authorization path.
 - Extract only the real shared visual primitives from `AppConnectDialog`,
   `ConnectProgress`, and `CommsConnectCard`; do not build another generic card
   framework.
-- Add credential-resolution provenance as a parallel API while keeping existing
-  callers working, then migrate MCP dispatch to it.
 
 Exit: `/apps` connect is behaviourally unchanged; provenance unit tests pass;
 no chat tool is exposed yet.
 
 ### Slice 2 — durable request and presentation tools
+
+Partial implementation (2026-09-01): with conversational setup enabled, the
+agent can search the entitlement-scoped Apps catalogue and a user's Personal
+Assistant can atomically create an offered request plus a basis-stamped,
+opaque-card message. The tool rechecks the live member, exact PA DM, catalog
+visibility, lock/deprecation state, and human-interactive origin; it creates no
+connection, credential, or capability grant. The authenticated viewer route
+and in-thread card now render the safe immutable choice and its live durable
+status to the requesting user only. A card click atomically claims one
+server-recorded candidate and uses the existing Apps connection orchestration;
+an OAuth URL is returned only to that immediate authenticated call and never
+enters durable card/message state. When a connection projects protected MCP
+capabilities, the Personal Assistant's existing default-grant reconciliation
+applies them unless an owner has explicitly revoked that access in App
+Management; the card derives `ready` only from the descriptor-bound grants the
+worker enforces, and otherwise reports the App Management hold. Secret entry,
+returned-flow claim/recovery and continuation remain unfinished, so this is not
+yet the completed connection journey.
 
 - Implement `app_search` on the store presenter and
   `app_connect_request` on the new request service.
@@ -69,7 +107,8 @@ unconfigured, non-interactive and cross-user cases fail closed.
 - Subscribe to actor-scoped setup invalidations with REST/focus reconciliation,
   add the returned-flow claim/lease coordinator, and restore the exact
   channel/reply/message anchor after web or native auth even when another tab
-  receives the callback.
+  receives the callback. Treat its lease as advisory: finalization CASes the
+  request's matching status and return revision.
 - Wire no-auth, OAuth and secure-secret outcomes to the same state machine.
 
 Exit: a user can connect from chat and reload at any point without losing or
@@ -82,7 +121,9 @@ duplicating the flow; no agent grant or auto-continuation yet.
 - Extend user-scope run matching only for the verified private-owner/home case;
   keep workspace agents on shared scopes.
 - Add authenticated finalization, hidden system kickoff, ordinary run-slot
-  claim/pend, durable queueing and one-shot continuation linkage.
+  claim/pend, durable queueing and one-shot continuation linkage. Pending
+  messages carry a typed app-connection continuation discriminator so the
+  ordinary drain repeats the live-principal/membership recheck.
 - Rebuild the MCP toolset on the new run and ensure connector read provenance is
   stamped before the model sees results.
 

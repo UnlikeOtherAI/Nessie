@@ -1,10 +1,18 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import type { McpToolDescriptor } from '@nessie/mcp-client'
 import type { McpServerScopeType } from '@nessie/schemas'
+import { acquireAgentToolPolicyLock } from '@nessie/workspace-admin'
 
+import {
+  fingerprintMcpToolDescriptor,
+  MCP_TOOL_DESCRIPTOR_FINGERPRINT_KEY,
+} from './mcp-tool-grant-fingerprint.js'
 import { toPrismaToolRegistrySource } from './tool-enum-mapping.js'
 
-type ToolRegistryTx = Pick<PrismaClient, 'toolRegistryEntry'>
+type ToolRegistryTx = Pick<
+  Prisma.TransactionClient,
+  '$executeRaw' | 'agent' | 'toolGrant' | 'toolRegistryEntry'
+>
 
 type ProjectionInstance = {
   id: string
@@ -20,6 +28,20 @@ type ProjectionInstance = {
    */
   requiresExplicitToolGrant?: boolean
 }
+
+/**
+ * Registry metadata is also used for Nessie-owned projection facts such as
+ * `requiresExplicitGrant`. Keep the upstream descriptor annotations under a
+ * namespaced key so a consent fingerprint cannot accidentally include either
+ * those facts or future registry metadata.
+ */
+export const MCP_TOOL_DESCRIPTOR_ANNOTATIONS_METADATA_KEY =
+  'mcpToolDescriptorAnnotations'
+
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 
 /**
  * Build a stable scope-key string for projecting discovered MCP tools into
@@ -57,15 +79,91 @@ const canonicalJson = (value: unknown): unknown => {
   return value
 }
 
+/**
+ * Read the annotations that came from the upstream MCP descriptor, not the
+ * registry metadata surrounding them. Historic projections had no separate
+ * annotation field, which canonicalizes to the empty descriptor annotations.
+ */
+export const mcpToolDescriptorAnnotationsFromMetadata = (
+  metadata: unknown,
+): Record<string, unknown> => {
+  const annotations = record(metadata)[MCP_TOOL_DESCRIPTOR_ANNOTATIONS_METADATA_KEY]
+  return canonicalJson(record(annotations)) as Record<string, unknown>
+}
+
+const metadataForMcpToolDescriptor = (
+  annotations: unknown,
+  requiresExplicitGrant: boolean,
+): Record<string, unknown> => ({
+  ...(requiresExplicitGrant ? { requiresExplicitGrant: true } : {}),
+  [MCP_TOOL_DESCRIPTOR_ANNOTATIONS_METADATA_KEY]: canonicalJson(record(annotations)),
+})
+
+/**
+ * A descriptor that was only just introduced gets the PA's default allow.
+ * Re-projection is intentionally excluded: an existing grant is a person's
+ * decision and must not be refreshed after descriptor drift or a revocation.
+ */
+const grantNewProtectedDescriptorToPersonalAssistant = async (
+  tx: ToolRegistryTx,
+  input: {
+    descriptor: McpToolDescriptor
+    organizationId: string
+    toolRegistryEntryId: string
+  },
+): Promise<void> => {
+  const personalAssistant = await tx.agent.findFirst({
+    where: {
+      agentKind: 'personal_assistant',
+      organizationId: input.organizationId,
+      systemManaged: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  if (!personalAssistant) return
+
+  await acquireAgentToolPolicyLock(tx as Prisma.TransactionClient, personalAssistant.id)
+  const directGrant = await tx.toolGrant.findFirst({
+    where: {
+      agentId: personalAssistant.id,
+      roleId: null,
+      toolId: input.toolRegistryEntryId,
+    },
+    select: { id: true },
+  })
+  if (directGrant) return
+
+  await tx.toolGrant.create({
+    data: {
+      agentId: personalAssistant.id,
+      config: {
+        [MCP_TOOL_DESCRIPTOR_FINGERPRINT_KEY]: fingerprintMcpToolDescriptor({
+          annotations: input.descriptor.annotations ?? {},
+          description: input.descriptor.description ?? '',
+          inputSchema: input.descriptor.inputSchema ?? {},
+          name: input.descriptor.name,
+          outputSchema: input.descriptor.outputSchema,
+        }),
+      } as Prisma.InputJsonValue,
+      roleId: null,
+      source: 'agent_override' as never,
+      state: 'allowed',
+      toolId: input.toolRegistryEntryId,
+    },
+  })
+}
+
 const jsonEqual = (a: unknown, b: unknown): boolean =>
   JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b))
 
 /**
  * Decide whether a freshly-probed descriptor materially differs from the
- * existing `ToolRegistryEntry` row. We compare the four user-visible /
+ * existing `ToolRegistryEntry` row. We compare the five user-visible /
  * governance-relevant fields the upsert writes: label, description,
- * inputSchema, outputSchema. Other internal fields (transport, source,
- * mcpInstanceId) are derived from the instance and never need a re-review.
+ * inputSchema, outputSchema, and upstream annotations. Other internal fields
+ * (transport, source, mcpInstanceId, and Nessie-owned metadata) are derived
+ * from the instance and never need a re-review.
  */
 export const descriptorDiffersFromEntry = (
   descriptor: McpToolDescriptor,
@@ -73,6 +171,7 @@ export const descriptorDiffersFromEntry = (
     label: string
     description: string
     inputSchema: unknown
+    metadata?: unknown
     outputSchema: unknown
   },
 ): boolean => {
@@ -81,6 +180,10 @@ export const descriptorDiffersFromEntry = (
   if ((descriptor.description ?? '') !== entry.description) return true
   if (!jsonEqual(descriptor.inputSchema ?? {}, entry.inputSchema)) return true
   if (!jsonEqual(descriptor.outputSchema ?? null, entry.outputSchema)) return true
+  if (!jsonEqual(
+    canonicalJson(record(descriptor.annotations)),
+    mcpToolDescriptorAnnotationsFromMetadata(entry.metadata),
+  )) return true
   return false
 }
 
@@ -114,6 +217,7 @@ export const projectMcpToolDescriptors = async (
       label: true,
       description: true,
       inputSchema: true,
+      metadata: true,
       outputSchema: true,
     },
   })
@@ -125,10 +229,12 @@ export const projectMcpToolDescriptors = async (
     const toolId = toRegistryToolId(instance.id, descriptor.name)
     seenToolIds.add(toolId)
     const existing = existingByToolId.get(toolId)
+    const requiresExplicitGrant = instance.requiresExplicitToolGrant === true
+      || (existing ? record(existing.metadata).requiresExplicitGrant === true : false)
     const drifted = existing
       ? descriptorDiffersFromEntry(descriptor, existing)
       : false
-    await tx.toolRegistryEntry.upsert({
+    const projectedEntry = await tx.toolRegistryEntry.upsert({
       where: {
         organizationId_scopeKey_toolId: { organizationId, scopeKey, toolId },
       },
@@ -151,9 +257,10 @@ export const projectMcpToolDescriptors = async (
         builtin: false,
         enabled: true,
         handlerKind: 'mcp',
-        metadata: (instance.requiresExplicitToolGrant
-          ? { requiresExplicitGrant: true }
-          : {}) as object,
+        metadata: metadataForMcpToolDescriptor(
+          descriptor.annotations,
+          requiresExplicitGrant,
+        ) as object,
         source: prismaSource,
         transport: 'mcp',
         transportConfig: {
@@ -174,12 +281,13 @@ export const projectMcpToolDescriptors = async (
       update: {
         label: descriptor.title ?? descriptor.name,
         description: descriptor.description ?? '',
-        // Written on update too. A tool discovered on a LATER refresh would
-        // otherwise be created open while its siblings are gated, quietly
-        // widening an app the person installed as default-off.
-        ...(instance.requiresExplicitToolGrant
-          ? { metadata: { requiresExplicitGrant: true } as object }
-          : {}),
+        // Written on every refresh so the persisted descriptor, including its
+        // upstream annotations, is the thing a person grants. Preserve the
+        // explicit-grant marker from an existing protected projection too.
+        metadata: metadataForMcpToolDescriptor(
+          descriptor.annotations,
+          requiresExplicitGrant,
+        ) as object,
         source: prismaSource,
         transport: 'mcp',
         transportConfig: {
@@ -198,6 +306,13 @@ export const projectMcpToolDescriptors = async (
         ...(drifted ? { status: projectedStatus } : {}),
       },
     })
+    if (!existing && requiresExplicitGrant) {
+      await grantNewProtectedDescriptorToPersonalAssistant(tx, {
+        descriptor,
+        organizationId,
+        toolRegistryEntryId: projectedEntry.id,
+      })
+    }
   }
 
   // Sweep entries whose upstream tool disappeared. Keep them enabled so

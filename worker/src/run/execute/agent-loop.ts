@@ -141,6 +141,7 @@ export const runExecutionAgentLoop = async (
     realtimeTransport: deps.realtimeTransport,
     run: {
       id: context.run.id,
+      interactive: payload.interactive === true,
       messageId: payload.messageId,
       principalUserId: context.run.principalUserId,
       originatingUserId:
@@ -152,6 +153,7 @@ export const runExecutionAgentLoop = async (
         ),
       threadId: context.run.threadId,
     },
+    runContext: context,
     toolCallId,
   })
 

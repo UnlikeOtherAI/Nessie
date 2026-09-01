@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
   useCurrentOrganization,
+  useUpdateConversationalSetup,
   useUpdateOrganization,
 } from '../../facades/organization/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
@@ -9,6 +10,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
+import { ConversationalSetupPanel } from './organization/ConversationalSetupPanel'
 import {
   FeedbackBanner,
   SettingsPanel,
@@ -25,9 +27,11 @@ export const OrganizationSettingsPage = () => {
   const canManageOrganization = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
+  const updateConversationalSetup = useUpdateConversationalSetup()
 
   const [name, setName] = useState('')
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
+  const [conversationalSetupError, setConversationalSetupError] = useState<string | null>(null)
 
   // Seed the input from the loaded org once per org id. Keying on id (not the
   // whole object) avoids a background refetch — e.g. after a logo save, which
@@ -64,6 +68,19 @@ export const OrganizationSettingsPage = () => {
   const dirty = organization ? name.trim() !== organization.name : false
   const canSave = dirty && name.trim().length > 0 && !updateOrganization.isPending
 
+  const updateConversationalSetupEnabled = async (conversationalSetupEnabled: boolean) => {
+    setConversationalSetupError(null)
+    try {
+      await updateConversationalSetup.mutateAsync(conversationalSetupEnabled)
+    } catch (error) {
+      setConversationalSetupError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update conversational agent setup early access.',
+      )
+    }
+  }
+
   return (
     <SettingsPanel eyebrow="Organization" title="General">
       <div className="grid max-w-3xl gap-4">
@@ -94,6 +111,14 @@ export const OrganizationSettingsPage = () => {
         <LogoPanel />
         <WorkspaceAvatarPanel />
         <CallProviderSettingsPanel />
+        {organization?.role === 'owner' ? (
+          <ConversationalSetupPanel
+            enabled={organization.conversationalSetupEnabled}
+            error={conversationalSetupError}
+            onChange={(enabled) => void updateConversationalSetupEnabled(enabled)}
+            pending={updateConversationalSetup.isPending}
+          />
+        ) : null}
       </div>
     </SettingsPanel>
   )
