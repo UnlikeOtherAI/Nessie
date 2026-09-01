@@ -1,4 +1,5 @@
 import { AGENT_ADMIN_TOOL_DEFINITIONS } from './builtin-agent-tools.js'
+import { APP_SETUP_TOOL_DEFINITIONS } from './builtin-app-setup-tools.js'
 import {
   DASHBOARD_EMBED_TOOL_DEFINITIONS,
   DASHBOARD_TOOL_DEFINITIONS,
@@ -34,6 +35,12 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
+export {
+  APP_CONNECT_REQUEST_TOOL_DEFINITION,
+  APP_CONNECT_REQUEST_TOOL_ID,
+  APP_SEARCH_TOOL_DEFINITION,
+  APP_SEARCH_TOOL_ID,
+} from './builtin-app-setup-tools.js'
 export { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 export {
   FILE_GLOB_TOOL_DEFINITION,
@@ -431,6 +438,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...EXECUTOR_TOOL_DEFINITIONS,
   ...INTEGRATION_TOOL_DEFINITIONS,
   ...COMMS_TOOL_DEFINITIONS,
+  ...APP_SETUP_TOOL_DEFINITIONS,
   ...TODO_TOOL_DEFINITIONS,
   ...DEMONSTRATION_TOOL_DEFINITIONS,
 ]

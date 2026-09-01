@@ -522,24 +522,25 @@ endpoint `https://ledger.unlikeotherai.com/v1/mcp/deepwater`), installs an
 into `ToolRegistryEntry`; disabling removes the instance and its tool rows.
 There is deliberately no direct-provider fallback.
 
-- **Default OFF — explicit per-agent grant required.** The projected DeepWater
-  rows are flagged `requiresExplicitGrant` (metadata) and the
+- **Descriptor-bound direct grants.** The projected DeepWater rows are flagged
+  `requiresExplicitGrant` (metadata) and the
   `deep_water_run_update` builtin sets the same flag on its
   `BuiltinToolDefinition`. Team scope alone does **not** expose them: an agent
-  (personal assistant or shared) sees them ONLY when its per-agent `toolPolicy`
-  carries an explicit allow (`toolPolicy[key] === true`) **and** the
+  (personal assistant or shared) sees them ONLY when it has a current,
+  descriptor-bound direct `ToolGrant` **and** the
   team-scoped instance reaches that run. A grant is an additional gate, never a
-  way around tenancy; an absent/inherited verdict is a denial. This is the "any
-  agent can use DeepWater only as long as it allows it" gate — see `isExposed`
+  way around tenancy; a missing or stale fingerprint is a denial. This is the
+  "any agent can use DeepWater only as long as it allows it" gate — see `isExposed`
   (`worker/src/run/mcp-toolset.ts`) and
-  `authorizeToolCall` (`worker/src/run/tool-policy.ts`). **Other connectors are
-  unchanged** — they remain exposed by install scope unless a policy denies them;
-  only `requiresExplicitGrant`-flagged tools default off. The owner Tools and
-  Integrations surfaces render DeepWater off-by-default and write explicit
+  `authorizeToolCall` (`worker/src/run/tool-policy.ts`). A protected capability
+  defaults to a persisted direct allow for the system-managed Personal Assistant;
+  shared agents stay off until an owner enables them. The owner Tools and
+  Integrations surfaces render the actual direct-grant state and write explicit
   allows through the targeted
   `PATCH /api/mcp/tools/:toolRegistryEntryId/policy-targets/:agentId` route.
-  That mutation merges only the selected policy key, so a grant/revoke cannot
-  replace unrelated `true` or `false` verdicts. Canonical DeepWater projections
+  That mutation writes or updates only the selected direct grant: revoking a
+  Personal Assistant creates a durable denied tombstone, so startup and a later
+  app refresh cannot silently restore it. Canonical DeepWater projections
   take the team transition lock, re-read the exact projection generation, then
   take the per-agent PostgreSQL advisory lock; a concurrent disable/re-enable
   therefore cannot persist a stale registry id. `GET

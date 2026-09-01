@@ -1,4 +1,5 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isCurrentAllowedMcpToolGrant } from '@nessie/mcp-manage'
 
 export type McpRunScopeContext = {
   agentKind: 'personal_assistant' | 'shared'
@@ -49,7 +50,7 @@ const scopeMatchesRun = (
     case 'channel':
       return ctx.channelId === scopeId
     case 'user':
-      return !ctx.isPersonalAssistantPresence && ctx.effectiveUserId === scopeId
+      return ctx.effectiveUserId === scopeId
     default:
       return false
   }
@@ -65,22 +66,31 @@ export const isMcpRegistryRowExposed = (
   instance: { scopeType: string; scopeId: string },
   ctx: McpRunScopeContext,
   metadata: unknown,
+  grants: readonly { agentId: string | null; config: unknown; state: string }[],
+  agentId: string,
+  descriptorFingerprint: string,
 ): boolean => {
   if (!scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)) return false
 
   const verdict = toolPolicy?.[registryEntryId]
+  const requiresExplicitGrant = stringRecord(metadata).requiresExplicitGrant === true
+  if (requiresExplicitGrant) {
+    // A shared agent cannot use an install bound to one person's identity.
+    // Its setup must use a channel, team, or organization-scoped instance
+    // instead; a descriptor-bound grant never broadens this scope ceiling.
+    if (
+      instance.scopeType === 'user'
+      && (ctx.agentKind === 'shared' || !ctx.isPersonalAssistantPresence)
+    ) return false
+    return grants.some((grant) =>
+      grant.agentId === agentId
+      && isCurrentAllowedMcpToolGrant(grant, descriptorFingerprint))
+  }
+
   // A user-scoped connection follows its person through a shared agent only
   // when that agent has the normal, explicit per-tool allow.
   if (instance.scopeType === 'user' && ctx.agentKind === 'shared' && verdict !== true) {
     return false
-  }
-
-  const requiresExplicitGrant = stringRecord(metadata).requiresExplicitGrant === true
-  if (requiresExplicitGrant) {
-    return verdict === true || (
-      ctx.agentKind === 'personal_assistant'
-      && verdict !== false
-    )
   }
   return verdict !== false
 }

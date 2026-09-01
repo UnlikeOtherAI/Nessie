@@ -102,6 +102,11 @@ export const appKeys = {
     ] as const,
 }
 
+/** Viewer-scoped, durable card state; the message itself contains only its id. */
+export const appConnectionRequestKeys = {
+  card: (requestId?: string) => ['app-connection-requests', requestId ?? null] as const,
+}
+
 export const approvalKeys = {
   all: ['approvals'] as const,
 }

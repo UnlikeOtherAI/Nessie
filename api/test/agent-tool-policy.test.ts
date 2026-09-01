@@ -109,6 +109,12 @@ const buildPolicyPrisma = (agent: AgentFixture) => {
     },
     toolRegistryEntry: {
       count: async () => 0,
+      findFirst: async () => ({
+        handlerKind: 'builtin',
+        id: 'registry-updater',
+        metadata: { requiresExplicitGrant: true },
+        toolId: DEEP_WATER_RUN_UPDATE_TOOL_ID,
+      }),
     },
   }
   const prisma = {
