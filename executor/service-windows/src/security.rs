@@ -16,8 +16,8 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_SUCCESS, HANDLE, INVALID_HANDLE_VALUE, LocalFree, HLOCAL,
 };
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, ConvertStringSidToSidW, SetEntriesInAclW, EXPLICIT_ACCESS_W,
-    NO_MULTIPLE_TRUSTEE, SET_ACCESS, TRUSTEE_IS_GROUP, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+    ConvertStringSidToSidW, SetEntriesInAclW, EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SET_ACCESS,
+    TRUSTEE_IS_GROUP, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::{
     CopySid, CreateWellKnownSid, GetLengthSid, GetTokenInformation, InitializeSecurityDescriptor,
@@ -33,7 +33,7 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetCurrentThread, OpenProcessToken, OpenThreadToken,
 };
 
-use crate::paths::is_sid_string;
+use nessie_windows_common::{is_sid_string, sid_to_string};
 
 /// What an admitted client may do: read the answer, write the request, and wait
 /// on the handle. Deliberately **not** `FILE_GENERIC_WRITE`, whose
@@ -79,20 +79,6 @@ fn sid_from_string(value: &str) -> Option<OwnedSid> {
     let owned = copy_sid(sid);
     unsafe { LocalFree(sid as HLOCAL) };
     owned
-}
-
-fn sid_to_string(sid: PSID) -> Option<String> {
-    let mut text: *mut u16 = std::ptr::null_mut();
-    if unsafe { ConvertSidToStringSidW(sid, &mut text) } == 0 || text.is_null() {
-        return None;
-    }
-    let mut length = 0_usize;
-    while unsafe { *text.add(length) } != 0 {
-        length += 1;
-    }
-    let value = String::from_utf16(unsafe { std::slice::from_raw_parts(text, length) }).ok();
-    unsafe { LocalFree(text as HLOCAL) };
-    value.filter(|candidate| is_sid_string(candidate))
 }
 
 fn token_user_sid(token: HANDLE) -> Option<OwnedSid> {

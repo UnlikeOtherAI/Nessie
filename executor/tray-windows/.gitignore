@@ -1,9 +1,0 @@
-# Cargo build output and Tauri codegen for this application.
-src-tauri/target/
-src-tauri/gen/
-
-# The root ignore file excludes *.png as scratch. These four are the tray's
-# state icons and this application's own icon — they are compiled into the
-# binary with include_bytes! and are release inputs, exactly like
-# desktop/src-tauri/icons.
-!src-tauri/icons/*.png

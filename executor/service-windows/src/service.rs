@@ -16,8 +16,6 @@
 //! daemon is still tearing its guests down. Nothing here ever calls
 //! `TerminateProcess`.
 
-pub const SERVICE_NAME: &str = "NessieExecutor";
-
 /// What Services and the tray show. Nothing in the running service reads it —
 /// the installer's authoring carries the same string — and the test below is
 /// what keeps the two spellings from drifting apart.
@@ -51,7 +49,8 @@ mod imp {
         service_dispatcher,
     };
 
-    use super::{SERVICE_NAME, STOP_REPORT_LIMIT};
+    use super::STOP_REPORT_LIMIT;
+    use nessie_windows_common::SERVICE_NAME;
     use crate::{
         control::Control,
         helper::secure_directory,
@@ -225,16 +224,16 @@ pub fn run() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SERVICE_DISPLAY_NAME, SERVICE_NAME};
+    use super::SERVICE_DISPLAY_NAME;
+    use nessie_windows_common::SERVICE_NAME;
 
     /// The installer registers the service under these two names and the tray
     /// looks for them; a rename in one place only would leave a service nobody
-    /// controls.
+    /// controls. The shared name's own relationship to the virtual account is
+    /// pinned in `nessie-windows-common`.
     #[test]
     fn the_service_names_are_the_ones_the_installer_registers() {
         assert_eq!(SERVICE_NAME, "NessieExecutor");
         assert_eq!(SERVICE_DISPLAY_NAME, "Nessie Executor");
-        // The virtual account name Windows derives has no space in it.
-        assert!(!SERVICE_NAME.contains(' '));
     }
 }

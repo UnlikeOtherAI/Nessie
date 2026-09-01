@@ -1,21 +1,9 @@
-//! The four names the tray shares with the service and its installer.
+//! The names this tray uses that belong to it alone.
 //!
-//! Each is stated in more than one place by necessity — the service registers
-//! itself, WiX authors the same strings into the MSI, and this application has
-//! to find both — so each one carries a test that pins the relationships
-//! between them. The virtual account in particular is *derived by Windows* from
-//! the service name, so the two cannot be chosen independently.
-
-/// The Windows service name. `nessie-executor-service` registers under it and
-/// the MSI authors it; the tray reaches the service through its pipe and never
-/// names it, so this exists to anchor the account below to the service it
-/// belongs to, in the test at the bottom.
-#[cfg(test)]
-pub const SERVICE_NAME: &str = "NessieExecutor";
-
-/// The account Windows creates for a service registered with that name and no
-/// password. The workspace ACL grant names it.
-pub const SERVICE_ACCOUNT: &str = r"NT SERVICE\NessieExecutor";
+//! The service name and its virtual account belong to the service as much as to
+//! the tray, so they live in `nessie-windows-common` and are imported where they
+//! are needed. What is left here is this application's own: where it looks,
+//! and where its menu items go.
 
 /// The service's own directory under `%ProgramData%`.
 pub const SERVICE_DIRECTORY_NAME: &str = "Nessie Executor";
@@ -32,15 +20,7 @@ pub const EXECUTORS_URL: &str = "https://app.nessie.works/agents/executors";
 
 #[cfg(test)]
 mod tests {
-    use super::{EXECUTORS_URL, SERVICE_ACCOUNT, SERVICE_NAME};
-
-    /// Windows derives the virtual account from the service name; choosing them
-    /// separately would produce an account that never exists.
-    #[test]
-    fn the_service_account_is_this_services_virtual_account() {
-        assert_eq!(SERVICE_ACCOUNT, format!(r"NT SERVICE\{SERVICE_NAME}"));
-        assert!(!SERVICE_NAME.contains(' '));
-    }
+    use super::EXECUTORS_URL;
 
     /// Opened in the person's browser, so it is the admin origin rather than
     /// the API one, and it is fixed rather than assembled from anything a

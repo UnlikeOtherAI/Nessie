@@ -21,9 +21,8 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree, ERROR_SUCCESS,
 };
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
-    EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_NAME,
-    TRUSTEE_IS_USER, TRUSTEE_W,
+    GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
+    NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_NAME, TRUSTEE_IS_USER, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::{
     GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
@@ -38,7 +37,9 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-use crate::service_identity::{CONTROL_CLIENTS_DIRECTORY, SERVICE_ACCOUNT, SERVICE_DIRECTORY_NAME};
+use nessie_windows_common::{sid_to_string, SERVICE_ACCOUNT};
+
+use crate::service_identity::{CONTROL_CLIENTS_DIRECTORY, SERVICE_DIRECTORY_NAME};
 
 /// The command-line switch the elevated instance is relaunched with. It carries
 /// a directory the person chose in a native picker and nothing else: no
@@ -79,20 +80,8 @@ fn current_user_sid_string() -> Result<String, String> {
     let text = if read == 0 {
         None
     } else {
-        let sid = unsafe { (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid };
-        let mut rendered: *mut u16 = std::ptr::null_mut();
-        if unsafe { ConvertSidToStringSidW(sid, &mut rendered) } == 0 || rendered.is_null() {
-            None
-        } else {
-            let mut length = 0_usize;
-            while unsafe { *rendered.add(length) } != 0 {
-                length += 1;
-            }
-            let value =
-                String::from_utf16(unsafe { std::slice::from_raw_parts(rendered, length) }).ok();
-            unsafe { LocalFree(rendered as HLOCAL) };
-            value
-        }
+        // The buffer owns the SID, so it is still alive for this call.
+        sid_to_string(unsafe { (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid })
     };
     unsafe { CloseHandle(token) };
     text.ok_or_else(|| "Windows would not report this account.".to_owned())

@@ -5,12 +5,11 @@
 //! rewrite the manifest — so the trust root has to be something the operating
 //! system holds and a user cannot forge. macOS reads `codesign` and a pinned
 //! Developer ID team, Windows reads Authenticode and a pinned publisher
-//! thumbprint, and Linux, which has no in-process signature to read, reads the
-//! package manager's own evidence: a root-owned tree only an administrator can
-//! lay down.
-
-#[cfg(all(not(debug_assertions), target_os = "windows"))]
-mod windows;
+//! thumbprint — the same decision the executor service and tray make, so it is
+//! taken from `nessie-windows-provenance` rather than restated here — and
+//! Linux, which has no in-process signature to read, reads the package
+//! manager's own evidence: a root-owned tree only an administrator can lay
+//! down.
 
 #[cfg(all(not(debug_assertions), target_os = "linux"))]
 use std::fs;
@@ -26,22 +25,6 @@ const PRODUCTION_SIGNING_TEAM_ID: Option<&str> = option_env!("NESSIE_DESKTOP_SIG
 #[cfg(all(not(debug_assertions), target_os = "windows"))]
 const PRODUCTION_WINDOWS_SIGNER_THUMBPRINT: Option<&str> =
     option_env!("NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT");
-
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) const WINDOWS_UNPINNED_REASON: &str =
-    "Executor controls require a release build with a pinned Windows publisher.";
-
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) const WINDOWS_UNSIGNED_REASON: &str =
-    "Executor controls require a signed, intact Nessie Desktop release.";
-
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) const WINDOWS_WRONG_PUBLISHER_REASON: &str =
-    "Executor controls require the pinned Windows publisher signature.";
-
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) const WINDOWS_UNVERIFIABLE_REASON: &str =
-    "Nessie Desktop could not verify its release signature.";
 
 #[cfg(any(test, all(not(debug_assertions), target_os = "linux")))]
 pub(crate) const PACKAGE_INSTALL_REASON: &str =
@@ -132,12 +115,7 @@ pub(super) fn require_release_signature(
     _packaged: &[String],
 ) -> Result<(), String> {
     let _ = resource_dir;
-    let executable = std::env::current_exe()
-        .map_err(|_| WINDOWS_UNVERIFIABLE_REASON.to_owned())?;
-    decide_windows_release_signature(
-        PRODUCTION_WINDOWS_SIGNER_THUMBPRINT,
-        windows::collect_signature_facts(&executable),
-    )
+    nessie_windows_provenance::require_release_signature(PRODUCTION_WINDOWS_SIGNER_THUMBPRINT)
 }
 
 #[cfg(all(not(debug_assertions), not(any(
@@ -161,41 +139,6 @@ pub(super) fn require_release_signature(
     _packaged: &[String],
 ) -> Result<(), String> {
     Ok(())
-}
-
-/// What the Win32 verification saw. `trusted` is `WinVerifyTrust`'s verdict;
-/// `signer_thumbprint` is the leaf certificate's SHA-1 thumbprint, read only
-/// from a chain that verification already trusted.
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) struct WindowsSignatureFacts {
-    pub signer_thumbprint: Option<String>,
-    pub trusted: bool,
-}
-
-/// The whole Windows decision, as a pure function of the pinned thumbprint and
-/// what verification found. `facts` is `None` when the check could not run at
-/// all, which is never treated as a pass.
-#[cfg(any(test, all(not(debug_assertions), target_os = "windows")))]
-pub(crate) fn decide_windows_release_signature(
-    pinned: Option<&str>,
-    facts: Option<WindowsSignatureFacts>,
-) -> Result<(), String> {
-    let expected = pinned
-        .map(str::trim)
-        .filter(|value| {
-            value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-        })
-        .ok_or_else(|| WINDOWS_UNPINNED_REASON.to_owned())?;
-    let facts = facts.ok_or_else(|| WINDOWS_UNVERIFIABLE_REASON.to_owned())?;
-    if !facts.trusted {
-        return Err(WINDOWS_UNSIGNED_REASON.to_owned());
-    }
-    match facts.signer_thumbprint {
-        // Hexadecimal case is a rendering choice, not part of the identity, so
-        // a thumbprint pasted from `certutil` in upper case still matches.
-        Some(actual) if actual.trim().eq_ignore_ascii_case(expected) => Ok(()),
-        _ => Err(WINDOWS_WRONG_PUBLISHER_REASON.to_owned()),
-    }
 }
 
 /// A package-manager install, and only that: `Path::starts_with` compares whole
@@ -223,110 +166,10 @@ pub(crate) fn application_bundle_from_resource_dir(resource_dir: &Path) -> Resul
 #[cfg(test)]
 mod tests {
     use super::{
-        application_bundle_from_resource_dir, decide_windows_release_signature,
-        is_administrator_owned, is_package_manager_path, WindowsSignatureFacts,
-        PACKAGE_INSTALL_REASON, WINDOWS_UNPINNED_REASON, WINDOWS_UNSIGNED_REASON,
-        WINDOWS_UNVERIFIABLE_REASON, WINDOWS_WRONG_PUBLISHER_REASON,
+        application_bundle_from_resource_dir, is_administrator_owned, is_package_manager_path,
+        PACKAGE_INSTALL_REASON,
     };
     use std::path::Path;
-
-    const PINNED: &str = "a1b2c3d4e5f6071829304a5b6c7d8e9f0a1b2c3d";
-
-    fn signed_by(thumbprint: &str) -> Option<WindowsSignatureFacts> {
-        Some(WindowsSignatureFacts {
-            signer_thumbprint: Some(thumbprint.to_owned()),
-            trusted: true,
-        })
-    }
-
-    #[test]
-    fn a_release_signed_by_the_pinned_windows_publisher_passes() {
-        assert!(decide_windows_release_signature(Some(PINNED), signed_by(PINNED)).is_ok());
-        // Hexadecimal case is a rendering choice: `certutil` prints upper case.
-        assert!(
-            decide_windows_release_signature(Some(PINNED), signed_by(&PINNED.to_uppercase())).is_ok()
-        );
-        assert!(
-            decide_windows_release_signature(Some(&PINNED.to_uppercase()), signed_by(PINNED))
-                .is_ok()
-        );
-        // Windows hands thumbprints back with spaces around them often enough.
-        assert!(
-            decide_windows_release_signature(Some(&format!("  {PINNED}  ")), signed_by(PINNED))
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn a_build_with_no_pinned_publisher_gets_no_executor_controls() {
-        for pinned in [
-            None,
-            Some(""),
-            Some("   "),
-            // Too short, too long, and not hexadecimal: each would make the
-            // comparison meaningless rather than merely wrong.
-            Some("a1b2c3"),
-            Some("a1b2c3d4e5f6071829304a5b6c7d8e9f0a1b2c3d0"),
-            Some("zzb2c3d4e5f6071829304a5b6c7d8e9f0a1b2c3d"),
-        ] {
-            assert_eq!(
-                decide_windows_release_signature(pinned, signed_by(PINNED)),
-                Err(WINDOWS_UNPINNED_REASON.to_owned()),
-                "pinned {pinned:?} must not authorize executor controls",
-            );
-        }
-    }
-
-    /// The whole reason the signer certificate is read at all: `WinVerifyTrust`
-    /// says "trusted", never "by whom", so a validly signed build from anyone
-    /// else must be refused exactly like an unsigned one.
-    #[test]
-    fn a_valid_signature_from_another_publisher_is_refused() {
-        let other = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c";
-        assert_eq!(
-            decide_windows_release_signature(Some(PINNED), signed_by(other)),
-            Err(WINDOWS_WRONG_PUBLISHER_REASON.to_owned()),
-        );
-        assert_eq!(
-            decide_windows_release_signature(
-                Some(PINNED),
-                Some(WindowsSignatureFacts { signer_thumbprint: None, trusted: true }),
-            ),
-            Err(WINDOWS_WRONG_PUBLISHER_REASON.to_owned()),
-        );
-    }
-
-    #[test]
-    fn an_untrusted_or_unverifiable_build_is_refused_and_never_reads_a_signer() {
-        assert_eq!(
-            decide_windows_release_signature(
-                Some(PINNED),
-                // A tampered file can still carry the pinned thumbprint in its
-                // certificate; only the trust verdict decides this.
-                Some(WindowsSignatureFacts {
-                    signer_thumbprint: Some(PINNED.to_owned()),
-                    trusted: false,
-                }),
-            ),
-            Err(WINDOWS_UNSIGNED_REASON.to_owned()),
-        );
-        assert_eq!(
-            decide_windows_release_signature(Some(PINNED), None),
-            Err(WINDOWS_UNVERIFIABLE_REASON.to_owned()),
-        );
-    }
-
-    #[test]
-    fn no_windows_refusal_leaks_a_local_path() {
-        for reason in [
-            WINDOWS_UNPINNED_REASON,
-            WINDOWS_UNSIGNED_REASON,
-            WINDOWS_WRONG_PUBLISHER_REASON,
-            WINDOWS_UNVERIFIABLE_REASON,
-        ] {
-            assert!(!reason.contains('/') && !reason.contains('\\'));
-        }
-    }
 
     #[test]
     fn the_linux_refusal_names_the_remedy_and_no_local_path() {

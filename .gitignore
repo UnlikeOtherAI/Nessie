@@ -30,6 +30,11 @@ packages/billing-statement-protocol/src/*.js
 # Git worktrees (per project convention, never committed)
 .worktrees/
 executor/native/target/
+executor/service-windows/target/
+executor/windows-common/target/
+executor/windows-provenance/target/
+executor/tray-windows/src-tauri/target/
+executor/tray-windows/src-tauri/gen/
 executor/vm/.build/
 
 # Provisioning profiles are release inputs, never repository content.
@@ -37,6 +42,10 @@ desktop/src-tauri/appstore/
 
 # Desktop shell icons are release inputs compiled into the binary
 !desktop/src-tauri/icons/*.png
+
+# The executor tray's four state icons and its own icon, likewise: they are
+# compiled in with include_bytes! rather than read from disk.
+!executor/tray-windows/src-tauri/icons/*.png
 
 # Agent worktrees created by Claude Code tooling
 .claude/worktrees/

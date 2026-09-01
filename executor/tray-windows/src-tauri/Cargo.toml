@@ -14,6 +14,9 @@ path = "src/main.rs"
 tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
+# The service name, its virtual account, and the SID rendering the service
+# reads back — one statement, shared with nessie-executor-service.
+nessie-windows-common = { path = "../../windows-common" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `tray-icon` is the whole point of this application; `image-png` decodes the
