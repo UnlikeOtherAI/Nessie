@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NessieExecutor_<version>_x64.msi — the standalone Nessie Executor.
+
+  It installs one directory of files, registers a service under its own virtual
+  account, tells Hyper-V about the socket the guest speaks on, and starts the
+  tray at login. Everything a person's executor state ever holds lives under
+  %ProgramData%, owned by the service account, and is deliberately left behind
+  on uninstall: a pairing is a machine key and a signed policy revision, and
+  removing a program is not a statement about wanting those destroyed.
+
+  Built by build-msi.mjs, which passes Version and StagingDir.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Nessie Executor"
+    Manufacturer="UnlikeOtherAI"
+    Version="$(var.Version)"
+    UpgradeCode="9a1c6d2e-4f3b-4a7d-9c1e-2b8f5d6a4e10"
+    Scope="perMachine"
+    Compressed="yes"
+    InstallerVersion="500">
+
+    <SummaryInformation Description="Runs a paired Nessie executor as a Windows service." />
+
+    <!-- Same UpgradeCode, higher version: an upgrade replaces the files and
+         re-registers the service, and never touches the state root. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer Nessie Executor is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- The packaged Node and the guest artifacts are x86_64 only. -->
+    <Launch
+      Condition="VersionNT64"
+      Message="Nessie Executor requires 64-bit Windows 10 22H2 or later." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Nessie Executor" />
+    </StandardDirectory>
+
+    <!-- Pairing material and machine keys belong to the service, not to a
+         person's profile. The service secures this tree with an owner-only DACL
+         through the packaged native helper the first time it starts; the
+         installer only makes sure the directories exist. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="STATEFOLDER" Name="Nessie Executor">
+        <Directory Id="EXECUTORSFOLDER" Name="executors" />
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="PackagedRuntime" Directory="INSTALLFOLDER">
+      <Component>
+        <File Id="NodeExe" Source="$(var.StagingDir)\node.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="ExecutorBundle" Source="$(var.StagingDir)\nessie-executor.cjs" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="RuntimeManifest" Source="$(var.StagingDir)\manifest.json" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="NodeLicense" Source="$(var.StagingDir)\NODE_LICENSE" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File
+          Id="NativeHelper"
+          Source="$(var.StagingDir)\nessie-executor-native.exe"
+          KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="TrayExe" Source="$(var.StagingDir)\nessie-executor-tray.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="ExecutorService" Directory="INSTALLFOLDER">
+      <Component>
+        <File
+          Id="ServiceExe"
+          Source="$(var.StagingDir)\nessie-executor-service.exe"
+          KeyPath="yes" />
+        <!-- The virtual account NT SERVICE\NessieExecutor: Windows creates it
+             from the service name, it has no password and cannot log on
+             interactively, and it owns its own SID. Start="auto" is what puts
+             the executor online before anybody signs in. -->
+        <ServiceInstall
+          Id="NessieExecutorServiceInstall"
+          Name="NessieExecutor"
+          DisplayName="Nessie Executor"
+          Description="Supervises paired Nessie executors and their sandboxed sessions."
+          Type="ownProcess"
+          Start="auto"
+          ErrorControl="normal"
+          Account="NT SERVICE\NessieExecutor"
+          Vital="yes" />
+        <ServiceControl
+          Id="NessieExecutorServiceControl"
+          Name="NessieExecutor"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="MachineConfiguration">
+      <!-- Hyper-V addresses a Linux guest's vsock port as a GUID built from
+           Microsoft's VSOCK template with the port in its first field, so this
+           GUID is 0x0000c000 = 49152, the guest's control port. Registering it
+           is what lets the service open an AF_HYPERV socket to a guest at all. -->
+      <Component Directory="INSTALLFOLDER" Guid="4d2f8b71-6c05-4f2a-8d3e-71b0c9a54f22">
+        <RegistryKey
+          Root="HKLM"
+          Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\0000c000-facb-11e6-bd58-64006a7986d3"
+          ForceCreateOnInstall="yes"
+          ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Name="ElementName" Value="Nessie Executor" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+
+      <!-- The tray for the person installing it. Per-user by design: it is one
+           person's control surface, and the service it controls is already
+           running for everybody. Removed on uninstall with the component. -->
+      <Component Directory="INSTALLFOLDER" Guid="0b6a3f14-98d2-4c57-b0a9-3e7c1d5f8a44">
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Microsoft\Windows\CurrentVersion\Run"
+          Name="NessieExecutorTray"
+          Type="string"
+          Value="&quot;[INSTALLFOLDER]nessie-executor-tray.exe&quot;"
+          KeyPath="yes" />
+      </Component>
+
+      <!-- Created, never removed: MSI leaves a non-empty directory alone, and a
+           paired executor's state lives here. Reinstalling finds its pairings
+           where it left them. -->
+      <Component Directory="EXECUTORSFOLDER" Guid="c3f70a29-1d84-4e6b-95a2-8f4d0b7c6e31">
+        <CreateFolder />
+      </Component>
+    </ComponentGroup>
+
+    <!-- The Hyper-V WMI provider admits members of the built-in Hyper-V
+         Administrators alias (S-1-5-32-578) and nobody else, so the service
+         account joins it here. It runs AFTER StartServices because Windows
+         creates the virtual account when the service is created, and it ignores
+         its own failure on purpose: a Windows edition with no Hyper-V has no
+         such group, and the executor still installs and still serves the
+         workspace bundle. WiX's own util:User cannot do this — its custom
+         action fails to resolve a virtual account against a built-in alias. -->
+    <CustomAction
+      Id="JoinHypervAdministrators"
+      FileRef="ServiceExe"
+      ExeCommand="--join-hyperv-administrators"
+      Execute="deferred"
+      Impersonate="no"
+      Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="JoinHypervAdministrators" After="StartServices" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Main" Title="Nessie Executor" Level="1">
+      <ComponentGroupRef Id="PackagedRuntime" />
+      <ComponentGroupRef Id="ExecutorService" />
+      <ComponentGroupRef Id="MachineConfiguration" />
+    </Feature>
+  </Package>
+</Wix>
