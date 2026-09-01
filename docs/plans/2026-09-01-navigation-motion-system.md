@@ -75,7 +75,7 @@ hidden-overflow box: `ColumnBrowserViewport` wraps its track in
 definition not a scroll container, so no descendant can scroll them whatever
 it calls. Supported from Safari / iOS 16, Chrome 90, Firefox 81 (MDN
 browser-compat-data); the app targets iOS 16.0. `TabBar` scrolls only its own
-track. Focus on a mounting screen waits for the stack to settle (§4.7).
+track. Focus on a mounting screen waits for the stack to settle (§4.8).
 
 ## 2. Census — what exists today
 
@@ -92,7 +92,7 @@ tests and specs that pin behaviour. Totals:
 | Settings, governance, ops, feedback | 60 | 3 | nav drawer, workspace menu, column track |
 | Overlays repo-wide | 50 (32 dialogs, 8 drawers, 9 popovers, 1 search) | 5 | none register with Back |
 | In-page tab / view-mode switches | 15 | pill only | three different state models |
-| Navigation triggers | 214 in 118 files | — | 20 `<Navigate>`, 11 `setSearchParams`, 8 hard reloads |
+| Navigation triggers | 213 in 107 files | — | 113 `navigate(`, 58 `Link`, 19 `<Navigate>`, 11 `setSearchParams`, 8 hard reloads, 4 `replaceState` (all in `ExecutorsPage`) |
 
 ### 2.1 Five motion vocabularies, none tokenised
 
@@ -107,18 +107,25 @@ tests and specs that pin behaviour. Totals:
 The one non-trivial curve is duplicated by hand in CSS and JS and has no token.
 `--duration-fast/base` and `--easing-standard` exist but cover a minority of
 declarations. The reduced-motion rule compresses durations to 0.01 ms instead
-of skipping steps; only the phone stack treats it as "skip".
+of skipping steps; only the phone stack, the tab pill, the rail tooltip and
+the workspace menu treat it as "skip".
 
 ### 2.2 Three history models and two duplicated smart-Backs
 
 - `PhoneNavigationProvider`'s ledger (phone only), `useHistoryNav`'s
   push-position counter (desktop top bar), and `section-route-memory.ts` (the
   rail remembers each section's last path) track the same router separately.
-- `AgentDesignerPage.handleBack` and `useWorkflowGraphIO.handleBack` implement
-  the identical `history.state.idx > 0 ? navigate(-1) : replace(returnTo ??
-  fallback)` logic verbatim.
-- `AppDetailPage`, `ThreadReplyPanel`, and `ChannelConversationComposePage`
-  each render their own Back button that bypasses the shared doorway.
+- `AgentDesignerPage.handleBack` and `useWorkflowGraphIO.handleBack` are two
+  copies of the same smart Back with **opposite precedence**: the agent
+  designer prefers `history.state.idx > 0 → navigate(-1)` and falls back to
+  `returnTo`; the workflow designer prefers `returnTo` and falls back to
+  `idx`. The shared `back()` takes the workflow order — an explicit
+  `returnTo` wins, because it is the one case where the caller knows more
+  than the ledger.
+- Three screens fork half of the doorway: `AppDetailPage` calls the shared
+  `performBack` but draws its own "Apps" glyph; `ThreadReplyPanel` and
+  `ChannelConversationComposePage` draw the shared `PhoneBackButton` but wire
+  their own close outside the registry.
 
 ### 2.3 The route classifier has holes
 
@@ -127,10 +134,12 @@ and `/settings` with real depths. Everything else in `ADMIN_ROUTE_PREFIXES`
 collapses to one `admin:detail` key at depth 1, so **no push inside the Agents
 family or between settings pages animates**, `/settings/statuses/:id` cannot
 return to `/settings/statuses`, `/ops/usage` cannot return to `/ops`, and a
-sub-agent drill-in is invisible. `/alerts`, `/feedback`, `/threads`, `/work`,
-`/chats` are classified as nothing at all: they render **outside** the phone
-stack, lose the retained lower screens, and their Back says "Back to
-Channels" whatever section the person came from.
+sub-agent drill-in is invisible. `/alerts`, `/feedback`, `/threads` and
+`/channels/new` (excluded from the conversation row by design) resolve to no
+screen at all: they render **outside** the phone stack, lose the retained
+lower screens, and their Back says "Back to Channels" whatever section the
+person came from. `/work` and `/chats` are `<Navigate replace>` redirects and
+never render.
 
 ### 2.4 Back ownership is split five ways
 
@@ -170,7 +179,7 @@ pre-selects the run.
 classification, but `AttachmentsDrawer` keys on Tailwind `sm:`, the thread
 panel on 900/1280 px, `ColumnBrowserViewport` on `lg`, Kanban on measured
 width, the project Docs rail on nothing (208 px at every width), and the task
-dialog is 1100 px wide on a phone. The 2026-08-13 responsive-coherence plan
+dialog has no phone presentation at all (`min(80vw, 1100px)` at every width). The 2026-08-13 responsive-coherence plan
 already specifies the answer — a semantic shell layout `navigation: 'single' |
 'split'` on `ShellEnvironment` — and its Phase 5 (per-surface conversion) is
 exactly the work this plan continues.
@@ -201,8 +210,9 @@ the surface registry (§4.1), and everything else is derived.
 ### 3.1 The overlay family
 
 Overlays are not one thing. The census found 50 of them plus the toast stack,
-the call banner and the incoming-call dialog, using fourteen different
-z-index values and five different dismissal contracts. They become four
+the call banner and the incoming-call dialog, using twenty distinct z-index
+values across the admin (from `1` to `10000`) and five different dismissal
+contracts. They become four
 kinds, each with one primitive, one motion, one stacking layer and one Back
 rule:
 
@@ -289,8 +299,10 @@ the section whose sidebar they sit beside); `/agents` 1, `/agents/:id` 2,
 nested details; `/settings/*` 1, `/settings/statuses/:id` 2; `/ops` 1,
 `/ops/usage` 2; `/dashboards` stays 1 under Knowledge. A row may declare
 `parent: 'origin'` for a Detail reachable from every section (`/alerts`,
-`/feedback`): Back pops to the previous in-app entry when the ledger has one,
-else replaces with the section root.
+`/feedback` — today in no nav and no prefix list, reached from the bell, the
+account menu and the iPad toolbar's help action): Back pops to the previous
+in-app entry when the ledger has one, else replaces with the Admin root,
+which is where both are added to the admin nav.
 
 State-driven stages (knowledge folder/document/history/editor, column-browser
 columns, workflow installation/run, integrations product, executors selection,
@@ -333,11 +345,18 @@ mounts:
 - `single` (phones, narrow web, iPad in narrow split view): one
   `NavigationStack` over the whole content region, Roots included, as today.
 - `split` (tablet, desktop, large-phone landscape): the pinned list column plus
-  one `NavigationStack` in the detail column. Detail → Detail sibling swaps are
-  instant; Detail → Nested detail pushes inside the column. Flows open as
-  centred panels. The native back/forward swipe is turned off on iPad and
-  large-phone landscape (`webview-back-gesture.ts` gate extended), because the
-  web stack now owns the edge gesture there too.
+  one `NavigationStack` **per detail-column owner**. `AdminShellLayout` has a
+  single `useOutlet`, so the shell mounts the stack for the families whose
+  list column is the shell's own sidebar (Channels, Projects, Settings and
+  the admin pages); Knowledge, the four column-browser pages and Dashboards
+  own their list columns inside the page and mount the same `NavigationStack`
+  around their own detail column. Detail → Detail sibling swaps are instant;
+  Detail → Nested detail pushes inside the column. Flows open as centred
+  panels. The 900–1279 px band is `split`; the thread panel there is a
+  `Sheet`. The native back/forward swipe is turned off on iPad and
+  large-phone landscape (`webview-back-gesture.ts` gate extended) **only once
+  `ScreenHeader` (step 9) has put a Back in every screen's leading lane**,
+  because the iPad toolbar is the only on-screen Back there today.
 
 No page reads a breakpoint to decide its container. `usePhoneLayout` survives
 only as the implementation of `navigation === 'single'`.
@@ -354,6 +373,11 @@ runStackTransition({ top, bottom, direction, from = 0 | 1, reducedMotion })
 
 on the Web Animations API, driving the route push, the route pop and the
 gesture settle from exactly the current inline transform. The CSS keyframes go.
+The viewport test harness is JSDOM, which has no Web Animations API — today's
+swipe passes only because `animateLayer` bails when `layer.animate` is
+missing — so step 2 gives the harness a fake `animate()` timeline that tests
+drive to completion, and a route push that cannot animate falls back to an
+immediate commit rather than hanging.
 `useNestedStage({ key, active, onBack })` is how a state-driven stage joins the
 stack: it renders its content into a layer, and the stack animates it like a
 route. `ColumnBrowserViewport` on `single` becomes a thin wrapper that mounts
@@ -431,16 +455,17 @@ the glyph for overlays only, and an overlay never renders a chevron.
 
 **One resolver.** `resolveBack()` on the controller (§4.2) is the only
 function that decides what Back does, and it is the same function whether
-the caller is the header button, the edge swipe, Android hardware Back, the
-iPad toolbar, the desktop top bar, Escape, the browser's own Back, or a mouse
-side button. Order: the topmost open overlay → the deepest nested stage → the
-route's parent (pop when the ledger's previous entry is it, else replace) →
-the section root. Today `PhoneNavigationButton` and `performBack` each
-re-implement that order and merely agree by convention; the desktop and iPad
-Back/Forward keep two separate counters that never consult overlays or nested
-stages, so the tablet toolbar pops the route straight through an open
-Knowledge editor. All of that collapses into the one resolver reading the one
-ledger and the one registry.
+the caller is the header button, the edge swipe, Android hardware Back,
+Escape, the browser's own Back, or a mouse side button. Order: the topmost
+open overlay → the deepest nested stage → the route's parent (pop when the
+ledger's previous entry is it, else replace) → the section root. Today
+`PhoneNavigationButton` and `performBack` each re-implement that order and
+merely agree by convention. **The desktop top bar and the iPad toolbar are
+history controls, not Back**: their Back/Forward walk the ledger across
+sections, which `resolveBack()` deliberately never does. They keep that job,
+but they read the one ledger instead of two private counters, and they
+consult the registry first, so a toolbar Back over an open Knowledge editor
+closes the editor rather than popping the route underneath it.
 
 **Browser Back is a POP, and a POP is a Back.** A `POP` that lands on the
 current stage's parent animates as a pop and closes overlays first, on every
@@ -468,8 +493,9 @@ one WebView per screen — a rewrite of the shell with a JS runtime, auth, SSE
 and theme per screen, and the loss of the retained live stack. WKWebView's
 own `allowsBackForwardNavigationGestures` does traverse React Router's
 `pushState` entries, but it renders a snapshot that WebKit often fails to
-produce for same-document navigation (blank or stale frames, and an iOS
-17.5.1+ regression that jumps to the first entry). That is why phones already
+produce for same-document navigation (blank or stale frames, reported across
+the Cordova and Ionic WKWebView trackers; one unanswered Apple forum report
+describes iOS 17.5.1 jumping to the first entry). That is why phones already
 turn it off. Decision: **the web gesture is the gesture**, on every layout
 that pushes, and it is finished to native feel:
 
@@ -480,8 +506,11 @@ that pushes, and it is finished to native feel:
 - a light haptic at commit-threshold crossing and on sheet snap, through a
   new `nessie:haptic` bridge message to `expo-haptics`;
 - the gesture is refused, as today, on editable targets, inside horizontal
-  scrollers, and while a transition runs; it is **not** refused while an
-  overlay is open — it closes the overlay, because the resolver does;
+  scrollers, and while a transition runs. Today it is also refused whenever
+  any local Back owner is active (`enabled: … && !localBackActive`), which
+  is most nested screens; that gate becomes `resolveBack()?.swipeable`, so
+  nested stages, sheets and modals are swiped closed, and only an owner that
+  must not be (an editor mid-flush, a streaming document) opts out;
 - the same gesture drives the detail column on `split`, and iPad and
   large-phone landscape turn the native swipe off (§7);
 - reduced motion keeps every threshold and sets the settle to 0 ms.
@@ -494,13 +523,17 @@ leading-lane chevron, and there is exactly one per screen.
 ### 4.8 Scroll and focus discipline
 
 - `.navigation-stack`, `.navigation-layer`, `main`, and the column-browser
-  wrapper are `overflow: clip`; the page scroller is `overflow-x: clip`.
+  wrapper are `overflow: clip`. The page scroller stays
+  `overflow-x: hidden; overflow-y: auto`: `clip` on one axis computes to
+  `hidden` when the other axis scrolls, so it gains nothing there, and the
+  four clipped containers are the ones a descendant could scroll.
 - `TabBar` scrolls its own track (`track.scrollLeft`), never `scrollIntoView`.
 - `useStackSettled()` resolves after the entering layer's transition finishes.
   `autoFocus` on a screen becomes `focus({ preventScroll: true })` after
   settle; the composer uses it so the keyboard does not rise mid-slide.
-- `useScrollMemory` is wired into every stack layer by key (it exists, is used
-  once, and `ColumnBrowserColumn` never receives a key today).
+- `useScrollMemory` is wired into every stack layer by key (it exists with two
+  call sites, one effective: `ColumnBrowserColumn` takes a key nobody passes,
+  so it is disabled there).
 - Horizontal scrollers that legitimately own an edge drag (Kanban pages, the
   Knowledge columns strip on `split`) carry `data-navigation-swipe-ignore`; the
   gesture's existing target gate reads it.
@@ -573,16 +606,18 @@ Rules:
 
 ### 4.11 Drafts — auto-save first, never a save button, never a confirm
 
-Nothing in the admin should ask "discard changes?". Leaving a screen is safe
-because the draft is already persisted. The workflow designer is the model
-today (local draft for a new item, debounced server autosave for an existing
-one, a signature diff so nothing is saved twice, no retry of a payload the
-server rejected). Everything else keeps state in memory and loses it on
-reload, the channel composer leaks its text and staged attachments across
-channel switches because it is never keyed by channel, the thread reply
-composer unmounts on close, message inline edit discards on Escape, and the
-task dialog, agent designer, knowledge editor, trigger editor and dashboard
-edit mode discard silently.
+Nothing in the admin asks a person "discard changes?" about their own
+draft. Leaving a screen is safe because the draft is already persisted. The
+workflow designer is the model today (local draft for a new item, debounced
+server autosave for an existing one, a signature diff so nothing is saved
+twice, no retry of a payload the server rejected). Everything else keeps
+state in memory and loses it on reload; the channel composer's reset on
+channel change clears everything except the text and the staged
+attachments, so both leak into the next channel; the two DM info drawers and
+the thread panel mount their own composers, and the thread panel's unmounts
+on close; message inline edit discards on Escape; and the task dialog, agent
+designer, knowledge editor, trigger editor and dashboard edit mode discard
+silently.
 
 Rules:
 
@@ -590,32 +625,37 @@ Rules:
   `localStorage` under a stable key (`draft:<surface>:<entityId>`) on a
   short debounce, and flushes to the server on a longer one where an
   endpoint exists. The key is the entity, so a composer draft is per
-  channel, a task draft per task, an editor draft per page. Mounting with a
-  draft present restores it; a successful send or save clears it.
+  channel, a task draft per task, an editor draft per page, and the DM info
+  drawers' composers are keyed by their target too. Mounting with a draft
+  present restores it; a successful send or save clears it.
 - **Surfaces adopt it in risk order**: thread reply composer, channel and DM
   composers (keyed by channel, staged attachments included), task dialog,
   message inline edit, agent designer, knowledge page editor, trigger editor,
   dashboard edit mode, then the settings forms.
 - **The API becomes safe to auto-save against.** Create endpoints take a
   client idempotency key (`POST /api/threads/:id/messages` first, since a
-  retried send duplicates today); update routes that already carry a revision
-  column (`Dashboard.revision`, `WorkflowTemplate.version`,
-  `KnowledgePageVersion.versionNumber`) accept `If-Match` and answer 409 on
-  conflict, and `useDraft` surfaces a conflict as a choice in place, never a
-  blocking dialog.
+  retried send duplicates today); the update routes for dashboards and
+  workflows, which already carry `Dashboard.revision` and
+  `WorkflowTemplate.version`, accept `If-Match` and answer 409 on conflict.
+  Knowledge pages have no current-revision column (`versionNumber` lives on
+  the per-version row), so the page row gains one in the same change. A
+  conflict surfaces in place as a choice, never a blocking dialog.
 - **Save buttons go.** Where a server flush is not possible (a create form
   with required fields not yet valid), the primary action stays, but it is
   the only one, and leaving keeps the local draft.
-- **`useLeaveGuard` survives for one case only**: an agent-authored document
-  still streaming into a thread. That is not a draft; it is the reader
-  leaving mid-write, and the existing confirm stays.
+- **The one confirm that stays** is `useLeaveGuard`'s, and it is already the
+  only one: an agent-authored document still streaming into a thread. That
+  is not a person's draft; it is the reader leaving mid-write.
 
 ### 4.12 Focus, announcement, title
 
 Nothing manages focus on navigation. After a push focus is wherever the
 outgoing layer's `inert` left it, usually `body`. There is no route
-announcer; the only live region is the toast stack. `aria-current` is absent
-from every sidebar. There is no skip link. Reduced motion is honoured;
+announcer; the live regions that exist (the toast stack, the session debug
+dialog, the avatar generation indicator, a handful of `role="alert"` errors)
+are all local widget feedback. `aria-current` exists only on the mobile web
+tab bar; the rail and every section sidebar signal the active item with a
+class alone. There is no skip link. Reduced motion is honoured;
 `forced-colors` is not.
 
 Rules, per page type, executed by the stack after settle (never mid-slide):
@@ -650,8 +690,9 @@ A composer with focus loses it on a push only because the outgoing layer
 becomes `inert`. That becomes explicit: the controller blurs the active
 element before a push or overlay open, on every layout. A pop never
 reopens the keyboard. A `visualViewport` resize listener keeps the active
-composer above the keyboard; every overlay panel sizes with `dvh`, the
-three that still use `vh` included; the composer gets `enterkeyhint="send"`.
+composer above the keyboard; every overlay panel sizes with `dvh` — nine
+overlays and two stylesheet rules still use `vh` today, including the shared
+`Dialog`'s `xl` size; the composer gets `enterkeyhint="send"`.
 
 ### 4.15 Haptics, pull-to-refresh, interruption
 
@@ -662,13 +703,16 @@ three that still use `vh` included; the composer gets `enterkeyhint="send"`.
   it through one `haptic(kind)` helper. Light on swipe-commit and sheet
   snap, selection on tab change, warning on the call ring, and the
   `navigator.vibrate` call becomes the web fallback.
-- **Pull-to-refresh.** The WebView's native `pullToRefreshEnabled` reloads
-  the whole document from any screen and posts nothing to the web. It is
-  turned off. The web owns the gesture at the top of a Root or Detail page
-  scroller and posts `nessie:full-refresh` (which already exists); Tab hosts
-  with boards, editors, the pinned message feed and scrolled overlays never
-  offer it. `overscroll-behavior-y: contain` moves onto every inner scroller,
-  not only the page shell.
+- **Pull-to-refresh.** The WebView's native `pullToRefreshEnabled` is
+  iOS-only, forces `bounces`, reloads the whole document from any screen and
+  posts nothing to the web; Android has no pull-to-refresh today. It is
+  turned off, and refresh behaves the same on both platforms for the first
+  time: the web owns the gesture at the top of a Root or Detail page scroller
+  that contains no message feed, and posts `nessie:full-refresh` (which
+  already exists). Boards, editors, any surface embedding a feed (the
+  conversation, the thread panel, the Threads inbox whose cards embed full
+  feeds) and scrolled overlays never offer it. `overscroll-behavior-y:
+  contain` moves onto every inner scroller, not only the page shell.
 - **Interruption.** During a slide both layers are `inert`, so taps are
   dropped, which is right. A second navigation preempts the first without
   cleaning its stack entries; a hidden tab lets the fallback timers finish a
@@ -689,10 +733,14 @@ nessie:screen { path, title, section, type, depth, hasBack }
 ```
 
 posted where `nessie:route` is posted, read straight off the surface
-registry. The shell's `tabs.ts` classifier and `isNativePhoneTabRootRoute`
-are deleted; `nessie:attention` carries a badge per section. `nessie:haptic`
-(§4.15) and the removal of native pull-to-refresh complete the contract;
-everything else on the bridge is unchanged.
+registry. The shell's path matching (`tabIndexForPath`, the `TABS[].matches`
+predicates and `isNativePhoneTabRootRoute`) is deleted; the `TABS` table
+itself stays for titles and paths. The shell keeps a **last-known section**
+from the latest `nessie:screen` so the tab index is right before the first
+message on a cold start and after the search overlay closes.
+`nessie:attention` carries a badge per section. `nessie:haptic` (§4.15) and
+the removal of native pull-to-refresh complete the contract; everything else
+on the bridge is unchanged.
 
 ### 4.17 Deep links and cold starts
 
@@ -710,8 +758,13 @@ Rules:
 - **Seed the stack.** On a cold start (a single-entry ledger, or an unknown
   POP) the controller walks the registry's `parentOf` chain from the landed
   route to its Root and seeds those entries beneath it, so Back and the
-  edge swipe reveal the same screens a real navigation would have. Roots
-  seed nothing; `parent: 'origin'` rows seed their section root.
+  edge swipe reveal the same screens a real navigation would have. Seeded
+  entries are **render-only**: they populate the retained layers and the
+  parent chain, never the ledger's history keys, because no browser history
+  exists behind a cold start. Back from a seeded stage is always `replace`;
+  `pop` stays reserved for a real previous entry. Roots seed nothing;
+  `parent: 'origin'` rows seed their section root, which is also where they
+  land once the ledger has reset on an unknown POP.
 - **Intent params are declared, not improvised.** Each registry row lists
   its intent params as `consume` (stripped by `replace` after the controller
   hands them to the screen, in one place, never in six effects) or `state`
@@ -722,13 +775,24 @@ Rules:
 - **Origin travels explicitly** where the registry cannot know it: a channel
   opened from a project carries `from` in navigation state, and the seeded
   parent is the project; a cold link without it seeds Channels.
-- **The desktop shell gets a pending path** like the native one, so a
-  notification click on a quit app lands where it was aimed.
+- **The desktop shell gets a pending path** like the native one: today the
+  Tauri init script dispatches `nessie:desktop-notification-open` at once and
+  `NotificationsProvider` only listens once mounted, so a click on a quit app
+  is lost between the two. The path is retained on `window` and replayed by
+  the root redirect, as the native pending push path is.
+- **Every other route-changing effect goes through the controller**: the
+  large-phone-landscape rotation redirect in `PhoneNavigationProvider`, the
+  workspace switch and logout (both reset the ledger and any seeded stack,
+  and say so), the auth completion landing (a cold start into a Detail is
+  seeded like any other), and the invite alerts' accept action from the bell
+  popover.
 
 ### 4.18 Gates — the framework stays the only way
 
-The repo already has the three shapes: allowlisted ESLint bans (the
-`useMediaQuery` rule), a breakpoint lint script, and source-regex tests.
+The repo already has the three shapes: file-scoped ESLint bans (the
+`useMediaQuery` `no-restricted-imports` rule, scoped by `files:` and
+`ignores:`), a breakpoint lint script with an allowlist, and source-regex
+tests.
 Each gate ships with the step that makes it satisfiable, with an allowlist
 that shrinks to empty, never a flag day:
 
@@ -763,11 +827,11 @@ form.
 
 | family | Root | Detail | Nested detail | Tab host | Flow | Overlay |
 | --- | --- | --- | --- | --- | --- | --- |
-| Channels | `/channels` | conversation, `/channels/projects/:id`, `/unread-messages`, `/threads` | info → members → add; reply thread (`single`) | Messages / Files / Automations / Agents | compose (`/channels/new`), document stream, DeepWater + executor launchers, record routine | members popup, channel settings + archive confirm, agent/user info drawers, call dialogs, thought process, attachment viewer, secret capture, emoji pickers, reaction popover, search strip |
+| Channels | `/channels` | conversation (incl. the personal-assistant DM, which has no info chain), `/channels/projects/:id`, `/unread-messages`, `/threads` (a Root-level list whose cards embed feeds, so it is a Detail that never offers pull-to-refresh) | info → members → add; reply thread (`single`) | Messages / Files / Automations / Agents | compose (`/channels/new`), document stream, DeepWater + executor launchers, record routine | members popup, channel settings + archive confirm, agent/user info drawers, call dialogs, thought process, attachment viewer, secret capture, emoji pickers, reaction popover, search strip |
 | Projects | `/projects` | project | (none by route) | Overview / Board / Backlog / Insights / Docs / Executors / Settings | task create/edit | members dialog, project menus, create/edit/delete project, iteration and column confirms, archive-done menu |
-| Dashboards | — | `/dashboards` | `/dashboards/:id`; add-widget panel; versions panel (nested stages on `single`, side panels on `split`) | edit mode (a mode toggle with its own Back that discards the draft) | — | — |
+| Dashboards | — | `/dashboards` | `/dashboards/:id`; add-widget panel; versions panel (nested stages on `single`, side panels on `split`) | — | edit mode (a Flow whose layout draft auto-saves; Done and Back both leave it with the draft kept) | — |
 | Knowledge | `/knowledge-base` | space, product view | folder, document / file, history, editor (nested stages); zip peek | Full / Column / Tree, needs-review filter | — | attachments drawer, space settings, create space, file version upload, notes card and composer, wikilink confirm and suggestions, drop overlays |
-| Agents | Admin | `/agents`, `/agents/:id` | sub-agent (a Detail whose parent is the agent, so Back returns to it) | Edit / To-dos / Activity / Sub-agents / Tools / Messages / Documents | designer, workflow designer | design-assistant drawer, agent quick-view drawer (`AgentDetailDrawer`, mounted from the shell), avatar quick edit + cropper, model combobox, to-do editors, workflow node menus |
+| Agents | Admin | `/agents`, `/agents/:id` | sub-agent (`/agents/:childId` pushed from its parent, so Back returns to the parent agent) | Edit / To-dos / Activity / Sub-agents / Tools / Messages / Documents | designer, workflow designer | design-assistant drawer, agent quick-view drawer (`AgentDetailDrawer`, mounted from the shell), avatar quick edit + cropper, model combobox, to-do editors, workflow node menus |
 | Automation | Admin | workflows, triggers, tools, executors | template → installation → run; failed-runs and drafts columns; trigger detail; tool detail; executor selection, access change, promotion | trigger status filter, tool source filter, executor tabs | trigger editor | import, delete confirms, inspector disclosures |
 | Apps | Admin | `/apps` | `/apps/:slug` | Overview / Capabilities / Accounts / Agents; All / Installed | connect (dialog on `split`, screen on `single`) | custom app, secret, remove, disconnect confirms |
 | Settings + ops | `/settings` | every settings page, `/audit`, `/approvals`, `/alerts`, `/tokens`, `/policy`, `/ops`, `/feedback`, integrations | status detail, `/ops/usage`, integration product | Colours / Text size | logo and photo croppers, session debug | create secret, emoji picker, billing cancellation dialogs, connection expanders |
@@ -785,37 +849,47 @@ level. Commit and push per step.
    focus calls. Verify on device and with `repro.mjs`.
 2. **One motion spec.** Tokens + `runStackTransition`; the route push and the
    gesture settle share it; delete the keyframes and the blanket reduced-motion
-   rule. Rewrite `phone-back-swipe-viewport.test.ts` and the keyframe regex in
+   rule. Give the JSDOM harness a fake `animate()` timeline; rewrite
+   `phone-back-swipe-viewport.test.ts` and the keyframe regex in
    `phone-navigation-transition.test.ts` against the function; add the
-   duration-parity test.
+   duration-parity test. **The Playwright job, seed and three viewports land
+   here** (§4.19): it is the safety floor for every step after, so it cannot
+   come last.
 3. **Total registry.** Every route classified with real depths; delete
    `admin:detail`; `/alerts`, `/feedback`, `/threads` join their sections; the
    lint test that every router path has a row. Extend
-   `phone-navigation-routes.test.ts` and the native `tabs.test.ts` mapping.
-   With this alone, every Agents and Settings push animates on a phone.
+   `phone-navigation-routes.test.ts`; leave the shell's `tabs.ts` alone, it is
+   replaced in step 9. With this alone, every Agents and Settings push
+   animates on a phone.
 4. **One controller.** Promote the ledger and the Back registry; add
    `redirect()`, `back()`, `openFlow()`; delete `useHistoryNav`'s counter,
    `section-route-memory`, and the two designer smart-Backs; forward `state`
    through the `<Navigate>` redirects (fixes the workflow-run bug); route the
    six effect redirects through `redirect()`.
-   **One Back** in the same step: `resolveBack()` behind every entry point
-   (header, swipe, hardware Back, iPad toolbar, top bar, Escape, POP);
+   **One Back** in the same step: `resolveBack()` behind every Back entry
+   point (header, swipe, hardware Back, Escape, POP), and the top bar and
+   iPad toolbar re-pointed at the one ledger as history controls that
+   consult the registry first;
    `BackButton` replaces the four chevrons and the "Apps" / "Agents" /
    "Cancel" text buttons; Android tablets get the hardware handler; the
    `phone-back-doorway.test.ts` source pins move to the registry. The gesture
    finish (velocity-scaled settle, dimming scrim, `nessie:haptic`) lands
    here too, since it is the same resolver's commit.
 5. **Split layout.** `ShellEnvironment.navigation`; `NavigationStack` in the
-   detail column; iPad and large-phone-landscape native swipe off; the thread
-   panel becomes a nested stage on `single` and a token-driven side panel on
-   `split`; project Docs rail and dashboard side panels follow the layout.
+   shell's detail column and in the page-owned detail columns; the thread
+   panel becomes a nested stage on `single` and a `Sheet` on `split`; project
+   Docs rail and dashboard side panels follow the layout. The iPad and
+   large-phone-landscape native swipe stays **on** until step 9.
 6. **Nested stages.** `useNestedStage`; fold `ColumnBrowserViewport` (phone),
    Knowledge folder/document/history/editor, workflows/triggers/tools/
    integrations columns, executors panels and dashboard panels into the stack.
    Delete `animate-kb-view-slide`. Rewrite `phone-back-doorway.test.ts` and
    `knowledge-local-back.test.ts` against the registry.
 7. **Tab hosts.** One state model (URL param, `replace`) for all fifteen
-   strips; project section switch uses `replace`.
+   strips; project section switch uses `replace`. `ProjectView` is one
+   element reconciled in place across its seven routes, so its state
+   survives; this step sits after step 4 because the old top-bar counter only
+   advanced on `PUSH` and would stop reflecting section switches.
 8. **Overlays and Flows.** The layer scale first (a pure token swap, no
    behaviour change); then `useOverlay` + `Modal`; then `Sheet` (eight
    drawers), `Popover` (menus, pickers, tooltips, one placement helper),
@@ -826,8 +900,10 @@ level. Commit and push per step.
 9. **Screen header.** `ScreenHeader` per page type with the subtitle slot;
    the seven hero headers and the two 58 px headers converge; `OwnerGate`
    moves under the header; every screen gets its `h1`; `document.title` and
-   `nessie:screen` post from the header; the shell drops its own route
-   classifier and gains per-section badges.
+   `nessie:screen` post from the header; the shell drops its path matching,
+   keeps a last-known section, and gains per-section badges. **Only now** the
+   iPad and large-phone-landscape native swipe turns off, because every
+   screen has a Back in its leading lane.
 10. **Arriving with content.** `prewarm` on `controller.push()` wired to
     every navigating row; `keepPreviousData` on per-id detail hooks;
     `isPending` on list hooks with the three false-empty states fixed; one
@@ -861,9 +937,10 @@ level. Commit and push per step.
    overlay, or handles Back goes through the navigation framework — read
    `docs/navigation.md` first; it is the only way, and adding a second one is
    the defect Rule zero names."* The existing prose in `CLAUDE.md` → "Message
-   reply threads" about panel widths and `T`-opens-thread, and the
-   "One tab bar" / "One dialog shell" bullets, are trimmed to point at the
-   rulebook rather than restate it. `docs/plans/2026-08-13-responsive-coherence.md`
+   reply threads" about panel widths, and the "One tab bar" / "One dialog
+   shell" bullets, are trimmed to point at the rulebook rather than restate
+   it; the claim there that `T` opens the focused message's thread is deleted,
+   since no such handler exists in the admin. `docs/plans/2026-08-13-responsive-coherence.md`
    Phase 5 is marked delivered by this plan, and this file moves to
    `docs/done/` when built.
 
@@ -886,11 +963,25 @@ These change behaviour a person can see, so they are recorded with the reason:
 - **Dialogs get a 150 ms fade and 4 px rise, no scale.** Reduced motion makes
   it 0 ms through the same path. Dismissal (Escape, scrim, close) is never
   gated on the animation, so a person can always close a dialog instantly.
-- **iPad and large-phone landscape turn the native back/forward swipe off.**
-  The native gesture is a WebView-wide switch and cannot be scoped to the
-  list column, and two owners of one edge gesture is the exact failure phones
-  already fixed. The web stack owns the edge swipe in the detail column; the
-  iPad toolbar's Back/Forward buttons keep cross-section history reachable.
+- **iPad and large-phone landscape turn the native back/forward swipe off,
+  after step 9.** The native gesture is a WebView-wide switch and cannot be
+  scoped to the list column, and two owners of one edge gesture is the exact
+  failure phones already fixed. The web stack owns the edge swipe in the
+  detail column; the iPad toolbar's Back/Forward stay as history controls on
+  the one ledger (§4.7), so cross-section history stays reachable. Until
+  `ScreenHeader` lands, that toolbar is the only on-screen Back on iPad, so
+  the native swipe is not removed before it.
+- **Android predictive back is opted into** (`predictiveBackGestureEnabled`)
+  in the same change that extends hardware Back to tablets, because the
+  handler must move to the invoked-callback API for either to keep working on
+  Android 14+. The system preview shows the launcher, never an in-app screen;
+  the in-app motion stays the web stack's.
+- **Direction follows `dir`.** The slide, the parallax and the edge zone
+  flip for right-to-left locales; nothing hard-codes left. Print gets the
+  current layer only, with overlays and retained layers hidden.
+- **Status-bar tap-to-top** on iOS scrolls the current layer's scroll owner
+  through a `nessie:scroll-to-top` message, because the document itself
+  never scrolls.
 - **`AgentDetailDrawer` stays.** The census row calling it dead was wrong: it
   is mounted from `AdminShellLayout.tsx:348` and opened by `selectAgent` from
   `ChannelMessageRow`. It is the agent quick view over a conversation; it
