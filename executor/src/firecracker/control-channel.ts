@@ -5,6 +5,20 @@ import type { Socket } from 'node:net'
 import { WorkspacePathError } from '../workspace-paths.js'
 import { listenGuestVsockPort, type GuestVsockListener } from './vsock.js'
 
+/**
+ * How a backend accepts a guest-initiated connection on one port. Firecracker
+ * bridges guest `AF_VSOCK` onto host Unix sockets and is the default; the
+ * Hyper-V backend hands in a named-pipe listener whose other end is the
+ * `AF_HYPERV` bridge. Everything below this line — the hello frame, the
+ * constant-time token check, the one-connection rule — is the same code on both
+ * hosts, which is the point of the seam.
+ */
+export type GuestChannelListener = (
+  path: string,
+  port: number,
+  onConnection: (socket: Socket) => void,
+) => Promise<GuestVsockListener>
+
 /** The one guest-initiated control port; identical to the macOS helper's. */
 export const GUEST_CONTROL_PORT = 49_152
 
@@ -81,6 +95,7 @@ export type GuestControlChannel = {
 export const startGuestControlChannel = async (
   vsockPath: string,
   expectedBootstrapToken: string,
+  listenPort: GuestChannelListener = listenGuestVsockPort,
 ): Promise<GuestControlChannel> => {
   if (!BOOTSTRAP_TOKEN.test(expectedBootstrapToken)) {
     throw new WorkspacePathError('The executor micro-VM bootstrap token is malformed.')
@@ -133,7 +148,7 @@ export const startGuestControlChannel = async (
       refuse?.(new WorkspacePathError('The executor guest closed its control channel before authenticating.'))
     })
   }
-  listener = await listenGuestVsockPort(vsockPath, GUEST_CONTROL_PORT, admit)
+  listener = await listenPort(vsockPath, GUEST_CONTROL_PORT, admit)
   return {
     close: async () => {
       await listener?.close()

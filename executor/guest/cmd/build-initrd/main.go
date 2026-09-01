@@ -30,7 +30,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 const (
@@ -40,6 +39,8 @@ const (
 	initArchiveMode       = 0o500
 	tokenArchiveName      = "etc/nessie/bootstrap-token"
 	codexAuthArchiveName  = "etc/nessie/codex-auth.json"
+	bootArgsArchiveName   = "etc/nessie/boot-args"
+	bootArgsMaxBytes      = 512
 	privateArchiveMode    = 0o400
 	privateDirectoryMode  = 0o700
 	defaultGuestInitName  = "init"
@@ -47,6 +48,7 @@ const (
 )
 
 type options struct {
+	bootArgs  string
 	codexAuth string
 	initPath  string
 	output    string
@@ -56,7 +58,27 @@ type options struct {
 func usage() error {
 	return errors.New(
 		"usage: build-initrd --output <absolute-path> [--codex-auth <absolute-path>] " +
-			"[--init <absolute-path>] --bootstrap-token-stdin")
+			"[--init <absolute-path>] [--boot-args <kernel-arguments>] --bootstrap-token-stdin")
+}
+
+// The per-session kernel arguments, for a host whose firmware supplies no
+// command line: Hyper-V's generation 2 firmware boots \EFI\BOOT\BOOTX64.EFI
+// with empty UEFI load options, so the kernel's only line is the static one
+// compiled into it and this session's runtime-manifest digest has nowhere else
+// to travel. The guest joins the two when the built-in line says
+// `nessie.args=initrd`. Nothing secret goes here — the token keeps its own
+// member — and the value is validated rather than copied blind, because it
+// becomes a kernel command line.
+func validBootArgs(value string) bool {
+	if value == "" || len(value) > bootArgsMaxBytes {
+		return false
+	}
+	for _, character := range value {
+		if character < 0x20 || character > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func parseArguments(argv []string) (options, error) {
@@ -65,6 +87,12 @@ func parseArguments(argv []string) (options, error) {
 		switch argv[index] {
 		case "--bootstrap-token-stdin":
 			parsed.readToken = true
+		case "--boot-args":
+			if index+1 >= len(argv) || !validBootArgs(argv[index+1]) {
+				return options{}, usage()
+			}
+			parsed.bootArgs = argv[index+1]
+			index++
 		case "--output", "--codex-auth", "--init":
 			if index+1 >= len(argv) {
 				return options{}, usage()
@@ -119,18 +147,8 @@ func ownerPrivateFile(path string, maxBytes int64, modes []os.FileMode) ([]byte,
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s must be an ordinary file", filepath.Base(path))
 	}
-	metadata, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(metadata.Uid) != os.Getuid() || metadata.Nlink != 1 {
-		return nil, fmt.Errorf("%s must be owner-owned and unlinked", filepath.Base(path))
-	}
-	permitted := false
-	for _, mode := range modes {
-		if info.Mode().Perm() == mode {
-			permitted = true
-		}
-	}
-	if !permitted {
-		return nil, fmt.Errorf("%s has an unexpected mode", filepath.Base(path))
+	if err := assertCallerOwnsPrivateFile(info, modes); err != nil {
+		return nil, fmt.Errorf("%s %s", filepath.Base(path), err)
 	}
 	if info.Size() == 0 || info.Size() > maxBytes {
 		return nil, fmt.Errorf("%s has an invalid size", filepath.Base(path))
@@ -149,12 +167,11 @@ func assertPrivateParent(output string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != privateDirectoryMode {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", errors.New("initrd parent must be an owner-only directory")
 	}
-	metadata, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(metadata.Uid) != os.Getuid() {
-		return "", errors.New("initrd parent must be owner-only")
+	if err := assertCallerOwnsPrivateDirectory(info); err != nil {
+		return "", fmt.Errorf("initrd parent %s", err)
 	}
 	return parent, nil
 }
@@ -191,6 +208,9 @@ func build(parsed options, token string) ([]byte, error) {
 		cpioDir("etc", privateDirectoryMode),
 		cpioDir("etc/nessie", privateDirectoryMode),
 		cpioFile(tokenArchiveName, privateArchiveMode, []byte(token)),
+	}
+	if parsed.bootArgs != "" {
+		members = append(members, cpioFile(bootArgsArchiveName, privateArchiveMode, []byte(parsed.bootArgs)))
 	}
 	if parsed.codexAuth != "" {
 		profile, err := ownerPrivateFile(parsed.codexAuth, codexAuthMaxBytes,

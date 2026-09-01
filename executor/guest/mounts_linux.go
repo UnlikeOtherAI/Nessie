@@ -7,6 +7,9 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 )
 
@@ -16,17 +19,28 @@ import (
 // fact on the kernel command line the host wrote (`nessie.shares=block`),
 // never a probe: a guest that guessed would mount whatever happened to exist.
 //
-// # BLOCK DEVICE ORDER CONTRACT
+// # BLOCK DEVICE DISCOVERY CONTRACT
 //
-// Firecracker's block devices appear in the guest in the order the host
-// attached them, so the host attaches runtime, workspace, draft and the guest
-// reads /dev/vda, /dev/vdb, /dev/vdc in that order. The host half of this
-// contract is `GUEST_BLOCK_DEVICE_ORDER` in
-// executor/src/firecracker/layout.ts; changing either without the other is a
-// wrong mount. Because that ordering has been an upstream bug before
-// (firecracker#1264, device-tree insertion order on aarch64), each image also
-// carries an ext4 label and a device whose label is not the expected one is
-// refused. The order decides; the label proves.
+// The label decides; the order only proves.
+//
+// Under Firecracker the three images arrive on virtio-block and appear in the
+// guest in the order the host attached them, so runtime, workspace and draft
+// are /dev/vda, /dev/vdb and /dev/vdc. Under Hyper-V the same three images
+// arrive on a synthetic SCSI controller through hv_storvsc, are named /dev/sd*,
+// and Linux hands out those names as each disk finishes probing rather than in
+// the order the host attached them. A guest that read a device name out of the
+// attach order would therefore mount the wrong image on Windows, and only
+// sometimes on Linux — that ordering has been an upstream bug before
+// (firecracker#1264, device-tree insertion order on aarch64).
+//
+// So the guest finds each image by scanning the host's own block devices
+// (/sys/block) and reading the ext4 volume label straight out of each
+// superblock. Where the bus does promise attach order — virtio — the expected
+// node is kept as a consistency assertion: if it exists at all it must be the
+// one the label picked, which is what catches the host and the guest
+// disagreeing. The host halves of this contract are `GUEST_BLOCK_DEVICE_ORDER`
+// in executor/src/firecracker/layout.ts and `GUEST_SCSI_ATTACH_ORDER` in
+// executor/src/hyperv/layout.ts.
 const (
 	guestRuntimeMountPoint   = "/runtime"
 	guestWorkspaceMountPoint = "/work"
@@ -45,9 +59,13 @@ const (
 	ext4Magic            = 0xEF53
 )
 
+// guestBlockDevice names one image by its ext4 label plus the bare device node
+// the virtio attach order promises. `virtioName` is an assertion, never the
+// lookup: hv_storvsc makes no such promise, so it is only checked when that
+// node exists.
 type guestBlockDevice struct {
-	device string
-	label  string
+	label      string
+	virtioName string
 }
 
 var guestBlockDevices = struct {
@@ -55,10 +73,22 @@ var guestBlockDevices = struct {
 	workspace guestBlockDevice
 	draft     guestBlockDevice
 }{
-	runtime:   guestBlockDevice{device: "/dev/vda", label: "nessie-runtime"},
-	workspace: guestBlockDevice{device: "/dev/vdb", label: "nessie-work"},
-	draft:     guestBlockDevice{device: "/dev/vdc", label: "nessie-draft"},
+	runtime:   guestBlockDevice{label: "nessie-runtime", virtioName: "vda"},
+	workspace: guestBlockDevice{label: "nessie-work", virtioName: "vdb"},
+	draft:     guestBlockDevice{label: "nessie-draft", virtioName: "vdc"},
 }
+
+// Overridden only by the tests, which stand a fake sysfs and a directory of
+// real mke2fs images in for the two trees the guest reads at boot.
+var (
+	guestSysBlockDirectory = "/sys/block"
+	guestDeviceDirectory   = "/dev"
+)
+
+// Never one of our images: the kernel's own virtual block devices, and optical
+// devices, whose open blocks on an empty tray and which carry no ext4
+// superblock to read.
+var guestBlockDeviceSkipPrefixes = []string{"loop", "ram", "dm-", "sr", "md", "zram", "nbd"}
 
 // guestShares records what a boot actually mounted. `draftRoot` is empty under
 // virtiofs, where the guest writes straight through to the host's own overlay
@@ -114,15 +144,63 @@ func ext4Label(device string) (string, error) {
 	return string(raw), nil
 }
 
-func assertGuestBlockDevice(expected guestBlockDevice) (string, error) {
-	label, err := ext4Label(expected.device)
+func guestBlockDeviceCandidates() ([]string, error) {
+	entries, err := os.ReadDir(guestSysBlockDirectory)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		skip := false
+		for _, prefix := range guestBlockDeviceSkipPrefixes {
+			if strings.HasPrefix(name, prefix) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			candidates = append(candidates, name)
+		}
+	}
+	sort.Strings(candidates)
+	return candidates, nil
+}
+
+// resolveGuestBlockDevice finds the one attached disk whose ext4 superblock
+// carries expected.label. A device that cannot be opened or read is skipped
+// rather than fatal — the scan crosses whatever else the host attached — but a
+// label no disk carries, or two disks claiming one label, is refused: the first
+// means the host staged the wrong session and the second means it staged two,
+// and neither is a thing to guess about.
+func resolveGuestBlockDevice(expected guestBlockDevice) (string, error) {
+	candidates, err := guestBlockDeviceCandidates()
 	if err != nil {
 		return "", err
 	}
-	if label != expected.label {
+	resolved := ""
+	for _, name := range candidates {
+		device := filepath.Join(guestDeviceDirectory, name)
+		label, labelErr := ext4Label(device)
+		if labelErr != nil || label != expected.label {
+			continue
+		}
+		if resolved != "" {
+			return "", errInvalidFrame
+		}
+		resolved = device
+	}
+	if resolved == "" {
 		return "", errInvalidFrame
 	}
-	return expected.device, nil
+	// The order assertion, kept only where the bus makes the promise: if the
+	// node the virtio attach order named exists at all, it must be this one.
+	if expected.virtioName != "" && filepath.Base(resolved) != expected.virtioName {
+		if _, statErr := os.Stat(filepath.Join(guestDeviceDirectory, expected.virtioName)); statErr == nil {
+			return "", errInvalidFrame
+		}
+	}
+	return resolved, nil
 }
 
 func mountGuestRuntime(commandLine string) error {
@@ -133,7 +211,7 @@ func mountGuestRuntime(commandLine string) error {
 	// runtime would make a browser, tmux or CLI impossible.
 	flags := uintptr(syscall.MS_RDONLY | syscall.MS_NOSUID | syscall.MS_NODEV)
 	if blockSharesRequested(commandLine) {
-		device, err := assertGuestBlockDevice(guestBlockDevices.runtime)
+		device, err := resolveGuestBlockDevice(guestBlockDevices.runtime)
 		if err != nil {
 			return err
 		}
@@ -166,11 +244,11 @@ func mountGuestWorkspaceVirtiofs() (guestShares, error) {
 // requires Linux 5.11 or newer; the packaged guest kernel is 6.1.
 func mountGuestWorkspaceBlock() (guestShares, error) {
 	attached := guestShares{workspaceAttached: true}
-	lower, err := assertGuestBlockDevice(guestBlockDevices.workspace)
+	lower, err := resolveGuestBlockDevice(guestBlockDevices.workspace)
 	if err != nil {
 		return attached, err
 	}
-	draft, err := assertGuestBlockDevice(guestBlockDevices.draft)
+	draft, err := resolveGuestBlockDevice(guestBlockDevices.draft)
 	if err != nil {
 		return attached, err
 	}

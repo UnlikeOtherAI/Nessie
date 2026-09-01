@@ -1,6 +1,7 @@
 export { createFirecrackerBackend, guestBootArgs, guestDrives } from './backend.js'
 export type { FirecrackerBackendDependencies, FirecrackerProcessSpawner } from './backend.js'
 export { GUEST_CONTROL_PORT, startGuestControlChannel } from './control-channel.js'
+export type { GuestChannelListener } from './control-channel.js'
 export { GUEST_EGRESS_PORT, deriveGuestEgressToken, startGuestEgressBridge } from './egress-bridge.js'
 export {
   assertFirecrackerBinary,

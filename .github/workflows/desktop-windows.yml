@@ -19,9 +19,56 @@ env:
   WIX_VERSION: "7.0.0"
 
 jobs:
+  # The guest kernel is a Linux build: a bzImage with the EFI stub, the Hyper-V
+  # drivers, and the built-in command line Hyper-V's firmware cannot supply.
+  # It is built here and handed to the Windows job as an artifact, because the
+  # Windows runner has no Linux toolchain and the kernel is what the sandbox
+  # boots.
+  guest-kernel:
+    name: Guest kernel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bc bison build-essential flex libelf-dev libssl-dev
+
+      - name: Cache the pinned kernel source
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nessie-guest-kernel
+          key: guest-kernel-${{ hashFiles('executor/guest/kernel/PIN') }}
+
+      - name: Build the guest kernel
+        run: |
+          set -euo pipefail
+          # PIN carries the tarball URL and the SHA-256 kernel.org publishes for
+          # it; build.sh verifies the digest before a byte is extracted and
+          # fails if any option the fragment asked for is not in the resolved
+          # configuration.
+          . executor/guest/kernel/PIN
+          mkdir -p ~/.cache/nessie-guest-kernel
+          tarball=~/.cache/nessie-guest-kernel/"linux-${KERNEL_VERSION}.tar.xz"
+          [ -f "${tarball}" ] || curl --fail --silent --show-error --location \
+            --output "${tarball}" "${KERNEL_URL}"
+          KERNEL_BUILD_JOBS=$(nproc) executor/guest/kernel/build.sh "${RUNNER_TEMP}/kernel" "${tarball}"
+
+      - name: Upload the guest kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-kernel-${{ github.sha }}
+          path: ${{ runner.temp }}/kernel/
+          if-no-files-found: error
+
   build:
     name: Build, sign, and install smoke
     runs-on: windows-latest
+    needs: guest-kernel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,16 +100,32 @@ jobs:
             executor/native/target
             executor/service-windows/target
             executor/tray-windows/src-tauri/target
+            executor/hyperv-bridge/target
           key: >-
             desktop-windows-cargo-${{ hashFiles(
               'desktop/src-tauri/Cargo.lock',
               'executor/native/Cargo.lock',
               'executor/service-windows/Cargo.lock',
+              'executor/hyperv-bridge/Cargo.lock',
               'executor/tray-windows/src-tauri/Cargo.lock') }}
           restore-keys: desktop-windows-cargo-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: executor/guest/go.sum
+
+      # The bzImage the Linux job built. The package refuses to build without
+      # it rather than shipping a sandbox that cannot boot.
+      - name: Download the guest kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: guest-kernel-${{ github.sha }}
+          path: guest-kernel
 
       - name: Resolve release version
         shell: pwsh
@@ -81,6 +144,7 @@ jobs:
           cargo test --manifest-path executor/native/Cargo.toml
           cargo test --manifest-path executor/windows-provenance/Cargo.toml
           cargo test --manifest-path executor/service-windows/Cargo.toml
+          cargo test --manifest-path executor/hyperv-bridge/Cargo.toml
           cargo test --manifest-path executor/tray-windows/src-tauri/Cargo.toml
 
       - name: Installer authoring tests
@@ -175,10 +239,17 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+          MTOOLS_DIR: ${{ secrets.WINDOWS_MTOOLS_DIR }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
           }
+          $env:NESSIE_GUEST_KERNEL = "$PWD\guest-kernel\bzImage"
+          # mtools builds the guest's FAT boot disk without a privilege. It is
+          # GPL-3.0 and is not built from this repository, so a release stages
+          # it from a secret-supplied directory; without it the package still
+          # installs and the daemon refuses a sandboxed session in words.
+          if ($env:MTOOLS_DIR) { $env:NESSIE_MTOOLS_DIR = $env:MTOOLS_DIR }
           node executor/packaging/windows/build-msi.mjs
 
       - name: Sign the executor package
@@ -338,3 +409,115 @@ jobs:
           # Deliberate: a pairing is a machine key and a signed policy revision,
           # and uninstalling a program is not a request to destroy them.
           if (-not (Test-Path $stateRoot)) { throw 'the state root was removed by uninstall' }
+
+  hyperv-conformance:
+    name: Hyper-V backend conformance
+    # GitHub-hosted Windows runners offer no nested virtualization, so this job
+    # CANNOT run there. The `hyperv` label is the deployment's obligation — a
+    # self-hosted Windows 11 Pro (or Server) runner with the Hyper-V role
+    # enabled and the runner's account in Hyper-V Administrators. Until such a
+    # runner is registered this job stays queued, which is the honest state; it
+    # must never be made to pass by skipping, because the command and coding
+    # profiles are advertised to agents on the strength of exactly this
+    # evidence. It mirrors `firecracker-conformance` in desktop-linux.yml.
+    runs-on: [self-hosted, windows, hyperv]
+    needs: guest-kernel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Hyper-V is present and usable by this runner
+        shell: pwsh
+        run: |
+          # A missing Hyper-V FAILS the job. `detectExecutorHost` decides the
+          # Windows sandbox backend by the presence of this exact binary, so
+          # anything less would advertise a sandbox the daemon would refuse.
+          if (-not (Test-Path "$env:SystemRoot\System32\vmms.exe")) {
+            throw 'Hyper-V is not installed on this runner.'
+          }
+          if ((Get-Service vmms).Status -ne 'Running') {
+            throw 'the Hyper-V Virtual Machine Management service is not running'
+          }
+          Get-Module -ListAvailable Hyper-V | Format-Table Name, Version
+          Get-VMHost | Format-List Name, VirtualMachinePath, VirtualHardDiskPath
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: executor/guest/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
+      - name: The host reports the Hyper-V backend
+        shell: pwsh
+        run: |
+          node --import tsx -e "
+            import('./executor/src/host-platform.ts').then((module) => {
+              const host = module.detectExecutorHost()
+              console.log(JSON.stringify(host))
+              if (host.sandboxBackend !== 'hyperv') {
+                throw new Error('This runner has Hyper-V but reports ' + host.sandboxBackend + '.')
+              }
+            })
+          "
+
+      - name: The bridge builds and its protocol half passes its own tests
+        run: |
+          cargo test --manifest-path executor/hyperv-bridge/Cargo.toml
+          cargo build --release --manifest-path executor/hyperv-bridge/Cargo.toml
+
+      - name: The guest builds and passes its own tests
+        working-directory: executor/guest
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `-o /dev/null`: a bare `go build ./...` writes the binary beside the
+          # sources under the module name and would overwrite the checked-in
+          # aarch64 guest artifact.
+          GOOS=linux GOARCH=amd64 go build -o /dev/null ./...
+          GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/build-initrd
+          go vet ./...
+          go test ./...
+
+      - name: Hyper-V backend conformance
+        working-directory: executor
+        # The suites that gate the command and coding profiles on this host: the
+        # pinned-script argv and lifecycle sequence, the fixed-VHD footer the
+        # disks are wrapped in, the FAT boot disk's command list, the named-pipe
+        # transport carrying the shared control and forced-egress channels, and
+        # the backend seam that chooses this backend at all. A booted-guest run
+        # is added here once such a runner exists; see
+        # docs/executor-protocol/sandbox-forced-egress-and-credentials.md.
+        run: node --test --import tsx "test/hyperv-*.test.ts" "test/firecracker-protocol.test.ts"
+
+      - name: Download the guest kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: guest-kernel-${{ github.sha }}
+          path: guest-kernel
+
+      - name: The guest kernel is the one the backend expects
+        shell: pwsh
+        run: |
+          # The built-in command line is the only one this guest ever gets, so a
+          # kernel built without it would boot with no arguments at all.
+          $bytes = [System.IO.File]::ReadAllBytes("guest-kernel/bzImage")
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          if ($text -notmatch 'nessie\.args=initrd') {
+            throw 'the guest kernel carries no built-in Nessie command line'
+          }
+          Get-Content guest-kernel/bzImage.sha256

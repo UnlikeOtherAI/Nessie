@@ -161,7 +161,12 @@ msiexec /i .\NessieExecutor_<version>_x64.msi
 It installs `C:\Program Files\Nessie Executor\` — the packaged runtime
 (`node.exe`, `nessie-executor.cjs`, `manifest.json`, `NODE_LICENSE`,
 `nessie-executor-native.exe`) plus `nessie-executor-service.exe` and
-`nessie-executor-tray.exe` — and then:
+`nessie-executor-tray.exe`. It also installs the Hyper-V sandbox payload under
+`resources\` — `nessie-hyperv-bridge.exe`, the four pinned PowerShell scripts
+that create, start, stop and remove a session's virtual machine, the guest
+kernel and initrd builder under `guest\`, and a `manifest.json` recording one
+SHA-256 per file — and, where a release supplies them, the mtools binaries the
+guest's FAT boot disk is built with. Then it:
 
 - registers the **NessieExecutor** service ("Nessie Executor") to start
   automatically as the virtual account `NT SERVICE\NessieExecutor`: no

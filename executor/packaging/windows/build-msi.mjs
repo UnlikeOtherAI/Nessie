@@ -11,13 +11,13 @@
 // steps later on a missing `.exe`.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { prepareExecutorRuntime } from '../../scripts/prepare-runtime.mjs'
-import { BUILT_BINARIES, msiFileName, msiVersion } from './msi-plan.mjs'
+import { BUILT_BINARIES, MTOOLS_FILES, msiFileName, msiVersion } from './msi-plan.mjs'
 
 const run = promisify(execFile)
 
@@ -88,6 +88,90 @@ const buildTray = async () => {
   })
 }
 
+/**
+ * The sandbox payload: the Hyper-V bridge, the four pinned PowerShell scripts,
+ * the guest kernel, the portable initrd builder and the Linux guest init it
+ * assembles. `guest/init` is a *Linux* binary — it is never run on this
+ * machine, only placed inside the initrd — while `build-initrd.exe` runs on the
+ * host, which is why the two are cross-compiled for different targets.
+ *
+ * The kernel is not built here: it needs a Linux toolchain
+ * (`executor/guest/kernel/build.sh`), so CI builds it in a Linux job and hands
+ * it over through NESSIE_GUEST_KERNEL.
+ */
+const stageResources = async (destination) => {
+  await mkdir(join(destination, 'guest'), { recursive: true })
+  await mkdir(join(destination, 'scripts'), { recursive: true })
+
+  await cargoRelease(join(executorDirectory, 'hyperv-bridge'))
+  const bridgePath = join(executorDirectory, 'hyperv-bridge/target/release/nessie-hyperv-bridge.exe')
+  await signBuiltBinaries([bridgePath])
+  await copyFile(bridgePath, join(destination, 'nessie-hyperv-bridge.exe'))
+
+  const guestDirectory = join(executorDirectory, 'guest')
+  await run('go', ['build', '-trimpath', '-o', join(destination, 'guest/build-initrd.exe'), './cmd/build-initrd'], {
+    cwd: guestDirectory,
+    env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'windows' },
+  })
+  await run('go', ['build', '-trimpath', '-o', join(destination, 'guest/init'), '.'], {
+    cwd: guestDirectory,
+    env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'linux' },
+  })
+
+  const kernelPath = process.env.NESSIE_GUEST_KERNEL
+  if (!kernelPath) {
+    throw new Error(
+      'Set NESSIE_GUEST_KERNEL to the bzImage built by executor/guest/kernel/build.sh. '
+      + 'Without a guest kernel the package could install a sandbox that cannot boot.',
+    )
+  }
+  await copyFile(kernelPath, join(destination, 'guest/bzImage'))
+
+  for (const name of ['create.ps1', 'remove.ps1', 'start.ps1', 'stop.ps1']) {
+    await copyFile(join(packagingDirectory, 'scripts', name), join(destination, 'scripts', name))
+  }
+
+  // GPL-3.0 and not built here. A release stages it; a build without it still
+  // installs, and the daemon refuses a sandboxed session in words.
+  const mtools = process.env.NESSIE_MTOOLS_DIR
+  if (mtools) {
+    await mkdir(join(destination, 'mtools'), { recursive: true })
+    for (const name of MTOOLS_FILES) {
+      const file = name.split('\\').pop()
+      await copyFile(join(mtools, file), join(destination, 'mtools', file))
+    }
+  } else {
+    process.stderr.write(
+      'warning: NESSIE_MTOOLS_DIR is unset, so this package ships no mtools and its guests '
+      + 'cannot be given a boot disk.\n',
+    )
+  }
+}
+
+/**
+ * One SHA-256 per shipped sandbox resource, so an integrity check can say which
+ * file changed rather than only that something did. It is what the daemon
+ * checks a PowerShell script against before running it. `manifest.json` is
+ * excluded from its own listing, and paths are recorded with forward slashes so
+ * one reader serves both packages.
+ */
+const resourceManifest = async (directory) => {
+  const files = []
+  const walk = async (current) => {
+    const entries = (await readdir(current, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+    for (const entry of entries) {
+      const path = join(current, entry.name)
+      if (entry.isDirectory()) await walk(path)
+      else if (entry.isFile() && entry.name !== 'manifest.json') {
+        files.push({ path: relative(directory, path).split('\\').join('/'), sha256: await sha256File(path) })
+      }
+    }
+  }
+  await walk(directory)
+  return { files, version: 1 }
+}
+
 const stage = async () => {
   await rm(stagingDirectory, { force: true, recursive: true })
   await mkdir(stagingDirectory, { recursive: true })
@@ -126,6 +210,13 @@ const stage = async () => {
   for (const name of BUILT_BINARIES) {
     await copyFile(sources[name], join(stagingDirectory, name))
   }
+
+  const resourcesDirectory = join(stagingDirectory, 'resources')
+  await stageResources(resourcesDirectory)
+  await writeFile(
+    join(resourcesDirectory, 'manifest.json'),
+    `${JSON.stringify(await resourceManifest(resourcesDirectory), null, 2)}\n`,
+  )
 }
 
 const sha256File = async (path) => createHash('sha256').update(await readFile(path)).digest('hex')
@@ -143,6 +234,9 @@ await run('wix', [
   '-arch', 'x64',
   '-d', `Version=${version}`,
   '-d', `StagingDir=${stagingDirectory}`,
+  // Defined only when a release supplied mtools; the authoring's <?ifdef?>
+  // leaves the component group out otherwise.
+  ...(process.env.NESSIE_MTOOLS_DIR ? ['-d', 'MtoolsDir=1'] : []),
   // The tray's autostart entry is a per-user registry value in a per-machine
   // package. That is the intent — the service serves everyone, the tray is one
   // person's control surface — and these two validators exist to warn about

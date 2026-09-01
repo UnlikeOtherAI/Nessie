@@ -34,7 +34,17 @@
       Message="Nessie Executor requires 64-bit Windows 10 22H2 or later." />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Nessie Executor" />
+      <Directory Id="INSTALLFOLDER" Name="Nessie Executor">
+        <!-- Everything the Hyper-V sandbox backend resolves at session start.
+             The executor's stored vmHelperPath is the bridge below, and the
+             backend finds the pinned scripts and mtools as its siblings; its
+             kernelPath and guestInitrdBuilderPath are the two under guest\. -->
+        <Directory Id="RESOURCESFOLDER" Name="resources">
+          <Directory Id="GUESTFOLDER" Name="guest" />
+          <Directory Id="SCRIPTSFOLDER" Name="scripts" />
+          <Directory Id="MTOOLSFOLDER" Name="mtools" />
+        </Directory>
+      </Directory>
     </StandardDirectory>
 
     <!-- Pairing material and machine keys belong to the service, not to a
@@ -71,6 +81,56 @@
       </Component>
     </ComponentGroup>
 
+    <!-- The sandbox payload. Its own manifest.json records one SHA-256 per
+         file, the same way the Linux package records its resources, and the
+         daemon refuses to run a PowerShell script whose bytes have changed. -->
+    <ComponentGroup Id="SandboxResources">
+      <Component Directory="RESOURCESFOLDER">
+        <File Id="HypervBridge" Source="$(var.StagingDir)\resources\nessie-hyperv-bridge.exe" KeyPath="yes" />
+      </Component>
+      <Component Directory="RESOURCESFOLDER">
+        <File Id="ResourceManifest" Source="$(var.StagingDir)\resources\manifest.json" KeyPath="yes" />
+      </Component>
+      <Component Directory="GUESTFOLDER">
+        <File Id="GuestKernel" Source="$(var.StagingDir)\resources\guest\bzImage" KeyPath="yes" />
+      </Component>
+      <Component Directory="GUESTFOLDER">
+        <File Id="GuestInitrdBuilder" Source="$(var.StagingDir)\resources\guest\build-initrd.exe" KeyPath="yes" />
+      </Component>
+      <Component Directory="GUESTFOLDER">
+        <File Id="GuestInit" Source="$(var.StagingDir)\resources\guest\init" KeyPath="yes" />
+      </Component>
+      <Component Directory="SCRIPTSFOLDER">
+        <File Id="ScriptCreate" Source="$(var.StagingDir)\resources\scripts\create.ps1" KeyPath="yes" />
+      </Component>
+      <Component Directory="SCRIPTSFOLDER">
+        <File Id="ScriptStart" Source="$(var.StagingDir)\resources\scripts\start.ps1" KeyPath="yes" />
+      </Component>
+      <Component Directory="SCRIPTSFOLDER">
+        <File Id="ScriptStop" Source="$(var.StagingDir)\resources\scripts\stop.ps1" KeyPath="yes" />
+      </Component>
+      <Component Directory="SCRIPTSFOLDER">
+        <File Id="ScriptRemove" Source="$(var.StagingDir)\resources\scripts\remove.ps1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- mtools is GPL-3.0 and is not built here, so a release stages it from
+         NESSIE_MTOOLS_DIR. A package built without it installs and pairs; the
+         daemon then refuses a sandboxed session in words. -->
+    <?ifdef MtoolsDir ?>
+    <ComponentGroup Id="MtoolsResources" Directory="MTOOLSFOLDER">
+      <Component>
+        <File Id="MtoolsFormat" Source="$(var.StagingDir)\resources\mtools\mformat.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="MtoolsMkdir" Source="$(var.StagingDir)\resources\mtools\mmd.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Id="MtoolsCopy" Source="$(var.StagingDir)\resources\mtools\mcopy.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+    <?endif?>
+
     <ComponentGroup Id="ExecutorService" Directory="INSTALLFOLDER">
       <Component>
         <File
@@ -103,9 +163,10 @@
 
     <ComponentGroup Id="MachineConfiguration">
       <!-- Hyper-V addresses a Linux guest's vsock port as a GUID built from
-           Microsoft's VSOCK template with the port in its first field, so this
-           GUID is 0x0000c000 = 49152, the guest's control port. Registering it
-           is what lets the service open an AF_HYPERV socket to a guest at all. -->
+           Microsoft's VSOCK template with the port in its first field, so
+           0x0000c000 is 49152, the guest's control port; 0x0000c001 is the
+           forced-egress tunnel and 0x0000bfff the serial console. Each needs
+           its own registration — an unregistered GUID simply never opens. -->
       <Component Directory="INSTALLFOLDER" Guid="4d2f8b71-6c05-4f2a-8d3e-71b0c9a54f22">
         <RegistryKey
           Root="HKLM"
@@ -113,6 +174,26 @@
           ForceCreateOnInstall="yes"
           ForceDeleteOnUninstall="yes">
           <RegistryValue Type="string" Name="ElementName" Value="Nessie Executor" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+
+      <Component Directory="INSTALLFOLDER" Guid="7e5a1c93-2b48-4d16-9f07-5c3a8be24d61">
+        <RegistryKey
+          Root="HKLM"
+          Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\0000c001-facb-11e6-bd58-64006a7986d3"
+          ForceCreateOnInstall="yes"
+          ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Name="ElementName" Value="Nessie Executor egress" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+
+      <Component Directory="INSTALLFOLDER" Guid="b41d7f28-90c6-4e35-8a72-1d6e0f9b3c57">
+        <RegistryKey
+          Root="HKLM"
+          Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\0000bfff-facb-11e6-bd58-64006a7986d3"
+          ForceCreateOnInstall="yes"
+          ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Name="ElementName" Value="Nessie Executor console" KeyPath="yes" />
         </RegistryKey>
       </Component>
 
@@ -161,6 +242,10 @@
       <ComponentGroupRef Id="PackagedRuntime" />
       <ComponentGroupRef Id="ExecutorService" />
       <ComponentGroupRef Id="MachineConfiguration" />
+      <ComponentGroupRef Id="SandboxResources" />
+      <?ifdef MtoolsDir ?>
+      <ComponentGroupRef Id="MtoolsResources" />
+      <?endif?>
     </Feature>
   </Package>
 </Wix>

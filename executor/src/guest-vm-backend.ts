@@ -200,6 +200,7 @@ export const selectGuestVmBackend = (
   host: ExecutorHost,
   dependencies: GuestVmBackendDependencies = {},
   createFirecracker?: () => GuestVmBackend,
+  createHyperV?: () => GuestVmBackend,
 ): GuestVmBackend => {
   if (dependencies.backend) return dependencies.backend
   if (host.sandboxBackend === 'virtualization_framework') {
@@ -210,9 +211,8 @@ export const selectGuestVmBackend = (
     return createFirecracker()
   }
   if (host.sandboxBackend === 'hyperv') {
-    throw new WorkspacePathError(
-      'This executor release has no Hyper-V sandbox backend yet, so only workspace operations can run here.',
-    )
+    if (!createHyperV) throw new WorkspacePathError('The executor Hyper-V backend is unavailable.')
+    return createHyperV()
   }
   throw new WorkspacePathError(
     'This computer reports no sandbox backend, so a guest VM session cannot start. '

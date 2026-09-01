@@ -39,9 +39,11 @@ test('the backend seam picks from the host fact and refuses in words when there 
     () => selectGuestVmBackend(host('none', 'linux')),
     /no sandbox backend/,
   )
+  const hyperv = { kind: 'hyperv' as const, start: async () => { throw new Error('unused') } }
+  assert.equal(selectGuestVmBackend(host('hyperv', 'windows'), {}, undefined, () => hyperv), hyperv)
   assert.throws(
     () => selectGuestVmBackend(host('hyperv', 'windows')),
-    /no Hyper-V sandbox backend/,
+    /Hyper-V backend is unavailable/,
   )
   // A firecracker host with no factory available fails closed rather than
   // silently falling through to the macOS helper.
