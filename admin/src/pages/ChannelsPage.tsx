@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useRedirect } from '../navigation/redirect'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
@@ -48,6 +49,7 @@ import { useChannelParticipants } from './channels/useChannelParticipants'
 export const ChannelsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
@@ -291,9 +293,9 @@ export const ChannelsPage = () => {
     // existing convenience of opening the first conversation in the detail
     // pane because that list remains visible alongside it.
     if (!phoneLayout && !isComposeRoute && !channelId && activeChannel) {
-      void navigate(`/channels/${activeChannel.id}`, { replace: true })
+      redirect(`/channels/${activeChannel.id}`)
     }
-  }, [activeChannel, channelId, isComposeRoute, navigate, phoneLayout])
+  }, [activeChannel, channelId, isComposeRoute, phoneLayout, redirect])
 
   // Structural only: is there an agent here at all? Whether one engages is the
   // orchestrator's model-judged call. The Personal Assistant and external-agent

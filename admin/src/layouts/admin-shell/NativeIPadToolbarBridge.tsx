@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import {
   RecentChannelsMenu,
-  useHistoryNav,
   useRecordRecentChannelVisits,
 } from './topbar-navigation'
+import { usePhoneNavigation } from './PhoneNavigationProvider'
 import { useTransientMenu } from './TransientMenuContext'
 
 type NativeToolbarAction = 'back' | 'forward' | 'history' | 'help'
@@ -31,7 +31,12 @@ const postToolbarState = (canBack: boolean, canForward: boolean, recentOpen: boo
 export const NativeIPadToolbarBridge = () => {
   const navigate = useNavigate()
   const menuRef = useRef<HTMLDivElement>(null)
-  const { goBack, goForward, canBack, canForward } = useHistoryNav()
+  // The same ledger-backed history controls as the desktop top bar.
+  const history = usePhoneNavigation()?.history
+  const canBack = history?.canBack ?? false
+  const canForward = history?.canForward ?? false
+  const goBack = useCallback(() => history?.goBack(), [history])
+  const goForward = useCallback(() => history?.goForward(), [history])
   const { close, isOpen: recentOpen, toggle } = useTransientMenu()
 
   useRecordRecentChannelVisits()

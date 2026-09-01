@@ -251,7 +251,7 @@ test('shares the phone Back control across route headers and channel flows', () 
   const composePage = readSource('../src/pages/ChannelConversationComposePage.tsx')
   const infoFlow = readSource('../src/components/features/channels/ConversationInfoFlow.tsx')
 
-  assert.match(navigationButton, /getPhoneNavigationBackTarget/)
+  assert.match(navigationButton, /resolveBackAction\(/)
   assert.match(navigationButton, /<PhoneBackButton/)
   assert.match(backButton, /useNativeIOSPhoneApp/)
   assert.match(channelHeader, /leading=\{<PhoneNavigationButton \/>\}/)

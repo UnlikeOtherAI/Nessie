@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useRedirect } from '../../navigation/redirect'
 import type { DeepWaterResearchLauncherPreset } from '../../lib/api-client'
 import { DeepWaterResearchLauncherDialog } from '../../components/features/integrations/DeepWaterResearchLauncherDialog'
 import { readDeepWaterResearchLauncherPreset } from '../../facades/integrations/deep-water-research-launcher-navigation'
@@ -9,6 +10,7 @@ import { useIntegratedProducts } from '../../facades/integrations/hooks'
 export const useDeepWaterResearchLauncher = (message: string) => {
   const location = useLocation()
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const { data: integratedProducts = [] } = useIntegratedProducts()
   const [preset, setPreset] = useState<DeepWaterResearchLauncherPreset | null>(null)
   const product = useMemo(
@@ -22,11 +24,8 @@ export const useDeepWaterResearchLauncher = (message: string) => {
       return
     }
     setPreset(requestedPreset)
-    navigate(
-      { hash: location.hash, pathname: location.pathname, search: location.search },
-      { replace: true, state: null },
-    )
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
+    redirect({ hash: location.hash, pathname: location.pathname, search: location.search })
+  }, [location.hash, location.pathname, location.search, location.state, redirect])
 
   return {
     dialog: product && preset ? (

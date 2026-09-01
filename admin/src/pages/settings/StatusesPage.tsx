@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useRedirect } from '../../navigation/redirect'
 import { Switch } from '../../components/primitives/Switch'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -32,6 +33,7 @@ import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
 export const StatusesPage = () => {
   const { statusId } = useParams()
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const { data: statuses = [] } = useStatuses()
   const { data: channels = [] } = useChannels()
   const { data: projects = [] } = useProjects()
@@ -75,9 +77,9 @@ export const StatusesPage = () => {
 
   useEffect(() => {
     if (!statusId && statuses[0]) {
-      navigate(`/settings/statuses/${statuses[0].id}`, { replace: true })
+      redirect(`/settings/statuses/${statuses[0].id}`)
     }
-  }, [navigate, statusId, statuses])
+  }, [redirect, statusId, statuses])
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 

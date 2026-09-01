@@ -14,7 +14,6 @@ import {
   useViewport,
 } from '../../hooks/useViewport'
 import {
-  getPhoneNavigationBackTarget,
   getPhoneNavigationDirection,
   type PhoneNavigationDirection,
 } from './phone-navigation'
@@ -28,6 +27,7 @@ import {
 } from './phone-navigation-stack'
 import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
+import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
@@ -80,7 +80,8 @@ export const PhoneNavigationViewport = ({
 }: PhoneNavigationViewportProps) => {
   const navigate = useNavigate()
   const navigation = usePhoneNavigation()
-  const localBackActive = Boolean(useLocalBackSnapshot()?.active)
+  // Subscribing here re-arms the gesture when an owner registers or leaves.
+  useLocalBackSnapshot()
   const reducedMotion = useViewport().media?.reducedMotion ?? false
   const locationContext = useContext(UNSAFE_LocationContext)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -242,29 +243,37 @@ export const PhoneNavigationViewport = ({
 
   // The finger settles first; only its completion changes the route. That
   // route commit is marked as already animated, preventing a second keyframe.
+  // The swipe drives the retained route layers, so it arms only when the one
+  // resolver answers with a route Back: an in-page owner (a column, a
+  // knowledge stage) is not a layer yet and would close in place under a
+  // slide that revealed the wrong screen. Owners join the gesture when they
+  // become nested stages (docs/navigation.md).
+  const routeBackAction = navigation?.resolveBackAction(pathname) ?? null
+  const gestureArmed = routeBackAction?.kind === 'route'
+
   const performGestureBack = useCallback(() => {
     const activeTransition = transitionRef.current
     if (activeTransition) finishTransition(activeTransition.id)
-    if (navigation) {
-      // Resolve while the gesture is still armed (and therefore while no
-      // local Back action is active), then execute that immutable route
-      // action. Re-resolving through performBack after the settle could let a
-      // newly mounted local action consume the swipe and leave the route
-      // suppression marker attached to the wrong future navigation.
-      const action = navigation.resolveBackAction(pathname)
-      if (!action) return
+    if (!navigation) {
+      // Outside the controller (isolated tests) fall back to the parent.
+      const action = resolveBack({ pathname, owners: null, ledger: null })
+      if (action?.kind !== 'route') return
       suppressNextRouteAnimation.current = action.to
-      navigation.performBackAction(action)
+      void navigate(action.to)
       return
     }
-    const target = getPhoneNavigationBackTarget(pathname)
-    if (!target) return
-    suppressNextRouteAnimation.current = target.pathname
-    void navigate(target.pathname)
+    // Resolve while the gesture is still armed, then execute that immutable
+    // action. Re-resolving through performBack after the settle could let a
+    // newly mounted owner consume the swipe and leave the route suppression
+    // marker attached to the wrong future navigation.
+    const action = navigation.resolveBackAction(pathname)
+    if (action?.kind !== 'route') return
+    suppressNextRouteAnimation.current = action.to
+    navigation.performBackAction(action)
   }, [finishTransition, navigate, navigation, pathname])
 
   const gesture = usePhoneBackSwipeGesture({
-    enabled: stack.currentIndex > 0 && transition === null && !localBackActive,
+    enabled: stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
     reducedMotion,
     viewportRef,

@@ -83,18 +83,44 @@ One spec, `admin/src/navigation/motion.ts`:
 - The blanket `prefers-reduced-motion` CSS rule stays as the baseline for
   non-navigation CSS motion; navigation reads the query in JS.
 
-## 4. Registry, controller, Back — **planned** (steps 3–4)
+## 4. Controller and Back — **built** (step 4, wiring in progress)
 
-`admin/src/navigation/surfaces.ts` classifies every route; the controller
-owns one ledger, one `navigate` wrapper (`push`, `replace`, `back`,
-`redirect`, `openFlow`) and one Back registry; `resolveBack()` is the only
-function that decides what Back does, for the header button, the edge swipe,
-Android hardware Back, Escape and browser POP alike.
+The controller is `PhoneNavigationProvider` (one instance around the
+authenticated shell; the name follows in a later rename). It owns:
 
-Today: `admin/src/layouts/admin-shell/phone-navigation.ts` classifies the
-phone routes, `PhoneNavigationProvider` owns the phone ledger, and
-`PhoneNavigationButton` → `performBack` is the shared phone doorway. Use
-those; do not add a route family without a row there.
+- **One ledger** (`phone-navigation-ledger.ts`): every PUSH / REPLACE / POP the
+  router commits. `navigation/history.ts` derives `canGoBack`, `canGoForward`
+  and the last path per section from it. The desktop top bar, the iPad
+  toolbar and the rail read those; none keeps a counter of its own.
+- **One Back decision**: `navigation/back.ts` `resolveBack()` — the topmost
+  registered owner (the local-back registry: an open overlay, the deepest
+  nested stage), else the route's parent (pop when the ledger's previous
+  entry is it, else replace), else nothing at a root. `performBack()`,
+  `PhoneNavigationButton`, the edge swipe, `nessie:back-state` and Android
+  hardware Back all go through it. An owner may register `swipeable: false`.
+- **History controls are not Back.** The top bar and the iPad toolbar walk
+  the ledger across sections, which Back never does; they consult the
+  registry first so they never pop a route under an open owner.
+- **`back({ returnTo, returnToState, fallback })`** is the shared smart Back:
+  an explicit return address wins, else a real previous entry pops, else the
+  fallback replaces. The two designers use it; nobody reads
+  `history.state.idx` any more.
+- **`redirect(to, { state })`** (`navigation/redirect.ts`, also
+  `useRedirect()` for components outside the provider) is what every
+  effect-driven navigation calls: it replaces, forwards state, waits for the
+  stack to settle (`transition-state.ts`), and is dropped if the location
+  moved on. The first-channel and first-status auto-selects, the session
+  redirects, the call, message-highlight and DeepWater intent consumers and
+  the landscape rotation redirect all use it.
+- **`useStackSettled()`** tells a screen when its slide has landed.
+
+Planned in this step: `BackButton` as the single glyph in every header on
+every layout; `state` forwarded through the `<Navigate>` redirects; the
+gesture finish (velocity settle is built; dimming and haptics follow).
+
+Route classification still lives in
+`admin/src/layouts/admin-shell/phone-navigation.ts` until the registry
+(step 3) lands.
 
 ## 5. Everything else — **planned**
 

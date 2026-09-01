@@ -7,6 +7,7 @@ import {
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import {
   CANVAS_NODE_INSERT_OFFSET,
   CANVAS_NODE_INSERT_STEPS,
@@ -56,6 +57,7 @@ export const useWorkflowGraphIo = ({
   setWorkflowName,
 }: UseWorkflowGraphIoInput) => {
   const navigate = useNavigate()
+  const navigation = usePhoneNavigation()
   const location = useLocation()
   const { workflowTemplateId } = useParams<{ workflowTemplateId?: string }>()
   const isOwner = useIsOwner()
@@ -97,28 +99,24 @@ export const useWorkflowGraphIo = ({
     }
   }, [location.state])
 
+  // The shared smart Back: an explicit return address wins, else a real
+  // previous entry is popped, else the list replaces the cold deep link.
   const handleBack = useCallback(() => {
-    if (workflowDesignerLocationState.returnTo) {
-      void navigate(workflowDesignerLocationState.returnTo, {
-        replace: true,
-        state: workflowDesignerLocationState.returnToState,
+    if (navigation) {
+      navigation.back({
+        returnTo: workflowDesignerLocationState.returnTo,
+        returnToState: workflowDesignerLocationState.returnToState,
+        fallback: '/agents/workflows',
       })
       return
     }
-
-    const historyIndex =
-      typeof window.history.state?.idx === 'number'
-        ? window.history.state.idx
-        : 0
-
-    if (historyIndex > 0) {
-      void navigate(-1)
-      return
-    }
-
-    void navigate('/agents/workflows', { replace: true })
+    void navigate(workflowDesignerLocationState.returnTo ?? '/agents/workflows', {
+      replace: true,
+      state: workflowDesignerLocationState.returnToState,
+    })
   }, [
     navigate,
+    navigation,
     workflowDesignerLocationState.returnTo,
     workflowDesignerLocationState.returnToState,
   ])

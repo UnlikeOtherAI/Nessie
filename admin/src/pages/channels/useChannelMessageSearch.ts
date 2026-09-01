@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { useRedirect } from '../../navigation/redirect'
 import { useMessageSearch } from '../../facades/messages/hooks'
 
 /**
@@ -61,7 +62,7 @@ export const useAlertMessageHighlight = (
   jumpToMessage: (messageId: string) => void,
 ) => {
   const location = useLocation()
-  const navigate = useNavigate()
+  const redirect = useRedirect()
   const alertMessageId = (
     location.state as { highlightMessageId?: unknown } | null
   )?.highlightMessageId
@@ -77,9 +78,6 @@ export const useAlertMessageHighlight = (
     jumpToMessage(highlightMessageId)
     const search = new URLSearchParams(location.search)
     search.delete('messageId')
-    void navigate(
-      { pathname: location.pathname, search: search.size > 0 ? `?${search.toString()}` : '' },
-      { replace: true, state: null },
-    )
-  }, [highlightMessageId, jumpToMessage, location.pathname, location.search, messagesLoaded, navigate])
+    redirect({ pathname: location.pathname, search: search.size > 0 ? `?${search.toString()}` : '' })
+  }, [highlightMessageId, jumpToMessage, location.pathname, location.search, messagesLoaded, redirect])
 }
