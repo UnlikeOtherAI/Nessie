@@ -1227,6 +1227,20 @@ a {
   font-weight: 700;
 }
 
+.sidebar-project-link {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
 /* Group participant names preserve a full label for mouse/keyboard users while
    their visible row is measured down to a compact, navigable participant list. */
 .group-dm-sidebar-label {
@@ -1377,9 +1391,9 @@ a {
   font-weight: 600;
 }
 
-.touch-sidebar .admin-sb-item > div[aria-hidden="true"],
-.touch-sidebar .admin-sb-item > img,
-.touch-sidebar .admin-sb-item > svg {
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > div[aria-hidden="true"],
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > img,
+.touch-sidebar :is(.admin-sb-item, .sidebar-project-link) > svg {
   width: 22px !important;
   height: 22px !important;
 }

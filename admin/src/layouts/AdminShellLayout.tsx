@@ -183,6 +183,8 @@ const AuthenticatedAdminShellLayout = () => {
       sidebarAgentDms={shell.sidebarAgentDms}
       sidebarGroupDms={shell.sidebarGroupDms}
       sidebarMenu={shell.sidebarMenu}
+      sidebarProjects={shell.sidebarProjects}
+      sidebarProjectsLoaded={shell.sidebarProjectsLoaded}
       sidebarPeople={shell.sidebarPeople}
       sidebarProductAssistants={shell.sidebarProductAssistants}
       starredAgentIds={shell.starredAgentIds}

@@ -39,7 +39,8 @@ export const useAdminShell = () => {
   const navigate = useNavigate();
   const { logout, me, sessionState } = useAuthSession();
   const { data: channels = [] } = useChannels();
-  const { data: projects = [] } = useProjects();
+  const projectsQuery = useProjects();
+  const projects = projectsQuery.data ?? [];
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
   const { data: favorites = [] } = useFavorites();
@@ -188,6 +189,7 @@ export const useAdminShell = () => {
   const {
     channelById,
     projectById,
+    sidebarProjects,
     standardChannels,
     teamIdByProjectId,
     visibleSidebarProjects,
@@ -414,6 +416,8 @@ export const useAdminShell = () => {
     sidebarMenu,
     sidebarAgentDms,
     sidebarGroupDms,
+    sidebarProjects,
+    sidebarProjectsLoaded: projectsQuery.isSuccess,
     sidebarPeople,
     sidebarProductAssistants,
     starredAgentIds,

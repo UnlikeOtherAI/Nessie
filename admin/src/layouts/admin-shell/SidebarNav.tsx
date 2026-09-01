@@ -47,6 +47,8 @@ type SidebarNavProps = {
   sidebarAgentDms: SidebarAgentDm[];
   sidebarGroupDms: SidebarGroupDm[];
   sidebarMenu: SidebarMenu;
+  sidebarProjects: SidebarProject[];
+  sidebarProjectsLoaded: boolean;
   sidebarPeople: SidebarPerson[];
   sidebarProductAssistants: SidebarProductAssistant[];
   starredAgentIds: Set<string>;
@@ -97,6 +99,8 @@ export const SidebarNav = (props: SidebarNavProps) => {
     sidebarAgentDms,
     sidebarGroupDms,
     sidebarMenu,
+    sidebarProjects,
+    sidebarProjectsLoaded,
     sidebarPeople,
     sidebarProductAssistants,
     starredAgentIds,
@@ -176,6 +180,8 @@ export const SidebarNav = (props: SidebarNavProps) => {
           projectsCollapsed={projectsCollapsed}
           setSidebarMenu={setSidebarMenu}
           sidebarMenu={sidebarMenu}
+          sidebarProjects={sidebarProjects}
+          sidebarProjectsLoaded={sidebarProjectsLoaded}
           starredChannelIds={starredChannelIds}
           starredProjectIds={starredProjectIds}
           teamIdByProjectId={teamIdByProjectId}

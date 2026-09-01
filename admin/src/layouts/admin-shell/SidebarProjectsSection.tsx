@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   channelHashClassName,
@@ -6,6 +6,7 @@ import {
   renderUnreadCount,
 } from './SidebarRow';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
+import { getCookie, setCookie } from '../../lib/storage';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -21,6 +22,31 @@ type ProjectMenuPosition = {
   top: number;
 };
 
+const COLLAPSED_PROJECT_IDS_COOKIE = 'collapsedProjectIds';
+
+export const parseCollapsedProjectIds = (value: string | null): Set<string> => {
+  if (!value) return new Set();
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+};
+
+export const retainCollapsedProjectIds = (
+  collapsedProjectIds: ReadonlySet<string>,
+  projects: readonly SidebarProject[],
+): Set<string> => {
+  const projectIds = new Set(projects.map((project) => project.id));
+  return new Set([...collapsedProjectIds].filter((projectId) => projectIds.has(projectId)));
+};
+
+export const serializeCollapsedProjectIds = (collapsedProjectIds: ReadonlySet<string>): string =>
+  JSON.stringify([...collapsedProjectIds]);
+
 type SidebarProjectsSectionProps = {
   attentionCountByProjectId: Map<string, number>;
   currentChannelId?: string;
@@ -34,6 +60,8 @@ type SidebarProjectsSectionProps = {
   projectsCollapsed: boolean;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarMenu: SidebarMenu;
+  sidebarProjects: SidebarProject[];
+  sidebarProjectsLoaded: boolean;
   starredChannelIds: Set<string>;
   starredProjectIds: Set<string>;
   teamIdByProjectId: Map<string, string>;
@@ -54,6 +82,8 @@ export const SidebarProjectsSection = ({
   projectsCollapsed,
   setSidebarMenu,
   sidebarMenu,
+  sidebarProjects,
+  sidebarProjectsLoaded,
   starredChannelIds,
   starredProjectIds,
   teamIdByProjectId,
@@ -62,6 +92,37 @@ export const SidebarProjectsSection = ({
 }: SidebarProjectsSectionProps) => {
   const { token } = useAuthSession();
   const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null);
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState(() =>
+    parseCollapsedProjectIds(getCookie(COLLAPSED_PROJECT_IDS_COOKIE)),
+  );
+
+  const persistCollapsedProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
+    setCookie(COLLAPSED_PROJECT_IDS_COOKIE, serializeCollapsedProjectIds(projectIds));
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarProjectsLoaded) return;
+
+    setCollapsedProjectIds((current) => {
+      const next = retainCollapsedProjectIds(current, sidebarProjects);
+      if (next.size === current.size) return current;
+      persistCollapsedProjectIds(next);
+      return next;
+    });
+  }, [persistCollapsedProjectIds, sidebarProjects, sidebarProjectsLoaded]);
+
+  const toggleProjectCollapsed = useCallback((projectId: string) => {
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      persistCollapsedProjectIds(next);
+      return next;
+    });
+  }, [persistCollapsedProjectIds]);
 
   const closeProjectMenu = useCallback(() => {
     setMenuPosition(null);
@@ -111,8 +172,10 @@ export const SidebarProjectsSection = ({
         </button>
       ) : visibleSidebarProjects.map((project) => {
         const isStarredProject = starredProjectIds.has(project.id);
+        const isProjectCollapsed = collapsedProjectIds.has(project.id);
         const isProjectMenuOpen =
           sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id;
+        const projectChannelsId = `sidebar-project-${project.id}-channels`;
         const projectUnreadCount = project.channels.reduce(
           (total, channel) => total + channel.unreadCount,
           0,
@@ -120,23 +183,51 @@ export const SidebarProjectsSection = ({
 
         return (
           <div key={project.id} className="mt-1">
-            <button
+            <div
               className={[
                 'admin-sb-item sidebar-project-tile group',
-                projectUnreadCount > 0 ? 'unread' : '',
+                isProjectCollapsed && projectUnreadCount > 0 ? 'unread' : '',
                 projectSelectionClassName(project.id, currentProjectId, currentChannelId),
               ].join(' ')}
-              onClick={() => onNavigateProject(project.id)}
-              type="button"
             >
-              <ProjectAvatar
-                avatarAttachmentId={project.avatarAttachmentId}
-                avatarEmoji={project.avatarEmoji}
-                size={18}
-                token={token}
-              />
-              <span className="min-w-0 flex-1 truncate">{project.name}</span>
-              {renderUnreadCount(projectUnreadCount)}
+              <button
+                className="sidebar-project-link"
+                onClick={() => onNavigateProject(project.id)}
+                type="button"
+              >
+                <ProjectAvatar
+                  avatarAttachmentId={project.avatarAttachmentId}
+                  avatarEmoji={project.avatarEmoji}
+                  size={18}
+                  token={token}
+                />
+                <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                {isProjectCollapsed ? renderUnreadCount(projectUnreadCount) : null}
+              </button>
+              <button
+                aria-controls={projectChannelsId}
+                aria-expanded={!isProjectCollapsed}
+                aria-label={`${isProjectCollapsed ? 'Expand' : 'Collapse'} ${project.name} channels`}
+                className="admin-sidebar-more flex-shrink-0"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleProjectCollapsed(project.id);
+                }}
+                type="button"
+              >
+                <svg
+                  className={[
+                    'h-3 w-3 transition-transform',
+                    isProjectCollapsed ? '-rotate-90' : '',
+                  ].join(' ')}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
               <span
                 className={[
                   'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -223,41 +314,45 @@ export const SidebarProjectsSection = ({
                     )
                   : null}
               </span>
-            </button>
+            </div>
 
-            {project.channels.map((channel) => {
-              const isStarredChannel = starredChannelIds.has(channel.id);
-              return (
-                <button
-                  key={channel.id}
-                  className={[
-                    'admin-sb-item sidebar-child group',
-                    channel.unreadCount > 0 ? 'unread' : '',
-                    channel.id === currentChannelId ? 'active' : '',
-                  ].join(' ')}
-                  onClick={() => onNavigateChannel(channel.id)}
-                  type="button"
-                >
-                  <span className={channelHashClassName}>#</span>
-                  <GroupDmSidebarLabel label={channel.label} />
-                  {renderUnreadCount(channel.unreadCount)}
-                  <span
-                    className={[
-                      'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
-                      isStarredChannel
-                        ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
-                        : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
-                    ].join(' ')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleStar('channel', channel.id);
-                    }}
-                  >
-                    {isStarredChannel ? '★' : '☆'}
-                  </span>
-                </button>
-              );
-            })}
+            {!isProjectCollapsed ? (
+              <div id={projectChannelsId}>
+                {project.channels.map((channel) => {
+                  const isStarredChannel = starredChannelIds.has(channel.id);
+                  return (
+                    <button
+                      key={channel.id}
+                      className={[
+                        'admin-sb-item sidebar-child group',
+                        channel.unreadCount > 0 ? 'unread' : '',
+                        channel.id === currentChannelId ? 'active' : '',
+                      ].join(' ')}
+                      onClick={() => onNavigateChannel(channel.id)}
+                      type="button"
+                    >
+                      <span className={channelHashClassName}>#</span>
+                      <GroupDmSidebarLabel label={channel.label} />
+                      {renderUnreadCount(channel.unreadCount)}
+                      <span
+                        className={[
+                          'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                          isStarredChannel
+                            ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
+                            : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                        ].join(' ')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleStar('channel', channel.id);
+                        }}
+                      >
+                        {isStarredChannel ? '★' : '☆'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         );
       })}
