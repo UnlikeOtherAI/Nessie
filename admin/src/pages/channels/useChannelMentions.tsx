@@ -2,6 +2,7 @@ import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { getAgentGlyph } from '../../components/features/channels/channel-helpers'
+import { useNavigateToAgentDm } from '../../facades/channels/dm-navigation'
 import { isUserDmChannel } from '../../facades/personal-assistant/hooks'
 import type {
   AgentRecord,
@@ -118,6 +119,7 @@ export const useChannelMentions = ({
   channelUsers,
   personalAssistantPresences = [],
 }: UseChannelMentionsParams): UseChannelMentionsResult => {
+  const navigateToAgentDm = useNavigateToAgentDm()
   const channelMentionTargets = useMemo(
     () => buildChannelMentionTargets(channels),
     [channels],
@@ -368,14 +370,18 @@ export const useChannelMentions = ({
             ? dmChannelByUserId.get(entity.id)
             : undefined
           parts.push(entity.type === 'agent' ? (
-            <Link
+            <button
               className="mention-tag mention-tag-link"
               key={`${entity.id}:${trigger.index}`}
-              title={`Open ${entity.name}`}
-              to={`/agents/designer/${entity.id}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                navigateToAgentDm(entity.id)
+              }}
+              title={`Message ${entity.name}`}
+              type="button"
             >
               @{entityName}
-            </Link>
+            </button>
           ) : (
             <Link
               className="mention-tag mention-tag-link"
@@ -406,6 +412,7 @@ export const useChannelMentions = ({
       channelLabelCandidates,
       dmChannelByUserId,
       mentionEntityMap,
+      navigateToAgentDm,
       presenceMentionMap,
       activeChannel,
       sortedMentionNames,

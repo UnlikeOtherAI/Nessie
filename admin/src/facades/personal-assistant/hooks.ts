@@ -6,22 +6,7 @@ import type {
 } from '../../lib/api-client'
 import { channelKeys, personalAssistantKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-const upsertChannel = (
-  current: ChannelRecord[] | undefined,
-  channel: ChannelRecord,
-): ChannelRecord[] => {
-  if (!current) {
-    return [channel]
-  }
-
-  const existingIndex = current.findIndex((entry) => entry.id === channel.id)
-  if (existingIndex === -1) {
-    return [channel, ...current]
-  }
-
-  return current.map((entry) => (entry.id === channel.id ? channel : entry))
-}
+import { upsertChannel } from '../channels/channel-cache'
 
 export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): boolean =>
   channel?.systemChannelType === 'personal_assistant'

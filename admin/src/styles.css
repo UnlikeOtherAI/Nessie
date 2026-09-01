@@ -1890,10 +1890,14 @@ button.reaction-pill-active:focus-visible {
 }
 
 .mention-tag {
+  appearance: none;
   display: inline;
+  border: 0;
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--thinking);
+  font: inherit;
+  line-height: inherit;
   padding: 1px 4px;
   font-weight: 500;
   user-select: all;

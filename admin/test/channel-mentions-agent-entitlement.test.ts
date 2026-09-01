@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import type { AgentRecord } from '../src/lib/api-client'
 import {
   buildAgentMentionEntities,
   buildPersonalAssistantMentionEntities,
 } from '../src/pages/channels/useChannelMentions.js'
+
+const readSource = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
 const agent = (id: string, name: string, visibility: 'private' | 'workspace'): AgentRecord => ({
   channelIds: [],
@@ -57,4 +62,13 @@ test('a PA mention picker projects its name but inserts the public structured ad
       type: 'agent',
     }],
   )
+})
+
+test('an agent mention opens its direct-message conversation rather than the agent designer', () => {
+  const source = readSource('../src/pages/channels/useChannelMentions.tsx')
+
+  assert.match(source, /useNavigateToAgentDm/)
+  assert.match(source, /navigateToAgentDm\(entity\.id\)/)
+  assert.match(source, /title=\{`Message \$\{entity\.name\}`\}/)
+  assert.doesNotMatch(source, /to=\{`\/agents\/designer\/\$\{entity\.id\}`\}/)
 })

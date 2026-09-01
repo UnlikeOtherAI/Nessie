@@ -3,6 +3,7 @@ import type { SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
 import { agentKeys, channelKeys, userKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { upsertChannel } from './channel-cache'
 
 export const useChannels = ({ enabled = true }: { enabled?: boolean } = {}) => {
   const apiClient = useApiClient()
@@ -39,7 +40,11 @@ export const useStartChannelConversation = () => {
         agentIds: input.agentIds ?? [],
         userIds: input.userIds ?? [],
       }),
-    onSuccess: () => {
+    onSuccess: (channel) => {
+      queryClient.setQueryData<ChannelRecord[] | undefined>(
+        channelKeys.all,
+        (current) => upsertChannel(current, channel),
+      )
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })
       void queryClient.invalidateQueries({ queryKey: userKeys.all })

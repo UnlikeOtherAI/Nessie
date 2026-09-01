@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { isUserDmChannel } from '../personal-assistant/hooks'
 import { useUsers } from '../users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useChannels, useOpenDm } from './hooks'
+import { useChannels, useOpenDm, useStartChannelConversation } from './hooks'
 
 /**
  * "Open the DM with this person" — the one implementation, shared by the admin
@@ -44,5 +44,29 @@ export const useNavigateToDm = (): ((userId: string) => void) => {
       })
     },
     [channels, me?.user.id, navigate, openDm, users],
+  )
+}
+
+/**
+ * Opens the one-to-one conversation with an agent. Agent channel bindings are
+ * also used by ordinary channels, so the server's stable DM key is the only
+ * authority for resolving this destination.
+ */
+export const useNavigateToAgentDm = (): ((agentId: string) => void) => {
+  const navigate = useNavigate()
+  const startConversation = useStartChannelConversation()
+
+  return useCallback(
+    (agentId: string) => {
+      startConversation.mutate(
+        { agentIds: [agentId] },
+        {
+          onSuccess: (channel) => {
+            void navigate(`/channels/${channel.id}`)
+          },
+        },
+      )
+    },
+    [navigate, startConversation],
   )
 }
