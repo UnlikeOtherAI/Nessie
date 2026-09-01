@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Notice } from '../primitives/Notice'
+import { SectionLabel } from '../primitives/SectionLabel'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
+import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { Dialog } from '../shared/Dialog'
+import { FieldLabel } from '../primitives/FieldLabel'
+import { FormActions } from '../shared/FormActions'
+import { FormField } from '../shared/FormField'
+import { Input, Select, Textarea } from '../shared/FormControls'
 import { useAgents } from '../../facades/agents/queries'
 import { useProjects } from '../../facades/projects/hooks'
 import {
@@ -35,8 +41,6 @@ type TaskDialogProps = {
   iterationId?: string
 }
 
-const fieldLabel = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
-
 export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: TaskDialogProps) => {
   const isEdit = Boolean(task)
   const { data: projects = [] } = useProjects()
@@ -47,7 +51,6 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const assignTask = useAssignTask()
   const transition = useTransitionTask()
 
-  const titleRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [purpose, setPurpose] = useState('')
   const [detail, setDetail] = useState('')
@@ -56,6 +59,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const [assignee, setAssignee] = useState<AssigneeValue>(null)
   const [formProjectId, setFormProjectId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
 
   const assigneeOptions = useMemo<AssigneeOption[]>(
     () => [
@@ -82,8 +86,6 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           : null,
     )
     setFormProjectId('')
-    const id = window.setTimeout(() => titleRef.current?.focus(), 0)
-    return () => window.clearTimeout(id)
   }, [open, task])
 
   const pending =
@@ -167,11 +169,8 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   }
 
   return (
-    // `dismissDisabled` reproduces the pending gate the old `handleClose` held:
-    // scrim, Escape and the close cross all refuse while a mutation is in flight.
     <Dialog
       dismissDisabled={pending}
-      initialFocusRef={titleRef}
       onClose={onClose}
       open={open}
       size="xl"
@@ -185,53 +184,38 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
         }}
       >
         <div className="grid content-start gap-4">
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-title">
-              Title
-            </label>
-            <input
-              ref={titleRef}
+          <FormField label="Title" required>
+            <Input
               autoComplete="off"
-              className="admin-input"
-              id="task-title"
+              autoFocus
               onChange={(event) => setTitle(event.target.value)}
               placeholder="What needs doing?"
               value={title}
             />
-          </div>
+          </FormField>
 
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-purpose">
-              Excerpt
-            </label>
-            <textarea
-              className="admin-input"
-              id="task-purpose"
+          <FormField label="Excerpt">
+            <Textarea
               onChange={(event) => setPurpose(event.target.value)}
               placeholder="A short summary…"
               rows={2}
               value={purpose}
             />
-          </div>
+          </FormField>
 
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-detail">
-              Detail
-            </label>
-            <textarea
-              className="admin-input"
-              id="task-detail"
+          <FormField label="Detail">
+            <Textarea
               onChange={(event) => setDetail(event.target.value)}
               placeholder="The full description, context, acceptance criteria…"
               rows={10}
               value={detail}
             />
-          </div>
+          </FormField>
         </div>
 
         <div className="grid content-start gap-4">
           <div className="grid gap-1.5">
-            <span className={fieldLabel}>Priority</span>
+            <SectionLabel as="span" size="sm">Priority</SectionLabel>
             <div className="flex gap-1.5">
               {PRIORITY_ORDER.map((value) => {
                 const active = priority === value
@@ -259,9 +243,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           </div>
 
           <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-assignee">
-              Assignee
-            </label>
+            <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>
             <AssigneePicker
               id="task-assignee"
               onChange={setAssignee}
@@ -270,38 +252,21 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
             />
           </div>
 
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-due">
-              Deadline
-            </label>
-            <input
-              className="admin-input"
-              id="task-due"
-              onChange={(event) => setDue(event.target.value)}
-              type="date"
-              value={due}
-            />
-          </div>
+          <FormField label="Deadline">
+            <Input onChange={(event) => setDue(event.target.value)} type="date" value={due} />
+          </FormField>
 
           {!isEdit && !projectId ? (
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-project">
-                Project
-              </label>
-              <select
-                className="admin-input"
-                id="task-project"
-                onChange={(event) => setFormProjectId(event.target.value)}
-                value={formProjectId}
-              >
+            <FormField label="Project">
+              <Select onChange={(event) => setFormProjectId(event.target.value)} value={formProjectId}>
                 <option value="">No project</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
                   </option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </FormField>
           ) : null}
         </div>
 
@@ -320,12 +285,13 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           </Notice>
         ) : null}
 
-        <div className="flex items-center justify-between pt-1 md:col-span-2">
-          <div className="text-xs">
-            {isEdit && task ? (
+        <FormActions
+          className="md:col-span-2"
+          destructive={
+            isEdit && task ? (
               task.archivedAt ? (
                 <button
-                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
                   onClick={() => void handleUnarchive()}
                   type="button"
                 >
@@ -333,7 +299,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                 </button>
               ) : archived ? (
                 <button
-                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
                   onClick={() => void handleStatus('inbox')}
                   type="button"
                 >
@@ -341,29 +307,41 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                 </button>
               ) : (
                 <button
-                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
-                  onClick={() => void handleStatus('cancelled')}
+                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+                  onClick={() => setCancelConfirmOpen(true)}
                   type="button"
                 >
                   Cancel task
                 </button>
               )
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <button
-              className="admin-button admin-button-secondary"
-              onClick={handleClose}
-              type="button"
-            >
-              Close
-            </button>
-            <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
-              {isEdit ? 'Save changes' : 'Create task'}
-            </button>
-          </div>
-        </div>
+            ) : null
+          }
+        >
+          <button
+            className="admin-button admin-button-secondary"
+            onClick={handleClose}
+            type="button"
+          >
+            Close
+          </button>
+          <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
+            {isEdit ? 'Save changes' : 'Create task'}
+          </button>
+        </FormActions>
       </form>
+
+      <ConfirmDialog
+        body="It leaves the board. You can still find it under Archived."
+        confirmLabel="Cancel task"
+        destructive
+        onCancel={() => setCancelConfirmOpen(false)}
+        onConfirm={() => {
+          setCancelConfirmOpen(false)
+          void handleStatus('cancelled')
+        }}
+        open={cancelConfirmOpen}
+        title={task ? `Cancel "${task.title ?? task.purpose ?? 'this task'}"?` : 'Cancel this task?'}
+      />
     </Dialog>
   )
 }

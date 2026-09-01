@@ -36,7 +36,7 @@ already lives in a page header stays there.
 
 | Import | Use |
 |---|---|
-| `shared/PageBody` — `PageBody` | The scrolling body under a page header. `width`: `narrow` (form column), `regular` (default), `wide` (tables, grids), `full` (board/canvas). Left-aligned, `p-5`, `gap-6`. |
+| `shared/PageBody` — `PageBody` | The scrolling body under a page header. `width`: `narrow` (form column), `regular` (default), `wide` (tables, grids). Left-aligned, `p-5`, `gap-6`. A board, canvas or column browser does **not** use it — those are fixed-height regions that scroll inside themselves and need an unbroken `flex h-full min-h-0` chain, so they keep their own shell. |
 | `shared/PageBody` — `Section` | A titled block **with no frame**: heading, optional description, optional `actions`. This is the default grouping — do not wrap a section in a `Card` to give it a heading. |
 | `shared/Card` — `Card` | Something that reads as one object. `variant`: `section` (p-4) or `row` (p-3). `tone="attention"` for a block awaiting the reader. |
 | `shared/SidePanel` | A panel beside the content. Not a dialog; it does not trap focus. |

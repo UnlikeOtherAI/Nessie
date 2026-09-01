@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useChannels } from '../../../facades/channels/hooks'
 import { UnreadBadge } from '../../primitives/UnreadBadge'
+import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,
   SectionNotice,
-  SectionOverflowHint,
   SectionSkeleton,
   dashboardRowClass,
 } from './DashboardSectionCard'

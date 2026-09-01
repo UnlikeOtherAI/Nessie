@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ARCHIVED_STATUSES, statusLabel } from '../../components/kanban/kanban-config'
 import { NewTaskButton } from '../../components/kanban/NewTaskButton'
+import { taskStatusTone } from '../../components/kanban/task-status-presentation'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
+import { Input } from '../../components/shared/FormControls'
+import { PageBody, Section } from '../../components/shared/PageBody'
+import { QueryState } from '../../components/shared/QueryState'
 import { Pill } from '../../components/primitives/Pill'
 import {
   type Iteration,
@@ -17,8 +21,6 @@ import {
   useUpdateTaskPoints,
 } from '../../facades/tasks/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
-
-const label = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
 const PointsInput = ({ task }: { task: TaskRecord }) => {
   const update = useUpdateTaskPoints()
@@ -55,11 +57,12 @@ const TaskRow = ({
       <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
         {task.title ?? task.purpose ?? 'Untitled task'}
       </span>
-      <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-[color:var(--tx3)]">
+      <Pill size="sm" tone={taskStatusTone(task.status)}>
         {statusLabel(task.status)}
-      </span>
+      </Pill>
       <PointsInput task={task} />
       <select
+        aria-label="Move to sprint"
         className="admin-input admin-input-compact max-w-[150px]"
         onChange={(event) =>
           setIteration.mutate({ id: task.id, iterationId: event.target.value || null })
@@ -169,10 +172,23 @@ type ProjectBacklogTabProps = {
 
 export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   const isOwner = useIsOwner()
-  const { data: iterations = [] } = useIterations(projectId)
-  const { data: tasks = [] } = useTasks(projectId)
+  const iterationsQuery = useIterations(projectId)
+  const tasksQuery = useTasks(projectId)
+  const iterations = iterationsQuery.data ?? []
+  const tasks = tasksQuery.data ?? []
   const createIteration = useCreateIteration(projectId)
   const [newName, setNewName] = useState('')
+
+  // Both queries feed every section on this tab, so a failure or an in-flight
+  // fetch on either one is a fetch state for the whole tab, not just one list.
+  const backlogQuery = {
+    isError: iterationsQuery.isError || tasksQuery.isError,
+    isLoading: iterationsQuery.isLoading || tasksQuery.isLoading,
+    refetch: () => {
+      void iterationsQuery.refetch()
+      void tasksQuery.refetch()
+    },
+  }
 
   const planning = useMemo(
     () => iterations.filter((i) => i.status !== 'completed'),
@@ -196,76 +212,87 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   }
 
   return (
-    <div className="min-h-0 overflow-y-auto p-4">
-      <div className="mx-auto grid max-w-3xl gap-6">
-        <section className="grid gap-2">
-          <div className={label}>Sprints</div>
-          {planning.length === 0 ? (
-            <div className="text-xs text-[color:var(--tx3)]">No sprints yet.</div>
-          ) : (
-            planning.map((iteration) => (
-              <IterationCard
-                key={iteration.id}
-                isOwner={isOwner}
-                iteration={iteration}
-                moveTargets={moveTargets}
-                projectId={projectId}
-                tasks={tasksByIteration(iteration.id)}
-              />
-            ))
-          )}
-          {isOwner ? (
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(event) => {
-                event.preventDefault()
-                handleCreate()
-              }}
-            >
-              <input
-                className="admin-input admin-input-compact min-w-0 flex-1"
-                onChange={(event) => setNewName(event.target.value)}
-                placeholder="New sprint name…"
-                value={newName}
-              />
-              <button
-                className="admin-button admin-button-primary admin-button-compact"
-                disabled={!newName.trim() || createIteration.isPending}
-                type="submit"
-              >
-                Add sprint
-              </button>
-            </form>
-          ) : null}
-        </section>
+    <PageBody width="regular">
+      <QueryState
+        errorLabel="Couldn't load the backlog."
+        loadingLabel="Loading backlog…"
+        query={backlogQuery}
+      >
+        {() => (
+          <>
+            <Section title="Sprints">
+              {planning.length === 0 ? (
+                <div className="text-xs text-[color:var(--tx3)]">No sprints yet.</div>
+              ) : (
+                <div className="grid gap-2">
+                  {planning.map((iteration) => (
+                    <IterationCard
+                      key={iteration.id}
+                      isOwner={isOwner}
+                      iteration={iteration}
+                      moveTargets={moveTargets}
+                      projectId={projectId}
+                      tasks={tasksByIteration(iteration.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              {isOwner ? (
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    handleCreate()
+                  }}
+                >
+                  <Input
+                    aria-label="Sprint name"
+                    className="min-w-0 flex-1"
+                    onChange={(event) => setNewName(event.target.value)}
+                    placeholder="New sprint name…"
+                    size="compact"
+                    value={newName}
+                  />
+                  <button
+                    className="admin-button admin-button-primary admin-button-compact"
+                    disabled={!newName.trim() || createIteration.isPending}
+                    type="submit"
+                  >
+                    Add sprint
+                  </button>
+                </form>
+              ) : null}
+            </Section>
 
-        <section className="grid gap-2">
-          <div className={label}>Backlog ({backlogTasks.length})</div>
-          <NewTaskButton projectId={projectId} />
-          <div className="grid gap-1">
-            {backlogTasks.map((task) => (
-              <TaskRow key={task.id} moveTargets={moveTargets} task={task} />
-            ))}
-          </div>
-        </section>
-
-        {completed.length > 0 ? (
-          <section className="grid gap-2">
-            <div className={label}>Completed</div>
-            {completed.map((iteration) => (
-              <div
-                key={iteration.id}
-                className="flex items-center gap-2 rounded-md bg-[color:var(--sb)] px-3 py-2 text-xs text-[color:var(--tx3)]"
-              >
-                <span className="font-semibold text-[color:var(--tx2)]">{iteration.name}</span>
-                <span>
-                  {iteration.pointsDone}/{iteration.pointsTotal} pts delivered
-                </span>
+            <Section title={`Backlog (${backlogTasks.length})`}>
+              <NewTaskButton projectId={projectId} />
+              <div className="grid gap-1">
+                {backlogTasks.map((task) => (
+                  <TaskRow key={task.id} moveTargets={moveTargets} task={task} />
+                ))}
               </div>
-            ))}
-          </section>
-        ) : null}
-      </div>
-    </div>
+            </Section>
+
+            {completed.length > 0 ? (
+              <Section title="Completed">
+                <div className="grid gap-2">
+                  {completed.map((iteration) => (
+                    <div
+                      key={iteration.id}
+                      className="flex items-center gap-2 rounded-md bg-[color:var(--sb)] px-3 py-2 text-xs text-[color:var(--tx3)]"
+                    >
+                      <span className="font-semibold text-[color:var(--tx2)]">{iteration.name}</span>
+                      <span>
+                        {iteration.pointsDone}/{iteration.pointsTotal} pts delivered
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            ) : null}
+          </>
+        )}
+      </QueryState>
+    </PageBody>
   )
 }

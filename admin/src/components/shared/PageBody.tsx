@@ -10,17 +10,21 @@ import { SectionLabel } from '../primitives/SectionLabel'
  *   records (`max-w-3xl`).
  * - `wide` — a page whose content is genuinely two-dimensional: a table with
  *   real columns, a grid of cards (`max-w-5xl`).
- * - `full` — the content manages its own width (a board, a canvas, a column
- *   browser).
  *
  * Seven sibling project tabs shipped six different widths, so the point of
  * naming them is that a person moving between two pages of the same kind
  * never sees the column jump.
+ *
+ * There is deliberately **no `full`**. A board, a canvas or a column browser
+ * is not a wide reading column — it is a fixed-height region that scrolls
+ * inside itself, and it needs an unbroken `flex h-full min-h-0` chain that
+ * this component's scrolling wrapper would sever. Those surfaces keep their
+ * own shell, and a `full` token here would have been a name promising
+ * something the markup underneath it could not do.
  */
-export type PageBodyWidth = 'full' | 'narrow' | 'regular' | 'wide'
+export type PageBodyWidth = 'narrow' | 'regular' | 'wide'
 
 const widthClasses: Record<PageBodyWidth, string> = {
-  full: '',
   narrow: 'max-w-2xl',
   regular: 'max-w-3xl',
   wide: 'max-w-5xl',

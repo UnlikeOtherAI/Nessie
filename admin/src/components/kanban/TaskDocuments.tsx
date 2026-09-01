@@ -8,14 +8,15 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate } from 'react-router-dom'
 import { iconForFilename } from '../features/knowledge/file-icons'
-import { pageStatusTone } from '../features/knowledge/page-status'
+import { Input } from '../shared/FormControls'
+import { Pill } from '../primitives/Pill'
+import { SectionLabel } from '../primitives/SectionLabel'
+import { taskDocumentStatusTone } from './task-status-presentation'
 import {
   useCreateTaskPage,
   useTaskPages,
   useUploadTaskFile,
 } from '../../facades/knowledge/task-docs-hooks'
-
-const fieldLabel = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
 // Compact "Documents" section shown inside the ticket dialog: the pages bound
 // to this task (notes + uploaded files), an inline "New note" affordance, and
@@ -58,7 +59,7 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
   return (
     <div className="grid gap-2 rounded-md border border-[color:var(--sep)] p-3 md:col-span-2">
       <div className="flex items-center justify-between">
-        <span className={fieldLabel}>Documents</span>
+        <SectionLabel as="span" size="sm">Documents</SectionLabel>
         <div className="flex gap-2">
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
@@ -92,9 +93,10 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
 
       {addingNote ? (
         <div className="flex gap-2">
-          <input
+          <Input
+            aria-label="Note title"
             autoFocus
-            className="admin-input flex-1"
+            className="flex-1"
             onChange={(event) => setNoteTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -121,6 +123,13 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
 
       {pagesQuery.isLoading ? (
         <div className="py-2 text-sm text-[color:var(--tx3)]">Loading…</div>
+      ) : pagesQuery.isError ? (
+        <div className="py-2 text-sm text-[color:var(--danger-text)]">
+          Couldn't load documents.{' '}
+          <button className="underline" onClick={() => void pagesQuery.refetch()} type="button">
+            Retry
+          </button>
+        </div>
       ) : pages.length === 0 ? (
         <div className="py-2 text-sm text-[color:var(--tx3)]">No documents yet</div>
       ) : (
@@ -138,9 +147,9 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
                 icon={page.kind === 'file' ? iconForFilename(page.title) : faFileLines}
               />
               <span className="min-w-0 flex-1 truncate">{page.title}</span>
-              <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
+              <Pill size="sm" tone={taskDocumentStatusTone(page.status)}>
                 {page.status}
-              </span>
+              </Pill>
             </button>
           ))}
         </div>
