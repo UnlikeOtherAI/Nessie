@@ -15,11 +15,13 @@ workspace sandbox or a managed coding session on a user-controlled machine. It
 is neither an MCP server instance nor an existing Docker/GCloud execution
 environment.
 
-The first executable release supports macOS 15+ on Apple Silicon only. It uses
-a per-session Linux micro-VM created by `Virtualization.framework`; unsupported
-hosts advertise no executable capability. It does not provide SSH, an ambient
-remote shell, an attachment to an existing tmux server, cloud-side stdio, or an
-arbitrary local-network proxy.
+Executors run on macOS 15+ (Apple Silicon), Linux (x86_64 or arm64), and
+Windows 10 22H2+ (x86_64); each host states its own per-session guest backend
+and a host with none still pairs for the copy-on-write workspace bundle. §4.5
+is the whole platform contract. Every other host advertises no executable
+capability at all. An executor does not provide SSH, an ambient remote shell,
+an attachment to an existing tmux server, cloud-side stdio, or an arbitrary
+local-network proxy.
 
 ## 2. Trust boundaries
 
@@ -149,6 +151,73 @@ only after both proofs and any policy-required human confirmation succeed. A
 machine that lost its key cannot recover by claiming the executor record: it is
 revoked and re-enrolled as a new executor. Certificate renewal requires a live
 proof from the current key and may not bypass revocation.
+
+### 4.5 Platform, supervisor, and sandbox backend
+
+Every signed capability descriptor states three host facts, and the server
+refuses any descriptor missing one of them.
+
+`platform` is `{ os, architecture, osMajorVersion }`:
+
+| `os` | `architecture` | `osMajorVersion` means | Minimum |
+| --- | --- | --- | --- |
+| `macos` | `arm64` | the macOS major release (Darwin major − 9) | 15 |
+| `linux` | `x64`, `arm64` | the kernel major | 5 (the packaged guest artifacts require 5.10) |
+| `windows` | `x64` | the build number | 19045 (Windows 10 22H2) |
+
+The enum and the per-OS minimum are enforced by
+`ExecutorPlatformSchema` (`packages/schemas/src/executor-platform.ts`), which is
+the single catalog of supported hosts. An unknown operating system or
+architecture, or a below-minimum version, is a validation refusal at the
+public daemon endpoints — a typed `400 VALIDATION_ERROR` naming the
+requirement, never a generic failure. The architecture column is additionally
+narrowed by the companion's own host detection (`executor/src/host-platform.ts`):
+macOS requires Apple Silicon because its guest contract is
+Virtualization.framework, and Windows is x86_64 in this release.
+
+`supervisor` says who keeps the daemon alive, and therefore which controls a
+person is offered:
+
+| `supervisor` | Who runs it | Lifetime | Controls |
+| --- | --- | --- | --- |
+| `desktop` | The Nessie desktop app, from its packaged runtime, as a child process with the parent-liveness pipe | While the app runs | The Executors page's companion panel |
+| `service` | The standalone `nessie-executor` package (systemd user service on Linux, a Windows service) | Boot to shutdown, independent of login | The `nessie-executor` command and its platform service manager |
+
+An executor id has exactly one supervisor: the two use different state roots
+and the daemon lease already refuses a second daemon per state directory. The
+companion reads it from `NESSIE_EXECUTOR_SUPERVISOR`, which the desktop shell
+sets to `desktop`; unset means `service`, and any other value is an error
+rather than a silent default, because the page names the supervisor to the
+person.
+
+`sandboxBackend` is the per-session guest this host can actually start —
+`virtualization_framework` on macOS, `firecracker` on a Linux host whose user
+can read and write `/dev/kvm`, `hyperv` on a Windows host carrying
+`%SystemRoot%\System32\vmms.exe`, and `none` otherwise. It is decided by
+asking the operating system for the exact resource the backend needs, never
+inferred from a version string.
+
+**A host with no sandbox backend still pairs, and advertises only the
+copy-on-write workspace bundle**: `file.list`, `file.read`, `file.write`,
+`workspace.review`, `sandbox.stop`, in the `workspace_sandbox` profile — the
+one bundle the daemon serves from its own scratch directory with no guest.
+Requesting anything else is refused where the person is standing: at
+`configure`, `configure-browser`, and `configure-codex`, and again when the
+descriptor is built, with the remedy named per platform (join the `kvm` group
+and sign in again; enable Hyper-V on Windows Pro, Enterprise, or Education).
+Nothing pretends a sandbox exists.
+
+**Protocol version stays 1.** The three host facts are *required*, so a
+descriptor written before this contract cannot validate under it and a
+descriptor written after it cannot be mistaken for the older grammar: the
+required fields already discriminate the two, and a second version number
+would give no reader a decision it cannot already make. There is one producer
+train — the companion ships inside the desktop app or the executor package and
+is never released independently — so there is no population to negotiate with.
+An executor paired before this change therefore has a stored descriptor that
+no longer parses and is unavailable until its daemon proposes a new revision
+for review, which is the correct answer for a machine whose sandbox backend is
+unknown.
 
 ## 5. Outbound control connection and descriptors
 
@@ -438,11 +507,17 @@ content, a host path, or the deployment encryption secret to the model.
 
 ## 8. Sandbox, forced egress, and credentials
 
-The initial backend is a per-session Linux micro-VM. The selected workspace is
+The backend is a per-session Linux micro-VM. The selected workspace is
 read-only through virtiofs. It has no host shell, home, Docker socket, SSH
 agent, host mount beyond that root, inherited environment, or direct network.
+The descriptor's `sandboxBackend` names which hypervisor starts that guest on
+this host (§4.5); the guest protocol — kernel + initrd boot, a vsock control
+channel, no network device, all egress through the daemon's forced gateway —
+is the same one on every backend, and a host reporting `none` runs no guest and
+advertises only the copy-on-write workspace bundle.
 
-`executor/vm` is the macOS-native bootstrap boundary for that backend. Its
+`executor/vm` is the macOS-native bootstrap boundary for the
+`virtualization_framework` backend. Its
 checked-in Swift package can probe support and validate a proposed Linux boot
 configuration on Apple Silicon/macOS 15+: owner-owned, non-link, single-link
 kernel/initrd/disk files; a bounded CPU/memory allocation; a read-only guest
@@ -653,6 +728,11 @@ It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 keep browser and coding profiles unavailable.
 
 ### Desktop-packaged companion
+
+A companion launched this way is the `desktop` supervisor: the shell sets
+`NESSIE_EXECUTOR_SUPERVISOR=desktop`, the descriptor states it, and the
+Executors page offers this panel's controls rather than the standalone
+package's command line (§4.5).
 
 Nessie Desktop packages the executor CLI as a bundled CommonJS entrypoint with
 the exact Node runtime used to build it, that runtime's license, and a

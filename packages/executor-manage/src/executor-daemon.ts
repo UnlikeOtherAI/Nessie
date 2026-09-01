@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { ExecutorSignedDescriptor } from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema, type ExecutorSignedDescriptor } from '@nessie/schemas'
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
@@ -292,11 +292,14 @@ export const submitExecutorDescriptor = async (
   await tx.executor.update({
     where: { id: executor.id },
     data: {
-      platformFacts: {
-        architecture: input.descriptor.descriptor.platform.architecture,
-        os: input.descriptor.descriptor.platform.os,
-        osMajorVersion: input.descriptor.descriptor.platform.osMajorVersion,
-      },
+      // The host facts the machine signed, denormalized so the Executors page
+      // can name the computer and its supervisor without re-reading a
+      // capability revision. Server-written only; no API caller can set them.
+      platformFacts: ExecutorPlatformFactsSchema.parse({
+        platform: input.descriptor.descriptor.platform,
+        sandboxBackend: input.descriptor.descriptor.sandboxBackend,
+        supervisor: input.descriptor.descriptor.supervisor,
+      }),
       profiles: input.descriptor.descriptor.profiles,
     },
   })
