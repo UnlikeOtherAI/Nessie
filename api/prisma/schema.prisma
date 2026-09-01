@@ -3264,8 +3264,10 @@ model McpCatalogEntry {
   health             McpServerHealth?
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
-  // are unique on `name` store-wide; private entries are unique per owner. A
-  // single `@@unique` can't express either, so they live in raw SQL.
+  // are unique on `name` store-wide; private entries are unique per owner in
+  // one organisation. A person can therefore use the same private connector
+  // name in separate workspaces without either workspace exposing the other.
+  // A single `@@unique` can't express either, so they live in raw SQL.
   @@index([organizationId, status])
   @@index([ownerUserId, status])
   @@index([visibility, status])

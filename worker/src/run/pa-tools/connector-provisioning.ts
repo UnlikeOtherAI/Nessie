@@ -102,8 +102,9 @@ const registerCatalogEntry = async (
     sourceUrl: input.url,
   }
 
-  // The catalog name is unique per owner — retry with a numeric suffix instead
-  // of failing the whole conversational flow on a duplicate.
+  // The catalog name is unique per owner within an organisation — retry with a
+  // numeric suffix instead of failing the whole conversational flow on a
+  // duplicate.
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const name = attempt === 0 ? baseName : `${baseName}-${attempt + 1}`
     try {

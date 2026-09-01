@@ -251,6 +251,11 @@ browser, `/apps` owns the human path: **Add a custom app** accepts the address,
 then its detail view completes the caller's own connection with an encrypted
 key or OAuth sign-in as required.
 
+Custom catalogue rows remain private to their author and organisation. Their
+internal name is therefore unique per `(organizationId, ownerUserId)`, so a
+person can add an identically named private app in another workspace without
+revealing or being blocked by the first workspace's connector.
+
 ### OAuth (dynamic, MCP authorization spec)
 
 `{ method: "oauth2" }` on a catalog entry — with no static client — activates

@@ -41,7 +41,8 @@ Uniqueness moves from the old `([organizationId, name])` composite to two
 partial unique indexes (a single key cannot express both rules):
 
 - public names are unique store-wide: `UNIQUE (name) WHERE visibility='public'`;
-- private names are unique per owner: `UNIQUE (owner_user_id, name) WHERE visibility='private'`.
+- private names are unique per owner and organisation:
+  `UNIQUE (organization_id, owner_user_id, name) WHERE visibility='private'`.
 
 Migrations: `20260530120000_mcp_catalog_status_review_states` (enum ADD VALUEs,
 isolated because Postgres can't add and use an enum value in one transaction),

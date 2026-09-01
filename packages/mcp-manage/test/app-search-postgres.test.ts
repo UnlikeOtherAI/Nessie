@@ -200,6 +200,49 @@ runIfDatabase('the compiled SQL predicate lists exactly what the Prisma store cl
   }
 })
 
+runIfDatabase('a person can add the same private app name in separate organisations', async () => {
+  const fixture = await openFixture()
+  const { prisma, orgId, otherOrgId, adaId } = fixture
+  const name = `private-app-${randomUUID()}`
+  try {
+    const create = (organizationId: string) =>
+      prisma.mcpCatalogEntry.create({
+        data: {
+          organizationId,
+          name,
+          label: 'Private app',
+          description: '',
+          protocol: 'http',
+          authMethod: 'none',
+          createdBy: adaId,
+          ownerUserId: adaId,
+          moderationState: 'curated',
+          visibility: 'private',
+          status: 'published',
+        },
+        select: { id: true, organizationId: true },
+      })
+
+    const [first, second] = await Promise.all([create(orgId), create(otherOrgId)])
+    assert.notEqual(first.id, second.id)
+    assert.notEqual(first.organizationId, second.organizationId)
+
+    // The new index permits the independent rows; the tenancy floor must still
+    // make each one visible only in the workspace where its owner added it.
+    const firstWorkspace = await idsBothWays(prisma, storeCatalogWhere(actorIn(orgId, adaId)))
+    assert.deepEqual(firstWorkspace.viaSql, firstWorkspace.viaPrisma)
+    assert.ok(firstWorkspace.viaPrisma.includes(first.id))
+    assert.ok(!firstWorkspace.viaPrisma.includes(second.id))
+
+    const secondWorkspace = await idsBothWays(prisma, storeCatalogWhere(actorIn(otherOrgId, adaId)))
+    assert.deepEqual(secondWorkspace.viaSql, secondWorkspace.viaPrisma)
+    assert.ok(!secondWorkspace.viaPrisma.includes(first.id))
+    assert.ok(secondWorkspace.viaPrisma.includes(second.id))
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
 runIfDatabase('the tenancy floor reaches the instance own rows under both readings', async () => {
   const fixture = await openFixture()
   const { prisma, orgId, adaId } = fixture
