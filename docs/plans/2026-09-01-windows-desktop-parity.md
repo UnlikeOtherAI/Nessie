@@ -16,7 +16,7 @@ square corners.
 link, notifications, the Executors page's `availability` cards, no updater)
 and "Shared executor contract" (two supervisors, platform contract, sandbox
 backends, trust roots) are adopted here in full — [docs/running-the-apps.md](../running-the-apps.md),
-[docs/executor-protocol.md](../executor-protocol.md).
+[docs/executor-protocol/overview.md](../executor-protocol/overview.md).
 
 ## Outcome
 

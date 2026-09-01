@@ -3,7 +3,7 @@
 > Status: implementation delivered in this slice; real guest/microVM/CDP
 > verification remains host-only. See [`SLICE-STATUS-actuation.md`](../../SLICE-STATUS-actuation.md).
 > The code citations in §1 are the pre-implementation baseline retained for
-> planning traceability; the current protocol is `docs/executor-protocol.md`.
+> planning traceability; the current protocol is `docs/executor-protocol/overview.md`.
 > Closes the largest gap in the 2026-08-31 capability audit
 > ([2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md),
 > dimensions 1 & 2, and the §6 Rule-zero risk).
@@ -586,6 +586,6 @@ each ships its audit entry and untrusted-framing in the same change.
   Designer tool-policy — the two new grant toggles.
 - `api/…` executor command dispatch — per-actuation `emitAuditEvent`.
 - Worker context insertion — untrusted-framing of observe/command results.
-- Tests as in §10; docs: update `docs/executor-protocol.md` (operation table,
+- Tests as in §10; docs: update `docs/executor-protocol/overview.md` (operation table,
   §10 state contract) and `docs/plans/2026-08-11-executor-integration.md`, and
   `CLAUDE.md`/`AGENTS.md` executor notes, in the same turn.

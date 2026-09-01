@@ -242,7 +242,7 @@ jobs:
         # jailer argv, its API configuration sequence, the vsock framing, and
         # the guest control and forced-egress channels. A booted-guest run is
         # added here once the Linux kernel and initrd artifacts land beside
-        # these binaries; see docs/executor-protocol.md §8.
+        # these binaries; see docs/executor-protocol/overview.md §8.
         run: node --test --import tsx 'test/firecracker-*.test.ts'
 
       - name: The packaged hypervisor and jailer run on this host

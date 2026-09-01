@@ -10,7 +10,7 @@ a portable evaluator artifact for the shell only.
 **Related:** [2026-09-01-windows-desktop-parity.md](2026-09-01-windows-desktop-parity.md)
 (adopts the shared contracts below), [2026-06-07-native-apps-and-push.md](2026-06-07-native-apps-and-push.md)
 §"Linux desktop discovery scope", [docs/running-the-apps.md](../running-the-apps.md),
-[docs/executor-protocol.md](../executor-protocol.md).
+[docs/executor-protocol/overview.md](../executor-protocol/overview.md).
 
 ## Outcome
 
@@ -208,7 +208,7 @@ supported target). Descriptors gain `supervisor` and `sandboxBackend`; the
 protocol version stays 1 because the new required facts already make the two
 grammars mutually exclusive, so an executor paired before the change fails
 closed until `nessie-executor configure` proposes a new revision — no upgrade
-shim, by decision (`docs/executor-protocol.md` §4.5).
+shim, by decision (`docs/executor-protocol/overview.md` §4.5).
 `executor/src/descriptor.ts` builds it per host, the API
 keeps refusing anything outside the enum, and the Go guest gains `linux/amd64`
 builds beside today's `linux_arm64` files (`executor/guest`). This is one
@@ -426,7 +426,7 @@ standalone `.deb` ships Firecracker and its jailer pinned by version and by the
 upstream published SHA-256, plus the amd64 guest, with a `resources/manifest.json`
 of digests. `firecracker-conformance` in `.github/workflows/desktop-linux.yml`
 runs the backend suites on `[self-hosted, linux, kvm]` and fails when
-`/dev/kvm` is absent. Contract: `docs/executor-protocol.md` §8 → "Linux
+`/dev/kvm` is absent. Contract: `docs/executor-protocol/overview.md` §8 → "Linux
 backend — Firecracker".
 
 **Two design statements did not survive contact.** First, the table above says
