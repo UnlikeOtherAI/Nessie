@@ -218,3 +218,25 @@ test('compose swaps in place beside a conversation; an unclassified path is stil
     /cannot classify/,
   )
 })
+
+test('a re-render of the returning screen during a Back keeps the outgoing screen mounted', () => {
+  // Back from the conversation to the list: the conversation stays retained
+  // above the (now current) list until the animation releases it.
+  const back = stackAt('/channels', '/channels/channel_a', '/channels')
+  assert.equal(back.currentIndex, 0)
+  assert.equal(back.entries.length, 2)
+  // The list's own data settling re-renders the same route mid-transition.
+  const settled = advancePhoneNavigationStack(back, '/channels', 'payload:/channels#2')
+  assert.equal(settled.currentIndex, 0)
+  assert.deepEqual(layers(settled), layers(back), 'the outgoing conversation is still retained')
+  assert.equal(settled.entries[0]?.payload, 'payload:/channels#2')
+  assert.equal(settled.entries[1], back.entries[1])
+  // A sibling swap at the same depth still releases what was above it.
+  const swapped = advancePhoneNavigationStack(
+    stackAt('/channels', '/channels/channel_a', '/channels/channel_a/info', '/channels/channel_a'),
+    '/channels/channel_b',
+    'payload:/channels/channel_b',
+  )
+  assert.deepEqual(keys(swapped), ['root:channels:/channels', 'channels:channel'])
+  assert.equal(swapped.entries.length, 2)
+})

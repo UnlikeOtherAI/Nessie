@@ -1,8 +1,9 @@
-// Tablet and desktop, selecting a channel. Those layouts keep their columns
-// adjacent and never mount the phone stack, so a sibling swap must not slide
-// anything (docs/navigation.md §1: an unchanged identity key never animates).
-// This case pins today's behaviour: no phone viewport, no layer motion, and
-// a shell whose columns stay exactly where they were.
+// Tablet and desktop, selecting a channel. Those layouts are `split`
+// (docs/navigation.md §5): the list column is pinned and the detail column
+// is its own navigation stack, in which a root → detail or a sibling swap is
+// an in-place change — nothing slides (§1: an unchanged identity key never
+// animates). This case pins that: the split stack is mounted, one layer only,
+// no layer or column motion, and a shell whose columns stay where they were.
 import { createChecks } from '../lib/expect.mjs'
 import { hasPhoneViewport, watchForMotion } from '../lib/freeze.mjs'
 import { clickChannelRow, gotoChannels, shot } from '../lib/page.mjs'
@@ -24,7 +25,11 @@ const wideSelectCase = (viewport) => ({
     const checks = createChecks(caseName)
     await gotoChannels(page)
 
-    checks.ok('no phone navigation stack at this width', (await hasPhoneViewport(page)) === false)
+    checks.ok('the split stack is mounted at this width', (await hasPhoneViewport(page)) === true)
+    checks.ok(
+      'the shell declares the split layout',
+      await page.evaluate(() => document.querySelector('[data-navigation]')?.getAttribute('data-navigation')) === 'split',
+    )
     const frames = [await shot(page, caseName, '00-before')]
 
     const baseline = await watchForMotion(page, { selectors: REGIONS, windowMs: 50 })
@@ -42,6 +47,10 @@ const wideSelectCase = (viewport) => ({
       observed.animated.length === 0,
       observed.animated.join(', '),
     )
+    const layers = await page.evaluate(
+      () => [...document.querySelectorAll('[data-phone-navigation-layer]')].map((el) => el.getAttribute('data-phone-navigation-layer')),
+    )
+    checks.ok('a sibling swap keeps one layer, nothing retained beneath', layers.length === 1 && layers[0] === 'current', layers.join(', '))
     for (const [index, selector] of REGIONS.entries()) {
       const before = baseline.before[index]
       const after = observed.after[index]

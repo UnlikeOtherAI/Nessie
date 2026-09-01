@@ -188,7 +188,7 @@ authenticated shell; the name follows in a later rename). It owns:
 Planned in this step: `BackButton` as the single glyph in every header on
 every layout.
 
-## 5. Layout — **built** (step 5, the decision; stacks per column follow)
+## 5. Layout — **built** (step 5)
 
 `navigation/layout.ts` `deriveNavigationLayout()` is the one composition of
 shell probes × viewport bands into `'single' | 'split'`, read through
@@ -221,9 +221,12 @@ differently there (`surfaceScreen(pathname, layout)`):
 - No edge swipe arms on split: the column has no edge of its own, and on
   iPad the native swipe stays on until step 9.
 
-Planned in this step: the page-owned detail columns (Knowledge, the column
-browsers, Dashboards) mounting the same stack; the thread panel as a nested
-stage on `single` and a `Sheet` on `split`.
+Verified in the browser at 1280×800 and 768×1024: `/agents` →
+`/agents/designer` slides inside the detail column over the dimmed, retained
+list and pops back; a conversation → its info and a status list → a status
+stay one layer. The page-owned detail columns (Knowledge, the column
+browsers, Dashboards) join the stack as nested stages in step 6; the thread
+panel becomes a nested stage on `single` and a `Sheet` on `split` in step 8.
 
 ## 6. Native shell contract — **built** (the two bridge pieces)
 
@@ -297,7 +300,7 @@ so the suite survived the step-2 rewrite unchanged. Every frame also asserts
 | `phone-back` | 390×844 | header Back: the conversation travels 0 → 100 %, the list -28 % → 0 |
 | `phone-edge-swipe` | 390×844 | a touchscreen swipe from x=8 to x=300 commits Back; the settle runs from exactly the released displacement to the ends |
 | `phone-tab-switch` | 390×844 | Messages → Files moves nothing: no layer animates, the screen's rect is unchanged |
-| `tablet-select` | 768×1024 | selecting a channel mounts no phone stack and slides nothing; the columns keep their geometry |
+| `tablet-select` | 768×1024 | selecting a channel in the split stack is an in-place swap: one layer, nothing animates, the columns keep their geometry |
 | `desktop-select` | 1280×800 | the same at desktop width |
 
 Each transition case navigates once per saved frame, deliberately: the stack
@@ -325,17 +328,15 @@ Where it runs:
 - **On device** — iPhone and iPad checks stay manual; the plan lists them per
   step.
 
-**Currently red: `phone-back`.** The route pop paints only the returning
-list. `advancePhoneNavigationStack`'s same-depth branch truncates every entry
-above `currentIndex`, and after a Back the outgoing screen *is* the entry
-above `currentIndex` — so the first re-render that arrives on the same
-pathname (the destination's own data settling is enough) drops it while the
-transition is still running. `runStackTransition` then gets `top: null` and
-animates the lower layer alone. The stack unit test
-(`admin/test/phone-navigation-stack.test.ts`, "Back targets the retained
-layer … and keeps outgoing DOM") passes because it advances the stack once
-and never replays the same route; the browser suite is what sees it. Fix the
-stack, not the suite.
+**What it caught first.** `phone-back` was red on its first run: the route
+pop painted only the returning list, because `advancePhoneNavigationStack`'s
+same-depth branch truncated every entry above `currentIndex` on the first
+re-render of the destination (its data settling is enough), and after a Back
+the outgoing screen *is* that entry. The stack now refreshes a same-route
+re-render in place and releases the entries above only for a sibling swap;
+`admin/test/phone-navigation-stack.test.ts` replays the route mid-Back to
+pin it. The JSDOM stack test had passed because it never replayed a route —
+the browser suite is what sees it.
 
 ## 8. Everything else — **planned**
 

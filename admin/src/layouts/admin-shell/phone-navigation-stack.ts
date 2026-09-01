@@ -121,6 +121,21 @@ export const advancePhoneNavigationStack = <Payload>(
   const nextEntry = toStackEntry(pathname, screen, payload)
 
   if (screen.depth === current.depth) {
+    if (current.pathname === nextEntry.pathname) {
+      // The same route re-rendering (its data settled, a query param
+      // changed): refresh the payload in place and keep everything above
+      // it. During a Back the outgoing screen *is* the entry above the
+      // current one, and dropping it here made a pop paint only the
+      // returning list — the leaving screen was never in the DOM for a
+      // frame (the transition suite's `phone-back` case). Siblings share
+      // one layer identity by design, so the route, not the key, says
+      // whether this is the same screen.
+      const entries = stack.entries.slice()
+      entries[stack.currentIndex] = nextEntry
+      return { ...stack, entries }
+    }
+    // A sibling swap (channel A → B): another route at the same depth
+    // replaces the current layer and releases anything retained above.
     const entries = stack.entries.slice(0, stack.currentIndex)
     entries.push(nextEntry)
     return { currentIndex: stack.currentIndex, entries }
