@@ -172,8 +172,15 @@ composition verbatim.
 The flow is one state machine with three entry skins. **Every entry point opens
 the same connection-review dialog before it sends a connect request.** The
 review names the publisher, the authentication method, what the sign-in or
-secret step will do, and that the account is personal. For a registry listing
-whose authentication has not yet been discovered, it says "Checked before
+secret step will do, and its audience. **Just you** is selected by default. A
+person may deliberately select **A channel**, then must select one of the
+channels returned by their existing entitled channel list before Connect is
+enabled. The dialog offers no organization-wide choice. A channel selection
+creates a separate connection for that exact channel. The final API-key dialog
+saves the caller's encrypted credential override, so other channel members do
+not receive their key; only agents acting in that channel may use the
+connection. It accepts the secret once and never displays it. For a registry listing whose
+authentication has not yet been discovered, it says "Checked before
 connecting" instead of presenting a guessed method. Only the explicit
 `Connect {name}` confirmation starts the API flow. Once confirmed, the dialog
 renders the shared **ConnectProgress** panel; it never starts work merely by

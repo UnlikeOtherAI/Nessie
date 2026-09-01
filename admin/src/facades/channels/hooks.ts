@@ -4,10 +4,11 @@ import type { ChannelRecord } from '../../lib/api-client'
 import { agentKeys, channelKeys, userKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useChannels = () => {
+export const useChannels = ({ enabled = true }: { enabled?: boolean } = {}) => {
   const apiClient = useApiClient()
 
   return useQuery<ChannelRecord[]>({
+    enabled,
     queryKey: channelKeys.all,
     queryFn: () => apiClient.get('/api/channels'),
     staleTime: Infinity,

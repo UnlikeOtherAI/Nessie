@@ -100,11 +100,12 @@ export const useConnectApp = (slug: string) => {
   const apiClient = useApiClient()
 
   return useMutation({
-    mutationFn: (scope: AppConnectScope) =>
-      apiClient.post<unknown>(`/api/apps/${encodeURIComponent(slug)}/connect`, {
-        scopeId: scope.scopeId,
-        scopeType: scope.scopeType,
-      }),
+    mutationFn: (scope: AppConnectScope) => {
+      const body = scope.scopeId
+        ? { scopeId: scope.scopeId, scopeType: scope.scopeType }
+        : { scopeType: scope.scopeType }
+      return apiClient.post<unknown>(`/api/apps/${encodeURIComponent(slug)}/connect`, body)
+    },
   })
 }
 

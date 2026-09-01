@@ -2,12 +2,19 @@ import { useRef, useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 
 import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
+import { useChannels } from '../../../facades/channels/hooks'
+import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import {
   connectAuthExpectation,
   connectAuthType,
   connectPublisherLine,
 } from './app-connect-copy'
+import {
+  appConnectScopeCopy,
+  buildAppConnectScope,
+  type AppConnectScopeChoice,
+} from './app-connect-scope'
 import { AppSecretDialog } from './AppSecretDialog'
 import { ConnectProgress } from './ConnectProgress'
 
@@ -16,9 +23,9 @@ import { ConnectProgress } from './ConnectProgress'
  *
  * The person reviews its authentication and audience first, then confirmation
  * starts `useAppConnectFlow`: the step list while probing, the provider's
- * sign-in window, and the app-owned encrypted key dialog when needed. No raw
- * endpoint or scope picker renders here — the caller's own scope is the only
- * one this surface offers.
+ * sign-in window, and the app-owned encrypted key dialog when needed. Personal
+ * scope is the default; a person may deliberately bind a separate connection
+ * to one channel they can access.
  */
 
 type AppConnectDialogProps = {
@@ -31,6 +38,11 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   const connect = useAppConnectFlow({ slug: app.slug ?? app.id })
   const confirmRef = useRef<HTMLButtonElement>(null)
   const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
+  const [scopeChoice, setScopeChoice] = useState<AppConnectScopeChoice>('user')
+  const [channelId, setChannelId] = useState('')
+  const channels = useChannels({ enabled: open && scopeChoice === 'channel' })
+  const selectedChannel = channels.data?.find((channel) => channel.id === channelId)
+  const scope = buildAppConnectScope(scopeChoice, channelId)
 
   // Closing mid-flow abandons it: the OAuth window is closed and the pending
   // marker forgotten, so the page does not resume a sign-in nobody is looking
@@ -38,6 +50,8 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   // invalidated and the card flips to Connected on its own.
   const handleClose = () => {
     connect.dismiss()
+    setScopeChoice('user')
+    setChannelId('')
     setSecretConnectionId(null)
     onClose()
   }
@@ -83,8 +97,48 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
                 <dt className="text-xs font-medium uppercase tracking-[0.08em] text-[color:var(--tx3)]">
                   Who can use it
                 </dt>
-                <dd className="text-[color:var(--tx2)]">
-                  Just you. You can choose which agents may use it after it connects.
+                <dd className="grid gap-3 text-[color:var(--tx2)]">
+                  <TabBar
+                    ariaLabel="Choose who this app connection is for"
+                    items={[
+                      { label: 'Just you', testId: 'app-connect-scope-user', value: 'user' },
+                      { label: 'A channel', testId: 'app-connect-scope-channel', value: 'channel' },
+                    ]}
+                    onChange={setScopeChoice}
+                    role="radiogroup"
+                    size="sm"
+                    value={scopeChoice}
+                  />
+                  {scopeChoice === 'channel' ? (
+                    <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-connect-channel">
+                      Channel
+                      <select
+                        aria-describedby="app-connect-channel-scope-copy"
+                        className="admin-input"
+                        data-testid="app-connect-channel-picker"
+                        disabled={channels.isPending || channels.isError}
+                        id="app-connect-channel"
+                        onChange={(event) => setChannelId(event.target.value)}
+                        value={channelId}
+                      >
+                        <option value="">
+                          {channels.isPending
+                            ? 'Loading channels…'
+                            : channels.isError
+                              ? 'Channels could not be loaded'
+                              : 'Choose a channel'}
+                        </option>
+                        {(channels.data ?? []).map((channel) => (
+                          <option key={channel.id} value={channel.id}>
+                            {channel.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <span data-testid="app-connect-scope-copy" id="app-connect-channel-scope-copy">
+                    {appConnectScopeCopy(scopeChoice, selectedChannel?.label)}
+                  </span>
                 </dd>
               </div>
             </dl>
@@ -95,7 +149,10 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
               <button
                 className="admin-button admin-button-primary"
                 data-testid="app-connect-confirm"
-                onClick={() => connect.connect({ scopeType: 'user' })}
+                disabled={!scope}
+                onClick={() => {
+                  if (scope) connect.connect(scope)
+                }}
                 ref={confirmRef}
                 type="button"
               >

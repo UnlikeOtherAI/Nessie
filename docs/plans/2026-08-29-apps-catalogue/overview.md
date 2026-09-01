@@ -151,7 +151,13 @@ the rule has to move in one place.
   instance-global first-party rows, so it can never stamp `trustLevel: 'nessie'`
   onto an organisation's own same-named connector.
 - `admin/src/pages/AppsPage.tsx`, `AppDetailPage.tsx`,
-  `admin/src/components/features/apps/`, `admin/src/facades/apps/`.
+  `admin/src/components/features/apps/`, `admin/src/facades/apps/`. The Connect
+  review defaults to a personal connection and may deliberately bind a separate
+  connection to one channel from the existing entitled channel facade. Its
+  API-key dialog saves the caller's encrypted credential override rather than
+  exposing it to other channel members. It never offers an organization-wide
+  default, and only agents acting in the selected channel may use that
+  connection.
 
 Every response goes through a presenter that cannot emit a `credentialRef`,
 auth config, transport config, endpoint URL, or a raw upstream icon URL.
