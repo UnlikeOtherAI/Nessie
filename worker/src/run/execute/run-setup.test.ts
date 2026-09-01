@@ -3,7 +3,11 @@ import test from 'node:test'
 
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
-import { applyHandoffToolExclusions, applyTodoToolExclusions } from './run-setup.js'
+import {
+  applyConversationalSetupExclusions,
+  applyHandoffToolExclusions,
+  applyTodoToolExclusions,
+} from './run-setup.js'
 
 const descriptor = (toolName: string): ToolSchemaDescriptor => ({
   toolName,
@@ -59,4 +63,16 @@ test('a to-do-disabled agent is not offered either execution builtin', () => {
   assert.deepEqual([...toolset.allowedIds], ['web_search'])
   assert.deepEqual(toolset.descriptors.map((tool) => tool.toolName), ['web_search'])
   assert.deepEqual([...toolset.stubbedIds], [])
+})
+
+test('disabled conversational setup withholds app search and connection request', () => {
+  const toolIds = new Set(['app_search', 'app_connect_request', 'web_search'])
+  assert.deepEqual(
+    [...applyConversationalSetupExclusions(toolIds, false)],
+    ['web_search'],
+  )
+  assert.deepEqual(
+    [...applyConversationalSetupExclusions(toolIds, true)],
+    ['app_search', 'app_connect_request', 'web_search'],
+  )
 })

@@ -61,18 +61,81 @@ export const AppConnectRequestToolInputSchema = z.object({
 export type AppConnectRequestToolInput = z.infer<typeof AppConnectRequestToolInputSchema>
 
 /**
- * Server-derived candidate presentation. It intentionally excludes endpoint,
- * transport configuration, authorization links and credential information.
+ * Safe App Store presentation shared by conversational search and the durable
+ * consent snapshot. It intentionally excludes endpoint, transport
+ * configuration, authorization links and credential information.
  */
-export const AppSetupCardCandidateSchema = z.object({
+export const AppStoreSafePresentationSchema = z.object({
   authMethod: AppAuthMethodSchema,
   capabilityCount: z.number().int().nonnegative().nullable(),
   catalogEntryId: z.string().uuid(),
   displayName: NonEmptyStringSchema,
   iconUrl: z.string().nullable(),
+  shortDescription: z.string(),
   trustLevel: AppTrustLevelSchema,
 }).strict()
+export type AppStoreSafePresentation = z.infer<typeof AppStoreSafePresentationSchema>
+
+/** Server-derived candidate presentation for a first-party App setup card. */
+export const AppSetupCardCandidateSchema = AppStoreSafePresentationSchema
 export type AppSetupCardCandidate = z.infer<typeof AppSetupCardCandidateSchema>
+
+/** Read-only catalogue search accepted from a model. */
+export const AppSearchToolInputSchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  limit: z.number().int().min(1).max(10).optional(),
+}).strict()
+export type AppSearchToolInput = z.infer<typeof AppSearchToolInputSchema>
+
+export const AppSearchToolOutputSchema = z.object({
+  apps: z.array(AppStoreSafePresentationSchema).max(10),
+}).strict()
+export type AppSearchToolOutput = z.infer<typeof AppSearchToolOutputSchema>
+
+/** The model needs only confirmation that its request card was offered. */
+export const AppConnectRequestToolOutputSchema = z.object({
+  status: z.literal('offered'),
+}).strict()
+export type AppConnectRequestToolOutput = z.infer<typeof AppConnectRequestToolOutputSchema>
+
+/** One authenticated click selects a server-recorded candidate to connect. */
+export const BeginAppConnectionRequestSchema = z.object({
+  catalogEntryId: z.string().uuid(),
+}).strict()
+export type BeginAppConnectionRequest = z.infer<typeof BeginAppConnectionRequestSchema>
+
+/**
+ * Deliberately immediate-only response to Begin. An authorization URL is never
+ * stored in message metadata, a card cache, or the durable request itself.
+ */
+export const BeginAppConnectionRequestResponseSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('connected') }).strict(),
+  z.object({ authorizationUrl: z.string().url(), status: z.literal('authorize') }).strict(),
+  z.object({ status: z.literal('needs_secret') }).strict(),
+])
+export type BeginAppConnectionRequestResponse = z.infer<
+  typeof BeginAppConnectionRequestResponseSchema
+>
+
+/**
+ * Immutable, server-authored state captured at offer time. It deliberately
+ * contains no model reason, URL, account, instance, or credential value.
+ */
+export const AppConnectionRequestConsentSnapshotSchema = z.object({
+  agent: z.object({
+    id: z.string().uuid(),
+    name: NonEmptyStringSchema,
+  }).strict(),
+  candidates: z.array(AppStoreSafePresentationSchema).min(1).max(3),
+  scope: z.object({
+    label: NonEmptyStringSchema,
+    scopeId: z.string().uuid(),
+    scopeType: z.literal('user'),
+  }).strict(),
+}).strict()
+export type AppConnectionRequestConsentSnapshot = z.infer<
+  typeof AppConnectionRequestConsentSnapshotSchema
+>
 
 export const AppSetupCardScopeSchema = z.object({
   label: NonEmptyStringSchema,

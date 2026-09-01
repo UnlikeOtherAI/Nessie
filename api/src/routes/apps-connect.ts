@@ -94,7 +94,7 @@ const APP_CONNECT_STATUS: Record<AppConnectErrorCode, number> = {
  * collision, an integration-managed connector) keeps the reply
  * `registerMcpRoutes` would have sent, so the two surfaces answer alike.
  */
-const sendConnectError = (reply: FastifyReply, error: unknown): boolean => {
+export const sendAppsConnectError = (reply: FastifyReply, error: unknown): boolean => {
   if (error instanceof AppConnectError) {
     sendApiError(reply, APP_CONNECT_STATUS[error.code], error.code, error.message)
     return true
@@ -132,69 +132,76 @@ export type AppsConnectDeps = RouteDeps & {
   managerFactory?: ManagerFactory
 }
 
+/**
+ * The one way an authenticated Apps surface obtains connect orchestration.
+ * A chat card uses the same token vault, callback origin, OAuth state store,
+ * SSRF policy and manager factory as `/api/apps/:slug/connect`; it is not a
+ * second connection path merely because its human doorway is a message.
+ */
+export const buildAppConnectContext = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  actorContext: AuthorizedActionContext,
+  deps: AppsConnectDeps,
+): AppConnectContext | null => {
+  const encryptionSecret = deps.authSecret ?? ''
+  try {
+    return {
+      prisma: deps.prisma,
+      actorContext,
+      oauth: {
+        callbackUrl: buildOAuthCallbackUrl(request, deps.config),
+        stateStore: deps.oauthStateStore ?? createPgOAuthStateStore(deps.prisma),
+        secretStore: deps.oauthSecretStore ?? createPgSecretStore(deps.prisma, encryptionSecret),
+        resolveHost: deps.oauthResolveHost,
+      },
+      secretResolver: deps.secretResolver ?? createMcpSecretResolver(deps.prisma, encryptionSecret),
+      managerFactory: deps.managerFactory,
+    }
+  } catch (error) {
+    if (error instanceof PublicOriginConfigError) {
+      sendApiError(
+        reply,
+        500,
+        'PUBLIC_ORIGIN_NOT_CONFIGURED',
+        'The server cannot determine its public origin; set NESSIE_API_PUBLIC_URL '
+          + 'to the public origin of this API (required outside local mode)',
+      )
+      return null
+    }
+    throw error
+  }
+}
+
+/**
+ * Every doorway that begins an App OAuth attempt shares the same scarce-flow
+ * rate-limit bucket. The chat card is a different presentation, not a bypass.
+ */
+export const guardAppConnectAttempt = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  actorContext: AuthorizedActionContext,
+  deps: Pick<AppsConnectDeps, 'config' | 'rateLimiter'>,
+): Promise<boolean> =>
+  guardAuthRequest(
+    deps.rateLimiter,
+    { bucket: RATE_LIMIT_BUCKETS.mcpOauthIp, rule: deps.config.api.rateLimit.mcpOauthIp },
+    request,
+    reply,
+    { auditContext: actorContext },
+  )
+
 export const registerAppsConnectRoutes = (
   app: FastifyInstance,
   deps: AppsConnectDeps,
 ): void => {
-  const { prisma, requireActorContext, config, rateLimiter } = deps
-  const encryptionSecret = deps.authSecret ?? ''
-  const oauthSecretStore = deps.oauthSecretStore ?? createPgSecretStore(prisma, encryptionSecret)
-  const secretResolver = deps.secretResolver ?? createMcpSecretResolver(prisma, encryptionSecret)
-  const stateStore = deps.oauthStateStore ?? createPgOAuthStateStore(prisma)
+  const { prisma, requireActorContext } = deps
 
   /**
    * Connect dials third-party servers and mints OAuth state, so it carries the
    * same brute-force guard as `POST /api/mcp/instances/:id/oauth/start` — the
    * same bucket, because it is the same scarce thing being sprayed.
    */
-  const guard = (request: FastifyRequest, reply: FastifyReply, actorContext: AuthorizedActionContext) =>
-    guardAuthRequest(
-      rateLimiter,
-      { bucket: RATE_LIMIT_BUCKETS.mcpOauthIp, rule: config.api.rateLimit.mcpOauthIp },
-      request,
-      reply,
-      { auditContext: actorContext },
-    )
-
-  /**
-   * The callback origin is resolved server-side from configuration, never from
-   * the request, and a deployment that cannot name its own public origin must
-   * fail *before* a state token is minted or a client is registered against a
-   * steered origin.
-   */
-  const buildContext = (
-    request: FastifyRequest,
-    reply: FastifyReply,
-    actorContext: AuthorizedActionContext,
-  ): AppConnectContext | null => {
-    try {
-      return {
-        prisma,
-        actorContext,
-        oauth: {
-          callbackUrl: buildOAuthCallbackUrl(request, config),
-          stateStore,
-          secretStore: oauthSecretStore,
-          resolveHost: deps.oauthResolveHost,
-        },
-        secretResolver,
-        managerFactory: deps.managerFactory,
-      }
-    } catch (error) {
-      if (error instanceof PublicOriginConfigError) {
-        sendApiError(
-          reply,
-          500,
-          'PUBLIC_ORIGIN_NOT_CONFIGURED',
-          'The server cannot determine its public origin; set NESSIE_API_PUBLIC_URL '
-            + 'to the public origin of this API (required outside local mode)',
-        )
-        return null
-      }
-      throw error
-    }
-  }
-
   /**
    * One connect attempt, as the audit trail sees it. `status` records how far
    * it got, because "a connection now exists, awaiting a sign-in" is a real
@@ -232,7 +239,7 @@ export const registerAppsConnectRoutes = (
   app.post('/api/apps/:slug/connect', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!(await guard(request, reply, actorContext))) return reply
+    if (!(await guardAppConnectAttempt(request, reply, actorContext, deps))) return reply
 
     const params = parseInput(SlugParamsSchema, request.params, reply, 'slug')
     if (!params) return reply
@@ -244,7 +251,7 @@ export const registerAppsConnectRoutes = (
       sendApiError(reply, 400, 'VALIDATION_ERROR', 'scopeId is required for this scope', 'scopeId')
       return reply
     }
-    const ctx = buildContext(request, reply, actorContext)
+    const ctx = buildAppConnectContext(request, reply, actorContext, deps)
     if (!ctx) return reply
 
     try {
@@ -270,7 +277,7 @@ export const registerAppsConnectRoutes = (
           errorCode: error.code,
         })
       }
-      if (sendConnectError(reply, error)) return reply
+      if (sendAppsConnectError(reply, error)) return reply
       throw error
     }
   })
@@ -284,7 +291,7 @@ export const registerAppsConnectRoutes = (
   app.post('/api/apps/custom', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!(await guard(request, reply, actorContext))) return reply
+    if (!(await guardAppConnectAttempt(request, reply, actorContext, deps))) return reply
 
     const body = parseInput(CustomAppBodySchema, request.body, reply)
     if (!body) return reply
@@ -302,7 +309,7 @@ export const registerAppsConnectRoutes = (
       return reply
     }
 
-    const ctx = buildContext(request, reply, actorContext)
+    const ctx = buildAppConnectContext(request, reply, actorContext, deps)
     if (!ctx) return reply
 
     try {
@@ -316,7 +323,7 @@ export const registerAppsConnectRoutes = (
       const record = await getStoreApp(prisma, actorContext, entry.id)
       return reply.code(201).send(createApiResponse({ appId: entry.id, app: record }))
     } catch (error) {
-      if (sendConnectError(reply, error)) return reply
+      if (sendAppsConnectError(reply, error)) return reply
       throw error
     }
   })
@@ -324,11 +331,11 @@ export const registerAppsConnectRoutes = (
   app.post('/api/app-connections/:id/reconnect', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!(await guard(request, reply, actorContext))) return reply
+    if (!(await guardAppConnectAttempt(request, reply, actorContext, deps))) return reply
 
     const params = parseInput(ConnectionParamsSchema, request.params, reply, 'id')
     if (!params) return reply
-    const ctx = buildContext(request, reply, actorContext)
+    const ctx = buildAppConnectContext(request, reply, actorContext, deps)
     if (!ctx) return reply
 
     try {
@@ -343,7 +350,7 @@ export const registerAppsConnectRoutes = (
       })
       return createApiResponse(outcome)
     } catch (error) {
-      if (sendConnectError(reply, error)) return reply
+      if (sendAppsConnectError(reply, error)) return reply
       throw error
     }
   })
@@ -354,7 +361,7 @@ export const registerAppsConnectRoutes = (
 
     const params = parseInput(ConnectionParamsSchema, request.params, reply, 'id')
     if (!params) return reply
-    const ctx = buildContext(request, reply, actorContext)
+    const ctx = buildAppConnectContext(request, reply, actorContext, deps)
     if (!ctx) return reply
 
     try {
@@ -369,7 +376,7 @@ export const registerAppsConnectRoutes = (
       })
       return createApiResponse(result)
     } catch (error) {
-      if (sendConnectError(reply, error)) return reply
+      if (sendAppsConnectError(reply, error)) return reply
       throw error
     }
   })
@@ -380,7 +387,7 @@ export const registerAppsConnectRoutes = (
 
     const params = parseInput(ConnectionParamsSchema, request.params, reply, 'id')
     if (!params) return reply
-    const ctx = buildContext(request, reply, actorContext)
+    const ctx = buildAppConnectContext(request, reply, actorContext, deps)
     if (!ctx) return reply
 
     try {
@@ -399,7 +406,7 @@ export const registerAppsConnectRoutes = (
       })
       return reply.code(204).send()
     } catch (error) {
-      if (sendConnectError(reply, error)) return reply
+      if (sendAppsConnectError(reply, error)) return reply
       throw error
     }
   })
