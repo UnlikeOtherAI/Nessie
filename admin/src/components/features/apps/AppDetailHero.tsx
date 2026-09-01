@@ -72,7 +72,7 @@ export const AppDetailHero = ({
               {app.displayName}
             </h1>
             <AppTrustBadge trustLevel={app.trustLevel} />
-            {status.kind === 'pill' ? (
+            {status.kind === 'pill' || status.kind === 'indicator' ? (
               <Pill tone={status.tone}>{status.label}</Pill>
             ) : null}
           </div>

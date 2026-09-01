@@ -21,9 +21,11 @@ import {
   catalogueMatchTotal,
   filterApps,
   parseAppFilter,
+  readStoredAppFilter,
   searchTruncationNote,
   sectionPageSize,
   visibleShelves,
+  writeStoredAppFilter,
   type AppFilter,
 } from '../components/features/apps/app-catalogue-view'
 import {
@@ -73,7 +75,11 @@ export const AppsPage = () => {
   // 150 ms is below the threshold where typing feels laggy and above the rate
   // at which re-requesting would churn.
   const debouncedQuery = useDebouncedValue(query, 150)
-  const filter = parseAppFilter(searchParams.get('filter'))
+  // A pasted URL remains an explicit view; on the normal `/apps` doorway, use
+  // the last catalogue view selected on this device so returning here does not
+  // make someone re-select Installed every time.
+  const requestedFilter = searchParams.get('filter')
+  const filter = requestedFilter === null ? readStoredAppFilter() : parseAppFilter(requestedFilter)
   // Both narrowings go to the server. The query does because Postgres owns the
   // weighted ranking and the typo fallback; "Installed" does because the
   // response is a bounded slice, and filtering a slice would hide connected
@@ -140,6 +146,7 @@ export const AppsPage = () => {
   const matchTotal = catalogueMatchTotal(response?.categories ?? [])
 
   const setFilter = (next: AppFilter) => {
+    writeStoredAppFilter(next)
     const params = new URLSearchParams(searchParams)
     if (next === 'all') params.delete('filter')
     else params.set('filter', next)

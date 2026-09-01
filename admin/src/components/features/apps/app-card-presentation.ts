@@ -45,6 +45,8 @@ export type AppCardStatusTone = 'accent' | 'danger' | 'muted' | 'success' | 'war
 export type AppCardStatus =
   /** Available and healthy: absence of status is the signal. */
   | { kind: 'none' }
+  /** A compact dot in cards; the detail hero spells the same state out. */
+  | { kind: 'indicator'; label: string; tone: AppCardStatusTone }
   /** A pill, for the states where a decision may be pending. */
   | { kind: 'pill'; label: string; tone: AppCardStatusTone }
   /** Quiet `--tx3` text — an uppercase tracked pill saying "Available" shouts. */
@@ -64,7 +66,7 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
     case 'available':
       return { kind: 'none' }
     case 'connecting':
-      return { kind: 'pill', label: 'Connecting…', tone: 'accent' }
+      return { kind: 'indicator', label: 'Connecting', tone: 'accent' }
     case 'connected':
       return { kind: 'pill', label: '● Connected', tone: 'success' }
     case 'multiple_accounts':
@@ -76,7 +78,7 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
     case 'auth_expired':
       return { kind: 'pill', label: '⚠ Reconnect', tone: 'warning' }
     case 'error':
-      return { kind: 'pill', label: '⚠ Connection error', tone: 'danger' }
+      return { kind: 'indicator', label: 'Connection error', tone: 'danger' }
     // Every account switched off — the same dot vocabulary as "connected",
     // hollow, because this is the same relationship in its off position and
     // not an availability verdict.

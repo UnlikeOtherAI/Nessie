@@ -73,8 +73,8 @@ test('a built-in was never connected to anything, so it says available instead o
   // The exception is scoped to `available`: a built-in in any other state
   // reports that state like everything else.
   assert.deepEqual(appCardStatus(app({ distribution: 'builtin', state: 'error' })), {
-    kind: 'pill',
-    label: '⚠ Connection error',
+    kind: 'indicator',
+    label: 'Connection error',
     tone: 'danger',
   })
 })
@@ -83,10 +83,10 @@ test('an available app shows no status at all — absence is the signal', () => 
   assert.deepEqual(appCardStatus(app()), { kind: 'none' })
 })
 
-test('each connected state gets its own pill, and the two verdict states stay quiet text', () => {
+test('transient connection states use compact indicators, while connected states retain their pills', () => {
   assert.deepEqual(appCardStatus(app({ state: 'connecting' })), {
-    kind: 'pill',
-    label: 'Connecting…',
+    kind: 'indicator',
+    label: 'Connecting',
     tone: 'accent',
   })
   assert.deepEqual(appCardStatus(app({ state: 'connected' })), {
@@ -218,11 +218,11 @@ test('connecting offers the way on, without promising to resolve itself', () => 
   })
 })
 
-test('the connecting pill and its action never say the same word', () => {
+test('the connecting indicator and its action never say the same word', () => {
   const status = appCardStatus(app({ state: 'connecting' }))
   const action = appCardAction(app({ state: 'connecting' }))
-  assert.equal(status.kind, 'pill')
-  assert.notEqual(status.kind === 'pill' ? status.label : null, action.kind === 'none' ? null : action.label)
+  assert.equal(status.kind, 'indicator')
+  assert.notEqual(status.kind === 'indicator' ? status.label : null, action.kind === 'none' ? null : action.label)
 })
 
 test('paused opens the accounts tab to look, because nothing re-enables an install', () => {
