@@ -766,6 +766,7 @@ enum ExecutorStatus {
 enum ExecutorProfile {
   workspace_sandbox
   coding_session
+  connected_browser
 }
 
 enum ExecutorPrivateAssignmentPrincipalKind {

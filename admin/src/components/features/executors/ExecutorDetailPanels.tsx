@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type {
   ExecutorAccessViewResponse,
+  ExecutorProfile,
   ExecutorRecordResponse,
   ExecutorWorkspaceReviewRecordResponse,
   ImplementedExecutorOperationKey,
@@ -41,7 +42,7 @@ const scopeSummary = (executor: ExecutorRecordResponse): string =>
       : 'Organization — available only to entitled organization work.'
 
 const sessionSummary = (
-  profile: 'coding_session' | 'workspace_sandbox',
+  profile: ExecutorProfile,
   status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed',
 ): string => {
   if (profile === 'coding_session') {
@@ -51,6 +52,16 @@ const sessionSummary = (
       case 'attention': return 'Codex exited. The agent can review the COW changes or stop the guest.'
       case 'stopped': return 'Ended. The guest and its transient login material were removed.'
       case 'failed': return 'Ended after an unavailable coding result. This run cannot retry it.'
+      case 'detached': return 'Detached from interactive control.'
+    }
+  }
+  if (profile === 'connected_browser') {
+    switch (status) {
+      case 'pending': return 'Awaiting this run’s first approved browser navigation.'
+      case 'active': return 'The run can only observe or act through the approved accessibility tree in this person-approved browser tab.'
+      case 'stopped': return 'Ended. This run cannot open another connected-browser session.'
+      case 'failed': return 'Ended after an unavailable connected-browser result. This run cannot retry it.'
+      case 'attention': return 'Awaiting a human session decision.'
       case 'detached': return 'Detached from interactive control.'
     }
   }
