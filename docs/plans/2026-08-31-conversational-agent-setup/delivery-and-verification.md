@@ -31,17 +31,24 @@ duplicate any of them.
   `/settings/organization#early-access` switch, live-owner-only dedicated
   endpoint, read-only member DTO field, API/worker gate and disabled-state
   presenter before any setup tool is registered.
+- Make fingerprinted `ToolGrant` rows canonical for every protected registry
+  tool, remove the Personal Assistant implicit-allow worker branch, and add the
+  live private-owner/home facts needed by the user-scope matcher.
+- Add MCP and comms OAuth-state binding to `(requestId, connectAttemptRevision,
+  requestedByUserId)` before any callback can update a setup request.
+- Add credential-resolution provenance as a parallel API while keeping existing
+  callers working, then migrate MCP dispatch to it. This is complete before any
+  personal-connector result can enter a model context.
 - Add `AgentAppConnectionRequest` schema/migration and presenter schemas in
-  `@nessie/schemas`.
+  `@nessie/schemas`, keeping executor setup in its later, separate typed model.
 - Add a privileged first-party `AppSetupCardSchema`; leave external
   `IntegrationUiCardSchema` display-only and unchanged.
 - Extract the reusable connect controller from `useAppConnectFlow`, retaining
-  all existing Apps behaviour and tests.
+  all existing Apps behaviour and tests, while adding the chat adapter's
+  URL-less resume/fresh-authorization path.
 - Extract only the real shared visual primitives from `AppConnectDialog`,
   `ConnectProgress`, and `CommsConnectCard`; do not build another generic card
   framework.
-- Add credential-resolution provenance as a parallel API while keeping existing
-  callers working, then migrate MCP dispatch to it.
 
 Exit: `/apps` connect is behaviourally unchanged; provenance unit tests pass;
 no chat tool is exposed yet.
@@ -69,7 +76,8 @@ unconfigured, non-interactive and cross-user cases fail closed.
 - Subscribe to actor-scoped setup invalidations with REST/focus reconciliation,
   add the returned-flow claim/lease coordinator, and restore the exact
   channel/reply/message anchor after web or native auth even when another tab
-  receives the callback.
+  receives the callback. Treat its lease as advisory: finalization CASes the
+  request's matching status and return revision.
 - Wire no-auth, OAuth and secure-secret outcomes to the same state machine.
 
 Exit: a user can connect from chat and reload at any point without losing or
@@ -82,7 +90,9 @@ duplicating the flow; no agent grant or auto-continuation yet.
 - Extend user-scope run matching only for the verified private-owner/home case;
   keep workspace agents on shared scopes.
 - Add authenticated finalization, hidden system kickoff, ordinary run-slot
-  claim/pend, durable queueing and one-shot continuation linkage.
+  claim/pend, durable queueing and one-shot continuation linkage. Pending
+  messages carry a typed app-connection continuation discriminator so the
+  ordinary drain repeats the live-principal/membership recheck.
 - Rebuild the MCP toolset on the new run and ensure connector read provenance is
   stamped before the model sees results.
 

@@ -110,6 +110,13 @@ returnClaimLeaseExpiresAt  timestamp nullable
 expiresAt / createdAt / updatedAt / completedAt
 ```
 
+`AgentAppConnectionRequest` is only the Apps/comms connection lifecycle. The
+later Mac executor journey uses its own typed `AgentExecutorSetupRequest` and
+its executor-specific state machine; it must not add executor states to this
+app-connection enum. `continuationRunId` is a lookup/index aid, not the
+one-shot guarantee: PostgreSQL permits multiple `NULL`s. The terminal
+status-transition CAS and its continuation transaction are the one-shot guard.
+
 A database check requires exactly the relation matching `connectionBackend`
 once a connection is attached; the Gmail path cannot masquerade a
 `CommsConnection` id as an MCP instance id. Viewer DTOs expose neither relation
@@ -226,11 +233,13 @@ A top-level signed-in return coordinator handles another Nessie tab or route.
 On launch, focus, visibility and actor event it calls a viewer-scoped endpoint
 that lists the actor's unclaimed returned flows. It CAS-claims one flow with
 `returnClaimedBySessionId` and a short `returnClaimLeaseExpiresAt`, loads the
-server-owned structured origin, navigates to that conversation, focuses the
-exact card, and lets only that matching card finalize. Closing the claiming tab
-releases the flow by lease expiry; another tab can recover it, while concurrent
-tabs cannot both finalize. `sessionStorage` is only a same-tab latency
-optimization and is never the cross-tab source of truth.
+server-owned structured origin, and navigates to that conversation and card.
+The lease only prevents competing UI recovery work: finalization itself must
+CAS the matching `(status, returnRevision)` in the continuation transaction, so
+an expired/reclaimed lease cannot create a second run. Closing the claiming tab
+releases the flow by lease expiry; another tab can recover it. `sessionStorage`
+is only a same-tab latency optimization and is never the cross-tab source of
+truth.
 
 Opening either UI is read-only. Fix the current `AppConnectDialog` auto-start so
 no probe, discovery, dynamic registration or other target network request occurs
@@ -249,6 +258,11 @@ authorization URL in `sessionStorage` as the current Apps marker does. A URL is
 used directly from the authenticated response while the page is live; reopening
 or cold recovery asks the server to mint a fresh short-lived authorization
 decision.
+
+The extracted controller therefore has an explicit URL-less resume path:
+`resume` accepts the opaque request reference and phase only, while
+`reopenAuthorization` asks its adapter for a fresh begin decision. The chat
+adapter must never inherit the Apps adapter's stored-URL reopen behaviour.
 
 The web launcher remains a centred, chromed popup with its opener severed before
 third-party navigation, so the new flow never depends on `postMessage`.
@@ -298,6 +312,12 @@ service; they do not reuse the current client-side one-request-per-capability
 fan-out. Update `docs/tool-registry-spec.md` and the migration path in the same
 slice so no surface can disagree with runtime.
 
+This removes the current Personal Assistant implicit-allow exception in
+`isMcpRegistryRowExposed`; `agentKind === 'personal_assistant'` may not satisfy
+an explicit-grant check on its own. The worker's registry lookup must receive
+the matching live `ToolGrant` data, including its descriptor fingerprint, before
+it exposes either a PA or ordinary-agent connector tool.
+
 ### 6. Scope is explicit and is a hard ceiling
 
 The card chooses the narrowest useful scope and names it before the click. It
@@ -315,6 +335,11 @@ time: `visibility=private`, `ownerUserId=effectiveUserId`, owner membership is
 live, and the run is in the exact owner-only home DM or the agent's own trigger
 thread. An explicit policy allow can never bypass this scope predicate.
 
+`McpRunScopeContext` must carry the live facts required to enforce this—agent
+visibility, owner user id, exact home channel id and the trigger-thread
+identity—rather than trying to infer them from the old PA-presence boolean. The
+user-scope matcher accepts only that structural private-owner case.
+
 For a shared agent, a member who lacks shared-install or agent-policy authority
 does not get a weaker chat shortcut. The card says who can complete the setup
 and links to the owning Apps/agent surface; it never falls back to installing a
@@ -322,12 +347,15 @@ personal connection the shared agent cannot use.
 
 ### 7. Continue automatically, without pretending the OAuth callback is a user
 
-The OAuth callback remains unauthenticated. It consumes one-shot state,
-exchanges the code, stores the token, probes, atomically stamps the matched
-setup request's `returnedAt`/`returnRevision`, publishes the actor-scoped
-return invalidation, and renders a constant close/return page. Those bounded
-return writes are routing facts, not signed-in authority; the callback does not
-claim a return lease, grant a tool or enqueue an agent run.
+The OAuth callback remains unauthenticated. Before it can stamp a setup request,
+both MCP and comms OAuth state records must bind the server-owned
+`(requestId, connectAttemptRevision, requestedByUserId)` at begin time. The
+callback consumes that one-shot bound state, exchanges the code, stores the
+token, probes, atomically stamps the matching request's
+`returnedAt`/`returnRevision`, publishes the actor-scoped return invalidation,
+and renders a constant close/return page. Those bounded return writes are
+routing facts, not signed-in authority; the callback does not claim a return
+lease, grant a tool or enqueue an agent run.
 
 On return, the signed-in Nessie client calls `finalize` with a fresh actor
 session. The service then re-checks:
@@ -346,10 +374,11 @@ In one transaction it creates a hidden `system` message, claims or pends the
 normal `(agent, thread, principal)` run slot, creates the run/task when the slot
 is free, stores `continuationRunId`, and enqueues through the existing durable
 queue path. If the slot is busy, the hidden message enters
-`RunThreadPendingMessage` and the ordinary drain guarantees it is not lost.
-The drain revalidates that freshly derived principal and live membership again;
-revocation between finalize and drain cancels the pending continuation with a
-named card state instead of re-injecting stale actor context.
+`RunThreadPendingMessage` with a typed `app_connection_continuation` discriminator
+and request id. The ordinary drain uses that discriminator to invoke the same
+fresh-principal/live-membership revalidation before it starts the run; revocation
+between finalize and drain cancels the pending continuation with a named card
+state instead of re-injecting stale actor context.
 
 The hidden prompt is constant server copy, for example:
 
@@ -770,7 +799,8 @@ needs it and to package the missing managed-profile artifacts, not to create a
 second local-execution protocol.
 
 Add a presentation-only `executor_setup_request` tool, available only to an
-interactive owner-private agent run. It creates a typed request/card but cannot
+interactive owner-private agent run. It creates a separate typed
+`AgentExecutorSetupRequest`/card with the executor states documented below, but cannot
 pair, select a local path, approve a fingerprint, grant operations or start a
 daemon. The card uses the existing executor availability presenter and the
 Tauri companion bridge:
