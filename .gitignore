@@ -32,6 +32,7 @@ packages/billing-statement-protocol/src/*.js
 executor/native/target/
 executor/service-windows/target/
 executor/windows-common/target/
+executor/hyperv-bridge/target/
 executor/windows-provenance/target/
 executor/tray-windows/src-tauri/target/
 executor/tray-windows/src-tauri/gen/
