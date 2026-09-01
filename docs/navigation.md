@@ -178,9 +178,12 @@ authenticated shell; the name follows in a later rename). It owns:
   inline with the finger — the same three callers, the same numbers, so a
   push, a pop and a released swipe dim identically.
 
+- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §6) at
+  the moment the settle lands and the route is about to change. A cancelled
+  swipe and a tapped Back give none.
+
 Planned in this step: `BackButton` as the single glyph in every header on
-every layout; a haptic on the swipe commit (with the mobile shell's haptics
-bridge).
+every layout.
 
 ## 5. Layout — **built** (step 5, the decision; stacks per column follow)
 
@@ -234,11 +237,11 @@ headers, step 14 shell polish) land.
   (`isHapticMessage`) and maps each kind onto one of expo-haptics'
   `impactAsync` / `selectionAsync` / `notificationAsync` families
   (`triggerHaptic`), wired through `native-shell-message-handler.ts` and
-  `App.tsx`. Its one caller today is `IncomingCallProvider`'s ring
-  (`warning` on native — a one-shot notification, not a repeating buzz — the
-  browser path keeps its own repeating `navigator.vibrate` pattern via the
-  same helper's fallback); the swipe-commit/sheet-snap/tab-change triggers
-  §4.15 describes are added once the controller exists to call them from.
+  `App.tsx`. Its callers today are the swipe commit (`light`, §4) and
+  `IncomingCallProvider`'s ring (`warning` on native — a one-shot
+  notification, not a repeating buzz — the browser path keeps its own
+  repeating `navigator.vibrate` pattern via the same helper's fallback); the
+  sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
 
 ## 7. Everything else — **planned**
 

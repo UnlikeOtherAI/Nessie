@@ -326,6 +326,18 @@ test('navigation motion is scripted from static poses, never a CSS keyframe', ()
   assert.doesNotMatch(viewport, /onAnimationEnd/)
 })
 
+test('a committed swipe is the one Back that gives a haptic', () => {
+  const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const commit = viewport.slice(
+    viewport.indexOf('const performGestureBack = useCallback('),
+    viewport.indexOf('onCommit: performGestureBack'),
+  )
+  assert.match(commit, /haptic\('light'\)/)
+  assert.equal((viewport.match(/haptic\(/g) ?? []).length, 1)
+  const button = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  assert.doesNotMatch(button, /haptic\(/)
+})
+
 test('stack containers clip rather than hide, so no descendant can scroll them', () => {
   // A hidden-overflow box is still a scroll container: TabBar's mount-time
   // scrollIntoView() inside a screen parked at translate3d(100%) scrolled the

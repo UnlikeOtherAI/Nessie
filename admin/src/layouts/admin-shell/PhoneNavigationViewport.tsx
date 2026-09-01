@@ -32,6 +32,7 @@ import {
   type StackTransitionRun,
 } from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
+import { haptic } from '../../lib/haptics'
 import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
@@ -274,6 +275,9 @@ export const PhoneNavigationViewport = ({
     const action = navigation.resolveBackAction(pathname)
     if (action?.kind !== 'route') return
     suppressNextRouteAnimation.current = action.to
+    // The one haptic of a Back: the swipe has settled and the route is about
+    // to change. A cancelled swipe and a tapped Back give none.
+    haptic('light')
     navigation.performBackAction(action)
   }, [finishTransition, navigate, navigation, pathname])
 
