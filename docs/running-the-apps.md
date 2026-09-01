@@ -756,6 +756,33 @@ pnpm --filter @nessie/desktop exec tauri build
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
 
+## Linux Desktop (Ubuntu x86_64)
+
+Nessie Desktop ships the same hosted-admin shell, browser SSO deep link,
+native notifications, and single-instance focus behavior on Linux. The initial
+Linux release targets Ubuntu x86_64 and produces a Debian package and AppImage;
+the local executor companion remains unavailable on Linux.
+
+Install the Tauri Linux build requirements, then build both distributables:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev patchelf
+pnpm install
+pnpm --filter @nessie/desktop run tauri:build:linux
+```
+
+The artifacts are written to
+`desktop/src-tauri/target/release/bundle/deb/` and
+`desktop/src-tauri/target/release/bundle/appimage/`. Install the Debian package
+with `sudo apt install ./Nessie_*.deb`; make the AppImage executable and run it
+directly when a system package is not appropriate.
+
+For development, start `pnpm dev` at the repository root, then run
+`pnpm --filter @nessie/desktop dev` from the Linux environment. Under WSL, this
+requires WSLg; it opens the Nessie window on the Windows desktop.
+
 ## Status And Caveats
 
 The current `com.km.nessie` TestFlight upload is `0.1.1 (3)`. App Store Connect

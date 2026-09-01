@@ -1,6 +1,6 @@
 use std::io::{Error, ErrorKind};
 use tauri::utils::config::WebviewUrl;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
@@ -33,7 +33,7 @@ fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
