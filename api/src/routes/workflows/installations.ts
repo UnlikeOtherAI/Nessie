@@ -169,10 +169,7 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         ...(entitlementWhere ? { entitlementWhere } : {}),
       },
     )
-    return createApiResponse(
-      WorkflowInstallationRecordSchema.array().parse(page.items),
-      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
-    )
+    return createApiResponse(WorkflowInstallationRecordSchema.array().parse(page.data), page.meta)
   })
 
   // W8: pause / resume / disable / re-target. Status was write-once at
@@ -378,10 +375,7 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       ...query,
       installationId,
     })
-    return createApiResponse(
-      WorkflowRunRecordSchema.array().parse(page.items),
-      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
-    )
+    return createApiResponse(WorkflowRunRecordSchema.array().parse(page.data), page.meta)
   })
 
   app.get('/api/workflow-installations/:installationId/triggers', async (request, reply) => {

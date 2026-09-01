@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { isWorkflowConcurrencyConfig } from '@nessie/workspace-admin'
+import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import type {
@@ -10,7 +11,6 @@ import type {
 import {
   mapWorkflowInstallation,
   mapWorkflowTemplate,
-  resolveWorkflowListLimit,
   type WorkflowListInput,
   type WorkflowListPage,
 } from './workflow-records.js'
@@ -37,11 +37,21 @@ export const listWorkflowTemplates = async (
   // requires at least one step, so substituting an empty graph made this
   // endpoint 500 as soon as any template existed — and the admin list
   // renders step counts.
-  const limit = resolveWorkflowListLimit(input.limit)
+  const limit = resolvePageLimit(input.limit)
+  const where: Prisma.WorkflowTemplateWhereInput = { organizationId }
+  const total = await prisma.workflowTemplate.count({ where })
+
+  const parsed = decodeKeysetCursor(input.cursor)
+  if (parsed) {
+    where.OR = [
+      { createdAt: { lt: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+    ]
+  }
+
   const templates = await prisma.workflowTemplate.findMany({
-    where: { organizationId },
+    where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     take: limit + 1,
     select: {
       id: true,
@@ -64,11 +74,8 @@ export const listWorkflowTemplates = async (
     },
   })
 
-  const page = templates.slice(0, limit)
-  return {
-    items: page.map(mapWorkflowTemplate),
-    nextCursor: templates.length > limit ? (page[page.length - 1]?.id ?? null) : null,
-  }
+  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: templates, total })
+  return { data: page.data.map(mapWorkflowTemplate), meta: page.meta }
 }
 
 export const createWorkflowTemplate = async (
@@ -435,27 +442,45 @@ export const listWorkflowInstallations = async (
     entitlementWhere?: Prisma.WorkflowInstallationWhereInput
   } = {},
 ): Promise<WorkflowListPage<WorkflowInstallationRecord>> => {
-  const limit = resolveWorkflowListLimit(input.limit)
+  const limit = resolvePageLimit(input.limit)
+  const where: Prisma.WorkflowInstallationWhereInput = {
+    organizationId,
+    ...(input.channelId ? { channelId: input.channelId } : {}),
+    ...(input.entitlementWhere ?? {}),
+  }
+  // Counted against the same filters (including the W19 entitlement
+  // fragment) but before the cursor clause, exactly like listAuditLogs.
+  const total = await prisma.workflowInstallation.count({ where })
+
+  const parsed = decodeKeysetCursor(input.cursor)
+  if (parsed) {
+    const existingAnd = where.AND
+    where.AND = [
+      ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
+      {
+        OR: [
+          { createdAt: { lt: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+        ],
+      },
+    ]
+  }
+
   const installations = await prisma.workflowInstallation.findMany({
-    where: {
-      organizationId,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.entitlementWhere ?? {}),
-    },
+    where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     take: limit + 1,
     include: { workflowTemplate: { select: { bindingSchema: true } } },
   })
 
-  const page = installations.slice(0, limit)
+  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: installations, total })
   return {
-    items: page.map((installation) =>
+    data: page.data.map((installation) =>
       mapWorkflowInstallation({
         ...installation,
         bindingSchema: installation.workflowTemplate.bindingSchema,
       }),
     ),
-    nextCursor: installations.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+    meta: page.meta,
   }
 }

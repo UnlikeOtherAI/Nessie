@@ -16,6 +16,7 @@ import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/sch
 import type {
   AuthorizedActionContext,
   KnowledgeSpaceResponse,
+  PaginationMeta,
   PolicyAction,
   PolicyDecision,
   PolicyResourceType,
@@ -133,6 +134,26 @@ export const actorAuthorType = (actorContext: AuthorizedActionContext): 'user' |
 export const requestIds = (request: FastifyRequest) => ({
   ipAddress: request.ip,
   userAgent: request.headers['user-agent'],
+})
+
+// `@nessie/knowledge`'s native provider (packages/, out of this route
+// family's reach) still returns its own pre-existing `{ cursor, hasMore }`
+// cursor-page shape (`KnowledgePageCursorPage`) — that package's contract,
+// untouched here. This adapts one of its pages onto the shared
+// `PaginationMeta` contract at the API boundary: `nextCursor` carries the
+// provider's own opaque cursor forward unchanged, and `prevCursor` is
+// re-encoded from the first row of this page in that same `updatedAt|id`
+// format, present only once the caller has moved past the first page —
+// mirroring how `buildPage` derives `prevCursor`, without forking the
+// provider's own cursor encoding.
+export const toKnowledgePaginationMeta = (
+  providerMeta: { cursor: string | null; hasMore: boolean },
+  hasCursor: boolean,
+  first: { id: string; updatedAt: string } | undefined,
+): PaginationMeta => ({
+  hasMore: providerMeta.hasMore,
+  nextCursor: providerMeta.cursor,
+  prevCursor: hasCursor && first ? `${first.updatedAt}|${first.id}` : null,
 })
 
 // Bundles the provider plus the per-space access helpers, closing over the

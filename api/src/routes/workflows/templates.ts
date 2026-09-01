@@ -85,10 +85,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     }
 
     const page = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId, query)
-    return createApiResponse(
-      WorkflowTemplateRecordSchema.array().parse(page.items),
-      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
-    )
+    return createApiResponse(WorkflowTemplateRecordSchema.array().parse(page.data), page.meta)
   })
 
   app.post('/api/workflows', async (request, reply) => {

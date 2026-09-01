@@ -1,5 +1,11 @@
 import { parseWorkflowConcurrency, redactWorkflowInstallationSecrets } from '@nessie/workspace-admin'
-import { parseAgentId, parseChannelId, parseOrganizationId, parseRunId } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseOrganizationId,
+  parseRunId,
+  type PaginationMeta,
+} from '@nessie/schemas'
 
 import type {
   WorkflowGraph,
@@ -212,20 +218,15 @@ export const mapWorkflowStepRun = (
   updatedAt: stepRun.updatedAt.toISOString(),
 })
 
-export const WORKFLOW_LIST_PAGE_SIZE = 200
-
+// One shared pagination contract (docs/plans/2026-09-01-content-design-system/kit.md
+// "Pagination — the one contract"): `data` + a `PaginationMeta` built by
+// `buildPage`, same as every other keyset-paged list.
 export type WorkflowListPage<T> = {
-  items: T[]
-  /** Id to pass back as `cursor`; null when this was the last page. */
-  nextCursor: string | null
+  data: T[]
+  meta: PaginationMeta
 }
 
 export type WorkflowListInput = {
   cursor?: string
   limit?: number
 }
-
-export const resolveWorkflowListLimit = (limit: number | undefined): number =>
-  typeof limit === 'number' && Number.isInteger(limit) && limit > 0
-    ? Math.min(limit, WORKFLOW_LIST_PAGE_SIZE)
-    : WORKFLOW_LIST_PAGE_SIZE

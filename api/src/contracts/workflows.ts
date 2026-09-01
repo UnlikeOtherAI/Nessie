@@ -156,7 +156,9 @@ export const UpdateWorkflowInstallationBodySchema = z.object({
 // triage filter (W29).
 export const WorkflowListQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
-  cursor: z.string().uuid().optional(),
+  // An opaque keyset cursor (`decodeKeysetCursor`/`buildPage`, @nessie/schemas)
+  // rather than a raw row id — never parsed or constructed by a client.
+  cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
   status: WorkflowRunStatusSchema.optional(),
 })
