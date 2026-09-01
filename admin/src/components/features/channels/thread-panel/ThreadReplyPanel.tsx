@@ -17,6 +17,7 @@ import { useFileDrop } from '../../../../hooks/useFileDrop'
 import { useStickToBottom } from '../../../../hooks/useStickToBottom'
 import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
+import { ColumnResizeHandle } from '../../../primitives/ColumnResizeHandle'
 import type { MentionEntity } from '../../../shared/MentionInput'
 import type { AvatarSources } from '../../../primitives/UserAvatar'
 import { THREAD_PANEL_MIN_WIDTH } from './thread-panel-helpers'
@@ -110,6 +111,8 @@ export const ThreadReplyPanel = ({
   const root = rootQuery.data?.message ?? null
   const replies = useMemo(() => repliesQuery.data ?? [], [repliesQuery.data])
   const [alsoSendToChannel, setAlsoSendToChannel] = useState(false)
+  const [isHandleRevealed, setIsHandleRevealed] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const resizeCleanup = useRef<(() => void) | null>(null)
   useEffect(() => () => resizeCleanup.current?.(), [])
 
@@ -201,7 +204,11 @@ export const ThreadReplyPanel = ({
   const threadScroll = useStickToBottom(openRootMessageId)
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+
     event.preventDefault()
+    setIsHandleRevealed(true)
+    setIsResizing(true)
     const startX = event.clientX
     const startWidth = panelWidth
     let cancelled = false
@@ -234,6 +241,7 @@ export const ThreadReplyPanel = ({
       document.body.style.userSelect = ''
       if (!cancelled) flush()
       persistPanelWidth()
+      setIsResizing(false)
       resizeCleanup.current = null
     }
     const cancel = () => {
@@ -298,14 +306,21 @@ export const ThreadReplyPanel = ({
           aria-valuemin={THREAD_PANEL_MIN_WIDTH}
           aria-valuenow={panelWidth}
           className={[
-            'absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none',
-            'hover:bg-[var(--accent-soft)] focus-visible:bg-[var(--accent-soft)] xl:block',
+            'column-resize-control thread-panel-resize-control absolute inset-y-0 z-10 hidden touch-none xl:flex',
+            isResizing ? 'is-resizing' : '',
+            isHandleRevealed ? 'is-revealed' : '',
           ].join(' ')}
+          onBlur={() => !isResizing && setIsHandleRevealed(false)}
+          onFocus={() => setIsHandleRevealed(true)}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={startResize}
+          onPointerEnter={() => setIsHandleRevealed(true)}
+          onPointerLeave={() => !isResizing && setIsHandleRevealed(false)}
           role="separator"
           tabIndex={0}
-        />
+        >
+          <ColumnResizeHandle />
+        </div>
         <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
           {phoneLayout ? (
             // The route-level control sits behind this full-screen overlay, so
