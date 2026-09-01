@@ -298,8 +298,10 @@ secrets have unbounded lists with no filter. Count summaries appear in five
 phrasings (`Label (N)`, `title · N`, `N total`, `N of M granted`, `N shown`).
 
 **Verdict: two variants. Canonical:** `ListToolbar` (search + filters +
-count slot) placed in-body above the list. Whether a filter lives in the body
-or in the header is a boundary with the navigation session — see §7.
+count slot) for every filter that already lives in the body. Controls that
+already sit in a page header (the "Unread only" toggles, the Notifications
+Save) **stay in the header**: this plan moves nothing into or out of headers
+(Ondrej, 2026-09-01).
 
 ### 3.11 Typography and spacing
 
@@ -418,7 +420,7 @@ The `0.14em`/`0.12em`/`tracking-wide` outliers are migrated onto `sm` or
 | `Input` / `Select` / `Textarea` (`size="default"\|"compact"`, `mono`, `leading` icon slot) — thin wrappers emitting `.admin-input` classes | the five hand-rolled input look-alikes; `.admin-input-sm` is retired in favour of `compact` (one caller) |
 | `Checkbox` (themed, `accent-[var(--accent)]`) | the unthemed raw checkboxes; **`Switch` for on/off settings, `Checkbox` for pick-many** is the rule |
 | `ChoiceGroup` (`variant="segment"\|"card"`, single-select, `role="radiogroup"`) | the three copy-pasted button rows, the appearance radio cards, `CreateSpaceDialog`/`VersionHistory` pickers, `ProjectSettingsPage`'s button pair, `AddWidgetPanel`'s tone picker |
-| `FormActions` | footer drift; one rule everywhere: actions right-aligned, primary rightmost, Cancel to its left only when there is an edit to discard; a page form never saves from the page header |
+| `FormActions` | footer drift; one rule everywhere: actions right-aligned, primary rightmost, Cancel to its left only when there is an edit to discard. A form whose Save already lives in the page header keeps it there. |
 | `FieldError` (= `renderFieldError`, the boxed line) and `FormError` (= `Notice tone="danger" role="alert"`) | ~40 bare error lines; the 13 `--danger` text sites |
 | `NotificationToggle` deleted; `PushResultBanner` deleted | duplicates of `Switch` and `Notice` |
 
@@ -642,12 +644,13 @@ Both sessions touch the same page files, so:
   hand-rolled hero headers (`AgentsList`, `AgentDetailPage`, `ExecutorsPage`,
   `DashboardsPage`, `DashboardDetailPage`). `PageBody` is a body-only
   component and composes under any header.
-- Two items straddle the line and need one owner: moving list filters out of
-  header actions into the body (`AlertsPage`, `ThreadsPage`,
-  `NotificationsPage` Save — decided in §8, item 6), and the page hero type
-  size (theirs).
-- Phase 0 lint rules apply repo-wide and will flag `PhoneBackButton`'s raw
-  colours; that file is theirs to fix or exempt.
+- **Nothing outside the main content area is touched.** Existing header
+  actions (the "Unread only" toggles on `AlertsPage`/`ThreadsPage`, the Save
+  on `NotificationsPage`) stay exactly where they are; the page hero type size
+  is theirs. On a shared page file this plan edits only the body subtree.
+- Phase 0 lint rules are scoped to content files; `PhoneBackButton` and the
+  other navigation files are excluded from the rule set until that session
+  opts in.
 - Sequence Phase 3 after the navigation session's header changes have merged
   on each surface, to avoid conflicting edits in the same files.
 
@@ -662,8 +665,9 @@ Decided:
 1. **One card radius.** 12px `.admin-card`; the 16 inline 20px panels migrate
    in their own pinned PR. Two radii for one object is two objects.
 2. **One form footer rule.** Right-aligned everywhere, primary rightmost,
-   Cancel only when there is an edit to discard; never from the page header.
-   One rule beats a context-dependent one.
+   Cancel only when there is an edit to discard. One rule beats a
+   context-dependent one. (A Save that already lives in a page header is the
+   header's business and stays.)
 3. **One pagination contract**, end to end, with `total` on every admin list
    and a fixed page size of 25 (§4.7). Cursor keyset paging because it never
    shifts rows under the reader; `total` and a range label because a person
@@ -674,20 +678,13 @@ Decided:
    shell and adopt `Input`/`FormField`/`FormError` inside it. `ColoursPanel`
    swatches are data, not chrome, and stay literal.
 5. **Retire `.admin-input-sm`** (one caller) in favour of `compact`.
-6. **Filters live in the body** (`ListToolbar`), never as page-header
-   actions; the header keeps actions only. This is the only decision that
-   reaches into the navigation session's files, see below.
+6. **Body filters use `ListToolbar`; header controls stay in the header.**
+   "Unread only" stays where it is (Ondrej, 2026-09-01). This plan never
+   moves anything into or out of a page header.
 7. **Loading is text, not a spinner,** except for card grids and tables that
    earn a `Skeleton`; error always offers Retry; empty always says what to do
    next.
 
-Still needs Ondrej, because it is not a design question:
-
-- **Arbitration with the navigation session.** Decision 6 moves the
-  "Unread only" toggles on `AlertsPage`/`ThreadsPage` and the Save action on
-  `NotificationsPage` out of the header. Those header files are theirs. One
-  of the two sessions has to be told it owns that move, and the merge order
-  on shared page files (their header first, then our body) needs to be
-  agreed rather than discovered in conflicts.
-
-Everything else in this plan proceeds without further sign-off.
+Nothing remains that needs Ondrej. The plan proceeds without further
+sign-off; the only coordination with the navigation session is merge order
+on shared page files (their header first, then our body).
