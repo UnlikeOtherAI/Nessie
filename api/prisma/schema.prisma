@@ -3417,8 +3417,12 @@ model ToolGrant {
   updatedAt DateTime        @updatedAt @map("updated_at")
 
   tool  ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
-  agent Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agent Agent?            @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  /// Raw-SQL migration `20260901200000_tool_grant_principal_integrity` adds:
+  /// - exactly one of roleId or agentId is non-null;
+  /// - one role grant per (toolId, roleId); and
+  /// - one direct grant per (toolId, agentId).
   @@index([toolId])
   @@index([roleId])
   @@index([agentId])

@@ -33,6 +33,8 @@ import {
 import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
+import { backfillProtectedMcpToolGrants } from './services/agent-tool-policy-registry.js'
+import { reconcilePersonalAssistantDefaultToolGrantsAtStartup } from './services/personal-assistant-default-tool-grants.js'
 import {
   runRefreshCredentialSweep,
   startApiMaintenance,
@@ -256,6 +258,23 @@ export const buildApp = async () => {
   } catch (error) {
     app.log.error({ err: error }, 'Failed to seed default policies on startup')
   }
+
+  // The worker requires a descriptor-bound ToolGrant for protected MCP tools.
+  // Complete the legacy Agent.toolPolicy migration before any route can mutate
+  // policy or the local worker can claim a run, so upgrading does not revoke
+  // existing Linear/DeepWater access for one startup window.
+  const protectedMcpGrantBackfill = await backfillProtectedMcpToolGrants(prisma)
+  app.log.info(
+    protectedMcpGrantBackfill,
+    'Materialized protected MCP tool grants from existing agent policy.',
+  )
+
+  const personalAssistantDefaultGrants =
+    await reconcilePersonalAssistantDefaultToolGrantsAtStartup(prisma)
+  app.log.info(
+    personalAssistantDefaultGrants,
+    'Provisioned default protected MCP tool grants for Personal Assistants.',
+  )
 
   app.decorateRequest('actorContext', null)
 

@@ -32,8 +32,9 @@ duplicate any of them.
   endpoint, read-only member DTO field, API/worker gate and disabled-state
   presenter before any setup tool is registered.
 - Make fingerprinted `ToolGrant` rows canonical for every protected registry
-  tool, remove the Personal Assistant implicit-allow worker branch, and add the
-  live private-owner/home facts needed by the user-scope matcher.
+  tool, remove the Personal Assistant implicit-allow worker branch, seed its
+  revocable persisted default grants, and enforce user-scope matching from the
+  live effective user.
 - Add MCP and comms OAuth-state binding to `(requestId, connectAttemptRevision,
   requestedByUserId)` before any callback can update a setup request.
 - Add credential-resolution provenance as a parallel API while keeping existing

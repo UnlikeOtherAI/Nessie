@@ -70,13 +70,17 @@ const loadProjections = async (
       enabled: true,
     },
     select: {
+      description: true,
       id: true,
+      inputSchema: true,
       mcpInstanceId: true,
       enabled: true,
       status: true,
       metadata: true,
+      outputSchema: true,
+      toolId: true,
+      transportConfig: true,
       label: true,
-      description: true,
     },
   })
 }

@@ -8,6 +8,11 @@ import {
   buildAccessibleChannelWhere,
   buildAgentVisibilityWhere,
 } from '@nessie/workspace-admin'
+import {
+  fingerprintMcpToolDescriptor,
+  isCurrentAllowedMcpToolGrant,
+} from '../mcp-tool-grant-fingerprint.js'
+import { mcpToolDescriptorAnnotationsFromMetadata } from '../mcp-tool-registry-projection.js'
 
 import { isOwnerRole } from '../mcp-catalog.js'
 
@@ -25,10 +30,10 @@ import { isOwnerRole } from '../mcp-catalog.js'
  *
  * - A run's team/project come from the channel it happens in, so an agent's
  *   reach is the set of channels it is bound to.
- * - A user-scoped install reaches runs requested by the installing user. The
- *   detail response is already scoped to that viewer, so a shared agent with
- *   an explicit grant is reachable here too — but only in that viewer's run;
- *   the worker re-checks the live effective user before it exposes a tool.
+ * - A user-scoped install reaches runs requested by the installing user. A
+ *   protected connector grant is a personal delegation, never a way to make
+ *   the account callable by a shared agent, so shared agents do not appear
+ *   for those tools even when another policy would otherwise allow them.
  */
 
 export type AppAccessInstance = {
@@ -38,11 +43,16 @@ export type AppAccessInstance = {
 }
 
 export type AppAccessRegistryRow = {
+  description: string
   id: string
+  inputSchema: unknown
   mcpInstanceId: string | null
   enabled: boolean
   status: string
   metadata: unknown
+  outputSchema: unknown
+  toolId: string
+  transportConfig: unknown
 }
 
 type AccessAgent = {
@@ -75,6 +85,30 @@ const policyVerdict = (
 const requiresExplicitGrant = (metadata: unknown): boolean =>
   jsonRecord(metadata).requiresExplicitGrant === true
 
+const mcpDescriptorName = (row: AppAccessRegistryRow): string | null => {
+  const configuredName = jsonRecord(row.transportConfig).toolName
+  if (typeof configuredName === 'string' && configuredName.length > 0) {
+    return configuredName
+  }
+  const separator = row.toolId.lastIndexOf(':')
+  return separator >= 0 && separator < row.toolId.length - 1
+    ? row.toolId.slice(separator + 1)
+    : null
+}
+
+const descriptorFingerprint = (row: AppAccessRegistryRow): string | null => {
+  const name = mcpDescriptorName(row)
+  return name
+    ? fingerprintMcpToolDescriptor({
+        annotations: mcpToolDescriptorAnnotationsFromMetadata(row.metadata),
+        description: row.description,
+        inputSchema: row.inputSchema,
+        name,
+        outputSchema: row.outputSchema,
+      })
+    : null
+}
+
 const scopeReachesAgent = (
   instance: AppAccessInstance,
   agent: AccessAgent,
@@ -99,21 +133,34 @@ const agentCanUseApp = (
   agent: AccessAgent,
   instances: readonly AppAccessInstance[],
   rowsByInstance: Map<string, AppAccessRegistryRow[]>,
+  directGrantsByAgentId: Map<string, Array<{
+    config: unknown
+    state: string
+    toolId: string
+  }>>,
   effectiveUserId: string,
 ): boolean =>
   instances.some((instance) => {
     if (!scopeReachesAgent(instance, agent, effectiveUserId)) return false
     return (rowsByInstance.get(instance.id) ?? []).some((row) => {
+      if (requiresExplicitGrant(row.metadata)) {
+        // A direct descriptor-bound grant never widens an installation owned
+        // by one person into a shared-agent capability.
+        if (instance.scopeType === 'user' && agent.agentKind === 'shared') return false
+        const fingerprint = descriptorFingerprint(row)
+        return fingerprint !== null
+          && (directGrantsByAgentId.get(agent.id) ?? []).some((grant) =>
+            grant.toolId === row.id
+            && isCurrentAllowedMcpToolGrant(grant, fingerprint))
+      }
+
       const verdict = policyVerdict(agent.toolPolicy, row.id)
-      // Explicit-grant tools default on for the PA, and default off for shared
-      // agents. A user-scoped shared-agent call also requires that normal
-      // explicit allow; the scope above is the viewer's live-user ceiling.
+      // Existing non-protected behaviour remains policy-and-scope based. A
+      // user-scoped shared-agent call needs an ordinary explicit policy allow.
       if (instance.scopeType === 'user' && agent.agentKind === 'shared' && verdict !== true) {
         return false
       }
-      return requiresExplicitGrant(row.metadata)
-        ? verdict === true || (agent.agentKind === 'personal_assistant' && verdict !== false)
-        : verdict !== false
+      return verdict !== false
     })
   })
 
@@ -222,9 +269,41 @@ export const listAgentsWithAppAccess = async (
     },
   })
 
+  const protectedToolIds = registryRows
+    .filter((row) => requiresExplicitGrant(row.metadata))
+    .map((row) => row.id)
+  const directGrants = protectedToolIds.length === 0 || agents.length === 0
+    ? []
+    : await prisma.toolGrant.findMany({
+        where: {
+          agentId: { in: agents.map((agent) => agent.id) },
+          roleId: null,
+          state: 'allowed',
+          toolId: { in: protectedToolIds },
+        },
+        select: { agentId: true, config: true, state: true, toolId: true },
+      })
+  const directGrantsByAgentId = new Map<string, Array<{
+    config: unknown
+    state: string
+    toolId: string
+  }>>()
+  for (const grant of directGrants) {
+    if (!grant.agentId) continue
+    const grants = directGrantsByAgentId.get(grant.agentId)
+    if (grants) grants.push(grant)
+    else directGrantsByAgentId.set(grant.agentId, [grant])
+  }
+
   return agents
     .filter((agent) =>
-      agentCanUseApp(agent, instances, rowsByInstance, actorContext.actor.actorId))
+      agentCanUseApp(
+        agent,
+        instances,
+        rowsByInstance,
+        directGrantsByAgentId,
+        actorContext.actor.actorId,
+      ))
     .map((agent) => ({
       agentId: agent.id,
       name: agent.name,
