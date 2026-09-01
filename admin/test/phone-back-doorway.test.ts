@@ -17,7 +17,8 @@ test('every phone Back doorway renders through the one shared PhoneBackButton', 
   // route's deterministic Back second, nothing at a root.
   const resolver = readSource('../src/navigation/back.ts')
   assert.ok(
-    resolver.indexOf('owners?.active') < resolver.indexOf('getPhoneNavigationBackTarget'),
+    resolver.indexOf('const owner = owners?.active')
+      < resolver.indexOf('const target = getPhoneNavigationBackTarget('),
     'an owner must resolve before the route parent',
   )
 
