@@ -4,10 +4,9 @@ import {
   useState,
   type RefObject,
 } from 'react'
+import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
 import {
   PHONE_BACK_SWIPE_EDGE_PX,
-  PHONE_BACK_SWIPE_SETTLE_MS,
-  PHONE_BACK_SWIPE_UNDERLAY_TRAVEL,
   isPhoneBackSwipeClaimableTarget,
   isPhoneBackSwipeHorizontal,
   isPhoneBackSwipeVertical,
@@ -107,58 +106,27 @@ export const usePhoneBackSwipeGesture = ({
       }
     }
 
-    // The settle runs as Web Animations from exactly the released position
-    // (held by the layers' inline transforms) to the outcome's rest or
-    // revealed transform, so the travel continues from where the finger
-    // lifted with no jump and no CSS keyframe replay. fill:both holds the
-    // final frame until the lane closes.
-    const settleAnimations: Animation[] = []
+    // The settle is the same runStackTransition every route push and pop
+    // uses, started from exactly the released position (held by the layers'
+    // inline transforms) and scaled to the travel that remains, so the motion
+    // continues from where the finger lifted with no jump and no CSS replay.
+    let settleRun: StackTransitionRun | null = null
 
-    // Closing a settle cancels the animations and removes every inline
-    // transform. A cancel ends back on the detail; a commit ends with the
-    // route still on the detail — only then does onCommit perform the single
-    // route update, and the root the settle revealed becomes the current
-    // layer at identity in the same commit, so no animation replays.
+    // Closing a settle cancels the run and removes every inline transform. A
+    // cancel ends back on the detail; a commit ends with the route still on
+    // the detail — only then does onCommit perform the single route update,
+    // and the root the settle revealed becomes the current layer at identity
+    // in the same commit, so no animation replays.
     const closeSettle = (outcome: 'cancel' | 'commit') => {
       clearSettleTimer()
-      for (const animation of settleAnimations.splice(0)) animation.cancel()
+      settleRun?.cancel()
+      settleRun = null
       setSettle(null)
       setProgress(null)
       if (outcome === 'commit') onCommitRef.current()
     }
 
-    const animateLayer = (
-      layer: Element | null,
-      fromTransform: string,
-      toTransform: string,
-      duration: number,
-      ownsCompletion: boolean,
-    ): void => {
-      if (!(layer instanceof HTMLElement) || typeof layer.animate !== 'function') return
-      const animation = layer.animate(
-        [{ transform: fromTransform }, { transform: toTransform }],
-        {
-          duration,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-          fill: 'both',
-        },
-      )
-      settleAnimations.push(animation)
-      // The top layer's settle owns the completion callback: it travels the
-      // full viewport width, so its finish is the last visual motion.
-      if (ownsCompletion) {
-        animation.onfinish = () => {
-          const pending = settleRef.current
-          if (pending) closeSettle(pending.outcome)
-        }
-      }
-    }
-
     const openSettle = (outcome: 'cancel' | 'commit', from: number) => {
-      // Reduced motion keeps the claim and the thresholds and drops only the
-      // motion: the settle still runs, at zero duration, through the same
-      // completion path.
-      const duration = reducedMotionRef.current ? 0 : PHONE_BACK_SWIPE_SETTLE_MS
       clearSettleTimer()
       setSettle({ outcome, from })
       // A superseded forward transition may already be mid-flight: the layer
@@ -171,28 +139,28 @@ export const usePhoneBackSwipeGesture = ({
       const bottomLayer = viewport.querySelector(
         '[data-phone-navigation-layer="underlay"], [data-phone-navigation-layer="incoming"]',
       )
-      const detailFrom = `translate3d(${from * 100}%, 0, 0)`
-      const underlayFrom = `translate3d(${-(1 - from) * PHONE_BACK_SWIPE_UNDERLAY_TRAVEL * 100}%, 0, 0)`
-      animateLayer(
-        topLayer,
-        detailFrom,
-        outcome === 'commit' ? 'translate3d(100%, 0, 0)' : 'translate3d(0, 0, 0)',
-        duration,
-        true,
-      )
-      animateLayer(
-        bottomLayer,
-        underlayFrom,
-        outcome === 'commit'
-          ? 'translate3d(0, 0, 0)'
-          : `translate3d(${-PHONE_BACK_SWIPE_UNDERLAY_TRAVEL * 100}%, 0, 0)`,
-        duration,
-        false,
-      )
-      // Fallback for environments without WAAPI or a discarded finish event.
+      // A commit reveals the lower layer (a Back); a cancel returns the top
+      // layer to rest over it (the geometry of a forward push).
+      const run = runStackTransition({
+        top: topLayer,
+        bottom: bottomLayer,
+        direction: outcome === 'commit' ? 'back' : 'forward',
+        progress: from,
+        // Reduced motion keeps the claim and the thresholds and drops only
+        // the motion: the settle still runs, at zero duration, through the
+        // same completion path.
+        reducedMotion: reducedMotionRef.current,
+      })
+      settleRun = run
+      void run.finished.then(() => {
+        if (settleRun !== run) return
+        const pending = settleRef.current
+        if (pending) closeSettle(pending.outcome)
+      })
+      // Fallback for a discarded finish event.
       settleTimer.current = window.setTimeout(
         () => closeSettle(outcome),
-        duration + 180,
+        run.durationMs + 180,
       )
     }
 
@@ -311,7 +279,8 @@ export const usePhoneBackSwipeGesture = ({
       viewport.removeEventListener('touchend', onTouchEnd)
       viewport.removeEventListener('touchcancel', onTouchCancel)
       clearSettleTimer()
-      for (const animation of settleAnimations.splice(0)) animation.cancel()
+      settleRun?.cancel()
+      settleRun = null
       drag.current = null
     }
   }, [viewportRef])

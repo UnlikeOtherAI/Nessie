@@ -53,16 +53,35 @@ Consequences for page code:
   containers clip rather than hide"). Reproduction of the defect:
   `plans/2026-09-01-navigation-motion-system/repro.mjs`.
 
-## 3. Motion — **planned** (step 2)
+## 3. Motion — **built** (step 2)
 
-One spec: `--nav-duration` 300 ms, `--nav-easing`
-`cubic-bezier(0.22, 1, 0.36, 1)`, `--nav-parallax` 0.28, one edge shadow;
-overlay, popover, drawer and card durations as tokens; one
-`runStackTransition()` on the Web Animations API drives pushes, pops and the
-edge-swipe settle. Reduced motion is 0 ms through the same path.
+One spec, `admin/src/navigation/motion.ts`:
 
-Today: the phone route push is a CSS keyframe (300 ms) and the swipe settle a
-separate Web Animation (220 ms) on the same curve.
+- `NAV_MOTION`: 300 ms, `cubic-bezier(0.22, 1, 0.36, 1)` (control points
+  inside [0, 1], so it cannot overshoot), parallax 0.28, a 120 ms floor for a
+  settle. `OVERLAY_MOTION`: modal 150, popover 120, drawer 250, card 200 ms
+  (declared; the overlay primitives adopt them in step 8).
+- `runStackTransition({ top, bottom, direction, progress, reducedMotion })`
+  is the **only** thing that moves a navigation layer. It animates the two
+  layers on the Web Animations API from exactly their current transform to
+  the end poses, scaled to the travel that remains, and resolves `finished`
+  when the top layer arrives. A route push, a route pop and a released edge
+  swipe all call it; nothing else may animate a `.phone-navigation-screen`.
+- Reduced motion is 0 ms through the same path: the transition still runs,
+  settles and commits.
+- `styles.css` declares only the **static poses** (`--forward-ready`,
+  `--underlay`, `--current`, …) and mirrors the numbers as `--nav-duration`,
+  `--nav-easing`, `--nav-parallax`, `--nav-shadow`. There are no
+  `@keyframes phone-navigation-*`; `admin/test/navigation-motion.test.ts`
+  pins the tokens equal to `NAV_MOTION` and
+  `admin/test/phone-navigation-transition.test.ts` pins the keyframe count at
+  zero.
+- Tests: the JSDOM harness (`admin/test/support/phone-navigation-viewport-harness.ts`)
+  supplies a fake `Element.prototype.animate` timeline on real timers, so a
+  transition is driven to completion by the animation's finish, not by the
+  viewport's fallback timer.
+- The blanket `prefers-reduced-motion` CSS rule stays as the baseline for
+  non-navigation CSS motion; navigation reads the query in JS.
 
 ## 4. Registry, controller, Back — **planned** (steps 3–4)
 

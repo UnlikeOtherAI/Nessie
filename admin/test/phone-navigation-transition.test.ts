@@ -271,16 +271,21 @@ test('mounts the transition viewport only in the shell phone branch', () => {
   assert.equal(shell.indexOf('<PhoneNavigationViewport', viewport + 1), -1)
 })
 
-test('defines paired push and pop animations under the global reduced-motion rule', () => {
+test('navigation motion is scripted from static poses, never a CSS keyframe', () => {
   const styles = readSource('../src/styles.css')
 
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
-  assert.match(styles, /\.phone-navigation-screen--forward-ready/)
-  assert.match(styles, /transform: translate3d\(100%, 0, 0\)/)
-  assert.match(styles, /@keyframes phone-navigation-forward-out/)
-  assert.match(styles, /@keyframes phone-navigation-forward-in/)
-  assert.match(styles, /@keyframes phone-navigation-back-out/)
-  assert.match(styles, /@keyframes phone-navigation-back-in/)
+  // The poses a layer rests in; the travel between them is runStackTransition.
+  assert.match(styles, /\.phone-navigation-screen--forward-ready \{[\s\S]*?transform: translate3d\(100%, 0, 0\)/)
+  assert.match(styles, /\.phone-navigation-screen--underlay \{[\s\S]*?calc\(-1 \* var\(--nav-parallax\)\)/)
+  assert.equal((styles.match(/@keyframes phone-navigation-/g) ?? []).length, 0)
+  assert.doesNotMatch(styles, /\.phone-navigation-screen[^{]*\{[^}]*animation/)
+
+  const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const swipe = readSource('../src/layouts/admin-shell/use-phone-back-swipe.ts')
+  assert.match(viewport, /runStackTransition\(/)
+  assert.match(swipe, /runStackTransition\(/)
+  assert.doesNotMatch(swipe, /\.animate\(/)
+  assert.doesNotMatch(viewport, /onAnimationEnd/)
 })
 
 test('stack containers clip rather than hide, so no descendant can scroll them', () => {

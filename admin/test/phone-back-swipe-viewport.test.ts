@@ -37,8 +37,9 @@ const flick = (
   harness.touch('touchend', last[0], last[1], undefined, 16)
 }
 
-// A WAAPI settle never finishes under jsdom (no animation timeline), so the
-// hook's fallback timer closes the lane: 220ms settle + 180ms slack.
+// The harness's fake Web Animations timeline finishes a settle after its
+// scripted duration (at most the full 300ms); waiting this long covers every
+// release position with slack to spare.
 const SETTLE_FALLBACK_MS = 500
 
 test('every phone screen carries the shared page scroll shell', async () => {
