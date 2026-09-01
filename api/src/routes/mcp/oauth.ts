@@ -315,7 +315,7 @@ export const registerMcpOAuthRoutes = (
     }
   })
 
-  app.get('/api/mcp/oauth/callback', async (request, reply) => {
+  app.get('/api/mcp/oauth/callback', { config: { public: true } }, async (request, reply) => {
     // Callback is open by design — the provider redirects the end-user's
     // browser here with `code` + `state`. Authn lives in the state token
     // itself (random, single-use, server-side stored). We do NOT require an

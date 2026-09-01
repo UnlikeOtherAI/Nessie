@@ -10,6 +10,7 @@ import {
   registerMcpOAuthRoutes,
   resolveAdminOrigin,
 } from '../src/routes/mcp/oauth.js'
+import { registerGlobalAuthHook } from '../src/lib/global-auth-hook.js'
 import { registerWellKnownOAuthClientRoutes } from '../src/routes/well-known-oauth-client.js'
 import { RateLimiter } from '../src/services/rate-limit.js'
 import type { SecretStore } from '@nessie/mcp-manage'
@@ -29,7 +30,10 @@ import type { SecretStore } from '@nessie/mcp-manage'
  *   • NEVER echoes `error_description` to the client (only logs it server-side).
  */
 
-const makeApp = (configOverrides: Record<string, unknown> = {}) => {
+const makeApp = (
+  configOverrides: Record<string, unknown> = {},
+  beforeRoutes?: (app: ReturnType<typeof Fastify>) => void,
+) => {
   const app = Fastify({ logger: false })
   const oauthSecretStore: SecretStore = { put: async () => 'secret_stub' }
   // The unauthenticated callback passes through the brute-force guard first:
@@ -59,6 +63,7 @@ const makeApp = (configOverrides: Record<string, unknown> = {}) => {
     },
     ...configOverrides,
   }
+  beforeRoutes?.(app)
   registerMcpOAuthRoutes(app, {
     prisma: {} as unknown as PrismaClient,
     config,
@@ -69,6 +74,35 @@ const makeApp = (configOverrides: Record<string, unknown> = {}) => {
   })
   return app
 }
+
+test('global authentication hook leaves only the OAuth callback public', async () => {
+  const authenticatedRequests: string[] = []
+  const app = makeApp({}, (fastify) => {
+    registerGlobalAuthHook(fastify, {
+      checkRateLimit: () => null,
+      authenticateRequest: async (request, reply) => {
+        authenticatedRequests.push(request.routeOptions.url)
+        reply.code(401).send({ error: { code: 'AUTH_REQUIRED' } })
+        return null
+      },
+    })
+  })
+
+  const callback = await app.inject({
+    method: 'GET',
+    url: '/api/mcp/oauth/callback?error=access_denied',
+  })
+  assert.equal(callback.statusCode, 400)
+  assert.equal(authenticatedRequests.length, 0)
+
+  const start = await app.inject({
+    method: 'POST',
+    url: '/api/mcp/instances/instance-1/oauth/start',
+  })
+  assert.equal(start.statusCode, 401)
+  assert.deepEqual(authenticatedRequests, ['/api/mcp/instances/:instanceId/oauth/start'])
+  await app.close()
+})
 
 test('OAuth callback collapses HTML/script payload in `error` to invalid_request', async () => {
   const app = makeApp()

@@ -30,7 +30,7 @@ import {
   isLedgerEndpoint,
   ModelUsageTracker,
 } from '@nessie/runtime'
-import { sendApiError } from './lib/api.js'
+import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import {
@@ -272,20 +272,7 @@ export const buildApp = async () => {
     await disconnectPrismaClient()
   })
 
-  app.addHook('preHandler', async (request, reply) => {
-    const rateLimit = checkRateLimit(request)
-    if (rateLimit) {
-      reply.header('retry-after', String(rateLimit.retryAfterSeconds))
-      sendApiError(reply, 429, 'RATE_LIMITED', 'Too many requests')
-      return
-    }
-
-    if (request.routeOptions.config.public === true) {
-      return
-    }
-
-    await authenticateRequest(request, reply)
-  })
+  registerGlobalAuthHook(app, { authenticateRequest, checkRateLimit })
 
   // Per-domain route modules. Each `register<Domain>Routes(app, deps)` closes
   // over the shared `RouteDeps` (server context + buildApp-local resources),
