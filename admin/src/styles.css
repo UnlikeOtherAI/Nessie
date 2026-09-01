@@ -668,18 +668,28 @@ a {
   background: currentColor;
 }
 
-.column-resize-control:hover .column-resize-handle,
-.column-resize-control:focus .column-resize-handle,
 .column-resize-control.is-revealed .column-resize-handle,
 .column-resize-control.is-resizing .column-resize-handle {
   opacity: 1;
   transform: scale(1);
 }
 
-.column-resize-control:focus .column-resize-handle,
 .column-resize-control.is-resizing .column-resize-handle {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+@media (pointer: fine) {
+  .column-resize-control:hover .column-resize-handle,
+  .column-resize-control:focus .column-resize-handle {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .column-resize-control:focus .column-resize-handle {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 
 @media (pointer: coarse) {

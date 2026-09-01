@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ColumnResizeHandle } from '../../components/primitives/ColumnResizeHandle'
+import { useResizeHandleReveal } from '../../hooks/useResizeHandleReveal'
+import { useViewport } from '../../hooks/useViewport'
 import { getCookie, setCookie } from '../../lib/storage'
 
 const SIDEBAR_WIDTH_COOKIE = 'sidebarWidthPercent'
@@ -55,7 +57,13 @@ const initialSidebarWidthPercent = (): number => {
 export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const [isResizing, setIsResizing] = useState(false)
-  const [isHandleRevealed, setIsHandleRevealed] = useState(false)
+  const { capabilities: { coarsePointer } } = useViewport()
+  const {
+    hideHandle,
+    isHandleRevealed,
+    revealHandle,
+    scheduleHandleHide,
+  } = useResizeHandleReveal(coarsePointer)
   const [widthPercent, setWidthPercent] = useState(initialSidebarWidthPercent)
   // Continuous geometry is allowlisted from the useViewport band store (the
   // plan's §C.5): the percent minimum changes continuously with width, so a
@@ -104,7 +112,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
 
       event.preventDefault()
       event.currentTarget.setPointerCapture(event.pointerId)
-      setIsHandleRevealed(true)
+      revealHandle()
       setIsResizing(true)
 
       // Coalesce every burst of pointermoves into at most one state update
@@ -135,6 +143,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
         if (upEvent.pointerId !== event.pointerId) return
         cleanup()
         setIsResizing(false)
+        scheduleHandleHide()
       }
       // pointercancel and window blur end the gesture without a final move:
       // state keeps the last applied frame and the persist-on-end effect
@@ -142,6 +151,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
       const cancelDrag = () => {
         cleanup()
         setIsResizing(false)
+        hideHandle()
       }
       dragCleanup.current = cancelDrag
       const target = event.currentTarget
@@ -152,7 +162,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
 
       setSidebarWidthFromClientX(event.clientX)
     },
-    [setSidebarWidthFromClientX],
+    [hideHandle, revealHandle, scheduleHandleHide, setSidebarWidthFromClientX],
   )
 
   const resizeWithKeyboard = useCallback(
@@ -206,12 +216,12 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
             isResizing ? 'is-resizing' : '',
             isHandleRevealed ? 'is-revealed' : '',
           ].filter(Boolean).join(' ')}
-          onBlur={() => !isResizing && setIsHandleRevealed(false)}
-          onFocus={() => setIsHandleRevealed(true)}
+          onBlur={() => !isResizing && hideHandle()}
+          onFocus={revealHandle}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={startResize}
-          onPointerEnter={() => setIsHandleRevealed(true)}
-          onPointerLeave={() => !isResizing && setIsHandleRevealed(false)}
+          onPointerEnter={revealHandle}
+          onPointerLeave={() => !isResizing && !coarsePointer && hideHandle()}
           role="separator"
           tabIndex={0}
         >

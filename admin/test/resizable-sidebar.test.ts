@@ -5,6 +5,7 @@ import {
   minimumSidebarWidthPercent,
   parseStoredSidebarWidthPercent,
 } from '../src/layouts/admin-shell/ResizableSidebar'
+import { RESIZE_HANDLE_AUTO_HIDE_MS } from '../src/hooks/useResizeHandleReveal'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -55,4 +56,29 @@ test('the sidebar and reply-thread dividers use one shared resize pill', () => {
   assert.match(threadPanel, /<ColumnResizeHandle \/>/)
   assert.match(threadPanel, /thread-panel-resize-control/)
   assert.match(resizeHandle, /className="column-resize-handle"/)
+})
+
+test('coarse-pointer resize pills automatically hide after four seconds', () => {
+  const sidebar = readFileSync(
+    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
+    'utf8',
+  )
+  const threadPanel = readFileSync(
+    fileURLToPath(new URL('../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx', import.meta.url)),
+    'utf8',
+  )
+  const styles = readFileSync(
+    fileURLToPath(new URL('../src/styles.css', import.meta.url)),
+    'utf8',
+  )
+
+  assert.equal(RESIZE_HANDLE_AUTO_HIDE_MS, 4_000)
+  assert.match(sidebar, /useResizeHandleReveal\(coarsePointer\)/)
+  assert.match(sidebar, /scheduleHandleHide\(\)/)
+  assert.match(threadPanel, /useResizeHandleReveal\(coarsePointer\)/)
+  assert.match(threadPanel, /scheduleHandleHide\(\)/)
+  assert.match(
+    styles,
+    /@media \(pointer: fine\) \{[\s\S]*?\.column-resize-control:hover \.column-resize-handle/,
+  )
 })
