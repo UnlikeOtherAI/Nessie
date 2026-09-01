@@ -1,11 +1,10 @@
+import type { SurfaceParent, SurfaceScreen } from '../../navigation/page-types'
 import {
   matchSurface,
   normalizeNavigationPathname,
   surfaceParent,
   surfaceRootPath,
   surfaceScreen,
-  type SurfaceParent,
-  type SurfaceScreen,
 } from '../../navigation/surfaces'
 
 // The phone shell's view of the surface registry. Every fact below comes from

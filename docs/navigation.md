@@ -93,7 +93,9 @@ One spec, `admin/src/navigation/motion.ts`:
 
 ### 4.1 The surface registry — `admin/src/navigation/surfaces.ts`
 
-One declarative table classifies every route. A row is: `pattern`, `type`
+One declarative table classifies every route; the vocabulary a row is written
+in — the page types of §1 and the row shape — is `navigation/page-types.ts`
+beside it. A row is: `pattern`, `type`
 (§1, plus `redirect`), `section`, `depth`, `root`, `identityOf` / `keyScope`
 (which screens are the *same* screen, so a sibling swap swaps content in
 place), `parentOf(match)` → `{ label, pathname }` (what Back returns to, and
