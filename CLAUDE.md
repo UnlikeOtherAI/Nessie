@@ -551,6 +551,10 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   phased migration are in
   [docs/plans/2026-09-01-content-design-system/overview.md](docs/plans/2026-09-01-content-design-system/overview.md);
   navigation, page headers, buttons and chat are deliberately outside it.
+  One rule from it applies now, ahead of the kit: **no nesting** — a card
+  never contains a card, a table never contains a table, a bordered box never
+  sits inside a bordered box. Depth is dividers and spacing, not a second
+  frame.
 - **One tab bar, everywhere.** Every single-select strip in the admin — detail
   tabs, page sections, and filter segments — is
   `components/primitives/TabBar.tsx`. The selected item is a *single sliding

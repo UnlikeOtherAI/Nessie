@@ -87,6 +87,15 @@ plan proposes. Line-level evidence is in the slice reports.
   `.create-channel-panel` (14px, the dialog panel). Plus `.glass-panel` for the
   auth screens, `rounded-lg` nested cards in billing, and `rounded` (4px)
   inner tiles in settings/integrations.
+- **Nested containers.** Cards inside cards, or bordered boxes inside cards,
+  in eight files: the five billing panels (22 `rounded-lg border` boxes inside
+  `admin-card` section wrappers), `ConnectionCard` (a `<dl>` of bordered
+  tiles inside a card), `StatusesPage` (bordered schedule/rule boxes inside
+  cards), `ExecutorDetailPanels`, `IntegrationsPage` (stat tiles inside the
+  product card), `SettingsProfilePage` (three `admin-card p-3` boxes inside an
+  `admin-card p-4` section) and `NotificationsPage` (card rows inside the
+  muted-channels card). Tables inside cards in two: the to-do step tables in
+  `TodoInstanceCard` and `TodoTemplateCard`. No table-inside-table exists.
 - Section headings inside bodies: `SectionLabel` in ~54 files, but the
   `0.16em` label string in 29 files, `0.18em` hand-rolled in 4 files (three
   carry the *same* comment explaining `SectionLabel` cannot express it),
@@ -343,13 +352,24 @@ Design rules, in order of precedence:
 5. **Every fetch surface has all three states, and error has Retry.** Every
    mutation surface has a visible failure state with `role="alert"`.
 6. **Every irreversible action confirms.**
+7. **No nesting. A card never contains a card; a table never contains a
+   table; a bordered box never sits inside a bordered box.** A card is a
+   leaf: its contents are flat rows, text, a key-value list or controls,
+   separated by dividers and spacing, never by another frame. A section of a
+   page is delimited by a `SectionLabel` and vertical rhythm, not by wrapping
+   everything in a card. A table stands on its own with its own frame; an
+   expanded table opens in the `ExpandableTable` dialog, never inside another
+   table. The audits found the nested shape in eight files today (§3.1) and
+   it is the main reason "admin" and "documents" read as different products:
+   one nests boxes three deep, the other draws none.
 
 ### 4.1 Layout
 
 | Component | Replaces | Notes |
 |---|---|---|
 | `PageBody` (`width="narrow"\|"regular"\|"wide"\|"full"`) | six project-tab wrappers, `p-4`/`p-5`/`p-6` bodies, `grid max-w-3xl gap-5` ×4 | narrow = `max-w-2xl`, regular = `max-w-3xl`, wide = `max-w-5xl`; padding `p-5`, gap `gap-6`. Sits *below* whatever header the navigation session produces. |
-| `Card` (`variant="section"\|"row"\|"tile"`, `tone="default"\|"attention"`) | `.admin-card` (kept as the CSS), the 20px inline string (16 files), billing's `rounded-lg` nested cards, the `rounded` tiles, the accent-bordered executor cards | section = `.admin-card p-4`, row = `.admin-card p-3`, tile = `rounded-md border-sep px-3 py-2` inner box. Migrating the 16 inline panels is a **visible 20→12px change** and lands as its own pinned PR per the stylesheet comment. |
+| `Card` (`variant="section"\|"row"`, `tone="default"\|"attention"`) | `.admin-card` (kept as the CSS), the 20px inline string (16 files), the accent-bordered executor cards | section = `.admin-card p-4`, row = `.admin-card p-3`. **A `Card` refuses to render inside another `Card`** (a dev-mode context check, mirroring how `Dialog` owns its shell). There is no tile variant: the nested `rounded-lg`/`rounded` boxes in billing, connections, statuses, integrations and profile become `KeyValueList` rows, `StatTile`s laid out in a grid *beside* each other, or divided `Row`s, all flat inside the one card. Migrating the 16 inline panels is a **visible 20→12px change** and lands as its own pinned PR per the stylesheet comment. |
+| `Section` (`SectionLabel` + `gap-3` body, no frame) | the habit of wrapping every page section in a card | the default grouping; a `Card` is used only when a block must read as one object (a row, a stat, a dialog panel, a form in a settings page). |
 | `SidePanel` | `AddWidgetPanel` / `DashboardVersionsPanel` `aside` shells | header + close + scroll body. |
 | `DetailPane` | the four `grid max-w-3xl gap-5` detail bodies | `PageBody width="regular"` with `SectionLabel`-headed sections; may collapse into `PageBody`. |
 
@@ -365,7 +385,7 @@ The `0.14em`/`0.12em`/`tracking-wide` outliers are migrated onto `sm` or
 
 | Component | Replaces |
 |---|---|
-| `DataTable` — column defs `{ key, header, align, width, render }`, `rows`, `rowKey`, optional `actions`, `skeletonRows`, `expandable` (wraps `ExpandableTable` + `.admin-table`) | the 7 tables' divergent frames/skeletons/header cells; the dashboard table widget's missing zebra |
+| `DataTable` — column defs `{ key, header, align, width, render }`, `rows`, `rowKey`, optional `actions`, `skeletonRows`, `expandable` (wraps `ExpandableTable` + `.admin-table`) | the 7 tables' divergent frames/skeletons/header cells; the dashboard table widget's missing zebra. Owns its own frame and never renders inside a `Card`: the two to-do cards become a flat header (title, pills, actions) above a standalone `DataTable`. |
 | `RowList` (`divided`, `bordered`) + `Row` (`leading`, `title`, `subtitle`, `meta`, `trailing`, `selected`, `depth`, `href`/`onClick`) | the 10 `divide-y` containers, the 5 `border-l-2` selectable rows, `admin-card p-3` rows, `rowShell`, `hoverCardClass`, `KnowledgeItemRow`, attachment/zip rows, member rows, `dashboardRowClass` |
 | `SectionOverflowHint` (promoted from projects) | "…and N more", "Show all N" |
 | `PaginationFooter mode="loadMore"` | the two Load-more buttons, `FeedbackList`'s strip |
@@ -411,10 +431,12 @@ person can tell autosave from explicit save.
 ### 4.7 Scale (to be written into `styles.css` as the header comment of the
 content section, and into `CLAUDE.md`)
 
-- Radius by role: section/row card 12px (`.admin-card`), tile `rounded-md`
-  (10px), dialog panel 14px, chip `rounded` (4px) or capsule. Nothing else.
-- Padding by role: card section `p-4`, card row `p-3`, tile `px-3 py-2`,
-  list row `px-3 py-2.5`, page body `p-5`, dialog panel 24px (fixed).
+- Radius by role: card 12px (`.admin-card`), dialog panel 14px, chip
+  `rounded` (4px) or capsule. Nothing else, and never one inside another.
+- Padding by role: card section `p-4`, card row `p-3`, list row
+  `px-3 py-2.5`, page body `p-5`, dialog panel 24px (fixed). Depth is
+  expressed with dividers (`divide-y --sep`) and spacing, never with a second
+  border.
 - Type by role: page hero `text-2xl` (navigation session's call), section
   title `text-sm font-semibold`, label `SectionLabel`/`FieldLabel`, body
   `text-sm --tx2`, meta `text-xs --tx3`, stat value `text-2xl font-semibold`.
@@ -458,7 +480,9 @@ Tailwind named colours or hex in `admin/src` outside `styles.css` and the two
 documented exceptions; no `style={{ … var(--` for colour; no `var(--danger)`
 et al. in a `text-` utility; no literal `uppercase tracking-[` outside
 `SectionLabel`/`Pill`; `role="dialog"` only inside `Dialog`/`ConfirmDialog`
-and the documented exceptions. Fix the ~12 raw-colour sites and the `--border`
+and the documented exceptions. Nesting is enforced at runtime rather than by
+lint, because a lint rule cannot see across component boundaries: `Card` and
+`DataTable` each throw in development when rendered inside a `Card`. Fix the ~12 raw-colour sites and the `--border`
 reference in the same PR so it lands green.
 
 **Phase 1 — close the primitive gaps (1–2 PRs, no call-site changes).**
@@ -481,6 +505,7 @@ node test and a Playwright screenshot of a kitchen-sink route under
 | Hand-rolled banners → `Notice` | ~12 | low |
 | Unconfirmed destructive actions → `ConfirmDialog` | ~14 | low, behaviour change is the point |
 | Hand-rolled modal shells → `Dialog` | 11 | medium (a11y wins, geometry diffs) |
+| Flatten nested containers: inner boxes → `KeyValueList`/`StatTile`/`Row`, tables out of cards | 10 files | medium (visible, screenshot every panel) |
 | Raw checkboxes/toggles → `Switch`/`Checkbox`/`ChoiceGroup`; delete `NotificationToggle` | ~15 | low |
 | `style={{ var }}` and `text-[var(` → `text-[color:var(` | 15 files | none (mechanical) |
 
