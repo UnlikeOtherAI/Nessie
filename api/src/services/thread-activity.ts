@@ -48,7 +48,13 @@ const toActivityMessage = (message: ActivityMessage) => ({
  */
 export const listThreadActivity = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string; cursor?: string; limit?: number },
+  input: {
+    organizationId: string
+    userId: string
+    cursor?: string
+    limit?: number
+    unreadOnly?: boolean
+  },
 ): Promise<{
   data: { items: ThreadActivityRecord[]; unreadTotal: number }
   meta: { cursor: string | null; hasMore: boolean }
@@ -141,12 +147,13 @@ export const listThreadActivity = async (
   }
 
   records.sort((left, right) => compareMessages(right.sort, left.sort))
+  const activity = input.unreadOnly ? records.filter((record) => record.unread) : records
   const cursor = parseCursor(input.cursor)
   const filtered = cursor
-    ? records.filter((record) =>
+    ? activity.filter((record) =>
       compareMessages(record.sort, { ...record.sort, createdAt: cursor.createdAt, id: cursor.id }) < 0,
     )
-    : records
+    : activity
   const page = filtered.slice(0, limit)
   const last = page.at(-1)
   return {

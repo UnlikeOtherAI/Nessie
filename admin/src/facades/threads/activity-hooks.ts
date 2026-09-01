@@ -29,24 +29,24 @@ type ThreadActivityCache = InfiniteData<ThreadActivityResponse>
 // completes; the marker only changes one card's unread treatment instead.
 export const markThreadActivityReadInCache = (
   cache: ThreadActivityCache | undefined,
-  input: { rootMessageId?: string; threadId: string },
+  input: { rootMessageId?: string; threadId: string; unreadOnly?: boolean },
 ): ThreadActivityCache | undefined => {
   if (!cache?.pages.length || !input.rootMessageId) return cache
 
   let markedUnreadCount = 0
   const pagesWithReadState = cache.pages.map((page) => {
     let pageChanged = false
-    const items = page.items.map((item) => {
+    const items = page.items.flatMap((item) => {
       if (
         item.threadId !== input.threadId
         || item.rootMessageId !== input.rootMessageId
         || !item.unread
       ) {
-        return item
+        return [item]
       }
       pageChanged = true
       markedUnreadCount += 1
-      return { ...item, unread: false }
+      return input.unreadOnly ? [] : [{ ...item, unread: false }]
     })
     return pageChanged ? { ...page, items } : page
   })
@@ -80,16 +80,18 @@ const parseThreadReadEvent = (
   }
 }
 
-export const useThreadActivity = () => {
+export const useThreadActivity = ({ unreadOnly = false }: { unreadOnly?: boolean } = {}) => {
   const apiClient = useApiClient()
   const query = useInfiniteQuery<ThreadActivityResponse>({
-    queryKey: threadKeys.activity,
+    queryKey: threadKeys.activity(unreadOnly),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => {
       const cursor = typeof pageParam === 'string' ? pageParam : undefined
-      return apiClient.get(
-        `/api/threads/activity${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
-      )
+      const query = new URLSearchParams()
+      if (cursor) query.set('cursor', cursor)
+      if (unreadOnly) query.set('unread', 'true')
+      const suffix = query.size > 0 ? `?${query.toString()}` : ''
+      return apiClient.get(`/api/threads/activity${suffix}`)
     },
     getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor : undefined,
     // SSE provides immediacy; the modest refresh also reconciles a channel
@@ -139,12 +141,19 @@ export const useThreadActivityEvents = (): void => {
       if (frame.event === 'thread.read') {
         const read = parseThreadReadEvent(frame.data)
         if (!read) return
-        const cached = queryClient.getQueryData<ThreadActivityCache>(threadKeys.activity)
-        const next = markThreadActivityReadInCache(cached, read)
-        if (next === cached) {
-          void queryClient.invalidateQueries({ queryKey: threadKeys.activity })
-        } else {
-          queryClient.setQueryData(threadKeys.activity, next)
+        let needsRefresh = false
+        for (const unreadOnly of [false, true]) {
+          const key = threadKeys.activity(unreadOnly)
+          const cached = queryClient.getQueryData<ThreadActivityCache>(key)
+          const next = markThreadActivityReadInCache(cached, { ...read, unreadOnly })
+          if (next === cached) {
+            needsRefresh ||= cached !== undefined
+          } else {
+            queryClient.setQueryData(key, next)
+          }
+        }
+        if (needsRefresh) {
+          void queryClient.invalidateQueries({ queryKey: threadKeys.activityRoot })
         }
         return
       }
@@ -152,7 +161,7 @@ export const useThreadActivityEvents = (): void => {
         // Pages are keyset slices. An activity change can move an item across a
         // saved boundary, so retain only page one before refetching rather than
         // flattening stale pages into duplicates.
-        void queryClient.resetQueries({ queryKey: threadKeys.activity })
+        void queryClient.resetQueries({ queryKey: threadKeys.activityRoot })
       }
       if (UNREAD_DIRECT_MESSAGE_EVENTS.has(frame.event)) {
         void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })

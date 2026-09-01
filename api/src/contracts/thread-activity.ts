@@ -7,6 +7,7 @@ import { TimestampSchema } from './shared.js'
 export const ListThreadActivityQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
+  unread: z.enum(['true', '1']).optional(),
 })
 
 const ActivityMessageSchema = z.object({

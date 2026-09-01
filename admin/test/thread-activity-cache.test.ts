@@ -56,3 +56,22 @@ test('does not rewrite an activity cache that lacks the acknowledged thread', ()
     cache,
   )
 })
+
+test('removes an acknowledged card from the unread-only cache', () => {
+  const unread = activity({ rootMessageId: 'root-unread', threadId: 'thread-1', unread: true })
+  const cache: InfiniteData<ThreadActivityResponse> = {
+    pageParams: [undefined],
+    pages: [{ hasMore: true, items: [unread], unreadTotal: 4 }],
+  }
+
+  const result = markThreadActivityReadInCache(cache, {
+    rootMessageId: unread.rootMessageId,
+    threadId: unread.threadId,
+    unreadOnly: true,
+  })
+
+  assert.ok(result)
+  assert.deepEqual(result.pages[0]?.items, [])
+  assert.equal(result.pages[0]?.unreadTotal, 3)
+  assert.equal(result.pages[0]?.hasMore, true)
+})

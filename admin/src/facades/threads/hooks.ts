@@ -107,16 +107,19 @@ export const useMarkThreadRead = () => {
         ? { rootMessageId: input.rootMessageId, lastReadMessageId: input.lastReadMessageId }
         : {}),
     onSuccess: (_result, input) => {
-      queryClient.setQueryData<InfiniteData<ThreadActivityResponse>>(
-        threadKeys.activity,
-        (cache) => markThreadActivityReadInCache(cache, input),
-      )
+      for (const unreadOnly of [false, true]) {
+        const key = threadKeys.activity(unreadOnly)
+        queryClient.setQueryData<InfiniteData<ThreadActivityResponse>>(
+          key,
+          (cache) => markThreadActivityReadInCache(cache, { ...input, unreadOnly }),
+        )
+      }
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })
       void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })
-      void queryClient.invalidateQueries({ queryKey: threadKeys.activity })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.activityRoot })
       void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
     },
   })

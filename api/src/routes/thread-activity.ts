@@ -12,10 +12,12 @@ export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDe
     if (!deps.requireUserActor(actorContext, reply)) return reply
     const query = parseInput(ListThreadActivityQuerySchema, request.query ?? {}, reply)
     if (!query) return reply
+    const { unread, ...pagination } = query
     const result = await listThreadActivity(deps.prisma, {
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
-      ...query,
+      ...pagination,
+      unreadOnly: unread === 'true' || unread === '1',
     })
     return createApiResponse(ThreadActivityResponseSchema.parse({
       ...result.data,
