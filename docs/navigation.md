@@ -136,10 +136,31 @@ Route classification still lives in
 `admin/src/layouts/admin-shell/phone-navigation.ts` until the registry
 (step 3) lands.
 
-## 5. Everything else — **planned**
+## 5. Layout — **built** (step 5, the decision; stacks per column follow)
 
-Layout by `ShellEnvironment.navigation`, nested stages, overlay kinds and
-layers, screen headers, prewarm and skeletons, drafts (auto-save, no confirm
-dialogs), focus and announcements, scroll, keyboard, haptics, pull-to-refresh,
-cold-start seeding, gates and the transition test suite: all specified in the
-plan and added here as each lands.
+`navigation/layout.ts` `deriveNavigationLayout()` is the one composition of
+shell probes × viewport bands into `'single' | 'split'`, read through
+`useNavigationLayout()` (`lib/mobile-shell.ts`):
+
+- `single`: phones, narrow web, an iPad in a narrow Split View — one stack
+  over the whole content region, Roots included.
+- `split`: tablet, desktop, large-phone landscape — the pinned list column
+  beside detail stacks.
+
+The native shell decides by its named form factor, never by width alone, so
+a phone cannot become multi-column by rotating. The shell frame carries
+`data-navigation` with the value. `usePhoneLayout()` survives only as
+`navigation === 'single'`; no page reads a breakpoint to decide its
+container. Pinned by `admin/test/navigation-layout.test.ts`.
+
+Planned in this step: `NavigationStack` in the shell's detail column and in
+the page-owned detail columns on `split`; the thread panel as a nested stage
+on `single` and a `Sheet` on `split`.
+
+## 6. Everything else — **planned**
+
+Nested stages, overlay kinds and layers, screen headers, prewarm and
+skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,
+scroll, keyboard, haptics, pull-to-refresh, cold-start seeding, gates and the
+transition test suite: all specified in the plan and added here as each
+lands.

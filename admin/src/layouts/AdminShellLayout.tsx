@@ -8,7 +8,7 @@ import {
   useNativeLargePhoneLandscapeApp,
   useNativeIPadApp,
   useNativePhoneApp,
-  usePhoneLayout,
+  useNavigationLayout,
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
@@ -115,7 +115,8 @@ const AuthenticatedAdminShellLayout = () => {
   const mobileLayout = useMobileLayout();
   // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
   // pinned even though they are "mobile" (their native tab bar replaces the rail).
-  const phoneLayout = usePhoneLayout();
+  const navigationLayout = useNavigationLayout();
+  const phoneLayout = navigationLayout === 'single';
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
@@ -287,7 +288,7 @@ const AuthenticatedAdminShellLayout = () => {
               showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
             >
               <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-                <div className={frameClassName}>
+                <div className={frameClassName} data-navigation={navigationLayout}>
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                   {hideTopBar ? null : (
                     <TopBar

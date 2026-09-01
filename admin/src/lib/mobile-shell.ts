@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { registerViewportMediaQuery, useViewport } from '../hooks/useViewport'
+import { deriveNavigationLayout, type NavigationLayout } from '../navigation/layout'
 
 type NativeShellInfo = {
   platform?: string
@@ -122,15 +123,23 @@ export const useTabletShell = (): boolean => {
   return isReactNativeWebView() && (tablet || largePhoneLandscape)
 }
 
-// Phone layout: the narrow hamburger-drawer experience. Tablets keep the sidebar
-// pinned, so they are explicitly excluded even though they are "mobile".
-//
-// Both hooks must be called unconditionally: a `useMobileLayout() && !useTabletShell()`
-// one-liner short-circuits the `useTabletShell()` hook whenever the viewport is wide,
-// so crossing the md breakpoint between renders changes the hook count
-// and throws React error #310 ("Rendered more hooks than during the previous render").
-export const usePhoneLayout = (): boolean => {
-  const mobile = useMobileLayout()
-  const tablet = useTabletShell()
-  return mobile && !tablet
+// The navigation layout (docs/navigation.md §5): one stack over the whole
+// content region, or a pinned list column beside detail stacks. This is the
+// single composition of shell probes × viewport bands; every hook here reads
+// its probes unconditionally, so crossing a band between renders never
+// changes the hook count (React error #310).
+export const useNavigationLayout = (): NavigationLayout => {
+  const viewport = useViewport()
+  const largePhoneLandscape = useNativeLargePhoneLandscapeApp()
+  return deriveNavigationLayout({
+    narrow: !viewport.atLeast.md,
+    tabletMin: viewport.media?.tabletMin ?? false,
+    reactNativeWebView: isReactNativeWebView(),
+    largePhoneLandscape,
+  })
 }
+
+// Phone layout: the narrow hamburger-drawer experience. It survives only as
+// the implementation of `navigation === 'single'`; new code reads
+// useNavigationLayout() directly.
+export const usePhoneLayout = (): boolean => useNavigationLayout() === 'single'
