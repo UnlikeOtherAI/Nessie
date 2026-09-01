@@ -413,6 +413,158 @@ booted. That needs `/dev/kvm`. The KVM-gated `firecracker-conformance` job in
 rather than skips when `/dev/kvm` is absent, and GitHub-hosted runners have
 none.
 
+### Windows backend — Hyper-V
+
+On Windows the same guest runs in a **Hyper-V generation 2 virtual machine**,
+one per session. Everything above the hypervisor is shared with Firecracker —
+the COW lease, the block-image shares, the draft read-back, the runtime
+snapshot, the forced-egress gateway, the control frames — and
+`selectGuestVmBackend` picks this backend from the descriptor's own
+`sandboxBackend` (§4.5). What differs is stated here and nowhere else.
+
+**Binaries.** The executor's stored `vmHelperPath` is
+`resources\nessie-hyperv-bridge.exe`; the backend finds everything else beside
+it — `resources\scripts\*.ps1`, `resources\guest\{bzImage,build-initrd.exe,init}`
+and `resources\mtools\*` — the same "find it beside me" rule the Linux
+package's `build-initrd` uses to find `init`. `kernelPath` is
+`resources\guest\bzImage` and `guestInitrdBuilderPath` is
+`resources\guest\build-initrd.exe`. Every one of them is installed root-owned
+under `C:\Program Files\Nessie Executor\` by the MSI and has its SHA-256
+recorded in `resources\manifest.json`, exactly as the Linux package records
+its own.
+
+**The VM lifecycle is four pinned PowerShell scripts, never a composed command
+string.** The backend runs
+`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File
+<script>.ps1 -Param <value> …` as an **argv array**, so a workspace path can
+never become an expression, and it refuses to run a script whose bytes do not
+match the digest the package manifest pins — a person who can write into
+Program Files still cannot turn `create.ps1` into something else the daemon
+will run as itself. `create.ps1` makes a **generation 2** machine with
+`New-VM -Generation 2 -NoVHD`, then removes the network adapter that cmdlet
+always creates ("Hyper-V automatically creates a virtual machine with one
+virtual network adapter"), sets the processor count and fixed memory from the
+same `GUEST_VM_RESOURCES` every backend uses, turns **Secure Boot off**
+(`Set-VMFirmware -EnableSecureBoot Off`; "Generation 2 Linux virtual machines
+will not boot unless the secure boot option is disabled", and a kernel built
+from this repository is signed by nobody in the UEFI database), disables
+automatic checkpoints — a checkpoint would write the session's workspace to a
+file that outlives the session — attaches the four disks at fixed SCSI
+locations, points the firmware at the boot disk, and adds COM 1 as a named
+pipe so a boot that dies before the control hello still leaves a console. It
+prints one JSON object carrying the VM id and nothing else, so an id is never
+scraped out of prose a localized Windows would translate.
+
+**Stopping is the control channel, not `Stop-VM`.** `Stop-VM` with no switch,
+and with `-Force`, both ask the *guest* to shut itself down through the
+shutdown integration service; `-Force` only stops waiting for applications to
+save. This guest is an initramfs running no integration services, so that
+request has nobody to answer it. The graceful path is therefore the same one
+Firecracker uses — the daemon closes the control channel and the guest's init
+returns on EOF — and only after the ten-second timeout does the backend issue
+`Stop-VM -TurnOff`, which Microsoft documents as "equivalent to disconnecting
+the power". `remove.ps1` deletes the machine, and the backend removes the whole
+session disk directory after it: a surviving disk is a surviving copy of the
+workspace.
+
+**Disks are fixed VHDs the host writes without a privilege, converted to VHDX
+by the create script.** Generation 2 refuses VHD outright — "Can I attach a
+virtual hard disk in VHD format to a generation 2 virtual machine? No.
+Generation 2 virtual machines only support VHDX format virtual hard drives" —
+and `Convert-VHD` needs a *virtual* hard disk as its input, which a bare ext4
+image is not. So each raw image `guest-images.ts` builds is turned into a fixed
+VHD by appending the specification's 512-byte Hard Disk Footer to it in place
+(cookie `conectix`, disk type 2, the published CHS derivation, the ones'
+complement checksum), and `create.ps1` runs `Convert-VHD -VHDType Fixed` on
+each. Appending rather than copying matters: the images are hundreds of
+megabytes and a copy would double both the time and the disk a sandbox costs.
+There is no `Mount-VHD`, no `Initialize-Disk` and no `Format-Volume` anywhere
+in this path, because all three need an administrator and the daemon is not one.
+
+**Boot is UEFI, so the guest ships a boot disk.** A generation 2 machine boots
+UEFI, and the firmware boots `\EFI\BOOT\BOOTX64.EFI` from the first bootable
+device. That file is the guest kernel itself, built with `CONFIG_EFI_STUB` — "a
+kernel zImage/bzImage can masquerade as a PE/COFF image, thereby convincing EFI
+firmware loaders to load it as an EFI executable" — with this session's initrd
+beside it. The boot disk is a FAT32 image built per session with **mtools**
+(`mformat -C -F`, `mmd`, `mcopy`), which reads and writes a FAT image as an
+ordinary file: no loop device, no mount, no privileged helper, the same posture
+`mke2fs -d` gives the three data images. The guest never reads that disk —
+`CONFIG_VFAT_FS` is deliberately unset — because the firmware, not the kernel,
+is what loads from it.
+
+**The kernel is a different build from Firecracker's, and its command line is
+compiled in.** `executor/guest/kernel/{PIN,config,build.sh}` pins the *same*
+upstream release the Linux package uses (6.1.155, by the SHA-256 kernel.org
+publishes) and builds a `bzImage` carrying `CONFIG_EFI_STUB`, `CONFIG_HYPERV`,
+`CONFIG_HYPERV_STORAGE` (hv_storvsc), `CONFIG_HYPERV_VSOCKETS`,
+`CONFIG_VSOCKETS`, `CONFIG_EXT4_FS`, `CONFIG_OVERLAY_FS`, `CONFIG_SYSFS` and
+`CONFIG_BLK_DEV_INITRD`. It also carries `CONFIG_CMDLINE`, and that is not a
+convenience: **Hyper-V's generation 2 firmware boots the loader with empty UEFI
+load options and offers no way to set them**, so the built-in line is the only
+command line the guest ever gets. Everything that varies per session — the
+runtime-manifest digest, which shares are attached, whether there is a gateway
+— therefore travels in the initrd instead, written by
+`build-initrd --boot-args` into `/etc/nessie/boot-args` (0400) and joined onto
+the line by the guest when the built-in line says `nessie.args=initrd`. Every
+`nessie.*` flag below that join is read exactly as it is under Firecracker, so
+no reader in the guest knows which host it is on.
+
+**The label decides which disk is which; the order only proves it.** Under
+hv_storvsc the images are `/dev/sd*`, and Linux names them as each finishes
+probing rather than in the order the host attached them. `mounts_linux.go`
+therefore scans `/sys/block` and reads the ext4 volume label out of each
+superblock, refusing a label no disk carries or two disks claiming one. The
+virtio names Firecracker promises are kept only as a consistency assertion: if
+`/dev/vda` exists at all it must be the disk the label picked. Both host halves
+— `GUEST_BLOCK_DEVICE_ORDER` and `GUEST_SCSI_ATTACH_ORDER` — still state a
+fixed attach order, so two runs look the same to a person reading
+`Get-VMHardDiskDrive`.
+
+**Transports are Hyper-V sockets bridged onto named pipes.** Windows addresses
+a Linux guest's vsock port by a GUID: Microsoft defines one VSOCK template
+(`00000000-facb-11e6-bd58-64006a7986d3`) whose first field *is* the port, so a
+service GUID is decided by the port rather than chosen, and each must be
+registered under
+`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices`
+or the socket simply never opens — the MSI registers `0000c000` (control,
+49152), `0000c001` (forced egress, 49153) and `0000bfff` (the serial console).
+Node has no `AF_HYPERV`, so a small Rust binary, `nessie-hyperv-bridge.exe`,
+owns that end: for each channel it listens on `(VmId, ServiceId)` and forwards
+every accepted connection to the named pipe `\\.\pipe\nessie-hv-<sessionId>-<port>`
+the daemon is **already listening on** before the machine is started —
+mirroring Firecracker's `<uds_path>_<port>` rule, and for the same reason. The
+bridge relays bytes and reads none of them: the control channel's hello token
+and the egress tunnel's 48-byte prelude are checked by exactly the same daemon
+code on both backends, injected through one listener seam rather than forked.
+The daemon spawns and reaps the bridge with the session, so the Windows service
+makes no call of its own. The host-initiated direction exists for completeness
+and is used by nothing, exactly as under Firecracker.
+
+**Not yet proven on hardware, and three things must be proven first.** The
+argv and lifecycle sequence, the VHD footer against the specification, the FAT
+command list, the pinned-script refusal, the named-pipe transport carrying the
+real control and egress channels, and the label resolver all have host-side
+coverage, and the kernel builds and carries its built-in line. No guest has
+booted: that needs a Hyper-V host, which the `hyperv-conformance` job in
+`.github/workflows/desktop-windows.yml` is for — it fails rather than skips
+without one. What that host must settle, in order:
+
+1. **The initrd actually loads.** The EFI stub's `initrd=` option is read from
+   the loaded image's UEFI **load options**
+   (`handle_cmdline_files` → `image->load_options` in
+   `drivers/firmware/efi/libstub/file.c`), *not* from `CONFIG_CMDLINE`, and
+   Hyper-V supplies no load options. The kernel is built with
+   `CONFIG_EFI_GENERIC_STUB_INITRD_CMDLINE_LOADER=y` so the path exists; if the
+   guest boots without an initrd, the remedy is to deliver `/init` and the
+   session's material on a fourth labelled ext4 disk the guest mounts itself,
+   rather than to add a third-party boot loader.
+2. **The firmware boots a whole-disk FAT image.** The boot disk carries no
+   partition table. If Hyper-V's firmware only scans partitions, the boot disk
+   gains a GPT with one EFI System Partition; nothing else changes.
+3. **`sd` naming never decides anything**, which the label resolver already
+   guarantees, and the three data disks are found whichever order they probe in.
+
 ### Desktop-packaged companion
 
 A companion launched this way is the `desktop` supervisor: the shell sets

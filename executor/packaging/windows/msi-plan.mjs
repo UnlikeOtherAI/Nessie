@@ -19,6 +19,42 @@ export const INSTALLED_FILES = [
   'nessie-executor-tray.exe',
 ]
 
+/**
+ * Everything the Hyper-V sandbox backend resolves at session start, installed
+ * under `resources\` beside the program. The executor's stored `vmHelperPath`
+ * is `resources\nessie-hyperv-bridge.exe`, and the backend finds the pinned
+ * scripts and mtools as its siblings — the same "find it beside me" rule the
+ * Linux package's `build-initrd` uses to find `init`. `kernelPath` is
+ * `resources\guest\bzImage` and `guestInitrdBuilderPath` is
+ * `resources\guest\build-initrd.exe`.
+ *
+ * Each file's SHA-256 is recorded in `resources\manifest.json`, exactly as the
+ * Linux package records its own, and the backend refuses to run a PowerShell
+ * script whose bytes do not match. `manifest.json` is excluded from its own
+ * listing.
+ */
+export const RESOURCE_FILES = [
+  'nessie-hyperv-bridge.exe',
+  'guest\\bzImage',
+  'guest\\build-initrd.exe',
+  'guest\\init',
+  'scripts\\create.ps1',
+  'scripts\\remove.ps1',
+  'scripts\\start.ps1',
+  'scripts\\stop.ps1',
+]
+
+/**
+ * mtools builds the guest's FAT boot disk without a privilege, a loop device or
+ * a mount — the same reason `mke2fs -d` builds the three data images. It is
+ * GPL-3.0 and is not built from this repository, so it is staged from
+ * `NESSIE_MTOOLS_DIR` when a release supplies it. A package built without it
+ * still installs, pairs and serves the workspace bundle; the daemon refuses a
+ * sandboxed session in words ("This computer has no mtools, so a sandboxed
+ * guest cannot be given a boot disk") rather than failing somewhere nameless.
+ */
+export const MTOOLS_FILES = ['mtools\\mformat.exe', 'mtools\\mmd.exe', 'mtools\\mcopy.exe']
+
 /** The two binaries built from this repository's Rust crates. */
 export const BUILT_BINARIES = ['nessie-executor-service.exe', 'nessie-executor-tray.exe']
 
@@ -35,6 +71,23 @@ export const VSOCK_TEMPLATE_GUID = '00000000-facb-11e6-bd58-64006a7986d3'
 
 /** The guest's control port. Must equal `guestControlPort` in the Go guest. */
 export const GUEST_CONTROL_PORT = 49_152
+
+/** The forced-egress tunnel; `GUEST_EGRESS_PORT` in executor/src/firecracker. */
+export const GUEST_EGRESS_PORT = 49_153
+
+/**
+ * The guest's serial console. Generation 2 machines have no UART until one is
+ * added, and `create.ps1` adds COM 1 as a named pipe so a boot that dies before
+ * the control hello still leaves evidence.
+ */
+export const GUEST_CONSOLE_PORT = 49_151
+
+/**
+ * Every guest port the host must be able to open a Hyper-V socket to. Each one
+ * needs its own registration: the socket is addressed by a GUID, the GUID is
+ * decided by the port, and an unregistered GUID simply never opens.
+ */
+export const HYPERV_SOCKET_PORTS = [GUEST_CONSOLE_PORT, GUEST_CONTROL_PORT, GUEST_EGRESS_PORT]
 
 /** What the registry key is called for a person reading it in regedit. */
 export const HYPERV_SOCKET_ELEMENT_NAME = 'Nessie Executor'

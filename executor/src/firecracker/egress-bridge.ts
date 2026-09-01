@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createConnection, type Socket } from 'node:net'
 
 import { WorkspacePathError } from '../workspace-paths.js'
+import type { GuestChannelListener } from './control-channel.js'
 import { listenGuestVsockPort, type GuestVsockListener } from './vsock.js'
 
 /** The one guest-initiated egress port; identical to the macOS helper's. */
@@ -59,6 +60,8 @@ export type GuestEgressBridge = {
 export const startGuestEgressBridge = async (input: {
   bootstrapToken: string
   gatewaySocketPath: string
+  /** Injected by the Hyper-V backend; Firecracker's own is the default. */
+  listenPort?: GuestChannelListener
   vsockPath: string
 }): Promise<GuestEgressBridge> => {
   const expectedSessionToken = deriveGuestEgressToken(input.bootstrapToken)
@@ -99,7 +102,8 @@ export const startGuestEgressBridge = async (input: {
     }
     guest.on('data', onData)
   }
-  const listener: GuestVsockListener = await listenGuestVsockPort(input.vsockPath, GUEST_EGRESS_PORT, admit)
+  const listen = input.listenPort ?? listenGuestVsockPort
+  const listener: GuestVsockListener = await listen(input.vsockPath, GUEST_EGRESS_PORT, admit)
   return {
     close: async () => {
       await listener.close()

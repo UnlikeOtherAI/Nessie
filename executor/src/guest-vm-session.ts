@@ -9,6 +9,7 @@ import {
 } from './egress-policy.js'
 import { startExecutorEgressGateway } from './egress-gateway.js'
 import { createFirecrackerBackend } from './firecracker/index.js'
+import { createHyperVBackend, hyperVSessionBootArgs } from './hyperv/index.js'
 import {
   ingestGuestDrafts,
   registerSandboxDraftSource,
@@ -96,6 +97,7 @@ export const startGuestVmSession = async (
     dependencies.host ?? detectExecutorHost(),
     dependencies,
     () => createFirecrackerBackend(),
+    () => createHyperVBackend(),
   )
   const egressSettings = input.egressPolicy
     ? compileExecutorEgressPolicy(input.egressPolicy)
@@ -142,6 +144,17 @@ export const startGuestVmSession = async (
       argv: [
         '--output', initrdPath,
         ...(codexAuthProfilePath ? ['--codex-auth', codexAuthProfilePath] : []),
+        // Hyper-V's generation 2 firmware supplies no UEFI load options, so a
+        // guest booted there has only the command line compiled into its
+        // kernel. This session's own arguments travel in the initrd instead;
+        // every other backend writes them onto the real command line and asks
+        // for none here.
+        ...(backend.kind === 'hyperv'
+          ? ['--boot-args', hyperVSessionBootArgs({
+            egress: Boolean(gateway),
+            runtimeManifestDigest: runtimeSnapshot.manifestDigest,
+          })]
+          : []),
         '--bootstrap-token-stdin',
       ],
       input: bootstrapToken,

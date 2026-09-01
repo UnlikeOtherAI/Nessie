@@ -190,12 +190,57 @@ the executor is online before anyone logs in.
 
 ### Sandbox backend on Windows
 
-Hyper-V Generation 2 VM per session with Hyper-V sockets, as in the shared
-executor contract: host `AF_HYPERV` with the VSOCK template GUID, guest
-`AF_VSOCK`, no network adapter, egress only through the daemon's gateway. The
-service account creates and destroys the VMs through the Hyper-V WMI
-provider. Hyper-V requires Windows 11 Pro, Enterprise, or Education with SLAT
-and firmware virtualization; Home edition pairs as `workspace_only`.
+**Built** (2026-09-01), and not yet booted on hardware. A Hyper-V generation 2
+virtual machine per session, reached over Hyper-V sockets: host `AF_HYPERV`
+with the VSOCK template GUID whose first field is the guest's port, guest
+`AF_VSOCK` unchanged, **no network adapter at all** (`New-VM` always creates
+one, so `create.ps1` removes it), and egress only through the daemon's gateway.
+Hyper-V needs Windows 11 Pro, Enterprise, or Education with SLAT and firmware
+virtualization; Home edition pairs as `workspace_only`.
+
+What landed, and where the design moved:
+
+- **The lifecycle is the Hyper-V PowerShell module, not the WMI provider.**
+  Four scripts — create, start, stop, remove — installed root-owned under
+  Program Files and **pinned by SHA-256** in the package manifest, invoked as
+  `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File …`
+  with argv arrays only. The backend refuses a script whose bytes differ. WMI
+  would have meant hand-rolling `Msvm_*` calls from Node for no gain.
+- **Disks are fixed VHDs the daemon writes unprivileged, converted to VHDX by
+  the create script.** Generation 2 refuses VHD, and `Convert-VHD` refuses a
+  bare ext4 image, so each image gains the specification's 512-byte footer in
+  place and the script converts it. No `Mount-VHD`, no `Format-Volume`: all of
+  those need an administrator.
+- **Boot is a FAT32 boot disk built with mtools**, carrying the guest kernel as
+  `\EFI\BOOT\BOOTX64.EFI` (built with `CONFIG_EFI_STUB`) and the session's
+  initrd. `executor/guest/kernel/{PIN,config,build.sh}` pins the same 6.1.155
+  release the Linux package uses and builds the `bzImage` in a Linux CI job.
+- **The kernel command line is compiled in, because the firmware supplies
+  none.** Hyper-V boots the loader with empty UEFI load options, so the
+  built-in `CONFIG_CMDLINE` is all the guest gets and every per-session
+  argument travels in the initrd (`build-initrd --boot-args`,
+  `nessie.args=initrd`).
+- **The guest finds its disks by ext4 label.** hv_storvsc names them `sd*` in
+  probe order, so an attach-order lookup would mount the wrong image; the
+  attach order survives only as a consistency assertion.
+- **A small Rust bridge owns the sockets.** Node has no `AF_HYPERV`, so
+  `nessie-hyperv-bridge.exe` listens on `(VmId, ServiceId)` and forwards each
+  connection to a named pipe the daemon already listens on, reusing the shared
+  control and egress code through one listener seam rather than forking it. The
+  MSI registers all three guest ports' service GUIDs.
+- **Stop is the control channel first.** `Stop-VM`, with or without `-Force`,
+  asks the guest's shutdown integration service, which an initramfs does not
+  run; `-TurnOff` is what the ten-second timeout falls to.
+- **`hyperv-conformance`** runs on `[self-hosted, windows, hyperv]` and fails
+  rather than skips without nested virtualization, mirroring
+  `firecracker-conformance`.
+
+Three things a Hyper-V host must settle before this is called working — the
+initrd actually loading through the EFI stub with no load options, the firmware
+booting a whole-disk FAT image, and the label resolver being what decides which
+disk is which — are stated with their remedies in
+[docs/executor-protocol/sandbox-forced-egress-and-credentials.md](../executor-protocol/sandbox-forced-egress-and-credentials.md)
+→ "Windows backend — Hyper-V".
 
 ## Signed release pipeline
 

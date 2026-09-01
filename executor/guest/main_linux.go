@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
 const (
 	bootstrapTokenPath = "/etc/nessie/bootstrap-token"
+	// The per-session kernel arguments, for a host whose firmware supplies no
+	// command line of its own. Written by `build-initrd --boot-args`.
+	initrdBootArgsPath = "/etc/nessie/boot-args"
 	guestControlPort   = 49_152
 	vmaddrCIDHost      = 2
 	// Linux UAPI `AF_VSOCK`, which is 0x28 on every architecture: it is a
@@ -89,6 +93,17 @@ func readBootstrapToken() ([]byte, error) {
 
 // The command line is the one place the host states what this boot is, so it
 // is read once, after /proc exists, and passed down rather than re-read.
+//
+// Under Firecracker and Virtualization.framework the host writes the whole line
+// per session. Hyper-V's generation 2 firmware boots \EFI\BOOT\BOOTX64.EFI with
+// **empty UEFI load options** and offers no way to set them, so on that host the
+// only command line the kernel has is the one compiled into it
+// (CONFIG_CMDLINE) — the same static string for every session, which cannot
+// carry this session's runtime-manifest digest or say whether it has a gateway.
+// The host therefore writes those per-session arguments into the initrd, beside
+// the one-use bootstrap token, and the built-in line says so with
+// `nessie.args=initrd`. Every flag is read from the joined line exactly as
+// before, so no reader below this function knows which host it is on.
 func readGuestCommandLine() (string, error) {
 	if err := mountProc(); err != nil {
 		return "", err
@@ -97,7 +112,15 @@ func readGuestCommandLine() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(commandLine), nil
+	line := strings.TrimSpace(string(commandLine))
+	if !initrdBootArgsRequested(line) {
+		return line, nil
+	}
+	extra, err := os.ReadFile(initrdBootArgsPath)
+	if err != nil {
+		return "", err
+	}
+	return line + " " + strings.TrimSpace(string(extra)), nil
 }
 
 func main() {

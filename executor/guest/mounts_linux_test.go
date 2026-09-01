@@ -26,19 +26,20 @@ func TestShareStrategyIsStructuralAndDefaultsToVirtiofs(t *testing.T) {
 	}
 }
 
-// The host half of this contract is GUEST_BLOCK_DEVICE_ORDER in
-// executor/src/firecracker/layout.ts. If either changes alone, a guest mounts
-// the wrong image.
+// The host halves of this contract are GUEST_BLOCK_DEVICE_ORDER in
+// executor/src/firecracker/layout.ts and GUEST_SCSI_ATTACH_ORDER in
+// executor/src/hyperv/layout.ts. The labels are what the guest actually looks
+// up (see mounts_label_linux_test.go); the virtio names stay the assertion.
 func TestBlockDeviceOrderAndLabelsMatchTheHostAttachOrder(t *testing.T) {
 	ordered := []guestBlockDevice{
 		guestBlockDevices.runtime,
 		guestBlockDevices.workspace,
 		guestBlockDevices.draft,
 	}
-	expectedDevices := []string{"/dev/vda", "/dev/vdb", "/dev/vdc"}
+	expectedDevices := []string{"vda", "vdb", "vdc"}
 	expectedLabels := []string{"nessie-runtime", "nessie-work", "nessie-draft"}
 	for index, device := range ordered {
-		if device.device != expectedDevices[index] || device.label != expectedLabels[index] {
+		if device.virtioName != expectedDevices[index] || device.label != expectedLabels[index] {
 			t.Fatalf("device %d is %#v, not %s/%s", index, device, expectedDevices[index], expectedLabels[index])
 		}
 	}
@@ -65,12 +66,6 @@ func TestExt4LabelReadsARealSuperblockAndRefusesAnythingElse(t *testing.T) {
 	}
 	if label != "nessie-draft" {
 		t.Fatalf("read label %q", label)
-	}
-	if _, err := assertGuestBlockDevice(guestBlockDevice{device: image, label: "nessie-draft"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := assertGuestBlockDevice(guestBlockDevice{device: image, label: "nessie-work"}); err == nil {
-		t.Fatal("accepted a device carrying another image's label")
 	}
 	notAFilesystem := filepath.Join(t.TempDir(), "empty.img")
 	if err := os.WriteFile(notAFilesystem, make([]byte, 4096), 0o600); err != nil {
