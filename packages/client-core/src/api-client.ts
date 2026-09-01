@@ -3,6 +3,12 @@ import type { ApiError, ApiResponse } from '@nessie/schemas'
 export type ApiClient = {
   delete: <TData>(path: string) => Promise<TData>
   get: <TData>(path: string) => Promise<TData>
+  /**
+   * A GET that keeps the response envelope instead of unwrapping it, for a
+   * paged list: `meta` is where the cursors and the total live, and `get`
+   * throws them away.
+   */
+  getPage: <TData>(path: string) => Promise<ApiResponse<TData>>
   patch: <TData>(path: string, body?: unknown) => Promise<TData>
   post: <TData>(path: string, body?: unknown) => Promise<TData>
   put: <TData>(path: string, body?: unknown) => Promise<TData>
@@ -71,11 +77,20 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
   // retry and any subsequent calls made through this client instance.
   let activeToken = token
 
-  const request = async <TData>(
+  /**
+   * The whole envelope, `meta` included.
+   *
+   * `request` below unwraps to `payload.data`, which is right for the hundred
+   * call sites that want one record or one array — and silently wrong for a
+   * paged list, whose `meta` carries the cursors and the total. A caller that
+   * asked for `{data, meta}` got the array and read `undefined` off it, so a
+   * list would render permanently empty with no next page reachable.
+   */
+  const requestEnvelope = async <TData>(
     path: string,
     init?: RequestInit,
     retried = false,
-  ): Promise<TData> => {
+  ): Promise<ApiResponse<TData>> => {
     const headers = new Headers(init?.headers)
     if (!headers.has('content-type') && init?.body) {
       headers.set('content-type', 'application/json')
@@ -96,7 +111,7 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
       const renewedToken = await onUnauthorized()
       if (renewedToken) {
         activeToken = renewedToken
-        return request<TData>(path, init, true)
+        return requestEnvelope<TData>(path, init, true)
       }
     }
 
@@ -105,14 +120,17 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
     }
 
     if (response.status === 204) {
-      return undefined as TData
+      return { data: undefined as TData }
     }
 
-    const payload = (await response.json()) as ApiResponse<TData>
-    return payload.data
+    return (await response.json()) as ApiResponse<TData>
   }
 
+  const request = async <TData>(path: string, init?: RequestInit): Promise<TData> =>
+    (await requestEnvelope<TData>(path, init)).data
+
   return {
+    getPage: (path) => requestEnvelope(path, { method: 'GET' }),
     delete: (path) => request(path, { method: 'DELETE' }),
     get: (path) => request(path, { method: 'GET' }),
     patch: (path, body) =>

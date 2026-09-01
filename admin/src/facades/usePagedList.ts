@@ -21,12 +21,26 @@ import { useApiClient } from '../providers/ApiClientProvider'
  * on the third screen; page state held in a component is lost by both.
  */
 
+/**
+ * The envelope as it arrives, `meta` intact.
+ *
+ * This reads through `api.getPage`, not `api.get`. `get` unwraps to
+ * `payload.data`, which is correct for every call site that wants one record
+ * or one array and silently wrong here — the cursors and the total live in
+ * `meta`, and a list that lost them rendered empty with no next page.
+ */
 type PagedResponse<T> = {
   data: T[]
-  meta: PaginationMeta
+  meta?: PaginationMeta
 }
 
 type UsePagedListOptions = {
+  /**
+   * Skips the fetch entirely, mirroring `useQuery`'s own option. An
+   * owner-gated page renders its refusal without asking the server a question
+   * it is going to decline.
+   */
+  enabled?: boolean
   /** Page size. The one place it is chosen; there is no per-user control. */
   limit?: number
   /**
@@ -75,6 +89,7 @@ const buildSearch = (
 }
 
 export const usePagedList = <T>({
+  enabled = true,
   limit = DEFAULT_PAGE_LIMIT,
   params = {},
   paramPrefix = '',
@@ -94,7 +109,8 @@ export const usePagedList = <T>({
   const paramsKey = JSON.stringify(params)
 
   const query = useQuery({
-    queryFn: () => api.get<PagedResponse<T>>(`${path}${buildSearch(params, cursor, limit)}`),
+    enabled,
+    queryFn: () => api.getPage<T[]>(`${path}${buildSearch(params, cursor, limit)}`),
     queryKey: [...queryKey, paramsKey, cursor ?? null, limit],
   })
 

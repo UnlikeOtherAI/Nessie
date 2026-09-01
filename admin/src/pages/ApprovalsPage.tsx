@@ -1,9 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import { Pill } from '../components/primitives/Pill'
-import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
-import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
+import { PageBody, Section } from '../components/shared/PageBody'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
+import { useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
+import { approvalKeys } from '../lib/query-keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { usePagedList } from '../facades/usePagedList'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
@@ -26,10 +31,10 @@ const readKnowledgePagePublishContext = (
   if (!context) return null
   const { pageId, versionId, spaceId, title } = context
   if (
-    typeof pageId === 'string' &&
-    typeof versionId === 'string' &&
-    typeof spaceId === 'string' &&
-    typeof title === 'string'
+    typeof pageId === 'string'
+    && typeof versionId === 'string'
+    && typeof spaceId === 'string'
+    && typeof title === 'string'
   ) {
     return { pageId, versionId, spaceId, title }
   }
@@ -46,169 +51,215 @@ const readTodoTemplatePublishContext = (approval: ApprovalRequest): {
   return { templateId: context.templateId, version: context.version }
 }
 
+const approvalTitle = (approval: ApprovalRequest): string => {
+  const knowledgePublish = readKnowledgePagePublishContext(approval)
+  if (knowledgePublish) return `Publish knowledge page: ${knowledgePublish.title}`
+  const todoTemplatePublish = readTodoTemplatePublishContext(approval)
+  if (todoTemplatePublish) {
+    return `Publish to-do template: ${approval.reason.replace('Agent-proposed to-do template: ', '')}`
+  }
+  return approval.action
+}
+
 export const ApprovalsPage = () => {
-  const { me } = useAuthSession()
   const navigate = useNavigate()
+  const { me } = useAuthSession()
 
-  // apiClient unwraps the {data, meta} envelope and returns the payload array
-  // directly — typing the full envelope here made `data?.data` permanently
-  // undefined, so the page rendered empty even with pending approvals.
-  const { data } = useApprovalRequests(Boolean(me))
+  // Not raw keys: `approvalKeys.all` is the factory; 'pending'/'history' only
+  // distinguish this page's two cache entries from each other and from any
+  // other use of that root. See AuditLogPage's identical note.
+  const pendingCacheKey = [...approvalKeys.all, 'pending']
+  const historyCacheKey = [...approvalKeys.all, 'history']
+
+  const pending = usePagedList<ApprovalRequest>({
+    enabled: Boolean(me),
+    params: { status: 'pending' },
+    path: '/api/approvals',
+    queryKey: pendingCacheKey,
+  })
+  // The API filters by exact status, with no "not pending" value — so history
+  // reads the general feed and drops pending rows at render time. Pending is
+  // shown in its own section above, so this only ever de-duplicates.
+  const history = usePagedList<ApprovalRequest>({
+    enabled: Boolean(me),
+    path: '/api/approvals',
+    queryKey: historyCacheKey,
+  })
+  const historyItems = history.items.filter((approval) => approval.status !== 'pending')
+
   const resolve = useResolveApproval()
-
-  const pending = (data ?? []).filter((a) => a.status === 'pending')
-  const resolved = (data ?? []).filter((a) => a.status !== 'pending')
 
   return (
     <section className="flex h-full min-h-0 flex-col">
       <AdminPageHeader title="Approvals" />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {pending.length > 0 ? (
-          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--warning-text)]">
-            {pending.length} pending
-          </div>
-        ) : null}
-        {pending.length > 0 && (
-          <div className="mb-4">
-            <SectionLabel>Pending</SectionLabel>
-            <div className="mt-2 grid gap-2">
-              {pending.map((approval) => {
-                const knowledgePublish = readKnowledgePagePublishContext(approval)
-                const todoTemplatePublish = readTodoTemplatePublishContext(approval)
-                return (
-                <div key={approval.id} className="admin-card p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {knowledgePublish ? (
-                        <span className="text-sm font-semibold text-[color:var(--tx)]">
-                          Publish knowledge page: {knowledgePublish.title}
-                        </span>
-                      ) : todoTemplatePublish ? (
-                        <span className="text-sm font-semibold text-[color:var(--tx)]">
-                          Publish to-do template: {approval.reason.replace('Agent-proposed to-do template: ', '')}
-                        </span>
-                      ) : (
-                        <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
-                          {approval.action}
-                        </span>
-                      )}
-                      <span className="ml-2 text-xs text-[color:var(--tx3)]">
-                        Agent: {approval.agentId.slice(0, 8)}
-                      </span>
-                    </div>
-                    <span className="text-xs text-[color:var(--tx3)]">
-                      Expires: {new Date(approval.expiresAt).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="mt-2 text-sm text-[color:var(--tx2)]">
-                    {approval.reason}
-                  </div>
-                  {knowledgePublish ? (
-                    <div className="mt-2">
-                      <button
-                        className="admin-button admin-button-secondary admin-button-compact"
-                        onClick={() =>
-                          navigate(
-                            `/knowledge-base?spaceId=${knowledgePublish.spaceId}&pageId=${knowledgePublish.pageId}`,
-                          )
+      <PageBody width="regular">
+        <Section
+          actions={
+            pending.items.length > 0 ? (
+              <Pill radius="chip" size="sm" tone="warning">
+                {pending.items.length} pending
+              </Pill>
+            ) : undefined
+          }
+          title="Pending"
+        >
+          <QueryState
+            emptyLabel="Nothing waiting on you"
+            errorLabel="Pending approvals could not be loaded."
+            isEmpty={pending.items.length === 0}
+            loadingLabel="Loading pending approvals…"
+            query={pending.query}
+          >
+            {() => (
+              <>
+                <RowList label="Pending approvals">
+                  {pending.items.map((approval) => {
+                    const knowledgePublish = readKnowledgePagePublishContext(approval)
+                    const todoTemplatePublish = readTodoTemplatePublishContext(approval)
+                    return (
+                      <Row
+                        key={approval.id}
+                        subtitle={approval.reason}
+                        title={
+                          <span className="flex flex-wrap items-baseline gap-2">
+                            <span
+                              className={
+                                knowledgePublish || todoTemplatePublish
+                                  ? 'text-[color:var(--tx)]'
+                                  : 'font-mono text-[color:var(--tx)]'
+                              }
+                            >
+                              {approvalTitle(approval)}
+                            </span>
+                            <span className="text-xs text-[color:var(--tx3)]">
+                              Agent: {approval.agentId.slice(0, 8)}
+                            </span>
+                          </span>
                         }
-                        type="button"
+                        trailing={
+                          <span className="text-xs text-[color:var(--tx3)]">
+                            Expires: {new Date(approval.expiresAt).toLocaleTimeString()}
+                          </span>
+                        }
                       >
-                        Open page
-                      </button>
-                    </div>
-                  ) : null}
-                  {todoTemplatePublish ? (
-                    <div className="mt-2">
-                      <button
-                        className="admin-button admin-button-secondary admin-button-compact"
-                        onClick={() => navigate(`/agents/${approval.agentId}?tab=todos`)}
-                        type="button"
-                      >
-                        Open to-dos
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      className="admin-button admin-button-primary"
-                      disabled={resolve.isPending}
-                      onClick={() =>
-                        resolve.mutate({ id: approval.id, resolution: 'approved' })
-                      }
-                      type="button"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="admin-button admin-button-secondary"
-                      disabled={resolve.isPending}
-                      onClick={() =>
-                        resolve.mutate({ id: approval.id, resolution: 'rejected' })
-                      }
-                      type="button"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <SectionLabel>History</SectionLabel>
-          <div className="mt-2 grid gap-2">
-            {resolved.map((approval) => {
-              const knowledgePublish = readKnowledgePagePublishContext(approval)
-              const todoTemplatePublish = readTodoTemplatePublishContext(approval)
-              return (
-              <div key={approval.id} className="admin-card p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {knowledgePublish ? (
-                      <span className="text-xs text-[color:var(--tx)]">
-                        Publish knowledge page: {knowledgePublish.title}
-                      </span>
-                    ) : todoTemplatePublish ? (
-                      <span className="text-xs text-[color:var(--tx)]">
-                        Publish to-do template: {approval.reason.replace('Agent-proposed to-do template: ', '')}
-                      </span>
-                    ) : (
-                      <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>
-                    )}
-                    <Pill
-                      radius="chip"
-                      size="sm"
-                      tone={
-                        approval.status === 'approved'
-                          ? 'success'
-                          : approval.status === 'rejected'
-                            ? 'danger'
-                            : 'muted'
-                      }
-                    >
-                      {approval.status}
-                    </Pill>
-                  </div>
-                  <span className="text-xs text-[color:var(--tx3)]">
-                    {new Date(approval.createdAt).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-              )
-            })}
-            {resolved.length === 0 && pending.length === 0 && (
-              <div className="py-8 text-center text-[color:var(--tx3)]">
-                No approvals yet
-              </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {knowledgePublish ? (
+                            <button
+                              className="admin-button admin-button-secondary admin-button-compact"
+                              onClick={() =>
+                                navigate(
+                                  `/knowledge-base?spaceId=${knowledgePublish.spaceId}&pageId=${knowledgePublish.pageId}`,
+                                )}
+                              type="button"
+                            >
+                              Open page
+                            </button>
+                          ) : null}
+                          {todoTemplatePublish ? (
+                            <button
+                              className="admin-button admin-button-secondary admin-button-compact"
+                              onClick={() => navigate(`/agents/${approval.agentId}?tab=todos`)}
+                              type="button"
+                            >
+                              Open to-dos
+                            </button>
+                          ) : null}
+                          <button
+                            className="admin-button admin-button-primary"
+                            disabled={resolve.isPending}
+                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'approved' })}
+                            type="button"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="admin-button admin-button-secondary"
+                            disabled={resolve.isPending}
+                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'rejected' })}
+                            type="button"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </Row>
+                    )
+                  })}
+                </RowList>
+                <PaginationFooter
+                  canNext={pending.canNext}
+                  canPrevious={pending.canPrevious}
+                  hideWhenSinglePage
+                  label={pending.label}
+                  onPageChange={pending.onPageChange}
+                  page={pending.page}
+                />
+              </>
             )}
-          </div>
-        </div>
-      </div>
+          </QueryState>
+        </Section>
+
+        <Section title="History">
+          <QueryState
+            emptyLabel="No approvals yet"
+            errorLabel="Approval history could not be loaded."
+            isEmpty={historyItems.length === 0}
+            loadingLabel="Loading approval history…"
+            query={history.query}
+          >
+            {() => (
+              <>
+                <RowList label="Approval history">
+                  {historyItems.map((approval) => (
+                    <Row
+                      key={approval.id}
+                      title={
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={
+                              readKnowledgePagePublishContext(approval) || readTodoTemplatePublishContext(approval)
+                                ? 'text-[color:var(--tx)]'
+                                : 'font-mono text-[color:var(--tx)]'
+                            }
+                          >
+                            {approvalTitle(approval)}
+                          </span>
+                          <Pill
+                            radius="chip"
+                            size="sm"
+                            tone={
+                              approval.status === 'approved'
+                                ? 'success'
+                                : approval.status === 'rejected'
+                                  ? 'danger'
+                                  : 'muted'
+                            }
+                          >
+                            {approval.status}
+                          </Pill>
+                        </span>
+                      }
+                      trailing={
+                        <span className="text-xs text-[color:var(--tx3)]">
+                          {new Date(approval.createdAt).toLocaleString()}
+                        </span>
+                      }
+                    />
+                  ))}
+                </RowList>
+                <PaginationFooter
+                  canNext={history.canNext}
+                  canPrevious={history.canPrevious}
+                  hideWhenSinglePage
+                  label={history.label}
+                  onPageChange={history.onPageChange}
+                  page={history.page}
+                />
+              </>
+            )}
+          </QueryState>
+        </Section>
+      </PageBody>
     </section>
   )
 }

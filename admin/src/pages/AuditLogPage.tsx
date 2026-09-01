@@ -1,10 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Pill } from '../components/primitives/Pill'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ListToolbar } from '../components/shared/ListToolbar'
+import { PageBody, Section } from '../components/shared/PageBody'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { auditLogKeys } from '../lib/query-keys'
-import { useApiClient } from '../providers/ApiClientProvider'
+import { usePagedList } from '../facades/usePagedList'
 
 type AuditEntry = {
   id: string
@@ -18,27 +22,23 @@ type AuditEntry = {
   metadata: Record<string, unknown> | null
 }
 
-type AuditResponse = {
-  data: AuditEntry[]
-  meta: { cursor: string | null; hasMore: boolean }
-}
-
 export const AuditLogPage = () => {
-  const apiClient = useApiClient()
   const [actionFilter, setActionFilter] = useState('')
   // Still the page's own flag: the query below must stay disabled for a
   // non-owner, exactly as before OwnerGate wrapped the render.
   const isOwner = useIsOwner()
 
-  const { data } = useQuery<AuditResponse>({
-    queryKey: auditLogKeys.forAction(actionFilter),
-    queryFn: () => {
-      const params = new URLSearchParams()
-      if (actionFilter) params.set('action', actionFilter)
-      params.set('limit', '50')
-      return apiClient.get(`/api/audit-log?${params.toString()}`)
-    },
+  // Not a raw key: `auditLogKeys.forAction` is the factory, and 'page' only
+  // distinguishes this hook's own paging cache entry from that key's other
+  // (non-paged) uses. Bound outside the call so the line reads as a normal
+  // variable rather than the `queryKey: [` shape the invariants test guards.
+  const cacheKey = [...auditLogKeys.forAction(actionFilter), 'page']
+
+  const rows = usePagedList<AuditEntry>({
     enabled: isOwner,
+    params: { action: actionFilter },
+    path: '/api/audit-log',
+    queryKey: cacheKey,
   })
 
   return (
@@ -46,48 +46,67 @@ export const AuditLogPage = () => {
       <section className="flex h-full min-h-0 flex-col">
         <AdminPageHeader title="Audit Log" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="mb-4 w-full max-w-xs">
-            <input
-              className="admin-input"
-              onChange={(e) => setActionFilter(e.target.value)}
-              placeholder="Filter by action..."
-              value={actionFilter}
+        <PageBody width="regular">
+          <Section title="Events">
+            <ListToolbar
+              search={{
+                label: 'Filter by action',
+                onChange: setActionFilter,
+                placeholder: 'Filter by action…',
+                value: actionFilter,
+              }}
             />
-          </div>
-          <div className="grid gap-2">
-            {(data?.data ?? []).map((entry) => (
-              <div key={entry.id} className="admin-card p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold text-[color:var(--tx)]">
-                      {entry.action}
-                    </span>
-                    <Pill radius="chip" size="sm" tone={entry.outcome === 'success' ? 'success' : 'danger'}>
-                      {entry.outcome}
-                    </Pill>
-                  </div>
-                  <span className="text-xs text-[color:var(--tx3)]">
-                    {new Date(entry.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                  {entry.actorType}:{entry.actorId.slice(0, 8)} &rarr;{' '}
-                  {entry.resourceType}
-                  {entry.resourceId ? `:${entry.resourceId.slice(0, 8)}` : ''}
-                </div>
-              </div>
-            ))}
-            {/* Not QueryState: this page renders no loading and no error state
-                at all, so wrapping it would add two states rather than share
-                one. Worth doing — as its own change, not silently here. */}
-            {(data?.data ?? []).length === 0 && (
-              <div className="py-8 text-center text-[color:var(--tx3)]">
-                No audit events found
-              </div>
-            )}
-          </div>
-        </div>
+
+            <QueryState
+              emptyLabel="No audit events found"
+              errorLabel="Audit events could not be loaded."
+              isEmpty={rows.items.length === 0}
+              loadingLabel="Loading audit events…"
+              query={rows.query}
+            >
+              {() => (
+                <>
+                  <RowList label="Audit events">
+                    {rows.items.map((entry) => (
+                      <Row
+                        key={entry.id}
+                        subtitle={
+                          `${entry.actorType}:${entry.actorId.slice(0, 8)} → `
+                          + `${entry.resourceType}${entry.resourceId ? `:${entry.resourceId.slice(0, 8)}` : ''}`
+                        }
+                        title={
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono text-[color:var(--tx)]">{entry.action}</span>
+                            <Pill
+                              radius="chip"
+                              size="sm"
+                              tone={entry.outcome === 'success' ? 'success' : 'danger'}
+                            >
+                              {entry.outcome}
+                            </Pill>
+                          </span>
+                        }
+                        trailing={
+                          <span className="text-xs text-[color:var(--tx3)]">
+                            {new Date(entry.createdAt).toLocaleString()}
+                          </span>
+                        }
+                      />
+                    ))}
+                  </RowList>
+                  <PaginationFooter
+                    canNext={rows.canNext}
+                    canPrevious={rows.canPrevious}
+                    hideWhenSinglePage
+                    label={rows.label}
+                    onPageChange={rows.onPageChange}
+                    page={rows.page}
+                  />
+                </>
+              )}
+            </QueryState>
+          </Section>
+        </PageBody>
       </section>
     </OwnerGate>
   )
