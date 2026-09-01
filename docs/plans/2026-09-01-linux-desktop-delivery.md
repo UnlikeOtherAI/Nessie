@@ -201,8 +201,15 @@ gains `supervisor` so the server and the page know which controls apply.
 
 `ExecutorCapabilityDescriptorSchema.platform` widens from the macOS literals
 to `{ os: 'macos' | 'linux' | 'windows', architecture: 'arm64' | 'x64',
-osMajorVersion }` with per-OS minimums (macOS 15; Linux kernel 5.10; Windows
-11, build 22000). `executor/src/descriptor.ts` builds it per host, the API
+osMajorVersion }` with per-OS minimums (macOS 15; Linux kernel major 5 —
+the descriptor carries only the major, and the packaged guest artifacts
+require 5.10; Windows build 19045, Windows 10 22H2, because Windows 10 is a
+supported target). Descriptors gain `supervisor` and `sandboxBackend`; the
+protocol version stays 1 because the new required facts already make the two
+grammars mutually exclusive, so an executor paired before the change fails
+closed until `nessie-executor configure` proposes a new revision — no upgrade
+shim, by decision (`docs/executor-protocol.md` §4.5).
+`executor/src/descriptor.ts` builds it per host, the API
 keeps refusing anything outside the enum, and the Go guest gains `linux/amd64`
 builds beside today's `linux_arm64` files (`executor/guest`). This is one
 contract change across schema, CLI, and API.
