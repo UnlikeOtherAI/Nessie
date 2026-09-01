@@ -4,6 +4,7 @@
     "enableGTKAppId": true
   },
   "bundle": {
+    "resources": [],
     "targets": [
       "deb",
       "appimage"

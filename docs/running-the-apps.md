@@ -768,7 +768,7 @@ Install the Tauri Linux build requirements, then build both distributables:
 ```sh
 sudo apt-get update
 sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
-  libayatana-appindicator3-dev librsvg2-dev patchelf
+  libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
 pnpm install
 pnpm --filter @nessie/desktop run tauri:build:linux
 ```

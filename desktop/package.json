@@ -7,7 +7,7 @@
     "dev": "pnpm prepare:executor-runtime && tauri dev --config src-tauri/tauri.dev.conf.json",
     "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
     "tauri:build": "pnpm prepare:executor-runtime && tauri build",
-    "tauri:build:linux": "pnpm prepare:executor-runtime && tauri build --bundles deb,appimage",
+    "tauri:build:linux": "tauri build --bundles deb,appimage",
     "tauri:build:executor": "pnpm prepare:executor-runtime && node scripts/require-signing-team.mjs && tauri build",
     "tauri:build:appstore": "node scripts/require-signing-team.mjs && node scripts/prepare-appstore-profile.mjs && tauri build --bundles app --config src-tauri/tauri.appstore.conf.json"
   },
