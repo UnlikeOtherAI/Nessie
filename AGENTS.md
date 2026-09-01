@@ -42,6 +42,12 @@ A new server capability ships with its surface in the same change, or with a
 deliberate, written decision that it is machine-only. "The API exists" is not a
 delivery.
 
+## Navigation — one framework
+
+Anything that moves a person between screens, opens an overlay, or handles
+Back goes through the navigation framework — read `docs/navigation.md` first.
+It is the only way, and adding a second one is the defect Rule zero names.
+
 ## Workflow
 
 - Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked. After merge, remove the worktree and delete the merged branch.

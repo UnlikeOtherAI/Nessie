@@ -48,7 +48,7 @@ export const ColumnBrowserViewport = ({
   }, [activeColumn, isMobile, totalColumns, visibleColumns])
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div className="h-full w-full overflow-clip">
       <div
         className="flex h-full transition-transform duration-300 ease-out"
         style={{ transform: `translateX(${translateX}%)` }}

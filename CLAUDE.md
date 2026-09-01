@@ -528,6 +528,11 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
+## Navigation — read `docs/navigation.md` first
+
+Screens, overlays, Back, and the motion between them are one framework:
+[docs/navigation.md](docs/navigation.md). Do not add a second way.
+
 ## Theming / design system
 
 - The admin is fully color-themed via CSS custom properties. **All color lives in

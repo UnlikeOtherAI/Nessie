@@ -149,7 +149,7 @@ const AuthenticatedAdminShellLayout = () => {
   });
 
   const mainContent = (
-    <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
+    <main className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
       {outlet}
     </main>
   );

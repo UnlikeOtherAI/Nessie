@@ -78,10 +78,20 @@ export const TabBar = <T extends string>({
   // (that first placement is deliberately un-animated — see `Pill.animate`).
   // A compact screen may need to scroll this shared strip; keep the selected
   // control wholly visible rather than leaving its label clipped at an edge.
+  // Scroll the strip's own track only: scrollIntoView() walks every scrollable
+  // ancestor, and this strip mounts inside screens that are mid-slide.
   useLayoutEffect(() => {
     measure()
-    itemRefs.current.get(value)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [items, measure])
+    const track = trackRef.current
+    const active = itemRefs.current.get(value)
+    if (!track || !active) return
+    const left = active.offsetLeft
+    const right = left + active.offsetWidth
+    if (left < track.scrollLeft) track.scrollLeft = left
+    else if (right > track.scrollLeft + track.clientWidth) {
+      track.scrollLeft = right - track.clientWidth
+    }
+  }, [items, measure, value])
 
   // Labels carry counts that change without the row resizing, so watch the
   // items themselves and not only the track.

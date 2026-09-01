@@ -82,7 +82,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           : null,
     )
     setFormProjectId('')
-    const id = window.setTimeout(() => titleRef.current?.focus(), 0)
+    const id = window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 0)
     return () => window.clearTimeout(id)
   }, [open, task])
 

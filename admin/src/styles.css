@@ -471,7 +471,11 @@ a {
   min-width: 0;
   min-height: 0;
   flex: 1 1 0%;
-  overflow: hidden;
+  /* clip, never hidden: a hidden box is still a scroll container, and a
+     descendant's scrollIntoView() or focus() while a screen sits off to the
+     right scrolls it sideways; the compositor then lands the slide short by
+     that offset until the next layout clamps it (the "bounce"). */
+  overflow: clip;
   background: var(--main);
 }
 
@@ -481,7 +485,7 @@ a {
   display: flex;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   background: var(--main);
   animation-duration: 300ms;
   animation-fill-mode: both;
