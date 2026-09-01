@@ -34,3 +34,6 @@ executor/vm/.build/
 
 # Provisioning profiles are release inputs, never repository content.
 desktop/src-tauri/appstore/
+
+# Agent worktrees created by Claude Code tooling
+.claude/worktrees/
