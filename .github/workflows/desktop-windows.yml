@@ -1,0 +1,340 @@
+name: Desktop (Windows)
+
+# Builds the Windows desktop artifacts and the standalone executor package, signs
+# them where a signing identity is configured, and proves they install: a build
+# that is never installed is not a delivery, and an unsigned one is never called
+# a release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The WiX major this repository's authoring targets. Both its schema and its
+  # CLI change between majors, so it is pinned rather than "whatever installs".
+  WIX_VERSION: "7.0.0"
+
+jobs:
+  build:
+    name: Build, sign, and install smoke
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # The packaged executor runtime is a copy of the build host's Node, so
+          # the host must run the version the bundle targets.
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+          rustup default stable-x86_64-pc-windows-msvc
+          rustc --version
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+            executor/native/target
+            executor/service-windows/target
+            executor/tray-windows/src-tauri/target
+          key: >-
+            desktop-windows-cargo-${{ hashFiles(
+              'desktop/src-tauri/Cargo.lock',
+              'executor/native/Cargo.lock',
+              'executor/service-windows/Cargo.lock',
+              'executor/tray-windows/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-windows-cargo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $version = $env:GITHUB_REF_NAME -replace '^desktop-v', ''
+            "NESSIE_EXECUTOR_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      # Every Rust crate this platform ships, including the two that are new
+      # here. The shared provenance crate is tested on its own because both
+      # binaries depend on its decision being right.
+      - name: Rust tests
+        run: |
+          cargo test --manifest-path desktop/src-tauri/Cargo.toml
+          cargo test --manifest-path executor/native/Cargo.toml
+          cargo test --manifest-path executor/windows-provenance/Cargo.toml
+          cargo test --manifest-path executor/service-windows/Cargo.toml
+          cargo test --manifest-path executor/tray-windows/src-tauri/Cargo.toml
+
+      - name: Installer authoring tests
+        run: node --test executor/packaging/windows/msi-plan.test.mjs
+
+      - name: Install the WiX toolset
+        run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
+
+      - name: Enable VBScript for MSI validation
+        shell: pwsh
+        run: |
+          # Windows Installer's ICE validators are VBScript, which recent Windows
+          # builds ship as an optional capability. Where it is optional, add it;
+          # where it is not, it is already present. Either way the build must not
+          # proceed without it, or `wix build` fails in the middle with a message
+          # about a script engine.
+          $capability = Get-WindowsCapability -Online -Name 'VBSCRIPT~~~~' -ErrorAction SilentlyContinue
+          if ($capability -and $capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+          }
+          if (-not (Test-Path "$env:SystemRoot\System32\vbscript.dll")) {
+            throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
+          }
+
+      # Signing is a deployment fact. With the identity configured every artifact
+      # is signed and its signature is a release gate; without it this is a
+      # development build and says so, and the desktop and service both refuse
+      # executor controls because no publisher is pinned into them.
+      - name: Resolve signing configuration
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+          WINDOWS_SIGN_TOOL_INSTALL: ${{ secrets.WINDOWS_SIGN_TOOL_INSTALL }}
+          WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
+          WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          # The `secrets` context is not usable in a step's `if`, so every later
+          # step branches on these outputs rather than on the secrets directly.
+          $configured = [bool]($env:WINDOWS_SIGN_COMMAND -and $env:WINDOWS_SIGNER_THUMBPRINT -and $env:WINDOWS_SIGNER_SUBJECT)
+          "signed=$($configured.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $installs = [bool]($configured -and $env:WINDOWS_SIGN_TOOL_INSTALL)
+          "install_tool=$($installs.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if ($configured) {
+            Write-Host 'Signing with the configured Windows publisher.'
+            # The publisher compiled into the release is what the desktop
+            # companion and the executor service pin at runtime; without it a
+            # release build refuses executor controls by design.
+            "NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=$env:WINDOWS_SIGNER_THUMBPRINT" |
+              Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            Write-Host '::warning::No Windows signing identity is configured. This is an unsigned development build, not a release.'
+          }
+
+      # Azure Artifact Signing is the recommended configuration: no private key
+      # is ever present on a runner and SmartScreen reputation attaches to the
+      # managed identity. Its CLI is installed by the command the secret names,
+      # so the tool can change without editing this workflow.
+      - name: Install the signing tool
+        if: steps.signing.outputs.install_tool == 'true'
+        run: ${{ secrets.WINDOWS_SIGN_TOOL_INSTALL }}
+
+      - name: Build the desktop bundles
+        shell: pwsh
+        env:
+          # Read by the signing CLI when the configuration is Azure Artifact
+          # Signing; unused by a certificate-thumbprint configuration.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          # `signCommand` carries `%1`, which Tauri replaces with each artifact's
+          # path. The placeholder values in tauri.windows.conf.json are null, so
+          # an unsigned build simply does not sign.
+          $arguments = @('--bundles', 'nsis,msi')
+          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            $config = @{ bundle = @{ windows = @{ signCommand = $env:WINDOWS_SIGN_COMMAND } } } |
+              ConvertTo-Json -Depth 5 -Compress
+            $arguments += @('--config', $config)
+          }
+          pnpm --filter @nessie/desktop tauri:build -- @arguments
+
+      # Tauri signs what it bundles; the executor package is not a Tauri artifact.
+      # The build script signs the three binaries it produces *before* staging
+      # them, because the native helper's bytes are pinned in the runtime
+      # manifest and a signature added afterwards would no longer match it.
+      - name: Build the standalone executor package
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
+          }
+          node executor/packaging/windows/build-msi.mjs
+
+      - name: Sign the executor package
+        if: steps.signing.outputs.signed == 'true'
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          Get-ChildItem dist -Filter 'NessieExecutor_*_x64.msi' | ForEach-Object {
+            $command = $env:WINDOWS_SIGN_COMMAND -replace '%1', "`"$($_.FullName)`""
+            Invoke-Expression $command
+            if ($LASTEXITCODE -ne 0) { throw "signing $($_.Name) failed" }
+          }
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Copy-Item desktop/src-tauri/target/release/bundle/nsis/*.exe artifacts/
+          Copy-Item desktop/src-tauri/target/release/bundle/msi/*.msi artifacts/
+          Copy-Item dist/NessieExecutor_*.msi artifacts/
+          # The two binaries the MSI carries, as built and signed. They travel
+          # beside the installers so the signature gate below covers every
+          # executable a person can right-click, not only the installers.
+          New-Item -ItemType Directory -Path artifacts/binaries -Force | Out-Null
+          Copy-Item executor/service-windows/target/release/nessie-executor-service.exe artifacts/binaries/
+          Copy-Item executor/tray-windows/src-tauri/target/release/nessie-executor-tray.exe artifacts/binaries/
+          Copy-Item executor/native/target/release/nessie-executor-native.exe artifacts/binaries/
+          Get-ChildItem artifacts -Recurse -File | Format-Table Name, Length
+
+      # The release gate. Every artifact must carry a valid signature from the
+      # expected publisher, or the job fails; an unsigned build skips the gate
+      # and is labelled a development build instead of quietly passing it.
+      - name: Verify signatures
+        shell: pwsh
+        env:
+          WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          if ('${{ steps.signing.outputs.signed }}' -ne 'true') {
+            Write-Host '::warning::Unsigned development build — signature verification skipped and no release may be cut from it.'
+            exit 0
+          }
+          $failed = @()
+          Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File | ForEach-Object {
+            $signature = Get-AuthenticodeSignature $_.FullName
+            $subject = $signature.SignerCertificate.Subject
+            Write-Host "$($_.Name): $($signature.Status) $subject"
+            if ($signature.Status -ne 'Valid' -or $subject -notlike "*$env:WINDOWS_SIGNER_SUBJECT*") {
+              $failed += $_.Name
+            }
+          }
+          if ($failed.Count -gt 0) { throw "unsigned or wrongly signed: $($failed -join ', ')" }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File |
+            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Out-File -FilePath artifacts/SHA256SUMS -Encoding ascii
+          Get-Content artifacts/SHA256SUMS
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+
+      - name: Desktop install, launch, and uninstall
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem artifacts -Filter '*-setup.exe' | Select-Object -First 1
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
+          # The sign-in callback returns through nessie://, so the scheme has to
+          # be registered for the installing user.
+          if (-not (Test-Path 'HKCU:\Software\Classes\nessie')) {
+            throw 'the nessie:// scheme was not registered'
+          }
+          $app = Get-ChildItem "$env:LOCALAPPDATA" -Filter 'Nessie.exe' -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $app) { throw 'the installed Nessie.exe was not found' }
+
+          # No console: the PE subsystem must be GUI (2). A console subsystem
+          # binary flashes a terminal at every launch, which is the defect this
+          # asserts against rather than hoping nobody notices.
+          $bytes = [System.IO.File]::ReadAllBytes($app.FullName)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+          $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)
+          if ($subsystem -ne 2) { throw "Nessie.exe is not a GUI subsystem binary (got $subsystem)" }
+
+          $process = Start-Process -FilePath $app.FullName -PassThru
+          Start-Sleep -Seconds 10
+          $running = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+          if (-not $running) { throw 'Nessie exited within ten seconds' }
+          $running.Refresh()
+          if ($running.MainWindowTitle -ne 'Nessie') {
+            throw "expected a window titled Nessie, found '$($running.MainWindowTitle)'"
+          }
+          Stop-Process -Id $process.Id -Force
+
+          $uninstall = Join-Path $app.DirectoryName 'uninstall.exe'
+          Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
+          Start-Sleep -Seconds 5
+          if (Test-Path $app.FullName) { throw 'the desktop app was not uninstalled' }
+
+      - name: Executor package install, service, and uninstall
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem artifacts -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
+          Start-Process msiexec -ArgumentList "/i `"$($package.FullName)`" /qn /l*v $PWD\msi-install.log" -Wait
+          $service = Get-CimInstance Win32_Service -Filter "Name='NessieExecutor'"
+          if (-not $service) { Get-Content msi-install.log -Tail 60; throw 'the service was not registered' }
+          # The virtual account: no password, no interactive logon, its own SID.
+          if ($service.StartName -ne 'NT SERVICE\NessieExecutor') {
+            throw "the service runs as $($service.StartName)"
+          }
+          if ($service.StartMode -ne 'Auto') { throw 'the service does not start at boot' }
+
+          # A signed release supervises; an unsigned development build keeps the
+          # service running and refuses in words, which is the behaviour the
+          # tamper case in the acceptance checklist depends on.
+          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            if ($service.State -ne 'Running') { throw 'the service is not running' }
+          } else {
+            Write-Host "unsigned build: service state is $($service.State)"
+          }
+
+          $stateRoot = Join-Path $env:ProgramData 'Nessie Executor'
+          if (-not (Test-Path $stateRoot)) { throw 'the state root was not created' }
+          (Get-Acl $stateRoot).Access | Format-Table IdentityReference, FileSystemRights, IsInherited
+
+          # The Run entry starts the tray at the installing user's next logon;
+          # there is no logon here, so the tray is started directly and must
+          # survive with no window of its own.
+          $run = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name NessieExecutorTray
+          if (-not $run.NessieExecutorTray) { throw 'the tray autostart entry is missing' }
+          $tray = Start-Process -FilePath "$env:ProgramFiles\Nessie Executor\nessie-executor-tray.exe" -PassThru
+          Start-Sleep -Seconds 10
+          $trayRunning = Get-Process -Id $tray.Id -ErrorAction SilentlyContinue
+          if (-not $trayRunning) { throw 'the tray exited within ten seconds' }
+          $trayRunning.Refresh()
+          if ($trayRunning.MainWindowTitle -ne '') {
+            throw "the tray opened a window at launch: '$($trayRunning.MainWindowTitle)'"
+          }
+          Stop-Process -Id $tray.Id -Force
+
+          Start-Process msiexec -ArgumentList "/x `"$($package.FullName)`" /qn" -Wait
+          if (Get-Service NessieExecutor -ErrorAction SilentlyContinue) {
+            throw 'the service was not removed'
+          }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name NessieExecutorTray -ErrorAction SilentlyContinue) {
+            throw 'the tray autostart entry was not removed'
+          }
+          # Deliberate: a pairing is a machine key and a signed policy revision,
+          # and uninstalling a program is not a request to destroy them.
+          if (-not (Test-Path $stateRoot)) { throw 'the state root was removed by uninstall' }
