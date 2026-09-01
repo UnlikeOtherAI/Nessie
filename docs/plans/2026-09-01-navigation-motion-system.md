@@ -410,7 +410,88 @@ Six overlays with no Escape or focus trap today get both from the hook.
 `useModalA11y` and `useOverlayDismiss` become the internals of `useOverlay`
 rather than things a component may compose on its own.
 
-### 4.7 Scroll and focus discipline
+### 4.7 Back — one control, one resolver, one gesture
+
+The Back census found 25 distinct affordances, 24 label strings, three
+hand-drawn left chevrons plus a FontAwesome one, and nine entry points that
+resolve Back through five different paths. The good part is already there:
+the phone doorway, the edge swipe, Android hardware Back and the native
+bridge all reach one `performBack`. Everything else bypasses it. The rules:
+
+**One control.** `BackButton` (today's `PhoneBackButton`, promoted) is the
+only Back glyph in the admin: the `m15 19-7-7 7-7` chevron, 36 px circle,
+the iOS glass variant preserved as its native-shell style branch. It renders
+in the leading lane of every header on every layout, not only on phones —
+`ColumnBrowserColumn`, `AgentDetailPage`, `AppDetailPage`, `ThreadReplyPanel`,
+the top bar and the two designers all drop their own arrows and text buttons
+("Apps", "Agents", "Cancel", the inline `BackArrow`). Its accessible name is
+always `Back to <parent title>`; the two buttons whose name today is just
+"Apps" or "Agents" gain the Back semantic for screen readers. Close-X stays
+the glyph for overlays only, and an overlay never renders a chevron.
+
+**One resolver.** `resolveBack()` on the controller (§4.2) is the only
+function that decides what Back does, and it is the same function whether
+the caller is the header button, the edge swipe, Android hardware Back, the
+iPad toolbar, the desktop top bar, Escape, the browser's own Back, or a mouse
+side button. Order: the topmost open overlay → the deepest nested stage → the
+route's parent (pop when the ledger's previous entry is it, else replace) →
+the section root. Today `PhoneNavigationButton` and `performBack` each
+re-implement that order and merely agree by convention; the desktop and iPad
+Back/Forward keep two separate counters that never consult overlays or nested
+stages, so the tablet toolbar pops the route straight through an open
+Knowledge editor. All of that collapses into the one resolver reading the one
+ledger and the one registry.
+
+**Browser Back is a POP, and a POP is a Back.** A `POP` that lands on the
+current stage's parent animates as a pop and closes overlays first, on every
+layout; today it animates only where the phone viewport happens to be
+mounted. `history.back()` from an overlay closes the overlay and consumes the
+entry, so the URL never moves under a dialog.
+
+**Escape is Back for overlays, never for stages.** Escape closes the topmost
+overlay through the resolver (it already stops propagation, and that stays);
+it never pops a route. Compose on desktop, the thread panel, the agent and
+user info drawers, the attachments drawer, the design assistant and the
+knowledge stages gain Escape through `useOverlay` / `useNestedStage` rather
+than each wiring `window.keydown`.
+
+**Android tablets.** Hardware Back is wired only where the native swipe is
+off, and the native swipe is iOS-only, so an Android tablet today has no
+in-app Back at all: the key backgrounds the app from any depth. The bridge
+installs the handler on every Android form factor, and `nessie:back-state`
+reports `resolveBack() !== null`.
+
+**The edge swipe.** On iOS the true interactive pop belongs to
+`UINavigationController`, one view controller per screen. The app is one
+WebView with one document, so the native gesture is not available without
+one WebView per screen — a rewrite of the shell with a JS runtime, auth, SSE
+and theme per screen, and the loss of the retained live stack. WKWebView's
+own `allowsBackForwardNavigationGestures` does traverse React Router's
+`pushState` entries, but it renders a snapshot that WebKit often fails to
+produce for same-document navigation (blank or stale frames, and an iOS
+17.5.1+ regression that jumps to the first entry). That is why phones already
+turn it off. Decision: **the web gesture is the gesture**, on every layout
+that pushes, and it is finished to native feel:
+
+- settle duration scales with remaining travel (a flick from 90 % must not
+  take as long as a release at 10 %), on `--nav-easing`;
+- the revealed screen gets a dimming scrim proportional to reveal, alongside
+  the existing 28 % parallax and edge shadow;
+- a light haptic at commit-threshold crossing and on sheet snap, through a
+  new `nessie:haptic` bridge message to `expo-haptics`;
+- the gesture is refused, as today, on editable targets, inside horizontal
+  scrollers, and while a transition runs; it is **not** refused while an
+  overlay is open — it closes the overlay, because the resolver does;
+- the same gesture drives the detail column on `split`, and iPad and
+  large-phone landscape turn the native swipe off (§7);
+- reduced motion keeps every threshold and sets the settle to 0 ms.
+
+**Cancel and Close stay distinct from Back.** A flow's Cancel discards and
+closes; a header never shows Cancel beside a Back that does the same thing
+(the designer renders both today). Close-X closes an overlay. Back is the
+leading-lane chevron, and there is exactly one per screen.
+
+### 4.8 Scroll and focus discipline
 
 - `.navigation-stack`, `.navigation-layer`, `main`, and the column-browser
   wrapper are `overflow: clip`; the page scroller is `overflow-x: clip`.
@@ -467,6 +548,13 @@ level. Commit and push per step.
    `section-route-memory`, and the two designer smart-Backs; forward `state`
    through the `<Navigate>` redirects (fixes the workflow-run bug); route the
    six effect redirects through `redirect()`.
+   **One Back** in the same step: `resolveBack()` behind every entry point
+   (header, swipe, hardware Back, iPad toolbar, top bar, Escape, POP);
+   `BackButton` replaces the four chevrons and the "Apps" / "Agents" /
+   "Cancel" text buttons; Android tablets get the hardware handler; the
+   `phone-back-doorway.test.ts` source pins move to the registry. The gesture
+   finish (velocity-scaled settle, dimming scrim, `nessie:haptic`) lands
+   here too, since it is the same resolver's commit.
 5. **Split layout.** `ShellEnvironment.navigation`; `NavigationStack` in the
    detail column; iPad and large-phone-landscape native swipe off; the thread
    panel becomes a nested stage on `single` and a token-driven side panel on
