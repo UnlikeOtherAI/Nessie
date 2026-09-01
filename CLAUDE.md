@@ -20,7 +20,7 @@ section below points into `AGENTS.md`, that pointer is the rule.
 - **API** (`api/`, port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
 - **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
 - **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
-- **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not.
+- **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not. Do not build, install, or present an ad-hoc-signed macOS bundle unless Ondrej explicitly requests one. Executor verification requires a `Developer ID Application` signature with the configured `NESSIE_DESKTOP_SIGNING_TEAM_ID`, validated with `codesign --verify --deep --strict` before installation; if that identity or its private key is unavailable, preserve the installed app and report the signing blocker.
 - **Web** (`web/`) — public landing page only
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
