@@ -27,6 +27,7 @@ import {
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
 import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { beginStackTransition } from '../../navigation/transition-state'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
@@ -220,6 +221,9 @@ export const PhoneNavigationViewport = ({
       reducedMotion,
     })
     const id = transition.id
+    // Anything that must not run mid-slide (a data-arrival redirect, focus
+    // after settle) waits on this signal; it ends with the transition.
+    const endTransition = beginStackTransition()
     let closed = false
     void run.finished.then(() => {
       if (!closed) finishTransition(id)
@@ -232,6 +236,7 @@ export const PhoneNavigationViewport = ({
       closed = true
       window.clearTimeout(timer)
       run.cancel()
+      endTransition()
     }
   }, [finishTransition, reducedMotion, transition])
 

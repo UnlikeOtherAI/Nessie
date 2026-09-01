@@ -5,6 +5,7 @@ import {
   type RefObject,
 } from 'react'
 import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { beginStackTransition } from '../../navigation/transition-state'
 import {
   PHONE_BACK_SWIPE_EDGE_PX,
   isPhoneBackSwipeClaimableTarget,
@@ -111,6 +112,7 @@ export const usePhoneBackSwipeGesture = ({
     // inline transforms) and scaled to the travel that remains, so the motion
     // continues from where the finger lifted with no jump and no CSS replay.
     let settleRun: StackTransitionRun | null = null
+    let endSettleTransition: (() => void) | null = null
 
     // Closing a settle cancels the run and removes every inline transform. A
     // cancel ends back on the detail; a commit ends with the route still on
@@ -121,6 +123,8 @@ export const usePhoneBackSwipeGesture = ({
       clearSettleTimer()
       settleRun?.cancel()
       settleRun = null
+      endSettleTransition?.()
+      endSettleTransition = null
       setSettle(null)
       setProgress(null)
       if (outcome === 'commit') onCommitRef.current()
@@ -152,6 +156,7 @@ export const usePhoneBackSwipeGesture = ({
         reducedMotion: reducedMotionRef.current,
       })
       settleRun = run
+      endSettleTransition = beginStackTransition()
       void run.finished.then(() => {
         if (settleRun !== run) return
         const pending = settleRef.current
@@ -281,6 +286,8 @@ export const usePhoneBackSwipeGesture = ({
       clearSettleTimer()
       settleRun?.cancel()
       settleRun = null
+      endSettleTransition?.()
+      endSettleTransition = null
       drag.current = null
     }
   }, [viewportRef])

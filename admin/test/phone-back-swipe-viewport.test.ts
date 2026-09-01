@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { isStackTransitioning } from '../src/navigation/transition-state'
 import {
   mountPhoneNavigationViewport as mount,
   type PhoneNavigationViewportHarness as Harness,
@@ -306,5 +307,22 @@ test('touchcancel during a claimed drag restores the detail without navigating',
   assert.equal(harness.locationLabel(), '/channels/channel_a')
   assert.equal(harness.layer('current')?.style.transform ?? '', '', 'no residual transform after cancel')
   assert.deepEqual(harness.mounts(), { 'channels-root': 1, 'channels-detail': 1 })
+  await harness.unmount()
+})
+
+test('the shared transition signal is raised while a push or a settle runs and cleared after', async () => {
+  const harness = await mount('/channels')
+  assert.equal(isStackTransitioning(), false)
+  await harness.goTo('/channels/channel_a')
+  assert.equal(isStackTransitioning(), true, 'a push in flight is signalled')
+  await harness.flush(450)
+  assert.equal(isStackTransitioning(), false, 'settled once the animation finished')
+
+  harness.touch('touchstart', 6, 300)
+  harness.touch('touchmove', 120, 302)
+  harness.touch('touchend', 120, 302)
+  assert.equal(isStackTransitioning(), true, 'a released swipe settles under the signal')
+  await harness.flush(SETTLE_FALLBACK_MS)
+  assert.equal(isStackTransitioning(), false)
   await harness.unmount()
 })
