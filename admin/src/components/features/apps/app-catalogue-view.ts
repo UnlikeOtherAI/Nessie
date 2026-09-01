@@ -20,6 +20,9 @@ import type {
 
 export type AppFilter = 'all' | 'installed'
 
+/** Device-local catalogue preference; it is a browsing choice, not account data. */
+export const APPS_FILTER_STORAGE_KEY = 'nessie.apps.filter'
+
 /**
  * Fixed order. "Available" and "Needs attention" join the end later; putting
  * them anywhere else would move the two options people already aim at.
@@ -33,6 +36,32 @@ export const APP_FILTER_LABELS: Record<AppFilter, string> = {
 
 export const parseAppFilter = (raw: string | null): AppFilter =>
   raw === 'installed' ? 'installed' : 'all'
+
+const appFilterStorage = (): Storage | null => {
+  try {
+    return globalThis.localStorage ?? null
+  } catch {
+    // Storage can be unavailable in private or constrained browser contexts.
+    return null
+  }
+}
+
+/** Falls back to All when browser storage is unavailable or contains stale data. */
+export const readStoredAppFilter = (): AppFilter => {
+  try {
+    return parseAppFilter(appFilterStorage()?.getItem(APPS_FILTER_STORAGE_KEY) ?? null)
+  } catch {
+    return 'all'
+  }
+}
+
+export const writeStoredAppFilter = (filter: AppFilter): void => {
+  try {
+    appFilterStorage()?.setItem(APPS_FILTER_STORAGE_KEY, filter)
+  } catch {
+    // The URL still preserves the active view for this browser session.
+  }
+}
 
 /**
  * Installed means "this caller can see at least one connected account", which

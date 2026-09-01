@@ -5,6 +5,7 @@ import type { AppSummaryRecord } from '@nessie/schemas'
 
 import {
   ALL_CATEGORIES_VALUE,
+  APPS_FILTER_STORAGE_KEY,
   APP_GRID_CLASS,
   appCategoryOptions,
   appFilterOptions,
@@ -15,11 +16,13 @@ import {
   filterApps,
   isInstalledApp,
   parseAppFilter,
+  readStoredAppFilter,
   sectionOffersShowAll,
   sectionPageSize,
   sectionToggleLabel,
   sectionVisibleApps,
   visibleShelves,
+  writeStoredAppFilter,
   type AppCategorySectionModel,
   type AppGridBreakpointMatches,
 } from '../src/components/features/apps/app-catalogue-view.js'
@@ -96,6 +99,28 @@ test('an unrecognised filter in the URL falls back to All rather than emptying t
   assert.equal(parseAppFilter('installed'), 'installed')
   assert.equal(parseAppFilter('Installed'), 'all')
   assert.equal(parseAppFilter('featured'), 'all')
+})
+
+test('the selected catalogue filter is retained for the next clean Apps visit', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const values = new Map<string, string>()
+  const storage = {
+    getItem: (key: string): string | null => values.get(key) ?? null,
+    setItem: (key: string, value: string): void => { values.set(key, value) },
+  }
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+
+  try {
+    assert.equal(readStoredAppFilter(), 'all')
+    writeStoredAppFilter('installed')
+    assert.equal(values.get(APPS_FILTER_STORAGE_KEY), 'installed')
+    assert.equal(readStoredAppFilter(), 'installed')
+    writeStoredAppFilter('all')
+    assert.equal(readStoredAppFilter(), 'all')
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
 })
 
 test('installed means this caller can see a connection, not that the tenant holds one', () => {

@@ -15,6 +15,7 @@ import {
   appCategoryLabel,
   appDetailHref,
   appKindPill,
+  type AppCardStatusTone,
   type AppKindPillTone,
 } from './app-card-presentation'
 import { highlightSegments } from './app-search'
@@ -65,6 +66,34 @@ const ACTION_TONE = {
   primary: 'admin-button admin-button-compact admin-button-primary',
   secondary: 'admin-button admin-button-compact admin-button-secondary',
 } as const
+
+const STATUS_INDICATOR_TONE: Record<AppCardStatusTone, string> = {
+  accent: 'bg-[color:var(--thinking)]',
+  danger: 'bg-[color:var(--danger-text)]',
+  muted: 'bg-[color:var(--tx3)]',
+  success: 'bg-[color:var(--success-text)]',
+  warning: 'bg-[color:var(--warning-text)]',
+}
+
+/**
+ * A state still needs to be discoverable without reserving a pill's width.
+ * The focusable target gives keyboard users the same native tooltip as hover.
+ */
+const AppCardStatusIndicator = ({
+  label,
+  tone,
+}: Pick<Extract<ReturnType<typeof appCardStatus>, { kind: 'indicator' }>, 'label' | 'tone'>) => (
+  <span
+    aria-label={label}
+    className="relative z-10 inline-flex h-6 w-6 shrink-0 cursor-help items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+    data-testid="app-card-status"
+    role="img"
+    tabIndex={0}
+    title={label}
+  >
+    <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${STATUS_INDICATOR_TONE[tone]}`} />
+  </span>
+)
 
 const HighlightedText = ({ query, text }: { query: string; text: string }) => (
   <>
@@ -165,7 +194,9 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         <div className="min-w-0">
-          {status.kind === 'pill' ? (
+          {status.kind === 'indicator' ? (
+            <AppCardStatusIndicator label={status.label} tone={status.tone} />
+          ) : status.kind === 'pill' ? (
             <Pill tone={status.tone}>{status.label}</Pill>
           ) : status.kind === 'quiet' ? (
             <span className="truncate text-xs text-[color:var(--tx3)]">{status.label}</span>
