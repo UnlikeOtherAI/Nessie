@@ -26,7 +26,6 @@ import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
 import {
-  getPhoneNavigationScreen,
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
 } from './admin-shell/phone-navigation';
@@ -252,11 +251,17 @@ const AuthenticatedAdminShellLayout = () => {
           {drawerNavElement}
         </MobileNavDrawer>
       ) : null}
-      {getPhoneNavigationScreen(shell.pathname) ? (
-        <PhoneNavigationViewport pathname={shell.pathname}>
-          {phonePageContent}
-        </PhoneNavigationViewport>
-      ) : phonePageContent}
+      {/*
+        The surface registry is total, so every route a phone can stand on
+        classifies and the viewport is mounted unconditionally. It used to be
+        conditional because unclassified routes (/threads, /alerts, /feedback,
+        /channels/new) would have made the stack throw; those now have rows,
+        and rendering them outside the stack was itself the defect — they lost
+        every retained screen beneath them.
+      */}
+      <PhoneNavigationViewport pathname={shell.pathname}>
+        {phonePageContent}
+      </PhoneNavigationViewport>
     </>
   ) : (
     <>

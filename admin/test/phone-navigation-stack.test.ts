@@ -201,10 +201,20 @@ test('Back from a cold deep link never fabricates an unseen predecessor', () => 
   assert.equal(parent.entries[0]?.payload, 'payload:members')
 })
 
-test('unclassified full-screen routes are rejected outside the viewport seam', () => {
+// The registry is total, so compose is a screen like any other: it swaps in
+// place beside a conversation (same depth) rather than being refused. Only a
+// path with no row at all — which the totality lint makes impossible for a
+// real route — still throws.
+test('compose swaps in place beside a conversation; an unclassified path is still refused', () => {
   const detail = stackAt('/channels', '/channels/channel_a')
+  const compose = advancePhoneNavigationStack(detail, '/channels/new', 'payload:compose')
+  assert.equal(compose.currentIndex, 1)
+  assert.equal(compose.entries.length, 2)
+  assert.equal(compose.entries[1]?.payload, 'payload:compose')
+  assert.equal(compose.entries[0]?.pathname, '/channels')
+
   assert.throws(
-    () => advancePhoneNavigationStack(detail, '/channels/new', 'payload:compose'),
+    () => advancePhoneNavigationStack(detail, '/totally/unknown', 'payload:unknown'),
     /cannot classify/,
   )
 })

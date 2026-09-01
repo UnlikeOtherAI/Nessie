@@ -17,7 +17,10 @@ framework; do not go around it.
 ## 1. Page types
 
 Every screen is exactly one of six types, and the type decides its container,
-its motion and its Back rule. **Planned** (step 3 makes the registry total).
+its motion and its Back rule. The type is **declared**, not inferred: every
+route names its own in the surface registry (§4). **Built** (step 3) for the
+five route types; Overlay, and the state-driven stages that register as Nested
+details, arrive with steps 6 and 8.
 
 | type | what it is | motion | Back |
 | --- | --- | --- | --- |
@@ -29,7 +32,10 @@ its motion and its Back rule. **Planned** (step 3 makes the registry total).
 | Overlay | modal, sheet, popover, card | open / close | closes the overlay only |
 
 A sibling swap (channel A → B) is a Detail whose identity key is unchanged and
-never animates. A tab is never a history entry.
+never animates. A tab is never a history entry. A route that only forwards to
+another one is not a screen at all: it carries `type: 'redirect'`, so it is
+listed (the totality gate needs it, and the tab bar stays lit for the frame it
+exists) but never classifies, never animates and never owns a Back.
 
 ## 2. Stack containers never scroll — **built** (step 1)
 
@@ -83,7 +89,51 @@ One spec, `admin/src/navigation/motion.ts`:
 - The blanket `prefers-reduced-motion` CSS rule stays as the baseline for
   non-navigation CSS motion; navigation reads the query in JS.
 
-## 4. Controller and Back — **built** (step 4, wiring in progress)
+## 4. Registry, controller and Back — **built** (steps 3–4, wiring in progress)
+
+### 4.1 The surface registry — `admin/src/navigation/surfaces.ts`
+
+One declarative table classifies every route; the vocabulary a row is written
+in — the page types of §1 and the row shape — is `navigation/page-types.ts`
+beside it. A row is: `pattern`, `type`
+(§1, plus `redirect`), `section`, `depth`, `root`, `identityOf` / `keyScope`
+(which screens are the *same* screen, so a sibling swap swaps content in
+place), `parentOf(match)` → `{ label, pathname }` (what Back returns to, and
+what it announces), and optionally `parent: 'origin'`, `contextualList` or
+`flowPresentation`. Everything else derives from it:
+`phone-navigation.ts` is now a thin adapter over
+`matchSurface` / `surfaceScreen` / `surfaceParent` / `surfaceRootPath`, so the
+stack, the ledger, `resolveBack()`, the Back doorway and the native bridge all
+read one table.
+
+- **It is total.** There is no catch-all row and no fallback classification.
+  `admin/test/navigation-surfaces-total.test.ts` and
+  `scripts/lint-navigation-surfaces.mjs` (in the root `lint` chain) both read
+  `router.tsx`, join nested child paths to their parents, and assert every
+  path resolves to a row — or is one of the four the registry itself lists as
+  outside the stack (`OUTSIDE_STACK_PATHS`: login, the external-auth
+  completion, bootstrap, not-found). **Adding a route means adding its row**;
+  the lint is what makes that unmissable. The old `admin:detail` catch-all is
+  deleted, and because classification can no longer fail, the shell mounts the
+  phone viewport unconditionally.
+- **Depths** (plan §4.1): `/threads` and `/unread-messages` are Channels
+  details at depth 1, `/channels/new` a Channels Flow at depth 1; `/agents` 1,
+  `/agents/:id` 2, both designers Flows at 2 returning to the list they edit,
+  the four automation browsers 1; every settings page 1 with
+  `/settings/statuses/:id` at 2; `/ops` 1 and `/ops/usage` 2; `/apps` 1 and
+  `/apps/:slug` 2; `/audit`, `/approvals`, `/tokens`, `/policy` 1. A project's
+  seven section routes are one `tabHost` identity, so switching sections never
+  animates.
+- **`parent: 'origin'`** (`/alerts`, `/feedback`): reached from the bell, the
+  account menu and push notifications, from any section, so Back pops to the
+  reader's real predecessor when the ledger has one and falls back to the
+  Admin root only on a cold deep link.
+- A page that auto-selects its first row must not do so on a phone once its
+  detail is a real pushed screen: the redirect would slide a detail in on
+  arrival and re-slide it on every Back. `ChannelsPage` and `StatusesPage`
+  both gate that on `usePhoneLayout()`.
+
+### 4.2 The controller
 
 The controller is `PhoneNavigationProvider` (one instance around the
 authenticated shell; the name follows in a later rename). It owns:
@@ -131,10 +181,6 @@ authenticated shell; the name follows in a later rename). It owns:
 Planned in this step: `BackButton` as the single glyph in every header on
 every layout; a haptic on the swipe commit (with the mobile shell's haptics
 bridge).
-
-Route classification still lives in
-`admin/src/layouts/admin-shell/phone-navigation.ts` until the registry
-(step 3) lands.
 
 ## 5. Layout — **built** (step 5, the decision; stacks per column follow)
 
