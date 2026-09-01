@@ -73,3 +73,15 @@ test('the native shell opens only a validated connector authorization URL', asyn
   )
   assert.deepEqual(opened, ['https://idp.example/authorize?state=one'])
 })
+
+test('contains a synchronous connector authorization launcher failure', () => {
+  let result: boolean | undefined
+
+  assert.doesNotThrow(() => {
+    result = openConnectorAuthorizationUrl('https://idp.example/authorize?state=one', () => {
+      throw new Error('native launcher lost its receiver')
+    })
+  })
+
+  assert.equal(result, true)
+})

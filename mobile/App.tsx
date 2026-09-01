@@ -301,8 +301,15 @@ const Shell = (): React.JSX.Element => {
       flushExternalAuthDelivery,
       markBooted: bootRecovery.markBooted,
       noteBackState: phoneBack.noteBackState,
-      openConnectorAuthorization: (url) => openConnectorAuthorizationUrl(url, Linking.openURL),
-      openExternalUrl: (url) => openAllowedCallExternalUrl(url, { jitsiDomain: CALL_JITSI_DOMAIN }, Linking.openURL),
+      openConnectorAuthorization: (url) => openConnectorAuthorizationUrl(
+        url,
+        (targetUrl) => Linking.openURL(targetUrl),
+      ),
+      openExternalUrl: (url) => openAllowedCallExternalUrl(
+        url,
+        { jitsiDomain: CALL_JITSI_DOMAIN },
+        (targetUrl) => Linking.openURL(targetUrl),
+      ),
       reconcileNativeAttention: async (total) => reconcileNativeAttentionPresentation(total),
       replayPendingPushPath,
       runExternalAuth,
@@ -330,7 +337,11 @@ const Shell = (): React.JSX.Element => {
       jitsiDomain: CALL_JITSI_DOMAIN,
     })
     if (disposition === 'externalize') {
-      openAllowedCallExternalUrl(request.url, { jitsiDomain: CALL_JITSI_DOMAIN }, Linking.openURL)
+      openAllowedCallExternalUrl(
+        request.url,
+        { jitsiDomain: CALL_JITSI_DOMAIN },
+        (targetUrl) => Linking.openURL(targetUrl),
+      )
     } else if (disposition === 'block') {
       console.warn('[mobile] blocked top-level WebView navigation outside Nessie')
     }

@@ -91,8 +91,12 @@ export const openAllowedCallExternalUrl = (
     console.warn('[mobile] blocked non-allowlisted external call URL')
     return false
   }
-  void openUrl(url).catch(() => {
+  try {
+    void openUrl(url).catch(() => {
+      console.warn('[mobile] could not open allowlisted external call URL')
+    })
+  } catch {
     console.warn('[mobile] could not open allowlisted external call URL')
-  })
+  }
   return true
 }

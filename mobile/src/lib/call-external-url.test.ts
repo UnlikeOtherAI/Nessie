@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   callProviderOrigins,
   isAllowedCallExternalUrl,
+  openAllowedCallExternalUrl,
   webViewNavigationDisposition,
 } from './call-external-url'
 
@@ -47,4 +48,16 @@ test('keeps WebView top-level navigation on the admin origin', () => {
     isTopFrame: false,
     url: 'https://embedded.example',
   }, navigationConfig), 'allow')
+})
+
+test('contains a synchronous allowlisted call URL launcher failure', () => {
+  let result: boolean | undefined
+
+  assert.doesNotThrow(() => {
+    result = openAllowedCallExternalUrl('https://meet.google.com/abc-defg-hij', config, () => {
+      throw new Error('native launcher lost its receiver')
+    })
+  })
+
+  assert.equal(result, true)
 })
