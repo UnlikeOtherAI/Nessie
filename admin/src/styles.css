@@ -1638,8 +1638,8 @@ a {
 }
 
 /* Agents list table: zebra striping over the row-hover highlight. The `:hover`
-   rule follows `:nth-child(even)` at equal specificity so it always wins for the
-   hovered row; both reference theme tokens so every theme picks them up. */
+   rule follows both stripe rules at equal specificity so it always wins for the
+   hovered row; all three reference theme tokens so every theme picks them up. */
 /* Zebra striping, hover and focus for every dense data table in the admin.
    `.agents-table` is the original name; `.admin-table` is the generic alias so
    a new table reuses these rules instead of forking a look-alike. */
@@ -1648,9 +1648,14 @@ a {
   transition: background var(--duration-fast) var(--easing-standard);
 }
 
+.agents-table tbody tr:nth-child(odd),
+.admin-table tbody tr:nth-child(odd) {
+  background: var(--panel);
+}
+
 .agents-table tbody tr:nth-child(even),
 .admin-table tbody tr:nth-child(even) {
-  background: var(--panel);
+  background: var(--overlay);
 }
 
 .agents-table tbody tr:hover,

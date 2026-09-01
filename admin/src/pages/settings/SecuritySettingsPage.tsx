@@ -106,7 +106,7 @@ export const SecuritySettingsPage = () => {
 
   return (
     <SettingsPanel eyebrow="Account" title="Security">
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid w-full gap-4">
         <section className="admin-card p-4">
           <SectionLabel>Active sessions</SectionLabel>
           <div className="mt-2 text-sm text-[color:var(--tx2)]">
@@ -118,17 +118,19 @@ export const SecuritySettingsPage = () => {
           </div>
         </section>
 
-        {isLocalAccount ? (
-          <ChangePasswordCard />
-        ) : (
-          <section className="admin-card p-4">
-            <SectionLabel>Password</SectionLabel>
-            <div className="mt-2 text-sm text-[color:var(--tx2)]">
-              Your account signs in through an identity provider. Manage your
-              password with that provider.
-            </div>
-          </section>
-        )}
+        <div className="max-w-3xl">
+          {isLocalAccount ? (
+            <ChangePasswordCard />
+          ) : (
+            <section className="admin-card p-4">
+              <SectionLabel>Password</SectionLabel>
+              <div className="mt-2 text-sm text-[color:var(--tx2)]">
+                Your account signs in through an identity provider. Manage your
+                password with that provider.
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </SettingsPanel>
   )
