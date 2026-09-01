@@ -505,6 +505,256 @@ leading-lane chevron, and there is exactly one per screen.
   Knowledge columns strip on `split`) carry `data-navigation-swipe-ignore`; the
   gesture's existing target gate reads it.
 
+### 4.9 One header per page type
+
+Nine header shapes exist (`ResponsivePageHeader` and its six wrappers, the
+thread panel's, the info flow's, the compose page's, and seven hand-rolled
+hero headers), at three heights (50, 58, content-driven), seven title sizes
+(13 to 24 px), and four action-button systems. Five states return before any
+header, so a phone has no Back there: `OwnerGate` refusals on Audit, Policy,
+Tools, Triggers and Ops usage, the super-admin refusal on `/ops`, the agent
+designer's loading branch, and the dashboard's loading and not-found
+branches. No screen sets `document.title`, and nothing tells the native
+chrome what screen it is on.
+
+Rules:
+
+- **`ScreenHeader` is the one header**, built on `ResponsivePageHeader`'s
+  measured-overflow lane, parameterised by page type: Root (title, menu
+  doorway, section actions), Detail and Nested detail (Back, entity title,
+  eyebrow, actions), Tab host (the Detail header plus the `TabBar` row),
+  Flow (Back or Close, step title, primary action), Overlay (title, Close).
+  Height is one token; the title is one size per tone; actions are
+  `PageHeaderAction` values that overflow into More by measurement, never
+  raw buttons. The seven hero headers keep their content (avatar, status
+  line, description) as a **subtitle slot** the header already lacks, not as
+  a second header.
+- **The header is always rendered.** Loading, empty, not-found and refused
+  states render inside the screen body under the same header, so Back never
+  disappears. `OwnerGate` wraps the body, not the page.
+- **Every screen has one `h1`**, the header title, with `tabIndex={-1}` so it
+  can take focus (§4.12). Nested details render `h2`. Today twelve routes
+  have an `h1`; the rest have `h2` or nothing.
+- **The header sets `document.title`** (`<screen> · <section> · Nessie`) and
+  posts `nessie:screen` to the shell (§4.16), so the browser tab and the
+  native chrome name the screen.
+
+### 4.10 Arriving with content — prewarm, previous data, one skeleton
+
+The stack slides for 300 ms; today the destination often has nothing to
+show for it. No `prefetchQuery` or `ensureQueryData` exists anywhere, no
+per-id detail query keeps previous data, three unrelated skeleton systems
+use two different tokens, three lists assert a false "nothing here yet"
+while loading (Knowledge, Triggers, Workflows), two pages return bare text
+with no chrome (dashboard detail, agent detail on a cold cache), and every
+avatar is re-fetched and re-decoded on every mount with no cache.
+
+Rules:
+
+- **Prewarm on intent.** Every row that navigates already holds the
+  destination id at render. `controller.push()` takes an optional
+  `prewarm(queryClient)`; list rows call it on `pointerdown` (and on hover on
+  fine pointers), so the destination's first query is in flight before the
+  slide starts. One helper per family (`prewarmChannel`, `prewarmProject`,
+  `prewarmApp`, `prewarmAgent`, `prewarmSpace`, `prewarmDashboard`).
+- **Sibling swaps keep previous data.** Per-id detail hooks use
+  `placeholderData: keepPreviousData`, so channel A → B shows A's feed until
+  B's arrives instead of an empty list. The apps search list already does
+  this; it becomes the rule.
+- **Pending is never "empty".** A list hook exposes `isPending`; the empty
+  state renders only when the query has settled with nothing.
+- **One `Skeleton`** on one token, with row, card, header and paragraph
+  shapes; each page type declares its skeleton so the slide always reveals a
+  plausible shell. `AppSkeletons`, `SectionSkeleton` and the ad-hoc dashboard
+  rectangle fold into it.
+- **One blob cache** behind `useAuthedObjectUrl`, keyed by attachment id
+  with reference counting, so a face that was in the sidebar a second ago is
+  not fetched again for the header.
+
+### 4.11 Drafts — auto-save first, never a save button, never a confirm
+
+Nothing in the admin should ask "discard changes?". Leaving a screen is safe
+because the draft is already persisted. The workflow designer is the model
+today (local draft for a new item, debounced server autosave for an existing
+one, a signature diff so nothing is saved twice, no retry of a payload the
+server rejected). Everything else keeps state in memory and loses it on
+reload, the channel composer leaks its text and staged attachments across
+channel switches because it is never keyed by channel, the thread reply
+composer unmounts on close, message inline edit discards on Escape, and the
+task dialog, agent designer, knowledge editor, trigger editor and dashboard
+edit mode discard silently.
+
+Rules:
+
+- **`useDraft(key, { local, server })`** is the one primitive. It buffers to
+  `localStorage` under a stable key (`draft:<surface>:<entityId>`) on a
+  short debounce, and flushes to the server on a longer one where an
+  endpoint exists. The key is the entity, so a composer draft is per
+  channel, a task draft per task, an editor draft per page. Mounting with a
+  draft present restores it; a successful send or save clears it.
+- **Surfaces adopt it in risk order**: thread reply composer, channel and DM
+  composers (keyed by channel, staged attachments included), task dialog,
+  message inline edit, agent designer, knowledge page editor, trigger editor,
+  dashboard edit mode, then the settings forms.
+- **The API becomes safe to auto-save against.** Create endpoints take a
+  client idempotency key (`POST /api/threads/:id/messages` first, since a
+  retried send duplicates today); update routes that already carry a revision
+  column (`Dashboard.revision`, `WorkflowTemplate.version`,
+  `KnowledgePageVersion.versionNumber`) accept `If-Match` and answer 409 on
+  conflict, and `useDraft` surfaces a conflict as a choice in place, never a
+  blocking dialog.
+- **Save buttons go.** Where a server flush is not possible (a create form
+  with required fields not yet valid), the primary action stays, but it is
+  the only one, and leaving keeps the local draft.
+- **`useLeaveGuard` survives for one case only**: an agent-authored document
+  still streaming into a thread. That is not a draft; it is the reader
+  leaving mid-write, and the existing confirm stays.
+
+### 4.12 Focus, announcement, title
+
+Nothing manages focus on navigation. After a push focus is wherever the
+outgoing layer's `inert` left it, usually `body`. There is no route
+announcer; the only live region is the toast stack. `aria-current` is absent
+from every sidebar. There is no skip link. Reduced motion is honoured;
+`forced-colors` is not.
+
+Rules, per page type, executed by the stack after settle (never mid-slide):
+
+- **Push** (Detail, Nested detail, Flow as screen): focus the new screen's
+  `h1` with `preventScroll`. **Pop**: focus the retained screen's `h1` only
+  if the popped screen held focus. **Tab host**: `TabBar` keeps its own
+  roving focus. **Overlay**: `useOverlay` moves focus in and restores it on
+  close, for every overlay, including the three that skip it today.
+- **One polite live region** in the shell announces the screen title on
+  every settled push and pop, debounced; overlays announce through their
+  dialog semantics instead, never both.
+- **`aria-current="page"`** on the rail and every sidebar row that carries
+  an active class; one skip link to `main`.
+- **`forced-colors`**: selection pills, the rail's active tile, focus rings
+  and card borders get a non-colour signal.
+
+### 4.13 Scroll
+
+Retained layers keep scroll for free on `single`; on `split` the outlet
+remounts and only two lists remember their position. The browser's own
+restoration is never disabled and fights the app's. Every `NavigationStack`
+layer registers `useScrollMemory` by stage key; a fresh push starts at 0; a
+pop keeps what it had; a sibling swap resets through the existing
+`useStickToBottom` reset key; `history.scrollRestoration = 'manual'` at the
+root. Each page type names its scroll owner (the layer's page scroller or
+one inner scroller), and the overflow lint (§4.18) refuses a second.
+
+### 4.14 Soft keyboard
+
+A composer with focus loses it on a push only because the outgoing layer
+becomes `inert`. That becomes explicit: the controller blurs the active
+element before a push or overlay open, on every layout. A pop never
+reopens the keyboard. A `visualViewport` resize listener keeps the active
+composer above the keyboard; every overlay panel sizes with `dvh`, the
+three that still use `vh` included; the composer gets `enterkeyhint="send"`.
+
+### 4.15 Haptics, pull-to-refresh, interruption
+
+- **Haptics.** No haptics module exists; the one place that wants feedback
+  (`IncomingCallProvider`'s `navigator.vibrate`) is silent on iOS. `expo-haptics`
+  joins the shell; `nessie:haptic { kind }` joins the bridge with a typed
+  guard like the existing connector-authorization message; the admin posts
+  it through one `haptic(kind)` helper. Light on swipe-commit and sheet
+  snap, selection on tab change, warning on the call ring, and the
+  `navigator.vibrate` call becomes the web fallback.
+- **Pull-to-refresh.** The WebView's native `pullToRefreshEnabled` reloads
+  the whole document from any screen and posts nothing to the web. It is
+  turned off. The web owns the gesture at the top of a Root or Detail page
+  scroller and posts `nessie:full-refresh` (which already exists); Tab hosts
+  with boards, editors, the pinned message feed and scrolled overlays never
+  offer it. `overscroll-behavior-y: contain` moves onto every inner scroller,
+  not only the page shell.
+- **Interruption.** During a slide both layers are `inert`, so taps are
+  dropped, which is right. A second navigation preempts the first without
+  cleaning its stack entries; a hidden tab lets the fallback timers finish a
+  transition the compositor never drew. The controller queues navigations
+  that arrive mid-transition and applies them after settle; `redirect()`
+  already defers; the stack pauses its animations on `visibilitychange` and
+  resumes them, and the fallback timers pause with them.
+
+### 4.16 The native shell contract
+
+The shell re-derives from the pathname what the admin already knows: which
+tab a route belongs to (a hand-copied prefix list), whether it is a root (a
+five-path set), and it has no screen title at all; badges exist for three of
+five tabs. One message replaces the guessing:
+
+```
+nessie:screen { path, title, section, type, depth, hasBack }
+```
+
+posted where `nessie:route` is posted, read straight off the surface
+registry. The shell's `tabs.ts` classifier and `isNativePhoneTabRootRoute`
+are deleted; `nessie:attention` carries a badge per section. `nessie:haptic`
+(§4.15) and the removal of native pull-to-refresh complete the contract;
+everything else on the bridge is unchanged.
+
+### 4.17 Deep links and cold starts
+
+Twenty-three entry points land on a screen with no stack beneath it: web
+and native push, the desktop notification, the auth and billing returns, and
+the intent params (`spaceId`, `pageId`, `view`, `tab`, `connect`,
+`messageId`, `incomingCall`, `acceptCall`, `executorId`, `accessChange`,
+`promotion`, `filter`, `query`, `mode`, `#trigger-`, `#confirmationToken`).
+Some strip themselves after use, some are linkable by design, some never
+clear though they look one-shot (`uoa_billing`, `#trigger-`), and every
+`<Navigate>` redirect drops `state`.
+
+Rules:
+
+- **Seed the stack.** On a cold start (a single-entry ledger, or an unknown
+  POP) the controller walks the registry's `parentOf` chain from the landed
+  route to its Root and seeds those entries beneath it, so Back and the
+  edge swipe reveal the same screens a real navigation would have. Roots
+  seed nothing; `parent: 'origin'` rows seed their section root.
+- **Intent params are declared, not improvised.** Each registry row lists
+  its intent params as `consume` (stripped by `replace` after the controller
+  hands them to the screen, in one place, never in six effects) or `state`
+  (linkable, kept). `uoa_billing` and `#trigger-` become `consume`; the
+  executor hash token and its three params become one nested stage.
+- **Redirects forward state.** Every `<Navigate>` passes `state` through,
+  and `/` resolves the native pending push path as today.
+- **Origin travels explicitly** where the registry cannot know it: a channel
+  opened from a project carries `from` in navigation state, and the seeded
+  parent is the project; a cold link without it seeds Channels.
+- **The desktop shell gets a pending path** like the native one, so a
+  notification click on a quit app lands where it was aimed.
+
+### 4.18 Gates — the framework stays the only way
+
+The repo already has the three shapes: allowlisted ESLint bans (the
+`useMediaQuery` rule), a breakpoint lint script, and source-regex tests.
+Each gate ships with the step that makes it satisfiable, with an allowlist
+that shrinks to empty, never a flag day:
+
+| gate | mechanism |
+| --- | --- |
+| `navigate(` / `useNavigate` outside `admin/src/navigation/` | ESLint `no-restricted-syntax`, allowlist |
+| literal z-index (`z-[n]`, `z-index:`) outside the layer tokens | `scripts/lint-layers.mjs`, modelled on `lint-breakpoints.mjs` |
+| `scrollIntoView` inside `useLayoutEffect` | ESLint AST selector |
+| `overflow: hidden` / `overflow-hidden` on a stack container or a second scroller in a layer | source-regex test on the stack components |
+| `autoFocus` on a screen root; `.focus()` without `preventScroll` in a screen | ESLint `no-restricted-syntax` |
+| a new `@keyframes` for navigation; a `transition-*` utility on a stack layer | count assertion on `styles.css` |
+| every `router.tsx` path present in the surface registry, every registry row typed | `scripts/lint-navigation-surfaces.mjs` in `pnpm lint` |
+| a bespoke overlay without `useOverlay` | source-regex test over `role="dialog"` files |
+
+### 4.19 Verification — a transition suite that sees the animation
+
+The jsdom harness cannot see animations; Playwright is not in CI; nothing
+diffs pixels. The suite: Postgres + seed + the two dev servers (the smoke
+job's shape), Chromium installed in a new CI job, viewports 390×844 and
+768×1024 and 1280×800, and for each transition the test freezes the real
+animation with `document.getAnimations()` at 0 %, 50 % and 100 %, asserts
+positions and `scrollLeft` numerically, and saves the three frames as
+artifacts for the eyeball rule in `AGENTS.md`. The repro script from §1
+becomes its first case. Device checks on iPhone and iPad remain manual and
+are listed per step.
+
 ## 5. Stage assignment
 
 Every census stage maps to a type. Families, not individual rows; the full
@@ -573,7 +823,35 @@ level. Commit and push per step.
    layout; the fourteen bespoke dialogs adopt or justify. Rewrite
    `dialog-shell.test.ts` against `useOverlay`; add one test per kind that
    Back closes it before any route change.
-9. **Docs — one rulebook, two pointers.** `docs/navigation.md` is the
+9. **Screen header.** `ScreenHeader` per page type with the subtitle slot;
+   the seven hero headers and the two 58 px headers converge; `OwnerGate`
+   moves under the header; every screen gets its `h1`; `document.title` and
+   `nessie:screen` post from the header; the shell drops its own route
+   classifier and gains per-section badges.
+10. **Arriving with content.** `prewarm` on `controller.push()` wired to
+    every navigating row; `keepPreviousData` on per-id detail hooks;
+    `isPending` on list hooks with the three false-empty states fixed; one
+    `Skeleton` per page type; the blob cache behind `useAuthedObjectUrl`.
+11. **Focus, announcement, scroll, keyboard.** The settle hook focuses the
+    `h1`; one live region; `aria-current` and the skip link; `useScrollMemory`
+    per layer and manual scroll restoration; blur before push; the
+    `visualViewport` listener; `dvh` on the remaining `vh` panels;
+    `forced-colors` signals.
+12. **Drafts.** `useDraft` and its storage; adoption in risk order (thread
+    reply, composers keyed by channel, task, inline edit, designer, page
+    editor, trigger editor, dashboard edit, settings forms); the idempotency
+    key on message create; `If-Match` on the three versioned update routes;
+    save buttons removed as each surface flushes on its own.
+13. **Cold starts.** Stack seeding from `parentOf`; declared intent params
+    with one consume path; `state` through every redirect; `from` on
+    project-to-channel links; the desktop pending path.
+14. **Shell polish.** `expo-haptics` + `nessie:haptic`; native pull-to-refresh
+    off and the web gesture on Root and Detail scrollers; visibility-aware
+    transitions; queued navigations during a slide.
+15. **Gates and the transition suite.** Each gate lands with the step it
+    guards (listed in §4.18); the Playwright job, seed and three viewports
+    land with step 2 and grow with every step after.
+16. **Docs — one rulebook, two pointers.** `docs/navigation.md` is the
    standing reference for how navigation is done: the six page types, the
    registry, the controller API, the overlay kinds, Back, motion tokens,
    drafts, deep links, focus, and the gates. It is created in step 1 with the
