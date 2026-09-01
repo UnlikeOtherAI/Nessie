@@ -11,19 +11,28 @@ const repositoryDirectory = resolve(desktopDirectory, '..')
 const runtimeDirectory = resolve(desktopDirectory, 'src-tauri/resources/executor-runtime')
 const executorBundlePath = resolve(runtimeDirectory, 'nessie-executor.cjs')
 const nodePath = resolve(runtimeDirectory, 'node')
-const nodeLicensePath = resolve(dirname(process.execPath), '..', 'LICENSE')
+const nodeLicensePath = resolve(dirname(process.execPath), 'LICENSE')
+const nodeLicenseUrl = `https://raw.githubusercontent.com/nodejs/node/v${process.versions.node}/LICENSE`
 
 const digest = async (path) => createHash('sha256').update(await readFile(path)).digest('hex')
 
-const requireNodeLicense = async () => {
+const nodeLicense = async () => {
   try {
-    await readFile(nodeLicensePath)
+    return await readFile(nodeLicensePath)
   } catch {
-    throw new Error(`Unable to locate the Node.js license beside ${process.execPath}.`)
+    const response = await fetch(nodeLicenseUrl)
+    if (!response.ok) {
+      throw new Error(`Unable to download the Node.js license for ${process.versions.node}.`)
+    }
+    const license = await response.text()
+    if (!license.startsWith('Node.js is licensed for use as follows:')) {
+      throw new Error(`Downloaded Node.js license for ${process.versions.node} was invalid.`)
+    }
+    return Buffer.from(license)
   }
 }
 
-await requireNodeLicense()
+const license = await nodeLicense()
 await rm(runtimeDirectory, { force: true, recursive: true })
 await mkdir(runtimeDirectory, { recursive: true })
 
@@ -37,7 +46,7 @@ await build({
 })
 await copyFile(process.execPath, nodePath)
 await chmod(nodePath, 0o755)
-await copyFile(nodeLicensePath, resolve(runtimeDirectory, 'NODE_LICENSE'))
+await writeFile(resolve(runtimeDirectory, 'NODE_LICENSE'), license, { mode: 0o644 })
 await writeFile(
   resolve(runtimeDirectory, 'manifest.json'),
   `${JSON.stringify({
