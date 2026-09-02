@@ -537,41 +537,28 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) to protect agent context.
   External-agent products (e.g. DeepSignal) run as a per-user DM channel with
   `Agent.executionMode = external_mcp` — turns proxy straight to the product's
-  MCP endpoint with **no Nessie inference**. DeepSignal uses a system-managed,
-  user-scoped instance pinned to the single deployment reference
-  `DEEPSIGNAL_MCP_APP_KEY`; the resolved value is a DeepSignal-issued,
-  Nessie-only `dsk_` bearer. Resolution is limited to the canonical public
-  catalog linked from the `deepsignal` integrated-product row, and signing is
-  pinned to `https://api.deepsignal.live`; a same-name catalog or changed
-  origin cannot receive the key. Every chat (initial and follow-up), history,
-  digest, and action request also carries an exact `ai.invoke`
-  `X-UOA-Delegation` for
-  the linked user/active UOA org/team plus a fresh RS256 `X-Nessie-Context`
-  containing non-null user/org/team/agent/run/request/tool-call provenance.
-  The app key, delegated user, and signed provenance are independent proofs:
-  no per-user OAuth or generic credential fallback is accepted. Generic OAuth
-  remains available for ordinary connectors. DeepSignal's app key is distinct
-  from every configured secret-bearing environment credential and every
-  encrypted per-org webhook signing secret; API/worker startup verifies both.
-  Pre-existing identity headers are rejected case-insensitively before fresh
-  identity is attached. The signed session org/team must exactly match the
-  selected team's external UOA mapping; the one per-user/product account link
-  proves only stable subject/status/credential epoch, while its active org/team
-  fields are non-authoritative last-seen UI metadata. Team enablement derives
-  its external tuple from the mapped Team row and is rechecked for every call,
-  and DM keys include the UOA team so conversations cannot cross a team switch.
-  Legacy team-less channels fail closed. Managed instances reject generic
-  lifecycle and secret writes, and their global product-linked catalog entries
-  reject every generic catalog mutation. The worker driver + API
-  history hydration share the `@nessie/mcp-manage`
-  `resolveInstanceMcpTransport`/`callInstanceTool` seam, and a per-org
-  HMAC-verified webhook (`/api/integrations/deepsignal/events`) delivers
-  proactive insights as a **coalesced, budgeted rolling digest** (one "N new
-  signals" message per user, updated in place; fresh digests capped per user per
-  window — env-tunable heuristics, not law) rather than one card per event; the
-  Signals page renders them as a triaged Overview/Inbox. See
-  `docs/external-tool-integration.md` §2 + §5 and
-  `docs/plans/2026-07-09-deepsignal-integration.md`.
+  MCP endpoint with **no Nessie inference**. Load-bearing invariants: the
+  system-managed, user-scoped instance resolves `DEEPSIGNAL_MCP_APP_KEY` only
+  from the canonical public catalog linked from the `deepsignal`
+  integrated-product row, with signing pinned to `https://api.deepsignal.live`,
+  so a same-name catalog or changed origin cannot receive the key; the app key,
+  the `ai.invoke` `X-UOA-Delegation`, and the fresh RS256 `X-Nessie-Context`
+  are **independent** proofs carried on every call with no per-user OAuth or
+  generic credential fallback; that key is distinct from every other
+  secret-bearing environment credential and per-org webhook secret, verified at
+  API/worker startup; pre-existing identity headers are rejected
+  case-insensitively before fresh identity is attached; the signed session
+  org/team must exactly match the selected team's UOA mapping (the account link
+  proves only subject/status/epoch — its active org/team are non-authoritative
+  last-seen metadata), DM keys include the UOA team, and legacy team-less
+  channels fail closed; managed instances and their product-linked catalog
+  entries reject every generic lifecycle, secret and catalog mutation.
+  Generic OAuth remains available for ordinary connectors. Everything else —
+  the shared `resolveInstanceMcpTransport`/`callInstanceTool` seam, the per-org
+  HMAC webhook and its coalesced, budgeted rolling digest, the Signals page —
+  is in [docs/external-tool-integration.md](docs/external-tool-integration.md)
+  §2 + §5 and
+  [docs/plans/2026-07-09-deepsignal-integration.md](docs/plans/2026-07-09-deepsignal-integration.md).
 - DeepWater is usable as a tool by any permitted agent, but **default OFF with an
   explicit per-agent grant required** and **always routed through Ledger**:
   enabling DeepWater for a team (owner-only team-enablement toggle) provisions
@@ -913,57 +900,45 @@ not drift:
 
 - **A link is Nessie's own grant.** Never read, import, or accept a vendor
   CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
-  items). Providers rotate refresh tokens and invalidate the previous one, so
-  two apps sharing one grant log each other out — OpenClaw hit this and removed
-  its import path for exactly this reason. One grant, one refresh owner.
-- **Token values live in the vault, never in PostgreSQL.**
-  `docs/secret-management-spec.md` bars new secret-capture flows from putting
-  values in the database. The bundle goes to a **dedicated, separately-ACLed**
-  vault project (`NESSIE_SUBSCRIPTION_VAULT_*`), not the shared personal
-  partition — that folder also holds a person's ordinary captured secrets, and
-  an identity scoped to it could read them all. `model_subscription_credentials`
-  holds only the pointer. A deployment with no vault refuses linking in words;
-  it never falls back to a column.
+  items): providers rotate refresh tokens and invalidate the previous one, so
+  two apps sharing one grant log each other out. One grant, one refresh owner.
+- **Token values live in the vault, never in PostgreSQL**, in a **dedicated,
+  separately-ACLed** vault project (`NESSIE_SUBSCRIPTION_VAULT_*`) rather than
+  the shared personal partition, which also holds a person's ordinary captured
+  secrets. `model_subscription_credentials` holds only the pointer, and a
+  deployment with no vault refuses linking in words — never a column fallback.
+  Deleting a pointer tombstones the vault secret in the same transaction, or a
+  cascade strands a live refresh token nothing can address.
 - **The lane is pinned at run admission and never falls back.**
-  `resolveRunSubscriptionBinding` re-derives entitlement from live rows (agent
-  owner, that owner's live membership, subscription status) and persists the
-  subscription plus its credential epoch on the `Run`, so a mid-run relink
-  cannot switch accounts and a continuation whose binding died fails closed. A
-  selection that merely *looks* like a subscription — unknown adapter, dangling
-  pointer — is `unavailable`, never Ledger: falling back would move a person's
-  spend onto the organization without anyone agreeing to it.
+  `resolveRunSubscriptionBinding` re-derives entitlement from live rows and
+  persists the subscription plus its credential epoch on the `Run`, so a
+  mid-run relink cannot switch accounts and a continuation whose binding died
+  fails closed. Anything that merely *looks* like a subscription — unknown
+  adapter, dangling pointer — is `unavailable`, never Ledger: falling back
+  would move a person's spend onto the organization with nobody agreeing to it.
 - **Organization budgets gate organization spend, so they do not gate this
   lane.** `applyBudgetGate` and its mid-run probe skip a pinned run: blocking
-  would refuse a run the organization is not paying for (with "buy credits" copy
-  naming the wrong purse), and a `degrade` verdict would rewrite it onto the
-  organization's Ledger provider — moving the very spend it was capping. The
-  per-run backstop envelope still applies in full.
-- **Exclusion from cost is structural.** `TokenLedgerEvent.billingSource` +
-  `modelSubscriptionId` decide it, never the absence of a pricing profile:
-  connector invocations record the *runtime* provider (`openai-compatible`), and
-  an owner-authored wildcard `ModelPricingProfile` would otherwise price spend
-  the organization never incurred. Attribution follows the subscription **owner**,
-  not whoever posted. The writer reads the run's own pin so no terminal path can
-  forget to stamp it.
+  would refuse a run the organization is not paying for, and a `degrade`
+  verdict would rewrite it onto the organization's Ledger provider — moving the
+  very spend it was capping. The per-run backstop envelope still applies.
+- **Exclusion from cost is structural**: `TokenLedgerEvent.billingSource` +
+  `modelSubscriptionId` decide it, never the absence of a pricing profile.
+  Attribution follows the subscription **owner**, not whoever posted, and the
+  writer reads the run's own pin so no terminal path can forget to stamp it.
 - **One validator, every write path.** `assertAgentModelSelection`
-  (`@nessie/workspace-admin`) is the single gate for create, update, clone and
-  the PA `agent_create` tool: a Ledger pair goes to the catalogue, a
-  `subscription/<key>` pair must belong to the acting person, and a Ledger
-  selection clears any stale pointer. Ownership transfer and clone strip the
-  selection, because a subscription is not transferable. Write-time validation
-  is UX; the run-time gate is the security boundary.
-- **Refresh discipline** (OpenClaw's field lessons): a short locked claim, the
-  network call outside any transaction, compare-and-swap on the epoch, never a
-  transport-failure retry of a refresh grant (the provider may already have
-  rotated it), a 5-minute proactive margin, and failure transitions applied only
-  when the failing epoch is still current — so a delayed 401 cannot kill a fresh
-  link. Only adapter-defined authentication codes reach
-  `needs_reauthorization`; 403 is also entitlement, policy and quota, and a
-  relink button cannot fix those.
-- **Deleting a pointer tombstones the vault secret** in the same transaction, or
-  a cascade strands a live refresh token nothing can address.
+  (`@nessie/workspace-admin`) gates create, update, clone and the PA
+  `agent_create` tool; ownership transfer and clone strip the selection,
+  because a subscription is not transferable. Write-time validation is UX; the
+  run-time gate is the security boundary.
+- **Refresh discipline:** a short locked claim, the network call outside any
+  transaction, compare-and-swap on the epoch, never a transport-failure retry
+  of a refresh grant, a 5-minute proactive margin, and failure transitions
+  applied only while the failing epoch is still current. Only adapter-defined
+  authentication codes reach `needs_reauthorization` — 403 is also entitlement,
+  policy and quota, which a relink button cannot fix.
 
-Spec and phasing: `docs/plans/2026-09-02-personal-model-subscriptions.md`.
+Rationale, field lessons and phasing:
+[docs/plans/2026-09-02-personal-model-subscriptions.md](docs/plans/2026-09-02-personal-model-subscriptions.md).
 
 ## Embeddings — routed separately, one pinned width
 
