@@ -22,6 +22,10 @@ import {
 } from './mailbox-routing.js'
 import { buildAgentCardsBlock } from './agent-cards-prompt.js'
 import {
+  buildHandoffRoutingBlock,
+  type HandoffRoutingFacts,
+} from './handoff-routing.js'
+import {
   buildAgentDocumentsBlock,
   type AgentDocumentsPromptFacts,
 } from './agent-documents.js'
@@ -102,6 +106,8 @@ export const buildModelPrompt = (
     routing?: ResearchRoutingFacts
     /** Structural toolset facts driving the mailbox/calendar routing block. */
     mailbox?: MailboxRoutingFacts
+    /** Structural toolset facts driving the global-agent handoff block (D8). */
+    handoff?: HandoffRoutingFacts
     /** Bounded, durable to-do facts, omitted unless execution tools resolve. */
     todoFacts?: AgentTodoPromptFacts | null
     /** Structural home-space and toolset facts driving the documents block. */
@@ -192,6 +198,7 @@ export const buildModelPrompt = (
     ].join('\n'),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
     options.mailbox ? buildMailboxRoutingBlock(options.mailbox) ?? '' : '',
+    options.handoff ? buildHandoffRoutingBlock(options.handoff) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({ hasCardTool: options.hasCardTool ?? false }) ?? '',
