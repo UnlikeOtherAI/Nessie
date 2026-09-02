@@ -6124,6 +6124,11 @@ model EmailMessage {
   // legitimately retry, so the claim-and-wake transaction turns on THIS, never
   // on the RFC Message-ID (which can be absent, duplicated or attacker-forged).
   receiptId          String?                    @unique @map("receipt_id")
+  // Outbound idempotency key: `{runId}:{toolCallId}`, the same identity the
+  // approval machinery uses. A replayed run re-issues the same tool call, and
+  // without this each replay inserted another queued row — two rows claim
+  // independently and the recipient gets two copies, which cannot be undone.
+  sendKey            String?                    @unique @map("send_key")
   // Raw MIME staging reference in the inbound bucket (transport staging only —
   // every durable byte goes through FileService).
   s3ObjectKey        String?                    @map("s3_object_key")

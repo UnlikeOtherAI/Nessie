@@ -63,11 +63,15 @@ export const registerAgentMailboxRoutes = (app: FastifyInstance, deps: RouteDeps
     const state = readiness()
     const isOwner = actorContext.actor.roles?.includes('owner') ?? false
     if (state.ready) {
+      // A member learns only that hosted email exists — they have no write path
+      // that needs the operator's configuration, and only an owner can claim an
+      // address (which is where the domain is actually needed).
       return reply.send(
         createApiResponse({
           available: true,
-          customDomains: state.config.customDomains,
-          domain: state.config.domain,
+          ...(isOwner
+            ? { customDomains: state.config.customDomains, domain: state.config.domain }
+            : {}),
         }),
       )
     }

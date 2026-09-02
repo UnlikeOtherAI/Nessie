@@ -262,6 +262,7 @@ export const prepareRunExecution = async (
   const emailContext =
     context.emailConversationId && context.emailMailboxId
       ? await loadEmailConversationContext(deps.prisma, {
+        agentId: context.agent.id,
         consumedSources: context.consumedSources,
         conversationId: context.emailConversationId,
         mailboxId: context.emailMailboxId,
