@@ -27,6 +27,42 @@ export const VoiceCapabilitySchema = z.object({
 })
 export type VoiceCapability = z.infer<typeof VoiceCapabilitySchema>
 
+/**
+ * The voices a call may be spoken in.
+ *
+ * Hardcoded on purpose, and this is the only list. Google publishes no API
+ * that enumerates the voices its Live models accept, so the set can only be
+ * curated — and a second copy in the picker would be the drift Rule zero
+ * names. Each entry carries the description a person chooses from; the picker
+ * renders these strings rather than inventing its own.
+ *
+ * The names are Gemini Live's prebuilt voices, sent verbatim as
+ * `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName` when the client
+ * opens the socket. A name the model does not know is rejected at setup, which
+ * is why an agent's stored choice is validated against this list on the way in
+ * rather than trusted at call time.
+ */
+export const GEMINI_LIVE_VOICES = [
+  { name: 'Charon', description: 'Even and informative — the default.' },
+  { name: 'Puck', description: 'Upbeat and quick, with a light lift.' },
+  { name: 'Kore', description: 'Firm and steady, low-key authority.' },
+  { name: 'Aoede', description: 'Breezy and unhurried.' },
+  { name: 'Zephyr', description: 'Bright and warm.' },
+  { name: 'Fenrir', description: 'Energetic, with a rougher edge.' },
+  { name: 'Leda', description: 'Youthful and light.' },
+  { name: 'Orus', description: 'Grounded and matter-of-fact.' },
+] as const satisfies ReadonlyArray<{ description: string; name: string }>
+
+export type GeminiLiveVoice = (typeof GEMINI_LIVE_VOICES)[number]
+
+/** The voice used when an agent has expressed no preference. */
+export const DEFAULT_VOICE_NAME = 'Charon'
+
+export const VoiceNameSchema = z.enum(
+  GEMINI_LIVE_VOICES.map((voice) => voice.name) as [string, ...string[]],
+)
+export type VoiceName = z.infer<typeof VoiceNameSchema>
+
 export const VoiceInstallationPlatformSchema = z.enum(['web', 'ios', 'android'])
 export type VoiceInstallationPlatform = z.infer<typeof VoiceInstallationPlatformSchema>
 

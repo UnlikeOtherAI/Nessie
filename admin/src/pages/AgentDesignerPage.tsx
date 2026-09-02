@@ -137,10 +137,12 @@ export const AgentDesignerContent = ({
       provider: editingAgent.provider ?? '',
       model: editingAgent.model ?? '',
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
+      speakingStyle: editingAgent.speakingStyle ?? '',
       systemPrompt: editingAgent.systemPrompt ?? '',
       todosEnabled: editingAgent.todosEnabled,
       tools: editingAgent.toolPolicy ?? {},
       visibility: editingAgent.visibility ?? 'workspace',
+      voiceName: editingAgent.voiceName ?? '',
     }
   }, [editingAgent])
 
@@ -235,6 +237,10 @@ export const AgentDesignerContent = ({
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
         runLimits,
+        // Explicit `null` on both: an emptied field is a decision, and
+        // `undefined` would carry the stored value forward instead.
+        speakingStyle: state.speakingStyle.trim() || null,
+        voiceName: state.voiceName || null,
         systemPrompt: state.systemPrompt.trim() || undefined,
         todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
@@ -248,6 +254,8 @@ export const AgentDesignerContent = ({
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
         runLimits: runLimits ?? undefined,
+        speakingStyle: state.speakingStyle.trim() || null,
+        voiceName: state.voiceName || null,
         systemPrompt: state.systemPrompt.trim() || undefined,
         todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,

@@ -180,6 +180,10 @@ export type AgentRecord = {
    */
   systemSlug?: string | null
   todosEnabled: boolean
+  /** Gemini Live voice for calls; null/absent = the deployment default. */
+  voiceName?: string | null
+  /** How the agent talks to people — prompt text, never a preset id. */
+  speakingStyle?: string | null
   status: AgentStatusResponse['status']
   systemPrompt?: string
   toolPolicy?: Record<string, boolean>
