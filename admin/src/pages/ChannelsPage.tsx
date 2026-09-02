@@ -51,7 +51,13 @@ export const ChannelsPage = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
-  const { channelId } = useParams()
+  const { browserSessionId: routeBrowserSessionId, channelId } = useParams()
+  // `/channels/:id/threads/:threadId/browser/:sessionId` — deep-linkable in the
+  // same shape as an open reply thread.
+  const watchedBrowserSessionId = routeBrowserSessionId ?? null
+  const closeBrowserSession = useCallback(() => {
+    navigate(channelId ? `/channels/${channelId}` : '/channels')
+  }, [channelId, navigate])
   const { me, token } = useAuthSession()
   const { onSelectAgent } = useShellActions()
   const { data: channels = [], isPending: channelsPending } = useChannels()
@@ -465,6 +471,7 @@ export const ChannelsPage = () => {
         agents={agents}
         allUsers={allUsers}
         boundAgents={boundAgents}
+        browserSessionId={watchedBrowserSessionId}
         channelUsers={channelUsers}
         callerCallActionError={callActionError}
         callerCallActionPending={callActionPending}
@@ -489,6 +496,7 @@ export const ChannelsPage = () => {
         threadPendingMessages={threadPendingMessages}
         token={token}
         onCancelOversizePaste={() => setOversizePaste(null)}
+        onCloseBrowserSession={closeBrowserSession}
         onCloseMembers={() => setShowMembersPopup(false)}
         onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
         onCloseSelectedUser={() => setSelectedMessageUser(null)}
@@ -514,6 +522,7 @@ export const ChannelsPage = () => {
       {activeChannel ? (
         <ConversationInfoFlow
           activeChannel={activeChannel}
+          activeThreadId={replyThread.activeThreadId ?? null}
           allUsers={allUsers}
           canAddPeople={isOwner && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}

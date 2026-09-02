@@ -4,8 +4,10 @@ import {
   listWorkspaceMembers,
   resolveLocalUserIdsByUoaSub,
   resolveUoaRosterWorkspace,
+  UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
+  withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
   type UoaRosterWorkspace,
 } from '@nessie/workspace-admin'
@@ -42,9 +44,10 @@ export const clearPeopleSearchRosterCache = (): void => {
 const readRosterCached = async (
   organizationId: string,
   workspace: UoaRosterWorkspace,
+  uoaSubject: string,
   deps: UoaRosterDeps,
 ): Promise<WorkspaceMemberRecord[]> => {
-  const key = `${organizationId}:${workspace.externalOrgId}:${workspace.externalTeamId}`
+  const key = `${organizationId}:${workspace.externalOrgId}:${workspace.externalTeamId}:${uoaSubject}`
   const cached = rosterCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.members
   const members = await listWorkspaceMembers(workspace, deps)
@@ -70,9 +73,25 @@ const searchUoaRoster = async (
 ): Promise<ToolExecutionResult> => {
   let roster: WorkspaceMemberRecord[]
   try {
-    roster = await readRosterCached(context.channel.organizationId, workspace, deps)
+    const subjectDeps = withUoaRosterSubjectAssertion(
+      workspace,
+      context.actorContext.actionContext.uoaIdentity,
+      deps,
+    )
+    const subject = context.actorContext.actionContext.uoaIdentity?.subject
+    if (!subject) throw new UoaRosterIdentityError('A current UnlikeOtherAI session is required.')
+    roster = await readRosterCached(
+      context.channel.organizationId,
+      workspace,
+      subject,
+      subjectDeps,
+    )
   } catch (error) {
-    if (error instanceof UoaRosterUnavailableError || error instanceof UoaRosterRejectedError) {
+    if (
+      error instanceof UoaRosterUnavailableError
+      || error instanceof UoaRosterRejectedError
+      || error instanceof UoaRosterIdentityError
+    ) {
       throw new Error(
         'The workspace roster lives in UnlikeOtherAI and could not be read '
         + `(${error.message}). The local user table is not the roster of `

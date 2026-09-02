@@ -217,6 +217,10 @@ person's My Docs. When `kb_list`, `kb_search`, `kb_document_compose`, and
 `kb_document_edit` are all actually available, the structural system-prompt
 block injects that home id and title so the model never invents a `spaceId`.
 
+## Cloud browsers — a second transport, not a second browser surface
+
+Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
+
 ## Agent chat cards — one card system, not an eighth look-alike
 
 Every agent that can talk can post an **interactive card** into a conversation

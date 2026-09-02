@@ -6,6 +6,18 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 COMPOSE="docker compose -f infrastructure/compose/docker-compose.prod.yml"
 
+# One redeploy at a time on this host. The Deploy workflow already serializes
+# its own runs via a GitHub concurrency group, but that cannot see an
+# out-of-band manual run — and two redeploys interleaving (one rsyncing/
+# building while the other rolls containers) corrupts the deploy. The lock
+# lives OUTSIDE the synced tree: rsync --delete would replace the inode and
+# split the lock. Waits up to 30 min for the other run, then gives up loudly.
+exec 9>/var/lock/nessie-redeploy.lock
+if ! flock -w 1800 9; then
+  echo "Another redeploy holds /var/lock/nessie-redeploy.lock — aborting" >&2
+  exit 1
+fi
+
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 

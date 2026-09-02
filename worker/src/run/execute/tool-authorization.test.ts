@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { InferenceResult, InvocationRecord } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, type InferenceResult, type InvocationRecord } from '@nessie/runtime'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -16,6 +16,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { AgenticToolResult } from '../tools.js'
+import { reviewableToolSurface } from './auto-review.js'
 
 /**
  * Regression coverage for the pre-dispatch authorization gate (security
@@ -73,6 +74,7 @@ const runContext = (): RunContext => ({
 type FakePrisma = {
   approvalRequests: Array<Record<string, unknown>>
   auditLog: { createCalls: number; entries: Array<Record<string, unknown>> }
+  taskEvents: Array<Record<string, unknown>>
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
   setRules: (rules: Array<Record<string, unknown>>) => void
@@ -83,6 +85,7 @@ const fakePrisma = (): FakePrisma => {
   const state = {
     approvalRequests: [] as Array<Record<string, unknown>>,
     auditLog: { createCalls: 0, entries: [] as Array<Record<string, unknown>> },
+    taskEvents: [] as Array<Record<string, unknown>>,
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
       rules = next
@@ -122,6 +125,12 @@ const fakePrisma = (): FakePrisma => {
       },
     },
     run: { findUnique: async () => null },
+    taskEvent: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        state.taskEvents.push(data)
+        return {}
+      },
+    },
     toolCall: {
       create: async () => ({}),
       updateMany: async () => ({ count: 1 }),
@@ -190,6 +199,7 @@ type LoopHarness = {
   dispatchedMcp: string[]
   dispatchedExecutor: string[]
   fake: FakePrisma
+  invocationSink: InvocationRecord[]
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
   subAgentToolResults: Array<{ output: string; toolName: string }>
 }
@@ -199,6 +209,7 @@ const runLoop = async (input: {
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
   executorTools?: Record<string, AgenticToolResult>
+  reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
   resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
   // Sequence of sub-agent turns used by the delegate path.
@@ -242,13 +253,34 @@ const runLoop = async (input: {
 
   const builtinName = input.builtinName ?? 'kb_search'
   const subAgentToolResults: Array<{ output: string; toolName: string }> = []
+  const invocationSink: InvocationRecord[] = []
+  let mainTurn = 0
   let subTurn = 0
   const script = input.subAgentTurns ?? []
   const runUtility = async (
-    _messages: unknown,
+    messages: unknown,
     _tools: unknown,
     captured?: { toolResults?: Array<{ output: string; toolName: string }> },
   ): Promise<InferenceResult> => {
+    const first = Array.isArray(messages) ? messages[0] : null
+    if (
+      first
+      && typeof first === 'object'
+      && 'content' in first
+      && typeof first.content === 'string'
+      && first.content.includes("Nessie's action safety reviewer")
+    ) {
+      if (input.reviewer === 'unavailable') throw new Error('utility unavailable')
+      const verdict = input.reviewer ?? 'allow'
+      return finalTurn(
+        verdict === 'unparseable'
+          ? 'not valid reviewer output'
+          : JSON.stringify({
+            reason: verdict === 'deny' ? 'The destination is not authorized.' : 'Routine review.',
+            verdict,
+          }),
+      )
+    }
     if (captured?.toolResults) {
       subAgentToolResults.push(...captured.toolResults)
     }
@@ -273,12 +305,15 @@ const runLoop = async (input: {
       inference: {
         consumeStreamedFlag: () => false,
         runMain: async () => {
-          return toolCallTurn(input.toolName, input.toolArgs ?? {})
+          mainTurn += 1
+          return mainTurn === 1
+            ? toolCallTurn(input.toolName, input.toolArgs ?? {})
+            : finalTurn()
         },
         runUtility,
       },
       isHandoffTurn: false,
-      invocationSink: [],
+      invocationSink,
       mcpToolset,
       resolvedToolIds: input.resolvedBuiltinToolIds ?? new Set([builtinName, 'delegate']),
       stubbedBuiltinToolIds: new Set(),
@@ -304,7 +339,7 @@ const runLoop = async (input: {
       windDownInstruction: null,
     },
   )
-  return { dispatchedExecutor, dispatchedMcp, fake, result, subAgentToolResults }
+  return { dispatchedExecutor, dispatchedMcp, fake, invocationSink, result, subAgentToolResults }
 }
 
 const denyRule = (toolId: string): Record<string, unknown> => ({
@@ -330,6 +365,22 @@ const approvalRule = (toolId: string): Record<string, unknown> => ({
   scope: 'tool',
   scopeId: toolId,
 })
+
+const autoReviewRule = (toolId: string): Record<string, unknown> => ({
+  action: 'invoke',
+  bindings: [{ actorId: '*', actorType: 'user' }],
+  conditions: { reviewMode: 'auto' },
+  effect: 'allow',
+  id: 'rule-auto-review',
+  priority: 1,
+  resourceType: 'tool',
+  scope: 'tool',
+  scopeId: toolId,
+})
+
+const reviewerInvocations = (invocations: InvocationRecord[]) => invocations.filter((invocation) => (
+  invocation.metadata?.utilityPurpose === 'reviewer'
+))
 
 const parseDenied = (haystack: string, toolName: string): Record<string, unknown> => {
   const candidates = haystack.match(/\{[^{}]*"type":"tool_denied"[^{}]*\}/g) ?? []
@@ -428,6 +479,95 @@ test('main MCP: an approval-required allow suspends before dispatch', async () =
   assert.deepEqual(harness.dispatchedMcp, [])
   assert.equal(suspendedApproval(harness.result, 'mcp_fetch'), 'approval-1')
 })
+
+test('auto-review classifies only unsafe builtins, remote MCP calls, and executor actuation', () => {
+  const mcpNames = new Set(['mcp_publish', 'mcp_find_tools', 'mcp_load_tools', 'mcp_drop_tools'])
+  const executorNames = new Set([
+    'executor.browser.act',
+    'executor.browser.observe',
+    'executor.command.run',
+    'executor.file.read',
+  ])
+
+  for (const builtin of BUILTIN_TOOL_DEFINITIONS) {
+    assert.equal(
+      reviewableToolSurface(builtin.id, { executorToolNames: executorNames, mcpToolNames: mcpNames }),
+      builtin.safe ? null : 'builtin',
+      builtin.id,
+    )
+  }
+  assert.equal(reviewableToolSurface('mcp_publish', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'mcp')
+  assert.equal(reviewableToolSurface('mcp_find_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('mcp_load_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('mcp_drop_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('executor.browser.act', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
+  assert.equal(reviewableToolSurface('executor.command.run', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
+  assert.equal(reviewableToolSurface('executor.browser.observe', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('executor.file.read', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+})
+
+test('auto-review allows a live remote MCP call once and meters one utility invocation', async () => {
+  const harness = await runLoop({
+    mcpTools: {
+      mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
+    },
+    reviewer: 'allow',
+    rules: [autoReviewRule('mcp_publish')],
+    toolArgs: { content: 'pošlete to prosím, je to fakt důležitý!' },
+    toolName: 'mcp_publish',
+  })
+
+  assert.deepEqual(harness.dispatchedMcp, ['mcp_publish'])
+  assert.equal(reviewerInvocations(harness.invocationSink).length, 1)
+  assert.equal(harness.fake.approvalRequests.length, 0)
+  assert.deepEqual(harness.fake.taskEvents, [{
+    eventType: 'tool.auto_reviewed',
+    payload: { surface: 'mcp', toolName: 'mcp_publish', verdict: 'allow' },
+    taskId: TASK_ID,
+  }])
+  assert.ok(harness.fake.auditLog.entries.some((entry) => (
+    (entry['metadata'] as { autoReview?: { verdict?: string } })?.autoReview?.verdict === 'allow'
+  )))
+})
+
+test('auto-review denies a real MCP call without dispatching it', async () => {
+  const harness = await runLoop({
+    mcpTools: {
+      mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
+    },
+    reviewer: 'deny',
+    rules: [autoReviewRule('mcp_publish')],
+    toolName: 'mcp_publish',
+  })
+
+  assert.deepEqual(harness.dispatchedMcp, [])
+  assert.equal(deniedOutput(harness.result, 'mcp_publish')['reason'], 'auto_review_denied')
+  assert.equal(reviewerInvocations(harness.invocationSink).length, 1)
+  assert.equal(harness.fake.approvalRequests.length, 0)
+})
+
+for (const [reviewer, expectedReason] of [
+  ['unavailable', 'The automated reviewer was unavailable, so a human must decide.'],
+  ['unparseable', 'The automated reviewer could not produce a reliable decision.'],
+] as const) {
+  test(`auto-review ${reviewer} fails closed to an approval`, async () => {
+    const harness = await runLoop({
+      mcpTools: {
+        mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
+      },
+      reviewer,
+      rules: [autoReviewRule('mcp_publish')],
+      toolName: 'mcp_publish',
+    })
+
+    assert.deepEqual(harness.dispatchedMcp, [])
+    assert.equal(suspendedApproval(harness.result, 'mcp_publish'), 'approval-1')
+    assert.equal(
+      harness.fake.approvalRequests[0]?.['reason'],
+      `Automated review asked for approval before mcp_publish: ${expectedReason}`,
+    )
+  })
+}
 
 // --- main executor ---
 

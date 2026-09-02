@@ -325,6 +325,11 @@ Consequences worth knowing:
   rather than `docker logs nessie-api`. `nessie-postgres`, `nessie-minio`, and
   `nessie-worker` keep their fixed names — they are never blue-greened (the
   worker is recreated in place; queued work waits out the gap).
+- `redeploy.sh` takes a host-wide `flock` on `/var/lock/nessie-redeploy.lock`
+  (30-min wait), so an out-of-band manual run cannot interleave with a Deploy
+  workflow run. The workflow additionally serializes its own runs through the
+  `deploy-production` GitHub concurrency group; queued runs it shows as
+  "cancelled" were subsumed by a newer run that deploys their commits too.
 - Migrations still run **before** the swap, while the old API is serving, so a
   schema change must remain compatible with the previous code for the length
   of the build+swap window (this was already true of the old recreate flow).
