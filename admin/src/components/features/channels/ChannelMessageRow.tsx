@@ -24,6 +24,7 @@ import {
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
+import { AppSetupCard } from './AppSetupCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
@@ -409,6 +410,9 @@ export const ChannelMessageRow = ({
             : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AppSetupCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />

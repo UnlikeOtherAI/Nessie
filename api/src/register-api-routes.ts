@@ -5,6 +5,7 @@ import { registerAgentRoutes } from './routes/agents.js'
 import { registerAgentTodoRoutes } from './routes/agent-todos.js'
 import { registerAlertRoutes } from './routes/alerts.js'
 import { registerAppRoutes } from './routes/apps.js'
+import { registerAppConnectionRequestRoutes } from './routes/app-connection-requests.js'
 import { registerAppsConnectRoutes } from './routes/apps-connect.js'
 import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
@@ -120,6 +121,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerWorkspaceInvitationAcceptanceRoute(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
+  registerAppConnectionRequestRoutes(app, deps)
   registerAppsRegistryRoutes(app, deps)
   registerAppsConnectRoutes(app, deps)
   registerWellKnownOAuthClientRoutes(app, deps)

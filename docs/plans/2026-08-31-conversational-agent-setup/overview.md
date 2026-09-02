@@ -102,13 +102,13 @@ Most of the security-sensitive work is already implemented and must be reused:
   `ConnectProgress` already render the Apps flow
   (`admin/src/facades/apps/connect-hooks.ts`,
   `admin/src/components/features/apps/`).
-- App-installed tool projections already carry
-  `requiresExplicitGrant`, and the worker honours the agent's exact
-  `toolPolicy` keys. New capabilities discovered later therefore remain off
-  until separately granted (`packages/mcp-manage/src/mcp-tool-registry-projection.ts`,
-  `worker/src/run/mcp-toolset.ts`). This is the current runtime truth; Core
-  decision 5 migrates explicit grants to the already-existing `ToolGrant` model
-  so descriptor-version consent and every management surface share one truth.
+- App-installed protected tool projections carry `requiresExplicitGrant`, and
+  the worker honours a direct agent `ToolGrant` whose descriptor fingerprint is
+  current. A capability receives that persisted default grant for the
+  system-managed Personal Assistant when it first appears; a disabled grant is
+  a durable tombstone, so a reprobe never restores it. Shared agents remain
+  explicitly opt-in. Core decision 5 makes that existing `ToolGrant` model the
+  one authority for descriptor-version consent and every management surface.
 - The Personal Assistant already has powerful `connector_*` management tools,
   and `comms_connect_card` proves a tool can put an interactive account card in
   a thread. Those are useful precedents, but neither is the general-agent

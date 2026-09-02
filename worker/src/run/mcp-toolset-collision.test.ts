@@ -3,6 +3,10 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  fingerprintMcpToolDescriptor,
+  mcpToolDescriptorAnnotationsFromMetadata,
+} from '@nessie/mcp-manage'
 
 import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
 import { buildMcpToolset } from './mcp-toolset.js'
@@ -11,38 +15,59 @@ const registryRow = (input: {
   id: string
   managed: boolean
   toolName: string
-}) => ({
-  id: input.id,
-  toolId: `mcp:inst-${input.id}:${input.toolName}`,
-  label: 'Research start',
-  description: '',
-  inputSchema: { type: 'object' },
-  transportConfig: {
-    transport: 'mcp',
-    serverId: `inst-${input.id}`,
-    toolName: input.toolName,
-  },
-  metadata: input.managed ? { requiresExplicitGrant: true } : {},
-  mcpInstanceId: `inst-${input.id}`,
-  mcpInstance: {
-    credentialRef: null,
-    scopeType: input.managed ? 'team' : 'organization',
-    scopeId: input.managed ? 'team-1' : 'org-1',
-    transportConfig: {},
-    catalogEntry: {
-      label: input.managed ? 'Deep Water' : 'Private research',
-      name: input.managed ? 'deep-water' : 'private-research',
-      visibility: input.managed ? 'public' : 'private',
-      integratedProducts: input.managed ? [{ slug: 'deep-water' }] : [],
-      authMethod: 'none',
-      authConfig: { method: 'none' },
-      defaultTransportConfig: {
-        transport: 'http',
-        url: 'https://mcp.example.com/mcp',
+}) => {
+  const description = ''
+  const inputSchema = { type: 'object' }
+  const outputSchema = null
+  const metadata = input.managed ? { requiresExplicitGrant: true } : {}
+  const descriptorFingerprint = fingerprintMcpToolDescriptor({
+    annotations: mcpToolDescriptorAnnotationsFromMetadata(metadata),
+    description,
+    inputSchema,
+    name: input.toolName,
+    outputSchema,
+  })
+  return {
+    id: input.id,
+    toolId: `mcp:inst-${input.id}:${input.toolName}`,
+    label: 'Research start',
+    description,
+    inputSchema,
+    outputSchema,
+    transportConfig: {
+      transport: 'mcp',
+      serverId: `inst-${input.id}`,
+      toolName: input.toolName,
+    },
+    metadata,
+    grants: input.managed
+      ? [{
+        agentId: 'agent-1',
+        config: { descriptorFingerprint },
+        state: 'allowed',
+      }]
+      : [],
+    mcpInstanceId: `inst-${input.id}`,
+    mcpInstance: {
+      credentialRef: null,
+      scopeType: input.managed ? 'team' : 'organization',
+      scopeId: input.managed ? 'team-1' : 'org-1',
+      transportConfig: {},
+      catalogEntry: {
+        label: input.managed ? 'Deep Water' : 'Private research',
+        name: input.managed ? 'deep-water' : 'private-research',
+        visibility: input.managed ? 'public' : 'private',
+        integratedProducts: input.managed ? [{ slug: 'deep-water' }] : [],
+        authMethod: 'none',
+        authConfig: { method: 'none' },
+        defaultTransportConfig: {
+          transport: 'http',
+          url: 'https://mcp.example.com/mcp',
+        },
       },
     },
-  },
-})
+  }
+}
 
 type RowSeed = { id: string; managed: boolean; toolName: string }
 
@@ -57,7 +82,18 @@ const SEEDS: RowSeed[] = [
 
 const makePrisma = (seeds: RowSeed[]): PrismaClient => ({
   toolRegistryEntry: {
-    findMany: async () => seeds.map(registryRow),
+    findMany: async (args: unknown) => {
+      const grantWhere = (args as {
+        select?: { grants?: { where?: { agentId?: string; roleId?: null; state?: string } } }
+      }).select?.grants?.where
+      return seeds.map(registryRow).map((row) => ({
+        ...row,
+        grants: row.grants.filter((grant) =>
+          (!grantWhere?.agentId || grant.agentId === grantWhere.agentId)
+          && (grantWhere?.roleId === undefined || grantWhere.roleId === null)
+          && (!grantWhere?.state || grant.state === grantWhere.state)),
+      }))
+    },
   },
   mcpServerCredentialOverride: {
     findUnique: async () => null,
@@ -157,7 +193,7 @@ test('exposed names do not depend on the order Postgres returns rows in', async 
   }
 })
 
-test('personal-assistant defaults do not let a private collision take DeepWater\'s reserved name', async () => {
+test('a granted DeepWater tool keeps its reserved name ahead of private collisions', async () => {
   const toolset = await build(null)
   assert.deepEqual(
     toolset.entries.map((entry) => entry.exposedName),

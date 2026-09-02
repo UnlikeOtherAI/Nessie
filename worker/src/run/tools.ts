@@ -4,6 +4,8 @@ import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
 import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
 import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
+  runAppConnectRequestTool,
+  runAppSearchTool,
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
@@ -145,6 +147,10 @@ const executeBuiltinToolUncorrected = async (
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
   if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {
+    case 'app_search':
+      return wrapTool(inputSummary, () => runAppSearchTool(context, args))
+    case 'app_connect_request':
+      return wrapTool(inputSummary, () => runAppConnectRequestTool(context, args))
     case 'workspace_search':
       return wrapTool(inputSummary, () =>
         runWorkspaceSearchTool(context, String(args.query ?? ''), args.limit),

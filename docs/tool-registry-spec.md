@@ -85,10 +85,13 @@ model ToolGrant {
 
   tool      ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
 
-  // Partial unique indexes via raw SQL migration:
-  // CREATE UNIQUE INDEX tool_grant_role_unique ON tool_grants(tool_id, role_id) WHERE role_id IS NOT NULL AND agent_id IS NULL;
-  // CREATE UNIQUE INDEX tool_grant_agent_unique ON tool_grants(tool_id, agent_id) WHERE agent_id IS NOT NULL AND role_id IS NULL;
-  // CHECK constraint: (role_id IS NOT NULL AND agent_id IS NULL) OR (role_id IS NULL AND agent_id IS NOT NULL)
+  // `20260901200000_tool_grant_principal_integrity` normalizes historical
+  // rows, supplies the partial unique indexes and validates the
+  // exactly-one-principal CHECK constraint below.
+  // A protected MCP connector grant is always the direct `(toolId, agentId)`
+  // form and carries its canonical descriptor fingerprint in `config`.
+  // Deleting that agent cascades its direct grants; they cannot become
+  // principal-less rows.
   @@index([roleId])
   @@index([agentId])
 }

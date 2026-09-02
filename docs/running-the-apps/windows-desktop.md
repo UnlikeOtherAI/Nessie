@@ -9,6 +9,10 @@ pnpm install
 pnpm --filter @nessie/desktop exec tauri build
 ```
 
+If the local Windows Node installer omits its `LICENSE` file, the build
+retrieves and validates the official licence for that exact Node version before
+including it in the hash-verified runtime layout.
+
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
 
 To create a build whose executor controls can be used, pin the publisher:

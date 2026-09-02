@@ -7,11 +7,10 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { prepareExecutorRuntime } from '../../executor/scripts/prepare-runtime.mjs'
+import { prepareExecutorRuntime, resolveWindowsPackagedNodeLicense } from '../../executor/scripts/prepare-runtime.mjs'
 
 const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryDirectory = resolve(desktopDirectory, '..')
-
 // On Windows owner-only executor state is a DACL that only the native helper
 // can write and verify, so the helper ships beside `node.exe` and is pinned by
 // the runtime manifest. POSIX hosts prove privacy with ownership and mode bits
@@ -33,8 +32,15 @@ const windowsNativeHelperPath = () => {
   return helperPath
 }
 
+const windowsRuntimeOptions = process.platform === 'win32'
+  ? {
+    nativeHelperPath: windowsNativeHelperPath(),
+    nodeLicenseContents: await resolveWindowsPackagedNodeLicense(),
+  }
+  : {}
+
 await prepareExecutorRuntime({
   entryPoint: resolve(repositoryDirectory, 'executor/src/index.ts'),
   outputDirectory: resolve(desktopDirectory, 'src-tauri/resources/executor-runtime'),
-  ...(process.platform === 'win32' ? { nativeHelperPath: windowsNativeHelperPath() } : {}),
+  ...windowsRuntimeOptions,
 })

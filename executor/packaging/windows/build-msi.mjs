@@ -16,7 +16,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { prepareExecutorRuntime } from '../../scripts/prepare-runtime.mjs'
+import { prepareExecutorRuntime, resolveWindowsPackagedNodeLicense } from '../../scripts/prepare-runtime.mjs'
 import { BUILT_BINARIES, msiFileName, msiVersion } from './msi-plan.mjs'
 
 const run = promisify(execFile)
@@ -188,6 +188,7 @@ const stage = async () => {
   await prepareExecutorRuntime({
     entryPoint: join(executorDirectory, 'src/index.ts'),
     nativeHelperPath,
+    nodeLicenseContents: await resolveWindowsPackagedNodeLicense(),
     outputDirectory: stagingDirectory,
     platform: 'win32',
   })

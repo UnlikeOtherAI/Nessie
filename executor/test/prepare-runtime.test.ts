@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 import { nodeExecutableName, nodeLicensePath, prepareExecutorRuntime } from '../scripts/prepare-runtime.mjs'
 import { collectExecutorRuntimeFacts, verifyExecutorRuntime } from '../src/runtime-integrity.js'
 
-const ENTRY_POINT = new URL('../src/index.ts', import.meta.url).pathname
+const ENTRY_POINT = fileURLToPath(new URL('../src/index.ts', import.meta.url))
 
 const digest = async (path: string): Promise<string> => (
   createHash('sha256').update(await readFile(path)).digest('hex')
@@ -19,6 +20,7 @@ test('the shared preparation writes the exact runtime layout both supervisors ve
   try {
     const prepared = await prepareExecutorRuntime({
       entryPoint: ENTRY_POINT,
+      nodeLicenseContents: Buffer.from('node license'),
       outputDirectory: join(directory, 'executor-runtime'),
     })
 
@@ -113,7 +115,9 @@ test('the POSIX layout reads the licence one directory above the Node binary', a
     assert.equal(prepared.nodePath, join(prepared.runtimeDirectory, 'node'))
     const manifest = JSON.parse(await readFile(prepared.manifestPath, 'utf8')) as Record<string, unknown>
     assert.equal(manifest.nodeExecutable, 'node')
-    assert.equal((await lstat(prepared.nodePath)).mode & 0o111, 0o111)
+    if (process.platform !== 'win32') {
+      assert.equal((await lstat(prepared.nodePath)).mode & 0o111, 0o111)
+    }
     assert.equal(await readFile(join(prepared.runtimeDirectory, 'NODE_LICENSE'), 'utf8'), 'node license')
   } finally {
     await rm(directory, { force: true, recursive: true })
@@ -135,6 +139,30 @@ test('a Node install with no licence beside it stops the build', async () => {
         platform: 'win32',
       }),
       /Unable to locate the Node\.js license/,
+    )
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+test('an installer-facing caller can provide the official licence when Node omits it', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-prepare-provided-licence-'))
+  try {
+    const nodeExecutablePath = join(directory, 'nodejs', 'node.exe')
+    await mkdir(dirname(nodeExecutablePath), { recursive: true })
+    await writeFile(nodeExecutablePath, 'windows-node-binary')
+
+    const prepared = await prepareExecutorRuntime({
+      entryPoint: ENTRY_POINT,
+      nodeExecutablePath,
+      nodeLicenseContents: Buffer.from('official node license'),
+      outputDirectory: join(directory, 'executor-runtime'),
+      platform: 'win32',
+    })
+
+    assert.equal(
+      await readFile(join(prepared.runtimeDirectory, 'NODE_LICENSE'), 'utf8'),
+      'official node license',
     )
   } finally {
     await rm(directory, { force: true, recursive: true })

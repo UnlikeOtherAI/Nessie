@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { BuiltinToolDefinition } from '@nessie/runtime'
+import {
+  APP_CONNECT_REQUEST_TOOL_DEFINITION,
+  type BuiltinToolDefinition,
+} from '@nessie/runtime'
 
 import { authorizeToolCall, resolveAgentTools } from './tool-policy.js'
 
@@ -74,6 +77,32 @@ test('an explicit deny still blocks the explicit-grant builtin', () => {
 test('ordinary builtins stay allowed by default (no regression)', () => {
   const decision = authorizeToolCall('web_search', enabled, defs, null, null, 'shared')
   assert.deepEqual(decision, { allowed: true })
+})
+
+test('the personal assistant can request an app connection by default, but an owner deny wins', () => {
+  const enabledApps = new Set([APP_CONNECT_REQUEST_TOOL_DEFINITION.id])
+  assert.deepEqual(
+    authorizeToolCall(
+      APP_CONNECT_REQUEST_TOOL_DEFINITION.id,
+      enabledApps,
+      [APP_CONNECT_REQUEST_TOOL_DEFINITION],
+      null,
+      null,
+      'personal_assistant',
+    ),
+    { allowed: true },
+  )
+  assert.deepEqual(
+    authorizeToolCall(
+      APP_CONNECT_REQUEST_TOOL_DEFINITION.id,
+      enabledApps,
+      [APP_CONNECT_REQUEST_TOOL_DEFINITION],
+      { [APP_CONNECT_REQUEST_TOOL_DEFINITION.id]: false },
+      null,
+      'personal_assistant',
+    ),
+    { allowed: false, reason: 'agent_policy_denied' },
+  )
 })
 
 test('a temporary-context narrowing below the threshold stays fully inline', () => {

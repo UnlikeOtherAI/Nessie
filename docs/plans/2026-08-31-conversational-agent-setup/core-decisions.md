@@ -290,10 +290,27 @@ Apps, Agent Tools and chat call one locked transactional bulk-grant service rath
 the current client-side one-request-per-capability fan-out. Update `docs/tool-registry-spec.md`
 and the migration path in the same slice so no surface can disagree with runtime.
 
-This removes the current Personal Assistant implicit-allow exception in `isMcpRegistryRowExposed`;
-`agentKind === 'personal_assistant'` may not satisfy an explicit-grant check on its own. The
-worker's registry lookup must receive the matching live `ToolGrant` data, including its
-descriptor fingerprint, before it exposes either a PA or ordinary-agent connector tool.
+The compatibility migration runs at API startup, before routes or an embedded
+worker become available, and is safe to repeat: it re-reads each current
+protected MCP descriptor under that agent's policy lock, then materializes its
+current fingerprint only when the direct allowed agent grant is missing that
+fingerprint (or absent). Once present, a fingerprint is immutable to startup
+backfill — including when it is stale — so a changed descriptor requires new
+explicit consent. The existing protected-policy mutation may refresh the
+fingerprint when a person explicitly enables the tool. Role grants and
+ordinary/builtin policy keys are not part of this compatibility path.
+
+This removes the current Personal Assistant implicit-allow exception in
+`isMcpRegistryRowExposed`; `agentKind === 'personal_assistant'` may not satisfy
+an explicit-grant check on its own. Instead, every existing Personal Assistant
+is provisioned with a direct allowed grant when a protected connector capability
+first appears, and a PA created later receives the same missing grants in its
+creation transaction. This is the default access the Apps experience shows.
+The Apps control can revoke that default: it stores a direct `denied` tombstone,
+which every reconciliation path preserves. Re-enabling writes a fresh current
+fingerprint explicitly. The worker's registry lookup must receive the matching
+live `ToolGrant` data, including its descriptor fingerprint, before it exposes
+either a PA or ordinary-agent connector tool.
 
 ### 6. Scope is explicit and is a hard ceiling
 

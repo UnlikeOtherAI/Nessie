@@ -47,11 +47,36 @@ const nativeHelperName = (platform) => (
   platform === 'win32' ? 'nessie-executor-native.exe' : 'nessie-executor-native'
 )
 
-const requireNodeLicense = async (path, nodeExecutablePath) => {
+const NODE_LICENSE_URL = `https://raw.githubusercontent.com/nodejs/node/v${process.versions.node}/LICENSE`
+
+const readNodeLicense = async (path, nodeExecutablePath) => {
   try {
-    await readFile(path)
+    return await readFile(path)
   } catch {
     throw new Error(`Unable to locate the Node.js license beside ${nodeExecutablePath}.`)
+  }
+}
+
+/**
+ * Windows' MSI and desktop builders may run under a Node installer that omits
+ * LICENSE. Only those Windows installer-facing callers may obtain the official
+ * licence for their exact Node version; all ordinary preparations remain local
+ * and fail closed when their package provenance is incomplete.
+ */
+export const resolveWindowsPackagedNodeLicense = async (nodeExecutablePath = process.execPath) => {
+  const localPath = nodeLicensePath(nodeExecutablePath, 'win32')
+  try {
+    return await readNodeLicense(localPath, nodeExecutablePath)
+  } catch {
+    const response = await fetch(NODE_LICENSE_URL)
+    if (!response.ok) {
+      throw new Error(`Unable to download the Node.js license for ${process.versions.node}.`)
+    }
+    const license = await response.text()
+    if (!license.startsWith('Node.js is licensed for use as follows:')) {
+      throw new Error(`Downloaded Node.js license for ${process.versions.node} was invalid.`)
+    }
+    return Buffer.from(license)
   }
 }
 
@@ -63,10 +88,13 @@ const requireNodeLicense = async (path, nodeExecutablePath) => {
  *
  * `platform` and `nodeExecutablePath` are injectable so both layouts are
  * exercised from one host; every caller in the repository takes the defaults.
+ * `nodeLicenseContents` lets an installer-facing caller supply the official
+ * licence when its Node distribution omits that otherwise required file.
  */
 export const prepareExecutorRuntime = async ({
   entryPoint,
   nativeHelperPath,
+  nodeLicenseContents,
   nodeExecutablePath = process.execPath,
   outputDirectory,
   platform = process.platform,
@@ -78,7 +106,7 @@ export const prepareExecutorRuntime = async ({
   const licenseSourcePath = nodeLicensePath(nodeExecutablePath, platform)
   const isPosix = platform !== 'win32'
 
-  await requireNodeLicense(licenseSourcePath, nodeExecutablePath)
+  const license = nodeLicenseContents ?? await readNodeLicense(licenseSourcePath, nodeExecutablePath)
   await rm(runtimeDirectory, { force: true, recursive: true })
   await mkdir(runtimeDirectory, { recursive: true })
 
@@ -92,7 +120,7 @@ export const prepareExecutorRuntime = async ({
   })
   await copyFile(nodeExecutablePath, nodePath)
   if (isPosix) await chmod(nodePath, 0o755)
-  await copyFile(licenseSourcePath, resolve(runtimeDirectory, 'NODE_LICENSE'))
+  await writeFile(resolve(runtimeDirectory, 'NODE_LICENSE'), license, { mode: 0o644 })
 
   // The helper establishes and proves the Windows state DACL, so a package that
   // ships one pins its bytes in the same manifest as the runtime: an unverified

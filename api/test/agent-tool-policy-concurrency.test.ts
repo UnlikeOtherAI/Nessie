@@ -45,6 +45,18 @@ test('targeted grant and stale generic PUT serialize without losing either chang
   })
   let readCalls = 0
   let updateCalls = 0
+  const registryEntry = {
+    description: 'Starts a managed research job.',
+    handlerKind: 'mcp',
+    id: explicitToolId,
+    inputSchema: { type: 'object' },
+    mcpInstance: null,
+    metadata: { requiresExplicitGrant: true },
+    organizationId: null,
+    outputSchema: null,
+    toolId: 'mcp:deep-water:research_start',
+    transportConfig: { toolName: 'research_start' },
+  }
 
   const acquire = async () => {
     if (locked) {
@@ -80,17 +92,16 @@ test('targeted grant and stale generic PUT serialize without losing either chang
       },
     },
     toolRegistryEntry: {
+      findFirst: async () => registryEntry,
       findMany: async ({ where }: {
         where: { id: { in: string[] } }
       }) =>
         where.id.in.includes(explicitToolId)
-          ? [{
-              handlerKind: 'mcp',
-              id: explicitToolId,
-              metadata: { requiresExplicitGrant: true },
-              toolId: 'mcp:deep-water:research_start',
-            }]
+          ? [registryEntry]
           : [],
+    },
+    toolGrant: {
+      updateMany: async () => ({ count: 1 }),
     },
   })
   const prisma = {
@@ -105,12 +116,7 @@ test('targeted grant and stale generic PUT serialize without losing either chang
       }
     },
     toolRegistryEntry: {
-      findFirst: async () => ({
-        handlerKind: 'mcp',
-        id: explicitToolId,
-        metadata: { requiresExplicitGrant: true },
-        toolId: 'mcp:deep-water:research_start',
-      }),
+      findFirst: async () => registryEntry,
     },
   } as unknown as PrismaClient
 

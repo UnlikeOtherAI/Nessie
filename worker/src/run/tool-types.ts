@@ -3,6 +3,7 @@ import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
 import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
 import type { DocumentStreamRecorder } from './execute/document-stream.js'
+import type { RunContext } from './execute/types.js'
 import type {
   ConnectorUsage,
   LedgerIdentityService,
@@ -90,10 +91,14 @@ export type BuiltinToolRuntimeContext = {
   realtimeTransport: PgRealtimeTransport
   run: {
     id: string
+    /** True only for a live human conversational turn, never automation. */
+    interactive?: boolean
     messageId: string
     originatingUserId?: string | null
     principalUserId?: string | null
     threadId: string
   }
+  /** The complete run context used by the one disclosure-stamped message write. */
+  runContext?: RunContext
   toolCallId: string | null
 }
