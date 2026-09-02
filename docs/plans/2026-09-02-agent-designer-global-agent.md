@@ -125,22 +125,28 @@ grants. Updates ship by redeploy (the scopes doc already adjudicated
 code-registry over a DB catalog). Bootstrap runs where the PA's does (login,
 provisioning) plus lazily from the surfaces below.
 
-**The Designer's shape needs a fourth CHECK tuple.** The Designer is
-DM-homed and acts as the requesting user, i.e.
-`(systemManaged=true, shared, dm_only, act_as_requesting_user)` — which
-`agents_system_managed_invariants_chk` forbids today. Extend the CHECK with
-that tuple. (Note: `createExternalAgentData` already writes exactly this
-tuple and violates the committed CHECK — a latent bug caught while mapping
-this; the new tuple legalizes the shape both need. Flagged separately.)
+**The Designer's shape needs a fourth CHECK tuple — already shipped.** The
+Designer is DM-homed and acts as the requesting user, i.e.
+`(systemManaged=true, shared, dm_only, act_as_requesting_user)`, which
+`agents_system_managed_invariants_chk` forbade. (Note: `createExternalAgentData`
+already wrote exactly this tuple and violated the committed CHECK — a latent
+bug caught while mapping this. Fixing it legalizes the shape both need, so
+migration `20260902170000_external_agent_surface_invariants` ships that fourth
+tuple; the Designer work must **not** add a second one.)
 
 ### D2 — Home surface: a per-user private DM
 
 `dmKey = gagent:{slug}:{orgId}:{userId}`, `type='dm'`,
 `visibility='private'`, single member (forcibly reduced, PA-style), in a
 hidden system team, with a new `systemChannelType = 'system_agent'`. The DM
-key CHECK must admit the new prefix **in the same migration** (the
-`extagent:` lesson). Three things hang off the channel type, all mirroring
-the PA DM:
+key CHECK (`channels_personal_assistant_surface_chk`) must admit the new
+prefix **in the same migration**. The `extagent:` lesson is not hypothetical:
+`external_agent` was added to `ChannelSystemType` without that CHECK learning
+the key, so every external-agent DM insert violated it until migration
+`20260902170000_external_agent_surface_invariants` added its arm. Add
+`system_agent` the same way — an arm keyed to its own system-channel type,
+never a widened pattern. Three things hang off the channel type, all
+mirroring the PA DM:
 
 - `thread-message-create.ts` stamps `effectiveUserId = poster` (safe: one
   member), so the Designer acts as the person it is talking to.
@@ -543,8 +549,15 @@ the fix is the `canEditAgent` model, decided 2026-09-02.)
 
 ## Adjacent defects noticed while mapping (filed separately)
 
-- `createExternalAgentData` writes a tuple `agents_system_managed_invariants_chk`
-  forbids; only a fake-Prisma test covers it.
+- ~~`createExternalAgentData` writes a tuple `agents_system_managed_invariants_chk`
+  forbids; only a fake-Prisma test covers it.~~ **Fixed** in migration
+  `20260902170000_external_agent_surface_invariants`, which also had to extend
+  `channels_personal_assistant_surface_chk`: `external_agent` had been added to
+  `ChannelSystemType` without the surface CHECK learning the `extagent:` DM key,
+  so the bootstrap failed twice over. `api/test/external-agent-bootstrap-db.test.ts`
+  now drives the real service against Postgres — the cast fake could not see
+  either CHECK. This is the `extagent:` lesson D2 cites, and D1's fourth tuple
+  ships with it.
 - `POST /api/designer/chat` never passes `pageContext` into
   `buildDesignerSystemPrompt` (4th arg dropped), so the page-scoped control
   rule is client-side only.
