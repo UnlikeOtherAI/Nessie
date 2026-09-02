@@ -596,10 +596,9 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   **no** raw hex or Tailwind named-color utilities; they reference tokens via
   `var(--x)` / `bg-[var(--x)]`.
 - Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
-  (`/settings/appearance`); choice persists locally in
-  `localStorage["nessie.theme"]` for logged-out screens and is also saved to
-  `User.preferences.theme` for signed-in users so web, desktop, and mobile use
-  the same account theme.
+  (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
+  for logged-out screens and on `User.preferences.theme` for signed-in users, so
+  web, desktop, and mobile use the same account theme.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
@@ -610,8 +609,8 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   shells outside `Dialog`). The inventory, the proposed kit, the scale and the
   phased migration are in
   [docs/plans/2026-09-01-content-design-system/overview.md](docs/plans/2026-09-01-content-design-system/overview.md);
-  navigation, page headers, buttons and chat are deliberately outside it.
-  One rule from it applies now, ahead of the kit: **no nesting** — a card
+  navigation, page headers, buttons and chat are deliberately outside it. One
+  rule from it applies now, ahead of the kit: **no nesting** — a card
   never contains a card, a table never contains a table, a bordered box never
   sits inside a bordered box. Depth is dividers and spacing, not a second
   frame. A second rule is decided ahead of the kit too: **big elements are
@@ -632,6 +631,16 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
   parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
   `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
+- **One identity picture, one shape, one source.** Every avatar in the admin is
+  `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
+  for its kind; a call site says what it depicts and never assembles a tile. Its
+  radius is proportional (`identityTileRadius`) because the `--radius-*` tokens
+  are re-declared on `:root`, so `rounded-md` was a flat 10px at every size — a
+  96px portrait read as a square, an 18px tile a circle. An agent's picture
+  resolves from its **id** through `providers/AgentIdentityProvider.tsx`, since
+  `GET /api/agents` omits `systemManaged` agents — which is why the Personal
+  Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
+  [identity avatars](docs/plans/2026-09-02-identity-avatars.md).
 - **One composer, and at rest it is one line.** Every message composer in the
   admin is `components/features/channels/ChannelComposer.tsx` (channel feed,
   thread reply panel, both info drawers, the Threads inbox card). At rest it is
@@ -696,6 +705,17 @@ callback page, `noopener` popup), installing-is-not-granting via
 [docs/plans/2026-08-29-apps-catalogue/overview.md](docs/plans/2026-08-29-apps-catalogue/overview.md).
 Facts not restated there:
 
+- **Installed is one flat shelf; categories are a catalogue affordance.**
+  `?installed=true` with no category returns a single alphabetical page spanning
+  every category (`loadInstalledPage`), paged on `offset` against
+  `installedCount` exactly as a category page is. It renders through the same
+  `AppCategorySection` with `category: null` + `standalone` (`installedShelf`),
+  so the flat list is a parameter of the shelf, never a second grid; the Featured
+  strip is hidden there because, uncurated, it *is* that list. An empty grid also
+  suppresses the footer nudge — the two said the same sentence with the same
+  button one line apart — and `catalogueEmptyMessage` returns `actions`, so a
+  search that found nothing inside Installed offers **Search all apps** (drops
+  the narrowing, keeps the query) beside Add custom app.
 - **Ingested rows are always `community`.** Trust decided from the advertised
   endpoint was forgeable: the record author picks that URL.
 - **An app icon resolves on first view and the instance shares one copy.**

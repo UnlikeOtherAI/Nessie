@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { getInitials } from '../../lib/avatar'
 import { useAuthedObjectUrl, useAuthedObjectUrlFromPath } from '../../lib/uploads'
 import { AvatarBadges } from './AvatarBadges'
+import { IdentityTile } from './IdentityTile'
+import { identityInitials } from './identity-shape'
 
 // Everything that can identify a picture for a user. Precedence: the picture
 // UnlikeOtherAI holds for them, then a locally uploaded attachment, then the
@@ -84,7 +84,7 @@ export const useResolvedAvatarUrl = (
 type UserAvatarProps = AvatarSources & {
   displayName: string
   token: string | null
-  // Rendered diameter in pixels.
+  // Rendered edge length in pixels.
   size?: number
   className?: string
   // Overlay the user's presence dot / active-status emoji. Both need `userId`.
@@ -96,9 +96,10 @@ type UserAvatarProps = AvatarSources & {
   presenceRingWidth?: number
 }
 
-// Rounded-square user avatar: renders the resolved image (UnlikeOtherAI >
-// local upload > Google) and falls back to initials on an empty source or a
-// failed/404 image load. Presence + active-status badges are opt-in.
+// A person's picture. Resolution (UnlikeOtherAI > local upload > Google >
+// initials) lives here; the tile itself is the shared `IdentityTile`, so a
+// person, an agent and a workspace are the same shape at the same size.
+// Presence + active-status badges are opt-in.
 export const UserAvatar = ({
   displayName,
   token,
@@ -112,40 +113,21 @@ export const UserAvatar = ({
   ...sources
 }: UserAvatarProps) => {
   const url = useResolvedAvatarUrl(sources, token)
-  const [broken, setBroken] = useState(false)
 
-  // Reset the error flag whenever the source URL changes (e.g. the UOA relay
-  // finishes loading after the provider picture was shown).
-  useEffect(() => setBroken(false), [url])
-
-  const showImage = Boolean(url) && !broken
-
-  const circle = (
-    <div
-      aria-hidden="true"
-      className={[
-        'flex flex-shrink-0 items-center justify-center overflow-hidden',
-        'rounded-md',
-        'font-bold text-[color:var(--on-accent)]',
-        className ?? '',
-      ].join(' ')}
-      style={{ width: size, height: size, background: 'var(--accent)', fontSize: Math.round(size * 0.36) }}
-    >
-      {showImage ? (
-        <img
-          alt={displayName}
-          className="h-full w-full object-cover"
-          onError={() => setBroken(true)}
-          src={url ?? undefined}
-        />
-      ) : (
-        <span>{getInitials(displayName)}</span>
-      )}
-    </div>
+  const tile = (
+    <IdentityTile
+      background="var(--accent)"
+      className={className}
+      color="var(--on-accent)"
+      fallback={{ kind: 'initials', text: identityInitials(displayName) }}
+      imageUrl={url}
+      label={displayName}
+      size={size}
+    />
   )
 
   if (!sources.userId || (!showPresence && !showStatus)) {
-    return circle
+    return tile
   }
 
   return (
@@ -158,7 +140,7 @@ export const UserAvatar = ({
       size={size}
       userId={sources.userId}
     >
-      {circle}
+      {tile}
     </AvatarBadges>
   )
 }

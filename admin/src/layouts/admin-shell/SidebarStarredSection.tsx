@@ -49,6 +49,9 @@ export const SidebarStarredSection = ({
   const { token } = useAuthSession();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
+  // One row height for every starred identity — agent, project, channel or
+  // person — so the column reads as one list rather than four.
+  const avatarSize = nativeTouchShell ? 24 : 18;
   if (entries.length === 0) {
     return null;
   }
@@ -83,7 +86,7 @@ export const SidebarStarredSection = ({
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
             >
-              <AgentAvatar agent={agent} size="xs" token={token} />
+              <AgentAvatar agent={agent} size={avatarSize} token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
               <span
                 className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
@@ -141,7 +144,7 @@ export const SidebarStarredSection = ({
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
                   avatarEmoji={project.avatarEmoji}
-                  size={18}
+                  size={avatarSize}
                   token={token}
                 />
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
@@ -207,7 +210,7 @@ export const SidebarStarredSection = ({
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               showPresence={nativeTouchShell}
               showStatus={false}
-              size={nativeTouchShell ? 24 : 18}
+              size={avatarSize}
               token={token}
               userId={person.id}
             />

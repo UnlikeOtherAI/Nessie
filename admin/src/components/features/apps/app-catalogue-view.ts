@@ -150,18 +150,56 @@ export const sectionPageSize = (columns: number): number =>
 
 // ─── Category sections ──────────────────────────────────────────────────────
 
-export type AppCategorySectionModel = {
-  /** The slice the server sent for this category — never the whole category. */
+/**
+ * One shelf of the catalogue: the slice that arrived, and what SQL says exists.
+ *
+ * A shelf is usually a category, but not always. The Installed view is a single
+ * shelf spanning every category (`category: null`) — a person's connected apps
+ * are a list of things they own, not a store to browse, and three apps split
+ * under three headings is three headings and no shelf. Both shapes page the
+ * same way and render through the same component, so Installed is a *parameter*
+ * of the shelf rather than a second grid beside it (`AGENTS.md` rule zero #4).
+ */
+export type AppShelfModel = {
+  /** The slice the server sent for this shelf — never the whole shelf. */
   apps: AppSummaryRecord[]
-  category: AppCategory
+  /** The category this shelf holds, or null for the flat Installed shelf. */
+  category: AppCategory | null
   label: string
   /**
-   * Apps in this category under the active narrowing, counted in SQL over the
+   * Apps on this shelf under the active narrowing, counted in SQL over the
    * unsliced set. `apps.length` is what arrived; this is what exists, and it is
    * the number "Show all N" says out loud.
    */
   total: number
 }
+
+/** A shelf that is a category — what the dropdown and the catalogue body use. */
+export type AppCategorySectionModel = AppShelfModel & { category: AppCategory }
+
+/**
+ * The key a shelf is addressed by — in the DOM, and in its paging query. The
+ * flat Installed shelf has no category, so it is named for what it is.
+ */
+export const shelfKey = (shelf: Pick<AppShelfModel, 'category'>): string =>
+  shelf.category ?? 'installed'
+
+/**
+ * Everything this caller has connected, as one shelf.
+ *
+ * `total` is `installedCount` — the server's aggregate over the whole installed
+ * set, which is exactly the population of this flat list — so "Load more (N
+ * left)" is right even though the response carried one bounded page.
+ */
+export const installedShelf = (
+  apps: readonly AppSummaryRecord[],
+  installedCount: number,
+): AppShelfModel => ({
+  apps: [...apps],
+  category: null,
+  label: APP_FILTER_LABELS.installed,
+  total: installedCount,
+})
 
 /**
  * One section per category the server counted, in the taxonomy's fixed order —
@@ -243,7 +281,7 @@ export const appCategoryOptions = (
 
 /** How many cards a collapsed section shows: two rows of whatever arrived. */
 export const sectionVisibleApps = (
-  section: AppCategorySectionModel,
+  section: AppShelfModel,
   pageSize: number,
   expanded: boolean,
 ): AppSummaryRecord[] =>
@@ -259,12 +297,12 @@ export const sectionVisibleApps = (
  * that most needs paging.
  */
 export const sectionOffersShowAll = (
-  section: AppCategorySectionModel,
+  section: AppShelfModel,
   pageSize: number,
 ): boolean => section.total > Math.min(pageSize, section.apps.length)
 
 export const sectionToggleLabel = (
-  section: AppCategorySectionModel,
+  section: AppShelfModel,
   expanded: boolean,
 ): string => (expanded ? 'Show less ↑' : `Show all ${section.total} →`)
 
@@ -296,23 +334,52 @@ export const searchTruncationNote = (shown: number, total: number): string | nul
 
 // ─── Empty grid ─────────────────────────────────────────────────────────────
 
-export type AppCatalogueEmptyModel = { actionLabel: string; message: string }
-
 const ADD_CUSTOM_LABEL = 'Add custom app'
+
+export type AppCatalogueNudge = { actionLabel: string; message: string }
 
 /**
  * The nudge under the grid, present even with nothing typed: the escape hatch
  * has to exist before a person has already failed to find what they came for.
+ *
+ * It is deliberately *not* rendered under an empty grid. The empty state says
+ * the same thing with the same button one line higher, and two identical offers
+ * stacked on an otherwise blank page read as a rendering fault rather than as
+ * emphasis.
  */
-export const CATALOGUE_FOOTER_NUDGE: AppCatalogueEmptyModel = {
+export const CATALOGUE_FOOTER_NUDGE: AppCatalogueNudge = {
   actionLabel: ADD_CUSTOM_LABEL,
   message: "Can't find what you need? Connect a tool by its address.",
 }
 
 /**
+ * What an empty grid offers. `browse-all` drops the Installed narrowing and
+ * keeps whatever was typed, so a search that found nothing among six connected
+ * apps can be re-asked of the whole catalogue in one press.
+ */
+export type AppCatalogueEmptyActionId = 'add-custom' | 'browse-all'
+
+export type AppCatalogueEmptyAction = { id: AppCatalogueEmptyActionId; label: string }
+
+/** The first action is the one to press; the rest are secondary. */
+export type AppCatalogueEmptyModel = {
+  actions: AppCatalogueEmptyAction[]
+  message: string
+}
+
+const ADD_CUSTOM_ACTION: AppCatalogueEmptyAction = {
+  id: 'add-custom',
+  label: ADD_CUSTOM_LABEL,
+}
+
+/**
  * Which nothing this is. "No results" and "nothing published yet" and "you have
- * connected nothing" are three different situations with three different next
- * moves, and one generic sentence answers none of them.
+ * connected nothing" are different situations with different next moves, and
+ * one generic sentence answers none of them.
+ *
+ * Every sentence here names a move that is a button beside it. The copy used to
+ * say "Switch to All" while the only control said "Add custom app" — an
+ * instruction nobody could click, next to a button that did something else.
  *
  * `query` must be the query the *rendered* response answers, not whatever the
  * search box currently holds: while "git" is in flight the page is still
@@ -327,31 +394,33 @@ export const catalogueEmptyMessage = (input: {
   const query = input.query.trim()
   if (input.totalCount === 0) {
     return {
-      actionLabel: ADD_CUSTOM_LABEL,
+      actions: [ADD_CUSTOM_ACTION],
       message:
         'No apps have been published to your catalogue yet. '
         + 'Connect a tool by its address to add the first one.',
     }
   }
+  if (query.length > 0 && input.filter === 'installed') {
+    // The narrowing is half the answer: the app may well be in the catalogue,
+    // it is just not one of the ones this workspace has connected.
+    return {
+      actions: [{ id: 'browse-all', label: 'Search all apps' }, ADD_CUSTOM_ACTION],
+      message: `None of your installed apps match "${query}".`,
+    }
+  }
   if (query.length > 0) {
     return {
-      actionLabel: ADD_CUSTOM_LABEL,
+      actions: [ADD_CUSTOM_ACTION],
       message:
         `No apps match "${query}". Try a different word — `
         + 'or connect a tool by its address.',
     }
   }
   if (input.filter === 'installed') {
-    // The sentence used to say "Switch to All" while the only button said "Add
-    // custom app" — an instruction that was not clickable, beside a control
-    // that did something else. Now the words describe the state and the button
-    // is the action they name.
     return {
-      actionLabel: ADD_CUSTOM_LABEL,
-      message:
-        "You haven't connected any apps yet. Browse the catalogue with the All "
-        + 'filter above, or connect a tool by its address.',
+      actions: [{ id: 'browse-all', label: 'Browse all apps' }, ADD_CUSTOM_ACTION],
+      message: "You haven't connected any apps yet.",
     }
   }
-  return CATALOGUE_FOOTER_NUDGE
+  return { actions: [ADD_CUSTOM_ACTION], message: CATALOGUE_FOOTER_NUDGE.message }
 }

@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react'
-import { Avatar } from '../primitives/Avatar'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { AgentAvatar } from './AgentAvatar'
 
 type AgentRowProps = {
   action?: ReactNode
+  /** Resolves the agent's portrait through the identity directory. */
+  agentId?: string
   currentTask?: string
   footer?: string
   onClick?: () => void
@@ -13,6 +16,7 @@ type AgentRowProps = {
 
 export const AgentRow = ({
   action,
+  agentId,
   currentTask,
   footer,
   onClick,
@@ -20,10 +24,11 @@ export const AgentRow = ({
   subtitle,
   title,
 }: AgentRowProps) => {
+  const { token } = useAuthSession()
   const content = (
     <>
       <div className="flex items-start gap-3">
-        <Avatar label={title} size="sm" />
+        <AgentAvatar agent={{ id: agentId ?? '', name: title, role: subtitle }} agentId={agentId} size={32} token={token} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <div className="truncate font-medium text-[color:var(--tx)]">{title}</div>
