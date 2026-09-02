@@ -61,6 +61,10 @@ type PageHeaderActionBase = {
   pressed?: boolean
   selected?: boolean
   title?: string
+  // The action's mark reads red under the pointer. For a control whose colour
+  // is part of what it means — the routine-recording button — rather than a
+  // warning about the click; the box itself keeps the shared treatment.
+  tone?: 'danger'
 }
 
 export type PageHeaderButtonAction = PageHeaderActionBase & {
@@ -137,6 +141,7 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
     'inline-flex h-8 items-center justify-center rounded-md text-xs font-semibold transition-colors',
     action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
     colour,
+    action.tone === 'danger' ? 'page-header-action-danger' : '',
     open ? 'ring-2 ring-[color:var(--accent-soft)]' : '',
     action.disabled ? 'cursor-not-allowed opacity-50' : '',
   ].join(' ')

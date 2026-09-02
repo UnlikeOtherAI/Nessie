@@ -10,7 +10,7 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
-import { AgentConfigViewSchema, parseAgentId } from '@nessie/schemas'
+import { parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -44,7 +44,6 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
-  readAgentConfigView,
 } from '@nessie/workspace-admin'
 import { checkPolicy } from '../services/policy.js'
 import {
@@ -744,34 +743,6 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(cloned)))
-  })
-
-  // The narrow configuration read (D7). A Nessie-managed agent — the Personal
-  // Assistant, the Agent Designer — was list-only: `isAgentAccessibleToActor`
-  // hard-codes `systemManaged: false`, so every route below this one 404s on it
-  // and "not editable" rendered as "broken". This answers what the agent *is*
-  // (name, role, instructions, model, effort, limits, resolved tools) under
-  // exactly the entitlement `GET /api/agents` applies, and deliberately does
-  // NOT widen `isAgentAccessibleToActor`: status, activity, messages and
-  // children stay closed, because a global agent's activity spans every
-  // member's private conversation with it.
-  app.get('/api/agents/:agentId/config', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const { agentId } = request.params as { agentId: string }
-    const view = await readAgentConfigView(prisma, {
-      agentId,
-      isOwner: actorContext.actor.roles?.includes('owner') ?? false,
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-    })
-    if (!view) {
-      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
-      return reply
-    }
-
-    return createApiResponse(AgentConfigViewSchema.parse(view))
   })
 
   app.get('/api/agents/:agentId/status', async (request, reply) => {

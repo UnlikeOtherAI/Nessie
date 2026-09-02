@@ -813,39 +813,16 @@ blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
 one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
 through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
-facts). Invariants — the CHECKs, the ensure/policy-merge shape, the binding,
-trigger and run-placement refusals, the un-gated list arm, the delegation
-predicate with its one-arm identity-tool gate, and the handoff bounds:
-`AGENTS.md` → "A global agent is a blueprint in code". The mechanics beyond
-those — the Designer's toolset and its shared reads, the generated capability
-catalogue, `agent_handoff`'s delivery, and the sidebar's second face — are in
-[docs/global-agents.md](docs/global-agents.md). Spec:
+facts). Bootstrap runs beside the PA's at login and user provisioning but
+**best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
+lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
+binding, trigger and run-placement refusals, the un-gated list arm, the
+delegation predicate with its one-arm identity-tool gate, and the handoff
+bounds: `AGENTS.md` → "A global agent is a blueprint in code". The mechanics —
+the Designer's toolset and shared reads, the generated capability catalogue,
+`agent_handoff`'s delivery, the sidebar's second face, and the disabled detail
+surface: [docs/global-agents.md](docs/global-agents.md). Spec:
 [docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
-
-Facts worth having on the map:
-
-- Bootstrap runs beside the PA's at login and user provisioning but
-  **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
-  lock anyone out. The model is blueprint pin → `NESSIE_DESIGNER_MODEL` →
-  organisation default on **both** faces (`resolveGlobalAgentModel`).
-- **Designing an agent is the Designer's alone.** `agent_create`, `agent_read`,
-  `agent_update`, `agent_tool_catalog` and `agent_avatar_update` carry
-  `identityDelegatedOnly`, which removes the Personal Assistant's own arm from
-  the `personalAssistantOnly` gate: the PA keeps the operational verbs on
-  existing agents and hands the conversation over with `agent_handoff`. The
-  tools are omitted from its schema array, never offered and denied.
-- **Two faces, one brain.** The Agent Designer page's sidebar keeps its own
-  transport — in-process SSE driving the open form, which the DM cannot do —
-  but renders the blueprint's persona and the same generated catalogue, reads
-  this organisation's tools server-side, searches through Ledger, and shows the
-  Designer's own name and portrait.
-- **A Nessie-managed agent has a read-only configuration view.**
-  `GET /api/agents/:agentId/config` (`readAgentConfigView`) answers name, role,
-  prompt, model, effort, limits and *resolved* tools under exactly the list
-  entitlement, and the admin renders `SystemAgentConfigPanel` in place of the
-  tabs. `isAgentAccessibleToActor` is deliberately NOT widened — status,
-  activity, messages and children stay closed, because a global agent's
-  activity spans every member's private DM.
 
 **Direct messages lists conversations, not a directory.** Every DM channel there
 is provisioned before anybody speaks — a person's DM, a private agent's home, a

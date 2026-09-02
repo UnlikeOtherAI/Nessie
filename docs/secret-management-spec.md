@@ -1,5 +1,43 @@
 # Secret management
 
+## The vault is required to save a secret
+
+**Nessie cannot store a secret without a configured Infisical vault.** Nessie
+holds metadata; the vault holds every value. With no vault there is nowhere
+safe to put one, so the write is refused rather than downgraded — there is
+deliberately no PostgreSQL fallback and no plaintext path.
+
+Two independent vault projects gate two surfaces. Configure the one you need:
+
+| Surface | Requires | Without it |
+| --- | --- | --- |
+| **Save a secret** (`/settings/secrets`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
+| **Personal model subscriptions** (`/settings/connections`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
+
+These are **two separate Infisical projects on purpose**, never one shared
+identity: the Secrets project's personal partition holds a person's ordinary
+captured secrets, so an identity scoped there could read all of them. A
+subscriptions token must be refused (403) against the Secrets project.
+Provisioning, the isolation check, and rotation are in
+[deployment.md](./deployment.md) → "Personal model subscriptions vault" and
+"Infisical vault". In Compose, Infisical only runs with
+`COMPOSE_PROFILES=secrets`.
+
+Listing secrets keeps working without a vault — `GET /api/secrets` reads
+Nessie's own metadata rows and never touches Infisical. Only writes need it.
+
+### What does *not* go through the vault
+
+So an operator is not misled into thinking a missing vault breaks everything:
+connector and OAuth credentials are a **separate legacy store** and are
+unaffected. MCP connector secrets and OAuth access/refresh tokens, Slack/Gmail
+comms tokens, Browserbase keys, and APNs/FCM push secrets are AES-256-GCM
+encrypted at rest in PostgreSQL under the deployment's `NESSIE_AUTH_SECRET`,
+addressed by opaque `secret_*` / `credentialRef` pointers. That is the
+migration concern named under "Authority split" below, not a second vault. Org
+inference-provider keys and the deployment model key are environment variables
+and are likewise unaffected.
+
 ## Security invariant
 
 A language model may know that a secret exists and may be authorised to use it,

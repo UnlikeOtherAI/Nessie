@@ -117,6 +117,7 @@ src/           TypeScript backend, orchestrator, tools, MCP, voice client
 | Doc | Description |
 |---|---|
 | [Deployment](docs/deployment.md) | **Production deployment** (self-hosted, Hetzner + shared Caddy) |
+| [Secret management](docs/secret-management-spec.md) | **A configured Infisical vault is required to save any secret** — scope, grants, and what is stored where |
 | [Apple publishing & direct device delivery](docs/publishing-apple-testflight.md) | TestFlight releases and the default standalone phone/tablet delivery policy |
 | [Running the native apps](docs/running-the-apps.md#default-physical-device-delivery) | Direct installation policy and local development paths |
 | [Product Brief](docs/brief.md) | Vision, modes, architecture, MVP direction |

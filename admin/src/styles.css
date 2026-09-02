@@ -2198,6 +2198,17 @@ button.reaction-pill-active:focus-visible {
   box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
+/* Disabled state, matching `.admin-button:disabled` below. A field with no rule
+   of its own falls back to the browser's grey, which on a themed panel reads as
+   a broken control rather than one that is simply not the reader's to change —
+   and that difference is the whole point of a read-only form (a global agent's
+   configuration) being the same form, dimmed. `:disabled` is inherited from an
+   enclosing `<fieldset disabled>`, so the run-limits fieldset gets it too. */
+.admin-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .admin-button {
   display: inline-flex;
   align-items: center;
@@ -2277,6 +2288,14 @@ button.reaction-pill-active:focus-visible {
    secondary buttons and a filled red would over-weight the row. */
 .admin-button.admin-button-danger {
   color: var(--danger-text);
+}
+
+/* A header action whose mark turns red under the pointer: the channel's
+   routine-recording control, where red is what a record button means. Only
+   the icon is tinted — the box keeps the neutral header treatment every
+   other action in the row shares. */
+.page-header-action-danger:hover:not(:disabled) svg {
+  color: var(--danger);
 }
 
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
