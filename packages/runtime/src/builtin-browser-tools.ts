@@ -25,6 +25,7 @@ export const BROWSER_OBSERVE_TOOL_ID = 'browser_observe'
 export const BROWSER_ACT_TOOL_ID = 'browser_act'
 export const BROWSER_CLOSE_TOOL_ID = 'browser_close'
 export const BROWSER_LOGIN_REQUEST_TOOL_ID = 'browser_login_request'
+export const BROWSER_DOWNLOAD_TOOL_ID = 'browser_download'
 
 export const CLOUD_BROWSER_TOOL_IDS = [
   BROWSER_OPEN_TOOL_ID,
@@ -32,6 +33,7 @@ export const CLOUD_BROWSER_TOOL_IDS = [
   BROWSER_ACT_TOOL_ID,
   BROWSER_CLOSE_TOOL_ID,
   BROWSER_LOGIN_REQUEST_TOOL_ID,
+  BROWSER_DOWNLOAD_TOOL_ID,
 ] as const
 
 export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
@@ -173,6 +175,27 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
       },
       required: ['service', 'reason'],
+    },
+    requiresExplicitGrant: true,
+    safe: false,
+  },
+  {
+    id: BROWSER_DOWNLOAD_TOOL_ID,
+    label: 'Download From Browser',
+    summary: 'Save a file from the open browser into this workspace.',
+    description:
+      'Download the file a link or image node points at, and save it as an '
+      + 'attachment you can send. Address it by the nodeId from the most recent '
+      + 'browser_observe, exactly as with click.',
+    parameters: {
+      type: 'object',
+      properties: {
+        nodeId: {
+          type: 'number',
+          description: `The link or image to download: ${NODE_ID_DESCRIPTION}`,
+        },
+      },
+      required: ['nodeId'],
     },
     requiresExplicitGrant: true,
     safe: false,

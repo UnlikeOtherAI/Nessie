@@ -14,6 +14,7 @@ import {
 import {
   BROWSER_ACT_TOOL_ID,
   BROWSER_CLOSE_TOOL_ID,
+  BROWSER_DOWNLOAD_TOOL_ID,
   BROWSER_LOGIN_REQUEST_TOOL_ID,
   BROWSER_OBSERVE_TOOL_ID,
   BROWSER_OPEN_TOOL_ID,
@@ -27,6 +28,7 @@ import {
 import { isFatalToolExecutionError } from '../tool-execution-errors.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from '../tool-types.js'
 import { summarizeToolInput, truncateToolResult } from '../tool-util.js'
+import { downloadFromBrowser } from './download.js'
 import { requestBrowserLogin } from './login-request.js'
 import {
   evaluateOriginGate,
@@ -349,6 +351,34 @@ const runLoginRequest = async (
   return requestBrowserLogin(deps, context, { reason, service })
 }
 
+const runDownload = async (
+  deps: CloudBrowserDeps,
+  context: BrowserToolContext,
+  args: Record<string, unknown>,
+): Promise<BrowserToolOutcome> => {
+  const nodeId = typeof args.nodeId === 'number' ? args.nodeId : NaN
+  if (!Number.isInteger(nodeId) || nodeId < 0) {
+    return { output: 'browser_download needs a nodeId from browser_observe.', success: false }
+  }
+  const session = await liveSession(deps, context)
+  if (!session.ok) return session.result
+  try {
+    const cdp = await acquireCdp(session.sessionId)
+    if (!cdp) {
+      return {
+        output: 'The browser connection was lost. Open a new browser to continue.',
+        success: false,
+      }
+    }
+    return await downloadFromBrowser(cdp, context, {
+      gate: originGateFor(session.sessionId),
+      nodeId,
+    })
+  } catch (error) {
+    return asToolFailure(error, false)
+  }
+}
+
 const verbFor = (
   toolName: string,
 ): ((
@@ -367,6 +397,8 @@ const verbFor = (
       return (deps, context) => runClose(deps, context)
     case BROWSER_LOGIN_REQUEST_TOOL_ID:
       return runLoginRequest
+    case BROWSER_DOWNLOAD_TOOL_ID:
+      return runDownload
     default:
       return null
   }
