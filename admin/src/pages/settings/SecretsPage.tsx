@@ -49,7 +49,7 @@ export const SecretsPage = () => {
       eyebrow="Security"
       title="Secrets"
     >
-      <div className="grid max-w-5xl gap-4">
+      <div className="grid gap-4">
         <div className="grid gap-1">
           <p className="text-sm text-[color:var(--tx2)]">
             Keep credentials out of chat. Values go directly to Infisical and are never displayed here.

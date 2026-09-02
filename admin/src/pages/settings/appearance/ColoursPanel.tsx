@@ -31,7 +31,7 @@ export const ColoursPanel = () => {
   const { setTheme, theme, themes } = useTheme()
 
   return (
-    <section className="admin-card max-w-3xl p-4">
+    <section className="admin-card p-4">
       <SectionLabel>Theme</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Choose the admin color palette for your account.

@@ -192,7 +192,7 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
   const announceError = (message: string) => setSaveState({ status: 'error', message })
 
   return (
-    <PageBody width="narrow">
+    <PageBody>
       <QueryState
         errorLabel="Couldn't load board settings."
         loadingLabel="Loading board settings…"

@@ -318,7 +318,7 @@ export const AgentDesignerContent = ({
     <div className="flex h-full flex-col">
       {embedded ? (
         readOnly ? null : (
-          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-b border-[color:var(--sep)] px-5 py-2.5">
+          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-2.5">
             <button
               className="admin-button admin-button-primary"
               disabled={!canSave}
@@ -349,7 +349,7 @@ export const AgentDesignerContent = ({
         <div
           className={[
             'flex-shrink-0 border-b border-[color:var(--sep)] bg-[color:var(--overlay-weak)]',
-            'px-5 py-2 text-xs text-[color:var(--tx2)]',
+            'px-[var(--page-gutter)] py-2 text-xs text-[color:var(--tx2)]',
           ].join(' ')}
         >
           {saveBlocker}
@@ -361,7 +361,7 @@ export const AgentDesignerContent = ({
           available as the person moves between the agent's tabs. */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Form panel */}
-        <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
+        <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-5 lg:flex-[7] lg:border-b-0 lg:border-r">
           <div className="grid gap-5">
             {editingAgent ? (
               <section className="admin-card flex items-center gap-4 p-4">
