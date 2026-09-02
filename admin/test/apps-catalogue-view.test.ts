@@ -14,13 +14,16 @@ import {
   CATALOGUE_FOOTER_NUDGE,
   catalogueEmptyMessage,
   filterApps,
+  installedShelf,
   isInstalledApp,
   parseAppFilter,
   readStoredAppFilter,
   sectionOffersShowAll,
   sectionPageSize,
+  sectionRemainingLabel,
   sectionToggleLabel,
   sectionVisibleApps,
+  shelfKey,
   visibleShelves,
   writeStoredAppFilter,
   type AppCategorySectionModel,
@@ -279,7 +282,7 @@ test('an empty store says so, whatever filter or query the person happens to be 
   assert.deepEqual(
     catalogueEmptyMessage({ filter: 'installed', query: 'git', totalCount: 0 }),
     {
-      actionLabel: 'Add custom app',
+      actions: [{ id: 'add-custom', label: 'Add custom app' }],
       message:
         'No apps have been published to your catalogue yet. '
         + 'Connect a tool by its address to add the first one.',
@@ -287,9 +290,22 @@ test('an empty store says so, whatever filter or query the person happens to be 
   )
 })
 
-test('a query that found nothing quotes the query, and outranks the installed filter', () => {
+test('a search inside Installed says which set it searched, and offers the other one', () => {
+  // It used to report the flat "No apps match" — true of the six connected
+  // apps, and read by everybody as true of the catalogue, which is where the
+  // app they were after usually is.
   assert.deepEqual(catalogueEmptyMessage({ filter: 'installed', query: ' git ', totalCount: 47 }), {
-    actionLabel: 'Add custom app',
+    actions: [
+      { id: 'browse-all', label: 'Search all apps' },
+      { id: 'add-custom', label: 'Add custom app' },
+    ],
+    message: 'None of your installed apps match "git".',
+  })
+})
+
+test('a query that found nothing across the catalogue quotes the query', () => {
+  assert.deepEqual(catalogueEmptyMessage({ filter: 'all', query: ' git ', totalCount: 47 }), {
+    actions: [{ id: 'add-custom', label: 'Add custom app' }],
     message:
       'No apps match "git". Try a different word — '
       + 'or connect a tool by its address.',
@@ -299,24 +315,43 @@ test('a query that found nothing quotes the query, and outranks the installed fi
 test('whitespace is not a query, so an empty Installed grid describes the state it is in', () => {
   // It used to instruct "Switch to All" while the only button read "Add custom
   // app" — an instruction that was not clickable beside a control that did
-  // something else. The words now name the button's own action.
+  // something else. Browsing the catalogue is now the button it names.
   assert.deepEqual(catalogueEmptyMessage({ filter: 'installed', query: '   ', totalCount: 47 }), {
-    actionLabel: 'Add custom app',
-    message:
-      "You haven't connected any apps yet. Browse the catalogue with the All "
-      + 'filter above, or connect a tool by its address.',
+    actions: [
+      { id: 'browse-all', label: 'Browse all apps' },
+      { id: 'add-custom', label: 'Add custom app' },
+    ],
+    message: "You haven't connected any apps yet.",
   })
 })
 
-test('with nothing narrowed the empty grid falls back to the footer nudge', () => {
-  assert.deepEqual(
-    catalogueEmptyMessage({ filter: 'all', query: '', totalCount: 47 }),
-    CATALOGUE_FOOTER_NUDGE,
-  )
+test('with nothing narrowed the empty grid says what the footer nudge says, once', () => {
+  // The page renders one or the other, never both: the footer nudge is
+  // suppressed under an empty grid, where it would restate the empty state's
+  // own sentence and button one line lower.
+  assert.deepEqual(catalogueEmptyMessage({ filter: 'all', query: '', totalCount: 47 }), {
+    actions: [{ id: 'add-custom', label: 'Add custom app' }],
+    message: CATALOGUE_FOOTER_NUDGE.message,
+  })
   assert.deepEqual(CATALOGUE_FOOTER_NUDGE, {
     actionLabel: 'Add custom app',
     message: "Can't find what you need? Connect a tool by its address.",
   })
+})
+
+test('Installed is one shelf spanning every category, counted by the server', () => {
+  // Category headings are how a person browses thousands of apps; they are not
+  // how anybody reads their own three. The shelf is flat, and its total is
+  // `installedCount` — the aggregate over the whole installed set — so paging
+  // it stays honest while the response carries one bounded page.
+  const shelf = installedShelf([app({ id: 'a' }), app({ id: 'b' })], 57)
+
+  assert.equal(shelf.category, null)
+  assert.equal(shelf.label, 'Installed')
+  assert.equal(shelf.total, 57)
+  assert.equal(shelfKey(shelf), 'installed')
+  assert.equal(shelfKey({ category: 'development' }), 'development')
+  assert.equal(sectionRemainingLabel(shelf.apps.length, shelf.total), 'Load more (55 left)')
 })
 
 test('the category dropdown opens on All, then the taxonomy in its fixed order', () => {

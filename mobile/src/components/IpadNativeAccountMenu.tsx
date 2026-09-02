@@ -1,6 +1,7 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import { NativeIdentityAvatar } from './NativeWorkspaceAvatar'
 
 export type IpadNativeAccount = {
   avatarUrl: string | null
@@ -15,7 +16,7 @@ type IpadNativeAccountButtonProps = IpadNativeAccount & {
   theme: IpadNativeChromeTheme
 }
 
-const initial = (name: string | null): string => [...(name?.trim() ?? '')][0]?.toUpperCase() ?? 'U'
+const ACCOUNT_AVATAR_SIZE = 32
 
 const PresenceBadge = ({
   focusModeEnabled,
@@ -61,13 +62,14 @@ export const IpadNativeAccountButton = ({
       pressed ? { backgroundColor: theme.pressedBackgroundColor } : null,
     ]}
   >
-    {avatarUrl ? (
-      <Image accessibilityLabel={name ?? 'User'} source={{ uri: avatarUrl }} style={styles.avatar} />
-    ) : (
-      <View style={[styles.fallback, { backgroundColor: theme.activeTintColor }]}>
-        <Text style={styles.initial}>{initial(name)}</Text>
-      </View>
-    )}
+    <NativeIdentityAvatar
+      backgroundColor={theme.activeTintColor}
+      imageUrl={avatarUrl}
+      initialsFallback="U"
+      label={name ?? ''}
+      size={ACCOUNT_AVATAR_SIZE}
+      textColor="#ffffff"
+    />
     {statusEmoji ? (
       <View style={[styles.statusBadge, { backgroundColor: theme.backgroundColor }]}>
         <Text style={styles.statusEmoji}>{statusEmoji}</Text>
@@ -78,9 +80,7 @@ export const IpadNativeAccountButton = ({
 )
 
 const styles = StyleSheet.create({
-  avatar: { borderRadius: 16, height: 32, width: 32 },
   awayMark: { color: '#2b2018', fontSize: 8, fontWeight: '700', lineHeight: 9 },
-  fallback: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
   focusPresenceDash: {
     borderColor: '#20a86b',
     borderRadius: 4,
@@ -92,7 +92,6 @@ const styles = StyleSheet.create({
     right: 1,
     top: 1,
   },
-  initial: { color: '#fff', fontSize: 12, fontWeight: '700' },
   presenceDot: { alignItems: 'center', borderRadius: 5, height: 10, justifyContent: 'center', width: 10 },
   presenceRing: {
     alignItems: 'center',

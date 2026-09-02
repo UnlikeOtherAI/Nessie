@@ -9,10 +9,13 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { IdentityTile } from '../../primitives/IdentityTile'
 
 type PersonalAssistantSidebarEntryProps = {
   active?: boolean
   agent?: AgentRecord | null
+  /** Matches the rest of the Direct-messages rows. */
+  avatarSize?: number
   bootstrapping?: boolean
   onClick: () => void
   onToggleStar: () => void
@@ -27,9 +30,25 @@ type PersonalAssistantConfigBannerProps = {
   configSummary?: PersonalAssistantConfigSummary
 }
 
-const assistantGlyphClassName =
-  'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
-  'bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--thinking)]'
+// Drawn only before the assistant's own record has loaded. It is the same tile
+// at the same size as the loaded state, so the row does not change shape as it
+// resolves.
+const AssistantMark = ({ size }: { size: number }) => (
+  <svg
+    fill="none"
+    height={Math.round(size * 0.62)}
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="2"
+    viewBox="0 0 24 24"
+    width={Math.round(size * 0.62)}
+  >
+    <path d="M12 3v5" />
+    <path d="M9 8h6" />
+    <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
+  </svg>
+)
 
 const assistantPills = (
   agent?: AgentRecord | null,
@@ -69,6 +88,7 @@ const assistantPills = (
 export const PersonalAssistantSidebarEntry = ({
   active = false,
   agent,
+  avatarSize = 18,
   bootstrapping = false,
   onClick,
   onToggleStar,
@@ -84,24 +104,16 @@ export const PersonalAssistantSidebarEntry = ({
       type="button"
     >
       {agent ? (
-        <AgentAvatar agent={agent} size="xs" token={token} />
+        <AgentAvatar agent={agent} size={avatarSize} token={token} />
       ) : (
-        <div className={assistantGlyphClassName}>
-          <svg
-            fill="none"
-            height="10"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            width="10"
-          >
-            <path d="M12 3v5" />
-            <path d="M9 8h6" />
-            <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
-          </svg>
-        </div>
+        <IdentityTile
+          background="var(--accent-soft)"
+          color="var(--thinking)"
+          fallback={{ kind: 'icon', icon: <AssistantMark size={avatarSize} /> }}
+          imageUrl={null}
+          label="Personal Assistant"
+          size={avatarSize}
+        />
       )}
       <span className="min-w-0 flex-1 truncate text-current">
         Personal Assistant

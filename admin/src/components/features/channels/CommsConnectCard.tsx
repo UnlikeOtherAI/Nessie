@@ -4,6 +4,7 @@ import {
   useCommsConnections,
   useStartCommsConnection,
 } from '../../../facades/connections/hooks'
+import { IdentityTile } from '../../primitives/IdentityTile'
 
 /**
  * Interactive chat card rendered from message metadata
@@ -80,12 +81,14 @@ const ProviderRow = ({ provider }: { provider: CommsProvider }) => {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--sep)] px-3 py-2">
       <div className="flex min-w-0 items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[var(--overlay)] text-xs font-bold text-[var(--tx2)]"
-        >
-          {meta.glyph}
-        </span>
+        <IdentityTile
+          background="var(--overlay)"
+          color="var(--tx2)"
+          fallback={{ kind: 'glyph', glyph: meta.glyph }}
+          imageUrl={null}
+          label={meta.label}
+          size={28}
+        />
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-[var(--tx)]">{meta.label}</div>
           {connection ? (

@@ -1,4 +1,4 @@
-import { useRef, type FormEvent, type Ref } from 'react'
+import { useState, useRef, type FocusEvent, type FormEvent, type Ref } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -62,11 +62,32 @@ export const ChannelComposer = ({
   onOpenExecutorRun,
 }: ChannelComposerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isFocusWithin, setIsFocusWithin] = useState(false)
   // Text or at least one finished upload, and never mid-upload.
   const canSend =
     (message.trim().length > 0 || attachments.attachmentIds.length > 0)
     && !attachments.isUploading
     && !isSendPending
+
+  // At rest the composer is a single line: just the placeholder and Send. It
+  // opens while focus is anywhere inside it, and stays open while anything is
+  // staged, so nothing a person has written or attached is ever folded away.
+  const isExpanded =
+    isFocusWithin
+    || message.trim().length > 0
+    || attachments.staged.length > 0
+    || attachments.error !== null
+
+  // Focus moving between the editor and a toolbar button must not collapse the
+  // composer out from under the click, so this asks where focus went rather
+  // than reacting to the editor losing it. A null target with the window itself
+  // unfocused is the native file picker opening, not the person leaving.
+  const handleBlur = (event: FocusEvent<HTMLFormElement>) => {
+    const next = event.relatedTarget
+    if (next instanceof Node && event.currentTarget.contains(next)) return
+    if (!next && !document.hasFocus()) return
+    setIsFocusWithin(false)
+  }
 
   return (
     // Base 14px padding plus the soft-keyboard inset (docs/navigation/overview.md
@@ -124,7 +145,13 @@ export const ChannelComposer = ({
           {sendError}
         </p>
       ) : null}
-      <form className="admin-compose" onSubmit={onSubmitForm}>
+      <form
+        className="admin-compose"
+        data-expanded={isExpanded ? 'true' : 'false'}
+        onBlur={handleBlur}
+        onFocus={() => setIsFocusWithin(true)}
+        onSubmit={onSubmitForm}
+      >
         <MentionInput
           ref={mentionRef}
           entities={mentionEntities}
@@ -135,7 +162,7 @@ export const ChannelComposer = ({
           placeholder={placeholder}
         />
         <ComposerAttachments attachments={attachments} />
-        <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
+        <div className="admin-compose-bar">
           <div className="admin-compose-actions flex items-center gap-1">
             <button
               className={toolbarButtonClass}
@@ -216,6 +243,11 @@ export const ChannelComposer = ({
               type="file"
             />
           </div>
+        </div>
+        {/* Pinned to the composer's bottom line rather than sitting in the
+            toolbar, so Send holds its place on screen while the editor grows
+            upward past it. */}
+        <div className="admin-compose-send-slot">
           <button
             aria-label="Send message"
             className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"

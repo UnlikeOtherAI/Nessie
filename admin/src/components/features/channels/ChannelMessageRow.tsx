@@ -5,11 +5,11 @@ import type {
   ThreadMessageRecord,
 } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
-import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
+import type { AvatarSources } from '../../primitives/UserAvatar'
 import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
 import { MessageAttachments } from '../../shared/MessageAttachments'
 import type { AttachmentRecord } from '../../../lib/uploads'
-import { ChannelAgentGlyph } from './ChannelAgentGlyph'
+import { MessageAuthorAvatar } from './MessageAuthorAvatar'
 import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
 import {
@@ -251,52 +251,27 @@ export const ChannelMessageRow = ({
       }}
       tabIndex={0}
     >
-      {personalAssistantPresence ? (
-        <button
-          aria-label={`Open ${displayName}`}
-          className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          onClick={selectPersonalAssistant}
-          type="button"
-        >
-          <ChannelAgentGlyph agent={assistantAvatar} token={token} />
-        </button>
-      ) : messageAgent ? (
-        <button
-          aria-label={`Open ${displayName}`}
-          className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          onClick={selectAgent}
-          type="button"
-        >
-          <ChannelAgentGlyph agent={messageAgent} token={token} />
-        </button>
-      ) : message.role === 'assistant' ? (
-        <ChannelAgentGlyph agent={assistantAvatar} token={token} />
-      ) : authorIdentity ? (
-        <button
-          aria-label={`Open ${displayName}`}
-          className="rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          onClick={selectAuthor}
-          type="button"
-        >
-          <UserAvatar
-            avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
-            avatarUrl={message.author?.avatarUrl ?? undefined}
-            displayName={displayName}
-            size={36}
-            token={token}
-            userId={message.author?.id}
-          />
-        </button>
-      ) : (
-        <UserAvatar
-          avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
-          avatarUrl={message.author?.avatarUrl ?? undefined}
-          displayName={displayName}
-          size={36}
-          token={token}
-          userId={message.author?.id}
-        />
-      )}
+      <MessageAuthorAvatar
+        agent={personalAssistantPresence ? assistantAvatar : messageAgent ?? assistantAvatar}
+        agentId={personalAssistantPresence?.agentId ?? message.agentId ?? null}
+        displayName={displayName}
+        isAgent={message.role === 'assistant' || Boolean(personalAssistantPresence)}
+        onOpen={
+          personalAssistantPresence
+            ? selectPersonalAssistant
+            : messageAgent
+              ? selectAgent
+              : authorIdentity
+                ? selectAuthor
+                : undefined
+        }
+        user={{
+          avatarAttachmentId: message.author?.avatarAttachmentId ?? undefined,
+          avatarUrl: message.author?.avatarUrl ?? undefined,
+          userId: message.author?.id,
+        }}
+        token={token}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           {personalAssistantPresence || messageAgent || authorIdentity ? (

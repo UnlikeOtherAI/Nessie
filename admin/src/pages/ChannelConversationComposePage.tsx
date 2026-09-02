@@ -7,11 +7,11 @@ import { useStartChannelConversation } from '../facades/channels/hooks'
 import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
-import { agentGradient } from '../lib/avatar'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { useOverlay } from '../components/overlays/useOverlay'
 import { UserAvatar } from '../components/primitives/UserAvatar'
+import { AgentAvatar } from '../components/shared/AgentAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
@@ -355,12 +355,7 @@ export const ChannelConversationComposePage = () => {
                       userId={option.user.id}
                     />
                   ) : (
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] text-[var(--on-accent)]"
-                      style={{ background: agentGradient }}
-                    >
-                      {option.label.slice(0, 1).toUpperCase()}
-                    </span>
+                    <AgentAvatar agentId={option.id} size={24} token={token} />
                   )}
                   <span className="min-w-0 flex flex-col">
                     <span className="truncate">{option.label}</span>

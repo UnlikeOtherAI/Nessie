@@ -6,13 +6,16 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { Dialog } from './Dialog'
+import { identityTileRadius } from '../primitives/identity-shape'
 
 // On-screen editing stage (square). The crop is inscribed in it, with either a
 // circular or rounded-square mask. The exported image is rendered at a fixed
 // higher resolution regardless of the stage size.
 const STAGE = 320
 const OUTPUT = 512
-const ROUNDED_OUTPUT_RADIUS = 64
+// The saved PNG bakes the same corner the tile clips to, so a downloaded or
+// externally rendered copy is the shape the app shows.
+const ROUNDED_OUTPUT_RADIUS = identityTileRadius(OUTPUT)
 const MIN_ZOOM = 1
 const MAX_ZOOM = 3
 
@@ -180,9 +183,9 @@ export const CircleImageCropper = ({
             aria-hidden="true"
             className={[
               'pointer-events-none absolute left-1/2 top-1/2',
-              shape === 'circle' ? 'rounded-full' : 'rounded-[40px]',
             ].join(' ')}
             style={{
+              borderRadius: shape === 'circle' ? '9999px' : identityTileRadius(STAGE),
               boxShadow: '0 0 0 9999px var(--scrim-strong), inset 0 0 0 2px var(--accent)',
               height: STAGE,
               transform: 'translate(-50%, -50%)',

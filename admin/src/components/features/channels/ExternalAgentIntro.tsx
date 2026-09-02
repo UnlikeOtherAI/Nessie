@@ -1,4 +1,5 @@
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
+import { IdentityTile } from '../../primitives/IdentityTile'
 
 // The empty-state for a first-class external-agent DM (DeepSignal, ...): a
 // function-first identity (non-human product glyph + name + one-line
@@ -18,12 +19,17 @@ export const ExternalAgentIntro = ({
   <div className="p-5">
     <div className="admin-card flex flex-col gap-4 p-5">
       <div className="flex items-start gap-3">
-        <span
-          aria-hidden
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-lg font-bold text-[var(--thinking)]"
-        >
-          {identity.iconGlyph ?? identity.name.slice(0, 1).toUpperCase()}
-        </span>
+        <IdentityTile
+          background="var(--accent-soft)"
+          color="var(--thinking)"
+          fallback={{
+            kind: 'glyph',
+            glyph: identity.iconGlyph ?? identity.name.slice(0, 1).toUpperCase(),
+          }}
+          imageUrl={null}
+          label={identity.name}
+          size={44}
+        />
         <div className="min-w-0">
           <div className="text-base font-bold text-[var(--tx)]">{identity.name}</div>
           {identity.description ? (

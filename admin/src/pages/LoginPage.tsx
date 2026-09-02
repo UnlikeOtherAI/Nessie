@@ -12,6 +12,7 @@ import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
+import { identityTileRadius } from '../components/primitives/identity-shape'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
@@ -199,7 +200,8 @@ export const LoginPage = () => {
         <section className="glass-panel order-2 flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10 lg:order-1">
           <img
             alt="Workspace logo"
-            className="h-[88px] w-[88px] rounded-[1.5rem] object-cover shadow-[0_20px_40px_var(--scrim)]"
+            className="h-[88px] w-[88px] object-cover shadow-[0_20px_40px_var(--scrim)]"
+            style={{ borderRadius: identityTileRadius(88) }}
             onError={(event) => {
               const img = event.currentTarget
               if (img.src.endsWith('/icon-1024.png')) return

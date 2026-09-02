@@ -19,28 +19,30 @@ import {
 } from '../facades/search/hooks'
 import { selectBestPassage } from '../lib/highlight-passage'
 import { useTabParam } from '../navigation/useTabParam'
+import {
+  SearchResultMarker,
+  type SearchMarkerSubject,
+} from '../components/shared/SearchResultMarker'
 
 const rowClass = [
   'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
   'transition-colors hover:bg-[color:var(--overlay-weak)]',
 ].join(' ')
 
-const markerClass = [
-  'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
-  'bg-[color:var(--overlay-weak)] text-[13px] font-semibold text-[color:var(--tx2)]',
-].join(' ')
-
+// The tile is described, not supplied: a row states what its hit *is* and the
+// shared marker decides whether that has a picture. Passing a rendered glyph is
+// what let people and projects show a letter beside their own avatars.
 interface SearchResultRowProps {
-  marker: ReactNode
+  subject: SearchMarkerSubject
   primary: string
   secondary?: ReactNode
   onClick?: () => void
 }
 
-const SearchResultRow = ({ marker, primary, secondary, onClick }: SearchResultRowProps) => {
+const SearchResultRow = ({ subject, primary, secondary, onClick }: SearchResultRowProps) => {
   const content = (
     <>
-      <span className={markerClass}>{marker}</span>
+      <SearchResultMarker size={32} subject={subject} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[color:var(--tx)]">
           {primary}
@@ -72,8 +74,6 @@ const SearchSection = ({ title, children }: SearchSectionProps) => (
     <div className="space-y-0.5">{children}</div>
   </section>
 )
-
-const initial = (value: string): string => value.trim().charAt(0).toUpperCase() || '?'
 
 // Hybrid-mode hits carry ranked passages; show the best one with query terms
 // highlighted. Keyword-mode hits fall back to the plain snippet. `hit.score`
@@ -191,7 +191,7 @@ export const SearchPage = () => {
                   {results.channels.map((channel) => (
                     <SearchResultRow
                       key={channel.id}
-                      marker="#"
+                      subject={{ kind: 'channel' }}
                       onClick={() => openChannel(channel)}
                       primary={channel.label}
                       secondary={channel.projectName}
@@ -205,7 +205,7 @@ export const SearchPage = () => {
                   {results.people.map((person) => (
                     <SearchResultRow
                       key={person.id}
-                      marker={initial(person.displayName)}
+                      subject={{ kind: 'person', user: person, displayName: person.displayName }}
                       onClick={() => openPerson(person)}
                       primary={person.displayName}
                       secondary={person.email}
@@ -219,7 +219,7 @@ export const SearchPage = () => {
                   {results.projects.map((project) => (
                     <SearchResultRow
                       key={project.id}
-                      marker={initial(project.name)}
+                      subject={{ kind: 'project', project }}
                       onClick={() => openProject(project)}
                       primary={project.name}
                     />
@@ -232,7 +232,7 @@ export const SearchPage = () => {
                   {results.messages.map((message) => (
                     <SearchResultRow
                       key={message.id}
-                      marker="💬"
+                      subject={{ kind: 'message' }}
                       onClick={() => openMessage(message)}
                       primary={message.snippet}
                       secondary={`${message.authorName} · ${message.channelLabel}`}
@@ -246,7 +246,7 @@ export const SearchPage = () => {
                   {results.knowledge.map((hit) => (
                     <SearchResultRow
                       key={hit.page.id}
-                      marker="📄"
+                      subject={{ kind: 'knowledge' }}
                       onClick={() => openKnowledge(hit)}
                       primary={hit.page.title}
                       secondary={knowledgeSecondary(hit, query)}
@@ -260,7 +260,7 @@ export const SearchPage = () => {
                   {results.thoughts.map((thought) => (
                     <SearchResultRow
                       key={thought.id}
-                      marker="M"
+                      subject={{ kind: 'thought' }}
                       primary={thought.content}
                       secondary={`Semantic memory - ${Math.round(
                         thought.similarity * 100,

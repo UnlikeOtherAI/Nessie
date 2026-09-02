@@ -2,8 +2,9 @@ import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { AgentAvatar } from '../../components/shared/AgentAvatar';
+import { IdentityTile } from '../../components/primitives/IdentityTile';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
-import { agentGradient } from '../../lib/avatar';
 import type { AgentRecord } from '../../lib/api-client';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
@@ -43,6 +44,23 @@ type SidebarDmSectionProps = {
   toggleDmCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
 };
+
+const GroupDmMark = ({ size }: { size: number }) => (
+  <svg
+    aria-hidden="true"
+    className="shrink-0"
+    fill="none"
+    height={Math.round(size * 0.72)}
+    stroke="currentColor"
+    strokeWidth="1.8"
+    viewBox="0 0 24 24"
+    width={Math.round(size * 0.72)}
+  >
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3.5 20c.5-3.4 2.3-5.1 5.5-5.1s5 1.7 5.5 5.1" />
+    <path d="M16.1 5.6a3 3 0 010 5.1M17.1 14.9c2.1.5 3.2 2.2 3.4 5.1" />
+  </svg>
+);
 
 export const SidebarDmSection = ({
   activeDmChannelId,
@@ -98,6 +116,7 @@ export const SidebarDmSection = ({
         <PersonalAssistantSidebarEntry
           active={personalAssistantChannelId === currentChannelId}
           agent={personalAssistantAgent}
+          avatarSize={avatarSize}
           bootstrapping={personalAssistantBootstrapping}
           onClick={onOpenPersonalAssistant}
           onToggleStar={() => {
@@ -125,15 +144,17 @@ export const SidebarDmSection = ({
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${assistant.dmChannelId}`)}
           >
-            <span
-              className={[
-                'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
-                nativeTouchShell ? 'h-6 w-6 rounded-md' : 'h-[18px] w-[18px] rounded-md',
-              ].join(' ')}
-              style={{ background: agentGradient }}
-            >
-              {(assistant.iconGlyph ?? assistant.label.slice(0, 1)).toUpperCase()}
-            </span>
+            <IdentityTile
+              background="var(--accent-soft)"
+              color="var(--thinking)"
+              fallback={{
+                kind: 'glyph',
+                glyph: assistant.iconGlyph ?? assistant.label.slice(0, 1).toUpperCase(),
+              }}
+              imageUrl={null}
+              label={assistant.label}
+              size={avatarSize}
+            />
             <span className="min-w-0 flex-1 truncate">{assistant.label}</span>
             {renderUnreadCount(unreadCount)}
           </button>
@@ -152,15 +173,12 @@ export const SidebarDmSection = ({
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${agent.dmChannelId}`)}
           >
-            <span
-              className={[
-                'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
-                nativeTouchShell ? 'h-6 w-6 rounded-md' : 'h-[18px] w-[18px] rounded-md',
-              ].join(' ')}
-              style={{ background: agentGradient }}
-            >
-              {agent.label.slice(0, 1).toUpperCase()}
-            </span>
+            <AgentAvatar
+              agent={{ id: agent.id, name: agent.label, role: '' }}
+              agentId={agent.agentId}
+              size={avatarSize}
+              token={token}
+            />
             <span className="min-w-0 flex-1 truncate">{agent.label}</span>
             {renderUnreadCount(unreadCount)}
           </button>
@@ -179,18 +197,14 @@ export const SidebarDmSection = ({
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${group.dmChannelId}`)}
           >
-            <svg
-              aria-hidden="true"
-              className="h-[18px] w-[18px] shrink-0 text-[color:var(--tx2)]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="9" cy="8" r="3" />
-              <path d="M3.5 20c.5-3.4 2.3-5.1 5.5-5.1s5 1.7 5.5 5.1" />
-              <path d="M16.1 5.6a3 3 0 010 5.1M17.1 14.9c2.1.5 3.2 2.2 3.4 5.1" />
-            </svg>
+            <IdentityTile
+              background="var(--overlay)"
+              color="var(--tx2)"
+              fallback={{ kind: 'icon', icon: <GroupDmMark size={avatarSize} /> }}
+              imageUrl={null}
+              label={group.label}
+              size={avatarSize}
+            />
             <GroupDmSidebarLabel label={group.label} />
             {renderUnreadCount(unreadCount)}
           </button>

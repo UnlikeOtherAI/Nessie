@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { UserAvatar, useResolvedAvatarUrl } from '../../components/primitives/UserAvatar'
+import { useDataUrl } from '../../lib/native-shell-avatar'
 import { useMyAvatarRevision } from '../../facades/auth/hooks'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -37,6 +38,22 @@ export const UserMenuTrigger = ({
   // fixed, so without this the account button keeps the browser-cached image.
   const avatarRevision = useMyAvatarRevision()
   const selfPresence = useUserPresence(me?.user.id)
+  // The same picture this trigger draws, re-read as bytes the native shell can
+  // render. Posting `me.user.avatarUrl` sent it the last source in the chain,
+  // so the native header showed initials for anyone whose picture comes from
+  // UnlikeOtherAI or a local upload.
+  const resolvedAvatarUrl = useResolvedAvatarUrl(
+    {
+      avatarAttachmentId: me?.user.avatarAttachmentId ?? undefined,
+      avatarUrl: me?.user.avatarUrl ?? undefined,
+      revision: avatarRevision,
+      userId: me?.user.id,
+    },
+    token,
+  )
+  const nativeAvatarUrl = useDataUrl(
+    nativeShellBridge && resolvedAvatarUrl?.startsWith('blob:') ? resolvedAvatarUrl : null,
+  )
   const avatarButtonRef = useRef<HTMLButtonElement>(null)
   const { close, isOpen: menuOpen, toggle } = useTransientMenu()
 
@@ -58,14 +75,22 @@ export const UserMenuTrigger = ({
     ;(window as NativePhoneAccountWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({
         type: 'nessie:account',
-        userAvatarUrl: me.user.avatarUrl ?? null,
+        userAvatarUrl: nativeAvatarUrl ?? resolvedAvatarUrl ?? null,
         userName: me.user.displayName,
         userPresence: selfPresence?.state ?? 'offline',
         userFocusMode: focusModeEnabled,
         userStatusEmoji: selfPresence?.statusEmoji ?? null,
       }),
     )
-  }, [focusModeEnabled, me, nativeShellBridge, selfPresence?.state, selfPresence?.statusEmoji])
+  }, [
+    focusModeEnabled,
+    me,
+    nativeAvatarUrl,
+    nativeShellBridge,
+    resolvedAvatarUrl,
+    selfPresence?.state,
+    selfPresence?.statusEmoji,
+  ])
 
   if (!me) return null
 

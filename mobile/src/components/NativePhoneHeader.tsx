@@ -1,8 +1,8 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { NativeFocusModeButton } from './NativeFocusModeButton'
-import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
+import { NativeIdentityAvatar, NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import {
@@ -28,9 +28,6 @@ export type NativePhoneHeaderProps = {
   workspaceAvatarUrl: string | null
   workspaceName: string | null
 }
-
-const initial = (label: string | null, fallback: string): string =>
-  [...(label?.trim() ?? '')][0]?.toUpperCase() ?? fallback
 
 const AccountPresenceIndicator = ({
   focusModeEnabled,
@@ -205,26 +202,14 @@ export const NativePhoneHeader = ({
               pressed ? { opacity: 0.8 } : null,
             ]}
           >
-          {accountAvatarUrl ? (
-            <Image
-              source={{ uri: accountAvatarUrl }}
-              style={{ borderRadius: avatarDiameter / 2, height: avatarDiameter, width: avatarDiameter }}
-            />
-          ) : (
-            <View
-              style={[
-                styles.accountFallback,
-                {
-                  backgroundColor: withOpacity(headerText, 0.18),
-                  borderRadius: avatarDiameter / 2,
-                  height: avatarDiameter,
-                  width: avatarDiameter,
-                },
-              ]}
-            >
-              <Text style={[styles.accountInitial, { color: headerText }]}>{initial(accountName, 'U')}</Text>
-            </View>
-          )}
+          <NativeIdentityAvatar
+            backgroundColor={withOpacity(headerText, 0.18)}
+            imageUrl={accountAvatarUrl}
+            initialsFallback="U"
+            label={accountName ?? ''}
+            size={avatarDiameter}
+            textColor={headerText}
+          />
           <AccountPresenceIndicator
             focusModeEnabled={accountFocusModeEnabled}
             headerSurface={headerSurface}
