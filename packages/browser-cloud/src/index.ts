@@ -31,6 +31,10 @@ export {
 } from './browser-actions.js'
 
 export {
+  claimSessionControl,
+  CONTROL_CLAIM_TTL_MS,
+  expireStaleControlClaims,
+  releaseSessionControl,
   cloudBrowserSettings,
   findLiveSessionForRun,
   LIVE_SESSION_STATUSES,

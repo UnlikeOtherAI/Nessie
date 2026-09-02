@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
@@ -110,4 +111,66 @@ export const useMyBrowserLogins = () => {
     queryKey: browserCloudKeys.myLogins,
     queryFn: () => apiClient.get('/api/browser-cloud/my-logins'),
   })
+}
+
+/**
+ * Take the controls, and keep them.
+ *
+ * The claim expires without a heartbeat so a closed laptop cannot hold a
+ * team's browser hostage; this renews it while the viewer is mounted and
+ * hands back on unmount.
+ */
+export const useBrowserControl = (sessionId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  const [controlling, setControlling] = useState(false)
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({
+      queryKey: browserCloudKeys.session(sessionId ?? undefined),
+    })
+  }
+
+  const take = useMutation({
+    mutationFn: () =>
+      apiClient.post<{ controlling: boolean }>(`/api/browser-sessions/${sessionId}/control`, {}),
+    onSuccess: () => {
+      setControlling(true)
+      invalidate()
+    },
+  })
+
+  const handBack = useMutation({
+    mutationFn: () => apiClient.delete<void>(`/api/browser-sessions/${sessionId}/control`),
+    onSuccess: () => {
+      setControlling(false)
+      invalidate()
+    },
+  })
+
+  useEffect(() => {
+    if (!controlling || !sessionId) return undefined
+    const timer = window.setInterval(() => {
+      void apiClient.post(`/api/browser-sessions/${sessionId}/control`, {}).catch(() => {
+        // A lost renewal simply lets the claim lapse, which is the safe end.
+        setControlling(false)
+      })
+    }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [apiClient, controlling, sessionId])
+
+  // Handing back on unmount matters more than it looks: a person who closes
+  // the panel mid-claim would otherwise block the agent until the TTL.
+  useEffect(() => () => {
+    if (!controlling || !sessionId) return
+    void apiClient.delete(`/api/browser-sessions/${sessionId}/control`).catch(() => undefined)
+  }, [apiClient, controlling, sessionId])
+
+  return {
+    controlling,
+    error: take.error,
+    handBack: () => handBack.mutate(),
+    pending: take.isPending || handBack.isPending,
+    take: () => take.mutate(),
+  }
 }

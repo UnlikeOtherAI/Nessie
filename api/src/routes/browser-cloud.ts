@@ -1,11 +1,13 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
+  claimSessionControl,
   connectCloudBrowser,
   createBrowserbaseClient,
   disconnectCloudBrowser,
   isCloudBrowserError,
   listCloudBrowserConnections,
+  releaseSessionControl,
   resetAgentBrowser,
 } from '@nessie/browser-cloud'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
@@ -41,6 +43,49 @@ const sendCloudBrowserError = (reply: FastifyReply, error: unknown): boolean => 
     : 400
   sendApiError(reply, status, error.code, error.message)
   return true
+}
+
+
+/**
+ * One authorization rule for a session's live surface.
+ *
+ * A session on a browser somebody signed in renders only to the person who
+ * asked for the run; an unauthenticated or ephemeral one renders to anyone
+ * who can see the thread. An unauthorized session is shaped exactly like an
+ * absent one.
+ */
+const loadViewableSession = async (
+  prisma: RouteDeps['prisma'],
+  input: {
+    actorContext: { actor: { actorId: string }; tenant: { organizationId: string } }
+    sessionId: string
+    findThreadForUser: typeof findThreadForUser
+  },
+): Promise<{ id: string; threadId: string } | null> => {
+  const session = await prisma.cloudBrowserSession.findFirst({
+    where: {
+      id: input.sessionId,
+      organizationId: input.actorContext.tenant.organizationId,
+    },
+    select: {
+      id: true,
+      threadId: true,
+      authenticated: true,
+      requestedByUserId: true,
+    },
+  })
+  if (!session) return null
+  const thread = await input.findThreadForUser(
+    prisma,
+    session.threadId,
+    input.actorContext.actor.actorId,
+    input.actorContext.tenant.organizationId,
+  )
+  if (!thread) return null
+  if (session.authenticated && session.requestedByUserId !== input.actorContext.actor.actorId) {
+    return null
+  }
+  return { id: session.id, threadId: session.threadId }
 }
 
 export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -442,5 +487,60 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       })),
     }))
   })
+  /**
+   * Take the controls, or renew a claim the viewer is still holding.
+   *
+   * The claim is coordination and audit, not the security boundary — that is
+   * who may fetch the live-view URL at all, and everyone it admits could
+   * already drive. What the claim does guarantee is that the *agent* stands
+   * down: every browser verb is refused while it is held.
+   */
+  app.post('/api/browser-sessions/:sessionId/control', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
+    })
+    if (!session) {
+      sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
+      return reply
+    }
+
+    const claimed = await claimSessionControl(prisma, {
+      sessionId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!claimed) {
+      sendApiError(
+        reply,
+        409,
+        'CLOUD_BROWSER_CONTROL_HELD',
+        'Somebody else is at the controls of this browser.',
+      )
+      return reply
+    }
+    return createApiResponse({ controlling: true })
+  })
+
+  app.delete('/api/browser-sessions/:sessionId/control', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    // Only the holder may hand back, so a bystander cannot yank the controls
+    // out from under somebody mid-sign-in.
+    await releaseSessionControl(prisma, {
+      sessionId,
+      userId: actorContext.actor.actorId,
+    })
+    return reply.code(204).send()
+  })
 }
+
 

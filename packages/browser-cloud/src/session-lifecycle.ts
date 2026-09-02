@@ -463,3 +463,74 @@ export const markSessionAuthenticated = async (
     data: { authenticated: true },
   })
 }
+
+
+/**
+ * How long a control claim survives without a heartbeat. A closed laptop lid
+ * must not hold a team's browser hostage, and the claimant's viewer renews
+ * this while it is open.
+ */
+export const CONTROL_CLAIM_TTL_MS = 90_000
+
+/**
+ * Take the controls.
+ *
+ * One winner by conditional UPDATE, the claim-once discipline: a session can
+ * render to many entitled viewers at once, so two people pressing together
+ * must not both believe they are driving. An expired claim is reclaimable,
+ * which is what stops a dropped connection stranding the browser.
+ */
+export const claimSessionControl = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  input: { sessionId: string; userId: string; now?: Date },
+): Promise<boolean> => {
+  const now = input.now ?? new Date()
+  const staleBefore = new Date(now.getTime() - CONTROL_CLAIM_TTL_MS)
+  const claimed = await prisma.cloudBrowserSession.updateMany({
+    where: {
+      id: input.sessionId,
+      status: { in: [...LIVE_SESSION_STATUSES] },
+      OR: [
+        { controlledByUserId: null },
+        // Renewing your own claim, or taking over one nobody has refreshed.
+        { controlledByUserId: input.userId },
+        { controlClaimedAt: { lt: staleBefore } },
+      ],
+    },
+    data: { controlledByUserId: input.userId, controlClaimedAt: now },
+  })
+  return claimed.count === 1
+}
+
+/**
+ * Hand the browser back. Only the holder can, so a bystander cannot yank the
+ * controls out from under somebody mid-sign-in.
+ */
+export const releaseSessionControl = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  input: { sessionId: string; userId: string },
+): Promise<boolean> => {
+  const released = await prisma.cloudBrowserSession.updateMany({
+    where: { id: input.sessionId, controlledByUserId: input.userId },
+    data: { controlledByUserId: null, controlClaimedAt: null },
+  })
+  return released.count === 1
+}
+
+/**
+ * Drop claims nobody has refreshed, so the agent can resume on its own rather
+ * than waiting for a person who has gone.
+ */
+export const expireStaleControlClaims = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  now: Date = new Date(),
+): Promise<number> => {
+  const expired = await prisma.cloudBrowserSession.updateMany({
+    where: {
+      controlledByUserId: { not: null },
+      controlClaimedAt: { lt: new Date(now.getTime() - CONTROL_CLAIM_TTL_MS) },
+    },
+    data: { controlledByUserId: null, controlClaimedAt: null },
+  })
+  return expired.count
+}

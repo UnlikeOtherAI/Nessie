@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
+import { useBrowserControl, useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 
@@ -46,6 +46,7 @@ const STATUS_LABEL: Record<string, string> = {
 export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
   const [activeTab, setActiveTab] = useState<string | null>(null)
+  const control = useBrowserControl(variant === 'fullscreen' ? sessionId : null)
   const shared = agent !== undefined && agent.visibility !== 'private'
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (!agent) return true
@@ -96,7 +97,20 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
           {STATUS_LABEL[session.data?.status ?? ''] ?? 'Loading'}
         </Pill>
         {session.data?.controlledByUserId ? (
-          <Pill size="sm" tone="warning">Someone is driving</Pill>
+          <Pill size="sm" tone="warning">
+            {control.controlling ? 'You are driving' : 'Someone is driving'}
+          </Pill>
+        ) : null}
+        {variant === 'fullscreen' && live ? (
+          <button
+            className="admin-button admin-button-secondary admin-button-compact ml-auto"
+            disabled={control.pending
+              || (Boolean(session.data?.controlledByUserId) && !control.controlling)}
+            onClick={() => (control.controlling ? control.handBack() : control.take())}
+            type="button"
+          >
+            {control.controlling ? 'Hand back' : 'Take control'}
+          </button>
         ) : null}
       </div>
 
@@ -116,7 +130,7 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
         </div>
       ) : null}
 
-      {shared && !bannerDismissed ? (
+      {shared && (control.controlling || !bannerDismissed) ? (
         <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 rounded-[var(--radius-sm)] border border-[color:var(--warning-border,var(--sep))] bg-[color:var(--warning-soft,var(--bg2))] px-3 py-2">
           <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
             Other people can use this agent’s browser. Anything you sign in to here is
@@ -138,9 +152,9 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
             allow="clipboard-read; clipboard-write"
             className="h-full w-full border-0"
             // Watch-only: a click here must not reach the agent's browser.
-            sandbox="allow-same-origin allow-scripts"
+            sandbox="allow-same-origin allow-scripts allow-forms"
             src={frameUrl}
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: control.controlling ? 'auto' : 'none' }}
             title={`${session.data?.agentName ?? 'Agent'} browser`}
           />
         ) : (
@@ -156,8 +170,12 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
 
       {variant === 'fullscreen' ? (
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
-          You are watching what the agent sees. Pages load directly from the browser
-          provider, so their content never passes through this workspace.
+          {control.controlling
+            ? 'You are driving. The agent is paused until you hand back. What you type '
+              + 'goes straight to the browser — it never passes through this workspace, '
+              + 'and the agent cannot read it.'
+            : 'You are watching what the agent sees. Pages load directly from the browser '
+              + 'provider, so their content never passes through this workspace.'}
         </p>
       ) : null}
     </div>

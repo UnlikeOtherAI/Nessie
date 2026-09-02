@@ -28,7 +28,13 @@ import { isFatalToolExecutionError } from '../tool-execution-errors.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from '../tool-types.js'
 import { summarizeToolInput, truncateToolResult } from '../tool-util.js'
 import { requestBrowserLogin } from './login-request.js'
-import { acquireCdp, registerSession, releaseCdp } from './session-pool.js'
+import {
+  evaluateOriginGate,
+  noteVisitedOrigin,
+  readAuthenticatedOrigins,
+  type OriginGateState,
+} from './origin-gate.js'
+import { acquireCdp, originGateFor, registerSession, releaseCdp } from './session-pool.js'
 
 /**
  * What a browser verb reports. Failure is a value; ambiguity is a throw.
@@ -206,12 +212,22 @@ const runOpen = async (
       requestedByUserId: context.run.principalUserId ?? null,
       ...(agentBrowser ? { agentBrowser } : {}),
     })
-    registerSession(opened.sessionId, opened.connectUrl)
+    const gate: OriginGateState = {
+      authenticatedOrigins: new Set(),
+      touchedAuthenticated: false,
+    }
+    registerSession(opened.sessionId, opened.connectUrl, gate)
     const cdp = await acquireCdp(opened.sessionId)
     if (!cdp) {
       return { output: 'The browser could not be reached after opening.', success: false }
     }
+    if (agentBrowser?.hasLogins) {
+      // Read once, before the first page: which origins this browser can act
+      // as somebody on is a property of its cookies, not of what it visits.
+      gate.authenticatedOrigins = await readAuthenticatedOrigins(cdp)
+    }
     await cdp.call('Page.navigate', { url: parsed.data.url })
+    noteVisitedOrigin(gate, parsed.data.url)
     const observation = await observeBrowser(cdp)
     return {
       output: untrusted(renderObservation(observation)),
@@ -272,8 +288,16 @@ const runAct = async (
         success: false,
       }
     }
+    const gate = originGateFor(session.sessionId)
+    if (gate) {
+      const before = await observeBrowser(cdp)
+      noteVisitedOrigin(gate, before.url)
+      const verdict = evaluateOriginGate(gate, before.url, parsed.data)
+      if (!verdict.allowed) return { output: verdict.reason, success: false }
+    }
     const result = await actInBrowser(cdp, parsed.data)
     const observation = await observeBrowser(cdp)
+    if (gate) noteVisitedOrigin(gate, observation.url)
     return {
       output: untrusted(
         [
