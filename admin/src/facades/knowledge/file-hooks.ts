@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -88,6 +88,7 @@ export type ZipListing = { entries: ZipEntry[]; tooLarge: boolean }
 export const useZipEntries = (pageId?: string, versionId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ZipListing>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.zip(pageId, versionId),
     queryFn: () =>
       apiClient.get(`/api/knowledge-base/pages/${pageId}/versions/${versionId}/zip`),
@@ -99,6 +100,7 @@ export const useZipEntries = (pageId?: string, versionId?: string) => {
 export const useZipEntryText = (pageId?: string, versionId?: string, path?: string | null) => {
   const apiClient = useApiClient()
   return useQuery<{ text: string; truncated: boolean }>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.zipEntry(pageId, versionId, path),
     queryFn: () =>
       apiClient.get(
@@ -111,6 +113,7 @@ export const useZipEntryText = (pageId?: string, versionId?: string, path?: stri
 export const usePageAttachments = (pageId?: string) => {
   const apiClient = useApiClient()
   return useQuery<AttachmentRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.attachments(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/attachments`),
     enabled: Boolean(pageId),
@@ -149,6 +152,7 @@ export const useDeleteAttachment = (pageId?: string) => {
 export const useStorageUsage = (scopeType: StorageScopeType = 'organization', scopeId?: string) => {
   const apiClient = useApiClient()
   return useQuery<StorageUsage>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.storageUsage(scopeType, scopeId),
     queryFn: () => {
       const params = new URLSearchParams({ scopeType })

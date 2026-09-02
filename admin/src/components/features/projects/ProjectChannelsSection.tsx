@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { useChannels } from '../../../facades/channels/hooks'
 import { UnreadBadge } from '../../primitives/UnreadBadge'
+import { Skeleton } from '../../primitives/Skeleton'
 import {
   DashboardSectionCard,
   SectionNotice,
   SectionOverflowHint,
-  SectionSkeleton,
   dashboardRowClass,
 } from './DashboardSectionCard'
 import {
@@ -40,7 +40,7 @@ export const ProjectChannelsSection = ({ className, projectId }: ProjectChannels
       count={isPending ? undefined : rows.length}
       title="Channels"
     >
-      {isPending ? <SectionSkeleton /> : null}
+      {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? <SectionNotice>Channels could not be loaded. Please refresh.</SectionNotice> : null}
       {!isPending && !isError && rows.length === 0 ? (
         <SectionNotice>

@@ -8,6 +8,8 @@
  */
 
 import type { ReactNode } from 'react'
+
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import type {
   DashboardWidgetProjection,
   WidgetPresentation,
@@ -195,8 +197,5 @@ export const WidgetPlaceholder = ({
 
 /** First-load shimmer: keeps the frame's height so the grid does not jump. */
 export const WidgetSkeleton = () => (
-  <div
-    className="h-full min-h-[64px] w-full animate-pulse rounded"
-    style={{ background: 'var(--overlay-weak)' }}
-  />
+  <SkeletonBlock className="h-full min-h-[64px] w-full" />
 )

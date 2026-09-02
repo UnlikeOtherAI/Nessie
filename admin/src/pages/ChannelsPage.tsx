@@ -75,8 +75,11 @@ export const ChannelsPage = () => {
     agents,
     allUsers,
   )
-  const { data: threadMessages = [], isFetched: threadMessagesFetched } =
-    useThreadMessages(activeChannel?.defaultThreadId)
+  const {
+    data: threadMessages = [],
+    isFetched: threadMessagesFetched,
+    isPlaceholderData: threadMessagesArePlaceholder,
+  } = useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
   const { documentSessions, documentStore, pendingMessages } = useThreadStream(
     activeChannel?.defaultThreadId,
@@ -143,6 +146,9 @@ export const ChannelsPage = () => {
   }, [replyThread.openRootMessageId, replyThread.repliesQuery.data, replyThread.rootQuery.data, threadMessages])
   const conversationReadReady = isConversationReadReady({
     isReplyConversation: Boolean(replyThread.openRootMessageId),
+    messagesArePlaceholder: replyThread.openRootMessageId
+      ? replyThread.repliesQuery.isPlaceholderData || replyThread.rootQuery.isPlaceholderData
+      : threadMessagesArePlaceholder,
     repliesLoaded: replyThread.repliesQuery.isSuccess,
     rootLoaded: replyThread.rootQuery.isSuccess,
   })

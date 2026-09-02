@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -21,6 +21,7 @@ export const useKnowledgeBacklinks = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgeBacklink[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.backlinks(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/backlinks`),
     enabled: Boolean(pageId),
@@ -33,6 +34,7 @@ export const useKnowledgeMentions = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgeMention[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.mentions(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/mentions`),
     enabled: Boolean(pageId),

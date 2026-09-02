@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom'
 import { QueryState } from '../components/shared/QueryState'
 import { useCreateDashboard, useDashboards } from '../facades/dashboards/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { prewarmRowHandlers, usePrewarm } from '../navigation/prewarm'
 
 const HOME_LABEL: Record<string, string> = {
   organization: 'Organisation',
@@ -22,6 +23,7 @@ const HOME_LABEL: Record<string, string> = {
 }
 
 export const DashboardsPage = () => {
+  const prewarm = usePrewarm()
   const dashboardsQuery = useDashboards()
   const dashboards = dashboardsQuery.data
   const createDashboard = useCreateDashboard()
@@ -121,6 +123,7 @@ export const DashboardsPage = () => {
                     className="flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors"
                     style={{ background: 'var(--panel)', borderColor: 'var(--sep)' }}
                     to={`/dashboards/${dashboard.id}`}
+                    {...prewarmRowHandlers(prewarm, `/dashboards/${dashboard.id}`)}
                   >
                     <span className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: 'var(--tx)' }}>
                       {dashboard.title}

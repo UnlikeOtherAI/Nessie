@@ -5,6 +5,7 @@ import type {
   ChannelRecord,
   UserRecord,
 } from '../../lib/api-client'
+import { Skeleton } from '../../components/primitives/Skeleton'
 import {
   useMarkThreadRead,
   useThreadMessage,
@@ -137,10 +138,7 @@ export const ThreadInboxCard = ({
       </div>
 
       {isLoading ? (
-        <div className="space-y-3 p-5" aria-label="Loading thread">
-          <div className="h-10 animate-pulse rounded bg-[color:var(--surface-hover)]" />
-          <div className="h-16 animate-pulse rounded bg-[color:var(--surface-hover)]" />
-        </div>
+        <Skeleton className="p-5" count={2} variant="feed" />
       ) : null}
       {hasFailed ? (
         <div className="p-5 text-sm text-[color:var(--danger-text)]">

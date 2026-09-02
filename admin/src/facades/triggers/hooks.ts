@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
@@ -20,6 +20,7 @@ export const useAgentTriggers = (agentId?: string, enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.triggers(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/triggers`),
     enabled: enabled && Boolean(agentId),
@@ -30,6 +31,7 @@ export const useTriggerHistory = (triggerId?: string, limit = 10) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerDeliveryRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: triggerKeys.history(triggerId, limit),
     queryFn: () => apiClient.get(`/api/triggers/${triggerId}/history?limit=${limit}`),
     enabled: Boolean(triggerId),

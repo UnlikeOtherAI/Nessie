@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
+import { Skeleton, SkeletonBlock } from '../components/primitives/Skeleton'
 import { DashboardGrid } from '../components/features/dashboards/DashboardGrid'
 import { DashboardWidgetCard } from '../components/features/dashboards/DashboardWidgetCard'
 import { DashboardVersionsPanel } from '../components/features/dashboards/DashboardVersionsPanel'
@@ -49,10 +50,7 @@ const WidgetSlot = ({
       {projection ? (
         <DashboardWidgetCard onRetry={() => void refetch()} projection={projection} />
       ) : (
-        <div
-          className="h-full animate-pulse rounded-lg border"
-          style={{ background: 'var(--panel)', borderColor: 'var(--sep)' }}
-        />
+        <SkeletonBlock className="h-full rounded-lg" />
       )}
     </div>
   )
@@ -69,9 +67,13 @@ export const DashboardDetailPage = () => {
   const [showAddWidget, setShowAddWidget] = useState(false)
   const [draftLayout, setDraftLayout] = useState<DashboardLayout | null>(null)
 
+  // Guarded by id, not merely by presence: the query keeps the previous
+  // dashboard on screen during a sibling swap (docs/navigation.md §"Arriving
+  // with content"), and seeding the draft from it would let a Save write one
+  // dashboard's layout onto another.
   useEffect(() => {
-    if (dashboard) setDraftLayout(dashboard.layout)
-  }, [dashboard])
+    if (dashboard && dashboard.id === dashboardId) setDraftLayout(dashboard.layout)
+  }, [dashboard, dashboardId])
 
   const widgetKinds = useMemo(() => {
     const map = new Map<string, DashboardWidgetKind>()
@@ -115,11 +117,9 @@ export const DashboardDetailPage = () => {
   }, [draftLayout, dashboard, widgetKinds])
 
   if (isLoading) {
-    return (
-      <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
-        Loading…
-      </p>
-    )
+    // A dashboard is a grid of cards, so its first load shows one — the slide
+    // used to land on the word "Loading…" alone (plan §4.10).
+    return <Skeleton className="p-6" count={6} variant="board" />
   }
   if (!dashboard) {
     return (

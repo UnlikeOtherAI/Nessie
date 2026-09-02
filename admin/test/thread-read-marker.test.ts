@@ -32,17 +32,37 @@ test('does not duplicate a pending or acknowledged read marker', () => {
 test('waits for a complete reply conversation before marking it read', () => {
   assert.equal(isConversationReadReady({
     isReplyConversation: true,
+    messagesArePlaceholder: false,
     rootLoaded: true,
     repliesLoaded: false,
   }), false)
   assert.equal(isConversationReadReady({
     isReplyConversation: true,
+    messagesArePlaceholder: false,
     rootLoaded: true,
     repliesLoaded: true,
   }), true)
   assert.equal(isConversationReadReady({
     isReplyConversation: false,
+    messagesArePlaceholder: false,
     rootLoaded: false,
     repliesLoaded: false,
   }), true)
+})
+
+// Sibling swap: the feed still shows the previous channel's messages while the
+// new thread loads, so the newest message id belongs to the wrong thread.
+test('never marks read while the messages on screen are the previous thread\'s', () => {
+  assert.equal(isConversationReadReady({
+    isReplyConversation: false,
+    messagesArePlaceholder: true,
+    rootLoaded: true,
+    repliesLoaded: true,
+  }), false)
+  assert.equal(isConversationReadReady({
+    isReplyConversation: true,
+    messagesArePlaceholder: true,
+    rootLoaded: true,
+    repliesLoaded: true,
+  }), false)
 })

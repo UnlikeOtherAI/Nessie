@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import type { SessionSummary } from '@nessie/schemas'
 import { useRevokeSession } from '../../../facades/auth/hooks'
 import { describeSessionDevice } from '../../../pages/settings/session-device'
+import { Skeleton } from '../../primitives/Skeleton'
 import { ExpandableTable } from '../../shared/ExpandableTable'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 
@@ -66,16 +67,11 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
           </thead>
           <tbody>
             {isLoading ? (
-              Array.from({ length: PAGE_SIZE }).map((_, index) => (
-                <tr key={index}>
-                  <td className="px-4 py-3">
-                    <div className="mb-2 h-4 max-w-52 animate-pulse rounded bg-[color:var(--overlay)]" />
-                    <div className="h-3 w-28 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
-                  </td>
-                  <td className="hidden px-4 py-3 sm:table-cell"><div className="h-3 w-28 animate-pulse rounded bg-[color:var(--overlay-weak)]" /></td>
-                  <td className="px-4 py-3"><div className="ml-auto h-8 w-16 animate-pulse rounded bg-[color:var(--overlay)]" /></td>
-                </tr>
-              ))
+              <tr>
+                <td className="px-4 py-4" colSpan={3}>
+                  <Skeleton count={PAGE_SIZE} variant="list" />
+                </td>
+              </tr>
             ) : sessions.length === 0 ? (
               <tr>
                 <td className="px-4 py-12 text-center text-sm text-[color:var(--tx3)]" colSpan={3}>

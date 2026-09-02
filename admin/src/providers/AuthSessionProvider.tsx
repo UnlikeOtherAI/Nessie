@@ -34,6 +34,7 @@ import {
   type StoredTokenMode,
 } from '../lib/storage'
 import { getBaseUrl } from '../lib/api-client'
+import { clearBlobCache } from '../lib/blob-cache'
 import { getSessionClientType } from '../lib/session-client'
 import {
   clearSessionIfCurrent,
@@ -127,6 +128,10 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const resetTenantQueries = useCallback(async (): Promise<void> => {
     await queryClient.cancelQueries().catch(() => undefined)
     queryClient.clear()
+    // Authed image bytes were fetched with the session that is ending; the
+    // blob cache outlives React state, so it is cleared with the query cache
+    // rather than left for the next person signing in on this tab.
+    clearBlobCache()
   }, [queryClient])
 
   const sessionQueryBoundary = useMemo(

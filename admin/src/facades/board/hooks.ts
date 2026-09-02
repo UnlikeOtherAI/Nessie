@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ApiClient } from '../../lib/api-client'
 import { projectKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -18,11 +19,18 @@ export type ProjectBoard = {
   columns: BoardColumn[]
 }
 
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchProjectBoard = (
+  apiClient: ApiClient,
+  projectId: string,
+): Promise<ProjectBoard> => apiClient.get(`/api/projects/${projectId}/board`)
+
 export const useProjectBoard = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ProjectBoard>({
+    placeholderData: keepPreviousData,
     queryKey: projectKeys.board(projectId ?? ''),
-    queryFn: () => apiClient.get(`/api/projects/${projectId}/board`),
+    queryFn: () => fetchProjectBoard(apiClient, projectId ?? ''),
     enabled: Boolean(projectId),
   })
 }

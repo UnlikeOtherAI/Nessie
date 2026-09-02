@@ -1,4 +1,6 @@
 import type { AgentRecord } from '../../../lib/api-client'
+import { usePrewarm } from '../../../navigation/prewarm'
+import { Skeleton } from '../../primitives/Skeleton'
 import { ExpandableTable } from '../../shared/ExpandableTable'
 import { AgentListRow } from './AgentListRow'
 
@@ -46,26 +48,18 @@ export const AgentsTable = ({
   onOpen,
   token,
 }: AgentsTableProps) => {
+  const prewarm = usePrewarm()
+
   if (isLoading) {
     return (
       <TableFrame>
         <HeaderRow />
         <tbody>
-          {Array.from({ length: SKELETON_ROWS }).map((_, index) => (
-            <tr key={index}>
-              <td className="py-3 pl-4 pr-0">
-                <div className="h-8 w-8 animate-pulse rounded-md bg-[color:var(--overlay)]" />
-              </td>
-              <td className="px-3 py-3">
-                <div className="mb-1.5 h-3 w-40 animate-pulse rounded bg-[color:var(--overlay)]" />
-                <div className="h-2.5 w-24 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
-              </td>
-              <td className="hidden sm:table-cell">
-                <div className="h-3 w-24 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
-              </td>
-              <td />
-            </tr>
-          ))}
+          <tr>
+            <td className="px-4 py-4" colSpan={4}>
+              <Skeleton count={SKELETON_ROWS} variant="list" />
+            </td>
+          </tr>
         </tbody>
       </TableFrame>
     )
@@ -98,6 +92,7 @@ export const AgentsTable = ({
             agent={agent}
             key={agent.id}
             onOpen={onOpen}
+            prewarm={prewarm}
             token={token}
           />
         ))}
