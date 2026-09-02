@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import { OverlayPortal } from './OverlayPortal'
 import { useOverlay } from './useOverlay'
 import {
   placePopover,
@@ -168,29 +169,31 @@ export const Popover = ({
   if (!overlay.mounted) return null
 
   return (
-    <div
-      aria-label={label}
-      className={className}
-      id={id}
-      onKeyDown={onKeyDown}
-      ref={panelRef}
-      role={role}
-      style={{
-        position: 'fixed',
-        ...overlay.layerStyle,
-        // Until the first measurement the panel is laid out but not painted:
-        // it has to be in the DOM at its natural size to be measured at all.
-        ...(placed
-          ? { left: placed.left, maxHeight: placed.maxHeight, top: placed.top }
-          : { left: 0, top: 0, visibility: 'hidden' as const }),
-        ...(placed?.width === null || placed?.width === undefined
-          ? undefined
-          : { width: placed.width }),
-        ...(overlay.closing ? { pointerEvents: 'none' as const } : undefined),
-        ...style,
-      }}
-    >
-      {children}
-    </div>
+    <OverlayPortal>
+      <div
+        aria-label={label}
+        className={className}
+        id={id}
+        onKeyDown={onKeyDown}
+        ref={panelRef}
+        role={role}
+        style={{
+          position: 'fixed',
+          ...overlay.layerStyle,
+          // Until the first measurement the panel is laid out but not painted:
+          // it has to be in the DOM at its natural size to be measured at all.
+          ...(placed
+            ? { left: placed.left, maxHeight: placed.maxHeight, top: placed.top }
+            : { left: 0, top: 0, visibility: 'hidden' as const }),
+          ...(placed?.width === null || placed?.width === undefined
+            ? undefined
+            : { width: placed.width }),
+          ...(overlay.closing ? { pointerEvents: 'none' as const } : undefined),
+          ...style,
+        }}
+      >
+        {children}
+      </div>
+    </OverlayPortal>
   )
 }

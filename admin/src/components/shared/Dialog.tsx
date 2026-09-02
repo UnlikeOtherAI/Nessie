@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 
 /**
@@ -118,56 +119,58 @@ export const Dialog = ({
   if (!overlay.mounted) return null
 
   return (
-    <div
-      {...overlay.scrimProps}
-      style={{
-        ...SCRIM_STYLE,
-        ...overlay.layerStyle,
-        ...(overlay.closing ? { pointerEvents: 'none' } : undefined),
-      }}
-    >
+    <OverlayPortal>
       <div
-        aria-describedby={description ? descriptionId : undefined}
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="create-channel-panel"
-        ref={overlay.panelRef}
-        role="dialog"
-        style={PANEL_STYLE[size]}
-        tabIndex={-1}
+        {...overlay.scrimProps}
+        style={{
+          ...SCRIM_STYLE,
+          ...overlay.layerStyle,
+          ...(overlay.closing ? { pointerEvents: 'none' } : undefined),
+        }}
       >
-        <div className="create-channel-header">
-          <div>
-            <h2 className="text-lg font-bold text-[color:var(--tx)]" id={titleId}>
-              {title}
-            </h2>
-            {description ? (
-              <div className="text-xs text-[color:var(--tx3)]" id={descriptionId}>
-                {description}
-              </div>
-            ) : null}
-          </div>
-          <button
-            aria-label="Close"
-            className={closeButtonClass}
-            onClick={requestClose}
-            type="button"
-          >
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
+        <div
+          aria-describedby={description ? descriptionId : undefined}
+          aria-labelledby={titleId}
+          aria-modal="true"
+          className="create-channel-panel"
+          ref={overlay.panelRef}
+          role="dialog"
+          style={PANEL_STYLE[size]}
+          tabIndex={-1}
+        >
+          <div className="create-channel-header">
+            <div>
+              <h2 className="text-lg font-bold text-[color:var(--tx)]" id={titleId}>
+                {title}
+              </h2>
+              {description ? (
+                <div className="text-xs text-[color:var(--tx3)]" id={descriptionId}>
+                  {description}
+                </div>
+              ) : null}
+            </div>
+            <button
+              aria-label="Close"
+              className={closeButtonClass}
+              onClick={requestClose}
+              type="button"
             >
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
 
-        {children}
+          {children}
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }

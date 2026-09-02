@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { JSDOM } from 'jsdom'
+import { openOverlayIn } from './support/overlay-host'
 import * as ReactNamespace from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -136,7 +137,8 @@ const mount = async (dismissDisabled: boolean) => {
     )
   })
 
-  const scrim = container.firstElementChild as HTMLElement
+  // Not `container`: the overlay portals out of the tree it was rendered in.
+  const scrim = openOverlayIn(dom.window.document)
   const panel = scrim.firstElementChild as HTMLElement
   const closeButton = panel.querySelector('button[aria-label="Close"]') as HTMLElement
 

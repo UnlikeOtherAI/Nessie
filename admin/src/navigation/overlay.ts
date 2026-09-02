@@ -10,9 +10,17 @@ export type OverlayKind = 'modal' | 'sheet' | 'popover' | 'card' | 'blocking'
 // The layer scale. A card never covers a modal; a confirm over a modal (the
 // one sanctioned nesting) sits in `blocking`; the navigation stack's own
 // layers are `stack` and everything in-page stays below it.
+//
+// `stack` and `tooltip` are layers without a kind. A hover hint is not an
+// overlay — it owns no Back, traps no focus and is never dismissed — but the
+// two the rail and the sidebar portal beside themselves are `position: fixed`,
+// and they had picked 90 and 80 out of the air, which put a hover hint over an
+// open dialog. On the scale they sit just above a card and below every kind a
+// person actually interacts with.
 export const OVERLAY_LAYER = Object.freeze({
   stack: 1,
   card: 40,
+  tooltip: 45,
   popover: 50,
   sheet: 60,
   modal: 70,

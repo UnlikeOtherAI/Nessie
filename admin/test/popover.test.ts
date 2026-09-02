@@ -206,7 +206,8 @@ const mount = async () => {
     )
   })
 
-  const panel = container.querySelector('[role="menu"]') as HTMLElement
+  // Not `container`: the popover portals out of the tree it was rendered in.
+  const panel = dom.window.document.querySelector('[role="menu"]') as HTMLElement
   const press = async (target: HTMLElement) => {
     await act(async () => {
       target.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true }))
