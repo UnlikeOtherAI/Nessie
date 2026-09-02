@@ -3,7 +3,7 @@
 **Date:** 2026-09-02 (reframed twice, then hardened by two independent
 reviews the same day — §6; supersedes
 [2026-04-07-email-integration.md](2026-04-07-email-integration.md))
-**Status:** Design
+**Status:** P1 built and merged (Model B — hosted mailbox); P2–P3 planned.
 
 ---
 

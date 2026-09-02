@@ -94,6 +94,14 @@ export type RunContext = {
    */
   boundAgentIds: readonly string[]
   /**
+   * The hosted mailbox this run's destination belongs to, when its channel is a
+   * mailbox's operations room. Loaded once with the run context because the
+   * disclosure gate consults it per streamed delta and must stay synchronous.
+   */
+  emailMailboxId?: string | null
+  /** The email conversation this run is answering, when it was woken by mail. */
+  emailConversationId?: string | null
+  /**
    * The opt-in structural recording armed for this agent/thread when the run
    * began. It is deliberately absent for ordinary runs, so their tool-end
    * path never queries or writes demonstration storage.

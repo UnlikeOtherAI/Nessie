@@ -1,0 +1,218 @@
+import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser'
+
+import { normalizeAddress, normalizeMessageId, parseReferences } from './address.js'
+import { classifyInboundEmail, type EmailClassification } from './classification.js'
+import { buildSnippet, htmlToText, sanitizeEmailHtml } from './sanitize-html.js'
+
+/**
+ * One MIME parser, shared by ingest and by the outbound builder's round-trip
+ * assertions. Everything a message says about itself is untrusted display data:
+ * the only value here that participates in a routing or authorization decision
+ * is nothing at all — the SES receipt envelope decides that (see ses-events.ts).
+ */
+
+export type ParsedAttachment = {
+  filename: string
+  contentType: string
+  content: Buffer
+  contentId: string | null
+  /** Inline parts are referenced by `cid:` from the HTML body. */
+  inline: boolean
+}
+
+export type ParsedEmail = {
+  rfcMessageId: string | null
+  inReplyTo: string | null
+  references: string[]
+  fromAddress: string | null
+  fromName: string | null
+  replyToAddress: string | null
+  toAddresses: string[]
+  ccAddresses: string[]
+  subject: string
+  textBody: string
+  htmlBody: string | null
+  blockedRemoteContent: boolean
+  snippet: string
+  classification: EmailClassification
+  attachments: ParsedAttachment[]
+  date: Date | null
+}
+
+const addressList = (value: AddressObject | AddressObject[] | undefined): string[] => {
+  if (!value) return []
+  const groups = Array.isArray(value) ? value : [value]
+  const out: string[] = []
+  for (const group of groups) {
+    for (const entry of group.value ?? []) {
+      const normalized = normalizeAddress(entry.address ?? undefined)
+      if (normalized) out.push(normalized)
+    }
+  }
+  return [...new Set(out)]
+}
+
+const firstAddressName = (value: AddressObject | AddressObject[] | undefined): string | null => {
+  const groups = Array.isArray(value) ? value : value ? [value] : []
+  for (const group of groups) {
+    for (const entry of group.value ?? []) {
+      if (entry.name && entry.name.trim().length > 0) return entry.name.trim()
+    }
+  }
+  return null
+}
+
+export const parseInboundEmail = async (
+  raw: Buffer | string,
+  options: { envelopeFrom?: string | null } = {},
+): Promise<ParsedEmail> => {
+  const parsed: ParsedMail = await simpleParser(raw, {
+    // Attachment bytes are handed to FileService; nothing is written to disk here.
+    skipHtmlToText: true,
+    skipTextLinks: true,
+  })
+
+  const header = (name: string): string | undefined => {
+    const value: unknown = parsed.headers.get(name.toLowerCase())
+    if (value === undefined || value === null) return undefined
+    if (typeof value === 'string') return value
+    // Structured headers (Content-Type, Auto-Submitted with params) arrive as
+    // `{ value, params }`; only the bare value participates in classification.
+    if (typeof value === 'object' && !Array.isArray(value) && 'value' in value) {
+      const inner = (value as { value: unknown }).value
+      return typeof inner === 'string' ? inner : undefined
+    }
+    return undefined
+  }
+
+  const sanitized = sanitizeEmailHtml(parsed.html || null)
+  const textBody = (parsed.text ?? '').trim() || htmlToText(parsed.html || null)
+
+  const attachments: ParsedAttachment[] = (parsed.attachments ?? []).map((attachment) => ({
+    content: attachment.content,
+    contentId: attachment.contentId ? attachment.contentId.replace(/^<|>$/g, '') : null,
+    contentType: attachment.contentType || 'application/octet-stream',
+    filename: attachment.filename || 'attachment',
+    inline: attachment.contentDisposition === 'inline',
+  }))
+
+  return {
+    attachments,
+    blockedRemoteContent: sanitized.blockedRemoteContent,
+    ccAddresses: addressList(parsed.cc),
+    classification: classifyInboundEmail({
+      contentType: header('content-type') ?? null,
+      envelopeFrom: options.envelopeFrom ?? null,
+      header,
+    }),
+    date: parsed.date ?? null,
+    fromAddress: normalizeAddress(parsed.from?.value?.[0]?.address ?? undefined),
+    fromName: firstAddressName(parsed.from),
+    htmlBody: sanitized.html || null,
+    inReplyTo: normalizeMessageId(parsed.inReplyTo ?? undefined),
+    references: parseReferences(
+      Array.isArray(parsed.references) ? parsed.references.join(' ') : parsed.references,
+    ),
+    replyToAddress: normalizeAddress(parsed.replyTo?.value?.[0]?.address ?? undefined),
+    rfcMessageId: normalizeMessageId(parsed.messageId ?? undefined),
+    snippet: buildSnippet(textBody),
+    subject: (parsed.subject ?? '').trim() || '(no subject)',
+    textBody,
+    toAddresses: addressList(parsed.to),
+  }
+}
+
+// ── Outbound ────────────────────────────────────────────────────────────────
+
+export type OutboundAttachment = {
+  filename: string
+  contentType: string
+  content: Buffer
+}
+
+export type OutboundEmail = {
+  fromAddress: string
+  fromName?: string | null
+  to: string[]
+  cc?: string[]
+  bcc?: string[]
+  subject: string
+  text: string
+  /** Generated by the caller and persisted before dispatch, so a retry reuses it. */
+  messageId: string
+  inReplyTo?: string | null
+  references?: string[]
+  attachments?: OutboundAttachment[]
+}
+
+const encodeHeaderValue = (value: string): string => {
+  // RFC 2047 only when needed: a printable-ASCII subject stays readable in the
+  // raw MIME, which is what an operator reads when debugging a delivery.
+  if (/^[\x20-\x7E]*$/.test(value)) return value
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
+}
+
+const formatFrom = (address: string, name?: string | null): string =>
+  name && name.trim().length > 0 ? `${encodeHeaderValue(name.trim())} <${address}>` : address
+
+const foldBase64 = (value: string): string => (value.match(/.{1,76}/g) ?? []).join('\r\n')
+
+/**
+ * Build the raw MIME for an outbound message.
+ *
+ * `Message-ID` is supplied by the caller rather than generated here: it is
+ * persisted with the queued row *before* dispatch, so a retry after an
+ * ambiguous SES call reuses the same id instead of minting a second identity
+ * for one message.
+ */
+export const buildOutboundMime = (email: OutboundEmail): string => {
+  const boundary = `----nessie-${email.messageId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`
+  const headers: string[] = [
+    `From: ${formatFrom(email.fromAddress, email.fromName)}`,
+    `To: ${email.to.join(', ')}`,
+  ]
+  if (email.cc?.length) headers.push(`Cc: ${email.cc.join(', ')}`)
+  // Bcc is deliberately NOT written into the MIME: SES takes blind recipients
+  // from the API destination, and a Bcc header would disclose them to everyone.
+  headers.push(`Subject: ${encodeHeaderValue(email.subject)}`)
+  headers.push(`Message-ID: <${email.messageId}>`)
+  headers.push(`Date: ${new Date().toUTCString()}`)
+  headers.push('MIME-Version: 1.0')
+  if (email.inReplyTo) headers.push(`In-Reply-To: <${email.inReplyTo}>`)
+  if (email.references?.length) {
+    headers.push(`References: ${email.references.map((id) => `<${id}>`).join(' ')}`)
+  }
+
+  const attachments = email.attachments ?? []
+  if (attachments.length === 0) {
+    headers.push('Content-Type: text/plain; charset=UTF-8')
+    headers.push('Content-Transfer-Encoding: base64')
+    return `${headers.join('\r\n')}\r\n\r\n${foldBase64(Buffer.from(email.text, 'utf8').toString('base64'))}\r\n`
+  }
+
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
+  const parts: string[] = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    foldBase64(Buffer.from(email.text, 'utf8').toString('base64')),
+  ]
+  for (const attachment of attachments) {
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${attachment.contentType}; name="${attachment.filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${attachment.filename}"`,
+      '',
+      foldBase64(attachment.content.toString('base64')),
+    )
+  }
+  parts.push(`--${boundary}--`, '')
+
+  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`
+}
+
+/** Reply subject derivation — `Re:` is not stacked. */
+export const replySubject = (subject: string): string =>
+  /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`

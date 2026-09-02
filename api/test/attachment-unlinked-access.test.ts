@@ -16,6 +16,8 @@ type Published = {
   projectAvatar?: boolean
   orgLogo?: boolean
   feedback?: boolean
+  /** The viewer can reach the mailbox channel this email attachment hangs off. */
+  emailReadable?: boolean
 }
 
 /**
@@ -33,6 +35,7 @@ const makePrisma = (published: Published = {}): PrismaClient =>
     project: { count: async () => (published.projectAvatar ? 1 : 0) },
     organization: { count: async () => (published.orgLogo ? 1 : 0) },
     feedback: { count: async () => (published.feedback ? 1 : 0) },
+    emailMessage: { findFirst: async () => (published.emailReadable ? { id: 'email-1' } : null) },
   }) as unknown as PrismaClient
 
 const unlinked = {
@@ -40,6 +43,7 @@ const unlinked = {
   organizationId,
   messageId: null,
   knowledgePageId: null,
+  emailMessageId: null,
   uploaderId,
 }
 
@@ -118,6 +122,27 @@ test('a knowledge-base blob is still refused on this generic endpoint', async ()
     makePrisma({ userAvatar: true }),
     { ...unlinked, knowledgePageId: '00000000-0000-4000-8000-00000000000a' },
     { organizationId, userId: uploaderId },
+  )
+  assert.equal(allowed, false)
+})
+
+test('an email attachment is readable by someone who can reach the mailbox channel', async () => {
+  const allowed = await canAccessAttachment(
+    makePrisma({ emailReadable: true }),
+    { ...unlinked, emailMessageId: '00000000-0000-4000-8000-00000000000b', uploaderId: null },
+    { organizationId, userId: otherMemberId },
+  )
+  assert.equal(allowed, true)
+})
+
+test('an email attachment is refused to someone outside the mailbox channel', async () => {
+  // Inbound MIME parts hang off the EmailMessage precisely so chat visibility
+  // never becomes their authority: the mailbox channel decides, and a member
+  // who cannot reach it gets nothing — not even as the (absent) uploader.
+  const allowed = await canAccessAttachment(
+    makePrisma({ userAvatar: true }),
+    { ...unlinked, emailMessageId: '00000000-0000-4000-8000-00000000000b', uploaderId: null },
+    { organizationId, userId: otherMemberId },
   )
   assert.equal(allowed, false)
 })

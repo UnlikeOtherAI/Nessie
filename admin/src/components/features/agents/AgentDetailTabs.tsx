@@ -17,6 +17,7 @@ import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
+import { AgentEmailSection } from './AgentEmailSection'
 import { ToolExecutionLog } from './ToolExecutionLog'
 import { AgentTodosTab } from './todos/AgentTodosTab'
 import {
@@ -24,7 +25,15 @@ import {
   type DesignerPageContext,
 } from './designer/DesignerAssistantPanelContext'
 
-type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'documents' | 'to-dos'
+type Tab =
+  | 'edit'
+  | 'activity'
+  | 'sub-agents'
+  | 'tools'
+  | 'messages'
+  | 'documents'
+  | 'email'
+  | 'to-dos'
 
 // To-dos sits first here so that on an owner's view — where Edit is prepended —
 // it reads as the second tab, right beside the configuration it belongs to.
@@ -37,6 +46,7 @@ const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
   { label: 'Documents', value: 'documents' },
+  { label: 'Email', value: 'email' },
 ]
 
 const PAGE_SIZE = 10
@@ -71,6 +81,13 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
     actions: ['review and edit the agent’s documents and manage its document space'],
     description: 'Review the versioned documents this agent keeps and shares with its viewers.',
     title: 'Documents',
+  },
+  email: {
+    actions: ['give the agent an email address and choose how much it may send on its own'],
+    description:
+      'This agent’s own mailbox: its address, how much it may send without a person, '
+      + 'and the way into its correspondence.',
+    title: 'Email',
   },
   'to-dos': {
     actions: [],
@@ -216,6 +233,9 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
           </div>
             )}
             {activeTab === 'documents' && <AgentDocumentsTab agent={agent} />}
+            {activeTab === 'email' && (
+              <AgentEmailSection agentId={agent.id} canManage={Boolean(editSlot)} />
+            )}
           </div>
       </div>
     </div>

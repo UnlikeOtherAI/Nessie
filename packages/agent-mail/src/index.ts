@@ -1,0 +1,80 @@
+export {
+  AGENT_MAIL_UNCONFIGURED,
+  normalizeDomain,
+  resolveAgentMailReadiness,
+  type AgentMailConfig,
+  type AgentMailReadiness,
+  type AgentMailSettings,
+} from './readiness.js'
+
+export {
+  MAX_LOCAL_PART_LENGTH,
+  MIN_LOCAL_PART_LENGTH,
+  RESERVED_LOCAL_PARTS,
+  addressDomain,
+  buildAddress,
+  localPartRejectionMessage,
+  normalizeAddress,
+  normalizeMessageId,
+  parseReferences,
+  suggestLocalParts,
+  validateLocalPart,
+  type LocalPartRejection,
+} from './address.js'
+
+export {
+  classifyInboundEmail,
+  shouldWakeAgent,
+  verdictsBlockAutonomy,
+  type ClassificationInput,
+  type EmailClassification,
+  type ReceiptVerdicts,
+} from './classification.js'
+
+export {
+  buildSnippet,
+  htmlToText,
+  sanitizeEmailHtml,
+  type SanitizeResult,
+} from './sanitize-html.js'
+
+export {
+  isAllowedSigningCertUrl,
+  parseSnsEnvelope,
+  verifySnsMessage,
+  type CertificateFetch,
+  type SnsEnvelope,
+  type SnsMessageType,
+  type SnsVerificationFailure,
+  type SnsVerificationResult,
+} from './sns.js'
+
+export {
+  bounceIsPermanent,
+  parseSesNotification,
+  type SesDeliveryEvent,
+  type SesInboundReceipt,
+  type SesNotification,
+} from './ses-events.js'
+
+export {
+  buildOutboundMime,
+  parseInboundEmail,
+  replySubject,
+  type OutboundAttachment,
+  type OutboundEmail,
+  type ParsedAttachment,
+  type ParsedEmail,
+} from './mime.js'
+
+export {
+  InboundObjectTooLargeError,
+  createAgentMailTransport,
+  type AgentMailTransport,
+} from './transport.js'
+
+export {
+  resolveInboundThreading,
+  type ThreadingCandidate,
+  type ThreadingDecision,
+} from './threading.js'

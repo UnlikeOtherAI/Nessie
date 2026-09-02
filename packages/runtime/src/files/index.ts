@@ -95,6 +95,10 @@ export type StoreFileInput = {
   scope?: FileScope
   messageId?: string | null
   knowledgePageId?: string | null
+  // A hosted-mailbox email's MIME part. Inbound attachments hang off the email
+  // rather than off the compact chat reference message, so chat visibility
+  // never becomes an email attachment's authority.
+  emailMessageId?: string | null
   width?: number | null
   height?: number | null
   abortSignal?: AbortSignal
@@ -119,6 +123,12 @@ export type FileService = ThumbnailOps & {
   // archived/deleted so storage accounting stays correct.
   purgeKnowledgePageFiles(
     pageId: string,
+    organizationId: string,
+    attribution: LedgerAttribution,
+  ): Promise<void>
+  /** Retention deletion for a hosted-mailbox email's stored MIME parts. */
+  purgeEmailMessageFiles(
+    emailMessageId: string,
     organizationId: string,
     attribution: LedgerAttribution,
   ): Promise<void>
@@ -164,6 +174,26 @@ export const createFileService = (deps: {
         teamId: override.teamId ?? null,
         spaceId: override.spaceId ?? null,
         uploaderId: attachment.uploaderId,
+      }
+    }
+    // An email attachment nets against the mailbox's backing channel, which is
+    // the same scope `storeEmailAttachmentScope` hands the store call. Any
+    // delete path — the retention purge, an operator deleting a message —
+    // therefore lands on the same bucket without having to remember to pass it.
+    if (attachment.emailMessageId) {
+      const email = await prisma.emailMessage.findUnique({
+        where: { id: attachment.emailMessageId },
+        select: { mailbox: { select: { channel: { select: { projectId: true, teamId: true } } } } },
+      })
+      const channel = email?.mailbox?.channel
+      if (channel) {
+        return {
+          organizationId: attachment.organizationId,
+          projectId: channel.projectId,
+          spaceId: null,
+          teamId: channel.teamId,
+          uploaderId: attachment.uploaderId,
+        }
       }
     }
     if (attachment.knowledgePageId) {
@@ -262,6 +292,7 @@ export const createFileService = (deps: {
           uploaderId: input.uploaderId,
           messageId: input.messageId ?? null,
           knowledgePageId: input.knowledgePageId ?? null,
+          emailMessageId: input.emailMessageId ?? null,
           kind: kindFromMime(input.mime),
           mime: input.mime,
           filename: input.filename,
@@ -393,6 +424,22 @@ export const createFileService = (deps: {
     }
   }
 
+  const purgeEmailMessageFiles: FileService['purgeEmailMessageFiles'] = async (
+    emailMessageId,
+    organizationId,
+    attribution,
+  ) => {
+    // Scope is left to `deriveScope`'s email arm so a purge and the original
+    // store land on the same bucket even if a mailbox later moves team.
+    const attachments = await prisma.attachment.findMany({
+      where: { emailMessageId, organizationId },
+      select: { id: true },
+    })
+    for (const attachment of attachments) {
+      await deleteFile(attachment.id, organizationId, attribution)
+    }
+  }
+
   return {
     // Preview lifecycle (serve + attach-after-the-fact) lives in
     // ./attachment-thumbnails.ts, constructed with this service's own
@@ -401,6 +448,7 @@ export const createFileService = (deps: {
     store,
     openStream,
     delete: deleteFile,
+    purgeEmailMessageFiles,
     purgeKnowledgePageFiles,
     checkQuota: (scope, addBytes) => checkStorageQuota(prisma, scope, addBytes),
     currentUsage: async (scope) => {

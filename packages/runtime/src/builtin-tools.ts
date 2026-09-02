@@ -13,6 +13,7 @@ import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
+import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
 import { GOOGLE_TOOL_DEFINITIONS } from './builtin-google-tools.js'
 import { CONNECTOR_TOOL_DEFINITIONS } from './builtin-connector-tools.js'
 import { EXECUTOR_TOOL_DEFINITIONS } from './builtin-executor-tools.js'
@@ -444,6 +445,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...BROWSER_TOOL_DEFINITIONS,
   ...INTEGRATION_TOOL_DEFINITIONS,
   ...COMMS_TOOL_DEFINITIONS,
+  ...EMAIL_TOOL_DEFINITIONS,
   ...GOOGLE_TOOL_DEFINITIONS,
   ...APP_SETUP_TOOL_DEFINITIONS,
   ...TODO_TOOL_DEFINITIONS,
