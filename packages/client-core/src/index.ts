@@ -34,6 +34,7 @@ export type {
   PresenceListResponse,
   PresenceManualState,
   PresenceState,
+  GlobalAgentHomeResponse,
   PersonalAssistantBootstrapResponse,
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,

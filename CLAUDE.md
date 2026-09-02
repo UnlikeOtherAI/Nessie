@@ -832,11 +832,11 @@ never pulls its own row out from under them
 (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
 it resolves through the full people directory, because starring somebody *is*
 adding them. The doorways stay named: **Create → Message** (and the section's
-`+`) reaches a person, **Create → Agent** reaches `/agents/designer` — the last
-row of the rail's create menu, and on the native phone sheet the last row
-*above* the Message button, which is the morphing compose button the sheet grows
-out of (`mobile/src/lib/native-creation-menu.ts`). Both call the one
-`navigateToAgentDesigner` through the `__nessieCreateFromPhoneMenu` bridge.
+`+`) reaches a person, **Create → Agent** opens the Designer's **chat**, the
+form staying for field edits — the create menu's last row, and on the phone
+sheet the last row *above* its morphing Message button
+(`mobile/src/lib/native-creation-menu.ts`). One `openAgentDesignerChat` serves
+every client via `POST /api/global-agents/:slug/home`, which *ensures* that DM.
 ## Personal assistant — workspace provisioning
 
 Four `personalAssistantOnly` builtins reach the PA

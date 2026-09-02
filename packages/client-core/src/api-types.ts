@@ -397,6 +397,15 @@ export type PersonalAssistantBootstrapResponse = {
   thread: ThreadRecord
 }
 
+// A global agent's per-user home DM — the Agent Designer's chat. One call
+// ensures and resolves it, so every client reaches that conversation the same
+// way (see api/src/routes/global-agents.ts).
+export type GlobalAgentHomeResponse = {
+  agentId: string
+  channel: ChannelRecord
+  threadId: string
+}
+
 export type ToolDescriptor = {
   builtin?: boolean
   /**

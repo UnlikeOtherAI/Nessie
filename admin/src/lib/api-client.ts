@@ -57,6 +57,7 @@ export type {
   CommsSyncJobRecord,
   CommsSyncPhase,
   CommsSyncStatus,
+  GlobalAgentHomeResponse,
   GoogleCapabilityId,
   CreateFeedbackRequest,
   DeepTestReviewDepth,
