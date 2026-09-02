@@ -9,6 +9,7 @@ Status: implementation-ready plan; no implementation claimed
 ## Table of Contents
 
 - [Core decisions](core-decisions.md)
+- [Contracts and invariants](contracts-and-invariants.md)
 - [Delivery and verification](delivery-and-verification.md)
 
 ## Outcome

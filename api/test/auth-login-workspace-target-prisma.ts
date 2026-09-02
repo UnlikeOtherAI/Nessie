@@ -197,6 +197,9 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
   // services/integrations.ts syncUoaProductAccountLinks: one
   // INSERT ... ON CONFLICT per first-party product, refusing (count 0) when
   // the stored row carries a different subject or a NEWER epoch. The fake
+  const toolRegistryEntryRows: Row[] = []
+  const toolGrantRows: Row[] = []
+
   const prisma = {
     // Advisory locks and the workspace/org bootstrap probes.
     $queryRaw: async () => [{ count: 0, slug: 'nessie' }],
@@ -535,6 +538,33 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
       upsert: async () => (record('pushRegistrationGeneration.upsert'), { value: 1n }),
     },
     attachment: { findMany: async () => (record('attachment.findMany'), []) },
+    // First-login provisioning reconciles the Personal Assistant's default
+    // protected MCP grants (`personal-assistant-default-tool-grants.ts`), which
+    // reads both of these. A cast fake is unityped, so omitting them surfaced
+    // as `undefined.findMany` inside login's catch — a 401 EXTERNAL_AUTH_FAILED
+    // that never named the real shape mismatch.
+    toolRegistryEntry: {
+      findMany: async ({ where }: { where?: Row } = {}) => {
+        record('toolRegistryEntry.findMany')
+        // Honour the WHERE beside the SELECT: this deployment seeds no
+        // protected MCP entries, so the reconcile finds nothing to grant.
+        return toolRegistryEntryRows.filter((row) =>
+          (where?.handlerKind === undefined || row.handlerKind === where.handlerKind))
+      },
+    },
+    toolGrant: {
+      create: async ({ data }: { data: Row }) => {
+        record('toolGrant.create')
+        toolGrantRows.push(data)
+        return data
+      },
+      findMany: async ({ where }: { where?: Row } = {}) => {
+        record('toolGrant.findMany')
+        return toolGrantRows.filter((row) =>
+          (where?.agentId === undefined || row.agentId === where.agentId)
+          && (where?.roleId === undefined || row.roleId === where.roleId))
+      },
+    },
   }
 
   return prisma

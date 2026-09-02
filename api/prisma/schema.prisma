@@ -860,7 +860,12 @@ enum ToolGrantState {
 
 enum ToolGrantSource {
   role
-  agent_override @map("agent-override")
+  /// Stored snake_case since 20260901195000. The public wire value stays
+  /// 'agent-override' through @nessie/mcp-manage `tool-enum-mapping.ts`; that
+  /// mapping is between the wire string and this client name, so it is
+  /// unaffected. The `@map` was dropped because the migration that repairs
+  /// historic rows compares against the snake_case literal.
+  agent_override
 }
 
 enum UserStatusScheduleKind {
