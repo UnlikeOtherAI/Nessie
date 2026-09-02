@@ -480,6 +480,30 @@ Message types:
     - emits `subagent.done`
     - summarizes success response via LLM if available, otherwise fallback text.
 
+### 6.4b Agent chat cards
+
+Agents post interactive cards into a conversation with the `card_post` builtin
+(default-on for every agent). The card row is the authority; the assistant
+message carries only `metadata.agentCard = { cardId, schemaVersion }`.
+
+- `GET /api/agent-cards/:cardId` — viewer-scoped presenter: title, subtitle,
+  service mark (a Nessie-served icon path or null), the presented blocks, the
+  actions, status, `action` (`respond` | `none`), who it is waiting for, and the
+  resolution when settled. Gated on organisation, thread visibility and the card
+  message's disclosure basis; an unreadable card 404s exactly like an absent one.
+- `POST /api/agent-cards/:cardId/respond` — `{ actionKey, values?, secrets? }`.
+  One transaction: claim `open → resolved`, place any secret through the same
+  seam and authorization as `POST /api/mcp/instances/:id/secret`, and write the
+  response as a `user` message stamped `metadata.agentCardResponse`. A run
+  parked on the card is resumed by the press; otherwise the card's agent is
+  woken. Errors: `404 CARD_NOT_FOUND`, `403 CARD_NOT_RESPONDENT`,
+  `409 CARD_NOT_OPEN`, `422 CARD_INVALID_VALUES`, plus the instance-secret
+  route's own codes.
+- Realtime `card.updated` `{ cardId, messageId, threadId, status }` — ids and
+  status only, content-free by construction.
+
+Full behaviour: [plans/2026-09-01-agent-chat-cards.md](plans/2026-09-01-agent-chat-cards.md).
+
 ### 6.5 Targeted agent messages
 
 - For on-demand mentions (e.g. `@Coder`, `ask coder`), builds thread context

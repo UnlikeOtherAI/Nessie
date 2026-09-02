@@ -1,7 +1,12 @@
 # Agent chat cards — one interactive card system for every agent
 
-**Status:** design proposal — research + design only, no code.
-**Date:** 2026-09-01
+**Status:** built, 2026-09-02 — all three phases (cards that wake the agent,
+waiting runs, secret fields). Verified end to end against a live stack with
+headless Playwright: a card renders in the channel feed and the reply panel, a
+required field is refused server-side, the press resolves the card exactly
+once, writes the response as a user turn in its reply thread, and wakes the
+card's agent. Phase 4 items remain deliberately unbuilt.
+**Date:** 2026-09-01 (design), 2026-09-02 (built)
 **Related:**
 [2026-08-31-approvals-suspend-resume-and-auto-review.md](2026-08-31-approvals-suspend-resume-and-auto-review.md)
 (the run suspend/resume machinery a *waiting* card reuses — Stage 1 landed in
@@ -599,7 +604,31 @@ line, so the prompt never advertises a capability the toolset withholds.
 | Expiry | `sweepExpiredAgentCards` | `api-maintenance` timer, `sweepExpiredApprovals` shape |
 | Surface | `AgentCardMessage.tsx`, `AgentCardResponseRow.tsx`, facade hooks | `ChannelMessageRow` mount point (one renderer for channel + reply panel), mention bell + push, `Pill`, theme tokens |
 
-## 10. Phased path
+## 10. Phased path — as built
+
+Phases 1–3 landed together. Where the build differs from the design above, the
+code is authoritative and the difference is noted here:
+
+- **`respondentUserIds` is checked against channel membership at post time.**
+  Naming somebody who cannot see the card would list them as the blocker on a
+  card they can never open, so `card_post` refuses instead.
+- **The presenter derives `expired` from the clock**, so a lapsed card reads as
+  expired before the sweep claims it. The sweep still writes the terminal row.
+- **The admin suppresses a card message's plain-text body.** That text is
+  still written and still reaches search, push previews, other clients and the
+  model's transcript; only the admin, which renders the card itself, hides it.
+- **A settled card renders its fields as answered values** rather than disabled
+  controls, and reads them from the server's resolution rather than local form
+  state.
+- **`AgentStatus` gained `waiting_input` too**, not just `RunStatus`: the agent
+  status dot and its four labels are user-visible in the same way.
+- **`storeInstanceSecret` and `upsertOverride` now accept a transaction
+  client**, so the credential placement commits with the press. The ref is
+  still minted on the store's own handle — an unreferenced secret row is inert.
+
+### Original plan
+
+## 10. Phased path (original)
 
 1. **Cards that wake the agent** — schema + migration, `AgentCardSpec`
    (text/fields/image/link/input blocks), `card_post` without `wait`,

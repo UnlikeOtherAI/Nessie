@@ -260,6 +260,30 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
   organisation a principal id for a stranger. Spec:
   `docs/plans/2026-08-29-people-and-their-agents.md`.
+- **An interactive card is one system, and its press is claimed once.** Every
+  agent that can talk can post a card (`card_post`, default-on) whose buttons a
+  person presses; `AgentCard` is the authority and the message carries only its
+  id, because a press must be claimed by a conditional UPDATE carrying the
+  decision (`status = 'open'`) rather than a JSON mutation, and whether a given
+  viewer may press is a per-viewer server decision. The body is a **closed block
+  vocabulary** (`text`, `fields`, `image`, `link`, `input`, `secret`) plus up to
+  four actions, so a ticket, an email overview and a form share one renderer — a
+  `kind` per integration is the eighth look-alike Rule zero names, and the seven
+  existing metadata cards are exactly why. The press writes a real `user`
+  message stamped `agentCardResponse`, which is what puts the outcome in the
+  chat, in the agent's transcript, and on one *structural* orchestrator path
+  that wakes the card's agent (a server-written key, never content matching); a
+  resolved card additionally renders its live state beside its message content
+  in every later window, so nothing rewrites a message. Waiting on a card
+  (`wait: true`) reuses the approval suspend/resume machinery through one shared
+  core each — never a second copy of the claim-once discipline — and parks the
+  run in `waiting_input`, non-terminal and holding the thread slot. A `secret`
+  block's value goes through the same `storeInstanceSecret` seam and the same
+  authorization as the instance-secret route, inside the press transaction, and
+  is absent from the row, the message, the audit metadata, the realtime payload,
+  the presenter and the model: only that it was provided, and where. Details:
+  `CLAUDE.md` → "Agent chat cards"; spec:
+  `docs/plans/2026-09-01-agent-chat-cards.md`.
 - **Live document streaming taps the model's own tool-call arguments, and its
   live path never touches durable storage.** `kb_document_compose` emits the
   document as its `markdown` argument; the enriched `tool_call.delta` events
