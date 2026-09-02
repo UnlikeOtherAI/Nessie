@@ -134,11 +134,25 @@ export const executeRunJob = async (
 
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
-    select: { content: true, metadata: true, rootMessageId: true },
+    select: {
+      basisScopes: { select: { scopeType: true, scopeId: true } },
+      content: true,
+      metadata: true,
+      rootMessageId: true,
+    },
   })
   if (!message) {
     return
   }
+
+  // The trigger message becomes this run's prompt, so it is a read that enters
+  // the run's context and owes the sink its provenance. `loadConversation`
+  // already inherits the basis of every window turn, which covers the ordinary
+  // case twice over — but a `system`-role trigger message is excluded from that
+  // window by design, so a hidden server-authored brief (the `agent_handoff`
+  // one, a trigger kickoff) would otherwise carry its restriction into the run
+  // and out again through a reply computed from an empty basis.
+  context.consumedSources.addAll(message.basisScopes)
 
   let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)

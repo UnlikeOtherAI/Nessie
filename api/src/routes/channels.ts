@@ -26,6 +26,7 @@ import {
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
+import { registerGlobalAgentRoutes } from './global-agents.js'
 import { registerPersonalAssistantRoutes } from './personal-assistant.js'
 import type { RouteDeps } from './types.js'
 
@@ -39,6 +40,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   } = deps
 
   registerPersonalAssistantRoutes(app, deps)
+  registerGlobalAgentRoutes(app, deps)
 
   app.get('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

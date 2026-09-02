@@ -10,6 +10,7 @@ import type {
   AgentOwnerState,
   AgentRecord,
   AgentRunLimits,
+  VoiceName,
 } from '@nessie/schemas'
 import {
   AgentAvatarBackgroundColorSchema,
@@ -17,6 +18,7 @@ import {
   parseAgentId,
   parseChannelId,
   parseRunId,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
 
@@ -112,6 +114,17 @@ const readAgentAvatarBackgroundColor = (
 }
 
 /**
+ * Read the stored `Agent.voiceName` back through the curated voice list.
+ *
+ * The column is plain text because the set of voices is Google's, so a stored
+ * value can stop being one. An unrecognised name reads as no choice at all.
+ */
+export const readAgentVoiceName = (value: string | null | undefined): VoiceName | null => {
+  const parsed = VoiceNameSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * Read the stored `Agent.runLimits` JSON back through the shared schema. A row
  * written before the column existed (or hand-edited into a shape the contract
  * no longer accepts) reads as "no explicit limits" rather than leaking an
@@ -154,6 +167,7 @@ export const mapAgentRecord = (agent: {
   effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
+  systemSlug?: string | null
   visibility: 'private' | 'workspace'
   homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
@@ -169,6 +183,8 @@ export const mapAgentRecord = (agent: {
   systemPrompt: string | null
   runLimits?: unknown
   todosEnabled: boolean
+  voiceName?: string | null
+  speakingStyle?: string | null
   toolPolicy?: unknown
   updatedAt: Date
 }): AgentRecord => {
@@ -197,6 +213,7 @@ export const mapAgentRecord = (agent: {
     owner,
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
+    systemSlug: agent.systemSlug ?? null,
     visibility: agent.visibility,
     ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,
@@ -220,6 +237,12 @@ export const mapAgentRecord = (agent: {
     effort: agent.effort,
     runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
     todosEnabled: agent.todosEnabled,
+    // Read back through the curated list: a row written before a voice was
+    // retired (or hand-edited) reads as "no choice" and falls back to the
+    // deployment default, rather than sending Gemini a name it will reject at
+    // setup and failing the call.
+    voiceName: readAgentVoiceName(agent.voiceName),
+    speakingStyle: agent.speakingStyle?.trim() ? agent.speakingStyle : null,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     avatarBackgroundColor: readAgentAvatarBackgroundColor(agent.avatarBackgroundColor),

@@ -13,7 +13,7 @@ export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
 // rather than letting its workspace and account actions crowd the corners.
 export const NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER = 32
 
-export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
+export type NativePhoneCreationAction = 'project' | 'channel' | 'agent' | 'message'
 
 export type NativeSafeAreaInsets = {
   bottom: number

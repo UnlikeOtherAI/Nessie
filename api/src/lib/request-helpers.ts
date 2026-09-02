@@ -22,6 +22,7 @@ import {
   isAgentAccessibleToActor as isAgentAccessibleToActorShared,
   isAgentVisibleToUser as isAgentVisibleToUserShared,
   loadLastMessageAtByThread,
+  readAgentVoiceName,
 } from '@nessie/workspace-admin'
 
 /**
@@ -197,6 +198,8 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             status: true,
             surfacePolicy: true,
             todosEnabled: true,
+            voiceName: true,
+            speakingStyle: true,
             systemManaged: true,
             systemPrompt: true,
             toolPolicy: true,
@@ -253,6 +256,15 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             updatedAt: agent.updatedAt.toISOString(),
             channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
             todosEnabled: agent.todosEnabled,
+            // Every other agent record carries the prompt (`mapAgentRecord`);
+            // this one is hand-built, and omitting it here meant the
+            // assistant's standing instructions reached a typed run but never
+            // a call — silently, because the field is optional on the schema.
+            systemPrompt: agent.systemPrompt ?? undefined,
+            // The voice-call broker reads both off this record: a call is
+            // always with the caller's own assistant, resolved here.
+            voiceName: readAgentVoiceName(agent.voiceName),
+            speakingStyle: agent.speakingStyle,
           }
         : null,
       channel: {

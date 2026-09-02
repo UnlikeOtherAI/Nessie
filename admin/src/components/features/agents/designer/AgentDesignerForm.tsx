@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { DesignerToolCatalogQuery, DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
@@ -6,6 +7,7 @@ import type {
   AgentEffortValue,
   AgentFormState,
 } from './useAgentDesigner'
+import { AgentSpeechFieldset } from './AgentSpeechFieldset'
 import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
@@ -21,10 +23,24 @@ type AgentDesignerFormProps = {
   actions: AgentDesignerActions
   canManageExplicitTools: boolean
   canManageTodos: boolean
+  /**
+   * A lead-in note rendered above the first field. It exists so a form nobody
+   * may save can still say why, in the ordinary layout, rather than being
+   * replaced by a card that explains it.
+   */
+  leadIn?: ReactNode
   modelOptions: AgentModelOption[]
   modelOptionsError?: string
   modelsLoading: boolean
   parentAgentName?: string
+  /**
+   * Render every control disabled and offer no way to change anything. A reader
+   * who may not edit this agent sees the *same* form — same sections, same
+   * order, same controls in the same places — simply not theirs to touch. It is
+   * one prop rather than a second render path precisely so the two can never
+   * drift into describing different agents (Rule zero #4).
+   */
+  readOnly?: boolean
   // Tools live on the agent detail page's Tools tab for an existing agent; the
   // designer only shows the picker while creating one (no Tools tab yet).
   showTools?: boolean
@@ -47,10 +63,12 @@ export const AgentDesignerForm = ({
   actions,
   canManageExplicitTools,
   canManageTodos,
+  leadIn,
   modelOptions,
   modelOptionsError,
   modelsLoading,
   parentAgentName,
+  readOnly = false,
   showTools = true,
   state,
   toolGroups,
@@ -66,6 +84,8 @@ export const AgentDesignerForm = ({
 
   return (
     <div className="grid gap-5">
+      {leadIn}
+
       {/* Parent agent (read-only, shown only when creating a child) */}
       {parentAgentName !== undefined && (
         <FormField label="Parent Agent">
@@ -81,6 +101,7 @@ export const AgentDesignerForm = ({
         <Input
           autoComplete="off"
           className={highlightClass('name')}
+          disabled={readOnly}
           onChange={(e) => actions.setName(e.target.value)}
           placeholder="e.g. Code Reviewer"
           value={state.name}
@@ -91,6 +112,7 @@ export const AgentDesignerForm = ({
         <Input
           autoComplete="off"
           className={highlightClass('role')}
+          disabled={readOnly}
           onChange={(e) => actions.setRole(e.target.value)}
           placeholder="e.g. assistant, reviewer, analyst"
           value={state.role}
@@ -126,6 +148,7 @@ export const AgentDesignerForm = ({
         {!visibilityReadOnly ? (
           <Switch
             checked={state.visibility === 'private'}
+            disabled={readOnly}
             label="Only visible to me"
             onChange={(checked) => actions.setVisibility(checked ? 'private' : 'workspace')}
           />
@@ -145,7 +168,7 @@ export const AgentDesignerForm = ({
           // carries the "Link a personal subscription…" doorway, and a
           // deployment whose Ledger catalogue is empty or unreachable is
           // exactly when a person most needs to reach it.
-          disabled={modelsLoading}
+          disabled={modelsLoading || readOnly}
           emptyLabel="No models match that search"
           highlighted={isStreaming('model')}
           id="agent-model"
@@ -178,6 +201,7 @@ export const AgentDesignerForm = ({
       {/* Reasoning effort */}
       <FormField help="How hard the model thinks — does not limit what a run may spend." label="Reasoning effort">
         <Select
+          disabled={readOnly}
           onChange={(e) => actions.setEffort(e.target.value as AgentEffortValue)}
           value={state.effort}
         >
@@ -190,7 +214,20 @@ export const AgentDesignerForm = ({
       </FormField>
 
       {/* Run limits */}
-      <RunLimitsFieldset onChange={actions.setRunLimit} value={state.runLimits} />
+      <RunLimitsFieldset
+        disabled={readOnly}
+        onChange={actions.setRunLimit}
+        value={state.runLimits}
+      />
+
+      {/* Voice and manner — how this agent sounds on a call, and how it talks
+          everywhere. */}
+      <AgentSpeechFieldset
+        onSpeakingStyleChange={actions.setSpeakingStyle}
+        onVoiceNameChange={actions.setVoiceName}
+        speakingStyle={state.speakingStyle}
+        voiceName={state.voiceName}
+      />
 
       <Card className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -201,7 +238,7 @@ export const AgentDesignerForm = ({
           <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
             Step instructions are visible to everyone who can see this agent. Do not put secrets in them.
           </p>
-          {!canManageTodos ? (
+          {!canManageTodos && !readOnly ? (
             <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
               Only organization owners can enable or disable to-dos.
             </p>
@@ -209,7 +246,7 @@ export const AgentDesignerForm = ({
         </div>
         <Switch
           checked={state.todosEnabled}
-          disabled={!canManageTodos}
+          disabled={!canManageTodos || readOnly}
           label="Enable to-dos for this agent"
           onChange={actions.setTodosEnabled}
         />
@@ -219,6 +256,7 @@ export const AgentDesignerForm = ({
         <Textarea
           autoComplete="off"
           className={['resize-none', highlightClass('systemPrompt')].filter(Boolean).join(' ')}
+          disabled={readOnly}
           mono
           onChange={(e) => actions.setSystemPrompt(e.target.value)}
           placeholder="Instructions for the agent..."
@@ -259,6 +297,7 @@ export const AgentDesignerForm = ({
             groups={toolGroups}
             onToggle={actions.toggleTool}
             query={toolsQuery}
+            readOnly={readOnly}
             toolState={state.tools}
           />
         </div>

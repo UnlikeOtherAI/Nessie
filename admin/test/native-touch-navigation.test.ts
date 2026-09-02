@@ -150,6 +150,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
   const mobileShell = readSource('../src/lib/mobile-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
+  const phoneCreationOptions = readSource('../../mobile/src/lib/native-creation-menu.ts')
   const phoneHeader = readSource('../../mobile/src/components/NativePhoneHeader.tsx')
   const phoneNavigationProvider = readSource('../src/layouts/admin-shell/PhoneNavigationProvider.tsx')
   const ipadWorkspace = readSource('../../mobile/src/components/IpadNativeWorkspaceSwitcher.tsx')
@@ -186,6 +187,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(creation, /onCreateProject\(\)/)
   assert.match(creation, /onCreateChannel\(\)/)
   assert.match(creation, /onCreateMessage\(\)/)
+  assert.match(creation, /onCreateAgent\(\)/)
   assert.match(nativeApp, /shouldShowNativePhoneHeader\(/)
   assert.match(nativeApp, /largePhoneLandscapeCapable/)
   assert.match(nativeApp, /large-phone-landscape/)
@@ -216,9 +218,13 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /createTitle: \{ fontSize: 14, fontWeight: '700', lineHeight: 17 \}/)
   assert.match(phoneChrome, /messageActionText: \{ fontSize: 15, fontWeight: '700', lineHeight: 18 \}/)
   assert.match(phoneChrome, /backgroundColor: creationAccentColor/)
-  assert.match(phoneChrome, /Project/)
-  assert.match(phoneChrome, /Channel/)
+  // The sheet's rows are data now (one Pressable over NATIVE_CREATION_OPTIONS),
+  // so the copy is asserted where it lives rather than in the component.
+  assert.match(phoneChrome, /NATIVE_CREATION_OPTIONS\.map/)
   assert.match(phoneChrome, /Message/)
+  assert.match(phoneCreationOptions, /title: 'Project'/)
+  assert.match(phoneCreationOptions, /title: 'Channel'/)
+  assert.match(phoneCreationOptions, /title: 'Agent'/)
   assert.match(workspaceSwitcher, /workspaceAvatarUrl: active\?\.avatarImageUrl \?\? null/)
   assert.match(nativePresentation, /workspaceAvatarUrl: optionalText\(message\.workspaceAvatarUrl\)/)
   assert.match(nativeApp, /workspaceAvatarUrl=\{nativeWorkspaceAvatarUrl\}/)
@@ -283,7 +289,11 @@ test('the native phone shell clears the glass tab bar within the WebView content
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
-  assert.match(phoneLayer, /className="phone-navigation-page"/)
+  // The class now arrives through `pageClassName`, which adds the fill variant
+  // for a surface that owns its own scroller; the shell class itself is still
+  // on every page.
+  assert.match(phoneLayer, /className=\{pageClassName\(/)
+  assert.match(phoneLayer, /: 'phone-navigation-page'/)
   assert.match(phoneLayer, /data-phone-navigation-page/)
   assert.match(nestedStage, /container\.className = 'phone-navigation-page'/)
   assert.match(nestedStage, /setAttribute\('data-phone-navigation-page', ''\)/)

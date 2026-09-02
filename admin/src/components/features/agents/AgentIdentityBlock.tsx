@@ -46,7 +46,11 @@ export const AgentIdentityBlock = ({
   children,
   headingLevel = 'h2',
 }: AgentIdentityBlockProps) => {
-  const { data: status } = useAgentStatus(agent.id)
+  // A Nessie-managed agent's live status is one of the closed operational
+  // reads (`isAgentAccessibleToActor` hard-codes `systemManaged: false`), so
+  // asking for it can only 404. Passing no id leaves the query idle; the dot,
+  // the pill and the last-activity line all come off the record anyway.
+  const { data: status } = useAgentStatus(agent.systemManaged === true ? undefined : agent.id)
   const Heading = headingLevel === 'none' ? null : headingLevel
 
   return (

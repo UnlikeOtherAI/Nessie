@@ -81,6 +81,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref || github.ref }}
+          # lint:migrations compares the delivery ref against main, so a manual
+          # source-ref build needs the full repository history rather than the
+          # checkout action's default one-commit fetch.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -121,6 +125,25 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The bundle is a release artifact, so do not bypass the repository's
+      # lint gate when invoking Tauri directly below.
+      - name: Lint repository
+        run: pnpm lint
+
+      # The generated Prisma client is intentionally excluded from source
+      # control. Generate it once before Turbo builds `@nessie/db`, rather than
+      # letting concurrent package builds race to create it.
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      # `prepare:executor-runtime` bundles the TypeScript executor with esbuild.
+      # It resolves workspace packages through their published `dist` exports,
+      # so installing the workspace links alone is insufficient on a clean
+      # runner. Build the executor and every one of those dependencies in the
+      # serialized Turbo order before Tauri invokes that preparation step.
+      - name: Build executor bundle dependencies
+        run: pnpm exec turbo run build --filter=@nessie/executor...
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -235,7 +258,11 @@ jobs:
               ConvertTo-Json -Depth 5 -Compress
             $arguments += @('--config', $config)
           }
-          pnpm --filter @nessie/desktop tauri:build -- @arguments
+          # Call Tauri directly after runtime preparation. Passing a second
+          # argument separator through the package script reaches Cargo as a
+          # literal `--`, so Cargo mistakes the bundle flags for its own.
+          pnpm --dir desktop run prepare:executor-runtime
+          pnpm --dir desktop exec tauri build @arguments
 
       # Tauri signs what it bundles; the executor package is not a Tauri artifact.
       # The build script signs the three binaries it produces *before* staging

@@ -75,6 +75,12 @@ export const MobileAdminWebView = ({
       injectedJavaScriptBeforeContentLoaded={wrapNativeWebViewScript(nativeShellInfoScript(shellInfo))}
       injectedJavaScript={wrapNativeWebViewScript(`${nativeShellInfoScript(shellInfo)}\n${INJECTED}`)}
       key={webviewKey}
+      // Calling the Personal Assistant captures audio in the WebView. Without
+      // this the capture request is refused even once the OS has granted the
+      // app microphone access, because WKWebView asks separately on the page's
+      // behalf. Same-host only: the WebView's origin whitelist is open, so a
+      // navigation away from the admin must not inherit the microphone.
+      mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
       mediaPlaybackRequiresUserAction={false}
       onContentProcessDidTerminate={() => webRef.current?.reload()}
       onError={onError}

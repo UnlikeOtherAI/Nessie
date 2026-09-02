@@ -56,7 +56,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 
 ## Workflow
 
-- Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked. After merge, remove the worktree and delete the merged branch.
+- Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked. After merge, in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
 - Commit and push after every turn. No exceptions. If there is nothing to commit, skip.
 - Local dev runs with hot reload via `pnpm dev` (root) — API (5454, nodemon) + admin (5455, Vite HMR) in parallel. (Moved from 5554/5555 to dodge an Android emulator squatting on those ports; production internal port stays 5554.) Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
 - Desktop installable builds that embed local admin changes must build admin with `VITE_API_BASE_URL=https://api.nessie.works` and Tauri with `--config '{"build":{"frontendDist":"../../admin/dist"}}'`. `https://app.nessie.works` is the admin web origin, not the API origin; using it as `VITE_API_BASE_URL` leaves login stuck at "Loading providers...". See `docs/running-the-apps.md`.
@@ -90,6 +90,72 @@ It is the only way, and adding a second one is the defect Rule zero names.
   - **Timestamps are `timestamp(3)` and Postgres *rounds* into them.** Back-to-back inserts tie on `created_at` (5 rapid inserts typically record ~3 distinct values), so a test that asserts an exact arrival order must set the order explicitly rather than race the clock. Rounding also puts a just-inserted `visible_at` up to ~0.5 ms in the *future* versus full-precision `now()`, so a row can be briefly invisible to a `visible_at <= now()` poller — real pollers loop, single-shot tests must seed an explicitly past `visibleAt`.
 - **A cast Prisma fake is unityped, so a query it does not model fails as a runtime `TypeError` — extend the fake in the change that extends the query.** `as unknown as PrismaClient` silences the compiler, so a delegate or a nested relation the fake omits is `undefined` at call time, not a type error. Both shapes have shipped red to `main`: project avatars became a published attachment reference and `prisma.project.count` took five attachment-ACL tests down with `reading 'count'`; and `team.findMany`/`findFirst` returned flat rows while production read `team.project.organization.name` and `…organization.members[0].role`, which login wrapped as a 401 `EXTERNAL_AUTH_FAILED` so the shape mismatch never named itself. The rule follows the disclosure-sink one: the obligation sits on the *query*. Adding a counted reference, a `select`ed relation, or a new delegate means teaching the fake in the same commit — and a fake that honours `select` must honour the `where` beside it, or it widens the result set while it is at it. Prefer asserting the new case too (`api/test/attachment-unlinked-access.test.ts` had no project-avatar case at all).
 - Mock-LLM harness: deterministic scripted inference for tests lives in `@nessie/mock-llm` (`packages/mock-llm`, scenario JSON + in-process `runInference` adapter + OpenAI-compatible HTTP server). `pnpm --filter @nessie/worker test:smoke` runs the full-pipeline CI smoke (seeded Postgres → enqueue → loop → tool call → completion); `pnpm --filter @nessie/worker test:load --runs N --workers W` runs the load mode. See `docs/mock-llm-harness.md`.
+
+## Ports — NON-NEGOTIABLE
+
+
+- **API**: `5454` (local dev) — always. Do not kill or restart without restarting on the same port.
+- **Admin**: `5455` (local dev) — always. UI verification MUST use `http://localhost:5455`.
+- Never use any other port for these services in local dev.
+- Moved from 5554/5555 on 2026-06-11 because an Android emulator (`gpteen_api34`) squats on 5554/5555 — see the emulator-port-conflict memory.
+- **Production is unchanged:** the API container's internal port stays `5554`, pinned via `NESSIE_API_PORT` in `infrastructure/compose/docker-compose.prod.yml` (behind the shared Caddy proxy). Only local dev moved.
+
+## Dev mode (hot reload)
+
+
+- `pnpm dev` (repo root) = `turbo run dev --parallel`: API (5454, nodemon) +
+  admin (5455, Vite HMR). Polling watchers are mandatory and must stay — see
+  `AGENTS.md` → "Workflow" for why (fsevents is dead on this volume).
+- After starting/restarting a dev server, verify it: hit `GET /health` (5454)
+  and `GET /` (5455), and confirm `@vite/client` is present in the served
+  admin HTML.
+
+## Build (production / CI)
+
+
+- `pnpm --filter @nessie/admin build` produces the static admin bundle
+  (`dist/`); `pnpm --filter @nessie/admin preview` serves it. Prod/CI only —
+  use `pnpm dev` for the local loop.
+- **Build:** Install a release on the named device.
+- Worker rebuilds after worker edits, desktop/App Store builds, lint-gated
+  root builds, Prisma generation ordering, migration immutability, and all
+  test rules (Turbo invocation, `DATABASE_URL`, DB-suite discipline):
+  `AGENTS.md` → "Workflow".
+
+## Production deployment
+
+
+- Production is **self-hosted on Hetzner** (`178.105.82.46`) as Docker
+  containers, reusing the host's shared Caddy edge proxy and Docker networks
+  (`edge`/`db`). It is **not** GCP Cloud Run — the old GCP workflow/spec are
+  retired ([docs/phase2-gcp-deployment-spec.md](docs/phase2-gcp-deployment-spec.md)
+  is historical).
+- URLs: public web `https://nessie.works`, admin `https://app.nessie.works`,
+  API `https://api.nessie.works`. TLS is automatic (Caddy + Let's Encrypt);
+  DNS is Cloudflare, DNS-only.
+- Stack: `nessie-api` + `nessie-worker` (one `Dockerfile.app` image, command
+  override) + `nessie-admin` (static nginx) + a dedicated `nessie-postgres`
+  (pgvector — the shared Postgres lacks the `vector` extension). No Redis (queue
+  and realtime are Postgres-backed). Mode is `selfHosted`; first login is the
+  one-time bootstrap owner URL.
+- Compose: `infrastructure/compose/docker-compose.prod.yml`. Redeploy with
+  `infrastructure/compose/redeploy.sh` after rsync'ing to `/srv/nessie`.
+- The API trusts `X-Forwarded-For` only when `NESSIE_API_TRUSTED_PROXY_HOPS`
+  is set. Production behind Caddy sets it to `1`; local/dev defaults to `0`
+  and ignores forwarded client IP headers.
+- **Authoritative guide: [docs/deployment.md](docs/deployment.md)** — first
+  deploy, redeploy, config reference, MCP secret store, and SSO status.
+
+## Linting
+
+
+- **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
+- **Swift**: SwiftLint with strict mode, warning treated as error in CI
+
+## MDNS
+
+
+The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. This feature is part of the legacy `src/` runtime; the new `api/` server does not yet register mDNS. Clients on the same network can discover the legacy server automatically without hardcoded IPs.
 
 ## Natural-language intent is model-judged — never string-matched
 
@@ -135,6 +201,27 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 
 ## Architecture
 
+**The codebase.**
+
+- **API** (`api/`, port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
+- **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
+- **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
+- **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not. Do not build, install, or present an ad-hoc-signed macOS bundle unless Ondrej explicitly requests one. Executor verification requires a `Developer ID Application` signature with the configured `NESSIE_DESKTOP_SIGNING_TEAM_ID`, validated with `codesign --verify --deep --strict` before installation; if that identity or its private key is unavailable, preserve the installed app and report the signing blocker.
+- **Web** (`web/`) — public landing page only
+- **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
+- **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
+
+Rules that apply wherever you are working are stated here in full. Rules that
+belong to one subsystem are **routed**: this section names the invariant in a
+sentence and links the file that states it completely.
+
+**A routing entry is a signpost, not a summary you may implement against.** The
+one-liner exists so you can tell whether the rule is in play; it deliberately
+omits the identifiers, the failure it was written after, and the corollaries
+that make it followable. When your change touches a routed area, open the linked
+file first. Standards files live in `docs/standards/` and are authoritative;
+when one changes, the same turn updates it, not this section.
+
 - All standards, specs, and design decisions live in `docs/`.
 - When a document is finished, move it to `docs/done/`.
 - Legacy code lives in `src/`. New code goes into `api/`, `admin/`, `web/`, `worker/`, `packages/`.
@@ -142,6 +229,31 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Follow the architecture guardrails and anti-pattern list in `docs/architecture.md` before creating files, reorganizing code, or reusing logic.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
+- **Agent voice, reactions and the working marker.** Agents answer at
+  colleague length, react rather than reply when a message needs registering
+  but no answer, and paint 👀 on the message a run is working from.
+  Read [`docs/standards/agent-voice.md`](docs/standards/agent-voice.md)
+  before writing code here.
+- **A recurring watch keeps one rolling status message.** A sweep that finds
+  nothing edits the watch's own status line in place instead of adding a
+  message, so ninety-six quiet sweeps a day stay one line.
+  Read [`docs/standards/rolling-watch-status.md`](docs/standards/rolling-watch-status.md)
+  before writing code here.
+- **Theming and the design system.** All colour lives in
+  `admin/src/styles.css` as tokens; one tab bar, one identity tile, one
+  composer, one dialog shell, and no nesting.
+  Read [`docs/standards/design-system.md`](docs/standards/design-system.md)
+  before writing code here.
+- **Calling the Personal Assistant (Gemini Live voice).** The API is a
+  credential broker, not a media path: the client opens the constrained
+  Gemini Live socket itself and audio flows device↔Google.
+  Read [`docs/standards/voice-calling.md`](docs/standards/voice-calling.md)
+  before writing code here.
+- **Stack, agentic-loop run budgets and run lifecycle.** The stack itself, the
+  run-budget model (metering, wind-down, checkpoints, compaction), budget
+  threshold alerts, and the active-run lifecycle controls.
+  Read [`docs/standards/tech-and-run-budgets.md`](docs/standards/tech-and-run-budgets.md)
+  before writing code here.
 - **UOA owns the org structure, not just the people in it.** Where UOA SSO is
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
@@ -151,363 +263,58 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   pre-2026-08-15 shared-org model — or keeping any second local copy of the org
   hierarchy is the same violation as duplicating identity rows, and gets the
   same remedy: an API-backed refactor plus a data migration, never a
-  compatibility copy. The org name is a non-authoritative mirror of UOA's, and
-  a local install with no IdP keeps one unbound organisation (`externalOrgId`
-  null). Budgets, policies, audit, the member directory, and org settings
+  compatibility copy. The org name is UOA's mirror, so a **rename is a relayed
+  `PUT /org/organisations/:orgId` write**; an install with no IdP keeps one
+  unbound organisation (`externalOrgId` null). Budgets, policies, audit, the member directory, and org settings
   therefore scope per UOA organisation. Model, migration, and verification:
   `docs/plans/2026-08-15-uoa-org-tenancy.md`; the rule itself lives in
   `docs/brief.md` → "Current SSO identity invariant".
-- **A personal-assistant tool that does what a person does by clicking calls
-  the same function that person's button calls, and mirrors that route's
-  authorization exactly — no weaker, no stronger.** The five provisioning
-  builtins (`agent_list`, `channel_create`, `agent_create`,
-  `agent_bind_channel`, `agent_trigger_create`, in
-  `worker/src/run/pa-tools/provisioning.ts`) are the
-  pattern: `agent_list`/`channel_create`/`agent_create` are member-level because
-  their routes carry only `requireActorContext`; binding reproduces all four
-  gates of
-  `POST /api/agents/:agentId/bindings` (channel membership, the
-  `personal_assistant` refusal, owner, `checkPolicy('agent','bind')`); trigger
-  creation parses the route's own `CreateAgentTriggerBodySchema` and refuses a
-  schedule with no UOA identity on a signing deployment. Because
-  `api/src/services/*` is unreachable from the worker, the shared functions live
-  in **`@nessie/workspace-admin`** and the api services re-export them — never a
-  second copy in `pa-tools`. `pa-tools/channels.ts` carried a "mirrored from
-  api/src/services" comment over a duplicated `canManageChannel` for exactly
-  that reason; on 2026-08-29 the predicate and the writes it gates moved to
-  `@nessie/workspace-admin` `channel-manage.ts`, which the api service
-  re-exports and the PA tool imports. An owner-gated
-  tool stays visible to non-owners and refuses in words, following
-  `pa-tools/connectors.ts`. Role comes from the live `OrganizationMember` row at
-  call time, not from the run's enqueue-time `actorContext`. **A tool that takes
-  an id ships with the read that resolves it**: in the UI the owner picks the
-  agent from a list, so `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s
-  own entitlement scoping) is what makes `agent_bind_channel` /
-  `agent_trigger_create` usable on an agent the user merely named, rather than
-  only on one created in the same conversation. Details:
-  `CLAUDE.md` → "Personal assistant — workspace provisioning".
-- **A global agent is a blueprint in code, one row per organisation, and a
-  single-agent DM.** App-provided agents (the Agent Designer is the first) live
-  in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
-  each as one `systemManaged` row per organisation, keyed by the new
-  **`Agent.systemSlug`** — unique on `(organizationId, systemSlug)` with a CHECK
-  requiring `systemManaged` AND a non-null `organizationId`, so a cross-org
-  vendor row is a database impossibility rather than a convention, and so a
-  display name is never again the discriminator (the Librarian's fragility).
-  The ensure function is `ensurePersonalAssistantAgent` verbatim in shape —
-  advisory lock, find-by-discriminator, create-or-update-in-place, tool policy
-  merged under `acquireAgentToolPolicyLock` *after re-reading the row*, so a
-  targeted grant committed in between survives — and the blueprint's own policy
-  passes `assertGenericAgentToolPolicyInput` like user input, because vendor
-  config is not authority. Its home is a per-user private DM keyed
-  `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
-  its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
-  and held to exactly its encoded member (owner at **segment 4**) by the
-  deferred home-membership trigger. Sole membership is not decoration: it is
-  what makes `effectiveUserId = poster` and the orchestrator's single-candidate
-  fast path safe, so it must hold at rest. Three refusals keep that true — no
-  agent binds into ANY system channel (`bindAgentToChannel`, both routes, the PA
-  tool; `canManageChannel` likewise refuses to rename, archive or re-member
-  one), `createAgentTrigger` refuses a `systemSlug` target because a scheduled
-  run re-arms its creator's identity, and `assertGlobalAgentRunPlacement` admits
-  only the agent's own home DM before any inference (trigger threads
-  deliberately excluded, unlike the private-agent rule). Reachability is the
-  point of the tier: `listAgentsForUser`'s `includeSystemManaged` arm is
-  `{ organizationId, systemManaged: true }` and no longer channel-gated, because
-  an app-provided agent nobody can find is the unreachable-capability defect
-  Rule zero names. Details: `CLAUDE.md` → "Global
-  agents"; spec:
-  `docs/plans/2026-09-02-agent-designer-global-agent.md`.
-- **"This run delegates to its requesting person" is ONE predicate, and the
-  identity-tool gate widens by exactly one arm.** The worker keyed delegation on
-  `agentKind === 'personal_assistant'` in five places (memory scopes, realtime
-  narrowing, reply attribution, the trigger binding waiver, the acting-member
-  helpers) because the PA was the only delegate. A global agent is
-  `agentKind: 'shared'` and delegates just as completely, so all five would have
-  treated it as an ordinary shared agent with no failing check anywhere.
-  `runDelegatesToRequestingPerson` (`worker/src/run/delegated-identity.ts`) is
-  the one answer: the PA in its own DM, or a `home: 'per_user_dm'` blueprint in
-  its own home DM, from agent kind + `systemSlug` → blueprint + the destination's
-  `systemChannelType`/`dmKey`, never content. It is surface-keyed on both arms,
-  because a PA presence in a shared room still carries its owner's identity: the
-  exemptions key on the surface, never the kind. Memory containment and realtime
-  narrowing moved onto it and placement shares its home-surface half; reply
-  re-attribution and the two *binding* waivers stay PA-only, a global agent being
-  genuinely bound to one channel. `personalAssistantOnly` gains one arm beside the
-  PA's: the blueprint's `identityToolIds` lists that id, the run is on the agent's
-  own home DM, and `payload.interactive === true` with a live human requester
-  whose id equals the stamped `effectiveUserId` — resolved **once** at run setup
-  by `resolveIdentityDelegatedToolIds` and passed to BOTH `resolveAgentTools`
-  (the schema omits them, never offer-then-deny) and `authorizeToolCall` (a
-  stale schema cannot be exercised), never to a delegate sub-agent. **Two locks
-  on triggers**: `createAgentTrigger` refuses a `systemSlug` target, governing
-  what can be *created*; the interactive arm governs what may be *exercised*,
-  including by a row predating it: remove either and an unattended run
-  reconstructing an absent creator's `effectiveUserId` creates agents and
-  channels as that person. Delegated reads it opens feed the disclosure sink.
-- **Provider-linked call tools use this same route-mirroring pattern.**
-  `meeting_link_create` and `call_start` are separate PA-only builtin ids:
-  minting a provider link and ringing a channel have different blast radii, and
-  only separate ids can later put `call_start` behind an explicit grant. They
-  intentionally require no explicit grant today because a person's PA is their
-  delegate. Both re-read the live acting membership and call
-  `createCallLinkForTeamUser` / `startCallForUser` in
-  `@nessie/workspace-admin`; never duplicate their gates. A call tool leaves
-  `expectedOrganizationId` unset so the shared start seam resolves the
-  **target channel's** organisation and re-checks membership there, preserving
-  the route's indistinguishable `Channel not found` refusal across UOA orgs.
-  An unattended run has no requesting user and must refuse before minting.
-- **A read that enters a run's context feeds the disclosure sink, in the same
-  change.** An agent reaches material its audience cannot, and what stops it
-  laundering that into a shared room is provenance: `ConsumedSourceSink`
-  (`worker/src/run/execute/disclosure-basis.ts`) collects the scoped sources a run
-  consumed, `computeReplyBasis` subtracts what the destination already implies,
-  and the remainder is stamped on the message and the run by the one write
-  chokepoint (`agent-message.ts`). **An empty basis means unrestricted**, so a
-  read path that forgets to feed the sink does not fail loudly — it publishes to
-  everyone. That is the whole defect class, and it is why the obligation sits on
-  the *read*, not on the reply. Adding a tool that puts content in the window and
-  not adding its scope is the same defect as skipping the `FileService`.
-  Corollaries, each learned from a real gap: resolve a source's scope with the
-  shared `scopeForVisibility` rather than a second mapping beside your reader,
-  since a thought's `(audience_type, audience_id)` and a knowledge space's
-  `visibility` + chain are one fact in two shapes; record a channel scope only
-  when the channel is **not public**, because viewer channel scopes come from
-  `ChannelMember` rows alone and stamping a public channel withholds the reply
-  from people entitled to read the source; and make search **fail closed**
-  (exclude anything carrying a basis) rather than withhold, because a snippet
-  list has nowhere to render a placeholder. On the read side every path asks the
-  one predicate — list, single message, and the durable thought log alike, since
-  reasoning inherits the provenance of what the reply was built from. The live
-  SSE lanes cannot filter per viewer, so they are cut structurally by
-  `runReplyIsRestricted` the moment a run consumes a privileged source; that
-  predicate is monotone by construction, which is what makes it safe to call per
-  delta. Containment (`constrainScopesToDestination`) is a floor under all of
-  this, but it constrains **memory recall only** — never treat it as "nothing
-  crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
-  `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
-- **An agent belongs to a person, and the org tree is a read-time JOIN — never
-  a stored hierarchy.** `Agent.ownerUserId` (stewardship: their "virtual
-  employee") is the only local fact behind it; people, roles, teams and
-  lifecycle come from UOA live on every read. There is deliberately **no human
-  reporting edge**: UOA's roster carries no manager field, and an edge that
-  decided authority would be the second org hierarchy the SSO invariant forbids
-  whatever table it sat in. Tenancy is enforced in the database — a composite FK
-  `(organization_id, owner_user_id) → organization_members`, because
-  `spawn_subtask` writes agents outside the `createAgentRecord` chokepoint, with
-  `ON DELETE NO ACTION` since on a composite key `SET NULL` blanks *every*
-  referencing column including `organization_id`; a CHECK keeps ownership off
-  system-managed and org-less agents (the PA is one org-singleton row serving
-  everyone). The FK proves the membership row *exists*, never that it is live:
-  deactivated rows are retained deliberately, so **every read re-derives
-  `deactivatedAt: null`**. One predicate, `buildVisibleAgentWhere`, is shared by
-  `listAgentsForUser`, `isAgentVisibleToUser`, and every access rule that derives
-  a human audience from an agent, so list, detail, and derived access cannot
-  disagree. Its stewardship arm's conditions are load-bearing — the live-membership
-  join (the branch widens by pointer equality, so without it a deactivated
-  member keeps seeing their agents) and `parentAgentId: null` (else owning one
-  agent pours every unreaped `spawn_subtask` child into that list forever).
-  `Agent.visibility = private` is the deliberate exception to org-owner
-  omniscience: every entitled agent read composes `buildAgentVisibilityWhere`,
-  and only the private agent's live owner passes its private arm — an org owner
-  never sees another person's private agent. Subtask children inherit both
-  owner and visibility so delegated private work cannot mint workspace-visible
-  rows. A private agent is created atomically with its exact owner-only
-  `agent:{org}:{owner}:{agent}` home DM, and the worker refuses any run outside
-  that home or the agent's own trigger thread before inference. Deactivating its
-  owner pauses only its triggers and records one aggregate audit transition;
-  the owner-only Members surface receives the count through
-  `GET /api/agents/paused-private-count` and never private rows or names;
-  workspace agents keep running, no private detail is widened, and reactivation
-  never resumes automation implicitly.
-  `loadAgentChildren` takes the viewer's scope for the same reason. Never
-  backfill ownership: nothing recorded who created an agent, so old rows read
-  `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree
-  itself is one `buildPeopleAgentsTree` rendered on `/settings/members` with the
-  people source parameterised (UOA roster, or local `User` rows on a no-IdP
-  install) — *unowned* and *owned outside this workspace* stay separate buckets,
-  because the roster is team-keyed and a colleague on another team is otherwise
-  indistinguishable from someone who left. `resolveLocalUserIdsByUoaSub` is
-  org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
-  organisation a principal id for a stranger. Spec:
-  `docs/plans/2026-08-29-people-and-their-agents.md`.
-- **Ownership decides who may edit, and "edit" is field-sensitive.** Every
-  agent-mutation route gated on the ORGANISATION owner role, so no ordinary
-  member could edit any agent — not even the private one they own. It never
-  surfaced because the people editing were org owners. `canEditAgent` /
-  `assertAgentFieldAuthority` (`@nessie/workspace-admin`
-  `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
-  both avatar routes, and are the one rule chat tools consume too, so routes and
-  the Agent Designer cannot disagree. A **private** agent is its live owner's
-  alone (an org owner cannot see it, so cannot edit it); a **person-owned**
-  workspace agent takes its live owner plus org owners (without that override a
-  deactivated steward leaves an agent with no editor); a **team-owned** agent —
-  `ownerUserId` null — takes anyone entitled to it, plus org owners; a
-  `systemManaged` agent takes nobody, refused **in the service**
-  (`SYSTEM_AGENT_IMMUTABLE` in `updateAgentRecord` and the avatar service) rather
-  than only hidden by route invisibility. Owner-ness is re-derived from the live
-  `OrganizationMember` row on every call, never the session claim or a run's
-  enqueue-time snapshot. A null owner is therefore a **deliberate state**, not
-  missing history: "team-owned" means any member who can see the agent may
-  rewrite its prompt, model, tools and limits, while *placement*
-  (`agent_bind_channel`) keeps its stricter four gates — editing improves the
-  shared agent in place, binding changes who is exposed to it. One predicate over
-  the whole PUT body would be wrong, because that body also carries `ownerUserId`
-  and `todosEnabled`: ownership transitions belong to the current owner or an org
-  owner (so *claiming* a team-owned agent is org-owner-only by construction) and
-  `todosEnabled` keeps its own org-owner gate — both firing only on an actual
-  change, so a form echoing the stored value back stays an ordinary edit.
-  Unchanged by all of it: protected/explicit-grant policy keys
-  (`assertGenericAgentToolPolicyInput` is the law for every editor), immutable
-  `visibility`, `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the
-  `agent.owner_changed` audit on both transfer and release. Details:
-  `docs/plans/2026-08-29-people-and-their-agents.md` → "Ownership carries edit
-  authority"; decision:
-  `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
-- **An interactive card is one system, and its press is claimed once.** Every
-  agent that can talk can post a card (`card_post`, default-on) whose buttons a
-  person presses; `AgentCard` is the authority and the message carries only its
-  id, because a press must be claimed by a conditional UPDATE carrying the
-  decision (`status = 'open'`) rather than a JSON mutation, and whether a given
-  viewer may press is a per-viewer server decision. The body is a **closed block
-  vocabulary** (`text`, `fields`, `image`, `link`, `input`, `secret`) plus up to
-  four actions, so a ticket, an email overview and a form share one renderer — a
-  `kind` per integration is the eighth look-alike Rule zero names, and the seven
-  existing metadata cards are exactly why. The press writes a real `user`
-  message stamped `agentCardResponse`, which is what puts the outcome in the
-  chat, in the agent's transcript, and on one *structural* orchestrator path
-  that wakes the card's agent (a server-written key, never content matching); a
-  resolved card additionally renders its live state beside its message content
-  in every later window, so nothing rewrites a message. Waiting on a card
-  (`wait: true`) reuses the approval suspend/resume machinery through one shared
-  core each — never a second copy of the claim-once discipline — and parks the
-  run in `waiting_input`, non-terminal and holding the thread slot. A `secret`
-  block's value goes through the same `storeInstanceSecret` seam and the same
-  authorization as the instance-secret route, inside the press transaction, and
-  is absent from the row, the message, the audit metadata, the realtime payload,
-  the presenter and the model: only that it was provided, and where. Details:
-  `CLAUDE.md` → "Agent chat cards"; spec:
-  `docs/plans/2026-09-01-agent-chat-cards.md`.
-- **Live document streaming taps the model's own tool-call arguments, and its
-  live path never touches durable storage.** `kb_document_compose` emits the
-  document as its `markdown` argument; the enriched `tool_call.delta` events
-  feed a per-run recorder whose *live* lane publishes each provider chunk over
-  `publishSseEphemeral` (notify-only) and whose *durable* lane coalesces
-  separately for bootstrap — two lanes precisely so a slow INSERT cannot delay
-  a token. The drain loop calls the recorder synchronously; anything that would
-  make the provider read wait belongs on a lane, not in the callback. Session
-  identity is `(runId, invocationId, toolCallId)` because indexes restart per
-  attempt and retries re-issue the same iteration. Never publish a document
-  delta durably, never emit a partial escape or lone surrogate to a client
-  (`createPartialJsonScanner` owns that invariant), and never save a document
-  the streamed text does not byte-match. Interruption of any kind saves
-  nothing. **Editing an existing document is deltas, never a rewrite**
-  (`kb_document_edit`): `{find, replace}` pairs anchored to an exact single
-  match, streamed in document order, with the edit site published *before* its
-  replacement text so a viewer can move there and wait. The streaming preview
-  (`document-stream-edit.ts` tracker) and the save (`applyDocumentEdits`) are
-  deliberately independent implementations and the save asserts they agree —
-  never collapse them into one, or the check becomes a restatement. An
-  ambiguous anchor is skipped in the preview and refused in words at save.
-  Spec: `docs/plans/2026-08-13-live-document-streaming/overview.md`.
-- **A capability that can stop working owns the way a person finds out.** A
-  recurring trigger whose captured UOA identity stopped verifying was flipped to
-  `error` and abandoned — non-claimable by the sweep, abandoned by the retry
-  poller, and announced to nobody, so one production schedule was dead and
-  silent for nineteen days. The obligation sits on the **transition**, not on
-  whoever might later look: classify the failure into a state that names its
-  remedy (`needs_reauthorization` is a button; `error` is an edit), persist the
-  reason so the surface can explain it, and alert exactly once per transition —
-  `health_revision` plus the existing `user_alerts (user_id, event_key)`
-  uniqueness, never a second marker table. Exactly-once is what separates this
-  from the repeating-apology failure the unattended-run path deliberately avoids
-  (`worker/src/run/execute/failure.ts`): an unattended run posts nothing to chat
-  for good reason, so the signal has to be a durable alert instead. Recovery is
-  **explicit** — `POST /api/triggers/:id/reauthorize` re-captures a live
-  identity, sharing `captureScheduledLaunchOrigin` with the create route. Never
-  auto-heal at login: signing in proves the same person is present, not that
-  they intend a dormant automation to resume, and an epoch may have rotated
-  because access was withdrawn. Re-stamp the **epoch only**; the organisation
-  and team decide billing attribution, so refreshing them from whoever clicks
-  repair moves a schedule's costs as a side effect. Re-arm from **now**, or a
-  long-dead cron schedule grinds through every missed occurrence. And a fire
-  gate must ask exactly what dispatch asks: checking a strict subset let
-  triggers pass, create runs, and die at the first inference invisibly. Details:
-  `CLAUDE.md` → "A schedule that stops says so".
+- **Personal-assistant tools and route mirroring.** A PA tool that does what a
+  person does by clicking calls the same function that person's button calls,
+  and mirrors that route's authorization exactly.
+  Read [`docs/standards/personal-assistant-tools.md`](docs/standards/personal-assistant-tools.md)
+  before writing code here.
+- **Global agents, specialist delegation and `agent_handoff`.** App-provided
+  agents are blueprints in code, one `systemManaged` row per organisation,
+  reachable through a per-user single-agent DM.
+  Read [`docs/standards/global-agents.md`](docs/standards/global-agents.md)
+  before writing code here.
+- **Disclosure boundaries — what an agent read decides who may read its answer.**
+  Every read that enters a run's context feeds the `ConsumedSourceSink` in the
+  same change; an empty basis means unrestricted, so a forgotten read fails
+  open.
+  Read [`docs/standards/disclosure-boundaries.md`](docs/standards/disclosure-boundaries.md)
+  before writing code here.
+- **Agent ownership, visibility and edit authority.** An agent belongs to a
+  person, the org tree is a read-time JOIN, and ownership — not the org-owner
+  role — decides who may edit which field.
+  Read [`docs/standards/agent-ownership.md`](docs/standards/agent-ownership.md)
+  before writing code here.
+- **Agent chat cards.** One card system with a closed block vocabulary; the
+  press is claimed once by a conditional UPDATE and writes a real user message.
+  Read [`docs/standards/agent-cards.md`](docs/standards/agent-cards.md)
+  before writing code here.
+- **Live document streaming.** Streaming taps the model's own tool-call
+  arguments; the live lane never touches durable storage, and editing is deltas
+  rather than a rewrite.
+  Read [`docs/standards/live-document-streaming.md`](docs/standards/live-document-streaming.md)
+  before writing code here.
+- **A capability that can stop working owns the way a person finds out.**
+  Classify the failure into a state that names its remedy, persist the reason,
+  and alert exactly once per transition; recovery is explicit, never
+  auto-healed at login.
+  Read [`docs/standards/capability-health-alerts.md`](docs/standards/capability-health-alerts.md)
+  before writing code here.
 - **A tool declares where it belongs; no surface guesses.**
-  `BuiltinToolDefinition.category` is **required** and its vocabulary is
-  `TOOL_CATEGORIES` in `@nessie/schemas` — one ordered list of
-  `{id, label, description}` that every surface listing tools renders in order.
-  The admin used to infer a category from the tool's id prefix (`file_`,
-  `web_`, `kb_`…) and sweep everything unmatched into one "Agent & workspace"
-  bucket; that bucket had grown to hold **75 of 116** builtins, because a new
-  tool joined it by default and the only way out was to invent another prefix
-  rule. Making the field required means adding a tool without choosing a home
-  does not compile, and `packages/runtime/test/builtin-tool-categories.test.ts`
-  additionally refuses any category holding more than a quarter of the
-  catalogue — crossing that means the category has stopped describing anything
-  and needs splitting, not that the ceiling needs raising. A category is a
-  place a person would go looking ("where do I turn off email?"), never an
-  implementation detail. The category is resolved onto `ToolDescriptor` from
-  the definitions at the API boundary, beside `requiresExplicitGrant` and for
-  the same reason — it is a property of the tool's code, so re-categorising one
-  must never need a migration. The picker renders **every section closed**: 116
-  tools across sixteen categories is an index, not a page of switches, and
-  searching expands only the sections that still match without disturbing the
-  ones a person opened. One component draws that list in both modes
-  (`ToolPicker`, `readOnly` for a viewer who cannot change a tool); the
-  separate read-only renderer that used to exist had drifted to its own
-  grouping, its own cards and no search at all.
-- **An agent's mailbox is its own store, and everything about it is
-  structural.** Hosted agent email (`support@nessie.works`, Amazon SES
-  integrated directly, off unless four `NESSIE_EMAIL_*` variables are set) keeps
-  mail in `email_messages` rather than `Message` rows, with one backing
-  `agent_email` channel per mailbox and one thread per conversation as the
-  operations room. Four invariants carry it, each closing a fail-open: inbound
-  **routes on the SES receipt envelope**, never the sender-written MIME headers,
-  which omit Bcc and can name another tenant; delivery is **claimed once on the
-  receipt id in the same transaction that wakes the run**, so an SNS retry
-  cannot double-send or double-spend, while the forgeable `Message-ID` stays a
-  threading index that degrades to a new conversation; **waking is a header
-  fact** (`bulk`/`dsn`, failed spam/virus/auth verdicts store without spending a
-  run) and never a keyword list; and **sending is gated structurally in
-  `email-send-gate.ts` through `forceApproval`**, not in `PolicyRule` rows,
-  because `evaluateToolInvokePolicy` defaults to allow and seeds no send rule —
-  a policy-only gate would be absent wherever nobody configured one. That gate
-  additionally forces an approval, naming the sources, whenever a run consumed
-  anything beyond its own mailbox and thread; `email:{mailboxId}` is the scope
-  that makes "answered from this correspondence" distinguishable, and it must
-  stay implied by the mailbox's own thread or every reply deadlocks (four tests
-  pin this). A send is `queued` → conditional `sending` → `sent`, with an
-  ambiguous outcome parked at `delivery_unknown` and **never retried** — a retry
-  is a duplicate in someone's inbox, and a sweep resolves a claim whose worker
-  died so it cannot sit in `sending` forever. That claim stops one ROW being
-  sent twice; what stops two ROWS existing is `EmailMessage.sendKey`, the tool
-  call's own `{runId}:{toolCallId}`, because a replayed run re-issues the same
-  call. Suppression and the hourly cap are enforced **inside** the queueing
-  write rather than beside it — a check a caller must remember is a check a
-  caller can forget, and counting outside the transaction let two concurrent
-  runs both pass the last slot. An email attachment asks the same
-  agent-visibility question the mailbox reads ask, so the byte surface and the
-  conversation surface close together. Deleting a mailbox retires its address
-  permanently. Details: `CLAUDE.md` → "Agent email"; plan:
-  `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
-- **A setting that exists at more than one level goes through the one cascade,
-  and a lock is visible where it binds.** `ScopedSetting` (`@nessie/runtime`
-  `scoped-settings.ts`) resolves organisation → team → person: the most
-  specific value wins, and the walk stops at the first level marked `locked`.
-  Cascading resolution was bespoke four times over before this (budgets, policy
-  rules, `Team.callProvider`, the cloud browser's hardcoded organisation-first
-  order), so a fifth hand-rolled ordering is the defect, not the pattern. A row
-  may carry a lock with no value, pinning whatever resolved above it — how a
-  setting whose value lives in its own table (cloud browser credentials) is
-  governed by this cascade rather than a second one.
-  `isLockedAbove` is the read-only condition — strictly above, so the locking
-  level still edits and a lock never binds upwards — and the surface greys the
-  control and names the level (`ScopedSettingGate`) instead of accepting an
-  edit the server would refuse. Scopes are the three people work in; projects
-  are walked past, not through. Plan:
-  `docs/plans/2026-09-03-scoped-settings.md`.
+  `BuiltinToolDefinition.category` is required and its vocabulary is
+  `TOOL_CATEGORIES`; no surface infers a category from an id prefix.
+  Read [`docs/standards/tool-categories.md`](docs/standards/tool-categories.md)
+  before writing code here.
+- **An agent's mailbox is its own store.** Hosted agent email keeps mail in its
+  own tables with one backing channel per mailbox; routing, claiming, waking
+  and the send gate are all structural.
+  Read [`docs/standards/agent-email.md`](docs/standards/agent-email.md)
+  before writing code here.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and
@@ -520,353 +327,26 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
   See `docs/security-audit-2026-06.md`.
-- **The App Store (`/apps`) is the product surface on `McpCatalogEntry`, never
-  a second catalogue.** One row is one app; a parallel `mcp_apps` table would
-  guarantee drift. Store visibility is
-  `moderationState IN ('curated','approved')` + `trustLevel <> 'blocked'`
-  composed with `catalogTenancyWhere` — and `curated` additionally requires
-  public+published or caller-owned, because the migration backfills `curated`
-  onto every pre-existing non-public row and a bare `IN` would list one
-  member's private draft connector to their whole organisation. **The store
-  reads a decision and never re-derives one from `status`**: approval writes
-  `approved`, rejection and deprecation write `hidden`, and submission writes
-  nothing (a request is not a decision). Skipping those writes is what let a
-  rejected connector keep rendering to its owner and a deprecated one keep an
-  enabled Connect button. Ranking lives
-  in Postgres (weighted name/aliases A, publisher B, tags C, prose D, plus a
-  `pg_trgm` typo fallback); **the client filters nothing and re-sorts nothing**,
-  because re-scoring the server's answer in the browser silently drops the
-  fuzzy matches only the index can find. `search_vector` is trigger-maintained
-  rather than a generated column — `array_to_string` is only STABLE and
-  Postgres refuses it (`42P17`). Every `/api/apps` response goes through a
-  presenter that cannot emit a `credentialRef`, auth/transport config, endpoint
-  URL, or a raw upstream icon URL, and `listAgentsWithAppAccess` imports
-  `buildAccessibleChannelWhere` from `@nessie/workspace-admin` rather than
-  restating it, so a member-readable surface can never name an agent
-  `GET /api/agents` would withhold. Spec:
-  `docs/plans/2026-08-29-apps-catalogue/overview.md`.
-- **App Store connect orchestrates the existing OAuth/instance machinery; it is
-  never a second stack.** `POST /api/apps/:slug/connect` sequences
-  `createInstance` → probe → `startOAuth`. PKCE must be present on BOTH legs —
-  sending `code_challenge` without returning `code_verifier` makes any RFC 7636
-  §4.6 server reject the exchange, and the completion tests that used an
-  argument-ignoring stub are why that shipped unnoticed once. The OAuth callback
-  stays a **constant HTML page that never redirects** (a caller-supplied return
-  URL is an open redirect); it posts a fixed message to its opener at a
-  server-resolved origin, and the popup carries `noopener` because its first
-  navigation is the third-party authorize URL, not ours. **Installing an app is
-  not granting it**: `McpServerInstance.requiresExplicitToolGrant` (default
-  false) is carried into `projectMcpToolDescriptors` on both the create and
-  update branches — update too, or a capability discovered by a later refresh
-  projects open and silently widens the app — and the worker's existing
-  `isExposed` enforces default-OFF. Never add a grant table: `ToolGrant` rows
-  exist and the worker never reads them.
-- MCP connector management logic (catalog, instances, probe, projection,
-  credentials, secret store, library, discovery, OAuth) lives in
-  `@nessie/mcp-manage` and is shared by the API routes and the worker's
-  personal-assistant `connector_*` tools — do not fork it into either side.
-  Scope rules: owners manage all install scopes, admins the shared scopes,
-  members their own user scope; user-scope tools auto-activate and surface only
-  in the installing user's PA runs. OAuth is dynamic by default (RFC 9728/8414
-  discovery, RFC 7591 client registration, PKCE, pg-backed state, auto-refresh);
-  static client configs remain supported. Owners/admins can lock catalog
-  entries against member self-service (install-time gate, endpoint-match
-  aware). Public connector APIs never accept or return caller-chosen
-  `credentialRef` values: plaintext is submitted once to the encrypted store,
-  and only server-minted `secret_*` refs are persisted. Exact environment refs
-  are reserved for first-party provisioning. Toolset assembly defers MCP schemas behind
-  `mcp_find_tools`/`mcp_load_tools`/`mcp_drop_tools` above
-  `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) to protect agent context.
-  External-agent products (e.g. DeepSignal) run as a per-user DM channel with
-  `Agent.executionMode = external_mcp` — turns proxy straight to the product's
-  MCP endpoint with **no Nessie inference**. Load-bearing invariants: the
-  system-managed, user-scoped instance resolves `DEEPSIGNAL_MCP_APP_KEY` only
-  from the canonical public catalog linked from the `deepsignal`
-  integrated-product row, with signing pinned to `https://api.deepsignal.live`,
-  so a same-name catalog or changed origin cannot receive the key; the app key,
-  the `ai.invoke` `X-UOA-Delegation`, and the fresh RS256 `X-Nessie-Context`
-  are **independent** proofs carried on every call with no per-user OAuth or
-  generic credential fallback; that key is distinct from every other
-  secret-bearing environment credential and per-org webhook secret, verified at
-  API/worker startup; pre-existing identity headers are rejected
-  case-insensitively before fresh identity is attached; the signed session
-  org/team must exactly match the selected team's UOA mapping (the account link
-  proves only subject/status/epoch — its active org/team are non-authoritative
-  last-seen metadata), DM keys include the UOA team, and legacy team-less
-  channels fail closed; managed instances and their product-linked catalog
-  entries reject every generic lifecycle, secret and catalog mutation.
-  Generic OAuth remains available for ordinary connectors. Everything else —
-  the shared `resolveInstanceMcpTransport`/`callInstanceTool` seam, the per-org
-  HMAC webhook and its coalesced, budgeted rolling digest, the Signals page —
-  is in [docs/external-tool-integration.md](docs/external-tool-integration.md)
-  §2 + §5 and
-  [docs/plans/2026-07-09-deepsignal-integration.md](docs/plans/2026-07-09-deepsignal-integration.md).
-- DeepWater is usable as a tool by any permitted agent, but **default OFF with an
-  explicit per-agent grant required** and **always routed through Ledger**:
-  enabling DeepWater for a team (owner-only team-enablement toggle) provisions
-  a **team-scoped** tool-projecting `McpServerInstance` from the `deep-water`
-  catalog entry, resolves Ledger's adapter from `LEDGER_DEEPWATER_MCP_URL`
-  (canonical hosted value
-  `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; enable fails loudly with
-  `LEDGER_DEEPWATER_MCP_URL_UNSET` when unset or
-  `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
-  missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
-  Nessie's one deployment-wide, product-bound Ledger app API key (never a
-  per-user credential), and projects
-  `research_start`, `research_status`, `research_report`, `research_list`, and
-  `research_cancel` as active `mcp_research_*` tools. Each sibling product must
-  use its own app API key; app keys are never reused as webhook signing secrets.
-  Transport authentication and caller identity are separate: every call carries
-  a short-lived `X-Nessie-Context` RS256 JWT with non-null
-  user/org/team/agent/run attribution and, for the linked SSO user, an
-  `X-UOA-Delegation` RS256 JWT minted through UOA token exchange. The stable UOA
-  subject is required for DeepWater; an optional `active` UOA org/team is
-  emitted only when both values exist and never replaces Nessie's local
-  tenancy. Every new renewable UOA login requires a nonnegative `tv`
-  authentication epoch and binds immutable `{sub, org, team, tv}` proof into
-  the signed Nessie access session and its refresh family. Nessie stores UOA's
-  opaque refresh token only as AES-256-GCM server-side state coupled to that
-  family; the browser receives only Nessie's unrelated rotating cookie. The
-  product link proves stable subject/status/credential epoch only; its mutable
-  active org/team fields are last-seen metadata, never the proof source.
-  Delegation assertions and caches use the immutable session epoch and require
-  exact equality with the current link and selected local team. Family/user
-  advisory locks serialize rotation, replay, issuance, logout, password change,
-  deactivation, and credential erasure across replicas; a replay barrier makes
-  reversed predecessor/current HTTP responses converge on one cookie. UOA HTTP
-  renewal runs outside database transactions between short locked preflight and
-  finalize phases; if an ancestor replay wins mid-flight, finalize adopts the
-  accepted UOA successor in place behind the unchanged local cookie. Login
-  confirms current direct Nessie access before local mutation, product-link
-  epochs never regress, and first-workspace provisioning is exact-workspace
-  locked. DeepWater's product auth mode remains `uoa_sso` so first login
-  creates the account link even though MCP transport auth uses Nessie's app API
-  key. Generic Ledger AI calls may omit UOA delegation, but never the five-field
-  local attribution; user-triggered system jobs carry their durable origin and
-  derive stable named system agent/run UUIDs, failing before provider dispatch
-  when origin is missing. Personal DeepWater credential overrides are forbidden
-  and removed by migration, so they cannot shadow the product-bound app API key.
-  Generic instance test, refresh, healthcheck, and delete operations reject the
-  integration-managed instance with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`;
-  generic secret writes are also rejected, and PA probe/uninstall tools direct
-  callers to the Integrations toggle, which is its sole lifecycle path. Ledger
-  owns job isolation, budget enforcement, audit, and raw usage metering for
-  both PA and shared-agent calls; UOA alone rates that usage commercially.
-  `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` is the
-  deployment-wide inference chokepoint for every run the ORGANIZATION pays for;
-  runtime routing rewrites it to Ledger's
-  `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi, or custom
-  provider, including designer/orchestrator calls; embeddings resolve their own
-  `/v1/:serviceId` segment (see "Embeddings" below). The one sanctioned
-  exception is a **personal model subscription** (see "Personal model
-  subscriptions" below): a run pinned to an agent owner's own linked plan
-  bypasses this chokepoint entirely — no Ledger connection, no signed
-  attribution, no Ledger metering — because the organization is not paying for
-  it and its credentials are the person's, not the deployment's. That lane is
-  structural, decided once at run admission, and never a fallback. If the
-  deployment-wide URL is absent, signing is decided after the effective
-  organization provider-record URL resolves, so a Ledger route an organization
-  provider record introduced still receives complete attribution. **Inference
-  signing is best-effort by deployment, mandatory once available.** With the
-  `UOA_*` signer configured, every Ledger inference call signs and still fails
-  closed when the originating user has no linked SSO identity. With no signer
-  configured at all — an operator running on a personal Ledger API key — the
-  call goes out on `NESSIE_MODEL_API_KEY` alone, because Ledger authenticates
-  that bearer and decides per token whether signed provenance is also required;
-  Nessie must not refuse on Ledger's behalf and force a UOA OAuth client on a
-  deployment whose token does not need one. The condition is read once from
-  process env at startup (`loadLedgerIdentitySettings` returning null) and is
-  unreachable per request, per organization, or per user, so a signing
-  deployment cannot be downgraded. This applies to model/embedding inference and
-  its model catalogue only; DeepWater, `web_search`, and billing keep their own
-  product-bound credentials and identity requirements unchanged.
-  DeepWater `research_start` must reuse the provider's stable `tool_call_id` on
-  logical retries. The projected tools and `deep_water_run_update` are flagged
-  `requiresExplicitGrant`, so an agent sees them ONLY when its `toolPolicy`
-  explicitly allows them (`=== true`) **and** the team-scoped instance reaches
-  the run; grants never bypass tenancy, and absent/inherited denies. Owners use
-  the targeted `/api/mcp/tools/.../policy-targets/...` mutation (one locked
-  policy-key merge, never a full-policy replacement); canonical DeepWater rows
-  take the team-transition lock, re-read their projection generation, then take
-  the agent lock. Its minimal target list
-  includes the Personal Assistant without exposing PA bindings/activity through
-  `/api/agents`. The DeepWater launcher and
-  `/api/integrations/products/deep-water/agent-access` manage/read the five MCP
-  projections plus `deep_water_run_update` as an exact six-entry bundle. Launch
-  stays disabled and the API rejects before run creation until the PA has 6/6;
-  the updater counts only while its registry row is enabled and active, matching
-  worker exposure, so a disabled builtin cannot authorize metered work;
-  the final enablement/instance/policy reads and run insert are linearized under
-  the team lock then agent-policy lock. Owners can also grant/revoke the bundle
-  for shared agents. Generic agent create/PUT cannot write explicit-grant keys
-  or DeepWater provenance markers; a locked PUT preserves them from the current
-  row; clones and spawned subtask children strip them, PA bootstrap config
-  cannot inject them, generic responses redact the server provenance markers,
-  and Agent Designer omits their switches. Generic shared-agent create, list,
-  parent selection, hierarchy/status/activity/realtime reads, and channel
-  binding are exact-organization operations;
-  system/global agents remain confined to dedicated bootstraps. Bundle
-  provenance keeps the org-wide updater while any team/manual grant needs it;
-  its individual OFF switch is disabled until those dependencies are revoked,
-  while partial/drifted team projections and a disabled updater remain
-  revocable. Registry callability and cleanup identity are separate: a disabled
-  updater cannot satisfy readiness, but its protected allow is still removed by
-  bundle revocation. Bundle and
-  individual lifecycle revocation return 409 during queued/running/needs_setup
-  work; there is no force override. Each
-  org/team enable or disable is cross-process serialized by a PostgreSQL
-  transaction-scoped advisory lock; connector rows and the product toggle
-  mutate in the same transaction and roll back together on failure. Disable
-  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
-  `needs_setup` research run still references the connector; cancel or recover
-  the run, or let it reach a terminal state, before retrying disable.
-  The worker enables handoff enforcement only from server-authored message
-  metadata `integrationLaunch.{productSlug,runId}` for `deep-water`; ordinary
-  messages remain unguarded. The durable run lookup requires that exact run id,
-  message, organization, team, and thread, and a missing/mismatched row fails
-  closed. For that exact Product run, the worker atomically binds the first
-  `research_start` provider tool-call id and exact arguments before transport.
-  A still-clean Product run moves to `failed` only for a validated Ledger-local
-  pre-start rejection (`invalid_request` 400/401, `budget_exceeded` 402, or
-  `forbidden` 403), or for Nessie's own budget block while the row remains
-  truly queued, uncorrelated, and undispatched. Conflicts, upstream rejections,
-  5xx, malformed errors or malformed
-  successful tickets, throws, timeouts, uncertain claims, and uncertain ticket
-  persistence are fatal ambiguity: the Nessie run stays `running` while the
-  queue retries, using the exact persisted id and arguments. A validated
-  matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
-  success is returned; a retry then replays that ticket and status locally
-  without another Ledger call. Managed DeepWater owns the canonical five
-  `mcp_research_*` names even when private connectors collide or the grant is
-  absent, so the server-authored prompt can never dispatch a foreign connector.
-  Same-batch status/report/cancel calls are pinned
-  to that persisted id; `research_list` and delegation stay blocked for the
-  launch turn so result delivery cannot be hidden inside a timed-out sub-agent.
-  Run-update/Knowledge calls remain blocked until exact start-result delivery
-  and remain blocked for an abandoned timed-out attempt.
-  The start result is acknowledged with its invocation-specific delivery token
-  only after connector telemetry and tool-end recording settle and its tool
-  message is incorporated; timeouts during definitive-failure persistence or
-  pending result delivery therefore stay fatal and retry-safe.
-  Ordinary setup, inference, and callback failures are promoted to that fatal
-  path while the handoff remains unresolved. A budget block may fail only a
-  truly uncorrelated queued Product row before terminalizing the Nessie run;
-  correlated running work remains recovery-safe, and a terminal claim race
-  quarantines a still-clean row. A late definitive rejection may move only the
-  exact correlated `needs_setup` row to `failed`.
-  Missing or duplicate exact handoff rows fail closed before inference;
-  on retry exhaustion every clean exact candidate moves to `needs_setup`, while
-  rows carrying external/dispatch/report/Knowledge evidence are preserved. A
-  validated ticket that arrives after final-attempt recovery still attaches
-  atomically, clears the stale recovery detail, preserves its exact Ledger
-  status, and keeps the Product run `running` until mandatory terminal
-  reconciliation, so accepted provider work is neither orphaned nor prematurely
-  unblocked by the timeout race. Fatal
-  tool calls still emit their paired sanitized end event, and every started
-  same-batch tool wrapper settles before the queue attempt is released.
-  Completion also fails fatally if the model omits the required start. Ordinary
-  DeepWater calls are unchanged.
-  PA message, run attachment, PA run/task, and direct `run.execute` enqueue
-  commit atomically; product handoffs bypass chat engagement decisions while
-  ordinary chat keeps its existing orchestration path. Duplicate enqueue
-  conflicts roll back the duplicate unit, and realtime publication is
-  post-commit/non-fatal.
-  Even a
-  null external id remains a conservative blocker because Ledger dispatch may
-  be in flight; the error links an attached chat where PA can call
-  `research_cancel`, while unattached interrupted work requires explicit
-  recovery. Disable
-  targets only the instance linked from the first-party public product, so
-  private same-name catalogs are untouched. `deep_water_run_update` is not
-  PA-only and takes tenancy strictly from the run context (same team + thread;
-  Knowledge page validated against the org). It never accepts a cost, price,
-  charge, tariff, or currency: Ledger's DeepWater REST/MCP status, report, and
-  list contracts expose no commercial amount, and UOA is the sole commercial
-  authority.
-  The external report URL is persisted only from Ledger's authenticated
-  `research_start` structured response after its origin and exact job path are
-  validated; source count is persisted only from the authenticated
-  `research_report` references array. Both carry server-only provenance markers
-  before they are exposed, and agent-authored run updates cannot set, replace,
-  or mark either value as trusted. Source persistence atomically repairs an
-  already-created exact per-run connector usage event, making same-batch
-  report/update order irrelevant. That event records operational calls and
-  authenticated source units against the launch run's immutable
-  `requestedByUserId`; it has no cost fields and is excluded from every local
-  cost aggregate. Migration
-  `20260720234500_retire_deepwater_local_cost_mirror` erases historical local
-  amounts, converts only their existence into a cost-free server-only dispatch
-  recovery marker, drops the obsolete Product-run cost columns, and installs a
-  database trigger rejecting future DeepWater connector-event cost writes.
-  Product run APIs and UI expose no DeepWater cost; customer totals
-  come only from UOA's statement.
-  The locked write also enforces a terminal start ticket's exact Product status
-  mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
-  Re-enable preserves richer probed schemas only
-  when tool names exactly match the current Ledger contract; legacy
-  direct-provider projections are replaced and must be explicitly re-granted.
-- Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
-  and Stripe
-  lifecycle remain authoritative in UOA. Ledger's raw reporting endpoint is
-  UOA-only: Nessie must not hold a metering-reader key, call Ledger's legacy
-  billing route, or expose a parallel raw-billing panel. Nessie's product-bound
-  Ledger app key is only for its paid inference, DeepWater, Serper, and other
-  metered execution calls; UOA independently reads Ledger and supplies the
-  customer-facing service/team/user breakdown. The canonical UOA customer
-  statement, Checkout, Portal, and
-  cancellation preview/confirm use a different, Nessie-only
-  `UOA_BILLING_APP_KEY_NESSIE` plus a fresh 45-second RS256 actor assertion
-  signed by `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. Both secrets are
-  cryptographically validated on the Actions runner, then installed together by
-  a dependency-free host script in the main-branch deployment workflow; neither
-  may be reused by Ledger or a sibling product. The actor assertion carries the
-  signed session's UOA `tv` epoch—not a value recovered from a mutable account
-  link—for UOA's online credential-revocation check. Every request resolves the exact
-  linked UOA user/org/team, rejects local workspace drift, and lets UOA
-  independently recheck billing-manager membership. The public
-  protocol is consumed from the MIT-licensed
-  `@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored
-  byte-for-byte from UOA commit
-  `272e4d95846788f752d1e623d5f69f7c961f1dc5` and protected by a root SHA-256
-  verification gate. API validation uses its exported JSON Schemas and the
-  admin imports its exported view-model types; local editable copies are
-  forbidden. `/schemas/billing-statement-v2.json` is display-ready: Nessie
-  renders its plan, markup, line items, totals, and the complete
-  connected-service team/origin/user portfolio from one exact Ledger
-  `metering-portfolio-v1` `group_by=user` snapshot without rating, aggregation,
-  share calculation, or cancellation reasoning. Frozen customer actions remain
-  on the version-1 action contract. For actions the API re-fetches the statement,
-  accepts only the
-  frozen action-id/path pair, verifies its subject, and forwards UOA's
-  server-produced body unchanged. Browser-supplied action bodies and return URLs
-  are forbidden. Cancellation relays only UOA's opaque short-lived preview
-  token, UOA idempotency key, and selected UOA choice; UOA locks and revalidates
-  team-wide direct access before confirming. Nessie stores no tariff, Stripe
-  customer, subscription, invoice, Price, credit balance, top-up policy,
-  payment consent, recurring add-on, statement, or cancellation state. Every
-  active exact-team member may read the same UOA-owned team credit account.
-  The display leads with remaining credits, then pending/added/used credits,
-  connected-service usage, recent activity, and automatic top-up status. UOA
-  fixes 1,000 credits to US$1 and returns display-ready values; Nessie never
-  converts tokens, raw Ledger units, provider cost, or money into credits.
-  Billing managers receive named-user/payment detail and frozen top-up,
-  automatic-top-up, and recurring-add-on actions. Ordinary members receive a
-  privacy-safe read-only projection with their own usage plus anonymous
-  other-member and unattributed totals. Their pending-payment amount and
-  funding policy are absent; automatic top-up exposes only UOA's payment-method
-  status and directs detailed settings to billing managers. Every mutation
-  re-fetches the UOA view,
-  validates the exact frozen action, and relays it unchanged.
-  `/tokens` is the customer Credits & Billing surface and contains only these
-  UOA-authored models. Nessie's owner-only local token, pricing, estimate,
-  projection, connector, file, and budget telemetry is isolated at
-  `/ops/usage`; it must never be rendered beside customer credits or statements.
-  Integrated-product APIs do not query or return local usage summaries.
-  A successful direct Nessie SSO exchange confirms `nessie` access through
-  UOA's exact `/billing/v1/service-access/confirm` seam before Nessie issues its
-  local session; the call is bound to the linked user/org/team and fails login
-  closed unless UOA returns `204` with `no-store`. Connector, DeepWater, agent,
-  and other indirect execution paths never create this direct-access evidence.
+- **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
+  reads a decision rather than re-deriving one, and connect orchestrates the
+  existing OAuth/instance machinery.
+  Read [`docs/standards/app-store.md`](docs/standards/app-store.md)
+  before writing code here.
+- **MCP connector management and external-agent products.** Catalog, instances,
+  probe, projection, credentials, secret store, library, discovery and OAuth
+  live in `@nessie/mcp-manage` and are never forked.
+  Read [`docs/standards/mcp-connectors.md`](docs/standards/mcp-connectors.md)
+  before writing code here.
+- **DeepWater — default OFF, explicit per-agent grant, always via Ledger.**
+  Enabling DeepWater provisions a team-scoped tool-projecting instance routed
+  through Ledger; the handoff, grant bundle and ambiguity rules are exacting.
+  Read [`docs/standards/deepwater.md`](docs/standards/deepwater.md)
+  before writing code here.
+- **Customer billing stays in UOA.** Tariffs, statements, credits, top-ups,
+  subscriptions and Stripe lifecycle are authoritative in UOA; Nessie renders
+  UOA-authored display models and stores no commercial state.
+  Read [`docs/standards/customer-billing.md`](docs/standards/customer-billing.md)
+  before writing code here.
 - Builtin `web_search` is a Ledger-only Serper route. Ordinary agent, delegated
   sub-agent, and workflow calls all post to
   `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's product-bound
@@ -878,115 +358,31 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Nessie's local connector rows are operational telemetry only; Ledger is the
   raw usage/cost source and UOA is the sole commercial authority.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
-- The Individual Communications Connector wires per-user OAuth connections
-  (Slack + Gmail live, Microsoft planned) into a normalized `CommsEvent` store
-  through the provider-agnostic `@nessie/comms-connect` core and one adapter
-  package per provider. Adapters register into the shared registry only via
-  `@nessie/comms-providers` (`registerCommsConnectorsFromEnv`), called at API
-  and worker startup from `NESSIE_COMMS_*` env; unset providers stay
-  unregistered and their jobs park on `ConnectorNotRegisteredError`. Token
-  bundles are encrypted in a separate table (never returned to the browser),
-  sync is resumable + checkpointed with webhook ingestion through the worker
-  queue, and the connector layer carries **no** reasoning logic (Chief-of-Staff
-  boundary). The sync worker and subscription-renewal sweep skip any connection
-  whose owner is no longer an active org member (`deactivatedAt`), so user
-  deactivation revokes comms import immediately — matching the API auth and
-  scheduled-trigger owner-revocation gates. Spec:
-  `docs/plans/2026-07-21-individual-communications-connector.md`.
-- **A provider scope is a capability in one catalog, and every check on it
-  fails closed.** Google's scopes live in
-  `packages/schemas/src/google-capabilities.ts` and nowhere else. Three fixes
-  make the checks trustworthy, each closing a real fail-open: `grantedScopes`
-  is read from the token response and a response with no `scope` is refused
-  (it used to fall back to the *requested* scopes, recording authority a
-  person had un-ticked on the consent screen); account identity comes from the
-  OIDC `id_token`, not Gmail's `users.getProfile`, which needs a Gmail read
-  scope and therefore made a calendar-only or send-only connection impossible;
-  and HTTP 403 is classified by Google's machine reason, so
-  `insufficientPermissions` is fatal and surfaces as a request to grant the
-  capability instead of retrying until the job dies. Capability checks are
-  all-of at the one `loadUserGoogleCommsCredential` chokepoint, which also
-  enforces local blocks and refuses two qualifying accounts rather than
-  guessing. A local block is not a revocation — a provider grant can only be
-  revoked whole — so it is enforced server-side and the copy says so. OAuth
-  state binds the connection being widened and the expected provider account,
-  because a callback that trusts whoever finished consent will silently
-  re-point a different mailbox. Plan:
-  `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
-- **An approval over provider content binds the content, not its handle, and
-  the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
-  nothing useful: the draft stays mutable through the chat card, through Gmail,
-  and through another run, so an approved send could deliver text nobody
-  approved. `GmailDraftAction.contentFingerprint` is re-read and compared on
-  every send path, and the same row carries the conditional
-  `draft → sending → sent` claim that makes a double send impossible. The
-  approval requirement itself is declared on the tool definition and enforced at
-  the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
-  and a seeded-`PolicyRule` gate is therefore absent in any organisation whose
-  seed never ran. Its only bypass is an exact-key standing grant
-  (`SendAuthorizationGrant`, `(connectionId, agentId)`, the
-  `ScopeDisclosureGrant` shape) that never covers an unattended run or a
-  non-owner, and `ApprovalRequest.requiredApproverUserId` keeps a send-as-you
-  gate resolvable only by the person it acts as — approval visibility otherwise
-  reaches every member who can read a public channel. One shared
-  `sendDraftForUser` serves the human button and the agent tool; api services
-  are unreachable from the worker, so a second copy forks the state claim and
-  the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
+- **Individual Communications Connector.** Per-user OAuth connections normalise
+  into a CommsEvent store through @nessie/comms-connect; the connector layer
+  carries no reasoning logic.
+  Read [`docs/standards/comms-connector.md`](docs/standards/comms-connector.md)
+  before writing code here.
+- **Google scopes, capabilities and send approvals.** A provider scope is a
+  capability in one catalog and every check on it fails closed; an approval
+  over provider content binds the content, not its handle.
+  Read [`docs/standards/google-workspace.md`](docs/standards/google-workspace.md)
+  before writing code here.
+## Personal model subscriptions
 
-## Personal model subscriptions — the owner's plan, the owner's grant
-
-A person links a consumer AI plan they already pay for (Kimi and GLM today;
-OpenAI Codex and xAI Grok when the OAuth phase lands) and the agents **they
-own** run on it instead of the organization's Ledger credits. Rules that must
-not drift:
-
-- **A link is Nessie's own grant.** Never read, import, or accept a vendor
-  CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
-  items): providers rotate refresh tokens and invalidate the previous one, so
-  two apps sharing one grant log each other out. One grant, one refresh owner.
-- **Token values live in the vault, never in PostgreSQL**, in a **dedicated,
-  separately-ACLed** vault project (`NESSIE_SUBSCRIPTION_VAULT_*`) rather than
-  the shared personal partition, which also holds a person's ordinary captured
-  secrets. `model_subscription_credentials` holds only the pointer, and a
-  deployment with no vault refuses linking in words — never a column fallback.
-  Deleting a pointer tombstones the vault secret in the same transaction, or a
-  cascade strands a live refresh token nothing can address.
-- **The lane is pinned at run admission and never falls back.**
-  `resolveRunSubscriptionBinding` re-derives entitlement from live rows and
-  persists the subscription plus its credential epoch on the `Run`, so a
-  mid-run relink cannot switch accounts and a continuation whose binding died
-  fails closed. Anything that merely *looks* like a subscription — unknown
-  adapter, dangling pointer — is `unavailable`, never Ledger: falling back
-  would move a person's spend onto the organization with nobody agreeing to it.
-- **Organization budgets gate organization spend, so they do not gate this
-  lane.** `applyBudgetGate` and its mid-run probe skip a pinned run: blocking
-  would refuse a run the organization is not paying for, and a `degrade`
-  verdict would rewrite it onto the organization's Ledger provider — moving the
-  very spend it was capping. The per-run backstop envelope still applies.
-- **Exclusion from cost is structural**: `TokenLedgerEvent.billingSource` +
-  `modelSubscriptionId` decide it, never the absence of a pricing profile.
-  Attribution follows the subscription **owner**, not whoever posted, and the
-  writer reads the run's own pin so no terminal path can forget to stamp it.
-- **One validator, every write path.** `assertAgentModelSelection`
-  (`@nessie/workspace-admin`) gates create, update, clone and the PA
-  `agent_create` tool; ownership transfer and clone strip the selection,
-  because a subscription is not transferable. Write-time validation is UX; the
-  run-time gate is the security boundary.
-- **Refresh discipline:** a short locked claim, the network call outside any
-  transaction, compare-and-swap on the epoch, never a transport-failure retry
-  of a refresh grant, a 5-minute proactive margin, and failure transitions
-  applied only while the failing epoch is still current. Only adapter-defined
-  authentication codes reach `needs_reauthorization` — 403 is also entitlement,
-  policy and quota, which a relink button cannot fix.
-
-Rationale, field lessons and phasing:
-[docs/plans/2026-09-02-personal-model-subscriptions.md](docs/plans/2026-09-02-personal-model-subscriptions.md).
+A person links a consumer AI plan they already pay for and the agents **they
+own** run on it instead of the organisation's Ledger credits. The lane is
+pinned at run admission and never falls back to Ledger, token values live in a
+dedicated vault project, and organisation budgets deliberately do not gate it.
+Read [`docs/standards/personal-model-subscriptions.md`](docs/standards/personal-model-subscriptions.md)
+before writing code here.
 
 ## Embeddings — routed separately, one pinned width
 
 - Embeddings are configured independently of chat via `NESSIE_EMBEDDING_*` (`PROVIDER`, `MODEL`, `SERVICE_ID`, `BASE_URL`, `API_KEY`); every unset field inherits the chat provider, so an unconfigured deployment is byte-identical to before. The chat provider may serve no embeddings endpoint at all — Ledger's DeepSeek adapter answers `403 embeddings is not allowed for deepseek` — so production embeds through `/v1/jina` while chat stays on `/v1/deepseek`. Resolution lives in `packages/runtime/src/inference/embedding-provider.ts` and is applied once in `createModelClient`; do not fetch embeddings through any other path. Signed `X-Nessie-Context` / `X-UOA-Delegation` identity travels with the embedding leg only while it stays on the chat host, so a third-party embedding endpoint an operator names never receives a delegation assertion.
 - **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s native width). Never write the number anywhere else — not in a producer, a validator, a test fixture, or the mock-LLM harness. The three pgvector columns (`thoughts.embedding`, `thought_recalls.query_embedding`, `knowledge_page_chunks.embedding`) are declared at that width, and every embed request sends `dimensions` so a provider answering differently fails loudly. Changing the embedding model to another width = edit the constant + one Prisma migration re-typing the columns + re-embedding; vectors of different widths are not convertible, so the migration nulls them rather than truncating (a truncated vector is neither model's output and poisons later comparisons).
 - The model that produced a vector is `ModelClient.embeddingModel`, resolved from deployment config — not a constant. It is what gets written to `embedding_model` and what keys the query-embedding cache, so the two sides of a similarity comparison agree by construction rather than by two constants happening to match.
+- a width-change migration drops the HNSW index, nulls the vectors, `ALTER COLUMN`s, and recreates the index (see `20260811120000_embeddings_1024_dimensions`); the `match_thoughts_*` functions need no change — PostgreSQL discards the typmod on function parameters.
 - Spec: `docs/deployment.md` "Embedding model and vector width".
 
 ## File storage & accounting — single chokepoint
@@ -998,3 +394,92 @@ Rationale, field lessons and phasing:
 - **A previewable upload also owns a thumbnail** (`<storageKey>.thumb.webp`), derived at the same chokepoint: inline for raster images, via the `attachment.thumbnail` worker job for PDFs (first page, `@hyzyla/pdfium` — pure WASM, no native deps; AGPL/GPL renderers are disqualified), animated/exotic images, oversized images, and strip opt-outs. It is quota-gated with the original, carries its own `store.thumbnail` / `delete.thumbnail` usage events, and is freed by `FileService.delete` — the single place attachment bytes are removed, so nothing can leak it. Generation failures are never fatal (`thumbnailStatus = unavailable`, clients fall back to the original); existing attachments are not backfilled. Attachment downloads and thumbnails are served with `private, max-age=1y, immutable` + a strong `ETag`, with `If-None-Match` answered as a 304, because attachment bytes are immutable. Spec: `docs/plans/2026-08-06-attachment-thumbnails-and-previews.md`.
 - **A run's context window carries its messages' attachments.** Every turn gets an inventory line appended at render time (kept beside `Message.content`, never inside it, so the prompt builder's raw-content comparison still matches), and `user` turns carry inlined image bytes on `ProviderMessage.images`. Bytes come from the same `FileService` chokepoint — original for a PNG/JPEG/WebP/GIF ≤ 4 MiB, else the stored `.thumb.webp`, else nothing — capped at 6 images per prompt (newest first), non-fatal on failure, and estimated for the context window. Whether they reach the wire is the connector's call, gated on its own truthful `supportsVision` (`openai`/`openai-compatible` yes; `deepseek`/`kimi` no, keeping the inventory line). The engagement orchestrator reads the same line so an image-only post can start a run; the judgement itself stays model-made. Logic lives in `worker/src/run/message-attachments.ts` — do not fetch attachment bytes for prompts anywhere else. Spec: `docs/plans/2026-08-07-images-in-agent-context.md`.
 - Production storage is S3-compatible (self-hosted MinIO); local dev defaults to `filesystem`. See `docs/deployment.md`.
+- Thumbnails, images in agent context, and the storage backends in full:
+  [`docs/standards/file-storage.md`](docs/standards/file-storage.md).
+
+
+## Agent documents — one shared home provisioner
+
+
+Knowledge-space provisioning lives in `@nessie/knowledge`:
+`packages/knowledge/src/provisioning.ts` owns `ensureMyDocsSpace`,
+`ensureProjectDocumentsSpace`, `ensureTaskFolder`, and the advisory-locked
+`ensureAgentDocsSpace`; `api/src/services/knowledge-provisioning.ts` is only a
+thin re-export for established API callers. At inference-run setup, a
+non-system agent with an assembled KB write tool lazily gets its private
+`<Agent> — Documents` home (or reuses it); a spawned child uses its parent's
+home, and the Personal Assistant has none because its documents belong in the
+person's My Docs. When `kb_list`, `kb_search`, `kb_document_compose`, and
+`kb_document_edit` are all actually available, the structural system-prompt
+block injects that home id and title so the model never invents a `spaceId`.
+
+## Cloud browsers — a second transport, not a second browser surface
+
+
+Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
+
+## Settings — one cascade, and a lock a person can see
+
+A setting that exists at more than one level resolves through `ScopedSetting`
+(`@nessie/runtime` `scoped-settings.ts`): organisation → team → person, most
+specific wins, stopping at the first level marked `locked`. Cascading
+resolution was bespoke four times over before this (budgets, policy rules,
+`Team.callProvider`, the cloud browser's hardcoded organisation-first order),
+so a fifth hand-rolled ordering is the defect, not the pattern.
+
+A row may carry a lock with no value, pinning whatever resolved above it —
+which is how a setting whose value lives in its own table (cloud browser
+credentials) is governed by this cascade rather than a second one.
+`isLockedAbove` is the read-only condition, strictly above, so the locking
+level still edits and a lock never binds upwards; the surface greys the
+control and names the level (`ScopedSettingGate`) instead of accepting an edit
+the server would refuse. Scopes are the three people work in — projects are
+walked past, not through. Plan and as-built:
+[docs/plans/2026-09-03-scoped-settings.md](docs/plans/2026-09-03-scoped-settings.md).
+
+## Message reply threads (#233)
+
+
+`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots and a deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`); how it presents per layout, and how it closes, is the navigation framework's call ([docs/navigation/overview.md](docs/navigation/overview.md) §7, "The reply thread panel on `split`"). Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
+
+**Reply placement + thinking bubbles** ([docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md](docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md)): where a run's reply lands is decided **before** the run starts — engagement decisions carry a model-judged `replyPlacement` (`thread` = answer owed to the asker's exchange; `channel` = standalone message to the room; @mentions and PA DMs stamp `thread` structurally, never by content heuristics) persisted on `Run.replyPlacement`; `resolveReplyRootMessageId` (`worker/src/run/execute/reply-placement.ts`) applies it after the DeepWater-handoff/external-agent/PA-delegation carve-outs and persists the resolved anchor on `Run.replyRootMessageId`. While a run thinks, a per-run `ThinkingRecorder` coalesces visible reasoning deltas (2 KiB/250 ms) plus tool-activity lines into durable `run_thinking_chunks` rows, each also published on the thread SSE stream with its chunk id (`stream.reasoning` / `stream.thinking.tool`; `stream.start` now carries the reply anchor, and `stream.done` is always published last). The admin renders a dashed, full-width **thinking bubble** with a 1–2-line live thought ticker wherever the reply will land — bottom of the channel feed for top-level replies; compact under the root row plus full bubble in the thread panel for threaded ones (reply text streams only where the reply will land) — and clicking it opens a centered thought-process dialog that streams live and merges the durable log for mid-run joiners (`GET /api/threads/:id/thinking` bootstrap, `GET /api/threads/:id/runs/:runId/thinking` full log, both thread-visibility-gated; `stream.*` stays excluded from SSE backlog replay).
+
+**Liveness (client only, no server events).** The thread SSE reconnect policy lives in `admin/src/facades/threads/stream-retry.ts`: only **403/404** end the loop (the viewer cannot see this thread); every other outcome — 401 mid token rotation, any 5xx, a bodyless 200, a network error — reconnects with equal-jitter exponential backoff (1 s base, 30 s cap) that resets on each established connection. It used to `break` on any non-OK response, which killed bubbles and streaming text for the rest of the component's mount while replies kept arriving over the WebSocket refetch path. Because `stream.start` only fires after queue pickup, the engagement-decision call, a second queue hop, run claim, toolset assembly and memory retrieval, the admin also shows one **anonymous ambient line** — three muted `.liveness-dots`, no name, no avatar (`liveness-hint.ts` + `useAgentLivenessHint.ts`, `ChannelMessageFeed` `showLivenessHint`) — from the moment the viewer posts into a surface that structurally has an agent (bound agent, PA DM, or external-agent DM). It never names an actor because the engagement decision is model-judged and may decline, and it clears on the first of: a pending stream entry for that surface (the bubble *is* the indicator, so the two are never painted together — visibility is derived during render, not cleared in an effect), a message from anyone but the viewer, an agent reaction (`acknowledge`), or 10 s. Idle renders nothing; the channel feed and the reply panel share the one hook and the one feed component.
+
+Legacy single-user server lives in `src/` and is being removed — do not rely on it for new work.
+
+## Web Push (browser notifications)
+
+
+- Browser Web Push is a second push transport alongside native APNs/FCM: the worker's `handlePushDispatch` also fans messages out to users' `WebPushSubscription` rows. Crypto is in-process (`packages/push`, RFC 8291 + RFC 8292 VAPID, no third-party deps).
+- One VAPID key pair per instance via `NESSIE_WEBPUSH_PUBLIC_KEY`, `NESSIE_WEBPUSH_PRIVATE_KEY`, `NESSIE_WEBPUSH_SUBJECT` (all three required to enable). Generate with `node scripts/generate-vapid-keys.mjs`. Public key is safe to expose; private key is secret.
+- Admin SPA service worker (`admin/public/sw.js`) + manifest + a "Browser notifications" toggle on `/settings/notifications`; API endpoints under `/api/push/web/*`. Requires HTTPS (localhost exempt); iOS needs an installed PWA (16.4+).
+- **Authoritative guide: [docs/web-push.md](docs/web-push.md).**
+- User alerts: direct @mentions write durable per-recipient `UserAlert` rows in the message-create transaction (self skipped, broadcast none, agent-authored identical; mute suppresses push, never the row) and surface via `GET /api/alerts` + `POST /api/alerts/read`, realtime `alert.created`/`alert.read`, the admin top-bar bell, and mention-framed push (`<author> mentioned you in <channel>`). `workspace_invitation` alerts are reconciled from every verified UOA `/org/me` read, follow the user's current local organisation for bell visibility, and are deleted—not read-marked—when UOA no longer returns the invite or acceptance succeeds.
+
+## Provider-linked calls + ringing
+
+
+Calls are provider links, never an embedded Jitsi media surface: an owner or
+admin selects each target team's Google Meet, Jitsi, or (when configured)
+Microsoft Teams provider in `/settings/organization`; the caller popup links
+its provider label there for that same audience. A channel call creates that
+link then rings each invitee. Realtime publishes one
+message per audience — one channel update and separate user-scoped incoming
+rings — because combined scopes leak/replay incorrectly. Native push carries
+only an internal call path/id, never an external meeting URI; the client loads
+the call before opening the provider link. Browser Accept is a real anchor (or
+a synchronous user gesture in a shell), never an asynchronous `window.open`.
+`meeting_link_create` and `call_start` are PA-only builtins: they re-read the
+acting member and call the same `@nessie/workspace-admin` functions as the
+routes; `call_start` resolves membership from its target channel's organisation
+and stamps `Call.createdViaAgentId`.
+
+## Docs
+
+
+- [brief.md](docs/brief.md) — Historical architecture brief (see banner)
+- [build-ai-coworker.md](docs/done/build-ai-coworker.md) — Historical macOS app build plan (moved to done/)
+- [context-window-optimization-audit.md](docs/context-window-optimization-audit.md) — Audit + prioritized roadmap for LLM context-window usage in the agentic run pipeline
+- [known-limitations.md](docs/known-limitations.md) — Code-verified register of current limitations (status taxonomy; two fixes in flight as of 2026-07-23)
+- Finished documents belong in `docs/done/`.

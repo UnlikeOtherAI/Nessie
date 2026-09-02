@@ -31,7 +31,7 @@ changed by join/invite/switch — and diagnose a concrete reported bug:
 | Fact | Where | Authority |
 |---|---|---|
 | Person | `User.uoaSub` unique nullable ([schema.prisma:853](../../api/prisma/schema.prisma)) — the principal key on the UOA path; `email` unique, adoption bridge only | UOA |
-| Organisation | `Organization.externalOrgId` unique nullable ([schema.prisma:1039](../../api/prisma/schema.prisma)); `name` a non-authoritative mirror healed by `syncExternalOrganizationNames` | UOA |
+| Organisation | `Organization.externalOrgId` unique nullable ([schema.prisma:1039](../../api/prisma/schema.prisma)); `name` a non-authoritative mirror healed by `syncExternalOrganizationNames`, renamed only by relaying `PUT /org/organisations/:orgId` | UOA |
 | Workspace | `Team.externalWorkspaceId` unique + `externalOrgId` ([schema.prisma:1379-1380](../../api/prisma/schema.prisma)); one workspace = Project + Team + `#general` | UOA |
 | Membership | `OrganizationMember` / `ProjectMember` / `TeamMember` rows — a **create-only projection** of the verified `org.org_role` / `org.team_roles[workspaceId]` claims ([workspace-principal.ts:146-175](../../api/src/services/workspace-principal.ts), [uoa-roles.ts:170-198](../../api/src/services/uoa-roles.ts)) | UOA (projected) |
 | Credential | `UoaSessionCredential` (encrypted refresh material), `ProductAccountLink` per org with `uoaSub`/`uoaTokenVersion`/`activeOrgId`/`activeTeamId` | Nessie (permitted retention) |
@@ -346,6 +346,12 @@ directory label; only org names heal
 [external-organization.ts:75](../../api/src/services/external-organization.ts)).
 Visible wherever the local name renders — the fallback directory and every
 local team surface.
+
+**Fixed 2026-09-02.** Team and Project names now heal from the verified UOA
+workspace directory via `syncExternalWorkspaceNames`, run beside
+`syncExternalOrganizationNames` at both arrival sites (login and token
+refresh), so the cold-cache fallback and every local team surface render the
+real UOA label once any verified `/org/me` read has occurred.
 
 **F8 — Owner-facing belonging reads still local (low-medium, known-open).**
 `GET /api/users` lists local `OrganizationMember` rows — under UOA an

@@ -4,6 +4,10 @@ import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
 import { useChannels } from '../../facades/channels/hooks';
 import { useNavigateToDm } from '../../facades/channels/dm-navigation';
 import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
+import {
+  AGENT_DESIGNER_SLUG,
+  useOpenGlobalAgentHome,
+} from '../../facades/global-agents/hooks';
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import {
   isPersonalAssistantChannel,
@@ -94,6 +98,7 @@ export const useAdminShell = () => {
       ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
     : undefined;
   const personalAssistantBootstrap = usePersonalAssistantBootstrap();
+  const openGlobalAgentHome = useOpenGlobalAgentHome();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -303,14 +308,41 @@ export const useAdminShell = () => {
     void navigate('/agents/designer');
   }, [navigate]);
 
+  /**
+   * Create -> Agent opens the Agent Designer's *chat*, not the form: describing
+   * the colleague you want is the doorway, and the form stays where somebody
+   * chooses to edit fields (Agents -> New agent). One handler serves every
+   * client — web, the desktop shells, and the phone sheet through
+   * `NativePhoneCreationBridge` — so no surface can drift to a different
+   * destination. The call ensures the home DM, because login-time bootstrap of
+   * a global agent is deliberately best-effort.
+   */
+  const openAgentDesignerChat = useCallback(async () => {
+    setSidebarMenu(null);
+    try {
+      const response = await openGlobalAgentHome.mutateAsync(AGENT_DESIGNER_SLUG);
+      void navigate(`/channels/${response.channel.id}`);
+    } catch {
+      // The chat could not be provisioned; the form remains a working way in.
+      navigateToAgentDesigner();
+    }
+  }, [navigate, navigateToAgentDesigner, openGlobalAgentHome]);
+
   const logoutAndRedirect = useCallback(() => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+  const {
+    peopleDirectory,
+    sidebarAgentDms,
+    sidebarGroupDms,
+    sidebarPeople,
+    sidebarProductAssistants,
+  } = useSidebarDms({
     agents,
     channels,
     chatAssistants: productSurfaces.chatAssistants,
+    currentChannelId,
     me,
     systemAgents,
     users,
@@ -320,7 +352,9 @@ export const useAdminShell = () => {
     agentById,
     channelById,
     projectById,
-    sidebarPeople,
+    // Starred resolution reads the whole directory: a person can be starred
+    // before any message exists, and Direct messages lists only conversations.
+    sidebarPeople: peopleDirectory,
     starred,
     starredProjectIds,
   });
@@ -401,6 +435,7 @@ export const useAdminShell = () => {
     navigateToUnreadMessages,
     navigateToDm,
     navigateToAgentDesigner,
+    openAgentDesignerChat,
     navigateToNewConversation,
     navigateToProject,
     navigateToSettings,

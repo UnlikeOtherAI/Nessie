@@ -10,6 +10,7 @@ import {
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
 import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
+import { HANDOFF_TOOL_DEFINITIONS } from './builtin-handoff-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
@@ -39,6 +40,10 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 
 export { CARD_POST_TOOL_ID, CARD_POST_TOOL_DEFINITION } from './builtin-card-tools.js'
+export {
+  AGENT_HANDOFF_TOOL_DEFINITION,
+  AGENT_HANDOFF_TOOL_ID,
+} from './builtin-handoff-tools.js'
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export {
   APP_CONNECT_REQUEST_TOOL_DEFINITION,
@@ -449,6 +454,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
   ...CARD_TOOL_DEFINITIONS,
+  ...HANDOFF_TOOL_DEFINITIONS,
   ...CHANNEL_TOOL_DEFINITIONS,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,

@@ -76,6 +76,12 @@ export type RunContext = {
     runLimits?: AgentRunLimits | null
     systemPrompt: string | null
     /**
+     * How this agent talks to people (`Agent.speakingStyle`). Optional on the
+     * type so a fixture that predates it still compiles; absent means no
+     * speaking-style block, exactly like a null column.
+     */
+    speakingStyle?: string | null
+    /**
      * The global-agent blueprint this agent instantiates, when it is one.
      * Structural: the run-start placement assertion and (phase 2) the
      * identity-tool gate resolve the blueprint from it.

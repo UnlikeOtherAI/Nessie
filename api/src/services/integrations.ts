@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { IntegratedProductResponse } from '@nessie/schemas'
 import { syncExternalOrganizationNames } from './external-organization.js'
+import { syncExternalWorkspaceNames } from './workspace-target.js'
 import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
@@ -168,6 +169,7 @@ export const syncUoaProductAccountLinks = async (
   // Display data — a failure must never fail the login.
   try {
     await syncExternalOrganizationNames(prisma, input.workspaceDirectory?.entries)
+    await syncExternalWorkspaceNames(prisma, input.workspaceDirectory?.entries)
   } catch {
     // Intentionally ignored — see above.
   }

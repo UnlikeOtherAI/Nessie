@@ -7,10 +7,28 @@ import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgent
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents } from '../facades/agents/hooks'
 import { useCanEditAgent } from '../components/features/agents/agent-edit-authority'
+import { Card } from '../components/shared/Card'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
+
+/**
+ * Why the form below cannot be changed. It is a lead-in note inside the
+ * ordinary form layout rather than a card that replaces the form: the reader
+ * should see the same sections everyone else sees, and be told why they are
+ * inert — not be handed a different screen about a different thing.
+ */
+const GlobalAgentNote = () => (
+  <Card>
+    <SectionLabel size="sm">Provided by Nessie</SectionLabel>
+    <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+      This agent ships with Nessie. It is the same in every workspace and changes only when
+      the deployment is updated — nobody edits it here, organisation owners included.
+    </p>
+  </Card>
+)
 
 // The agent detail surface. Tapping an agents-list row lands here. For someone
 // who may edit this agent it opens on an inline **Edit** tab (the full Agent
@@ -92,12 +110,25 @@ export const AgentDetailPage = () => {
             title={agent.name}
           />
 
+          {/* A Nessie-managed agent (the Personal Assistant, the Agent
+              Designer) goes down this same path, with the designer disabled
+              and no Save. It used to get a bespoke read-only card instead — a
+              second implementation of a view that already existed, which is
+              the defect Rule zero #4 names. Which sections it actually has is
+              `AgentDetailTabs`' own structural rule, not a decision made
+              here. */}
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
             <AgentDetailTabs
               agent={agent}
               editSlot={
-                canEdit ? (
-                  <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
+                canEdit || agent.systemManaged ? (
+                  <AgentDesignerContent
+                    agents={agents}
+                    editingAgent={agent}
+                    embedded
+                    leadIn={agent.systemManaged ? <GlobalAgentNote /> : undefined}
+                    readOnly={!canEdit}
+                  />
                 ) : undefined
               }
               key={agent.id}

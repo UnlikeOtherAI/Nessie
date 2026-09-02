@@ -250,6 +250,11 @@ export const OrganizationSummarySchema = z.object({
   role: z.string(),
   logoAttachmentId: z.string().uuid().nullable(),
   stripImageMetadata: z.boolean(),
+  // True when this organisation is bound to an UnlikeOtherAI organisation, so
+  // its name is UOA's and a rename is relayed there rather than stored here.
+  // The id itself is deliberately not exposed — the client needs the fact, not
+  // the external identifier.
+  nameManagedExternally: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 

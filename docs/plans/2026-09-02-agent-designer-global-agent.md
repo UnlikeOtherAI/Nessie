@@ -1,9 +1,38 @@
 # The Agent Designer — the first global agent
 
-**Status:** phase 1 (Foundation) and phase 2a (the identity-delegation
-backbone) implemented 2026-09-02; phases 0, 2b and 3–4 remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
-code-aware reviews (see "Cross-model review"); every adopted finding was
-re-verified against code first.
+**Status: built.** Phases 0, 1, 2a, 2b, 3 and 4 all implemented 2026-09-02.
+Revised 2026-09-02 after independent Kimix and Codex Sol code-aware reviews
+(see "Cross-model review"); every adopted finding was re-verified against code
+first.
+
+## As built (2026-09-02)
+
+**Shipped.** The Agent Designer is a real global agent: one `systemManaged` row
+per organisation keyed by `Agent.systemSlug`, a per-user `gagent:` home DM
+bootstrapped at login, the identity-delegated tool gate, the design tools, a
+generated capability catalogue, `agent_handoff` with its routing block and
+origin-thread doorway, the field-sensitive edit-authority model underneath all
+of it, a read-only configuration view for any Nessie-managed agent, and one
+persona shared by the DM and the Agent Designer page's sidebar. Creating and
+redesigning an agent is now the Designer's alone: those tools are
+`identityDelegatedOnly`, so the Personal Assistant hands off instead of carrying
+the design catalogue.
+
+**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only
+a stable tile colour, with generation left to the PA's lazy owner-triggered
+path. Binding a global agent into ordinary shared channels stays with the scopes
+doc's later phase; v1 global agents are DM-homed and own no triggers. The sidebar
+keeps its ephemeral in-process transport rather than becoming thread-backed
+(D9's named end state). There is no `agent_delete` for anyone, and no
+policy-target or explicit-grant mutation from either face.
+
+**Owed: a Playwright pass.** Both mandatory dev ports (`:5454`, `:5455`) were
+held by another session's live stack throughout phase 4, and neither killing
+them nor moving these services elsewhere is allowed. Four screens still need a
+browser: the Agents page Global tab listing the Designer, its read-only detail
+view, the Designer's DM opening from the sidebar, and the handoff doorway in an
+origin channel. Verified without one: the whole lint gate, the api/worker/admin
+suites, `tsc --noEmit` for all three, a clean production admin bundle.
 **Date:** 2026-09-02
 **Related:**
 [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
@@ -18,83 +47,65 @@ deliberately left as "a later phase" — this plan is that phase, for one agent)
 ## Outcome
 
 Nessie ships its first **global agent**: the **Agent Designer**. It is
-hard-coded in the deployment (a code blueprint, instantiated per organisation
-by bootstrap, exactly the Personal Assistant / Librarian pattern), not
-editable by anyone, and it owns one job: talking to a person about the agent
-they want — what work it should do, whether there are specialist tasks, what
-it needs access to — and then creating or reshaping that agent through the
-same chokepoints the Agent Designer page uses. It collects structured answers
-with interactive cards, and it is the one place in the product that holds the
-complete, generated catalogue of every agent parameter and every tool.
+hard-coded in the deployment (a code blueprint, instantiated per organisation by
+bootstrap, exactly the Personal Assistant / Librarian pattern), not editable by
+anyone, and it owns one job: talking to a person about the agent they want —
+what work it should do, whether there are specialist tasks, what it needs access
+to — and then creating or reshaping that agent through the same chokepoints the
+Agent Designer page uses. It collects structured answers with interactive cards,
+and it is the one place in the product that holds the complete, generated
+catalogue of every agent parameter and every tool.
 
-Every other agent knows, structurally, that agent design is the Agent
-Designer's job. When a person asks their PA or any bound agent to "create an
-agent that does X", that agent answers in its own words and **hands the
-conversation off** — a new `agent_handoff` builtin that opens (or continues)
-the person's private Agent Designer DM with a server-authored briefing, and
-leaves a doorway behind in the original conversation. The big
-design-catalogue context lives only in the Designer's own runs; no other
-agent carries it.
+Every other agent knows, structurally, that agent design is the Designer's job.
+Asked to "create an agent that does X", an agent answers in its own words and
+**hands the conversation off** — `agent_handoff` opens (or continues) the
+person's private Designer DM with a server-authored briefing and leaves a
+doorway behind in the original conversation. The big design-catalogue context
+lives only in the Designer's own runs; no other agent carries it, and the design
+verbs themselves are reachable from nowhere else.
 
-The existing Design Assistant sidebar on the Agent Designer *page* becomes a
-second face of the same agent: one blueprint module supplies the persona,
-capability catalogue, and tool vocabulary to both the page's form-filling
-transport and the chat agent, so there is one brain with two doorways rather
-than two brains.
+The Design Assistant sidebar on the Agent Designer *page* becomes a second face
+of the same agent: one blueprint module supplies the persona and the generated
+capability catalogue to both the page's form-filling transport and the chat
+agent, so there is one brain with two doorways rather than two brains.
 
-## What exists today (verified 2026-09-02)
+## What existed before this (verified 2026-09-02)
 
-- **The global tier exists but is unreachable.** DB CHECK
-  `agents_system_managed_invariants_chk` admits
-  `(systemManaged=true, shared, shared, none)`; the Librarian and
-  external-agent products use it. But `bindAgentToChannel` refuses every
-  `systemManaged` agent, `isAgentVisibleToUser` hard-codes
-  `systemManaged: false` (list-only, no detail), and an *unbound* global
-  agent is invisible to everyone (`listAgentsForUser`'s
-  `includeSystemManaged` arm requires a binding into a visible channel).
-  The scopes doc names the fixes; none is built.
-- **Bootstrap precedent is solid.** `ensurePersonalAssistantAgent` /
-  `ensureLibrarianAgent` / `ensureExternalAgent`: advisory lock →
-  find-by-discriminator → create-or-update-in-place, config merged under the
-  per-agent policy lock so a targeted grant committed in between is never
-  clobbered. Discriminators are ad-hoc, though — the Librarian is keyed by
-  **name**, which is fragile.
-- **Per-user system DM precedent is solid.** PA (`pa:{org}:{user}`,
-  `systemChannelType='personal_assistant'`, membership forcibly reduced to
-  one) and external agents (`extagent:{slug}:{org}:{user}:{team}`). The PA
-  DM is where `effectiveUserId = poster` is stamped
-  (`thread-message-create.ts`) — safe exactly because the DM has one member —
-  and where the orchestrator's structural fast-path replies without an
-  engagement judgement.
-- **The provisioning tools exist, PA-only.** `agent_list`, `agent_create`,
-  `agent_bind_channel`, `agent_trigger_create`, `channel_create` in
-  `worker/src/run/pa-tools/provisioning.ts`, each mirroring one route's
-  authorization and calling the same `@nessie/workspace-admin` function.
-  There is deliberately **no** `agent_update` tool and no `agent_read`
-  detail tool today (and no per-agent record route at all — the admin detail
-  page reads the record out of the entitled list).
-- **Cards do forms.** `card_post` (default-on for every agent) carries
-  `input` blocks (`text | textarea | number | select | checkbox | date`),
-  up to 4 actions, `wait: true` suspends via the approval machinery into
-  `waiting_input`, and a press is a real `user` message read structurally.
-  A `waiting_input` run **holds the `(agent, thread)` slot**: ordinary human
-  messages pend behind it until the card resolves.
-- **The Design Assistant sidebar is a second brain.** `POST /api/designer/chat`
-  is a stateless in-process SSE loop (budget-gated, `NESSIE_DESIGNER_MODEL`)
-  with its own prompt (`api/src/services/designer-prompt.ts`), its own tool
-  vocabulary (`set_name`, `set_role`, `set_system_prompt`, `set_model`,
-  `toggle_tool`, `batch_toggle_tools`, `web_search`), its own DuckDuckGo
-  scraper for search, and no persistence — the conversation dies with the
-  React component.
-- **No conversation-transfer primitive exists.** Agent-to-agent reach today
-  is: the orchestrator (guarded by `triggerIsHuman` — agent-authored posts
-  never trigger engagement), the PA's `send_message` (posts as the owner),
-  the owner-only mailbox (one-shot dispatch to a *bound* agent, no
-  agent-facing writer), and the server-authored integration handoff
-  (`integrationLaunch` metadata + direct `enqueueRunExecution`, skipping
-  the orchestrator). The integration handoff is the pattern to reuse — with
-  two corrections this plan makes (D8): it impersonates the requester with a
-  `role:'user'` message, and it bypasses `claimThreadRunOrPend`.
+The starting point, kept because every design decision below is an answer to
+one of these facts.
+
+- **The global tier existed but was unreachable.** The DB CHECK admitted a
+  `systemManaged` shared agent and the Librarian and external-agent products
+  used it — but `bindAgentToChannel` refused every `systemManaged` agent,
+  `isAgentVisibleToUser` hard-coded `systemManaged: false` (list-only, no
+  detail), and an *unbound* global agent was invisible to everyone. The scopes
+  doc named the fixes; none was built.
+- **Bootstrap and per-user system DMs had solid precedent**
+  (`ensurePersonalAssistantAgent` and friends: advisory lock →
+  find-by-discriminator → create-or-update, config merged under the per-agent
+  policy lock). Discriminators were ad-hoc, though — the Librarian is keyed by
+  *name*. The PA DM (`pa:{org}:{user}`, membership forcibly reduced to one) is
+  where `effectiveUserId = poster` is stamped, safe exactly because the DM has
+  one member, and where the orchestrator's structural fast path replies without
+  an engagement judgement.
+- **The provisioning tools existed, PA-only** (`agent_list`, `agent_create`,
+  `agent_bind_channel`, `agent_trigger_create`, `channel_create`), each
+  mirroring one route's authorization. There was deliberately no `agent_update`
+  and no `agent_read` — and no per-agent record route at all; the admin detail
+  page read the record out of the entitled list.
+- **Cards already did forms.** `card_post` carries `input` blocks and up to
+  four actions, `wait: true` suspends into `waiting_input` through the approval
+  machinery, and a press is a real `user` message read structurally. A
+  `waiting_input` run **holds the `(agent, thread)` slot**.
+- **The Design Assistant sidebar was a second brain.** `POST /api/designer/chat`
+  is a stateless in-process SSE loop with its own prompt, its own tool
+  vocabulary, its own DuckDuckGo scraper, and no persistence.
+- **No conversation-transfer primitive existed.** Agent-to-agent reach was the
+  orchestrator (guarded by `triggerIsHuman`), the PA's `send_message` (posts as
+  the owner), the owner-only mailbox, and the server-authored integration
+  handoff. That last is the pattern D8 reuses — with two corrections: it
+  impersonates the requester with a `role:'user'` message, and it bypasses
+  `claimThreadRunOrPend`.
 
 ## Design decisions
 
@@ -468,27 +479,23 @@ tool is one registry line — removing a learned behaviour later is harder.
 
 ### D9 — One brain, two doorways: unifying the sidebar
 
-The Design Assistant sidebar keeps its transport (in-process SSE,
-form-filling tool calls, ephemeral) — it does something the DM cannot: drive
-the open form control-by-control. What unifies is the **definition**:
+The Design Assistant sidebar keeps its transport (in-process SSE, form-filling
+tool calls, ephemeral) — it does something the DM cannot: drive the open form
+control-by-control. What unifies is the **definition**: one blueprint module
+exports the persona and the generated capability catalogue, and both
+`api/src/services/designer-prompt.ts` and the worker's Designer prompt build
+from it (which is where the api face gets its first live registry read, D5).
+The sidebar renders as the Agent Designer — name and avatar from the identity
+directory, not a generic "Design Assistant" label. Model resolution is the
+blueprint's (D1). Its DuckDuckGo-scrape `web_search` is replaced by the Ledger
+Serper route the builtin uses; the direct-scrape path predates the Ledger-only
+rule and must not survive unification. And a "Continue in chat" affordance
+hands the form draft to the Designer DM as a server-authored context message —
+the `agent_handoff` mechanism, not a second one.
 
-- One blueprint module exports the persona, the generated capability
-  catalogue, and the parameter vocabulary; both
-  `api/src/services/designer-prompt.ts` and the worker's Designer prompt
-  build from it (the api face's new registry read: D5).
-- The sidebar renders as the Agent Designer — name and avatar from the
-  identity directory, not a generic "Design Assistant" label.
-- Model resolution is the blueprint's (D1): blueprint pin, else org
-  default, `NESSIE_DESIGNER_MODEL` env override — one rule for both faces.
-- Its DuckDuckGo-scrape `web_search` is replaced by the Ledger Serper route
-  the builtin uses (the direct-scrape path predates the Ledger-only rule and
-  should not survive unification).
-- A "Continue in chat" affordance on the sidebar opens the Designer DM
-  (hand the form draft over as a server-authored context message).
-
-A fully thread-backed sidebar (real runs rendered in the rail) is named as
-the possible end-state but deliberately not built now: it trades the live
-form-filling UX for architectural purity the product doesn't need yet.
+A fully thread-backed sidebar (real runs rendered in the rail) is named as the
+possible end state but deliberately not built: it would trade the live
+form-filling UX for architectural purity the product does not need yet.
 
 ## Edit authority — person-owned vs team-owned (decided 2026-09-02)
 
@@ -552,27 +559,22 @@ Other decisions:
 
 - **Private agents become editable by their owner** — the headline fix.
 - **Legacy unowned rows become team-owned.** Pre-stewardship agents have
-  `ownerUserId = null` and no recorded author; "anyone entitled may edit"
-  is the honest reading, and it is a strict widening only relative to a
-  gate that was itself wrong. The people-tree's "Unowned" bucket renames
-  to "Team-owned" in the same change.
-- **Org-owner override stays on workspace agents** (both flavours):
-  "only I can edit" is with respect to other members. Without the
-  override, a person-owned agent whose owner is deactivated has no editor
-  at all. Private agents remain the sanctioned exception.
-- **"Promote" (private → workspace publish) does not exist yet** — the
-  scopes doc left visibility immutable in v1 (its open question 4), and no
-  route or form writes it (review corrected this plan's earlier claim that
-  publish "is the existing act"). When publish lands, ownership survives
-  it, producing exactly the asked-for person-owned workspace agent;
-  nothing in the edit-authority model depends on it shipping first.
-- **Admin surface:** the agent detail header states the state ("Owned by
-  <person>" / "Team-owned") with the release/transfer control for those
-  entitled to use it; the scope tabs are untouched.
-- **Doc obligation:** people-and-their-agents is amended in the same
-  change — ownership now carries edit authority for workspace agents, and
-  a null owner is a deliberate state ("team-owned"), not merely missing
-  history.
+  `ownerUserId = null` and no recorded author; "anyone entitled may edit" is the
+  honest reading, and it is a widening only relative to a gate that was itself
+  wrong. The people-tree's "Unowned" bucket renames to "Team-owned".
+- **Org-owner override stays on workspace agents**, both flavours: "only I can
+  edit" is with respect to other members, and without it a person-owned agent
+  whose owner is deactivated has no editor at all. Private agents remain the
+  sanctioned exception.
+- **"Promote" (private → workspace publish) does not exist yet** — visibility is
+  immutable in v1 and no route or form writes it. When publish lands, ownership
+  survives it, producing exactly the asked-for person-owned workspace agent;
+  nothing here depends on it shipping first.
+- **Admin surface:** the detail header states the state ("Owned by <person>" /
+  "Team-owned") with the release/transfer control for whoever may use it; the
+  scope tabs are untouched. `docs/plans/2026-08-29-people-and-their-agents.md`
+  carries the rule that ownership now confers edit authority and that a null
+  owner is a deliberate state, not missing history.
 
 ## The parameter map (what the Designer knows and may drive)
 
@@ -597,35 +599,15 @@ Other decisions:
 
 ## The tool catalogue (what the Designer can offer an agent)
 
-Illustrative snapshot — the Designer's live knowledge is the generated D5
-block, never this list. Flags: PA = personalAssistantOnly (unavailable to
-shared agents — the Designer says so instead of toggling), EG =
-requiresExplicitGrant (owner-surface granted, never by the Designer).
-
-- **Web & research:** `web_search`, `web_fetch`, `http_fetch`, `delegate`,
-  `spawn_subtask`, `document_read`
-- **Conversation:** `message_search`, `workspace_search`, `people_search`,
-  `channel_find`, `channel_list`, `react`, `message_edit`,
-  `message_delete`, `card_post`, `attachment_upload/list/read`,
-  `dashboard_widget_post`
-- **Knowledge base:** `kb_search`, `kb_page_read`, `kb_list`,
-  `kb_draft_write`, `kb_document_compose`, `kb_document_edit`, `kb_file`,
-  `kb_publish_request`, `kb_comments_*`, `kb_note_add`
-- **Dashboards:** `dashboard_*` (11 tools)
-- **To-dos** (needs `todosEnabled`): `todo_template_propose`, `todo_start`,
-  `todo_step_update`
-- **Demonstrations:** `demonstration_start/stop`
-- **PA-only** (never on a designed agent): `send_message`,
-  `authored_message_search`, `update_preferences`, `channel_create/update/
-  archive/join`, `agent_*` provisioning, `pa_join_channel`, `connector_*`,
-  `executor_*`, `comms_connect_card`, `meeting_link_create`, `call_start`,
-  `app_connect_request`
-- **Explicit-grant** (owner surfaces): `browser_open/observe/act/close`,
-  `gmail_*`, `calendar_*`, `deep_water_run_update`, projected
-  `mcp_research_*`, every `executor.*` operation, and any connector tool
-  whose instance carries `requiresExplicitToolGrant`
-- **Org connectors:** the live active, non-protected MCP registry rows
-  (allow-mode, keyed by registry uuid)
+Deliberately not written out here. The Designer's knowledge of what an agent can
+be given is the **generated D5 block**, rendered from
+`BUILTIN_TOOL_DEFINITIONS` plus the organisation's live registry rows through
+`loadAgentToolCatalog`, and a hand-kept list beside it would be wrong within a
+release. The catalogue's three groups are togglable tools (built-ins in
+deny-mode, connectors in allow-mode keyed by registry uuid), tools reserved for
+Nessie's built-in specialists, and explicit-grant tools the owner surfaces
+grant — the Designer names the last two rather than pretending they do not
+exist.
 
 ## Security invariants
 
@@ -654,37 +636,33 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
 
 ## Phases
 
-0. **Edit authority — IMPLEMENTED 2026-09-02.** `canEditAgent` /
+0. **Edit authority — implemented 2026-09-02.** `canEditAgent` /
    `resolveAgentEditAuthority` / `assertAgentEditAuthority` /
    `assertAgentFieldAuthority` live in
-   `packages/workspace-admin/src/agent-edit-authority.ts` (re-exported by
-   `api/src/services/agent-management.ts`). `PUT /api/agents/:agentId`,
-   `PATCH …/avatar` and `POST …/avatar/generate` no longer call `requireOwner`;
-   the acting person is threaded into `updateAgentRecord` and
-   `updateAgentAvatar`, so the field-sensitive refusals are expressed in the
-   services rather than only at the routes, and the refusal is also asked at the
-   PUT route *before* the billed Ledger model-catalogue call. `systemManaged` is
-   refused explicitly in both services (`SYSTEM_AGENT_IMMUTABLE`) instead of
-   relying on route invisibility. Release-to-team rides the existing
-   `ownerUserId` transfer path and keeps emitting `agent.owner_changed`; private
-   agents keep `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`. Refusals carry distinct
-   codes (`AGENT_EDIT_PRIVATE_OWNER_ONLY`, `AGENT_EDIT_OWNER_ONLY`,
+   `packages/workspace-admin/src/agent-edit-authority.ts`. `PUT
+   /api/agents/:agentId`, `PATCH …/avatar` and `POST …/avatar/generate` no
+   longer call `requireOwner`; the acting person is threaded into
+   `updateAgentRecord` and `updateAgentAvatar`, so the field-sensitive refusals
+   live in the services rather than only at the routes, and the PUT route asks
+   before the billed Ledger model-catalogue call. `systemManaged` is refused
+   explicitly in both services (`SYSTEM_AGENT_IMMUTABLE`) instead of relying on
+   route invisibility. Release-to-team rides the existing `ownerUserId` transfer
+   path and keeps emitting `agent.owner_changed`; private agents keep
+   `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`. Every refusal has its own 403 code
+   (`AGENT_EDIT_PRIVATE_OWNER_ONLY`, `AGENT_EDIT_OWNER_ONLY`,
    `AGENT_EDIT_NOT_ENTITLED`, `AGENT_EDIT_MEMBERSHIP_INACTIVE`,
    `AGENT_OWNERSHIP_CHANGE_FORBIDDEN`, `AGENT_TODOS_OWNER_REQUIRED`,
-   `SYSTEM_AGENT_IMMUTABLE`) as 403s. The admin mirrors the rule in one place
+   `SYSTEM_AGENT_IMMUTABLE`). The admin mirrors the rule in one place
    (`admin/src/components/features/agents/agent-edit-authority.ts`): the detail
-   page, its tabs, the Tools editor, the avatar controls, the detail drawer and
-   the channel agent panel all gate on `useCanEditAgent`; the header carries an
-   `AgentOwnershipState` line ("Owned by <person>" / "Team-owned") with a
-   confirmed Release-to-team / Take-ownership control for whoever may use it;
-   and the people-tree bucket is renamed `teamOwned` / "Team-owned agents".
-   Tests: `api/test/agent-edit-authority.test.ts` (DB-backed — private-owner
-   edit allowed, foreign private denied to org owners, person-owned denies
-   another member, team-owned allows any entitled member and refuses a
-   deactivated or unreachable one, transfer/claim/`todosEnabled` refused for a
-   mere editor, org-owner override, system-managed refusal in both services,
-   protected-key refusal unchanged for every editor) plus route cases in
-   `api/test/agent-policy-routes.test.ts` and the mirrored client predicate in
+   page, its tabs, the Tools editor, the avatar controls, the drawer and the
+   channel agent panel all gate on `useCanEditAgent`; the header carries an
+   `AgentOwnershipState` line with a confirmed Release-to-team /
+   Take-ownership control; the people-tree bucket is renamed "Team-owned".
+   Tests: `api/test/agent-edit-authority.test.ts` (DB-backed — every arm of the
+   table above, transfer/claim/`todosEnabled` refused for a mere editor, the
+   org-owner override, the system-managed refusal in both services, and the
+   protected-key refusal unchanged for every editor), route cases in
+   `api/test/agent-policy-routes.test.ts`, and the mirrored client predicate in
    `admin/test/agent-edit-authority.test.ts`. `AGENTS.md` and
    `docs/plans/2026-08-29-people-and-their-agents.md` carry the rule.
 1. **Foundation — implemented 2026-09-02.** Migrations
@@ -717,14 +695,10 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
    (`auth-login` ×2, `auth-core`) and user provisioning (`users.ts`), wrapped
    best-effort so a blueprint fault can never fail a login.
 
-   **Deferred out of phase 1, deliberately** (the first two landed in phase 2a
-   below): the Designer had no identity-delegated tools and no generated
-   capability catalogue (D3/D5) — its prompt said plainly that it advises
-   rather than creates, and `identityToolIds` was declared and consumed by
-   nothing; no avatar *image* is
-   generated at bootstrap (a billed call), only a stable
-   `avatarBackgroundColor`, with image generation left to the PA's own lazy,
-   owner-triggered pattern; the read-only global detail view stays phase 4.
+   Deferred out of phase 1 and picked up later: the identity-delegated tools
+   and the generated catalogue (D3/D5, phase 2a/2b) and the read-only detail
+   view (phase 4). Still deferred: no avatar *image* at bootstrap (a billed
+   call), only a stable `avatarBackgroundColor`.
 2. **The Designer at work.**
    **2a — identity-delegation backbone, implemented 2026-09-02.** One shared
    predicate, `runDelegatesToRequestingPerson`
@@ -840,126 +814,187 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
    delegation-predicate re-key. Deferred with phase 3/4: `agent_handoff`, the
    sidebar unification, and the read-only global detail view that renders the
    config-only projection.
-3. **Handoff.** `agent_handoff` builtin (requester-keyed, loop-bounded,
-   slot-claimed, hidden-system brief, basis subtraction) + origin doorway
-   message + routing prompt block for all non-designer agents.
-4. **Consolidation.** Retire PA `agent_create`; unify the sidebar onto the
-   blueprint module (persona, catalogue, identity, Ledger search, model
-   rule); config-only global-agent detail view; amend conversational-setup
-   (superseded `agent_update` decision) and the scopes doc status banner.
+3. **Handoff — implemented 2026-09-02.** `agent_handoff`
+   (`packages/runtime/src/builtin-handoff-tools.ts` +
+   `worker/src/run/pa-tools/agent-handoff.ts`), default-on for every agent,
+   `{ target: <registry slug>, brief }`. Migration
+   `20260902200000_agent_handoff_requests` adds `AgentHandoffRequest`
+   (`(requester, targetSlug)` convergence under a `pg_advisory_xact_lock`, no
+   unique constraint so superseded rows are retained; 10-minute cooldown,
+   60-minute row expiry). The requester is the actor, never `effectiveUserId`,
+   with `interactive === true` and a live `OrganizationMember` re-read — one
+   condition refusing unattended, trigger, subtask and agent-authored runs. The
+   loop bound is structural in `authorizeToolCall`: the tool is omitted from
+   any `systemSlug` agent's schema array (`agentSystemSlug` threaded from
+   `context.agent.systemSlug` at both `resolveAgentTools` and the per-call
+   gate) and from `spawn_subtask` children beside `spawn_subtask` itself; the
+   queue key `handoff:{originRunId}:{slug}` is the crash guard beneath the row.
+   The brief is a hidden `system` message carrying
+   `metadata.agentHandoff`, delivered through `claimThreadRunOrPend` with
+   `replyPlacement: 'channel'` fused to it; its basis is
+   `computeReplyBasis` against the DM then `subtractImpliedScopes` against the
+   requester's live disclosure viewer, and `run-job.ts` now feeds the trigger
+   message's basis into the run's sink so a restricted brief cannot launder
+   itself out through an empty-basis reply. The origin doorway is an ordinary
+   agent message carrying `metadata.agentHandoffDoorway`, rendered by
+   `admin/src/components/features/channels/AgentHandoffDoorway.tsx`. The
+   routing block (`worker/src/run/execute/handoff-routing.ts`) renders from the
+   registry's new `handoffSummary` field, so a second global agent is in every
+   agent's prompt the deploy it ships. Tests:
+   `worker/test/db/agent-handoff.test.ts` (one brief + one doorway + one run;
+   cooldown convergence with no duplicate; unattended/non-interactive/
+   agent-authored/unknown-target refusals; a PA-presence run opening the
+   *asking* member's DM and never the effective user's; a busy home DM pending
+   instead of double-running; a privileged-origin handoff leaving the brief
+   basis-free and the Designer readable by its one member; the bootstrapped
+   Designer row having no `agent_handoff`), plus
+   `worker/src/run/handoff-bounds.test.ts` and
+   `worker/src/run/pa-tools/handoff-basis.test.ts`.
+4. **Consolidation — implemented 2026-09-02.**
 
-Each phase lands with its admin surface (Rule zero), docs updates,
-Playwright verification of every UI change, and DB-backed tests for:
-bootstrap idempotency + policy merge, the CHECK arms (agents, channels,
-home membership), DM single-membership and single-binding, the D3 gate
-(allowed in DM interactive, denied elsewhere / unattended / for ordinary
-shared agents), handoff (idempotency + cooldown convergence, basis
-subtraction with a readable-reply assertion, unattended and
-presence-effective refusal, slot pend), and `agent_update` mirroring
-(non-editor refusal, field-authority refusals, protected-key refusal,
-system-target refusal). Engagement/handoff fixtures include non-English,
-slang, and misspelled inputs per the intent-is-model-judged rule.
+   - **Design verbs retired from the PA.** A new
+     `BuiltinToolDefinition.identityDelegatedOnly` narrows
+     `personalAssistantOnly` to the identity-delegated arm alone: the tool stays
+     in the registry (the Designer needs it) but the PA's `agentKind` arm no
+     longer admits it, so it is *omitted* from the PA's schema array rather than
+     offered and denied. It carries `agent_create`, `agent_read`,
+     `agent_update`, `agent_tool_catalog` and `agent_avatar_update` — creation
+     **and redesign**, per D8 — while `agent_list`, `agent_bind_channel`,
+     `agent_trigger_create` and `channel_create` stay with the PA. Its prompt
+     needed no rewrite: the phase-3 routing block already says agent design
+     belongs to the Designer and `agent_handoff` is how one gets there.
+     `loadAgentToolCatalog` gained a third restriction reason
+     (`built_in_specialist_only`) so the Designer never calls a tool it alone
+     holds "Personal Assistant only".
+   - **One brain, two doorways.** `buildGlobalAgentCatalogueBlock` moved to
+     `@nessie/workspace-admin` and the API's `buildDesignerSystemPrompt` now
+     renders the blueprint's own persona plus that generated block; the
+     hand-written "expert AI agent designer" principles are gone. The api face
+     got its first live registry read (`loadAgentToolCatalog`, server-side) and
+     `availableTools` was **removed from `DesignerChatBodySchema`** — the browser
+     no longer tells the server what this workspace has. The block's closing
+     instruction is a `writeSurface` (`agent_tools` | `designer_form` |
+     `read_only`), because the sidebar drives an unsaved form and must never
+     claim it created an agent. Model resolution is `resolveGlobalAgentModel`.
+   - **Ledger search, no scraping.** `runWebSearch` moved to `@nessie/runtime`;
+     `api/src/services/designer.ts` calls it with the signed identity headers
+     and `LEDGER_PROXY_TOKEN`, and the DuckDuckGo HTML scrape is deleted. An
+     unconfigured deployment says so in the prompt and returns nothing.
+   - **Identity and "Continue in chat".** `AgentRecord.systemSlug` is now on the
+     wire (read-only, server-written), so the sidebar resolves the Designer
+     structurally and renders its name and portrait through the identity
+     directory. `POST /api/designer/continue-in-chat` hands the open draft to the
+     person's own Designer DM through the **shared** `deliverGlobalAgentBrief` —
+     the hidden `system` message, `claimThreadRunOrPend`,
+     `replyPlacement: 'channel'` and the idempotency key that `agent_handoff`
+     was refactored onto in the same change, so there is one mechanism rather
+     than two. It takes the queue functions as parameters
+     (`AgentTodoRunQueue`'s precedent) because this package is loaded from
+     `dist` by processes that resolve `@nessie/db` differently.
+   - **The read-only detail view (D7).** Shipped as a bespoke
+     `SystemAgentConfigPanel` over a narrow `GET /api/agents/:agentId/config`
+     read; **both were deleted on 2026-09-02** as a Rule zero #4 violation — a
+     second implementation of a view that already existed. A `systemManaged`
+     agent now renders the ordinary detail surface with the designer form
+     disabled and only the Edit + Tools tabs, seeded from the entitled agent
+     list. `isAgentAccessibleToActor` is still untouched, so status, activity,
+     messages and children still 404. See `docs/global-agents.md`.
+   - Tests: `api/test/designer-continue-in-chat.test.ts` (DB — the hidden
+     `system` brief, one run, the `gagent:` DM shape, convergence on a second
+     click, deactivated-member and unknown-slug refusals), the
+     `readAgentRecordForActor` entitlement cases in
+     `api/test/agent-designer-reads.test.ts`, the retirement and the Designer's
+     continued access in `worker/test/identity-delegation.test.ts`, and the
+     rewritten designer prompt/service suites (the catalogue reaches the prompt
+     from the database, not the browser).
+
+Every phase landed with its admin surface (Rule zero), its docs, and DB-backed
+tests: bootstrap idempotency and policy merge, the CHECK arms (agents, channels,
+home membership), DM single-membership and single-binding, the D3 gate (allowed
+in the home DM on an interactive turn, denied everywhere else and for ordinary
+shared agents), handoff (cooldown convergence, basis subtraction with a
+readable-reply assertion, unattended and presence-effective refusal, slot
+pend), and `agent_update` mirroring every `canEditAgent` refusal. Fixtures
+include non-English, slang and misspelled inputs, per the
+intent-is-model-judged rule.
 
 ## Cross-model review (2026-09-02)
 
 Kimix (14 findings) and Codex Sol (22 findings) reviewed the same revision
-independently; every adopted claim was re-verified against code before this
-revision. Both verdicts were "not implementation-ready"; this revision
-addresses the confirmed findings.
+independently; both verdicts were "not implementation-ready", and every adopted
+claim was re-verified against code before the revision that answered it. Each
+finding below is now built, and the design decision it changed is stated in the
+D-section that owns it — this is the record of *why* those sections say what
+they say.
 
-**Converged (adopted):** D3's plumbing was under-specified (surface facts
-never reach `authorizeToolCall`; the toolset must omit, not offer-then-deny);
-the sidebar/admin work was understated (`useSidebarDms` + DM predicates +
+**Converged:** D3's plumbing was under-specified (surface facts never reached
+`authorizeToolCall`, and the toolset must omit rather than offer-then-deny);
+the sidebar/admin work was understated (`useSidebarDms`, the DM predicates and
 participants, not just the identity directory); `agent_read` cited a
-nonexistent route and contradicted the read-only detail view (resolved as
-the config-only projection); edit authority needed field-sensitive
-enforcement (the PUT body carries `ownerUserId`/`todosEnabled`); the handoff
-needed a real loop bound (per-requester cooldown row, withheld from global
+nonexistent route and contradicted the read-only detail view (resolved as the
+config-only projection); edit authority needed field-sensitive enforcement,
+because the PUT body carries `ownerUserId` and `todosEnabled`; the handoff
+needed a real loop bound (a per-requester cooldown row, withheld from global
 agents and subtask children).
 
-**Kimix-verified adoptions:** the channel-surface CHECK violation twin
-(fixed pre-revision in `20260902170000_external_agent_surface_invariants`);
-the enumerated `agentKind`-keyed delegation sites (memory, scopes,
-completion, trigger re-check, acting-member helpers) re-keyed onto one
-predicate; delegated reads feeding the disclosure sink; the handoff-basis
-subtraction so the Designer cannot be silenced in its own DM; the
-`systemSlug` CHECK requiring `organizationId`; the api face's missing
-registry access named in D5.
+**Kimix:** the channel-surface CHECK violation twin; the five `agentKind`-keyed
+delegation sites re-keyed onto one predicate; delegated reads feeding the
+disclosure sink; the handoff-basis subtraction, without which the Designer is
+silenced in its own DM; the `systemSlug` CHECK requiring `organizationId`; the
+api face's missing registry access (D5, delivered in phase 4).
 
-**Sol-verified adoptions:** unattended trigger runs would wield identity
-tools (interactive arm + no self-triggers); nothing prevented a second
-agent binding into a system DM, nor rename/archive of one; `wait: true`
-holds the thread slot, so "answer in chat instead" required the no-wait
-default; `updateAgentRecord` does not refuse existing system rows (service
-refusal added); "promote is the existing publish act" was false (visibility
-is immutable today); PA-presence handoffs would open the PA owner's DM
-(requester-keyed); the handoff bypassed `claimThreadRunOrPend` and
-impersonated the requester with an editable `role:'user'` message (slot
-claim + hidden system brief); the origin "link card" could not be expressed
-by the card contract (plain message + internal navigation); `agent_create`
-never generated avatars (shared seam); the general-`agent_update` conflict
-with conversational-setup (explicit supersession); the blueprint's missing
-model fields (decided: blueprint pin → org default → env override).
+**Sol:** unattended trigger runs would have wielded identity tools (hence the
+interactive arm and no self-triggers); nothing prevented a second agent binding
+into a system DM, nor rename/archive of one; `wait: true` holds the thread
+slot, so "answer in chat instead" required the no-wait default;
+`updateAgentRecord` did not refuse existing system rows; "promote is the
+existing publish act" was false, visibility being immutable; a PA-presence
+handoff would have opened the PA *owner's* DM rather than the asker's; the
+handoff bypassed `claimThreadRunOrPend` and impersonated the requester with an
+editable `role:'user'` message; the origin "link card" could not be expressed by
+the card contract; `agent_create` never generated avatars; the general
+`agent_update` conflicted with conversational-setup (explicit supersession); and
+the blueprint had no model fields.
 
-**Noted, not blocking this plan:** message edit does not refuse
-`agentCardResponse`-stamped rows (a cards spec-vs-code gap — filed as an
-adjacent defect); the in-doc tool catalogue is illustrative only, the D5
-generated block is the authority.
+**Noted, not blocking:** message edit does not refuse
+`agentCardResponse`-stamped rows (filed as an adjacent defect below).
 
 ## Open questions
 
-1. **Team-scoped DM keys?** `gagent:` omits the UOA team (unlike
-   `extagent:`). Creation acts org-wide, so one DM per user per org seems
-   right; confirm against the team-switch UX before the CHECK lands.
-2. **How eagerly does bootstrap run?** Login-time (PA-style) vs lazy on
-   first doorway use. Recommended: login-time — the sidebar DM row is a
-   discovery surface and should simply be there.
-3. **May entitled members claim a team-owned agent?** v1 says no (org
-   owners only) — an edit helps everyone, a claim locks everyone else out.
-   Revisit if release/claim churn shows up in real use.
-
-(Two former open questions are resolved: the `PUT /api/agents/:id`
-owner-arm question became the "Edit authority" model, and the Designer's
-model resolution is decided in D1/D9 — blueprint pin, else org default,
-`NESSIE_DESIGNER_MODEL` override.)
+Two of the original three are answered by the build: `gagent:` DM keys stay
+org-scoped with no UOA team segment (creation acts org-wide), and bootstrap runs
+at **login**, beside the Personal Assistant's, so the sidebar DM row is simply
+there. The one still open is whether entitled members may *claim* a team-owned
+agent — v1 says no (org owners only): an edit helps everyone, a claim locks
+everyone else out. Revisit if release/claim churn shows up in real use. Two
+earlier questions were resolved in the design itself: the `PUT /api/agents/:id`
+owner arm became the "Edit authority" model, and model resolution is D1/D9's
+blueprint pin → `NESSIE_DESIGNER_MODEL` → organisation default.
 
 ## Adjacent defects noticed while mapping (filed separately)
 
-- ~~`createExternalAgentData` writes a tuple `agents_system_managed_invariants_chk`
-  forbids; only a fake-Prisma test covers it.~~ **Fixed** in migration
-  `20260902170000_external_agent_surface_invariants`, which also had to extend
-  `channels_personal_assistant_surface_chk`: `external_agent` had been added to
-  `ChannelSystemType` without the surface CHECK learning the `extagent:` DM key,
-  so the bootstrap failed twice over. `api/test/external-agent-bootstrap-db.test.ts`
-  now drives the real service against Postgres — the cast fake could not see
-  either CHECK. This is the `extagent:` lesson D2 cites, and D1's fourth tuple
-  ships with it.
-- ~~`POST /api/designer/chat` never passes `pageContext` into
-  `buildDesignerSystemPrompt` (4th arg dropped), so the page-scoped control
-  rule is client-side only.~~ Fixed: `streamDesignerChat` now forwards
-  `input.pageContext` (`api/src/services/designer.ts`).
-- ~~`PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
-  tool (stale rename of `send_message`; harmless today, dead entry).~~ **Fixed**:
-  the dead entry is removed and a `worker/test/tool-policy.test.ts` case now
-  asserts every id in the set resolves against `BUILTIN_TOOL_IDS`, so a future
-  rename fails loudly instead of silently.
-- ~~`CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
-  before `createAgentRecord`.~~ **Fixed 2026-09-02:** the field is removed from
-  `CreateAgentBodySchema` (and its never-emitted twin on `AgentRecordSchema`)
-  rather than wired through — `routingProfileId` is server/bootstrap-only per
-  the parameter map above, no client sends it, `UpdateAgentBodySchema` never
-  accepted it, and the run path passes a hardcoded `null` instead of reading
-  the column.
+**Fixed along the way:** `createExternalAgentData` wrote a tuple
+`agents_system_managed_invariants_chk` forbade and a DM key
+`channels_personal_assistant_surface_chk` rejected — both repaired by migration
+`20260902170000_external_agent_surface_invariants`, with
+`api/test/external-agent-bootstrap-db.test.ts` now driving the real service
+against Postgres, because the cast fake could see neither CHECK. That is the
+`extagent:` lesson D2 cites. Also: `POST /api/designer/chat` dropped
+`pageContext` before the prompt; `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` carried a
+dead `message_post` entry (removed, with a test asserting every id resolves);
+`CreateAgentBodySchema` accepted a `routingProfileId` the route discarded
+(removed rather than wired — it is server/bootstrap-only).
+
+**Still open:**
+
 - The `pa:%` arm of `channels_personal_assistant_surface_chk` carries no
   `system_channel_type` condition (it predates the type-keyed arms), so a row
   claiming `system_channel_type = 'system_agent'` with a `pa:` key is still
-  admitted by the constraint. Noticed while proving the phase-1 arms against a
-  clean database; the arm was preserved verbatim as specified, and nothing can
-  reach that shape today (bootstrap only ever writes `gagent:` keys and
-  `assertGlobalAgentRunPlacement` requires the `gagent:` prefix). Tightening the
-  legacy arm to `system_channel_type = 'personal_assistant'` wants its own
-  migration plus a survey of existing rows.
+  admitted. Nothing can reach that shape today — bootstrap only writes
+  `gagent:` keys and `assertGlobalAgentRunPlacement` requires that prefix — and
+  tightening the legacy arm wants its own migration plus a survey of existing
+  rows.
 - `updateMessage` (`api/src/services/messages.ts`) does not refuse editing a
   message stamped `agentCardResponse`, though the cards spec says a card
   response is immutable — a resolved card's decision text can be edited into
-  disagreement with the card's authoritative state (found by review).
+  disagreement with the card's authoritative state.

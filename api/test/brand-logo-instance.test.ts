@@ -28,6 +28,7 @@ const userId = '00000000-0000-4000-8000-0000000000c4'
 
 type OrganizationRow = {
   createdAt: Date
+  externalOrgId: string | null
   id: string
   instanceBrand: boolean
   logoAttachmentId: string | null
@@ -113,6 +114,9 @@ const makeApp = (
 
 const organizationRow = (overrides: Partial<OrganizationRow> = {}): OrganizationRow => ({
   createdAt: new Date('2026-08-01T00:00:00.000Z'),
+  // A local-mode organisation: its name is genuinely local, so the PATCH below
+  // never relays a rename to UnlikeOtherAI.
+  externalOrgId: null,
   id: organizationId,
   instanceBrand: false,
   logoAttachmentId: attachmentId,

@@ -17,10 +17,16 @@ vendor agent is never invisible to anyone), and a global agent reaches people
 through a per-user private home DM rather than by binding into shared channels
 — see
 [2026-09-02-agent-designer-global-agent.md](2026-09-02-agent-designer-global-agent.md)
-phase 1. The other half of the recommendation below — binding a `systemManaged`
-shared agent into ordinary channels, plus the read-only detail view — remains a
-later phase, and the binding chokepoint has since moved the other way for
-system *channels*: no agent may bind into any of them.
+phase 1. The **read-only detail view is implemented too** (phase 4): a
+`systemManaged` agent renders the ordinary agent detail surface — the same
+designer form, every control disabled, no Save — filtered to its Edit and Tools
+tabs and seeded from the entitled agent list. `isAgentAccessibleToActor` was
+deliberately NOT widened: status, activity, messages and children stay closed,
+because a global agent's activity spans every member's private DM. What remains
+a later phase is only the *other* half of the recommendation below — binding a
+`systemManaged` shared agent into ordinary channels — and the binding
+chokepoint has since moved the other way for system *channels*: no agent may
+bind into any of them.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),

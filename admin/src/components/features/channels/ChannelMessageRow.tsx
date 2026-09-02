@@ -19,6 +19,7 @@ import {
   type MessageUserIdentity,
 } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
+import { readVoiceCallRecord, VoiceCallMessage } from './VoiceCallMessage'
 import {
   EmbeddedWidget,
   readMessageEmbedIds,
@@ -33,6 +34,7 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { DocumentRefChip } from './DocumentRefChip'
+import { AgentHandoffDoorway } from './AgentHandoffDoorway'
 import { RunStopContinue } from './RunStopContinue'
 import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
@@ -175,6 +177,10 @@ export const ChannelMessageRow = ({
   // walk the presser into that error. Delete stays — a tombstone changes
   // nothing on the card, which remains the authority.
   const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
+  // A finished call: server-written metadata, so this is structural rather
+  // than a reading of the text.
+  const voiceCall = readVoiceCallRecord(message.metadata)
+  const carriesVoiceCall = voiceCall !== null
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
@@ -371,11 +377,21 @@ export const ChannelMessageRow = ({
                   the model's transcript all see what the card says. Here the
                   card itself renders below, so printing both says everything
                   twice. */}
-              {carriesAgentCard ? null : (
+              {carriesAgentCard || carriesVoiceCall ? null : (
                 <MessageMarkdown renderInlineText={renderContent}>
                   {message.content}
                 </MessageMarkdown>
               )}
+              {/* A call leaves a compaction in the message and the verbatim
+                  transcript as an attachment; the card shows the first and
+                  opens the second in place. */}
+              {voiceCall ? (
+                <VoiceCallMessage
+                  compacted={voiceCall.compacted}
+                  content={message.content}
+                  transcriptAttachmentId={voiceCall.transcriptAttachmentId}
+                />
+              ) : null}
               {message.restrictedSources && shareRestrictedMessage ? (
                 <div className="mt-2">
                   <RestrictedMessageCard
@@ -434,6 +450,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <DocumentRefChip metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AgentHandoffDoorway metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <WorkflowRunCard metadata={message.metadata} />

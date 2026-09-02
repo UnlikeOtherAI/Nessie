@@ -175,7 +175,17 @@ export type AgentRecord = {
   runLimits?: AgentRunLimits | null
   surfacePolicy?: 'shared' | 'dm_only'
   systemManaged?: boolean
+  /**
+   * The global-agent blueprint this row instantiates, when it is one. Read-only
+   * and server-written: it is how a client says "this is the Agent Designer"
+   * structurally instead of matching a display name.
+   */
+  systemSlug?: string | null
   todosEnabled: boolean
+  /** Gemini Live voice for calls; null/absent = the deployment default. */
+  voiceName?: string | null
+  /** How the agent talks to people — prompt text, never a preset id. */
+  speakingStyle?: string | null
   status: AgentStatusResponse['status']
   systemPrompt?: string
   toolPolicy?: Record<string, boolean>
@@ -391,6 +401,15 @@ export type PersonalAssistantBootstrapResponse = {
   configSummary?: PersonalAssistantConfigSummary
   instance?: PersonalAssistantInstanceRecord | null
   thread: ThreadRecord
+}
+
+// A global agent's per-user home DM — the Agent Designer's chat. One call
+// ensures and resolves it, so every client reaches that conversation the same
+// way (see api/src/routes/global-agents.ts).
+export type GlobalAgentHomeResponse = {
+  agentId: string
+  channel: ChannelRecord
+  threadId: string
 }
 
 export type ToolDescriptor = {

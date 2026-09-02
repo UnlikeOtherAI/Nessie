@@ -782,6 +782,10 @@ workflow from `main`. A manual dispatch can set **source ref** to a delivery
 branch or commit; the workflow checks out that ref in every job, builds the
 guest kernel and both installers, runs the installer smoke checks, and uploads
 the resulting files and SHA-256 sums as `desktop-windows-<workflow-sha>`.
+The installer job fetches the delivery ref's full repository history so the
+mandatory migration lint can compare it with `main` before packaging.
+It prepares the packaged executor runtime before invoking Tauri directly, so
+the requested NSIS/MSI bundle flags reach Tauri rather than Cargo.
 The self-hosted Hyper-V conformance job remains pending until a runner with the
 `self-hosted`, `windows`, and `hyperv` labels is available; it is not replaced
 by a hosted-runner simulation.

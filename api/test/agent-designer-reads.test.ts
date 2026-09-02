@@ -331,8 +331,13 @@ dbTest('personal-assistant-only and explicit-grant builtins are named, not offer
     const restricted = new Map(
       catalogue.restricted.map((entry) => [entry.key, entry.restriction]),
     )
-    assert.equal(restricted.get('agent_create'), 'personal_assistant_only')
-    assert.equal(restricted.get('agent_update'), 'personal_assistant_only')
+    // The design verbs are the Agent Designer's, not the Personal Assistant's
+    // (phase 4) — so the catalogue must not tell a designed agent's author that
+    // "a Personal Assistant may use it", which is no longer true of them.
+    assert.equal(restricted.get('agent_create'), 'built_in_specialist_only')
+    assert.equal(restricted.get('agent_update'), 'built_in_specialist_only')
+    // An operational verb the PA keeps still reads as PA-only.
+    assert.equal(restricted.get('agent_bind_channel'), 'personal_assistant_only')
     assert.equal(restricted.get('deep_water_run_update'), 'explicit_grant')
     // …and none of them can be switched on from a design conversation.
     for (const key of restricted.keys()) {

@@ -15,6 +15,10 @@ import type { DesignerChatInput } from '../src/services/designer-prompt.js'
 // it sends to the model. `pageContext` was previously dropped on the call,
 // so the "only act on controls this page offers" rule was enforced
 // client-side only.
+//
+// It also guards the phase-4 unification (D9): the tool catalogue is read from
+// the database by the service, not sent by the browser, so a registry row this
+// organisation has must reach the prompt without the client saying anything.
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const userId = '00000000-0000-4000-8000-000000000002'
@@ -52,6 +56,30 @@ const fakeDoneResponse = (): Response => {
   return { body: { getReader: () => reader } } as unknown as Response
 }
 
+/**
+ * The registry reads `loadAgentToolCatalog` performs. A cast fake is unityped,
+ * so a delegate it does not model is a runtime TypeError — this pair is exactly
+ * what the catalogue queries, and the connector row proves the service reads
+ * the organisation's own rows rather than a client-supplied list.
+ */
+const fakePrisma = (): PrismaClient => ({
+  toolRegistryEntry: {
+    findMany: async (args: { where?: { builtin?: boolean } }) =>
+      (args.where?.builtin === true
+        ? []
+        : [
+            {
+              description: 'Create a ticket in the tracker.',
+              handlerKind: 'mcp',
+              id: '5e1b3c8a-0000-4000-8000-00000000abcd',
+              label: 'Ticket create',
+              metadata: null,
+              toolId: 'ticket_create',
+            },
+          ]),
+  },
+} as unknown as PrismaClient)
+
 const createFakeReply = (): { chunks: string[]; reply: FastifyReply } => {
   const chunks: string[] = []
   const raw = {
@@ -88,8 +116,9 @@ const runDesignerChat = async (
     {
       actorContext,
       designerModel: 'test-chat-model',
+      ledgerIdentity: null,
       modelProvider: 'openai',
-      prisma: {} as PrismaClient,
+      prisma: fakePrisma(),
     },
     {},
   )
@@ -115,6 +144,41 @@ test('streamDesignerChat forwards the supplied page context into the system prom
     systemPromptSent,
     /Controls available on this page: enable or disable tools, then save the changes/,
   )
+})
+
+test('the tool catalogue reaches the prompt from the database, not the browser', async () => {
+  const { systemPromptSent } = await runDesignerChat({
+    messages: [],
+    formState: baseFormState,
+  })
+
+  // The connector row this organisation has, keyed by its registry uuid — the
+  // request carried no tool list at all.
+  assert.match(systemPromptSent, /5e1b3c8a-0000-4000-8000-00000000abcd \(Ticket create\)/)
+  // And the persona is the blueprint's, not a second one written here.
+  assert.match(systemPromptSent, /You are the Agent Designer/)
+  // The sidebar drives an unsaved form; it must never claim it created an agent.
+  assert.match(systemPromptSent, /never say an agent has been created or changed/)
+})
+
+test('an unconfigured Ledger makes the prompt say search is unavailable', async () => {
+  // Stated rather than inherited: a deployment WITH Ledger configured would
+  // otherwise make this pass or fail by accident of the runner's environment.
+  const ledgerUrl = process.env['LEDGER_PUBLIC_URL']
+  const ledgerToken = process.env['LEDGER_PROXY_TOKEN']
+  delete process.env['LEDGER_PUBLIC_URL']
+  delete process.env['LEDGER_PROXY_TOKEN']
+  try {
+    const { systemPromptSent } = await runDesignerChat({
+      messages: [],
+      formState: baseFormState,
+    })
+
+    assert.match(systemPromptSent, /web_search is not configured on this deployment/)
+  } finally {
+    if (ledgerUrl !== undefined) process.env['LEDGER_PUBLIC_URL'] = ledgerUrl
+    if (ledgerToken !== undefined) process.env['LEDGER_PROXY_TOKEN'] = ledgerToken
+  }
 })
 
 test('streamDesignerChat falls back to the default page description when none is supplied', async () => {

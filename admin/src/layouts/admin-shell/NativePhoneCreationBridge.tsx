@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 
-export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
+export type NativePhoneCreationAction = 'project' | 'channel' | 'message' | 'agent'
 
 type NativePhoneCreationWindow = Window & {
   __nessieCreateFromPhoneMenu?: (action: NativePhoneCreationAction) => void
 }
 
 type NativePhoneCreationBridgeProps = {
+  onCreateAgent: () => void
   onCreateChannel: () => void
   onCreateMessage: () => void
   onCreateProject: () => void
@@ -18,6 +19,7 @@ type NativePhoneCreationBridgeProps = {
  * the sidebar controls, so create permissions and dialogs remain identical.
  */
 export const NativePhoneCreationBridge = ({
+  onCreateAgent,
   onCreateChannel,
   onCreateMessage,
   onCreateProject,
@@ -32,12 +34,14 @@ export const NativePhoneCreationBridge = ({
         onCreateChannel()
       } else if (action === 'message') {
         onCreateMessage()
+      } else if (action === 'agent') {
+        onCreateAgent()
       }
     }
     return () => {
       delete target.__nessieCreateFromPhoneMenu
     }
-  }, [onCreateChannel, onCreateMessage, onCreateProject])
+  }, [onCreateAgent, onCreateChannel, onCreateMessage, onCreateProject])
 
   return null
 }

@@ -273,6 +273,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
         todosEnabled: body.todosEnabled,
+        voiceName: body.voiceName,
+        speakingStyle: body.speakingStyle,
         toolPolicy: body.toolPolicy,
         visibility: body.visibility,
       })

@@ -1,5 +1,6 @@
 import { markRecallsInjected } from '@nessie/memory'
 import {
+  AGENT_HANDOFF_TOOL_ID,
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
   TODO_TOOL_DEFINITIONS,
@@ -181,6 +182,10 @@ export const prepareRunExecution = async (
       context.agent.parentAgentId,
       context.agent.agentKind,
       {
+        // Structural loop bound for `agent_handoff` (D8): a global agent's row
+        // carries a slug, and the tool is omitted from its schema array rather
+        // than offered and denied.
+        agentSystemSlug: context.agent.systemSlug ?? null,
         identityToolIds,
         isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
           agentKind: context.agent.agentKind,
@@ -360,6 +365,7 @@ export const prepareRunExecution = async (
           || resolvedToolIds.has('calendar_event_create'),
         hasDelegate: resolvedToolIds.has('delegate'),
       },
+      handoff: { hasHandoffTool: resolvedToolIds.has(AGENT_HANDOFF_TOOL_ID) },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       todoFacts,
       documents: documentsHome
