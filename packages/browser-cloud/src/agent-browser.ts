@@ -84,11 +84,16 @@ const loadClientForConnection = async (
 /**
  * Find or create the agent's browser.
  *
- * The remote context is created *before* the row, because a context with no
- * row is reconcilable (the sweep deletes it) while a row pointing at a
- * context that was never created is a browser that can never open. If two
- * runs race, the partial unique index picks one winner and the loser's
- * freshly created context is released immediately.
+ * The remote context is created *before* the row, because a row pointing at a
+ * context that was never created is a browser that can never open, while the
+ * reverse is recoverable. If two runs race, the partial unique index picks one
+ * winner and the loser's freshly created context is deleted immediately.
+ *
+ * If that delete fails, the context is genuinely orphaned: nothing points at
+ * it, so no sweep can find it, and it holds login-capable state in somebody's
+ * Browserbase account. That is logged loudly rather than swallowed — the
+ * account holder can delete it from their dashboard — and it is the reason
+ * the delete is attempted inline rather than deferred.
  */
 export const ensureAgentBrowser = async (
   deps: CloudBrowserDeps,
@@ -147,7 +152,13 @@ export const ensureAgentBrowser = async (
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       // Another run won the race. Release the context we just made rather
       // than leaving it for the reconciler, and use theirs.
-      await client.deleteContext(context.id).catch(() => undefined)
+      await client.deleteContext(context.id).catch((cause: unknown) => {
+        console.warn(
+          '[browser-cloud] orphaned Browserbase context (race loser) — delete it '
+          + `from the Browserbase dashboard: ${context.id}`,
+          cause,
+        )
+      })
       const winner = await deps.prisma.agentBrowser.findFirstOrThrow({
         where: {
           organizationId: input.organizationId,
@@ -170,7 +181,13 @@ export const ensureAgentBrowser = async (
         connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
       }
     }
-    await client.deleteContext(context.id).catch(() => undefined)
+    await client.deleteContext(context.id).catch((cause: unknown) => {
+      console.warn(
+        '[browser-cloud] orphaned Browserbase context — delete it from the '
+        + `Browserbase dashboard: ${context.id}`,
+        cause,
+      )
+    })
     throw error
   }
 }
@@ -267,6 +284,15 @@ export const reconcileTombstonedAgentBrowsers = async (
   })
   let deleted = 0
   for (const row of rows) {
+    // Last line of defence for the reset/open race: never delete a context a
+    // live session is still attached to, however it got there.
+    const live = await deps.prisma.cloudBrowserSession.count({
+      where: {
+        agentBrowserId: row.id,
+        status: { in: ['allocating', 'active', 'releasing'] },
+      },
+    })
+    if (live > 0) continue
     try {
       const client = await loadClientForConnection(deps, row.connection)
       await client.deleteContext(row.browserbaseContextId)

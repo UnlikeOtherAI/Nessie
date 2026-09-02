@@ -86,12 +86,29 @@ test('clicking on a foreign origin is refused too — a submit is a click', () =
   assert.equal(verdict.allowed, false)
 })
 
+test('pressing Enter on a foreign origin is a write — it submits the form', () => {
+  // Without this the gate refused `type` and `click` and then let the model
+  // submit the very form it had just protected.
+  const gate = gateWith(['https://mail.example.com'], true)
+  for (const key of ['Enter', 'Space']) {
+    assert.equal(
+      evaluateOriginGate(gate, 'https://attacker.example.net/collect', {
+        action: 'press',
+        key,
+      }).allowed,
+      false,
+      `${key} must be treated as an activation`,
+    )
+  }
+})
+
 test('reads and movement are never gated — narrowing them would kill the capability', () => {
   const gate = gateWith(['https://mail.example.com'], true)
   for (const action of [
     { action: 'navigate' as const, url: 'https://anywhere.example.net/' },
     { action: 'scroll' as const, deltaY: 200 },
     { action: 'press' as const, key: 'PageDown' },
+    { action: 'press' as const, key: 'Escape' },
   ]) {
     assert.equal(
       evaluateOriginGate(gate, 'https://anywhere.example.net/', action).allowed,

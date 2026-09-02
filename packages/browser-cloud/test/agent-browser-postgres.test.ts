@@ -15,6 +15,8 @@ import {
 import {
   claimSessionControl,
   openCloudBrowserSession,
+  reapExpiredCloudBrowserSessions,
+  releaseCloudBrowserSession,
   releaseSessionControl,
   releaseSessionsForRun,
 } from '../src/session-lifecycle.js'
@@ -533,6 +535,149 @@ runDatabaseTest('only the holder can hand the controls back', async () => {
     )
   } finally {
     await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a scheduled run never bills somebody’s personal account', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'durable unattended')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    // Only a personal connection exists, and the private agent's browser
+    // legitimately lives on it.
+    await connect(prisma, {
+      organizationId: s.organizationId,
+      scope: 'user',
+      userId: s.ownerUserId,
+    })
+    const browser = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.privateAgentId,
+      agentVisibility: 'private',
+      agentOwnerUserId: s.ownerUserId,
+    })
+    const attach = {
+      id: browser.id,
+      connectionId: browser.connectionId,
+      browserbaseContextId: browser.browserbaseContextId,
+      hasLogins: false,
+    }
+
+    // A run the owner asked for is fine.
+    await openCloudBrowserSession(deps, {
+      organizationId: s.organizationId,
+      runId: s.runId,
+      threadId: s.threadId,
+      agentId: s.privateAgentId,
+      requestedByUserId: s.ownerUserId,
+      agentBrowser: attach,
+    })
+    await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
+
+    // A scheduled one has no requester, so it must not spend their hours —
+    // the count of logins is irrelevant, it is whose money it is.
+    await assert.rejects(
+      openCloudBrowserSession(deps, {
+        organizationId: s.organizationId,
+        runId: s.secondRunId,
+        threadId: s.threadId,
+        agentId: s.privateAgentId,
+        requestedByUserId: null,
+        agentBrowser: attach,
+      }),
+      (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_NO_CONNECTION',
+    )
+  } finally {
+    await releaseSessionsForRun(deps, { runId: s.secondRunId, releasedBy: 'test' })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a session already being released cannot be claimed again', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'release exclusivity')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const opened = await openCloudBrowserSession(deps, {
+      organizationId: s.organizationId,
+      runId: s.runId,
+      threadId: s.threadId,
+      agentId: s.workspaceAgentId,
+      requestedByUserId: s.ownerUserId,
+    })
+
+    // Deterministic stand-in for the real race — the tool, the terminal
+    // transition and the reaper can all reach release at once. Racing them
+    // with Promise.all proved nothing: the two updates serialise and the
+    // interleaving that matters never happened. This asserts the property
+    // directly: a session mid-release is not claimable by a second releaser.
+    await prisma.cloudBrowserSession.update({
+      where: { id: opened.sessionId },
+      data: { status: 'releasing' },
+    })
+
+    const second = await releaseCloudBrowserSession(deps, {
+      sessionId: opened.sessionId,
+      releasedBy: 'reaper',
+    })
+
+    assert.equal(second, false, 'a second releaser must not claim it')
+    assert.equal(
+      calls.filter((call) => call.startsWith('end:')).length,
+      0,
+      'and must not call the provider — the first releaser owns that',
+    )
+  } finally {
+    await prisma.cloudBrowserSession.updateMany({
+      where: { runId: s.runId },
+      data: { status: 'released' },
+    })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a session whose remote stop failed is retried, not abandoned', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'unknown retry')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    const connection = await connect(prisma, {
+      organizationId: s.organizationId,
+      scope: 'organization',
+    })
+    // `unknown` is what a failed provider stop leaves behind — the row most
+    // likely to still be costing money, and previously the one the reaper
+    // skipped forever.
+    const stranded = await prisma.cloudBrowserSession.create({
+      data: {
+        organizationId: s.organizationId,
+        connectionId: connection.id,
+        runId: s.runId,
+        threadId: s.threadId,
+        agentId: s.workspaceAgentId,
+        browserbaseSessionId: 'bb-unknown',
+        status: 'unknown',
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    })
+
+    await reapExpiredCloudBrowserSessions(deps, { limit: 10 })
+
+    assert.ok(calls.includes('end:bb-unknown'), 'the reaper must retry the provider stop')
+    const row = await prisma.cloudBrowserSession.findUnique({
+      where: { id: stranded.id },
+      select: { status: true },
+    })
+    assert.equal(row?.status, 'released')
+  } finally {
     await s.cleanup()
     await prisma.$disconnect()
   }
