@@ -1,4 +1,4 @@
-import { useAppCategoryPages } from '../../../facades/apps/hooks'
+import { useAppShelfPages } from '../../../facades/apps/hooks'
 import { AppCard } from './AppCard'
 import {
   APP_GRID_CLASS,
@@ -6,7 +6,8 @@ import {
   sectionRemainingLabel,
   sectionToggleLabel,
   sectionVisibleApps,
-  type AppCategorySectionModel,
+  shelfKey,
+  type AppShelfModel,
 } from './app-catalogue-view'
 
 type AppCategorySectionProps = {
@@ -15,13 +16,14 @@ type AppCategorySectionProps = {
   installed: boolean
   onToggleExpanded: () => void
   pageSize: number
-  section: AppCategorySectionModel
+  section: AppShelfModel
   /**
-   * This category *is* the page, because the toolbar is narrowed to it. It then
-   * renders as a bare grid: no heading, because the dropdown directly above
-   * already reads "Communication (150)" and repeating it 40px lower says
-   * nothing new; no two-row cap and no "Show all", because collapsing the only
-   * thing on the page back to two rows is not a move anybody wants.
+   * This shelf *is* the page — because the toolbar is narrowed to its category,
+   * or because it is the flat Installed list. It then renders as a bare grid:
+   * no heading, because the control directly above already reads "Communication
+   * (150)" or "Installed (3)" and repeating it 40px lower says nothing new; no
+   * two-row cap and no "Show all", because collapsing the only thing on the
+   * page back to two rows is not a move anybody wants.
    */
   standalone?: boolean
 }
@@ -29,19 +31,19 @@ type AppCategorySectionProps = {
 export const appCategorySectionId = (category: string): string => `apps-category-${category}`
 
 /**
- * One category, two rows deep by default.
+ * One shelf of the catalogue, two rows deep by default.
  *
  * "Show all" expands **in place** rather than navigating: a person comparing
  * three shelves should never lose the other two to see the rest of one. What
- * changed with registry ingestion is where the rest comes from — a category can
- * hold hundreds of apps, so the catalogue response carries only a shelf of each
- * and an expanded section fetches its own pages. The section owning that is
- * what keeps the page's card count proportional to what somebody asked to see
+ * changed with registry ingestion is where the rest comes from — a shelf can
+ * hold hundreds of apps, so the catalogue response carries only a slice of each
+ * and an expanded shelf fetches its own pages. The shelf owning that is what
+ * keeps the page's card count proportional to what somebody asked to see
  * instead of to the size of the catalogue.
  *
  * The heading count and the "Show all N" label are the server's SQL total for
- * this category, never `apps.length` — the array is a slice, and a count taken
- * from it would shrink the category to whatever happened to fit.
+ * this shelf, never `apps.length` — the array is a slice, and a count taken
+ * from it would shrink the shelf to whatever happened to fit.
  */
 export const AppCategorySection = ({
   expanded,
@@ -51,12 +53,12 @@ export const AppCategorySection = ({
   section,
   standalone = false,
 }: AppCategorySectionProps) => {
-  // Narrowed to this one category, the shelf *is* the page, so it starts open
-  // and keeps paging: a person who picked "Communication" asked for all 150,
-  // not for two rows of them.
+  // Narrowed to this one shelf, it *is* the page, so it starts open and keeps
+  // paging: a person who picked "Communication" asked for all 150, not for two
+  // rows of them.
   const open = standalone || expanded
   const partial = section.total > section.apps.length
-  const pages = useAppCategoryPages({
+  const pages = useAppShelfPages({
     category: section.category,
     enabled: open && partial,
     installed,
@@ -68,14 +70,15 @@ export const AppCategorySection = ({
   const visible = open && loaded.length > 0
     ? loaded
     : sectionVisibleApps(section, pageSize, open)
+  const key = shelfKey(section)
 
   return (
     <section
       // The sticky bar sits over the top of the page, and it is taller on
       // phone where the filter row stacks under the search field.
       className={standalone ? 'mt-6' : 'mt-10 scroll-mt-32 lg:scroll-mt-20'}
-      data-testid={`app-category-section-${section.category}`}
-      id={appCategorySectionId(section.category)}
+      data-testid={`app-category-section-${key}`}
+      id={appCategorySectionId(key)}
     >
       {standalone ? null : (
         <div className="mb-4 flex items-baseline justify-between gap-4">
@@ -88,7 +91,7 @@ export const AppCategorySection = ({
           {sectionOffersShowAll(section, pageSize) ? (
             <button
               className="text-[color:var(--accent)] hover:text-[color:var(--accent-hover)]"
-              data-testid={`app-category-toggle-${section.category}`}
+              data-testid={`app-category-toggle-${key}`}
               onClick={onToggleExpanded}
               type="button"
             >
@@ -106,7 +109,7 @@ export const AppCategorySection = ({
         <div className="mt-4 flex justify-center">
           <button
             className="admin-button admin-button-secondary"
-            data-testid={`app-category-load-more-${section.category}`}
+            data-testid={`app-category-load-more-${key}`}
             disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
             type="button"
@@ -120,7 +123,7 @@ export const AppCategorySection = ({
       {open && pages.isError ? (
         <p
           className="mt-4 text-center text-sm text-[color:var(--danger-text)]"
-          data-testid={`app-category-error-${section.category}`}
+          data-testid={`app-category-error-${key}`}
           role="alert"
         >
           We couldn&apos;t load the rest of {section.label}. Try again in a moment.

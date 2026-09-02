@@ -20,6 +20,7 @@ import {
   catalogueEmptyMessage,
   catalogueMatchTotal,
   filterApps,
+  installedShelf,
   parseAppFilter,
   readStoredAppFilter,
   searchTruncationNote,
@@ -137,11 +138,31 @@ export const AppsPage = () => {
   // The strip is the one list the server sends whole (five records at most), so
   // narrowing it here drops nothing the next page would have held. Under a
   // category it is hidden outright: a Featured shelf holding four apps from
-  // other categories is the same interruption as the other headings were.
+  // other categories is the same interruption as the other headings were. Under
+  // Installed it is hidden for a stronger reason — with nothing curated the
+  // strip falls back to the connected apps, which is the flat list directly
+  // below it, card for card.
   const featured = useMemo(
-    () => (searching || activeCategory ? [] : filterApps(response?.featured ?? [], shownFilter)),
+    () =>
+      searching || activeCategory || shownFilter === 'installed'
+        ? []
+        : filterApps(response?.featured ?? [], shownFilter),
     [response, shownFilter, searching, activeCategory],
   )
+  /**
+   * Installed is one flat shelf spanning every category.
+   *
+   * Category headings are how a person browses a catalogue of thousands; they
+   * are not how anybody reads their own six connected apps, where three
+   * headings over one card each is all frame and no shelf. Narrowing to a
+   * category from the dropdown still works — that shelf renders standalone,
+   * which is a bare grid too — so the whole Installed view is flat either way.
+   */
+  const installedFlatShelf = useMemo(
+    () => installedShelf(response?.apps ?? [], response?.installedCount ?? 0),
+    [response],
+  )
+  const flatInstalled = shownFilter === 'installed' && activeCategory === null
   // Summed from per-category aggregates, so a capped result list still reports
   // how many apps actually matched.
   const matchTotal = catalogueMatchTotal(response?.categories ?? [])
@@ -156,7 +177,11 @@ export const AppsPage = () => {
 
   const openCustomAppDialog = () => setCustomAppDialogOpen(true)
 
-  const empty = searching ? results.length === 0 : shelves.length === 0
+  const empty = searching
+    ? results.length === 0
+    : flatInstalled
+      ? installedFlatShelf.apps.length === 0
+      : shelves.length === 0
   const emptyModel = catalogueEmptyMessage({
     filter: shownFilter,
     query: shownQuery,
@@ -216,14 +241,27 @@ export const AppsPage = () => {
             <div className="mt-8" data-testid="apps-empty">
               <EmptyState>
                 <p>{emptyModel.message}</p>
-                <button
-                  className="admin-button admin-button-secondary mt-3"
-                  data-testid="apps-empty-add-custom"
-                  onClick={openCustomAppDialog}
-                  type="button"
-                >
-                  {emptyModel.actionLabel}
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {emptyModel.actions.map((action, index) => (
+                    <button
+                      className={
+                        index === 0
+                          ? 'admin-button admin-button-primary'
+                          : 'admin-button admin-button-secondary'
+                      }
+                      data-testid={`apps-empty-${action.id}`}
+                      key={action.id}
+                      onClick={
+                        action.id === 'browse-all'
+                          ? () => setFilter('all')
+                          : openCustomAppDialog
+                      }
+                      type="button"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
               </EmptyState>
             </div>
           ) : searching ? (
@@ -252,6 +290,15 @@ export const AppsPage = () => {
                 ))}
               </div>
             </div>
+          ) : flatInstalled ? (
+            <AppCategorySection
+              expanded
+              installed
+              onToggleExpanded={() => {}}
+              pageSize={pageSize}
+              section={installedFlatShelf}
+              standalone
+            />
           ) : (
             <>
               <AppFeaturedStrip apps={featured} />
@@ -275,22 +322,26 @@ export const AppsPage = () => {
           )}
 
           {/* The escape hatch exists before a person has failed to find what
-              they came for, not only after. */}
-          <div className="mt-10" data-testid="apps-footer-nudge">
-            <EmptyState>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span>{CATALOGUE_FOOTER_NUDGE.message}</span>
-                <button
-                  className="admin-button admin-button-secondary"
-                  data-testid="apps-footer-add-custom"
-                  onClick={openCustomAppDialog}
-                  type="button"
-                >
-                  {CATALOGUE_FOOTER_NUDGE.actionLabel}
-                </button>
-              </div>
-            </EmptyState>
-          </div>
+              they came for, not only after — but never *under* an empty grid,
+              where the empty state above already offers it in the same words
+              and the pair reads as a rendering fault. */}
+          {empty ? null : (
+            <div className="mt-10" data-testid="apps-footer-nudge">
+              <EmptyState>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span>{CATALOGUE_FOOTER_NUDGE.message}</span>
+                  <button
+                    className="admin-button admin-button-secondary"
+                    data-testid="apps-footer-add-custom"
+                    onClick={openCustomAppDialog}
+                    type="button"
+                  >
+                    {CATALOGUE_FOOTER_NUDGE.actionLabel}
+                  </button>
+                </div>
+              </EmptyState>
+            </div>
+          )}
         </div>
       </div>
       <CustomAppDialog

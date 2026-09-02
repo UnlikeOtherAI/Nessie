@@ -75,11 +75,12 @@ const appsRoot = ['apps'] as const
 
 export const appKeys = {
   all: appsRoot,
-  // "Show all" walks one category's own pages, a different corpus from the
-  // mixed catalogue slice `list` holds — under the same root, so a single
+  // "Show all" walks one shelf's own pages — a category, or the flat Installed
+  // list, which has no category and keys on null. A different corpus from the
+  // mixed catalogue slice `list` holds, under the same root, so a single
   // invalidation after a connect or disconnect still reaches both.
-  category: (category: string, installed: boolean) =>
-    [...appsRoot, 'category', category, installed] as const,
+  shelf: (category: string | null, installed: boolean) =>
+    [...appsRoot, 'shelf', category, installed] as const,
   detail: (slug?: string) => [...appsRoot, 'detail', slug ?? null] as const,
   // The facade normalises before it calls this, so each field is spelled one
   // way by the time it reaches the key. The defaults restate that normal form

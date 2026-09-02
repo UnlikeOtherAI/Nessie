@@ -103,8 +103,8 @@ answers*, never a position.
 The default category shelves can lead with a small, source-controlled set of
 well-known remote apps selected by their immutable MCP Registry `server.name`.
 `APP_HOME_SUGGESTIONS` lives with the App Store read model, and is applied only
-to the unfiltered home shelves: search, a category page, and the installed-only
-view keep their own meaningful orders.
+to the unfiltered home shelves: search, a category page, and the flat
+installed-only page keep their own meaningful orders.
 
 Suggestions are a source-controlled human curation decision for records chosen
 because they are published by the original product company or have substantial
@@ -355,6 +355,36 @@ were), and the surviving shelf renders `standalone`: no heading, since the
 dropdown directly above already reads "Communication (150)", and no two-row cap
 or "Show all", since collapsing the only thing on the page is not a move anybody
 wants. It still pages, so the whole category is reachable.
+
+**Installed is one flat shelf, because it is not a catalogue.** Category
+headings are how somebody browses thousands of apps they have never seen; they
+are not how anybody reads their own three connected ones, where three headings
+over one card each is all frame and no shelf. `?installed=true` with no category
+therefore returns a single alphabetical page spanning every category
+(`loadInstalledPage`), paged on `offset` against `installedCount` exactly as a
+category page is paged against its own count — "installed" is bounded by how
+many connectors an organisation holds, which is not a number this code controls.
+It renders through the same `AppCategorySection` as every other shelf, with
+`category: null` and `standalone` (`installedShelf` in `app-catalogue-view.ts`),
+so the flat list is a *parameter* of the shelf rather than a second grid beside
+it. The per-category counts still travel, so the dropdown can still narrow
+Installed to one category — and that shelf renders `standalone` too, so the view
+is flat either way. The Featured strip is hidden under Installed: with nothing
+curated the strip falls back to the connected apps, which is the flat list
+directly below it, card for card.
+
+**An empty grid says one thing, once.** The page carries two offers of the same
+escape hatch — the empty state, and the footer nudge that exists before anybody
+has failed to find something — and rendering both under an empty grid put "Can't
+find what you need? Connect a tool by its address." twice on an otherwise blank
+page, which reads as a rendering fault rather than as emphasis. The footer nudge
+is suppressed while the grid is empty. `catalogueEmptyMessage` also now returns
+`actions` rather than a single `actionLabel`, because two of its states have a
+better first move than adding a custom app: a search that found nothing *inside
+Installed* is usually a search that would have found something in the catalogue,
+so it says "None of your installed apps match …" and offers **Search all apps**,
+which drops the narrowing and keeps the query. Every sentence still names a
+button beside it — the rule the removed "Switch to All" copy broke.
 
 The catalogue's toolbar is one row: search, the All/Installed filter, then the
 category `<select>` right-aligned. Categories were a chip row, which the
