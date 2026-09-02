@@ -181,7 +181,7 @@ authenticated shell; the name follows in a later rename). It owns:
   inline with the finger — the same three callers, the same numbers, so a
   push, a pop and a released swipe dim identically.
 
-- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §7) at
+- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §8) at
   the moment the settle lands and the route is about to change. A cancelled
   swipe and a tapped Back give none.
 
@@ -275,7 +275,47 @@ deleted; the executor and dashboard side panels become stages on `single`;
 `AgentDetailPage` drops its own Back registration now that `/agents/:id` is
 a real depth-2 route.
 
-## 7. Native shell contract — **built** (the two bridge pieces)
+## 7. Overlays — **built** (step 8, the layer scale and the hook; the primitives follow)
+
+An overlay is one of four kinds — **Modal**, **Sheet**, **Popover**, **Card**
+— plus the one sanctioned nesting, **blocking** (a confirm over an open
+modal). Each kind has one layer, one Back precedence and one motion, declared
+once in `navigation/overlay.ts` and mirrored as tokens:
+
+| kind | layer token | Back | motion |
+| --- | --- | --- | --- |
+| Card | `--layer-card` 40 | never owns Back | slide + fade, `OVERLAY_MOTION.cardMs` |
+| Popover | `--layer-popover` 50 | owns Back on `single` only | fade + 4 px rise, `popoverMs` |
+| Sheet | `--layer-sheet` 60 | owns Back | slide from its edge, `drawerMs` |
+| Modal | `--layer-modal` 70 | owns Back | fade + 4 px rise, `modalMs` |
+| blocking | `--layer-blocking` 80 | outranks the modal beneath | as modal |
+
+`--layer-stack` (1) is the navigation stack's own layer; nothing else in the
+admin declares a z-index (the lint gate lands in step 15 once the fifty
+overlays have adopted the scale). No scale, ever: a dialog rises 4 px.
+
+**`useOverlay({ id, kind, label, open, onClose, … })`**
+(`components/overlays/useOverlay.ts`) is the shared work every overlay does
+once: it registers `overlay:<id>` with the Back registry while open (so
+hardware Back, the header Back, the edge swipe and Escape agree, and an open
+overlay closes before any route change slides), composes the focus trap and
+restore (modal, sheet, blocking) or Escape alone (popover), the drag-safe
+scrim dismiss, the layer, and the open/close motion on the kind's token with
+reduced motion at 0 ms through the same path. Dismissal is never gated on
+the motion: state closes at once and the leaving element plays out inert
+(`mounted` stays true while `closing`). `useModalA11y` and
+`useOverlayDismiss` are its internals; nothing may compose them on its own
+(the fourteen files that still do adopt a primitive in this step).
+
+**`Dialog`** (`components/shared/Dialog.tsx`) is the Modal primitive on this
+hook, unchanged in API plus `blocking` for the sanctioned nesting;
+`ConfirmDialog` builds on it. Planned in this step: `Sheet` for the eight
+drawers, `Popover` with one `placePopover` helper, `Card` with one
+`CardViewport`, `presentation: 'panel' | 'full'` for Flows, and the adoption
+of every bespoke overlay. Pinned by `admin/test/navigation-overlay.test.ts`
+and `admin/test/dialog-shell.test.ts`.
+
+## 8. Native shell contract — **built** (the two bridge pieces)
 
 The two `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7)
 calls out as their own pieces are **built**; the rest of §4.15/§4.16 (the
@@ -312,7 +352,7 @@ headers, step 14 shell polish) land.
   repeating `navigator.vibrate` pattern via the same helper's fallback); the
   sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
 
-## 8. Verification — the transition suite — **built** (step 2)
+## 9. Verification — the transition suite — **built** (step 2)
 
 The JSDOM harness cannot see an animation and cannot see a layout, so the
 motion itself is pinned in a real browser:
@@ -385,7 +425,7 @@ re-render in place and releases the entries above only for a sibling swap;
 pin it. The JSDOM stack test had passed because it never replayed a route —
 the browser suite is what sees it.
 
-## 9. Everything else — **planned**
+## 10. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

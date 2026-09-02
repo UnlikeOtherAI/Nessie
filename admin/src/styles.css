@@ -84,6 +84,14 @@
   --nav-easing: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-parallax: 28%;
   --nav-shadow: -12px 0 32px var(--scrim);
+  /* The overlay layer scale (docs/navigation.md §7); mirrors OVERLAY_LAYER in
+     admin/src/navigation/overlay.ts. Nothing declares a z-index outside it. */
+  --layer-stack: 1;
+  --layer-card: 40;
+  --layer-popover: 50;
+  --layer-sheet: 60;
+  --layer-modal: 70;
+  --layer-blocking: 80;
 }
 
 [data-theme="midnight"] {

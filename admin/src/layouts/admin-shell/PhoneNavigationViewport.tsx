@@ -10,10 +10,6 @@ import {
 } from 'react'
 import { UNSAFE_LocationContext, useNavigate } from 'react-router-dom'
 import {
-  registerViewportMediaQuery,
-  useViewport,
-} from '../../hooks/useViewport'
-import {
   getPhoneNavigationDirection,
   type PhoneNavigationDirection,
 } from './phone-navigation'
@@ -32,6 +28,7 @@ import {
 } from './phone-navigation-stack'
 import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
 import { beginStackTransition } from '../../navigation/transition-state'
+import { useReducedMotion } from '../../navigation/reduced-motion'
 import type { NavigationLayout } from '../../navigation/layout'
 import { NestedStageHostContext, type NestedStageHost } from '../../navigation/NestedStage'
 import { haptic } from '../../lib/haptics'
@@ -44,9 +41,6 @@ import {
   type LayerPayload,
   type LayerRole,
 } from './PhoneNavigationLayer'
-
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
-registerViewportMediaQuery('reducedMotion', REDUCED_MOTION_QUERY)
 
 type PhoneNavigationViewportProps = {
   children: ReactNode
@@ -88,7 +82,7 @@ export const PhoneNavigationViewport = ({
   const navigation = usePhoneNavigation()
   // Subscribing here re-arms the gesture when an owner registers or leaves.
   useLocalBackSnapshot()
-  const reducedMotion = useViewport().media?.reducedMotion ?? false
+  const reducedMotion = useReducedMotion()
   const locationContext = useContext(UNSAFE_LocationContext)
   const viewportRef = useRef<HTMLDivElement>(null)
 

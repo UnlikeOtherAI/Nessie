@@ -1,13 +1,10 @@
 import {
-  useCallback,
   useId,
-  useRef,
   type CSSProperties,
   type ReactNode,
   type RefObject,
 } from 'react'
-import { useModalA11y } from './useModalA11y'
-import { useOverlayDismiss } from './useOverlayDismiss'
+import { useOverlay } from '../overlays/useOverlay'
 
 /**
  * The admin's one centred modal shell.
@@ -17,8 +14,10 @@ import { useOverlayDismiss } from './useOverlayDismiss'
  * `.create-channel-header` row ending in the same 24-viewBox close cross — and
  * roughly half of them shipped with no keyboard or screen-reader affordances at
  * all: no Escape, no focus trap, no focus restore, no `role="dialog"`. This
- * composes {@link useModalA11y} and {@link useOverlayDismiss} unconditionally,
- * so a dialog cannot be built without them.
+ * composes {@link useOverlay} unconditionally — Back registration, Escape,
+ * focus trap and restore, the drag-safe scrim, the modal layer and the open /
+ * close motion — so a dialog cannot be built without them
+ * (docs/navigation.md §7).
  *
  * `size` names the four panel geometries the admin actually ships. It is not a
  * general scale: a dialog whose panel is none of these keeps its own markup
@@ -60,7 +59,6 @@ const SCRIM_STYLE: CSSProperties = {
   inset: 0,
   justifyContent: 'center',
   position: 'fixed',
-  zIndex: 9999,
 }
 
 const closeButtonClass = [
@@ -71,6 +69,12 @@ const closeButtonClass = [
 
 type DialogProps = {
   children: ReactNode
+  /**
+   * The one sanctioned nesting: a confirm over an open modal renders in the
+   * blocking layer and outranks the modal beneath it for Back. Everything
+   * else is a plain modal, and a second modal is a Flow step, not a stack.
+   */
+  blocking?: boolean
   /**
    * Refuses every close path the shell owns — scrim, Escape, and the close
    * cross — while a submit is in flight. The cross keeps its enabled styling
@@ -88,6 +92,7 @@ type DialogProps = {
 }
 
 export const Dialog = ({
+  blocking = false,
   children,
   description,
   dismissDisabled = false,
@@ -97,44 +102,36 @@ export const Dialog = ({
   size = 'md',
   title,
 }: DialogProps) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
   const descriptionId = useId()
+  const overlay = useOverlay({
+    dismissDisabled,
+    id: titleId,
+    initialFocusRef,
+    kind: blocking ? 'blocking' : 'modal',
+    label: `Close ${title}`,
+    onClose,
+    open,
+  })
+  const { requestClose } = overlay
 
-  // `useModalA11y` re-runs its whole effect when `onClose` changes identity —
-  // re-focusing the initial control and restoring focus on cleanup. Call sites
-  // rebuild their close handler on every keystroke, so the callback handed to
-  // the hook has to be stable or typing would yank focus back to the first
-  // field. These refs carry the live handler and the live dismiss gate without
-  // making that callback depend on either.
-  //
-  // Synced during render rather than in a passive effect: an effect leaves a
-  // window between the commit that flips `dismissDisabled` and the sync, and a
-  // close gesture landing in it would read the stale value and discard an
-  // in-flight submit.
-  const onCloseRef = useRef(onClose)
-  const dismissDisabledRef = useRef(dismissDisabled)
-  onCloseRef.current = onClose
-  dismissDisabledRef.current = dismissDisabled
-
-  const requestClose = useCallback(() => {
-    if (dismissDisabledRef.current) return
-    onCloseRef.current()
-  }, [])
-
-  useModalA11y(panelRef, requestClose, open, initialFocusRef)
-  const overlayDismiss = useOverlayDismiss(requestClose)
-
-  if (!open) return null
+  if (!overlay.mounted) return null
 
   return (
-    <div {...overlayDismiss} style={SCRIM_STYLE}>
+    <div
+      {...overlay.scrimProps}
+      style={{
+        ...SCRIM_STYLE,
+        ...overlay.layerStyle,
+        ...(overlay.closing ? { pointerEvents: 'none' } : undefined),
+      }}
+    >
       <div
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
         className="create-channel-panel"
-        ref={panelRef}
+        ref={overlay.panelRef}
         role="dialog"
         style={PANEL_STYLE[size]}
         tabIndex={-1}
