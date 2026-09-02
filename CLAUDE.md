@@ -286,7 +286,7 @@ restated there:
 
 ## Message reply threads (#233)
 
-`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots, deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`, pushes ≥1280px, overlay 900–1279px, full-screen <900px, drag-resized width persisted), `T` opens the focused message's thread. Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
+`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots and a deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`); how it presents per layout is the navigation framework's call ([docs/navigation.md](docs/navigation.md)). Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
 
 **Reply placement + thinking bubbles** ([docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md](docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md)): where a run's reply lands is decided **before** the run starts — engagement decisions carry a model-judged `replyPlacement` (`thread` = answer owed to the asker's exchange; `channel` = standalone message to the room; @mentions and PA DMs stamp `thread` structurally, never by content heuristics) persisted on `Run.replyPlacement`; `resolveReplyRootMessageId` (`worker/src/run/execute/reply-placement.ts`) applies it after the DeepWater-handoff/external-agent/PA-delegation carve-outs and persists the resolved anchor on `Run.replyRootMessageId`. While a run thinks, a per-run `ThinkingRecorder` coalesces visible reasoning deltas (2 KiB/250 ms) plus tool-activity lines into durable `run_thinking_chunks` rows, each also published on the thread SSE stream with its chunk id (`stream.reasoning` / `stream.thinking.tool`; `stream.start` now carries the reply anchor, and `stream.done` is always published last). The admin renders a dashed, full-width **thinking bubble** with a 1–2-line live thought ticker wherever the reply will land — bottom of the channel feed for top-level replies; compact under the root row plus full bubble in the thread panel for threaded ones (reply text streams only where the reply will land) — and clicking it opens a centered thought-process dialog that streams live and merges the durable log for mid-run joiners (`GET /api/threads/:id/thinking` bootstrap, `GET /api/threads/:id/runs/:runId/thinking` full log, both thread-visibility-gated; `stream.*` stays excluded from SSE backlog replay).
 
@@ -549,30 +549,15 @@ Screens, overlays, Back, and the motion between them are one framework:
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
 - **One tab bar, everywhere.** Every single-select strip in the admin — detail
   tabs, page sections, and filter segments — is
-  `components/primitives/TabBar.tsx`. The selected item is a *single sliding
-  pill* (`.tabbar-indicator`, measured from the DOM and moved with a 120 ms
-  `transform`/`width` transition) rather than a per-item background that blinks
-  on and off, so a tab change reads as one object moving to what was tapped.
-  `role="tablist"` when it switches panels, `role="radiogroup"` when it narrows
-  a list; `fullWidth` stretches items, `size="sm"` for dense strips, `count`
-  renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
-  parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
-  `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
-- **One dialog shell.** Every centred modal is
-  `components/shared/Dialog.tsx`, which *always* composes `useModalA11y` (focus
-  in, Tab trap, Escape, focus restore) and `useOverlayDismiss` (the drag-safe
-  scrim gesture), and always emits `role="dialog" aria-modal="true"` with a
-  labelled heading. It exists because the affordances had drifted apart rather
-  than the markup: of 51 overlay files, ~13 composed the a11y hook and twenty-plus
-  had **no** Escape, no focus trap and no dialog role at all, while half used the
-  `onMouseDown` scrim pattern `useOverlayDismiss` was written to replace (a drag
-  released outside the panel discarded an in-progress edit). `ConfirmDialog`
-  builds on it and replaced four native `window.confirm` deletes — note that
-  `window.confirm` blocks, so a converted call site must carry its own `pending`
-  flag rather than relying on the thread being frozen. Edge-anchored drawers,
-  the full-screen search overlay, the scroll-locking attachment viewer and the
-  two dialogs that branch their scrim on phone layout are deliberately **not**
-  this component; each says so where it stands.
+  `components/primitives/TabBar.tsx` (a single sliding pill, `role="tablist"`
+  or `role="radiogroup"`). Its state model — a URL param written with
+  `replace`, never a history entry — and the rule against a tenth fork live in
+  [docs/navigation.md](docs/navigation.md).
+- **One dialog shell.** Every centred modal is `components/shared/Dialog.tsx`
+  on `useOverlay` (`ConfirmDialog` builds on it); drawers are `Sheet`, menus
+  and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,
+  its Back rules and the sanctioned carve-outs are stated once in
+  [docs/navigation.md](docs/navigation.md) §7 — never restate them here.
 
 ## Ports — NON-NEGOTIABLE
 
