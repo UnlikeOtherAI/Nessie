@@ -46,15 +46,36 @@ export type AppCardStatusTone = 'accent' | 'danger' | 'muted' | 'success' | 'war
 export type AppCardStatus =
   /** Available and healthy: absence of status is the signal. */
   | { kind: 'none' }
-  /** A compact dot in cards; the detail hero spells the same state out. */
-  | { kind: 'indicator'; label: string; tone: AppCardStatusTone }
-  /** A pill, for the states where a decision may be pending. */
-  | { kind: 'pill'; label: string; tone: AppCardStatusTone }
+  /**
+   * A dot, and a number beside it when more than one account sits behind it.
+   * Every connected state is one of these — a card is a tile in a shelf, and a
+   * tracked uppercase pill reading "CONNECTED" beside a "Manage" button was
+   * wider than the app's own name for a fact the dot already carries. The
+   * words survive as `label`, which the card hands to the tooltip and the
+   * detail hero spells out in full.
+   */
+  | { kind: 'indicator'; count: number | null; label: string; tone: AppCardStatusTone }
   /** Quiet `--tx3` text — an uppercase tracked pill saying "Available" shouts. */
   | { kind: 'quiet'; label: string }
 
 const pluralAccounts = (count: number): string =>
   `${count} ${count === 1 ? 'account' : 'accounts'}`
+
+/**
+ * The number only appears where it says something: one account is the ordinary
+ * case and a lone "1" beside a dot is noise.
+ */
+const accountCount = (app: AppSummaryRecord): number | null =>
+  app.connectionCount > 1 ? app.connectionCount : null
+
+/**
+ * An unhealthy state is derived by precedence from a set of accounts
+ * (`deriveAppCardState`), so with several connected the card knows one of them
+ * needs attention but not how many. The label says exactly that much and no
+ * more; the accounts tab is where each one is named.
+ */
+const unhealthyLabel = (app: AppSummaryRecord, verdict: string): string =>
+  app.connectionCount > 1 ? `${pluralAccounts(app.connectionCount)} · ${verdict}` : verdict
 
 export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
   // A built-in was never connected to anything, so "Connected" would be a
@@ -67,24 +88,35 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
     case 'available':
       return { kind: 'none' }
     case 'connecting':
-      return { kind: 'indicator', label: 'Connecting', tone: 'accent' }
+      return { kind: 'indicator', count: accountCount(app), label: 'Connecting', tone: 'accent' }
     case 'connected':
-      return { kind: 'pill', label: '● Connected', tone: 'success' }
+      return { kind: 'indicator', count: null, label: 'Connected', tone: 'success' }
     case 'multiple_accounts':
       return {
-        kind: 'pill',
-        label: `● ${pluralAccounts(app.connectionCount)}`,
+        kind: 'indicator',
+        count: app.connectionCount,
+        label: `${pluralAccounts(app.connectionCount)} connected`,
         tone: 'success',
       }
     case 'auth_expired':
-      return { kind: 'pill', label: '⚠ Reconnect', tone: 'warning' }
+      return {
+        kind: 'indicator',
+        count: accountCount(app),
+        label: unhealthyLabel(app, 'needs reconnecting'),
+        tone: 'warning',
+      }
     case 'error':
-      return { kind: 'indicator', label: 'Connection error', tone: 'danger' }
-    // Every account switched off — the same dot vocabulary as "connected",
-    // hollow, because this is the same relationship in its off position and
-    // not an availability verdict.
+      return {
+        kind: 'indicator',
+        count: accountCount(app),
+        label: unhealthyLabel(app, 'connection error'),
+        tone: 'danger',
+      }
+    // Every account switched off — the same dot in its off position, drawn
+    // hollow, because this is the same relationship and not an availability
+    // verdict.
     case 'paused':
-      return { kind: 'pill', label: '○ Turned off', tone: 'muted' }
+      return { kind: 'indicator', count: accountCount(app), label: 'Turned off', tone: 'muted' }
     case 'disabled':
       return { kind: 'quiet', label: 'Unavailable' }
     case 'unavailable':
