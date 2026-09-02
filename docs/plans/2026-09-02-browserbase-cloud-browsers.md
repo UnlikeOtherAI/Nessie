@@ -279,7 +279,9 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
     which services are signed in (`serviceHint`s), and whether it is
     currently in use — toolset facts only, never message content.
   - `browser_goto`, `browser_act`, `browser_observe`, `browser_screenshot`,
-    `browser_close`.
+    `browser_close`; from phase 2, `browser_download` (the session's
+    downloaded file lands through `FileService` and attaches to the reply —
+    §6.8).
   - `browser_login_request` `{ service, reason }` — the handoff (§4.4) into
     the agent's own browser. Cloud transport only.
 - If `browser_act` gains a natural-language action layer (Stagehand-style),
@@ -546,6 +548,10 @@ stating browser existence + signed-in services, the `agent:<id>` audience
 disclosure basis + the shared-browser banner, the Agent Designer Browser
 panel + the person's
 browser-logins list, unattended-run refusal for authenticated browsers.
+Phase 2 also ships the two decided hardenings: the **cross-origin write
+gate** (§6.1 — approval-gated `browser_act` writes on foreign origins once
+an authenticated origin was touched, opt-in per-browser domain pinning for
+owners) and **`browser_download`** through `FileService` (§6.8).
 *Done when:* a person signs a service into an agent's browser once in chat,
 tomorrow's run reuses that login without asking, a concurrent run of the
 same agent gets a clean "browser busy" instead of a corrupted session — and
@@ -562,11 +568,21 @@ that let `browser.connected.*` be advertised.
 1. **Injection → exfiltration through the browser itself.** A hostile page
    can steer the agent to read the signed-in tab and type what it finds
    into an attacker's form — leaving via Browserbase's egress, so the
-   disclosure basis never fires. **Phase-2 blocker**: authenticated
-   browsing does not ship without a decided mitigation — candidate set:
-   human-set per-browser domain scoping (structural, not content-judged),
-   and/or approval-gated form submission in authenticated sessions.
-   Phase 1 (ephemeral-only) carries ordinary `web_fetch`-grade exposure.
+   disclosure basis never fires. **Decided 2026-09-02 — mitigate
+   structurally without narrowing what the agent can read**, because
+   killing the open web kills the capability. Reads stay unrestricted. The
+   gate sits on **cross-origin writes**: once a run's session has touched
+   an authenticated origin, a `browser_act` that enters text or submits on
+   any *other* origin requires a one-tap approval through the existing
+   approval machinery. Origins are structural facts — no content judgment;
+   same-origin writes (doing the task on the signed-in service) stay free,
+   and unauthenticated/ephemeral sessions are entirely ungated, so the
+   common cases feel nothing. Owners *may* additionally pin a browser to a
+   domain allowlist — opt-in hardening, never the default. Residual risk
+   accepted and named, not solved: same-origin exfiltration (a webmail
+   draft to an attacker) and data smuggled through navigation URLs; the
+   opt-in pinning closes the second for browsers that want it. Phase 1
+   (ephemeral-only) carries ordinary `web_fetch`-grade exposure.
 2. **The Browserbase dashboard bypasses disclosure.** Whoever holds the
    Browserbase account can replay every session in Browserbase's own UI —
    including a private agent's browsing on the org connection, and possibly
@@ -594,22 +610,28 @@ that let `browser.connected.*` be advertised.
    team agent serializes authenticated browsing; ephemeral absorbs public
    work. If it bites, the escape hatch is multiple browsers per agent,
    never loosening the single-session claim.
-8. **No downloads/uploads yet.** Later phase: `browser_download` lands
-   bytes through the one `FileService` chokepoint (accounted, quota-gated);
-   uploads are the reverse. No improvised second byte path.
-9. **Data residency.** Cookies for corporate services live in Browserbase's
-   cloud; some orgs will refuse. The transport abstraction is the hedge — a
-   self-hosted pool or the device executor can back the same tools later —
-   and the connect UI says where session state lives.
+8. **Downloads are committed, uploads deferred.** `browser_download` is a
+   phase-2 tool (decided 2026-09-02): the session's downloaded file lands
+   through the one `FileService` chokepoint — accounted, quota-gated,
+   thumbnailed like any upload — and attaches to the reply. Uploads (a
+   file *into* a web form) stay a later phase. No improvised second byte
+   path either way.
+9. **Data residency — resolved as informed consent** (2026-09-02). Cookies
+   for corporate services live in Browserbase's cloud; connecting is the
+   org's (or the member's) own explicit decision, and the connect UI says
+   plainly where session state lives. No product mitigation needed; the
+   transport abstraction remains the hedge for orgs that want browsers on
+   their own infrastructure later.
 
 ## 7. Open questions
 
-1. **Sensitive-action gating.** Should `browser_act` in a human-authenticated
-   session require an approval for irreversible-looking actions (submitting
-   orders, sending messages)? The approval machinery is there; the question
-   is whether "irreversible-looking" can be decided structurally (it cannot
-   be string-matched — it would have to be model-judged, or scoped by domain
-   allowlists the person sets per login).
+1. **Same-origin sensitive actions.** Cross-origin writes are now gated
+   (§6.1); what remains open is the *same-origin* irreversible action — the
+   agent submitting an order or sending a message on the very service it is
+   signed into. Is the person's ask the consent, or does that need its own
+   gate? "Irreversible-looking" cannot be string-matched — it would have to
+   be model-judged, or left to the requester who is, after all, one tap
+   from watching the screen.
 2. **Mobile companion.** The login handoff dialog should work from the mobile
    app's webview (it's an iframe + card press); worth verifying early, since
    "sign in from your phone" is the likely real-world moment.
