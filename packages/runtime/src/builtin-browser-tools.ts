@@ -154,6 +154,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_LOGIN_REQUEST_TOOL_ID,
+    category: 'browser',
     label: 'Ask For A Sign-In',
     summary: 'Ask the person to sign your browser into a service.',
     description:
@@ -185,6 +186,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_DOWNLOAD_TOOL_ID,
+    category: 'browser',
     label: 'Download From Browser',
     summary: 'Save a file from the open browser into this workspace.',
     description:
