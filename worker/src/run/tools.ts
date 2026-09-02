@@ -71,6 +71,7 @@ import {
   runEmailReadTool,
   runEmailSendTool,
 } from './pa-tools.js'
+import { runAgentHandoffTool } from './pa-tools/agent-handoff.js'
 import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
 import { executorManagementTool } from './pa-tools/executor-dispatch.js'
@@ -290,6 +291,10 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    // Available to every agent by default; its loop bounds are structural (a
+    // global agent and a subtask child never see it — see tool-policy.ts).
+    case 'agent_handoff':
+      return wrapTool(inputSummary, () => runAgentHandoffTool(context, args))
     // To-do execution. Arguments are validated in the shared-operation callers
     // so context-derived agent/run ids can never be supplied by the model.
     case 'todo_start':

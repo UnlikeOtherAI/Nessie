@@ -245,6 +245,21 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   including by a row predating it: remove either and an unattended run
   reconstructing an absent creator's `effectiveUserId` creates agents and
   channels as that person. Delegated reads it opens feed the disclosure sink.
+- **`agent_handoff` passes the person, and its bounds are structural.** Any
+  agent may hand a conversation to a global agent: a hidden server-authored
+  `system` brief — the trigger-kickoff mechanism, never the integration
+  handoff's `role:'user'` message rendering model text as the person's own
+  editable words — into the *requesting person's* home DM, plus one doorway
+  message in the origin room. The requester is the **actor**, never
+  `effectiveUserId` (a PA presence carries its owner's while another member
+  asks); with `interactive === true` and a live membership re-read, that also
+  refuses every unattended, trigger, subtask and agent-authored run. Bounds are
+  **withheld, not asserted**: the tool is omitted from any `systemSlug` agent's
+  schema and from `spawn_subtask` children in `authorizeToolCall`, and one
+  cooldown row per `(requester, slug)` converges retries and continuations onto
+  the one briefing. The brief's basis subtracts **every scope the requester
+  satisfies**, or the DM's only member cannot read its own specialist. Delivery
+  claims the slot through `claimThreadRunOrPend`. `CLAUDE.md` → "Global agents".
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and

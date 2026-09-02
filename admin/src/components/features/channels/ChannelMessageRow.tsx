@@ -33,6 +33,7 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { DocumentRefChip } from './DocumentRefChip'
+import { AgentHandoffDoorway } from './AgentHandoffDoorway'
 import { RunStopContinue } from './RunStopContinue'
 import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
@@ -434,6 +435,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <DocumentRefChip metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AgentHandoffDoorway metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <WorkflowRunCard metadata={message.metadata} />

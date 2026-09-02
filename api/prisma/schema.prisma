@@ -1021,6 +1021,8 @@ model User {
 
   resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
 
+  agentHandoffRequests AgentHandoffRequest[]
+
   @@map("users")
 }
 
@@ -1175,6 +1177,7 @@ model Organization {
   productWebhookSecrets      ProductWebhookSecret[]
   secrets                    Secret[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
+  agentHandoffRequests       AgentHandoffRequest[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1566,6 +1569,7 @@ model Channel {
   pushSurfacePresences   UserPushSurfacePresence[]
   demonstrations         Demonstration[]
   agentMailbox           AgentMailbox?
+  agentHandoffRequests   AgentHandoffRequest[]
 
   agentCards AgentCard[]
 
@@ -1613,6 +1617,7 @@ model Thread {
   demonstrations             Demonstration[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
   emailConversation          EmailConversation?
+  agentHandoffRequests       AgentHandoffRequest[]
 
   agentCards AgentCard[]
 
@@ -1935,6 +1940,7 @@ model Message {
   appConnectionRequestCards   AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestCardMessage")
   agentCards                  AgentCard[]                    @relation("AgentCardMessage")
   agentCardResponses          AgentCard[]                    @relation("AgentCardResponseMessage")
+  handoffBriefs               AgentHandoffRequest[]          @relation("AgentHandoffBriefMessage")
   originAppConnectionRequests AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestOriginTriggerMessage")
   triggeredRuns               Run[]                          @relation("RunTriggerMessage")
   workflowRunOrigins          WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
@@ -2187,6 +2193,8 @@ model Agent {
   demonstrations                 Demonstration[]                 @relation("AgentDemonstrations")
   demonstrationSteps             DemonstrationStep[]             @relation("AgentDemonstrationSteps")
   appConnectionRequests          AgentAppConnectionRequest[]
+  handoffsMade                   AgentHandoffRequest[]           @relation("AgentHandoffFromAgent")
+  handoffsReceived               AgentHandoffRequest[]           @relation("AgentHandoffTargetAgent")
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
   // SET NULL blanks every referencing column, which would wipe the agent's
@@ -2420,6 +2428,7 @@ model Run {
   demonstrationSteps                  DemonstrationStep[]
   originAppConnectionRequests         AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
   continuationForAppConnectionRequest AgentAppConnectionRequest?      @relation("AgentAppConnectionRequestContinuationRun")
+  originAgentHandoffRequests          AgentHandoffRequest[]
 
   postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
   waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
@@ -2564,6 +2573,51 @@ model AgentAppConnectionRequest {
   @@index([organizationId, status, expiresAt], map: "app_conn_req_organization_status_expires_idx")
   @@index([requestedByUserId, returnedAt], map: "app_conn_req_requester_returned_idx")
   @@map("agent_app_connection_requests")
+}
+
+/// One live handoff of a conversation to a global agent, per person per target.
+///
+/// The row is the loop bound `agent_handoff` needs: a repeated ask, a queue
+/// retry, or a continuation run (new `runId`, same request) finds this row
+/// inside its cooldown and converges on the briefing already waiting in the
+/// person's DM instead of stacking a second one. Queue idempotency
+/// (`handoff:{originRunId}:{slug}`) sits underneath it as the crash guard.
+///
+/// The convergence lookup is serialized by a `pg_advisory_xact_lock` on
+/// `(requestedByUserId, targetSlug)` — the `AgentAppConnectionRequest`
+/// precedent — so no unique constraint is needed and history is retained.
+model AgentHandoffRequest {
+  id                   String    @id @default(uuid()) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  requestedByUserId    String    @map("requested_by_user_id") @db.Uuid
+  /// The global-agent blueprint slug. Half of the convergence key.
+  targetSlug           String    @map("target_slug")
+  targetAgentId        String    @map("target_agent_id") @db.Uuid
+  fromAgentId          String    @map("from_agent_id") @db.Uuid
+  originRunId          String    @map("origin_run_id") @db.Uuid
+  destinationChannelId String    @map("destination_channel_id") @db.Uuid
+  destinationThreadId  String    @map("destination_thread_id") @db.Uuid
+  /// The hidden server-authored `system` brief that started the target's run.
+  briefMessageId       String    @unique @map("brief_message_id") @db.Uuid
+  /// Repeat asks inside this window converge instead of briefing again.
+  cooldownUntil        DateTime  @map("cooldown_until")
+  /// After this the row is no longer the live handoff for the pair.
+  expiresAt            DateTime  @map("expires_at")
+  supersededAt         DateTime? @map("superseded_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUser    User         @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  targetAgent        Agent        @relation("AgentHandoffTargetAgent", fields: [targetAgentId], references: [id], onDelete: Cascade)
+  fromAgent          Agent        @relation("AgentHandoffFromAgent", fields: [fromAgentId], references: [id], onDelete: Cascade)
+  originRun          Run          @relation(fields: [originRunId], references: [id], onDelete: Cascade)
+  destinationChannel Channel      @relation(fields: [destinationChannelId], references: [id], onDelete: Cascade)
+  destinationThread  Thread       @relation(fields: [destinationThreadId], references: [id], onDelete: Cascade)
+  briefMessage       Message      @relation("AgentHandoffBriefMessage", fields: [briefMessageId], references: [id], onDelete: Cascade)
+
+  @@index([requestedByUserId, targetSlug, createdAt(sort: Desc)], map: "agent_handoff_requester_target_created_idx")
+  @@index([organizationId, expiresAt], map: "agent_handoff_organization_expires_idx")
+  @@map("agent_handoff_requests")
 }
 
 // Durable work-state saved when a run stops at a policy ceiling (explicit run
