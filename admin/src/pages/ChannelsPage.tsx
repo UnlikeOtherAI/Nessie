@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -14,7 +14,7 @@ import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
-import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
+import { useShellActions } from '../layouts/admin-shell/ShellActionsContext'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
@@ -53,7 +53,7 @@ export const ChannelsPage = () => {
   const phoneLayout = usePhoneLayout()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
-  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
+  const { onSelectAgent } = useShellActions()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const isOwner = useIsOwner()

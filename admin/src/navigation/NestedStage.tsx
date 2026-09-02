@@ -24,10 +24,15 @@ import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext
 export type NestedStageHost = {
   activate: (id: string, container: HTMLElement) => void
   deactivate: (id: string, options: { animate: boolean }) => void
-  // Ids currently in the stack — changes with every commit, so a stage whose
-  // entry was released under it (a sibling swap, a route change) re-asserts
-  // itself instead of rendering into a container nothing shows.
+  // Ids at or beneath the current position — changes with every commit, so
+  // a stage whose entry was released under it (a sibling swap, a route
+  // change) re-asserts itself instead of rendering into a container nothing
+  // shows.
   stageIds: readonly string[]
+  // Every stage entry the stack still holds, including one sliding out
+  // above the current position: its page keeps rendering it until the
+  // stack releases the layer, so the Back slide never plays empty.
+  retainedIds: readonly string[]
 }
 
 export const NestedStageHostContext = createContext<NestedStageHost | null>(null)
@@ -104,6 +109,9 @@ export const NestedStage = ({
     if (owns.current) hostRef.current?.deactivate(id, { animate: false })
   }, [id])
 
-  if (!active) return null
-  return hosted ? createPortal(children, container) : <>{children}</>
+  if (hosted) {
+    const shown = active || host.retainedIds.includes(id)
+    return shown ? createPortal(children, container) : null
+  }
+  return active ? <>{children}</> : null
 }

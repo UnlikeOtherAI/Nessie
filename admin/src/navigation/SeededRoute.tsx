@@ -1,5 +1,10 @@
 import { useContext, useMemo, type ReactNode } from 'react'
-import { UNSAFE_DataRouterContext, useRoutes, type RouteObject } from 'react-router-dom'
+import {
+  UNSAFE_DataRouterContext,
+  matchRoutes,
+  renderMatches,
+  type RouteObject,
+} from 'react-router-dom'
 
 // A screen the navigation stack seeds beneath a cold start's landing route
 // (docs/navigation.md §8). The page is rendered from the same route table
@@ -7,7 +12,9 @@ import { UNSAFE_DataRouterContext, useRoutes, type RouteObject } from 'react-rou
 // pathname, so a deep link into an agent shows the Agents list beneath it
 // exactly as a real navigation would have. It renders inert under the
 // landed screen until the person goes Back, when the route's own commit
-// replaces it.
+// replaces it. `matchRoutes` + `renderMatches` rather than `useRoutes`: the
+// latter resolves relative to the enclosing route and warns about the
+// pathless shell route it sits in.
 
 export const useShellRoutes = (shellElementType: unknown): RouteObject[] => {
   const router = useContext(UNSAFE_DataRouterContext)?.router
@@ -33,4 +40,7 @@ export const SeededRoute = ({
 }: {
   pathname: string
   routes: RouteObject[]
-}): ReactNode => useRoutes(routes, { pathname })
+}): ReactNode => {
+  const matches = useMemo(() => matchRoutes(routes, { pathname }), [pathname, routes])
+  return renderMatches(matches)
+}

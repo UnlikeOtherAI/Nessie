@@ -50,6 +50,8 @@ import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/a
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
+import { ShellActionsProvider } from './admin-shell/ShellActionsContext';
+import type { AdminShellOutletContext } from './admin-shell/types';
 export type { AdminShellOutletContext } from './admin-shell/types';
 
 // A phone has room for one primary decision at a time. Its tab root therefore
@@ -143,11 +145,13 @@ const AuthenticatedAdminShellLayout = () => {
   // keeps that element mounted while it leaves; retaining a live <Outlet>
   // would resolve both layers against the new route and duplicate the incoming
   // page instead of preserving the outgoing one.
-  const outlet = useOutlet({
+  const outlet = useOutlet();
+  // The shell's actions reach every page — routed or seeded — as one context.
+  const shellActions: AdminShellOutletContext = {
     onCreateAgent: shell.navigateToAgentDesigner,
     onCreateChannel: shell.openCreateChannel,
     onSelectAgent: shell.selectAgent,
-  });
+  };
 
   const sidebarNavElement = (
     <SidebarNav
@@ -329,6 +333,7 @@ const AuthenticatedAdminShellLayout = () => {
                     />
                   )}
 
+                  <ShellActionsProvider value={shellActions}>
                   <div className="admin-shell">
                     {!mobileLayout && (
                       <SidebarRail
@@ -346,6 +351,7 @@ const AuthenticatedAdminShellLayout = () => {
                       contentRegion
                     )}
                   </div>
+                  </ShellActionsProvider>
                 </div>
 
                 {showWebTabBar && <MobileTabBar />}

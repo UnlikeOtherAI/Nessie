@@ -245,11 +245,17 @@ export const PhoneNavigationViewport = ({
       .map((entry) => entry.key.slice('stage:'.length)),
     [stack],
   )
+  const retainedIds = useMemo(
+    () => stack.entries
+      .filter((entry) => isPhoneNavigationStageEntry(entry))
+      .map((entry) => entry.key.slice('stage:'.length)),
+    [stack],
+  )
   const stageHost = useMemo<NestedStageHost | null>(
     () => (layout === 'single'
-      ? { activate: activateStage, deactivate: deactivateStage, stageIds }
+      ? { activate: activateStage, deactivate: deactivateStage, retainedIds, stageIds }
       : null),
-    [activateStage, deactivateStage, layout, stageIds],
+    [activateStage, deactivateStage, layout, retainedIds, stageIds],
   )
 
   useEffect(() => {

@@ -46,6 +46,11 @@ test('closing a stage runs Back and releases its layer; the page beneath is curr
   const viewport = harness.container.querySelector('[data-phone-navigation-viewport]')
   assert.equal(viewport?.getAttribute('data-phone-navigation-direction'), 'back')
   assert.equal(harness.layer('outgoing')?.getAttribute('data-phone-navigation-route'), 'stage:inspector')
+  assert.equal(
+    harness.layer('outgoing')?.textContent,
+    'stage:inspector',
+    'the page keeps rendering the stage while it slides out',
+  )
   assert.equal(harness.layer('incoming')?.getAttribute('data-phone-navigation-route'), 'channels:channel')
   await harness.flush(450)
   assert.equal(harness.layer('current')?.getAttribute('data-phone-navigation-route'), 'channels:channel')
