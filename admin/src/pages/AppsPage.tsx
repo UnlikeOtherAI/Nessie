@@ -33,7 +33,7 @@ import {
   isAppSearchActive,
   searchResultsLabel,
 } from '../components/features/apps/app-search'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { EmptyState } from '../components/shared/EmptyState'
 import { useApps } from '../facades/apps/hooks'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -165,7 +165,7 @@ export const AppsPage = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <AdminPageHeader
+      <ScreenHeader
         actions={[
           {
             icon: faPlus,
@@ -177,7 +177,6 @@ export const AppsPage = () => {
           },
         ]}
         title="Apps"
-        titleTone="page"
       />
       {/*
         Full-bleed, like the agents list (c29c6f6a): a store is a shelf, and a

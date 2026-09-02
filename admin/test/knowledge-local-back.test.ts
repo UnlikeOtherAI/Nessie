@@ -114,8 +114,12 @@ test('the agent detail page owns no Back of its own', () => {
   const page = readSource('../src/pages/AgentDetailPage.tsx')
   assert.doesNotMatch(page, /useLocalBack/)
   assert.doesNotMatch(page, /LOCAL_BACK_PRIORITY/)
-  // Wider layouts keep their own Back button beside the title.
-  assert.match(page, /!phoneLayout \? \(/)
+  // Wider layouts keep their own Back beside the title — since step 9 that
+  // is `ScreenHeader`'s `onBack`, rendered only because the registry says
+  // this screen has a parent (docs/navigation.md §9).
+  assert.match(page, /<ScreenHeader/)
+  assert.match(page, /onBack=\{backToList\}/)
+  assert.match(page, /backLabel="Back to Agents"/)
 
   assert.equal(matchSurface('/agents/agent_a')?.surface.depth, 2)
   assert.deepEqual(surfaceParent('/agents/agent_a'), {

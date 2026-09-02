@@ -221,7 +221,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
       {children}
       <NativePhoneNavigationBridge />
       {/* The one polite live region: the settled screen's heading, debounced
-          (docs/navigation.md §11). Overlays announce through their own
+          (docs/navigation.md §12). Overlays announce through their own
           dialog semantics instead. */}
       <div aria-live="polite" className="sr-only" role="status" {...{ [ANNOUNCER_ATTRIBUTE]: '' }} />
     </PhoneNavigationContext.Provider>

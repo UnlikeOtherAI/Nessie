@@ -1,3 +1,4 @@
+import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
@@ -9,12 +10,12 @@ import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { agentGradient } from '../lib/avatar'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneBackButton } from '../layouts/admin-shell/PhoneBackButton'
 import { useOverlay } from '../components/overlays/useOverlay'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type RecipientKind = 'agent' | 'user'
@@ -249,24 +250,26 @@ export const ChannelConversationComposePage = () => {
         role="dialog"
         tabIndex={phoneLayout ? undefined : -1}
       >
-        <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-5">
-          {phoneLayout ? <PhoneBackButton label="Back to Channels" onBack={close} /> : null}
-          <h1 className="min-w-0 flex-1 text-[17px] font-bold text-[color:var(--tx)]" id="channel-conversation-compose-title">
-            New message
-          </h1>
-          {!phoneLayout ? (
-            <button
-              aria-label="Close new message"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
-              onClick={close}
-              type="button"
-            >
-              <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-              </svg>
-            </button>
-          ) : null}
-        </header>
+        {/* The one header, at the shell's height rather than this flow's own
+            58px. A Flow returning to an explicit address owns its Back, so on
+            the single layout the leading control is this page's close; on
+            split — where the flow is a centred dialog — the same action is a
+            Close in the actions lane. */}
+        <ScreenHeader
+          actions={phoneLayout ? [] : [{
+            compact: true,
+            icon: faXmark,
+            id: 'close-compose',
+            label: 'Close new message',
+            onSelect: close,
+            priority: 100,
+          }]}
+          backLabel="Back to Channels"
+          flowOwnsBack
+          onBack={phoneLayout ? close : undefined}
+          title="New message"
+          titleId="channel-conversation-compose-title"
+        />
 
         <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
         <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">

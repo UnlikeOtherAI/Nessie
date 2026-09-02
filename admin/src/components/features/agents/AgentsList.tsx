@@ -1,13 +1,13 @@
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { TabBar } from '../../primitives/TabBar'
 import { PaginationFooter } from '../../shared/PaginationFooter'
-import { AgentCreateButton } from './AgentCreateButton'
+import { ScreenHeader } from '../../shared/ScreenHeader'
 import { AgentsTable } from './AgentsTable'
 import {
   AGENT_SCOPES,
@@ -71,39 +71,37 @@ export const AgentsList = () => {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Hand-rolled: AdminPageHeader fixes the page title at text-[17px]
-          font-bold inside an h-[50px] bar, and cannot express this 24px
-          font-semibold hero over a scope description that changes with the tab. */}
-      <header className="flex items-start gap-3 px-6 pt-6 pb-4">
-        <PhoneNavigationButton />
-        <div className="min-w-0 flex-1 space-y-1">
-          {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-            Agents
-          </p>
-          <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Agents</h1>
+      {/* The Agents root is a Tab host: the scope strip is the header's own
+          tabs slot and the scope description its subtitle, so the section
+          has one header rather than a hero plus the route's own bar. */}
+      <ScreenHeader
+        actions={[{
+          icon: faPlus,
+          id: 'new-agent',
+          label: 'New agent',
+          onSelect: () => void navigate('/agents/designer'),
+          primary: true,
+          priority: 100,
+        }]}
+        subtitle={
           <p className="text-sm text-[color:var(--tx3)]">
             {AGENT_SCOPE_META[activeScope].description}
           </p>
-        </div>
-        <AgentCreateButton
-          label="New agent"
-          onClick={() => void navigate('/agents/designer')}
-        />
-      </header>
-
-      <div className="flex items-center border-b border-[color:var(--sep)] px-6 py-2">
-        <TabBar
-          ariaLabel="Agent scopes"
-          items={AGENT_SCOPES.map((scope) => ({
-            count: buckets[scope].length,
-            label: AGENT_SCOPE_META[scope].label,
-            value: scope,
-          }))}
-          onChange={setActiveScope}
-          value={activeScope}
-        />
-      </div>
+        }
+        tabs={
+          <TabBar
+            ariaLabel="Agent scopes"
+            items={AGENT_SCOPES.map((scope) => ({
+              count: buckets[scope].length,
+              label: AGENT_SCOPE_META[scope].label,
+              value: scope,
+            }))}
+            onChange={setActiveScope}
+            value={activeScope}
+          />
+        }
+        title="Agents"
+      />
 
       <div
         className="min-h-0 flex-1 overflow-y-auto px-6 py-4"

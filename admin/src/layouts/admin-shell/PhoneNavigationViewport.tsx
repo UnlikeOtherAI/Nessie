@@ -64,7 +64,7 @@ type ActiveTransition = {
   fromLayerKey: string
   id: number
   // Whether the leaving screen held focus when the transition began; the
-  // settle reads it to decide where focus lands (docs/navigation.md §11).
+  // settle reads it to decide where focus lands (docs/navigation.md §12).
   outgoingHadFocus: boolean
   phase: 'preparing' | 'running'
   toLayerKey: string

@@ -14,7 +14,7 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
   return (
     <div className="min-h-0 overflow-y-auto p-6">
       <div className="mx-auto grid max-w-4xl gap-5">
-        <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[color:var(--tx)]">Project executors</h2>
             <p className="mt-1 max-w-2xl text-sm text-[color:var(--tx3)]">
@@ -28,7 +28,7 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
           >
             New project executor
           </Link>
-        </header>
+        </div>
 
         {/* Not QueryState: left-aligned lines rendered above the grid rather
             than in place of it, and the empty state is a card, not a line. */}

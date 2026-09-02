@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { formatRelativeTime } from '../components/features/workflows/presentation'
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages'
 
@@ -19,7 +19,7 @@ export const UnreadMessagesPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Unread messages" />
+      <ScreenHeader title="Unread messages" />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {unreadMessages.isLoading ? (
           <div className="py-8 text-center text-[color:var(--tx3)]">Loading unread messages…</div>

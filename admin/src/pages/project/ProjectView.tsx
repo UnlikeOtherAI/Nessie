@@ -88,7 +88,7 @@ export const ProjectView = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ProjectPageHeader actions={headerActions} project={project} titleTone="page" />
+      <ProjectPageHeader actions={headerActions} project={project} />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (

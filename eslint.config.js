@@ -191,7 +191,7 @@ export default [
     },
   },
   {
-    // Navigation motion gate (docs/navigation.md §10 "Gates", plan §4.18, step
+    // Navigation motion gate (docs/navigation.md §11 "Gates", plan §4.18, step
     // 15): scrollIntoView() inside useLayoutEffect, everywhere in admin/src
     // except pages/** and layouts/** — those two trees get the more specific
     // block below (screen roots), which repeats this selector for the reason
@@ -209,7 +209,7 @@ export default [
     },
   },
   {
-    // Screen-root focus gate (docs/navigation.md §10 "Gates", plan §4.18, step
+    // Screen-root focus gate (docs/navigation.md §11 "Gates", plan §4.18, step
     // 15): a screen root (admin/src/pages/**, admin/src/layouts/** — the shell
     // chrome and every page a route can land on) must not steal focus on
     // mount in a way that scrolls the clipped stack container (§2's bounce):
@@ -238,26 +238,26 @@ export default [
           selector: "JSXAttribute[name.name='autoFocus']",
           message:
             'autoFocus on a screen root steals focus on mount and can scroll the '
-            + 'clipped stack container — see docs/navigation.md §2/§10.',
+            + 'clipped stack container — see docs/navigation.md §2/§11.',
         },
         {
           selector: "CallExpression[callee.property.name='focus'][arguments.length=0]",
           message:
             'A screen-root .focus() call needs { preventScroll: true } — a plain '
-            + '.focus() can scroll the clipped stack container. See docs/navigation.md §2/§10.',
+            + '.focus() can scroll the clipped stack container. See docs/navigation.md §2/§11.',
         },
         {
           selector: "CallExpression[callee.property.name='focus'] > "
             + "ObjectExpression.arguments:not(:has(Property[key.name='preventScroll']))",
           message:
             'A screen-root .focus({...}) call needs preventScroll: true in its options '
-            + '— see docs/navigation.md §2/§10.',
+            + '— see docs/navigation.md §2/§11.',
         },
       ],
     },
   },
   {
-    // navigate()/useNavigate() admission rule (docs/navigation.md §10 "Gates",
+    // navigate()/useNavigate() admission rule (docs/navigation.md §11 "Gates",
     // plan §4.18) — OFF. The controller API this rule will hold call sites to
     // (PhoneNavigationProvider's `push`) does not exist yet; enabled in step
     // 13 once controller.push exists. Left declared, not deleted, so the

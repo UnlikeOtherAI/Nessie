@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Pill } from '../components/primitives/Pill'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { auditLogKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -42,10 +42,11 @@ export const AuditLogPage = () => {
   })
 
   return (
-    <OwnerGate>
-      <section className="flex h-full min-h-0 flex-col">
-        <AdminPageHeader title="Audit Log" />
-
+    <section className="flex h-full min-h-0 flex-col">
+      {/* The header is always rendered: a refusal is a state of this screen,
+          not a screen of its own, so Back never disappears with it. */}
+      <ScreenHeader title="Audit Log" />
+      <OwnerGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-4 w-full max-w-xs">
             <input
@@ -88,7 +89,7 @@ export const AuditLogPage = () => {
             )}
           </div>
         </div>
-      </section>
-    </OwnerGate>
+      </OwnerGate>
+    </section>
   )
 }

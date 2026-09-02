@@ -540,7 +540,7 @@ leading-lane chevron, and there is exactly one per screen.
   Knowledge columns strip on `split`) carry `data-navigation-swipe-ignore`; the
   gesture's existing target gate reads it.
 
-### 4.9 One header per page type
+### 4.9 One header per page type — **built** (step 9, `docs/navigation.md` §9)
 
 Nine header shapes exist (`ResponsivePageHeader` and its six wrappers, the
 thread panel's, the info flow's, the compose page's, and seven hand-rolled
@@ -731,11 +731,16 @@ five-path set), and it has no screen title at all; badges exist for three of
 five tabs. One message replaces the guessing:
 
 ```
-nessie:screen { path, title, section, type, depth, hasBack }
+nessie:screen { path, title, section, screenType, depth, hasBack }
 ```
 
-posted where `nessie:route` is posted, read straight off the surface
-registry. The shell's path matching (`tabIndexForPath`, the `TABS[].matches`
+**Built** (step 9): posted by `NativePhoneNavigationBridge` beside
+`nessie:route` and `nessie:back-state`, read straight off the surface
+registry. The page type travels as `screenType`, because `type` is the
+message's own discriminant; `nessie:attention` now carries `badges` keyed by
+the same section names. The exact shape is in `docs/navigation.md` §10.
+
+The shell's path matching (`tabIndexForPath`, the `TABS[].matches`
 predicates and `isNativePhoneTabRootRoute`) is deleted; the `TABS` table
 itself stays for titles and paths. The shell keeps a **last-known section**
 from the latest `nessie:screen` so the tab index is right before the first

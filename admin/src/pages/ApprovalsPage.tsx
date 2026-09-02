@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Pill } from '../components/primitives/Pill'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -61,7 +61,7 @@ export const ApprovalsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Approvals" />
+      <ScreenHeader title="Approvals" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {pending.length > 0 ? (

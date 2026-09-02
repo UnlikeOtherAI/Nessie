@@ -9,7 +9,7 @@ import type {
 import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   parseGlobalSearchMode,
   useGlobalSearch,
@@ -143,7 +143,7 @@ export const SearchPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Search" />
+      <ScreenHeader title="Search" />
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-[color:var(--sep)] p-5">

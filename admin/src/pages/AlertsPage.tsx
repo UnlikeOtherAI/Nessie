@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../components/shared/AlertRow'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import {
   getAlertLink,
@@ -51,7 +51,7 @@ export const AlertsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader actions={headerActions} title="Alerts" />
+      <ScreenHeader actions={headerActions} title="Alerts" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-2">

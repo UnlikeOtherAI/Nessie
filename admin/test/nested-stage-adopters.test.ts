@@ -91,8 +91,10 @@ test('ExecutorsPage wraps ExecutorCreatePanel in NestedStage with the shared id 
 
   // The "Pair executor / Close pairing" header toggle is untouched by the
   // adoption — it still flips the same boolean the stage's `active` reads.
-  assert.match(source, /onClick=\{\(\) => setShowCreate\(\(open\) => !open\)\}/)
-  assert.match(source, /\{showCreate \? 'Close pairing' : 'Pair executor'\}/)
+  // Step 9 moved it into `ScreenHeader`'s measured actions lane, so it is a
+  // PageHeaderAction's `onSelect` rather than a raw button's `onClick`.
+  assert.match(source, /onSelect: \(\) => setShowCreate\(\(open\) => !open\)/)
+  assert.match(source, /showCreate \? 'Close pairing' : 'Pair executor'/)
 
   assert.doesNotMatch(source, /\buseLocalBack\(/)
   assert.doesNotMatch(source, /\busePhoneLayout\(/)

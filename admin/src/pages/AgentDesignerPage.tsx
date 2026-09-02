@@ -12,10 +12,8 @@ import { AgentDesignerForm } from '../components/features/agents/designer/AgentD
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useDesignerAssistantPanel } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { revealDesignerToolCall } from '../components/features/agents/designer/reveal-control'
-import {
-  ResponsivePageHeader,
-  type PageHeaderAction,
-} from '../components/shared/ResponsivePageHeader'
+import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   buildRunLimits,
   readAgentRunLimits,
@@ -277,8 +275,13 @@ export const AgentDesignerContent = ({
           </button>
         </div>
       ) : (
-        <ResponsivePageHeader
+        // A Flow that returns to an explicit address the registry cannot
+        // know (the list it was opened from), so it owns its Back on every
+        // layout rather than deferring to the shared doorway.
+        <ScreenHeader
           actions={headerActions}
+          backLabel="Back"
+          flowOwnsBack
           onBack={handleBack}
           title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
         />

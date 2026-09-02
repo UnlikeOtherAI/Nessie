@@ -41,9 +41,14 @@ const emptySubscribe = () => () => undefined
 // consume to hand Back ownership to the deepest in-page stack.
 export const useLocalBackSnapshot = (): LocalBackSnapshot | null => {
   const registry = useLocalBackRegistry()
+  const getSnapshot = registry ? registry.getSnapshot : () => null
+  // A server render has no registrations yet — nothing has mounted to make
+  // one — so the server snapshot is the same read. Without it a static
+  // render of any screen that composes the doorway throws.
   return useSyncExternalStore(
     registry?.subscribe ?? emptySubscribe,
-    registry ? registry.getSnapshot : () => null,
+    getSnapshot,
+    getSnapshot,
   )
 }
 
