@@ -57,10 +57,12 @@ interface ChannelConversationSurfaceProps {
   agentsTabAvailable: boolean
   boundAgents: AgentRecord[]
   // The single agent a direct conversation is with, when there is one. Its
-  // To-dos and Routines sections hang off it.
+  // To-dos and Triggers sections hang off it.
   conversationAgent: AgentRecord | null
   callEligible: boolean
   callStarting: boolean
+  voiceCallActive: boolean
+  voiceCallSupported: boolean
   channelLiveness: ReturnType<typeof useAgentLivenessHint>
   channelUsers: UserRecord[]
   chatDrop: ReturnType<typeof useFileDrop>
@@ -97,7 +99,7 @@ interface ChannelConversationSurfaceProps {
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
-  routinesTabAvailable: boolean
+  triggersTabAvailable: boolean
   todosTabAvailable: boolean
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   joinPending: boolean
@@ -152,6 +154,8 @@ export const ChannelConversationSurface = ({
   boundAgents,
   callEligible,
   callStarting,
+  voiceCallActive,
+  voiceCallSupported,
   channelLiveness,
   channelUsers,
   chatDrop,
@@ -168,7 +172,7 @@ export const ChannelConversationSurface = ({
   isConversationSurface,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
-  routinesTabAvailable,
+  triggersTabAvailable,
   todosTabAvailable,
   personalAssistantPresences,
   joinPending,
@@ -244,6 +248,8 @@ export const ChannelConversationSurface = ({
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}
         callStarting={callStarting}
+        voiceCallActive={voiceCallActive}
+        voiceCallSupported={voiceCallSupported}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
@@ -290,7 +296,7 @@ export const ChannelConversationSurface = ({
         showAgentTab={agentTabAvailable}
         showAgentsTab={agentsTabAvailable}
         showAutomationsTab={!isConversationSurface}
-        showRoutinesTab={routinesTabAvailable}
+        showTriggersTab={triggersTabAvailable}
         showTodosTab={todosTabAvailable}
         visibleActiveTab={visibleActiveTab}
         onSelectTab={setActiveTab}

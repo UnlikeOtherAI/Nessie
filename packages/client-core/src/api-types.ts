@@ -406,6 +406,7 @@ export type ToolDescriptor = {
 }
 
 export type {
+  AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   WorkflowInstallationRecord,

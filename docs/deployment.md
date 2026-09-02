@@ -317,6 +317,37 @@ data live in named Docker volumes outside the synced tree.
 host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
 migrations, rolls the containers). Postgres and its volume are untouched.
 
+### Images are built on GitHub, never on the production host
+
+The Deploy workflow's `build` job builds `app`, `admin`, and `web` on GitHub
+runners and pushes them to GHCR tagged with the commit SHA
+(`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>`, cached per image with
+`type=gha`). The `deploy` job then logs the host into GHCR with the run's own
+short-lived `GITHUB_TOKEN`, and `redeploy.sh` **pulls** those images.
+
+This exists because building on the box was an outage. Each deploy ran a full
+monorepo install+compile for three images on a host shared with ~40 other
+apps: measured at load average 340 on 8 cores with 0% idle, during which
+`api.nessie.works` and `app.nessie.works` timed out through Caddy — the
+containers were healthy, the host simply had nothing left to answer with. SSH
+to the box hung too. Pulling a finished image costs the host a network
+transfer and nothing else.
+
+`redeploy.sh` decides by `NESSIE_IMAGE_TAG`: set (always, from the workflow) →
+pull; unset → build locally, which is the manual/first-deploy fallback only.
+The compose services keep their `build:` blocks for that path, with
+`image: ${NESSIE_APP_IMAGE:-nessie-app:latest}` (and `_ADMIN_`/`_WEB_`) so the
+same file serves both. Because every deploy pulls a distinct SHA tag and
+tagged images are never *dangling*, the post-deploy reclaim explicitly removes
+Nessie release images other than the one just deployed — otherwise the shared
+disk grows by a full image per deploy.
+
+To deploy a specific build by hand:
+
+```sh
+cd /srv/nessie && NESSIE_IMAGE_TAG=<sha> bash infrastructure/compose/redeploy.sh
+```
+
 ### Zero-downtime rollout (health-gated blue-green swap)
 
 `redeploy.sh` does **not** stop-then-start the public-facing services. For
@@ -469,9 +500,13 @@ filled the disk to 100% on 2026-06-10 and crashed `nessie-postgres`
 rejecting connections — which also blocks `prisma migrate deploy`). Mitigations
 now in place:
 
-- `redeploy.sh` waits for Postgres to accept connections (`pg_isready`) before
-  migrating, and after recreate prunes build cache older than 48h
-  (`docker builder prune -f --filter until=48h`) plus dangling images.
+- Routine deploys no longer build on this host at all (see "Images are built on
+  GitHub"), which removed both the build cache growth and the CPU/IO
+  saturation. `redeploy.sh` still waits for Postgres to accept connections
+  (`pg_isready`) before migrating, bounds the build cache used by the
+  local-build fallback (`docker builder prune -f --keep-storage 40GB`, never
+  `-af` — a full wipe forces that fallback to rebuild from scratch), prunes
+  dangling images, and removes superseded SHA-tagged Nessie release images.
 - If the disk fills anyway, the safe manual reclaim (does **not** touch named
   volumes / running images): `docker builder prune -af` (build cache, 0 active)
   then `docker image prune -f` (dangling only). Avoid `image prune -a` and

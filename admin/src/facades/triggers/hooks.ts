@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
 } from '../../lib/api-client'
@@ -24,6 +25,35 @@ export const useAgentTriggers = (agentId?: string, enabled = true) => {
     queryKey: agentKeys.triggers(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/triggers`),
     enabled: enabled && Boolean(agentId),
+  })
+}
+
+/**
+ * How often the live read repeats. Idle triggers change on a human timescale,
+ * so the list is quiet until something is actually executing; once it is, the
+ * spinner has to stop by itself when the run ends, which is what the fast
+ * cadence buys. There is no run-status realtime event to subscribe to today —
+ * `runScopes` publishes on cancel only — so this polls, deliberately and only
+ * while the tab is open and something is running.
+ */
+export const TRIGGER_ACTIVITY_IDLE_POLL_MS = 30_000
+export const TRIGGER_ACTIVITY_RUNNING_POLL_MS = 3_000
+
+const hasRunningTriggers = (activity: AgentTriggerActivityRecord[]): boolean =>
+  activity.some((entry) => entry.running.length > 0)
+
+export const useAgentTriggerActivity = (agentId?: string, enabled = true) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentTriggerActivityRecord[]>({
+    placeholderData: keepPreviousData,
+    queryKey: agentKeys.triggerActivity(agentId),
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/triggers/activity`),
+    enabled: enabled && Boolean(agentId),
+    refetchInterval: (query) =>
+      hasRunningTriggers(query.state.data ?? [])
+        ? TRIGGER_ACTIVITY_RUNNING_POLL_MS
+        : TRIGGER_ACTIVITY_IDLE_POLL_MS,
   })
 }
 

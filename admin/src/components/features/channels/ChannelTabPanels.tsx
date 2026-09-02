@@ -19,7 +19,7 @@ interface ChannelTabPanelsProps {
   activeChannel: ChannelRecord | null
   boundAgents: AgentRecord[]
   // The single agent this conversation is with, when there is one. Its Agent,
-  // To-dos and Routines sections all hang off it, and its presence is what
+  // To-dos and Triggers sections all hang off it, and its presence is what
   // replaces the Agents roster with the Agent section.
   conversationAgent: AgentRecord | null
   personalAssistantChannel: ChannelRecord | null
@@ -32,7 +32,7 @@ interface ChannelTabPanelsProps {
 /**
  * Routes the conversation's non-message sections to their panel. Each section
  * is its own file: they answer different questions, and the agent-shaped ones
- * (Agent, To-dos, Routines) render the very components `/agents/:id` renders
+ * (Agent, To-dos, Triggers) render the very components `/agents/:id` renders
  * rather than a channel-flavoured copy.
  */
 export const ChannelTabPanels = ({
@@ -79,9 +79,9 @@ export const ChannelTabPanels = ({
       </div>
     ) : null}
 
-    {visibleActiveTab === 'routines' && conversationAgent ? (
-      <div className="p-5" data-testid="channel-routines-panel">
-        <AgentTriggerPanel agent={conversationAgent} title="Routines" />
+    {visibleActiveTab === 'triggers' && conversationAgent ? (
+      <div className="p-5" data-testid="channel-triggers-panel">
+        <AgentTriggerPanel agent={conversationAgent} />
       </div>
     ) : null}
 

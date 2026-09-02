@@ -51,6 +51,11 @@ export const agentKeys = {
   // An absent id keeps its slot rather than collapsing to a placeholder, so a
   // disabled render and an enabled one agree on cache identity.
   triggers: (agentId?: string) => ['agents', agentId, 'triggers'] as const,
+  // Live run state. Deliberately a child of the trigger-list key: it holds its
+  // own fast refetch cadence while something is running, and every existing
+  // invalidation of the list already reaches it, so firing or pausing a
+  // trigger refreshes what the row says it is doing.
+  triggerActivity: (agentId?: string) => ['agents', agentId, 'triggers', 'activity'] as const,
 }
 
 // To-dos are an agent sub-resource. Keeping them beneath the agents root means
@@ -358,6 +363,11 @@ export const organizationKeys = {
 
 export const personalAssistantKeys = {
   all: ['personal-assistant'] as const,
+}
+
+export const voiceKeys = {
+  all: ['voice'] as const,
+  capability: ['voice', 'capability'] as const,
 }
 
 export const platformPushKeys = {

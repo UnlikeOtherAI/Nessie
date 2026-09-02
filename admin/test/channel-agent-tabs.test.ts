@@ -6,7 +6,7 @@ import {
   CHANNEL_TABS,
   isAgentsTabAvailable,
   isConversationAgentTabAvailable,
-  isConversationRoutinesTabAvailable,
+  isConversationTriggersTabAvailable,
   isConversationTodosTabAvailable,
   resolveConversationAgent,
 } from '../src/components/features/channels/channel-helpers'
@@ -31,7 +31,7 @@ const conversation = {
 }
 
 test('the sections a conversation can show include the agent-shaped ones', () => {
-  for (const tab of ['agent', 'to-dos', 'routines'] as const) {
+  for (const tab of ['agent', 'to-dos', 'triggers'] as const) {
     assert.ok(CHANNEL_TABS.includes(tab), `${tab} must be a validated ?tab= value`)
   }
 })
@@ -45,7 +45,7 @@ test('a channel has no conversation agent, so it never shows an agent section', 
   assert.equal(conversationAgent, null)
   assert.equal(isConversationAgentTabAvailable(conversationAgent), false)
   assert.equal(isConversationTodosTabAvailable(conversationAgent), false)
-  assert.equal(isConversationRoutinesTabAvailable({ conversationAgent, isOwner: true }), false)
+  assert.equal(isConversationTriggersTabAvailable({ conversationAgent, isOwner: true }), false)
   // …and it keeps its roster.
   assert.equal(
     isAgentsTabAvailable({
@@ -86,13 +86,13 @@ test('to-dos follow the agent’s own switch, not the fact that it is an agent',
   assert.equal(isConversationTodosTabAvailable(conversationAgent), false)
 })
 
-test('routines are owner-only, because the trigger read is', () => {
+test('triggers are owner-only, because the trigger read is', () => {
   const conversationAgent = resolveConversationAgent({
     ...conversation,
     boundAgents: [agent()],
   })
-  assert.equal(isConversationRoutinesTabAvailable({ conversationAgent, isOwner: true }), true)
-  assert.equal(isConversationRoutinesTabAvailable({ conversationAgent, isOwner: false }), false)
+  assert.equal(isConversationTriggersTabAvailable({ conversationAgent, isOwner: true }), true)
+  assert.equal(isConversationTriggersTabAvailable({ conversationAgent, isOwner: false }), false)
 })
 
 test('a group conversation carrying two agents has no single subject', () => {

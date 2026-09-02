@@ -68,6 +68,7 @@ import type { RouteDeps } from './routes/types.js'
 import { registerUploadRoutes } from './routes/uploads.js'
 import { registerUserRoutes } from './routes/users.js'
 import { registerWebPushRoutes } from './routes/web-push.js'
+import { registerVoiceRoutes } from './routes/voice.js'
 import { registerWellKnownOAuthClientRoutes } from './routes/well-known-oauth-client.js'
 import { registerWorkflowRoutes } from './routes/workflows.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
@@ -160,4 +161,5 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerTaskRoutes(app, deps)
   registerBillingRoutes(app, deps)
   registerLedgerRoutes(app, deps)
+  registerVoiceRoutes(app, deps)
 }

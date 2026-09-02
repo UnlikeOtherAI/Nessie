@@ -18,21 +18,44 @@ if ! flock -w 1800 9; then
   exit 1
 fi
 
+# Image source. With NESSIE_IMAGE_TAG set (the Deploy workflow always sets it)
+# the images were built on GitHub runners and are pulled here; the host
+# compiles nothing. Unset, the script falls back to building locally, which is
+# the manual/first-deploy path only — building on this shared box drove it to
+# load ~340 with 0% idle and made the live site time out for the whole build.
+NESSIE_IMAGE_TAG="${NESSIE_IMAGE_TAG:-}"
+NESSIE_IMAGE_REPO="${NESSIE_IMAGE_REPO:-ghcr.io/unlikeotherai/nessie}"
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  export NESSIE_APP_IMAGE="${NESSIE_IMAGE_REPO}-app:${NESSIE_IMAGE_TAG}"
+  export NESSIE_ADMIN_IMAGE="${NESSIE_IMAGE_REPO}-admin:${NESSIE_IMAGE_TAG}"
+  export NESSIE_WEB_IMAGE="${NESSIE_IMAGE_REPO}-web:${NESSIE_IMAGE_TAG}"
+  echo "==> Using prebuilt images at tag ${NESSIE_IMAGE_TAG}"
+fi
+
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
-# Reclaim Docker build cache + dangling images BEFORE building. The shared host
-# disk filled to 100% repeatedly (frequent deploys accumulate build cache faster
-# than time-based eviction), crashing Postgres mid-deploy (PANIC: No space left
-# on device). Pruning all build cache (0 active, safe) + dangling images up front
-# guarantees the build has room. Image layer caching is separate and unaffected.
-echo "==> Reclaiming Docker build cache + dangling images (pre-build)"
-docker builder prune -af >/dev/null 2>&1 || true
+# Reclaim disk. In the pull path this only drops images the swap orphaned; the
+# build cache is bounded rather than wiped, because a full wipe (`prune -af`)
+# forces the local-build fallback to rebuild from scratch every time.
+echo "==> Reclaiming disk (bounded build cache + dangling images)"
+docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 df -h / | tail -1
 
-echo "==> Building images (api + admin + web)"
-$COMPOSE build api admin web
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  echo "==> Pulling prebuilt images"
+  $COMPOSE pull api admin web
+else
+  # Local-build fallback (manual deploys / first deploy). ONE AT A TIME:
+  # Compose builds in parallel by default and each image runs a full monorepo
+  # install+compile — measured at load average 340 on this 8-core box with 0%
+  # idle, which made the live site time out for everyone while it built.
+  echo "==> No image tag supplied — building locally (api, then admin, then web)"
+  $COMPOSE build api
+  $COMPOSE build admin
+  $COMPOSE build web
+fi
 
 # The migrate step runs with --no-deps, which bypasses the nessie-postgres
 # `depends_on: service_healthy` gate. A freshly (re)started Postgres can still be
@@ -214,13 +237,23 @@ for url in \
   fi
 done
 
-# Reclaim Docker build cache + dangling images. Each rebuild adds layers and
-# ~10GB of build cache; left unbounded it filled the shared host disk to 100%,
-# which crashed Postgres (PANIC: No space left on device, stuck in recovery).
-# Keep only cache used in the last 48h so incremental rebuilds stay fast.
-echo "==> Reclaiming Docker build cache + dangling images (post-deploy)"
-docker builder prune -af >/dev/null 2>&1 || true
+# Post-swap reclaim: the previous release's images are now unreferenced. Each
+# deploy pulls a fresh SHA-tagged image, so without this the disk grows by an
+# image per deploy on a box shared with ~40 other apps.
+echo "==> Reclaiming disk (post-deploy)"
+docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
+
+# SHA-tagged release images are NOT dangling, so `image prune` never reclaims
+# them and the disk would grow by one full image per deploy. Drop every Nessie
+# release image except the one just deployed; Docker refuses to remove an image
+# a container still uses, which is the safety net if a rollback is mid-flight.
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  docker images --format '{{.Repository}}:{{.Tag}}' \
+    | grep "^${NESSIE_IMAGE_REPO}-" \
+    | grep -v ":${NESSIE_IMAGE_TAG}$" \
+    | xargs -r docker rmi >/dev/null 2>&1 || true
+fi
 
 echo "==> Status"
 docker ps --filter name=nessie --format 'table {{.Names}}\t{{.Status}}'
