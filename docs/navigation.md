@@ -627,7 +627,15 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   starts while the tab is hidden commits at once (0 ms through the same
   path), and hiding the tab mid-slide finishes it, so a tab that comes back
   is already settled. `redirect()` (§4) already waits for the stack.
-- Pinned by `admin/test/navigation-interruption.test.ts`.
+- **Pull-to-refresh is the web's.** In the native shell a Root or Detail
+  page scroller that holds no message feed (`data-message-feed`) offers a
+  pull from its top; past the threshold it asks the shell for the one full
+  refresh it already has (`nessie:full-refresh`), the same on iOS and
+  Android. Nested screens, flows, stages, seeded layers, boards, editors
+  and feeds never offer it. The native WebView's own pull-to-refresh is
+  turned off with the mobile step (`navigation/pull-to-refresh.ts`).
+- Pinned by `admin/test/navigation-interruption.test.ts` and
+  `admin/test/pull-to-refresh.test.ts`.
 
 ## 13. Everything else — **planned**
 

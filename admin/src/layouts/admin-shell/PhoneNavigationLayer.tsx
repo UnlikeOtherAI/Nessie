@@ -1,6 +1,8 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
-import type { ContextType, CSSProperties, ReactNode } from 'react'
+import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
+import { usePullToRefresh } from '../../navigation/pull-to-refresh'
+import { matchSurface } from '../../navigation/surfaces'
 import type { PhoneNavigationDirection } from './phone-navigation'
 import type { PhoneNavigationStackEntry } from './phone-navigation-stack'
 
@@ -72,13 +74,33 @@ const seededLocationContext = (
   navigationType: NavigationType.Pop,
 })
 
-const NavigationScreen = ({ payload }: { payload: LayerPayload }) => {
-  if (payload.kind === 'stage') return <StageMount container={payload.container} />
-  const locationContext = payload.kind === 'seeded'
-    ? seededLocationContext(payload.pathname)
-    : payload.locationContext
+// A Root or Detail page scroller offers pull-to-refresh in the native
+// shell (docs/navigation.md §12); a nested screen, a flow, a stage and a
+// seeded layer never do.
+const offersRefresh = (pathname: string): boolean => {
+  const type = matchSurface(pathname)?.surface.type
+  return type === 'root' || type === 'detail'
+}
+
+const RoutedScreen = ({ payload, pathname }: { payload: ScreenPayload; pathname: string }) => {
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const indicatorRef = useRef<HTMLDivElement | null>(null)
+  usePullToRefresh({ enabled: offersRefresh(pathname), indicatorRef, scrollerRef })
   return (
-    <UNSAFE_LocationContext.Provider value={locationContext}>
+    <UNSAFE_LocationContext.Provider value={payload.locationContext}>
+      <div aria-hidden className="phone-navigation-refresh" data-phone-navigation-refresh ref={indicatorRef} />
+      <div className="phone-navigation-page" data-phone-navigation-page ref={scrollerRef}>
+        {payload.screen}
+      </div>
+    </UNSAFE_LocationContext.Provider>
+  )
+}
+
+const NavigationScreen = ({ payload, pathname }: { payload: LayerPayload; pathname: string }) => {
+  if (payload.kind === 'stage') return <StageMount container={payload.container} />
+  if (payload.kind === 'screen') return <RoutedScreen pathname={pathname} payload={payload} />
+  return (
+    <UNSAFE_LocationContext.Provider value={seededLocationContext(payload.pathname)}>
       <div className="phone-navigation-page" data-phone-navigation-page>
         {payload.screen}
       </div>
@@ -157,7 +179,7 @@ export const PhoneNavigationLayer = ({
       inert={inertLayer || undefined}
       style={style}
     >
-      <NavigationScreen payload={entry.payload} />
+      <NavigationScreen pathname={entry.pathname} payload={entry.payload} />
       <div
         aria-hidden
         className="phone-navigation-dim"

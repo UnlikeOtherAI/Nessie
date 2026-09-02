@@ -526,6 +526,36 @@ a {
   overscroll-behavior-y: contain;
 }
 
+/* The pull-to-refresh indicator a Root or Detail page scroller shows in the
+   native shell (docs/navigation.md §12). Driven inline by the gesture; at
+   rest it is invisible and out of the way. */
+.phone-navigation-refresh {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  border: 3px solid var(--sep);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  background: var(--panel);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+}
+
+.phone-navigation-refresh[data-armed='true'] {
+  animation: phone-refresh-spin 800ms linear infinite;
+}
+
+@keyframes phone-refresh-spin {
+  to {
+    transform: translate3d(0, 90px, 0) rotate(360deg);
+  }
+}
+
 /* The scrim over a revealed lower layer. Each screen carries one; it shows
    only while another screen rests over this one, and runStackTransition (or
    the finger, during a swipe) lifts it in step with the slide. */
