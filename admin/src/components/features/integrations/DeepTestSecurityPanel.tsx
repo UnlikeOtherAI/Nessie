@@ -5,7 +5,12 @@ import type {
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import { usePrepareDeepTestReview } from '../../../facades/integrations/hooks'
+import { Notice } from '../../primitives/Notice'
 import { Pill, type PillTone } from '../../primitives/Pill'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
+import { FormField } from '../../shared/FormField'
+import { Select } from '../../shared/FormControls'
+import { KeyValueList } from '../../shared/KeyValueList'
 import { appsHref } from './AgentConnectorSection'
 
 const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
@@ -16,13 +21,6 @@ const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
 ]
 
 const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
-
-const PrivacyRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded border border-[var(--sep)] px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">{label}</div>
-    <div className="mt-1 text-sm leading-5 text-[var(--tx)]">{value}</div>
-  </div>
-)
 
 export const DeepTestSecurityPanel = ({
   product,
@@ -52,10 +50,10 @@ export const DeepTestSecurityPanel = ({
   }
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">DeepTest security review</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">DeepTest security review</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             <Pill
               className="font-semibold"
@@ -89,60 +87,45 @@ export const DeepTestSecurityPanel = ({
       </div>
 
       <div className="mt-4 grid gap-3">
-        <div>
-          <div className="mb-2 text-sm font-semibold text-[var(--tx2)]">Depth</div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            {depthOptions.map((option) => (
-              <button
-                className={[
-                  'h-9 rounded border px-2 text-xs font-semibold',
-                  depth === option.value
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--thinking)]'
-                    : 'border-[var(--sep)] text-[var(--tx2)] hover:bg-[var(--overlay)]',
-                ].join(' ')}
-                key={option.value}
-                onClick={() => setDepth(option.value)}
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ChoiceGroup
+          label="Depth"
+          onChange={setDepth}
+          options={depthOptions}
+          value={depth}
+        />
 
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Runner</span>
-            <select
-              className="admin-input"
+          <FormField label="Runner">
+            <Select
               onChange={(event) => setRunner(event.target.value as typeof runner)}
               value={runner}
             >
               <option value="local_mcp">Local MCP runner</option>
               <option value="private_runner">Private runner</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Report handoff</span>
-            <select
-              className="admin-input"
+            </Select>
+          </FormField>
+          <FormField label="Report handoff">
+            <Select
               onChange={(event) => setArtifactPolicy(event.target.value as typeof artifactPolicy)}
               value={artifactPolicy}
             >
               <option value="share_safe_report">Share-safe report only</option>
               <option value="external_link_only">External link only</option>
-            </select>
-          </label>
+            </Select>
+          </FormField>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-3">
-          <PrivacyRow label="Target material" value="Configured inside DeepTest, not Nessie." />
-          <PrivacyRow label="Agent tool" value="deeptest_review through approved MCP only." />
-          <PrivacyRow label="Imports" value="Share-safe output or external link only." />
-        </div>
+        <KeyValueList
+          items={[
+            { label: 'Target material', value: 'Configured inside DeepTest, not Nessie.' },
+            { label: 'Agent tool', value: 'deeptest_review through approved MCP only.' },
+            { label: 'Imports', value: 'Share-safe output or external link only.' },
+          ]}
+          layout="grid"
+        />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sep)] pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--sep)] pt-3">
         <div className="flex flex-wrap gap-2">
           {product.launchUrl ? (
             <a
@@ -170,11 +153,11 @@ export const DeepTestSecurityPanel = ({
         </button>
       </div>
       {prepareReview.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
+        <Notice className="mt-2" role="alert" size="sm" tone="danger">
           {prepareReview.error instanceof Error
             ? prepareReview.error.message
             : 'Could not prepare DeepTest review.'}
-        </p>
+        </Notice>
       ) : null}
     </section>
   )

@@ -1,4 +1,5 @@
 import type { AppTrustLevel } from '@nessie/schemas'
+import type { PillTone } from '../../primitives/Pill'
 
 /**
  * How much the instance vouches for an app, said in one chip.
@@ -20,7 +21,8 @@ export type AppTrustBadgeModel = {
   label: string
   /** What the chip means, as a `title`, because the label alone is a word. */
   description: string
-  toneClass: string
+  /** The shared `Pill`'s tone — the one colour decision, asked for by name. */
+  tone: PillTone
 }
 
 const TRUST_BADGES: Record<AppTrustLevel, AppTrustBadgeModel> = {
@@ -28,35 +30,31 @@ const TRUST_BADGES: Record<AppTrustLevel, AppTrustBadgeModel> = {
     iconId: 'shield',
     label: 'Nessie',
     description: 'Built and reviewed by Nessie.',
-    // `--thinking` rather than `--accent-strong`: the strong accent is a dark
-    // purple that disappears into the panel on every dark theme, while
-    // `--thinking` is the accent-family foreground each theme already tuned to
-    // sit on `--accent-soft` (see Pill's accent tone).
-    toneClass: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
+    tone: 'accent',
   },
   verified: {
     iconId: 'verified',
     label: 'Verified',
     description: 'Reviewed by Nessie and confirmed with its publisher.',
-    toneClass: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
+    tone: 'success',
   },
   community: {
     iconId: 'community',
     label: 'Community',
     description: 'Published by a community member and not reviewed by Nessie.',
-    toneClass: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+    tone: 'warning',
   },
   unknown: {
     iconId: 'unknown',
     label: 'Unknown',
     description: 'Added by address, so nothing is known about who publishes it.',
-    toneClass: 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
+    tone: 'muted',
   },
   blocked: {
     iconId: 'blocked',
     label: 'Blocked',
     description: 'Turned off for this organisation.',
-    toneClass: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+    tone: 'danger',
   },
 }
 

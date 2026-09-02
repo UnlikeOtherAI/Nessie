@@ -4,6 +4,9 @@ import {
   type DeepWaterResearchLaunchResponse,
   useLaunchDeepWaterResearch,
 } from '../../../facades/integrations/hooks'
+import { Notice } from '../../primitives/Notice'
+import { FormField } from '../../shared/FormField'
+import { Textarea } from '../../shared/FormControls'
 import {
   deepWaterResearchModes,
   deepWaterResearchValuesFromPreset,
@@ -84,16 +87,15 @@ export const DeepWaterResearchLauncher = ({
 
   return (
     <div className="grid gap-4">
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">What do you want to research?</span>
-        <textarea
-          className="admin-input min-h-28"
+      <FormField label="What do you want to research?">
+        <Textarea
+          className="min-h-28"
           maxLength={5000}
           onChange={(event) => updateValue('query', event.target.value)}
           placeholder="Ask the question you want answered, with any constraints that matter."
           value={values.query}
         />
-      </label>
+      </FormField>
 
       <DeepWaterResearchModeSelector mode={mode} onSelect={selectMode} />
 
@@ -101,18 +103,17 @@ export const DeepWaterResearchLauncher = ({
         <DeepWaterResearchCustomControls onChange={updateValue} values={values} />
       ) : null}
 
-      {/* Unconverted: bare `rounded` is 4px, not --radius-sm's 6px, and the border is a /30 tint of --warning-text. */}
       {readinessMessage ? (
-        <p className="rounded border border-[var(--warning-text)]/30 bg-[var(--warning-soft)] px-3 py-2 text-xs leading-5 text-[var(--warning-text)]">
+        <Notice size="sm" tone="warning">
           {readinessMessage}
-        </p>
+        </Notice>
       ) : null}
       {launch.isError ? (
-        <p className="text-xs text-[var(--danger-text)]" role="alert">
+        <p className="text-xs text-[color:var(--danger-text)]" role="alert">
           {launch.error instanceof Error ? launch.error.message : 'Could not start research.'}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[var(--sep)] pt-3">
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[color:var(--sep)] pt-3">
         <button
           className="admin-button admin-button-primary"
           disabled={!canSubmit}
