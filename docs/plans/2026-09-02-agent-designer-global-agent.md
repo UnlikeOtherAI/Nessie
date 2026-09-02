@@ -775,8 +775,11 @@ model resolution is decided in D1/D9 — blueprint pin, else org default,
   `buildDesignerSystemPrompt` (4th arg dropped), so the page-scoped control
   rule is client-side only.~~ Fixed: `streamDesignerChat` now forwards
   `input.pageContext` (`api/src/services/designer.ts`).
-- `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
-  tool (stale rename of `send_message`; harmless today, dead entry).
+- ~~`PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
+  tool (stale rename of `send_message`; harmless today, dead entry).~~ **Fixed**:
+  the dead entry is removed and a `worker/test/tool-policy.test.ts` case now
+  asserts every id in the set resolves against `BUILTIN_TOOL_IDS`, so a future
+  rename fails loudly instead of silently.
 - ~~`CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
   before `createAgentRecord`.~~ **Fixed 2026-09-02:** the field is removed from
   `CreateAgentBodySchema` (and its never-emitted twin on `AgentRecordSchema`)
