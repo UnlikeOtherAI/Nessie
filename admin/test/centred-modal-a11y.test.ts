@@ -44,9 +44,6 @@ const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {
   'src/components/features/knowledge/FileVersionUploadDialog.tsx':
     'Documented in file: a rounded-2xl / --main / p-5 card with a drop shadow and a text "Close" '
     + 'control, none of which the shell\'s .create-channel-panel chrome expresses.',
-  'src/components/features/triggers/TriggerEditorDialog.tsx':
-    'Documented in file: its subtitle is mt-1 text-sm where the shell renders a description at '
-    + 'text-xs, and its 680px panel is not one of the three geometries the shell ships.',
 }
 
 const walk = (dir: string): string[] =>
@@ -198,4 +195,33 @@ test('no exception has stopped needing to be one', () => {
       `${path}: an exception carries a reason naming what the shell cannot express.`,
     )
   }
+})
+
+// `useOverlay` (docs/navigation.md §7) is the one place that composes
+// `useModalA11y` and `useOverlayDismiss` — every other overlay goes through
+// it (or the shell, which goes through it too) so the registry, the layer and
+// the motion cannot be forgotten by a call site that reaches for the raw
+// primitives instead. This pin is what makes that "nothing else may" durable:
+// without it, a new bespoke overlay can quietly reintroduce direct
+// composition and nothing here would notice.
+test('useModalA11y and useOverlayDismiss are composed only by useOverlay', () => {
+  const offenders: string[] = []
+  for (const path of walk(SRC).filter((file) => file.endsWith('.ts') || file.endsWith('.tsx'))) {
+    if (path === OVERLAY_HOOK) continue
+    const source = stripComments(readFileSync(path, 'utf8'))
+    const imports = importTargets(source, path)
+    const importsA11yHook = (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
+    const importsDismissHook = (imports.get(resolve(SRC, 'components/shared/useOverlayDismiss.ts')) ?? [])
+      .includes('useOverlayDismiss')
+    if (importsA11yHook || importsDismissHook) {
+      offenders.push(`src/${relative(SRC, path)}`)
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.join(', ')}: imports useModalA11y/useOverlayDismiss directly. Compose useOverlay `
+    + '(components/overlays/useOverlay.ts) instead — it is the only file allowed to reach for either '
+    + 'primitive (docs/navigation.md §7).',
+  )
 })

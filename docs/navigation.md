@@ -338,8 +338,35 @@ scrim dismiss, the layer, and the open/close motion on the kind's token with
 reduced motion at 0 ms through the same path. Dismissal is never gated on
 the motion: state closes at once and the leaving element plays out inert
 (`mounted` stays true while `closing`). `useModalA11y` and
-`useOverlayDismiss` are its internals; nothing may compose them on its own
-(the fourteen files that still do adopt a primitive in this step).
+`useOverlayDismiss` are its internals, and `admin/test/centred-modal-a11y.test.ts`
+pins that nothing outside `useOverlay.ts` imports either one directly any
+more. The fourteen bespoke centred dialogs from before this step (step 8)
+split two ways, each pinned by `admin/test/dialog-adopters.test.ts`:
+
+- **Onto `Dialog`/`ConfirmDialog`** — `CircleImageCropper` and
+  `ExecutorRunLauncherDialog` fit an existing panel size outright;
+  `ChannelSettingsDialog`'s hand-rolled archive confirm became the sanctioned
+  nested `ConfirmDialog(blocking)`; `DocumentStreamLeaveConfirm` became
+  `Dialog blocking` rather than `ConfirmDialog` because its three actions
+  (Cancel / Stop and discard / the mode's own "keep writing" verb) don't fit
+  `ConfirmDialog`'s two-button cancel/confirm shape.
+- **Kept a carve-out on `useOverlay` alone**, each with its reason recorded
+  where it stands — `MemberManagementPopup` (a fixed-header, fixed-search,
+  independently-scrolling list none of the four geometries express),
+  `SessionDebugDialog` (phone-tuned chrome: safe-area insets, a 44px close
+  target, a dvh scrolling flex column), `AttachmentViewer` (locks page
+  scroll), `AgentAvatarQuickEdit` (an avatar-centred card with no title-bar
+  header), `DocumentStreamDialog` (branches its scrim on phone layout),
+  `ThoughtProcessDialog` (a fixed-header / scrolling-log / fixed-footer
+  split), `UoaBillingCancellationDialog` and
+  `DeepWaterResearchLauncherDialog` (each its own `admin-card` panel family,
+  the second with a sticky in-scroll header), and `TriggerEditorDialog` (a
+  680px panel with a `text-sm` subtitle, neither of which is one of the
+  shell's four geometries). `ChannelConversationComposePage` is the
+  exception among exceptions: a Flow, not a modal — on `single` it is
+  already a full screen in the phone-navigation stack, so it registers
+  `useOverlay` only on `split`, where it visually is a centred dialog over
+  the channel list.
 
 **`Dialog`** (`components/shared/Dialog.tsx`) is the Modal primitive on this
 hook, unchanged in API plus `blocking` for the sanctioned nesting;

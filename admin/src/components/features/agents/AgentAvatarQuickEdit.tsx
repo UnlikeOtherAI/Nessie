@@ -2,9 +2,9 @@ import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useOverlay } from '../../overlays/useOverlay'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { CircleImageCropper } from '../../shared/CircleImageCropper'
-import { useModalA11y } from '../../shared/useModalA11y'
 import {
   type GeneratedAgentAvatar,
   useAgentAvatarChanges,
@@ -63,7 +63,6 @@ export const AgentAvatarQuickEdit = ({
 }: AgentAvatarQuickEditProps) => {
   const { token } = useAuthSession()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const dialogRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [generated, setGenerated] = useState<GeneratedAgentAvatar | null>(null)
@@ -85,7 +84,13 @@ export const AgentAvatarQuickEdit = ({
     setPrompt('')
     setFileError(null)
   }, [])
-  useModalA11y(dialogRef, close, open)
+  const overlay = useOverlay({
+    id: `agent-avatar-quick-edit-${agent.id}`,
+    kind: 'modal',
+    label: `Close ${agent.name} avatar`,
+    onClose: close,
+    open,
+  })
 
   const selectFile = (file?: File) => {
     setFileError(null)
@@ -144,19 +149,22 @@ export const AgentAvatarQuickEdit = ({
         ) : null}
       </div>
 
-      {open ? (
+      {overlay.mounted ? (
+        // Not the shared `Dialog`: an avatar-centred card with a floating
+        // close control and no visible title row, a different chrome from the
+        // shell's title-bar header. `useOverlay` still gives it the Back
+        // registration, focus trap, drag-safe scrim and layer every other
+        // overlay gets (docs/navigation.md §7).
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) close()
-          }}
-          role="presentation"
+          {...overlay.scrimProps}
+          className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
+          style={overlay.layerStyle}
         >
           <div
             aria-label={`${agent.name} avatar`}
             aria-modal="true"
             className="relative w-full max-w-sm rounded-2xl border border-[var(--sep)] bg-[var(--panel)] p-6 shadow-2xl"
-            ref={dialogRef}
+            ref={overlay.panelRef}
             role="dialog"
             tabIndex={-1}
           >
