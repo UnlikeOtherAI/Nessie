@@ -71,6 +71,45 @@ Anthropic models through Ledger. No adapter, no exception.
 
 ## 2. Shape of the feature
 
+### 2.0 Reference implementation: replicate OpenClaw, don't reinvent
+
+**Decision (Ondrej, 2026-09-02): replicate what OpenClaw does.** It runs
+these exact flows for millions of users; its auth layer has already absorbed
+the field failures (rotation races, burned refresh tokens, consent-screen
+quirks, `slow_down` polling, Cloudflare challenges) that a fresh design would
+rediscover one incident at a time. The sibling checkout at
+`/Volumes/External/Projects/OpenClaw` (keep it pulled to origin/main) is the
+reference; where this plan and OpenClaw disagree on a *mechanism*, OpenClaw
+wins unless a Nessie invariant (tenancy, disclosure, encrypted-at-rest
+storage) forces the difference. Concretely:
+
+- **Flows, endpoints, client ids, and vendor-specific parameters are copied
+  from OpenClaw's extensions, not re-derived** — e.g. OpenAI's
+  `id_token_add_organizations=true` + `codex_cli_simplified_flow=true` +
+  `originator` params, xAI's OIDC discovery + trusted-host check +
+  `slow_down` handling, the per-provider token-failure reason tables.
+  Reference files: `extensions/openai/openai-chatgpt-oauth-*.runtime.ts`,
+  `extensions/openai/openai-chatgpt-device-code.ts`,
+  `extensions/xai/xai-oauth.ts`, and the shared primitives in
+  `src/plugin-sdk/provider-oauth-runtime.ts`.
+- **Refresh semantics are copied wholesale** from
+  `src/agents/auth-profiles/oauth-manager.ts` + `oauth.ts`: single refresh
+  owner, re-read-inside-the-lock adoption, the lock-timeout-vs-stale
+  invariant, the `refresh_token_reused` recovery ladder, the 5-minute
+  proactive margin, no transport-failure retry of refresh grants (§2.5).
+- **What deliberately differs:** storage (token values in the deployment's
+  Infisical vault with metadata-only Postgres rows, instead of per-agent
+  SQLite; the server is the one refresh owner), tenancy (rows scoped
+  `(organizationId, userId)`), and surface (the admin settings page instead
+  of a CLI). Behaviour at the provider boundary stays byte-alike.
+- **License check before porting code verbatim:** confirm OpenClaw's license
+  permits it at implementation time; otherwise reimplement from its observed
+  behaviour, which this plan and the discovery report already capture.
+- Their roster also proves device-code adapters for GitHub Copilot and
+  MiniMax and PKCE-loopback for OpenRouter — out of scope now, but the
+  framework mirrors OpenClaw's shape precisely so any of them is one adapter
+  away later.
+
 ### 2.1 One framework, pluggable provider adapters
 
 New package **`@nessie/model-subscriptions`** (mirroring how
@@ -134,20 +173,66 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   discipline), `provider` (enum), `status`
   (`active | needs_reauthorization | disconnected | error`),
   `providerAccountId`, `accountLabel`, `keyVersion`, timestamps. Unique
-  `(organizationId, userId, provider)` — one link per provider per member.
-- `ModelSubscriptionCredential`: `subscriptionId @unique`,
-  `accessTokenCiphertext`, `refreshTokenCiphertext?`, `expiresAt?`,
-  `keyVersion` — sealed with the shared `secret-crypto` primitives.
-  For API-key adapters the key lives in `accessTokenCiphertext` and never
-  expires; credential material is NEVER part of any response schema.
+  `(organizationId, userId, provider, providerAccountId)` — OpenClaw keys
+  profiles as `provider:profileName` and supports several accounts per
+  provider (work + personal); we replicate that, deriving the account
+  identity the way they do (id_token email, else a stable subject claim).
+  The dropdown shows the account label only when a person holds more than
+  one link for a provider.
+- **Token values live in the Nessie vault** — the deployment's own Infisical
+  at `vault.unlikeotherai.com` (`docs/secret-management-spec.md`,
+  `api/src/services/infisical-vault.ts`) — **never in PostgreSQL.** The
+  secret-management spec is explicit that new secret-capture flows must not
+  add values to Nessie's Postgres database; the encrypted comms/MCP token
+  tables are its named legacy-migration concern, so this feature does not
+  extend that pattern. The bundle (access token, refresh token, expiry,
+  account id — one self-describing JSON value, so the vault alone is
+  authoritative) is written under the personal scope partition
+  `/nessie/<organizationId>/personal/<userId>` with a server-minted opaque
+  name.
+- `ModelSubscriptionCredential` is therefore **metadata only**:
+  `subscriptionId @unique`, `vaultReference @unique`, advisory `expiresAt`
+  (cheap "refresh soon" queries; the vault bundle is the truth), timestamps.
+  No ciphertext columns. It is a purpose-specific pointer like
+  `McpServerInstance.credentialRef`, deliberately **not** a
+  `Secret`/`SecretGrant` row — those are the user-visible secret-management
+  surface with grant semantics, and a subscription credential is
+  system-managed: it must never appear in the secrets UI, take `use`/`reveal`
+  grants, or be mentionable to a model. Values never enter model context,
+  responses, logs, or audit metadata — the token goes from the coordinator
+  straight into the provider `Authorization` header, exactly like today's
+  provider API keys.
+- **Why vault-referenced OAuth is safe here** (where OpenClaw refuses it):
+  OpenClaw has no central lock, so splitting mutable OAuth state across
+  stores would create two refresh owners. Nessie's single refresh owner is
+  the server behind the Postgres row lock (§2.5); the vault `replace` and
+  the advisory metadata update happen inside that locked section, so the
+  vault is a value store behind one serialized writer, not a second
+  authority.
+- **Worker access is a deliberate, narrow amendment to the vault deployment
+  contract.** Today only the API container holds the Infisical
+  machine-identity token, and the worker/executor/sandboxes deliberately do
+  not. Inference runs in the worker, so the worker gets its **own dedicated
+  machine identity**, scoped to read+replace on the model-subscription paths
+  only (its own Docker secret in
+  `infrastructure/compose/docker-compose.prod.yml`), used solely by the
+  subscription credential coordinator. The executor and agent sandboxes
+  still receive nothing. `docs/secret-management-spec.md` and
+  `docs/deployment.md` are updated in the same change that introduces it.
+  In local dev the worker runs embedded in the API process, so a compose'd
+  local Infisical (or the API's identity) covers it; a deployment without
+  the vault configured cannot link subscriptions — the settings surface says
+  so plainly and linking fails loudly, never a silent Postgres fallback.
 - OAuth state reuses the `comms_oauth_states` shape (own table
   `model_subscription_oauth_states`, single-use atomic consume, 10-min TTL).
 
-Refresh follows the comms coordinator exactly: `FOR UPDATE` row lock,
-re-read, refresh via the adapter, re-seal in the same transaction; a
-provider-rejected credential flips `status = 'needs_reauthorization'`
-atomically. (Not the MCP resolver's lockless refresh — two concurrent runs on
-one subscription must not race a one-shot refresh token.)
+Refresh follows the comms coordinator's shape: `FOR UPDATE` row lock on the
+metadata row, re-read the vault bundle inside the lock, refresh via the
+adapter, `replace` the vault bundle and update the advisory metadata inside
+the locked section; a provider-rejected credential flips
+`status = 'needs_reauthorization'` atomically. (Not the MCP resolver's
+lockless refresh — two concurrent runs on one subscription must not race a
+one-shot refresh token.)
 
 ### 2.3 The dropdown: a "Your subscriptions" group
 
@@ -189,6 +274,19 @@ deployment/org chain: if `agent.provider` parses as `subscription/<key>`:
 3. Signing needs no change: the effective URL is non-Ledger, so
    `createProviderRequestHeadersResolver` already returns `undefined` and no
    Nessie/UOA identity leaves the deployment.
+
+**This is not a parallel connection to Ledger — it is a second egress lane
+that never touches Ledger at all.** A subscription-routed run opens no
+Ledger connection, sends no `X-Nessie-Context`/`X-UOA-Delegation`, and
+produces no Ledger-side metering or UOA rating; its usage is recorded only
+locally (`token_ledger_events`, §2.6). Ledger remains the one chokepoint for
+every non-subscription run, byte-identical to today. The rejected
+alternative — proxying subscription traffic *through* Ledger — would put
+personal credentials on UOA infrastructure and invite commercial rating of
+spend that is not the org's; it is out. A run is entirely one lane or the
+other, decided once at provider resolution: its delegates, compaction, and
+utility calls follow the same lane, so no single run mixes Ledger-signed and
+personal traffic.
 
 **Who pays is who owns.** Any run of the agent — a shared channel answering a
 colleague, a trigger, a delegate — spends the owner's plan, because the agent
