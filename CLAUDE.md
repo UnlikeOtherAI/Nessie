@@ -217,6 +217,10 @@ person's My Docs. When `kb_list`, `kb_search`, `kb_document_compose`, and
 `kb_document_edit` are all actually available, the structural system-prompt
 block injects that home id and title so the model never invents a `spaceId`.
 
+## Cloud browsers — a second transport, not a second browser surface
+
+Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
+
 ## Agent chat cards — one card system, not an eighth look-alike
 
 Every agent that can talk can post an **interactive card** into a conversation
@@ -379,6 +383,45 @@ op, streaming, EXIF strip, thumbnails, images in agent context):
 - Specs:
   [docs/plans/2026-08-06-attachment-thumbnails-and-previews.md](docs/plans/2026-08-06-attachment-thumbnails-and-previews.md),
   [docs/plans/2026-08-07-images-in-agent-context.md](docs/plans/2026-08-07-images-in-agent-context.md).
+
+## Personal model subscriptions — run your own agents on your own plan
+
+A person links a plan they already pay for and the agents **they own** run on
+it instead of the organisation's Ledger credits. Phase 1 ships Kimi and GLM
+(pasted subscription keys); OpenAI Codex and xAI Grok arrive with the
+device-code OAuth phase. Anthropic is deliberately excluded — subscription
+credentials are not licensed for third-party agent platforms, and Nessie
+already serves Claude through Ledger. The invariants (own grant never a CLI
+import, vault-only token storage in a dedicated project, run-admission pinning
+with no Ledger fallback, budget gates skipped, structural `billingSource`, one
+shared validator, the refresh/epoch discipline): `AGENTS.md` → "Personal model
+subscriptions". Spec:
+[docs/plans/2026-09-02-personal-model-subscriptions.md](docs/plans/2026-09-02-personal-model-subscriptions.md).
+
+Facts not restated there:
+
+- **Two egress lanes, never a proxy.** A subscription run opens no Ledger
+  connection at all — `resolveStageProviderConfig` short-circuits the whole
+  deployment/organisation chain and returns the adapter's own base URL and the
+  person's token. Signing needs no special case: the effective URL is not a
+  Ledger origin, so `createProviderRequestHeadersResolver` already declines to
+  attach `X-Nessie-Context`/`X-UOA-Delegation`.
+- **Generative inference only.** Main turns, delegates, compaction and
+  checkpoint notes follow the run's lane. Engagement decisions (made on the
+  boot-time model client before a run exists), embeddings and memory, avatar
+  generation, and demonstration generalisation stay deployment-billed — a
+  "subscription-only" agent still produces some Ledger events by design.
+- **Utility model is explicitly null** for a subscription run, not a lookup
+  miss: `NESSIE_UTILITY_MODEL` names a Ledger-catalogue model a subscription
+  backend may not serve.
+- Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
+  routes `/api/model-subscriptions*`; surfaces are the "Personal model
+  subscriptions" section on `/settings/connections` and the **Your
+  subscriptions** group in the Agent Designer model picker, which also carries
+  the "Link a personal subscription…" doorway when none is linked.
+- Vault configuration is `NESSIE_SUBSCRIPTION_VAULT_API_URL` /
+  `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
+  section says the feature is unavailable and linking is refused.
 
 ## Embeddings — routed separately, one pinned width
 

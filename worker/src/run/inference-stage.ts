@@ -25,6 +25,7 @@ import {
   resolveRuntimeProvider,
   resolveStageProviderConfig,
   type ResolvedProviderConfig,
+  type StageSubscriptionBinding,
 } from './inference-provider.js'
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 import { InferenceAbortedError } from './inference-abort.js'
@@ -168,6 +169,7 @@ export const executeStage = async (
     reasoningEffort?: ProviderReasoningEffort
     requestHeadersForProvider?: ProviderRequestHeadersResolver
     routeSource: 'direct' | 'routing-profile'
+    subscription?: StageSubscriptionBinding | null
     // Aborts the in-flight provider request. Used by cooperative cancellation
     // while a document is streaming, where waiting for the turn to end would
     // mean watching the rest of a document the user already stopped.
@@ -206,6 +208,7 @@ export const executeStage = async (
       providerKey: input.stage.provider,
       requestedModel: input.stage.model,
       routeSource: input.routeSource,
+      subscription: input.subscription ?? null,
     })
     const requestHeaders =
       await input.requestHeadersForProvider?.(providerConfig)

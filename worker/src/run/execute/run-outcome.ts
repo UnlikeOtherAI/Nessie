@@ -54,6 +54,7 @@ export const handleRunLoopOutcome = async (
     const suspendPlan = await prepareApprovalSuspend(deps, context, {
       approval: {
         id: input.loopResult.pendingApproval.approvalId,
+        notice: input.loopResult.pendingApproval.notice,
         toolName: input.loopResult.pendingApproval.toolName,
       },
       goal: input.prompt,

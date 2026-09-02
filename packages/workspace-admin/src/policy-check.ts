@@ -168,6 +168,7 @@ const resolveRules = (
   // Deny-first evaluation
   let lastAllow: PolicyRuleRow | null = null
   let lastAllowUsedApproval = false
+  let lastAllowReviewMode: 'auto' | undefined
 
   for (const rule of matchingRules) {
     const conditions = rule.conditions as Record<string, unknown> | null
@@ -199,10 +200,12 @@ const resolveRules = (
       if (conditions?.['requiresApproval']) {
         lastAllow = rule
         lastAllowUsedApproval = true
+        lastAllowReviewMode = conditions['reviewMode'] === 'auto' ? 'auto' : undefined
         continue
       }
       lastAllow = rule
       lastAllowUsedApproval = false
+      lastAllowReviewMode = conditions?.['reviewMode'] === 'auto' ? 'auto' : undefined
     }
   }
 
@@ -213,6 +216,7 @@ const resolveRules = (
       policySource: `${lastAllow.scope}:${lastAllow.scopeId}/allow`,
       reasonCode: 'ALLOWED',
       ...(lastAllowUsedApproval ? { approvalProofUsed: true } : {}),
+      ...(lastAllowReviewMode ? { reviewMode: lastAllowReviewMode } : {}),
     }
   }
 

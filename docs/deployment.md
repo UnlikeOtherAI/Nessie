@@ -70,6 +70,27 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
   `0`, so forwarded client IP headers are ignored.
 
+### Personal model subscriptions vault
+
+Personal model subscriptions (a person's own Kimi/GLM plan powering the agents
+they own) keep their token bundles in a **dedicated, separately-ACLed Infisical
+project** — never the shared `/nessie/<org>/personal/<user>` partition, which
+also holds a person's ordinary captured secrets and would hand any identity
+scoped to it every one of them.
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `NESSIE_SUBSCRIPTION_VAULT_API_URL` | yes | Infisical API origin (HTTPS only). |
+| `NESSIE_SUBSCRIPTION_VAULT_TOKEN` | yes | Machine-identity token scoped to the subscriptions project only. |
+| `NESSIE_SUBSCRIPTION_VAULT_PROJECT_ID` | yes | The dedicated project id. |
+| `NESSIE_SUBSCRIPTION_VAULT_ENVIRONMENT` | no | Defaults to `prod`. |
+
+Both the API and the **worker** need these: inference runs in the worker, so it
+holds its own machine identity for this project (the executor and agent
+sandboxes still receive nothing). With any of the three unset, the feature is
+simply unavailable — `/settings/connections` says so and linking is refused;
+there is deliberately no PostgreSQL fallback.
+
 ### Infisical vault
 
 Infisical owns secret values and runs with Redis plus a dedicated `infisical`

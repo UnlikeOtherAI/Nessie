@@ -1,3 +1,4 @@
+import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
@@ -326,6 +327,10 @@ export const buildApp = async () => {
     mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
       refPrefix: 'secret_mcp_',
     }),
+    // Personal model subscriptions live in their own vault project, separate
+    // from the general secret store: that folder also holds a person's ordinary
+    // captured secrets, and an identity scoped to it could read them all.
+    subscriptionSecrets: createSubscriptionSecretStoreFromEnv(),
   }
 
   registerApiRoutes(app, deps)

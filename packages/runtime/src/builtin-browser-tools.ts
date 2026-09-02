@@ -1,0 +1,136 @@
+import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+
+/**
+ * Cloud browser tools.
+ *
+ * The verbs are deliberately the *same closed grammar* the executor's browser
+ * bundle already speaks — navigate / click / type / press / scroll, addressed
+ * only by an accessibility node id from a prior observe. One browser
+ * vocabulary, two transports; the model never learns which one it is on.
+ *
+ * These carry their own ids rather than reusing `executor.browser.*` because
+ * the *grant* is a different decision: an agent trusted with an isolated
+ * sandbox on somebody's laptop has not thereby been trusted with a
+ * third-party cloud browser that can hold a persistent logged-in session.
+ * `requiresExplicitGrant` keeps them off until an owner says otherwise, so
+ * connecting a Browserbase account never silently widens an existing agent.
+ */
+
+const NODE_ID_DESCRIPTION =
+  'A nodeId from the most recent browser_observe. Selectors, CSS paths and '
+  + 'pixel coordinates are not accepted.'
+
+export const BROWSER_OPEN_TOOL_ID = 'browser_open'
+export const BROWSER_OBSERVE_TOOL_ID = 'browser_observe'
+export const BROWSER_ACT_TOOL_ID = 'browser_act'
+export const BROWSER_CLOSE_TOOL_ID = 'browser_close'
+
+export const CLOUD_BROWSER_TOOL_IDS = [
+  BROWSER_OPEN_TOOL_ID,
+  BROWSER_OBSERVE_TOOL_ID,
+  BROWSER_ACT_TOOL_ID,
+  BROWSER_CLOSE_TOOL_ID,
+] as const
+
+export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+  {
+    id: BROWSER_OPEN_TOOL_ID,
+    label: 'Open Browser',
+    summary: 'Open a cloud browser and load a page.',
+    description:
+      'Open a real Chrome browser in the cloud and navigate to an HTTPS URL. '
+      + 'Use it when a page needs to be interacted with rather than just read — '
+      + 'a site that needs clicking through, a form, an app behind a UI. For '
+      + 'simply reading a public page, web_fetch is cheaper and faster. '
+      + 'The browser stays open for the rest of this run unless you close it, '
+      + 'and browser time is metered, so close it when the task is done.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'The HTTPS URL to load.',
+        },
+      },
+      required: ['url'],
+    },
+    requiresExplicitGrant: true,
+    safe: false,
+  },
+  {
+    id: BROWSER_OBSERVE_TOOL_ID,
+    label: 'Observe Browser',
+    summary: 'Read the current page as a list of actionable elements.',
+    description:
+      'Return the current page URL, title, and its accessibility tree as a '
+      + 'numbered list of elements. The nodeId of each element is what '
+      + 'browser_act takes. Call this after every action that changes the '
+      + 'page: node ids are not stable across navigations.',
+    parameters: {
+      type: 'object',
+      properties: {
+        includeScreenshot: {
+          type: 'boolean',
+          description:
+            'Also capture a screenshot. Only useful on a vision-capable model, '
+            + 'and it costs significant context — leave it off unless the '
+            + 'layout itself is the question.',
+        },
+      },
+    },
+    requiresExplicitGrant: true,
+    safe: true,
+  },
+  {
+    id: BROWSER_ACT_TOOL_ID,
+    label: 'Act In Browser',
+    summary: 'Click, type, press a key, scroll, or navigate.',
+    description:
+      'Perform one action in the open browser. Elements are addressed only by '
+      + 'the nodeId from the most recent browser_observe.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['navigate', 'click', 'type', 'press', 'scroll'],
+          description: 'Which action to perform.',
+        },
+        url: { type: 'string', description: 'navigate: the HTTPS URL to load.' },
+        nodeId: {
+          type: 'number',
+          description: `click, type, and optionally scroll: ${NODE_ID_DESCRIPTION}`,
+        },
+        text: { type: 'string', description: 'type: the text to insert.' },
+        key: {
+          type: 'string',
+          enum: [
+            'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft',
+            'ArrowRight', 'Backspace', 'Delete', 'Home', 'End', 'PageUp',
+            'PageDown', 'Space',
+          ],
+          description: 'press: the key to send.',
+        },
+        deltaY: {
+          type: 'number',
+          description: 'scroll: pixels to scroll vertically; negative scrolls up.',
+        },
+      },
+      required: ['action'],
+    },
+    requiresExplicitGrant: true,
+    safe: false,
+  },
+  {
+    id: BROWSER_CLOSE_TOOL_ID,
+    label: 'Close Browser',
+    summary: 'Close the cloud browser and stop its meter.',
+    description:
+      'Close the open cloud browser. Browser time is metered, so close it as '
+      + 'soon as the task is finished rather than leaving it for the run to '
+      + 'clean up.',
+    parameters: { type: 'object', properties: {} },
+    requiresExplicitGrant: true,
+    safe: true,
+  },
+]

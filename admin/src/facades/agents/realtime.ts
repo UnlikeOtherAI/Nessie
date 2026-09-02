@@ -7,6 +7,7 @@ import {
   agentCardKeys,
   agentKeys,
   agentTodoKeys,
+  approvalKeys,
   channelKeys,
   threadKeys,
 } from '../../lib/query-keys'
@@ -202,6 +203,14 @@ export const useAgentRealtime = (input: {
         void queryClient.invalidateQueries({
           queryKey: agentCardKeys.card(message.data.cardId),
         })
+        return
+      }
+
+      if (message.event === 'approval.needed' || message.event === 'approval.resolved') {
+        // Both the sidebar badge and an in-thread card are entitlement-scoped
+        // reads. WS carries ids only, so cache invalidation preserves that
+        // server decision instead of projecting approval content into a room.
+        void queryClient.invalidateQueries({ queryKey: approvalKeys.all })
         return
       }
 
