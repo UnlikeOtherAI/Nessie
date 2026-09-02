@@ -53,6 +53,15 @@ export const TOOL_CATEGORIES = [
     label: 'Email & calendar',
   },
   {
+    // Deliberately separate from `email-calendar`: that acts as the *person*
+    // through their connected account, this acts as the *agent* at its own
+    // address. Turning one off is a different decision from turning the other
+    // off, so they are different places to go looking.
+    description: 'Sending and reading mail at the agent’s own address.',
+    id: 'agent-mailbox',
+    label: 'Agent mailbox',
+  },
+  {
     description: 'Creating meeting links and ringing a channel.',
     id: 'calls',
     label: 'Calls',
