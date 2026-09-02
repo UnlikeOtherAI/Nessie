@@ -545,9 +545,10 @@ the fix is the `canEditAgent` model, decided 2026-09-02.)
 
 - `createExternalAgentData` writes a tuple `agents_system_managed_invariants_chk`
   forbids; only a fake-Prisma test covers it.
-- `POST /api/designer/chat` never passes `pageContext` into
+- ~~`POST /api/designer/chat` never passes `pageContext` into
   `buildDesignerSystemPrompt` (4th arg dropped), so the page-scoped control
-  rule is client-side only.
+  rule is client-side only.~~ Fixed: `streamDesignerChat` now forwards
+  `input.pageContext` (`api/src/services/designer.ts`).
 - `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
   tool (stale rename of `send_message`; harmless today, dead entry).
 - `CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
