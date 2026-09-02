@@ -287,6 +287,16 @@ for free, because the browser and its state are cloud-side and any of the
 person's devices can open the same live view and any run can attach the same
 context.
 
+**Session restore is server-side and involves no client storage.** Restarting
+the browser is the worker attaching the stored context id at session create
+(`browserSettings.context.id`) — Browserbase re-materializes the cookies/
+localStorage itself. Nothing is ever read from or written to the person's
+device, iCloud, or browser, which is why the web client has full parity with
+desktop and mobile: every client only ever renders the Live View iframe and
+the login card. The only thing no storage scheme can survive is the *site*
+invalidating the session (forced re-auth, password change) — that is a
+one-more-login via the §4.4 card, from any device.
+
 Recorded for the future so it isn't re-litigated: a device-keychain
 injection scheme (executor types a credential from the user's own
 iCloud-Keychain-synced item into the session over CDP) was designed and
