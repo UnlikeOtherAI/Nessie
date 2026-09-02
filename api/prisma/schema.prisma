@@ -1243,6 +1243,7 @@ model Organization {
   sendAuthorizationGrants SendAuthorizationGrant[]
 
   cloudBrowserConnections CloudBrowserConnection[]
+  scopedSettings          ScopedSetting[]
   cloudBrowserSessions    CloudBrowserSession[]
   agentBrowsers           AgentBrowser[]
   agentBrowserLogins      AgentBrowserLogin[]
@@ -1392,6 +1393,7 @@ model OrganizationMember {
   modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
+  scopedSettings          ScopedSetting[]            @relation("ScopedSettingOwner")
   agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
 
   @@unique([organizationId, userId])
@@ -1513,6 +1515,8 @@ model Team {
   approvalRequests       ApprovalRequest[]
   productEnablements     ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
+  cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionTeam")
+  scopedSettings          ScopedSetting[]          @relation("ScopedSettingTeam")
 
   @@map("teams")
 }
@@ -6467,8 +6471,71 @@ model ModelSubscriptionAuthState {
 /// settings vs a member's own connections page), never inferred from the key
 /// itself — Browserbase authenticates by API key only and its keys carry no
 /// personal-vs-company signal.
+/// A setting resolved across three scopes: organisation, team, person.
+///
+/// Cascading resolution was already bespoke four times over here — budgets
+/// resolve most-specific-first, policy rules run a seven-level chain
+/// deny-first, `Team.callProvider` is a bare column with no organisation
+/// default, and the cloud browser resolved organisation-first with the
+/// ordering hardcoded. This is the one store behind all of it.
+///
+/// Resolution walks organisation → team → user and takes the most specific
+/// value, stopping at the first level marked `locked`: a lock is how an
+/// ancestor says "this is the answer for everyone below". The level that
+/// locked it is carried out to the surface, so a control a person cannot
+/// change is greyed with the reason rather than silently ignoring their edit.
+///
+/// Structurally the hierarchy is Organisation → Project → Team, and budgets
+/// cascade through all three. Settings deliberately expose only the three
+/// scopes people work in; adding a project tier later is a scope value and a
+/// resolver step, not a redesign.
+model ScopedSetting {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  scope          SettingScope
+  /// Exactly one of these is set, per scope: neither at organization scope,
+  /// `teamId` at team scope, `userId` at user scope. A CHECK ties each to its
+  /// scope, so a malformed write cannot produce a row the resolver would read
+  /// at the wrong level.
+  teamId         String?      @map("team_id") @db.Uuid
+  userId         String?      @map("user_id") @db.Uuid
+  /// Dotted, e.g. `calls.provider`, `browser.connection`.
+  key            String
+  /// The value chosen at this level. NULL means the row expresses only a lock
+  /// — "whatever resolves above here is what everyone below uses" — which is
+  /// how a setting whose value lives in its own table (the cloud browser's
+  /// credential rows) is still governed by one cascade.
+  value          Json?
+  /// Levels below this one may not override the resolved value.
+  locked         Boolean      @default(false)
+
+  updatedByUserId String   @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Teams carry no organization_id of their own (tenancy runs through their
+  /// project), so this FK proves the team exists and the service re-checks
+  /// that it belongs to this organization.
+  team         Team?               @relation("ScopedSettingTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  /// Tenancy at the storage boundary, the `Agent.ownerMembership` precedent: a
+  /// user-scoped row's owner must be a member of THIS organization. It does
+  /// not prove the membership is live — readers re-derive that.
+  owner        OrganizationMember? @relation("ScopedSettingOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organizationId, key])
+  @@map("scoped_settings")
+}
+
+enum SettingScope {
+  organization
+  team
+  user
+}
+
 enum CloudBrowserConnectionScope {
   organization
+  team
   user
 }
 
@@ -6504,9 +6571,11 @@ model CloudBrowserConnection {
   id             String                      @id @default(uuid()) @db.Uuid
   organizationId String                      @map("organization_id") @db.Uuid
   scope          CloudBrowserConnectionScope
-  /// NULL for organization scope, the owning member for user scope — a CHECK
-  /// ties the two, and partial unique indexes keep one row per organization
-  /// and one per (organization, member).
+  /// Exactly one of these is set, per scope: neither at organization scope,
+  /// `teamId` at team scope, `userId` at user scope. A CHECK ties each to its
+  /// scope, and partial unique indexes keep one row per organization, one per
+  /// team, and one per (organization, member).
+  teamId         String?                     @map("team_id") @db.Uuid
   userId         String?                     @map("user_id") @db.Uuid
   projectId      String                      @map("project_id")
   /// Server-minted `secret_browserbase_*` ref into the encrypted secret
@@ -6534,6 +6603,10 @@ model CloudBrowserConnection {
   /// a user-scoped connection's owner must be a member of THIS organization.
   /// It does not prove the membership is live — readers re-derive that.
   owner        OrganizationMember? @relation("CloudBrowserConnectionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+  /// Teams carry no organization_id of their own (tenancy runs through their
+  /// project), so this FK proves the team exists and the service re-checks
+  /// that it belongs to this organization.
+  team         Team?               @relation("CloudBrowserConnectionTeam", fields: [teamId], references: [id], onDelete: Cascade)
 
   sessions      CloudBrowserSession[]
   agentBrowsers AgentBrowser[]
