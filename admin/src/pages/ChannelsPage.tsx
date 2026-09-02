@@ -10,6 +10,7 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { useVoiceCall } from '../facades/voice/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
@@ -119,7 +120,7 @@ export const ChannelsPage = () => {
     callActionPending,
     callStarting,
     callerDialogCall,
-    onCallButton,
+    onCallButton: onProviderCallButton,
     onCloseCallerDialog,
     onCloseStartCallFailure,
     onFinishCall,
@@ -128,6 +129,20 @@ export const ChannelsPage = () => {
     activeChannel,
     callEligible,
   })
+
+  // The Personal Assistant DM answers the same call button with a live voice
+  // call instead of a provider-linked meeting. The branch is structural — it
+  // follows from the channel being that DM — never a reading of its content.
+  const voiceCall = useVoiceCall()
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false)
+  const onCallButton = () => {
+    if (!isPersonalAssistantConversation) {
+      onProviderCallButton()
+      return
+    }
+    setVoiceDialogOpen(true)
+    if (!voiceCall.isActive) void voiceCall.start()
+  }
 
   const { mentionEntities, renderContent } = useChannelMentions({
     activeChannel,
@@ -347,6 +362,8 @@ export const ChannelsPage = () => {
         boundAgents={boundAgents}
         callEligible={callEligible}
         callStarting={callStarting}
+        voiceCallActive={voiceCall.isActive}
+        voiceCallSupported={isPersonalAssistantConversation}
         channelLiveness={channelLiveness}
         channelUsers={channelUsers}
         personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
@@ -445,6 +462,18 @@ export const ChannelsPage = () => {
         callerCallActionError={callActionError}
         callerCallActionPending={callActionPending}
         callerDialogCall={callerDialogCall}
+        voiceCall={{
+          onClose: () => setVoiceDialogOpen(false),
+          onEnd: () => {
+            void voiceCall.end().then(() => setVoiceDialogOpen(false))
+          },
+          onRetry: () => {
+            void voiceCall.start()
+          },
+          onToggleMute: () => voiceCall.setMuted(!voiceCall.state.muted),
+          open: voiceDialogOpen,
+          state: voiceCall.state,
+        }}
         startCallFailureCode={startCallFailureCode}
         personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
         deepWaterDialog={deepWaterLauncher.dialog}
