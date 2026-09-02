@@ -10,9 +10,18 @@ import { SectionLabel } from '../../primitives/SectionLabel'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { FormError } from '../../shared/FormActions'
 import { CloudBrowserConnectionForm } from './CloudBrowserConnectionForm'
+import {
+  SETTING_KEYS,
+  settingFor,
+  useScopedSettings,
+  useWriteScopedSetting,
+} from '../../../facades/settings/hooks'
+import { ScopedSettingGate, ScopedSettingLock } from '../settings/ScopedSettingGate'
 
 type CloudBrowserPanelProps = {
   scope: CloudBrowserScope
+  /** Required at team scope: which team's account this is. */
+  teamId?: string | null
 }
 
 const HEALTH_COPY: Record<string, string> = {
@@ -29,6 +38,15 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
       + 'tools can then open a browser, for anyone who asks them to.',
     empty: 'No company account is connected, so only people with their own account can browse.',
   },
+  team: {
+    title: 'Team account',
+    blurb:
+      'Connect a Browserbase account for this team. It sits between the company account '
+      + 'and people’s own, and agents working for this team use it by default.',
+    empty:
+      'No team account is connected, so this team falls back to the company account or to '
+      + 'people’s own.',
+  },
   user: {
     title: 'Your account',
     blurb:
@@ -42,16 +60,32 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
  * One panel, both homes: the owner-only company account on organisation
  * settings and a person's own account on their connections page.
  */
-export const CloudBrowserPanel = ({ scope }: CloudBrowserPanelProps) => {
+export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelProps) => {
   const connections = useCloudBrowserConnections()
   const disconnect = useDisconnectCloudBrowser()
+  const settings = useScopedSettings(scope, [SETTING_KEYS.browserConnection], teamId)
+  const writeSetting = useWriteScopedSetting()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const copy = SCOPE_COPY[scope]
+  const setting = settingFor(settings.data, SETTING_KEYS.browserConnection)
   const rows: CloudBrowserConnectionRecord[] = connections.data?.connections ?? []
   const connection = rows.find((row) =>
-    scope === 'organization' ? row.scope === 'organization' : row.scope === 'user' && row.isMine)
+    scope === 'organization' ? row.scope === 'organization'
+    : scope === 'team' ? row.scope === 'team'
+    : row.scope === 'user' && row.isMine)
+
+  const setLock = (locked: boolean) => {
+    setError(null)
+    writeSetting.mutate(
+      { key: SETTING_KEYS.browserConnection, locked, scope, teamId, value: null },
+      {
+        onError: (cause: unknown) =>
+          setError(cause instanceof Error ? cause.message : 'Could not save that.'),
+      },
+    )
+  }
 
   const remove = () => {
     if (!connection) return
@@ -67,7 +101,7 @@ export const CloudBrowserPanel = ({ scope }: CloudBrowserPanelProps) => {
 
   return (
     <section className="admin-card p-4" id={`cloud-browsers-${scope}`}>
-      <SectionLabel>{scope === 'organization' ? 'Cloud browsers' : 'Browser'}</SectionLabel>
+      <SectionLabel>{scope === 'user' ? 'Browser' : 'Cloud browsers'}</SectionLabel>
       <div className="mt-3 flex items-start justify-between gap-4">
         <div className="max-w-xl">
           <h2 className="font-semibold text-[color:var(--tx)]">{copy.title}</h2>
@@ -99,11 +133,25 @@ export const CloudBrowserPanel = ({ scope }: CloudBrowserPanelProps) => {
         ) : null}
       </div>
 
-      <CloudBrowserConnectionForm
-        blurb={copy.blurb}
-        connected={Boolean(connection)}
-        scope={scope}
-      />
+      <ScopedSettingGate setting={setting}>
+        <CloudBrowserConnectionForm
+          blurb={copy.blurb}
+          connected={Boolean(connection)}
+          scope={scope}
+          teamId={teamId}
+        />
+      </ScopedSettingGate>
+
+      {setting?.canEdit && scope !== 'user' ? (
+        <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
+          <ScopedSettingLock
+            disabled={writeSetting.isPending}
+            locked={setting.lockedHere}
+            onChange={setLock}
+            scope={scope}
+          />
+        </div>
+      ) : null}
 
       {connection ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">

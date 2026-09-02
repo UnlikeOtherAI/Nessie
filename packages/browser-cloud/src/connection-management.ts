@@ -33,7 +33,9 @@ export type ConnectionSummary = {
 export type ConnectCloudBrowserInput = {
   organizationId: string
   scope: ConnectionScope
-  /** Required for user scope, refused for organization scope. */
+  /** Required for team scope, refused for the others. */
+  teamId?: string | null
+  /** Required for user scope, refused for the others. */
   userId: string | null
   actingUserId: string
   apiKey: string
@@ -70,16 +72,22 @@ export const connectCloudBrowser = async (
   deps: ConnectionDeps,
   input: ConnectCloudBrowserInput,
 ): Promise<{ id: string }> => {
+  if (input.scope === 'team' && !input.teamId) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      'A team connection needs a team.',
+    )
+  }
   if (input.scope === 'user' && !input.userId) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
       'A personal connection needs an owner.',
     )
   }
-  if (input.scope === 'organization' && input.userId) {
+  if (input.scope !== 'user' && input.userId) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
-      'An organization connection has no individual owner.',
+      'A shared connection has no individual owner.',
     )
   }
 
@@ -89,9 +97,10 @@ export const connectCloudBrowser = async (
   // persisted on the row — the key itself never returns to any caller.
   const apiKeyRef = await deps.storeSecret(input.apiKey)
   const userId = input.scope === 'user' ? input.userId : null
+  const teamId = input.scope === 'team' ? input.teamId ?? null : null
 
   const existing = await deps.prisma.cloudBrowserConnection.findFirst({
-    where: { organizationId: input.organizationId, scope: input.scope, userId },
+    where: { organizationId: input.organizationId, scope: input.scope, teamId, userId },
     select: { id: true },
   })
 
@@ -117,6 +126,7 @@ export const connectCloudBrowser = async (
     data: {
       organizationId: input.organizationId,
       scope: input.scope,
+      teamId,
       userId,
       projectId: input.projectId,
       apiKeyRef,

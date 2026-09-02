@@ -11,10 +11,12 @@ import { NonEmptyStringSchema } from './shared.js'
  * cannot use.
  */
 
-export const CloudBrowserScopeSchema = z.enum(['organization', 'user'])
+export const CloudBrowserScopeSchema = z.enum(['organization', 'team', 'user'])
 
 export const ConnectCloudBrowserBodySchema = z.object({
   scope: CloudBrowserScopeSchema,
+  /** Required at team scope, refused at the others. */
+  teamId: z.string().uuid().optional(),
   apiKey: NonEmptyStringSchema.max(500),
   projectId: NonEmptyStringSchema.max(200),
 })

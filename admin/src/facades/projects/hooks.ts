@@ -38,6 +38,19 @@ export const useTeams = () => {
   })
 }
 
+export const useRenameTeam = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ teamId, name }: { teamId: string; name: string }) =>
+      apiClient.patch<{ id: string; name: string }>(`/api/teams/${teamId}`, { name }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
+    },
+  })
+}
+
 export const useCreateProject = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

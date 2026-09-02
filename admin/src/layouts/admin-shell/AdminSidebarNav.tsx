@@ -245,6 +245,18 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     heading: 'Organization',
     items: [
       {
+        path: '/settings/team',
+        label: 'Team',
+        visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
+        icon: icon(
+          <>
+            <circle cx="9" cy="8" r="3" />
+            <path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16 11a3 3 0 100-6M17 20c0-2.4-.9-4.1-2.3-5" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/organization',
         label: 'Settings',
         visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,

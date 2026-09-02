@@ -101,6 +101,8 @@ export type TeamRecord = {
   callProvider: 'google_meet' | 'jitsi' | 'microsoft_teams'
   callProviderAvailability: Record<'google_meet' | 'jitsi' | 'microsoft_teams', boolean>
   createdAt: string
+  /** UOA holds this workspace's name, so it cannot be renamed in Nessie. */
+  externallyManaged?: boolean
   id: string
   memberCount: number
   name: string
@@ -437,7 +439,7 @@ export type SessionState =
     }
 
 /** Cloud browsers (Browserbase). The API key never appears in a response. */
-export type CloudBrowserScope = 'organization' | 'user'
+export type CloudBrowserScope = 'organization' | 'team' | 'user'
 
 export type CloudBrowserConnectionRecord = {
   id: string

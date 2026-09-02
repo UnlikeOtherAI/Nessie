@@ -7,7 +7,9 @@ import { useConnectCloudBrowser } from '../../../facades/browser-cloud/hooks'
 
 type CloudBrowserConnectionFormProps = {
   scope: CloudBrowserScope
-  /** Shown above the fields; the two scopes explain themselves differently. */
+  /** Required at team scope: which team the account belongs to. */
+  teamId?: string | null
+  /** Shown above the fields; each scope explains itself differently. */
   blurb: string
   connected: boolean
   onDone?: () => void
@@ -17,12 +19,13 @@ type CloudBrowserConnectionFormProps = {
  * The one connect form, used by both scopes.
  *
  * The scope is a prop rather than a control: which account a key belongs to is
- * decided by the surface that accepted it — the owner-only organisation
- * settings, or a person's own connections page — because Browserbase
+ * decided by the surface that accepted it — the owner-only organisation or
+ * team settings, or a person's own account settings — because Browserbase
  * authenticates by API key alone and nothing about a key says whose it is.
  */
 export const CloudBrowserConnectionForm = ({
   scope,
+  teamId = null,
   blurb,
   connected,
   onDone,
@@ -38,7 +41,12 @@ export const CloudBrowserConnectionForm = ({
     setError(null)
     setNotice(null)
     connect.mutate(
-      { scope, apiKey: apiKey.trim(), projectId: projectId.trim() },
+      {
+        apiKey: apiKey.trim(),
+        projectId: projectId.trim(),
+        scope,
+        ...(teamId ? { teamId } : {}),
+      },
       {
         onError: (cause: unknown) => {
           setError(

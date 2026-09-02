@@ -150,14 +150,36 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     const body = parseInput(ConnectCloudBrowserBodySchema, request.body, reply)
     if (!body) return reply
 
-    // The company subscription is an owner decision; a personal account is
-    // anyone's own business and lands on their own row.
-    if (body.scope === 'organization' && !requireOwner(actorContext, reply)) return reply
+    // The company and team subscriptions are owner decisions; a personal
+    // account is anyone's own business and lands on their own row.
+    if (body.scope !== 'user' && !requireOwner(actorContext, reply)) return reply
+
+    if (body.scope === 'team') {
+      if (!body.teamId) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'A team account needs a team.')
+        return reply
+      }
+      // Teams carry no organization_id of their own — tenancy runs through
+      // their project — so the FK cannot make this check for us. The refusal
+      // is indistinguishable from a team that does not exist.
+      const team = await prisma.team.findFirst({
+        where: {
+          id: body.teamId,
+          project: { organizationId: actorContext.tenant.organizationId },
+        },
+        select: { id: true },
+      })
+      if (!team) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+        return reply
+      }
+    }
 
     try {
       const result = await connectCloudBrowser(connectionDeps, {
         organizationId: actorContext.tenant.organizationId,
         scope: body.scope,
+        teamId: body.scope === 'team' ? body.teamId ?? null : null,
         userId: body.scope === 'user' ? actorContext.actor.actorId : null,
         actingUserId: actorContext.actor.actorId,
         apiKey: body.apiKey,
@@ -183,9 +205,9 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'CLOUD_BROWSER_NO_CONNECTION', 'That browser connection does not exist.')
       return reply
     }
-    // Disconnecting the company account is an owner act; a personal one is
-    // only ever its own owner's.
-    if (row.scope === 'organization') {
+    // Disconnecting a shared account is an owner act; a personal one is only
+    // ever its own owner's.
+    if (row.scope !== 'user') {
       if (!requireOwner(actorContext, reply)) return reply
     } else if (row.userId !== actorContext.actor.actorId) {
       sendApiError(reply, 404, 'CLOUD_BROWSER_NO_CONNECTION', 'That browser connection does not exist.')
