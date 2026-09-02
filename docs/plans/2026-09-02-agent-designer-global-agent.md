@@ -561,7 +561,10 @@ the fix is the `canEditAgent` model, decided 2026-09-02.)
 - `POST /api/designer/chat` never passes `pageContext` into
   `buildDesignerSystemPrompt` (4th arg dropped), so the page-scoped control
   rule is client-side only.
-- `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
-  tool (stale rename of `send_message`; harmless today, dead entry).
+- ~~`PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
+  tool (stale rename of `send_message`; harmless today, dead entry).~~ **Fixed**:
+  the dead entry is removed and a `worker/test/tool-policy.test.ts` case now
+  asserts every id in the set resolves against `BUILTIN_TOOL_IDS`, so a future
+  rename fails loudly instead of silently.
 - `CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
   before `createAgentRecord`.
