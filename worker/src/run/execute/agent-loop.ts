@@ -204,6 +204,16 @@ export const runExecutionAgentLoop = async (
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
+        // The send-boundary judge. Inference the run paid for, so its
+        // invocations count in the run's totals like compaction's do.
+        runUtility: async (prompt: string) => {
+          const result = await input.inference.runUtility(
+            [{ content: prompt, role: 'user' }],
+            [],
+          )
+          input.invocationSink.push(...result.invocations)
+          return result.outputText
+        },
         parentAgentId: context.agent.parentAgentId,
         resumeState: {
           actorContext: payload.actorContext,

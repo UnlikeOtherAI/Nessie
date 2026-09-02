@@ -134,6 +134,7 @@ export const loadRunContext = async (
           executionMode: true,
           id: true,
           model: true,
+          modelSubscriptionId: true,
           name: true,
           parentAgentId: true,
           ownerUserId: true,
