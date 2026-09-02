@@ -36,3 +36,5 @@ export * from './disclosure-predicate.js'
 export * from './disclosure-access.js'
 
 export * from './builtin-google-tools.js'
+export * from './builtin-mailbox-tools.js'
+export * from './builtin-approval-gates.js'

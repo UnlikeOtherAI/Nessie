@@ -511,6 +511,10 @@ export const workspaceKeys = {
   members: ['workspace', 'members'] as const,
 }
 
+export const mailboxConnectionKeys = {
+  list: ['mailbox-connections'] as const,
+}
+
 export const browserCloudKeys = {
   connections: ['browser-cloud', 'connections'] as const,
   session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,

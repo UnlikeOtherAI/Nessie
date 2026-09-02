@@ -5,6 +5,7 @@ import {
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
+import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/MyBrowserLoginsPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
@@ -107,6 +108,7 @@ export const ConnectionsPage = () => {
         <div className="h-px bg-[color:var(--bd1)]" />
 
         <ModelSubscriptionSection />
+        <MailboxConnectionsPanel scope="user" />
         <CloudBrowserPanel scope="user" />
         <MyBrowserLoginsPanel />
       </div>

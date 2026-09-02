@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
 
+import { liveApproverOrNull } from './approver.js'
 import { EMAIL_SCOPE_TYPE, subtractImpliedScopes, type BasisScope } from './disclosure-basis.js'
 import type { RunContext } from './types.js'
 
@@ -171,24 +172,9 @@ export const buildEmailSendApprovalHook = (
       // The mailbox belongs to the agent, and the agent belongs to its steward:
       // a send acting as their agent is theirs to authorize. Falls back to the
       // owner role when the agent is unowned or its steward is deactivated.
-      requiredApproverUserId: await resolveLiveSteward(prisma, context),
+      requiredApproverUserId: await liveApproverOrNull(prisma, {
+        organizationId: context.channel.organizationId,
+        userId: context.agent.ownerUserId,
+      }),
     }
   }
-
-const resolveLiveSteward = async (
-  prisma: PrismaClient,
-  context: RunContext,
-): Promise<string | null> => {
-  const ownerUserId = context.agent.ownerUserId
-  if (!ownerUserId) return null
-  // The FK proves the membership row exists, never that it is live — an
-  // approval pinned to a deactivated person would be unanswerable.
-  const live = await prisma.organizationMember.count({
-    where: {
-      deactivatedAt: null,
-      organizationId: context.channel.organizationId,
-      userId: ownerUserId,
-    },
-  })
-  return live > 0 ? ownerUserId : null
-}

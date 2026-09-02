@@ -630,6 +630,7 @@ production settings:
 | Web Push public key | `NESSIE_WEBPUSH_PUBLIC_KEY` | optional; VAPID public key served to browsers. Enables browser web push when set with the two below. See [web-push.md](web-push.md) |
 | Web Push private key | `NESSIE_WEBPUSH_PRIVATE_KEY` | optional; VAPID private key that signs push JWTs (secret) |
 | Web Push subject | `NESSIE_WEBPUSH_SUBJECT` | optional; VAPID subject, a `mailto:`/`https:` operator-contact URI. Generate the trio with `node scripts/generate-vapid-keys.mjs` |
+| Connected mailboxes | `NESSIE_MAILBOX_TIMEOUT_MS` | SMTP/IMAP mailboxes people connect themselves. No configuration is required to enable them; this only bounds how long a mail server may take (default 20000 ms). See "Connected mailboxes (SMTP/IMAP)" below. |
 | Agent email (SES) | `NESSIE_EMAIL_SES_REGION`, `NESSIE_EMAIL_DOMAIN`, `NESSIE_EMAIL_INBOUND_S3_BUCKET`, `NESSIE_EMAIL_SNS_TOPIC_ARN` (+ optional `NESSIE_EMAIL_SES_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY`, `NESSIE_EMAIL_INBOUND_S3_PREFIX`, `NESSIE_EMAIL_CONFIGURATION_SET`, `NESSIE_EMAIL_INBOUND_RETENTION_DAYS`, `NESSIE_EMAIL_CUSTOM_DOMAINS`, `NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR`, `NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES`) | Hosted agent mailboxes. All four required fields must be present or the feature stays off and names the missing ones; credentials omitted ⇒ the AWS SDK default chain (instance profile / IRSA). Full AWS setup, IAM and operating notes: "Agent email (Amazon SES)" below. |
 | Comms Slack client id | `NESSIE_COMMS_SLACK_CLIENT_ID` | optional; Slack app OAuth client id for the Individual Communications Connector. Also read by the API OAuth-start (`oauth-config.ts`) to build the authorize URL |
 | Comms Slack client secret | `NESSIE_COMMS_SLACK_CLIENT_SECRET` | optional (secret); Slack app OAuth client secret used for the code→token exchange |
@@ -774,6 +775,19 @@ configuration set, IAM, self-subscription), every environment variable,
 verification commands, and the operating rules that matter in production
 (deployment-wide suppression, why an ambiguous send is never retried, and why a
 deleted address is retired permanently).
+
+### Connected mailboxes (SMTP/IMAP)
+
+The other half of agent email needs **no deployment configuration at all**: a
+person or a team connects a mailbox that already exists, the provider keeps the
+mail, and nothing is stored here but a password sealed with `NESSIE_AUTH_SECRET`
+and an audit trail. The only setting is `NESSIE_MAILBOX_TIMEOUT_MS` (default
+`20000`), which bounds how long a mail server may take per read.
+
+Worth knowing when locking a network down: the API and the worker open raw TCP
+connections to the IMAP and SMTP hosts people configure — always over TLS, and
+always to an address vetted against the same private-range rules as HTTP egress.
+Guide: [docs/connected-mailboxes.md](connected-mailboxes.md).
 
 ### MCP OAuth secret store
 

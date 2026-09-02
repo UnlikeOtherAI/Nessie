@@ -78,3 +78,38 @@ export {
   type ThreadingCandidate,
   type ThreadingDecision,
 } from './threading.js'
+
+export {
+  MailDialError,
+  dialPlain,
+  dialTls,
+  upgradeToTls,
+  type DialOptions,
+  type MailEndpoint,
+  type MailSecurity,
+} from './dial.js'
+
+export { MailWire, MailWireError, type MailWireOptions } from './wire.js'
+
+export { ImapError, ImapSession, type ImapPart } from './imap.js'
+
+export {
+  SmtpError,
+  closeSmtpSession,
+  openSmtpSession,
+  runSmtpHandshake,
+  sendOverSmtp,
+  type SmtpSession,
+} from './smtp.js'
+
+export {
+  readMailboxMessage,
+  searchMailbox,
+  sendFromMailbox,
+  testMailboxConnection,
+  type MailboxClientOptions,
+  type MailboxEndpoints,
+  type MailboxMessage,
+  type MailboxSearchQuery,
+  type MailboxSummary,
+} from './mailbox-client.js'

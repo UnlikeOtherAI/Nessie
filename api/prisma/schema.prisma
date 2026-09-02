@@ -1234,6 +1234,8 @@ model Organization {
   emailDomains                     EmailDomain[]
   emailConversations               EmailConversation[]
   emailMessages                    EmailMessage[]
+  mailboxConnections               MailboxConnection[]
+  mailboxConnectionAgentAccess     MailboxConnectionAgentAccess[]
 
   agentCards              AgentCard[]
   gmailDraftActions       GmailDraftAction[]
@@ -1390,6 +1392,8 @@ model OrganizationMember {
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
   agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
+  /// Personal SMTP/IMAP mailboxes. Tenancy only, exactly as `ownedAgents`.
+  mailboxConnections      MailboxConnection[]      @relation("MailboxConnectionOwner")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1510,6 +1514,7 @@ model Team {
   approvalRequests       ApprovalRequest[]
   productEnablements     ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
+  mailboxConnections     MailboxConnection[]
 
   @@map("teams")
 }
@@ -2192,6 +2197,7 @@ model Agent {
   cloudBrowserSessions    CloudBrowserSession[]
   agentBrowsers           AgentBrowser[]
   sendAuthorizationGrants SendAuthorizationGrant[]
+  mailboxAccess           MailboxConnectionAgentAccess[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -5991,6 +5997,22 @@ model DashboardEmbedPlacement {
 // thread is the operations room where runs, approval gates and human discussion
 // live, while the mail itself stays here.
 
+enum MailboxTransportSecurity {
+  /// Encrypted from the first byte (IMAPS 993 / SMTPS 465).
+  tls
+  /// Plaintext then upgraded. The client refuses to continue if the server
+  /// does not offer the upgrade — a missing STARTTLS is a downgrade, not a
+  /// fallback, and the password would otherwise go out in the clear.
+  starttls
+}
+
+enum MailboxConnectionStatus {
+  active
+  /// The provider rejected the credential. A person reconnects; nothing retries.
+  needs_reauthorization
+  disabled
+}
+
 enum AgentMailboxStatus {
   active
   suspended
@@ -6668,4 +6690,101 @@ model AgentBrowserLogin {
   @@index([agentBrowserId])
   @@index([organizationId, userId])
   @@map("agent_browser_logins")
+}
+
+/// SMTP/IMAP mailbox connections — agent email Model A, where the provider
+/// holds the mail and Nessie holds only the credential and the audit trail.
+/// Design: docs/plans/2026-09-02-agent-email.md §2.2.
+///
+/// Scope is "which of the two owner columns is set", enforced by a CHECK rather
+/// than mirrored in an enum: a `scope` column beside the ids would be a second
+/// statement of one fact, free to drift. A user-scope connection is one
+/// person's own mailbox; a team-scope one is a shared mailbox an owner or admin
+/// connected for a team.
+///
+/// IMAP is all-or-nothing — whoever holds the password reads everything and
+/// sends as the mailbox — so there is deliberately no capability catalog here.
+/// One connection is one honest `mailbox.full` grant, and which agents may use
+/// it is decided per pair in `mailbox_connection_agent_access`.
+model MailboxConnection {
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  /// Exactly one of these is set; the CHECK constraint is the scope.
+  ownerUserId     String?                  @map("owner_user_id") @db.Uuid
+  teamId          String?                  @map("team_id") @db.Uuid
+  label           String
+  /// The mailbox's own address, lowercased. Also the SMTP envelope sender: an
+  /// agent can only send AS the mailbox it was given, never as someone else.
+  address         String
+  imapHost        String                   @map("imap_host")
+  imapPort        Int                      @map("imap_port")
+  imapSecurity    MailboxTransportSecurity @default(tls) @map("imap_security")
+  smtpHost        String                   @map("smtp_host")
+  smtpPort        Int                      @map("smtp_port")
+  smtpSecurity    MailboxTransportSecurity @default(starttls) @map("smtp_security")
+  username        String
+  status          MailboxConnectionStatus  @default(active)
+  /// Why the status is what it is, in words a person can act on. A provider
+  /// rejection names the remedy; it is never a silent retry-forever.
+  statusReason    String?                  @map("status_reason")
+  lastVerifiedAt  DateTime?                @map("last_verified_at")
+  createdByUserId String?                  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  organization    Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team            Team?                          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  /// Tenancy in the database, the `Agent.ownerMembership` pattern: the
+  /// composite key proves the owner is a member of THIS organization. NoAction
+  /// because SET NULL on a composite key blanks organizationId with it.
+  ownerMembership OrganizationMember?            @relation("MailboxConnectionOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+  credential      MailboxConnectionCredential?
+  agentAccess     MailboxConnectionAgentAccess[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, ownerUserId])
+  @@index([teamId])
+  @@map("mailbox_connections")
+}
+
+/// The password, isolated in its own table exactly as `CommsConnectionCredential`
+/// is: every list, status and presenter read touches the connection row only, so
+/// secret-bearing rows are never on a read path that renders to a browser.
+model MailboxConnectionCredential {
+  id               String   @id @default(uuid()) @db.Uuid
+  connectionId     String   @unique @map("connection_id") @db.Uuid
+  /// AES-256-GCM through the shared `sealSecret` packing. Never leaves the
+  /// server, and is decrypted only at the one credential chokepoint.
+  secretCiphertext String   @map("secret_ciphertext")
+  keyVersion       Int      @default(1) @map("key_version")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  connection MailboxConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("mailbox_connection_credentials")
+}
+
+/// Which agent may use which mailbox.
+///
+/// `Agent.toolPolicy` is `Record<toolId, boolean>` and therefore cannot name a
+/// resource: a bare grant on `mailbox_search` would silently widen to every
+/// mailbox connected afterwards. Access is a per-pair row instead, so
+/// connecting a second team mailbox grants nothing to anybody.
+model MailboxConnectionAgentAccess {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  connectionId    String   @map("connection_id") @db.Uuid
+  agentId         String   @map("agent_id") @db.Uuid
+  grantedByUserId String?  @map("granted_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   MailboxConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  /// Composite so an access row cannot name an agent from another tenant.
+  agent        Agent             @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([connectionId, agentId])
+  @@index([organizationId, agentId])
+  @@map("mailbox_connection_agent_access")
 }

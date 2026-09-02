@@ -8,13 +8,14 @@ Design and invariants: [plans/2026-09-02-agent-email.md](plans/2026-09-02-agent-
 and `CLAUDE.md` → "Agent email". Deployment overview:
 [deployment.md](deployment.md) → "Agent email (Amazon SES)".
 
+Amazon SES is integrated **directly**: the deployment's own SES account sends
+and receives, there is no intermediary service, and an address is therefore
+unique per deployment.
 
-Hosted agent mailboxes give each agent its own address (`support@nessie.works`),
-so people can CC an agent into an email thread and it can reply. Amazon SES is
-integrated **directly**: the deployment's own SES account sends and receives,
-there is no intermediary service, and an address is therefore unique per
-deployment. Design:
-[docs/plans/2026-09-02-agent-email.md](plans/2026-09-02-agent-email.md).
+This is one of two ways an agent gets email. For a mailbox that already exists
+somewhere else — a person's own, or a team's shared `support@` on any provider —
+see [connected-mailboxes.md](connected-mailboxes.md); nothing is configured by
+an operator there and no mail is stored in Nessie.
 
 The feature is **off unless configured**, and partial configuration is named
 rather than degraded: the claim flow refuses with `AGENT_MAIL_UNCONFIGURED`

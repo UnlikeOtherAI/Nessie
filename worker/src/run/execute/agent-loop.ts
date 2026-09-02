@@ -22,7 +22,12 @@ import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
-import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
+import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
+import {
+  authorizeToolExecution,
+  composeStructuralGates,
+  type ToolAuthorizationDecision,
+} from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
@@ -209,10 +214,16 @@ export const runExecutionAgentLoop = async (
         skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
-        structuralGate: buildEmailSendApprovalHook(
-          deps.prisma,
-          context,
-          payload.interactive === true,
+        // Two families, one hook: the hosted mailbox and connected SMTP/IMAP
+        // mailboxes each own their own send decision and neither belongs on the
+        // send-as-you standing-consent path.
+        structuralGate: composeStructuralGates(
+          buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
+          buildMailboxSendApprovalHook(
+            deps.prisma,
+            context,
+            payload.actorContext.actionContext.effectiveUserId ?? null,
+          ),
         ),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         // The send-boundary judge. Inference the run paid for, so its

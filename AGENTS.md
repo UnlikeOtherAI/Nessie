@@ -376,6 +376,35 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
+- **A connected mailbox is somebody else's store, and reaching it takes two
+  decisions, not one.** SMTP/IMAP connections (agent email Model A) let an agent
+  work in a mailbox that already exists — a person's own, or a team's shared
+  `support@`. Nothing is synced and no mail is stored: reads run live, which is
+  the whole difference from a hosted mailbox. The properties that carry it:
+  **an access row per `(connection, agent)`**, because `Agent.toolPolicy` is
+  keyed by tool id and cannot name a resource — a bare tool grant would silently
+  widen to every mailbox connected afterwards; **the effective user for a
+  personal mailbox**, so a shared agent cannot read your inbox by being
+  mentioned in a public channel, while a team mailbox is shared by construction
+  and the access row is the whole decision; **ambiguity is refused, never
+  guessed**, since sending from the wrong address cannot be taken back; and
+  **every send is approved and pinned** to the personal owner or the shared
+  mailbox's installer, live-checked, with any source the recipient cannot reach
+  named on the request. Standing send grants are deliberately absent: a grant is
+  the mailbox owner's to give about their own account, and a shared mailbox has
+  no such owner. The reads feed the disclosure sink with the connection's scope
+  in the same call that puts mail in the window — user scope for a personal
+  mailbox, team for a shared one — so an agent answering out of your mailbox
+  produces a reply only you can see. On the wire: TLS is mandatory (a server
+  that omits STARTTLS is a downgrade, not a fallback), the host is re-resolved
+  and re-vetted through the shared `resolveVettedAddresses` on **every** dial and
+  the socket opens to that literal address with SNI and certificate checked
+  against the *configured hostname*, and every caller-supplied value — folder
+  name, search term, credential — is a counted IMAP literal, so injection is
+  structurally impossible rather than a validation somebody must remember.
+  Details: `CLAUDE.md` → "Connected mailboxes"; plan
+  `docs/plans/2026-09-02-agent-email.md` §2.2–2.3; guide
+  `docs/connected-mailboxes.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and
@@ -387,6 +416,12 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Current callers: MCP OAuth exchange/refresh/discovery/registration, the MCP
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
+  Raw sockets get the same policy through the same rules rather than a second
+  copy of them: `resolveVettedAddresses` is the shared host check, and the
+  IMAP/SMTP dialer (`packages/agent-mail/src/dial.ts`) calls it on every dial,
+  then connects to the returned literal address — there is no second resolution
+  to rebind — with TLS verified against the configured hostname, not the
+  address.
   See `docs/security-audit-2026-06.md`.
 - **The App Store (`/apps`) is the product surface on `McpCatalogEntry`, never
   a second catalogue.** One row is one app; a parallel `mcp_apps` table would

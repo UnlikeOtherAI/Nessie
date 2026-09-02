@@ -3,6 +3,9 @@ import type {
   AgentRunLimits,
   AgentStatusResponse,
   AgentVisibility,
+  MailboxConnectionRecord,
+  MailboxConnectionScope,
+  MailboxTransportSecurity,
   MeResponse,
 } from '@nessie/schemas'
 
@@ -486,3 +489,10 @@ export type MyBrowserLoginRecord = {
   serviceHint: string
   createdAt: string
 }
+
+/**
+ * Connected SMTP/IMAP mailboxes (agent email Model A). The record type is the
+ * server's own contract, re-exported rather than restated so the two cannot
+ * drift; there is no password field to strip because the shape has none.
+ */
+export type { MailboxConnectionRecord, MailboxConnectionScope, MailboxTransportSecurity }

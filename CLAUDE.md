@@ -905,17 +905,40 @@ a thread and it replies. **Amazon SES is integrated directly** — the
 deployment's own account sends and receives, an address is unique per
 deployment, and the feature is OFF unless four `NESSIE_EMAIL_*` variables are
 set (partial configuration is *named*, never degraded). Mail is **its own
-store**, not `Message` rows; each mailbox owns one backing channel
+store**, not `Message` rows; each owns one backing channel
 (`ChannelSystemType.agent_email`) with one `Thread` per `EmailConversation` —
 the *operations room* for run reports and approval gates, while
 `/agents/:agentId/mailbox` is the mail itself. Invariants: `AGENTS.md` → "An
-agent's mailbox is its own store"; plan and build detail (the `email:{mailboxId}`
-disclosure scope and its non-deadlock property, the `forceApproval` send gate,
-the rendered-draft approval route, attachment linking):
+agent's mailbox is its own store"; plan and build detail (`email:{mailboxId}`
+scope and its non-deadlock property, the `forceApproval` send gate, the
+rendered-draft approval route, attachment linking):
 [docs/plans/2026-09-02-agent-email.md](docs/plans/2026-09-02-agent-email.md);
-operator guide: [docs/agent-email.md](docs/agent-email.md). Model A of that plan
-— an agent operating an *existing* mailbox over Gmail or SMTP/IMAP, with no
-interface — is deliberately not built.
+guide: [docs/agent-email.md](docs/agent-email.md).
+
+## Connected mailboxes — SMTP/IMAP, no interface
+
+The other half of agent email (Model A): an agent works in a mailbox that already
+exists — a person's own, or a team's shared `support@` — over SMTP/IMAP. The
+provider keeps the mail; reads run **live** and nothing is imported, which is why
+there is no inbox screen. Tools are `mailbox_search` / `mailbox_read` /
+`mailbox_send`, a third family beside `gmail_*` (a person's Google account) and
+`email_*` (the agent's own hosted mailbox), because an agent holding two must never
+have an ambiguous send path. Invariants: `AGENTS.md` → "A connected mailbox is
+somebody else's store"; guide:
+[docs/connected-mailboxes.md](docs/connected-mailboxes.md); as-built deltas:
+[docs/plans/2026-09-02-agent-email.md](docs/plans/2026-09-02-agent-email.md) §2.3.
+
+- **One panel, two homes** (`components/features/mailbox-connections/`): personal
+  mailboxes on `/settings/connections`, shared ones on `/settings/organization`,
+  scope as a parameter — the `CloudBrowserPanel` shape. Both carry per-agent
+  access rows: a connection no agent may use does nothing. Connecting tests both
+  legs before it stores, and only a provider rejection (`auth`-kind) flips a
+  connection to `needs_reauthorization`.
+- Seams: protocol clients in `@nessie/agent-mail` (`dial`, `wire`, `smtp`, `imap`,
+  `mailbox-client`) beside the SES transport, since MIME and address handling are
+  transport-neutral and `buildOutboundMime` serves both models; lifecycle and the
+  credential chokepoint in `@nessie/workspace-admin` (`mailbox-connection*.ts`);
+  routes `/api/mailbox-connections*`; tuning `NESSIE_MAILBOX_TIMEOUT_MS` (20s).
 
 ## Individual Communications Connector
 

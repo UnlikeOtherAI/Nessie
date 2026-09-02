@@ -107,3 +107,35 @@ export {
   type SendGrantDuration,
   type SendGrantRecord,
 } from './send-authorization.js'
+
+export {
+  MailboxConnectionError,
+  createMailboxConnection,
+  deleteMailboxConnection,
+  isCredentialRejection,
+  listMailboxConnectionsForUser,
+  loadManageableMailboxConnection,
+  presentMailboxConnection,
+  setMailboxAgentAccess,
+  verifyMailboxConnection,
+  type ActingMember as MailboxActingMember,
+  type CreateMailboxConnectionInput,
+  type MailboxConnectionRefusal,
+} from './mailbox-connections.js'
+
+export {
+  MailboxCredentialMissingError,
+  mailboxDialOptions,
+  mailboxEndpointsFor,
+  type MailboxConnectionRow,
+} from './mailbox-connection-endpoints.js'
+
+export {
+  MailboxAccessError,
+  listReachableMailboxes,
+  markMailboxNeedsReauthorization,
+  openMailboxEndpoints,
+  resolveMailboxForToolCall,
+  type MailboxAccessErrorCode,
+  type ReachableMailbox,
+} from './mailbox-connection-access.js'

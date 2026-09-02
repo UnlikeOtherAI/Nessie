@@ -117,6 +117,25 @@ export type ToolAuthorizationContext = {
   toolPolicy: Record<string, boolean> | null
 }
 
+export type StructuralToolGate = NonNullable<ToolAuthorizationContext['structuralGate']>
+
+/**
+ * Several families, one hook. Each owns disjoint tool ids and returns null for
+ * everything else, so the first non-null answer is the family's own — asking
+ * the rest afterwards could only produce a second opinion about a tool they do
+ * not own.
+ */
+export const composeStructuralGates = (
+  ...gates: StructuralToolGate[]
+): StructuralToolGate =>
+  async (input) => {
+    for (const gate of gates) {
+      const decision = await gate(input)
+      if (decision) return decision
+    }
+    return null
+  }
+
 export type ToolAuthorizationAuditEmitter = (
   actorContext: AuthorizedActionContext,
   input: Parameters<typeof emitWorkerAuditEvent>[2],
@@ -562,6 +581,18 @@ const describeGatedAction = (
   }
   if (toolName === 'gmail_draft_send') {
     return { headline: 'Send an email as you', audience: 'The recipients will receive it' }
+  }
+  if (toolName === 'mailbox_send') {
+    const recipients = Array.isArray(args.to) ? args.to.length : 0
+    const subject = typeof args.subject === 'string' ? args.subject : null
+    return {
+      // Counts and the subject only. The recipients are the part that must not
+      // travel with a row an org owner can read.
+      audience: recipients > 0
+        ? `${recipients} ${recipients === 1 ? 'recipient' : 'recipients'} will receive it`
+        : 'The recipients will receive it',
+      headline: subject ? `Send “${subject}” from a connected mailbox` : 'Send an email',
+    }
   }
   return { headline: `Run ${toolName}`, audience: 'This acts on your account' }
 }

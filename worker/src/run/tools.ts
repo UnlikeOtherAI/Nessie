@@ -12,6 +12,11 @@ import {
 } from './pa-tools/gmail-tools.js'
 import { runGmailDraftSendTool } from './pa-tools/gmail-send-tool.js'
 import {
+  runMailboxReadTool,
+  runMailboxSearchTool,
+  runMailboxSendTool,
+} from './pa-tools/mailbox-tools.js'
+import {
   runGmailLabelsListTool,
   runGmailOrganiseTool,
   runGmailAttachmentReadTool,
@@ -468,6 +473,12 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runGmailAttachmentReadTool(context, args))
     case 'contacts_search':
       return wrapTool(inputSummary, () => runContactsSearchTool(context, args))
+    case 'mailbox_search':
+      return wrapTool(inputSummary, () => runMailboxSearchTool(context, args))
+    case 'mailbox_read':
+      return wrapTool(inputSummary, () => runMailboxReadTool(context, args))
+    case 'mailbox_send':
+      return wrapTool(inputSummary, () => runMailboxSendTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

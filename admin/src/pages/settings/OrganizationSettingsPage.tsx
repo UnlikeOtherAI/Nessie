@@ -8,6 +8,7 @@ import {
 import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
+import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
@@ -117,6 +118,12 @@ export const OrganizationSettingsPage = () => {
         <WorkspaceAvatarPanel />
         <CallProviderSettingsPanel />
         {organization?.role === 'owner' ? <CloudBrowserPanel scope="organization" /> : null}
+        {/* Shared team mailboxes sit beside the other workspace-wide connections
+            an owner or admin manages, and reuse the same panel a person's own
+            mailboxes render through. */}
+        {organization?.role === 'owner' || organization?.role === 'admin' ? (
+          <MailboxConnectionsPanel scope="team" />
+        ) : null}
         {organization?.role === 'owner' ? (
           <ConversationalSetupPanel
             enabled={organization.conversationalSetupEnabled}

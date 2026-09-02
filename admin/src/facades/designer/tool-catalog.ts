@@ -59,6 +59,20 @@ const BUILTIN_GROUPS: Array<{ name: string; match: (toolId: string) => boolean }
     match: (id) => id.startsWith('message_') || id === 'send_message',
   },
   { name: 'Channels', match: (id) => id.startsWith('channel_') },
+  {
+    // Before the `_search` rule below, which `gmail_search` and
+    // `mailbox_search` would otherwise match first and be filed under people.
+    // Three mail families reach three different resources — a person's Google
+    // account, a connected SMTP/IMAP mailbox, and the agent's own hosted one —
+    // and an owner deciding what an agent may touch needs them side by side.
+    name: 'Email & calendar',
+    match: (id) =>
+      id.startsWith('gmail_')
+      || id.startsWith('calendar_')
+      || id.startsWith('mailbox_')
+      || id.startsWith('email_')
+      || id === 'contacts_search',
+  },
   { name: 'Search & people', match: (id) => id.endsWith('_search') },
   { name: 'Knowledge base', match: (id) => id.startsWith('kb_') },
   {
