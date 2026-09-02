@@ -186,6 +186,17 @@ test('the device id is stable per installation and hides the row id', () => {
   assert.ok(!first.includes('installation-1'))
 })
 
+test('the device id is a UUID, which is what Ledger accepts', () => {
+  // Ledger validates `deviceId` as a UUID and rejects anything else with a
+  // 400 — a bare hex digest looks fine locally and fails at the only place
+  // that matters, so the shape is asserted here.
+  const id = ledgerDeviceId('installation-1', 'secret')
+  assert.match(
+    id,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  )
+})
+
 test('usage relays the client sequence as Ledger\'s idempotency key', async () => {
   let captured: { url: string; headers: Headers; body: Record<string, unknown> } | null = null
 
