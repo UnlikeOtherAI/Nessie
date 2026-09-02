@@ -28,6 +28,24 @@ Reports: [governance](audit/01-governance.md) ·
 [dashboards, search, auth](audit/10-dashboards-search-auth.md) ·
 [shared dialogs & stylesheet](audit/11-shared-dialogs-css.md).
 
+## Table of Contents
+
+- [The content kit — reference](kit.md) — what a content page is made of, and
+  the built primitives to reach for.
+- Audit reports, filed unedited, one per content area:
+  [the shared brief](audit/00-brief.md) ·
+  [governance](audit/01-governance.md) ·
+  [ops & billing](audit/02-ops-billing.md) ·
+  [personal settings](audit/03-settings-personal.md) ·
+  [org settings](audit/04-settings-org.md) ·
+  [projects](audit/05-projects.md) ·
+  [knowledge base](audit/06-knowledge.md) ·
+  [agents](audit/07-agents.md) ·
+  [automation](audit/08-automation.md) ·
+  [apps & integrations](audit/09-apps-integrations.md) ·
+  [dashboards, search & auth](audit/10-dashboards-search-auth.md) ·
+  [shared components, dialogs & CSS](audit/11-shared-dialogs-css.md).
+
 ## 1. The one-paragraph diagnosis
 
 The admin already has most of the primitives a Bootstrap-style content system
