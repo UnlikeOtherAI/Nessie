@@ -1,7 +1,29 @@
 # In-app organisation and workspace creation over UOA's org API
 
-Status: design, not implemented. Supersedes the redirect-based "Add workspace"
-flow. Date: 2026-09-02.
+Status: **implemented** 2026-09-02. Supersedes the redirect-based "Add
+workspace" flow.
+
+As built, in the order a reader should follow it:
+
+- **UOA** — `POST /org/organisations` now answers `defaultTeam`, the full team
+  record of the "General" team its own transaction creates
+  (UnlikeOtherAuthenticator `ed83e68`, deployed). This was §2's upstream change;
+  without it the flow has no team id to switch onto.
+- **`packages/workspace-admin/src/uoa-org-provisioning.ts`** —
+  `createUoaOrganisation` (backend mode, strips any assertion a caller passes)
+  and `createUoaWorkspaceTeam` (user mode). Both go through the existing
+  `rosterRequest` seam; neither writes a local row.
+- **`api/src/routes/workspace-provisioning.ts`** —
+  `POST /api/workspaces/organizations` and `POST /api/workspaces/teams`,
+  owner-gated, idempotent per `idempotencyKey`.
+- **`admin/src/layouts/admin-shell/CreateWorkspaceDialog.tsx`** and
+  `facades/workspace/provisioning.ts` — the dialog behind the rail's "Add
+  workspace", and the create → switch → land mutation.
+
+Two decisions changed during the build and the sections below record the
+outcome, not the deliberation: the idempotency ledger is the existing
+`AuditLog` rather than a new table (§4), and `allow_user_create_org` is not
+consulted as a gate because Nessie authors that flag itself (§1e).
 
 ## The problem
 
@@ -302,7 +324,21 @@ reconciliation on the next authoritative read. The states:
 | Double-submit | Two clicks, one intent | The idempotency mechanism below makes the second click a 409 returning the first request's outcome, not a second organisation. |
 | Retry after a network timeout of unknown outcome | The client does not know whether UOA created the org | Without idempotency this mints a **second** organisation with the same name — UOA derives a unique slug, so nothing upstream deduplicates, and in backend mode the retry spends the shared per-domain bucket rather than the person's own. This is the case the mechanism exists for. |
 
-**The idempotency mechanism.** The client generates a UUID `idempotencyKey`
+**The idempotency mechanism (as built).** The ledger is the existing
+`AuditLog`, not a new table. It already records who created what, it is
+append-only and hash-chained, and using it keeps the promise this feature is
+built on — no second local copy of UOA's organisation ids. The whole attempt
+runs inside one interactive transaction that first takes a per-user advisory
+lock (`nessie:org-provisioning:{userId}`, the `lockUserSessions` pattern), then
+looks for a prior success carrying the same key in the last 24 hours, then
+calls UOA, then writes the audit row. Holding the lock across the UOA call is
+deliberate: releasing it first leaves exactly the double-submit window the
+mechanism exists to close, and the call is a single POST bounded by the
+`/org/*` seam's 10s timeout, well inside the transaction budget. The paragraph
+below describes the shape that was designed; the lock plus the audit lookup is
+what implements it.
+
+**The idempotency mechanism (as designed).** The client generates a UUID `idempotencyKey`
 when the form is first submitted and re-sends it on every retry of the same
 logical creation. The creation route keeps a small ledger — keyed
 `(userId, idempotencyKey)`, unique — whose row is inserted in the same gate
