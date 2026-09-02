@@ -1,4 +1,5 @@
 import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
+import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 /**
@@ -412,7 +413,7 @@ export const STRUCTURALLY_APPROVAL_GATED_TOOL_IDS = new Set(
   // mailbox's `email_send` needs exactly the same treatment (a longer expiry, a
   // pinned approver, no accidental ungating), and two sets would be two chances
   // to forget one.
-  [...GOOGLE_TOOL_DEFINITIONS, ...EMAIL_TOOL_DEFINITIONS]
+  [...GOOGLE_TOOL_DEFINITIONS, ...EMAIL_TOOL_DEFINITIONS, ...BROWSER_TOOL_DEFINITIONS]
     .filter((tool) => tool.requiresApproval)
     .map((tool) => tool.id),
 )

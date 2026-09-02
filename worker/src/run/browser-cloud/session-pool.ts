@@ -44,7 +44,11 @@ const evictIdle = (now: number): void => {
 export const registerSession = (
   sessionId: string,
   connectUrl: string,
-  originGate: OriginGateState = { authenticatedOrigins: new Set(), touchedAuthenticated: false },
+  originGate: OriginGateState = {
+    authenticatedOrigins: new Set(),
+    currentUrl: null,
+    touchedAuthenticated: false,
+  },
 ): void => {
   evictIdle(Date.now())
   pool.set(sessionId, { connectUrl, cdp: null, lastUsedAt: Date.now(), originGate })

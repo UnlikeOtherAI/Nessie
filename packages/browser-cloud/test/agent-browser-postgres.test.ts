@@ -12,7 +12,12 @@ import {
   resetAgentBrowser,
   resolveDurableBrowserConnection,
 } from '../src/agent-browser.js'
-import { openCloudBrowserSession, releaseSessionsForRun } from '../src/session-lifecycle.js'
+import {
+  claimSessionControl,
+  openCloudBrowserSession,
+  releaseSessionControl,
+  releaseSessionsForRun,
+} from '../src/session-lifecycle.js'
 import type { CloudBrowserDeps } from '../src/session-lifecycle.js'
 
 /**
@@ -432,6 +437,99 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
         agentBrowserId: browser.id,
       }),
       (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_CAPACITY',
+    )
+  } finally {
+    await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('handing back the controls marks the session authenticated', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'control handback')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    // An ephemeral session with no logins: nothing marks it authenticated at
+    // open, which is exactly the case that used to lose the basis.
+    const opened = await openCloudBrowserSession(deps, {
+      organizationId: s.organizationId,
+      runId: s.runId,
+      threadId: s.threadId,
+      agentId: s.workspaceAgentId,
+      requestedByUserId: s.ownerUserId,
+    })
+    const before = await prisma.cloudBrowserSession.findUnique({
+      where: { id: opened.sessionId },
+      select: { authenticated: true },
+    })
+    assert.equal(before?.authenticated, false)
+
+    assert.equal(
+      await claimSessionControl(prisma, {
+        sessionId: opened.sessionId,
+        userId: s.ownerUserId,
+      }),
+      true,
+    )
+    assert.equal(
+      await releaseSessionControl(prisma, {
+        sessionId: opened.sessionId,
+        userId: s.ownerUserId,
+      }),
+      true,
+    )
+
+    // A person at the controls may have signed in, and the agent resumes into
+    // whatever they left behind.
+    const after = await prisma.cloudBrowserSession.findUnique({
+      where: { id: opened.sessionId },
+      select: { authenticated: true },
+    })
+    assert.equal(after?.authenticated, true)
+  } finally {
+    await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('only the holder can hand the controls back', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'control holder')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const opened = await openCloudBrowserSession(deps, {
+      organizationId: s.organizationId,
+      runId: s.runId,
+      threadId: s.threadId,
+      agentId: s.workspaceAgentId,
+      requestedByUserId: s.ownerUserId,
+    })
+    await claimSessionControl(prisma, {
+      sessionId: opened.sessionId,
+      userId: s.ownerUserId,
+    })
+
+    // A bystander must not yank the controls out from under somebody
+    // mid-sign-in.
+    assert.equal(
+      await claimSessionControl(prisma, {
+        sessionId: opened.sessionId,
+        userId: s.otherUserId,
+      }),
+      false,
+    )
+    assert.equal(
+      await releaseSessionControl(prisma, {
+        sessionId: opened.sessionId,
+        userId: s.otherUserId,
+      }),
+      false,
     )
   } finally {
     await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })

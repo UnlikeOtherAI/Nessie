@@ -21,6 +21,8 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
+import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
@@ -216,11 +218,13 @@ export const runExecutionAgentLoop = async (
         skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
-        structuralGate: buildEmailSendApprovalHook(
-          deps.prisma,
-          context,
-          payload.interactive === true,
-        ),
+        // One hook per family, tried in order: each returns null for tools it
+        // does not own, so adding a family costs one comparison rather than a
+        // second gate the next family could forget to consult.
+        structuralGate: composeStructuralGates([
+          buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
+          buildBrowserActApprovalHook(deps.prisma, context),
+        ]),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         // The send-boundary judge. Inference the run paid for, so its
         // invocations count in the run's totals like compaction's do.
