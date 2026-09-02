@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { AgentToolCatalog } from '@nessie/workspace-admin'
+
 import {
-  buildAvailableModelLines,
   buildDesignerSystemPrompt,
   DESIGNER_TOOLS,
   type DesignerChatInput,
 } from '../src/services/designer-prompt.js'
+
+/**
+ * The sidebar and the Agent Designer DM are one specialist (D9). These cases
+ * pin the parts of that: the persona comes from the blueprint, the tool
+ * catalogue from the server's own read of this organisation, and the closing
+ * instruction tells the truth about *this* transport — a form nobody has saved.
+ */
+
+const organizationId = '00000000-0000-4000-8000-000000000001'
 
 const formState = (
   overrides: Partial<DesignerChatInput['formState']> = {},
@@ -36,55 +46,92 @@ const models: DesignerChatInput['availableModels'] = [
   },
 ]
 
-test('each model line leads with the exact pair set_model has to copy', () => {
-  assert.deepEqual(buildAvailableModelLines(models), [
-    '- model=gpt-5-mini provider=openai — GPT-5 mini (OpenAI)'
-    + ' — Fast, cheap chat model.',
-    '- model=kimi-k2 provider=kimi — Kimi K2 (Kimi)',
-  ])
+const catalogue: AgentToolCatalog = {
+  connectorCount: 1,
+  restricted: [
+    {
+      allowMode: false,
+      defaultEnabled: true,
+      group: 'Agents & delegation',
+      key: 'agent_create',
+      kind: 'builtin',
+      label: 'Create Agent',
+      restriction: 'built_in_specialist_only',
+      summary: 'Create a shared agent.',
+    },
+  ],
+  togglable: [
+    {
+      allowMode: false,
+      defaultEnabled: true,
+      group: 'Web & research',
+      key: 'web_search',
+      kind: 'builtin',
+      label: 'Web Search',
+      summary: 'Search the public web.',
+    },
+  ],
+}
+
+const prompt = (
+  overrides: Partial<Parameters<typeof buildDesignerSystemPrompt>[0]> = {},
+): string =>
+  buildDesignerSystemPrompt({
+    availableModels: models,
+    catalogue,
+    formState: formState(),
+    organizationId,
+    webSearchAvailable: true,
+    ...overrides,
+  })
+
+test('the persona is the blueprint\'s, not a second one written for the sidebar', () => {
+  assert.match(prompt(), /You are the Agent Designer/)
+  assert.match(prompt(), /Understand the work before you configure anything/)
+})
+
+test('the tool catalogue is the generated one, with policy keys', () => {
+  const rendered = prompt()
+  assert.match(rendered, /web_search \(Web Search\)/)
+  assert.match(rendered, /on by default; set false to remove/)
+  // A tool nobody may grant is named with its reason, never offered.
+  assert.match(rendered, /agent_create — reserved for Nessie's built-in specialists/)
+})
+
+test('the model catalogue renders as exact provider/model pairs', () => {
+  const rendered = prompt()
+  assert.match(rendered, /openai\/gpt-5-mini — GPT-5 mini/)
+  assert.match(rendered, /kimi\/kimi-k2 — Kimi K2/)
 })
 
 test('an unavailable catalogue tells the model to leave the field alone', () => {
-  assert.deepEqual(buildAvailableModelLines(undefined), [
-    '(catalogue unavailable — leave the model alone)',
-  ])
-  assert.deepEqual(buildAvailableModelLines([]), [
-    '(catalogue unavailable — leave the model alone)',
-  ])
-})
-
-test('a long catalogue description is truncated, like a tool description', () => {
-  const [line] = buildAvailableModelLines([
-    { ...models[0]!, description: 'x'.repeat(200) },
-  ])
-
-  assert.ok(line?.endsWith(`— ${'x'.repeat(120)}`), line)
+  assert.match(prompt({ availableModels: [] }), /leave provider and model/i)
 })
 
 test('the prompt states the selected model so it is not reset needlessly', () => {
-  const prompt = buildDesignerSystemPrompt(
-    formState({ model: 'kimi-k2', provider: 'kimi' }),
-    [],
-    models,
-  )
+  const rendered = prompt({
+    formState: formState({ model: 'kimi-k2', provider: 'kimi' }),
+  })
 
-  assert.match(prompt, /- Model: kimi-k2 \(provider kimi\)/)
+  assert.match(rendered, /- Model: kimi-k2 \(provider kimi\)/)
 })
 
 test('an empty model reads as the blocker it is', () => {
-  const prompt = buildDesignerSystemPrompt(formState(), [], models)
-
-  assert.match(prompt, /- Model: \(none selected/)
+  assert.match(prompt(), /- Model: \(none selected/)
 })
 
-test('the catalogue reaches the prompt under the set_model heading', () => {
-  const prompt = buildDesignerSystemPrompt(formState(), [], models)
-  const heading = prompt.indexOf(
-    'Available models (use the exact model + provider pair with set_model):',
-  )
+test('the sidebar never claims it created an agent', () => {
+  const rendered = prompt()
+  assert.match(rendered, /filling in the form in front of the person/)
+  assert.match(rendered, /never say an agent has been created or changed/)
+})
 
-  assert.ok(heading > -1)
-  assert.ok(prompt.indexOf('- model=gpt-5-mini provider=openai') > heading)
+test('an unconfigured web search is stated rather than silently missing', () => {
+  assert.match(
+    prompt({ webSearchAvailable: false }),
+    /web_search is not configured on this deployment/,
+  )
+  assert.match(prompt({ webSearchAvailable: true }), /web_search is available/)
 })
 
 test('set_model is declared, and takes both fields together', () => {
@@ -100,14 +147,22 @@ test('set_model is declared, and takes both fields together', () => {
 })
 
 test('the current designer page limits the assistant to controls a person can reach', () => {
-  const prompt = buildDesignerSystemPrompt(formState(), [], models, {
-    title: 'Tools',
-    description: 'Review and change this agent’s tool access.',
-    actions: ['enable or disable tools, then save the changes'],
+  const rendered = prompt({
+    pageContext: {
+      title: 'Tools',
+      description: 'Review and change this agent’s tool access.',
+      actions: ['enable or disable tools, then save the changes'],
+    },
   })
 
-  assert.match(prompt, /Current page:/)
-  assert.match(prompt, /- Tools: Review and change this agent’s tool access\./)
-  assert.match(prompt, /Controls available on this page: enable or disable tools, then save the changes/)
-  assert.match(prompt, /Only call a UI-changing tool when[\s\S]*current page lists the relevant control/)
+  assert.match(rendered, /Current page:/)
+  assert.match(rendered, /- Tools: Review and change this agent’s tool access\./)
+  assert.match(
+    rendered,
+    /Controls available on this page: enable or disable tools, then save the changes/,
+  )
+  assert.match(
+    rendered,
+    /Only call a control-changing tool when[\s\S]*current page lists that/,
+  )
 })

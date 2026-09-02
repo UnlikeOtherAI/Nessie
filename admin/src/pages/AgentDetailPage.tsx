@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
+import { SystemAgentConfigPanel } from '../components/features/agents/SystemAgentConfigPanel'
 import { AgentIdentityBlock } from '../components/features/agents/AgentIdentityBlock'
 import { AgentOwnershipState } from '../components/features/agents/AgentOwnershipState'
 import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
@@ -92,7 +93,17 @@ export const AgentDetailPage = () => {
             title={agent.name}
           />
 
+          {/* A Nessie-managed agent (the Personal Assistant, the Agent
+              Designer) gets the read-only configuration view instead of the
+              tabs: `isAgentAccessibleToActor` hard-codes `systemManaged:
+              false`, so status, activity, messages and sub-agents all 404 on
+              one, and mounting them made "not editable" read as "broken". Its
+              activity genuinely stays closed — a global agent works in every
+              member's private DM. */}
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
+            {agent.systemManaged ? (
+              <SystemAgentConfigPanel agentId={agent.id} />
+            ) : (
             <AgentDetailTabs
               agent={agent}
               editSlot={
@@ -103,6 +114,7 @@ export const AgentDetailPage = () => {
               key={agent.id}
               onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
             />
+            )}
           </div>
         </div>
         {canEdit ? <DesignerAssistantDrawer /> : null}

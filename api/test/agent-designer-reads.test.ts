@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import {
+  AGENT_DESIGNER_BLUEPRINT,
   loadAgentToolCatalog,
+  readAgentConfigView,
   readAgentRecordForActor,
 } from '@nessie/workspace-admin'
 
@@ -191,6 +193,57 @@ dbTest('a blueprint-managed agent answers with configuration only', async () => 
   })
 })
 
+dbTest('the config view resolves an agent\u2019s tools, not just its policy map', async () => {
+  await withDb(async (prisma) => {
+    const view = await readAgentConfigView(prisma, {
+      agentId: teamOwnedAgentId,
+      isOwner: false,
+      organizationId: orgId,
+      userId: memberUserId,
+    })
+    assert.ok(view)
+    assert.equal(view.systemSlug, null)
+    const keys = new Set(view.tools.map((tool) => tool.key))
+    // A deny-mode builtin nothing removed is on, and says why it is on.
+    assert.ok(keys.has('web_search'))
+    assert.equal(
+      view.tools.find((tool) => tool.key === 'web_search')?.source,
+      'default',
+    )
+    // A tool no designed agent may hold is not listed as one of its tools.
+    assert.equal(keys.has('agent_create'), false)
+  })
+})
+
+dbTest('a global agent\u2019s config view names its reserved tools', async () => {
+  await withDb(async (prisma) => {
+    await prisma.agent.update({
+      data: { systemSlug: AGENT_DESIGNER_BLUEPRINT.slug },
+      where: { id: systemAgentId },
+    })
+    const view = await readAgentConfigView(prisma, {
+      agentId: systemAgentId,
+      isOwner: false,
+      organizationId: orgId,
+      userId: memberUserId,
+    })
+    assert.ok(view)
+    assert.equal(view.systemSlug, AGENT_DESIGNER_BLUEPRINT.slug)
+    assert.equal(view.config.systemManaged, true)
+    const reserved = view.tools.filter((tool) => tool.source === 'reserved')
+    // Every identity-delegated tool the blueprint declares is shown, marked as
+    // reserved rather than as something an editor switched on.
+    for (const toolId of AGENT_DESIGNER_BLUEPRINT.identityToolIds) {
+      assert.ok(
+        reserved.some((tool) => tool.key === toolId),
+        `${toolId} is missing from the config view`,
+      )
+    }
+    // Its own deny-mode narrowing is honoured.
+    assert.equal(view.tools.some((tool) => tool.key === 'delegate'), false)
+  })
+})
+
 dbTest('an agent in another organization is not readable', async () => {
   await withDb(async (prisma) => {
     const foreign = await prisma.agent.create({
@@ -331,8 +384,13 @@ dbTest('personal-assistant-only and explicit-grant builtins are named, not offer
     const restricted = new Map(
       catalogue.restricted.map((entry) => [entry.key, entry.restriction]),
     )
-    assert.equal(restricted.get('agent_create'), 'personal_assistant_only')
-    assert.equal(restricted.get('agent_update'), 'personal_assistant_only')
+    // The design verbs are the Agent Designer's, not the Personal Assistant's
+    // (phase 4) — so the catalogue must not tell a designed agent's author that
+    // "a Personal Assistant may use it", which is no longer true of them.
+    assert.equal(restricted.get('agent_create'), 'built_in_specialist_only')
+    assert.equal(restricted.get('agent_update'), 'built_in_specialist_only')
+    // An operational verb the PA keeps still reads as PA-only.
+    assert.equal(restricted.get('agent_bind_channel'), 'personal_assistant_only')
     assert.equal(restricted.get('deep_water_run_update'), 'explicit_grant')
     // …and none of them can be switched on from a design conversation.
     for (const key of restricted.keys()) {

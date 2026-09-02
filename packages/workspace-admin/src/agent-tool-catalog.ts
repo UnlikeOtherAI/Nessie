@@ -30,6 +30,13 @@ import {
 export type AgentToolRestriction =
   /** `personalAssistantOnly` — the person's own delegate wields these, never a designed agent. */
   | 'personal_assistant_only'
+  /**
+   * `identityDelegatedOnly` — reserved for a built-in specialist (the Agent
+   * Designer's own create/read/update verbs). Not even a Personal Assistant
+   * holds these, so naming them "Personal Assistant only" would be a lie the
+   * Designer then repeats to the person.
+   */
+  | 'built_in_specialist_only'
   /** `requiresExplicitGrant` — granted from an owner surface, never from a design conversation. */
   | 'explicit_grant'
 
@@ -158,7 +165,12 @@ export const loadAgentToolCatalog = async (
       summary: summarise(tool.summary),
     }
     if (tool.personalAssistantOnly) {
-      restricted.push({ ...entry, restriction: 'personal_assistant_only' })
+      restricted.push({
+        ...entry,
+        restriction: tool.identityDelegatedOnly === true
+          ? 'built_in_specialist_only'
+          : 'personal_assistant_only',
+      })
       continue
     }
     if (tool.requiresExplicitGrant) {

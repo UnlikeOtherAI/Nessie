@@ -161,12 +161,19 @@ Root app layout:
 
 ### 2.0c Live personal-assistant workspace provisioning boundary
 
-- Five PA-only builtins let the assistant set a workspace up the way its owner
-  can by clicking: `agent_list`, `channel_create`, `agent_create`,
-  `agent_bind_channel`, and
-  `agent_trigger_create` (`worker/src/run/pa-tools/provisioning.ts`). Each calls
-  the same service function as its REST route and reproduces that route's
-  authorization exactly — no weaker, no stronger.
+- Four PA-only builtins let the assistant do to an existing workspace what its
+  owner can do by clicking: `agent_list`, `channel_create`,
+  `agent_bind_channel`, and `agent_trigger_create`
+  (`worker/src/run/pa-tools/provisioning.ts`). Each calls the same service
+  function as its REST route and reproduces that route's authorization exactly —
+  no weaker, no stronger.
+- **`agent_create` lives in the same file but is not reachable from the PA.**
+  Creating and redesigning an agent belongs to the Agent Designer: those tools
+  carry `identityDelegatedOnly`, which removes the Personal Assistant's own arm
+  from the `personalAssistantOnly` gate, and the PA hands the conversation over
+  with `agent_handoff` instead (see the global-agent surface,
+  `docs/global-agents.md`). The tool itself is unchanged — member-level, mapping
+  to `POST /api/agents` — it is simply the Designer's to call.
 - `agent_list` (`GET /api/agents` → `listAgentsForUser`) is the read the two
   id-taking tools depend on: an owner clicking picks the agent from a list, so
   without it the assistant could only bind or schedule an agent it had created
@@ -188,12 +195,11 @@ Root app layout:
   filter (`listAgentsForUser(..., includeSystemManaged)`); every other caller,
   the `agent_list` tool included, omits the param and gets the unchanged
   non-system list.
-- `agent_list`, `channel_create` (`POST /api/channels`) and `agent_create`
-  (`POST /api/agents`)
-  are open to any active member, because those routes carry only
-  `requireActorContext`. `agent_bind_channel`
-  (`POST /api/agents/:agentId/bindings`) requires channel membership, refuses a
-  `personal_assistant` system channel, requires owner, and then passes
+- `agent_list` and `channel_create` (`POST /api/channels`) are open to any
+  active member, because those routes carry only `requireActorContext`.
+  `agent_bind_channel`
+  (`POST /api/agents/:agentId/bindings`) requires channel membership, refuses any
+  system channel, requires owner, and then passes
   `checkPolicy(…, 'agent', 'bind', …)`. `agent_trigger_create`
   (`POST /api/agents/:agentId/triggers`) requires owner plus an accessible
   agent, parses the route's own `CreateAgentTriggerBodySchema`, and stamps
@@ -204,7 +210,8 @@ Root app layout:
   and `assertGenericAgentToolPolicyInput` refuses every `requiresExplicitGrant`
   key and DeepWater provenance marker, so an agent authored from chat can never
   arrive with research already granted. There is no assistant tool for agent
-  update, agent delete, or tool-policy targets; those stay owner UI actions.
+  delete or tool-policy targets; agent *update* exists but, like creation, is the
+  Agent Designer's alone.
 - The acting user's role is re-read from the live `OrganizationMember` row on
   every call, and a deactivated membership is refused — the run's
   `actorContext` is an enqueue-time snapshot, while the API re-resolves the role

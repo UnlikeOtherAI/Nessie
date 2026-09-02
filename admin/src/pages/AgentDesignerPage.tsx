@@ -30,6 +30,7 @@ import {
   useUpdateAgent,
 } from '../facades/agents/hooks'
 import { useDesignerChat } from '../facades/designer/hooks'
+import { useContinueDesignInChat } from '../facades/designer/agent-designer-identity'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
 import { SectionLabel } from '../components/primitives/SectionLabel'
@@ -158,11 +159,26 @@ export const AgentDesignerContent = ({
     setModelSelection(leadingModelOption)
   }, [isEditMode, leadingModelOption, setModelSelection, state.model, state.provider])
 
-  const chat = useDesignerChat(state, actions, toolCatalog.options, modelOptions, {
+  const chat = useDesignerChat(state, actions, modelOptions, {
     onToolCall: handleAssistantToolCall,
     onToolCallStart: handleAssistantToolCallStart,
     pageContext: assistantPanel?.pageContext,
   })
+  // The sidebar's doorway into the full conversation. The draft goes over as a
+  // server-authored briefing (the `agent_handoff` mechanism), and the person
+  // lands in their own private Agent Designer DM.
+  const continueInChat = useContinueDesignInChat()
+  const handleContinueInChat = useCallback(() => {
+    continueInChat.mutate(
+      {
+        ...(editingAgent?.id ? { editingAgentId: editingAgent.id } : {}),
+        formState: state,
+      },
+      {
+        onSuccess: (result) => void navigate(`/channels/${result.channelId}`),
+      },
+    )
+  }, [continueInChat, editingAgent?.id, navigate, state])
   const createAgent = useCreateAgent()
   const updateAgent = useUpdateAgent()
 
@@ -365,9 +381,11 @@ export const AgentDesignerContent = ({
         {assistantPanel?.panelOutlet
           ? createPortal(
               <DesignerChat
+                continuingInChat={continueInChat.isPending}
                 error={chat.error}
                 messages={chat.messages}
                 onClose={assistantPanel.closeDrawer}
+                onContinueInChat={handleContinueInChat}
                 onSend={chat.send}
                 onStop={chat.stop}
                 pageContext={assistantPanel.pageContext}
@@ -380,8 +398,10 @@ export const AgentDesignerContent = ({
           : !assistantPanel ? (
               <div className="h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]">
                 <DesignerChat
+                  continuingInChat={continueInChat.isPending}
                   error={chat.error}
                   messages={chat.messages}
+                  onContinueInChat={handleContinueInChat}
                   onSend={chat.send}
                   onStop={chat.stop}
                   status={chat.status}

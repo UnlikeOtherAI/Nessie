@@ -136,9 +136,14 @@ export const authorizeToolCall = (
   // condition in `resolveIdentityDelegatedToolIds` (own home DM, interactive,
   // live human requester). Neither the policy nor the model can widen the set —
   // it comes from code that ships with the deployment.
+  //
+  // `identityDelegatedOnly` removes the first arm for a tool the deployment has
+  // moved to a specialist: creating and redesigning agents is the Agent
+  // Designer's work, and the PA reaches it through `agent_handoff` rather than
+  // by carrying the design catalogue in its own context.
   if (
     definition.personalAssistantOnly
-    && agentKind !== 'personal_assistant'
+    && !(agentKind === 'personal_assistant' && definition.identityDelegatedOnly !== true)
     && !options.identityToolIds?.has(toolId)
   ) {
     return { allowed: false, reason: 'personal_assistant_only' }

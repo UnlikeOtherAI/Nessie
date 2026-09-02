@@ -41,6 +41,22 @@ const designerHome: DelegatedRunFacts = {
 const IDENTITY_TOOL = 'agent_create'
 const NON_IDENTITY_PA_TOOL = 'send_message'
 
+/** Moved to the Agent Designer in phase 4 — the PA hands off instead. */
+const DESIGNER_RESERVED_TOOLS = [
+  'agent_avatar_update',
+  'agent_create',
+  'agent_read',
+  'agent_tool_catalog',
+  'agent_update',
+]
+/** The operational verbs on existing agents, which stay with the PA. */
+const PA_OPERATIONAL_AGENT_TOOLS = [
+  'agent_bind_channel',
+  'agent_list',
+  'agent_trigger_create',
+  'channel_create',
+]
+
 // The gate is only meaningful if these really are `personalAssistantOnly`
 // builtins — a rename would otherwise quietly turn every case below green.
 test('the blueprint names real personalAssistantOnly builtins', () => {
@@ -56,6 +72,22 @@ test('the blueprint names real personalAssistantOnly builtins', () => {
   const nonIdentity = BUILTIN_TOOL_DEFINITIONS.find((t) => t.id === NON_IDENTITY_PA_TOOL)
   assert.equal(nonIdentity?.personalAssistantOnly, true)
   assert.ok(!AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes(NON_IDENTITY_PA_TOOL))
+
+  // The retirement is expressed on the definitions, and the Designer's
+  // blueprint must still declare every one it took over — otherwise the tool
+  // would be reachable by nobody at all.
+  for (const toolId of DESIGNER_RESERVED_TOOLS) {
+    const definition = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.id === toolId)
+    assert.equal(definition?.identityDelegatedOnly, true, `${toolId} is not designer-reserved`)
+    assert.ok(
+      AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes(toolId),
+      `${toolId} is reserved but no blueprint declares it`,
+    )
+  }
+  for (const toolId of PA_OPERATIONAL_AGENT_TOOLS) {
+    const definition = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.id === toolId)
+    assert.notEqual(definition?.identityDelegatedOnly, true, `${toolId} left the PA by accident`)
+  }
 })
 
 test('the delegation predicate is true for the two delegate surfaces and nothing else', () => {
@@ -246,9 +278,60 @@ test('a PA-only tool the blueprint does not declare stays denied for the Designe
   })
 })
 
-test('the personal assistant still gets every PA-only tool', () => {
-  for (const toolId of [IDENTITY_TOOL, NON_IDENTITY_PA_TOOL]) {
-    assert.deepEqual(authorize(toolId, 'personal_assistant'), { allowed: true })
+test('the personal assistant keeps the PA-only tools that are not designer-reserved', () => {
+  assert.deepEqual(authorize(NON_IDENTITY_PA_TOOL, 'personal_assistant'), { allowed: true })
+  for (const toolId of PA_OPERATIONAL_AGENT_TOOLS) {
+    assert.deepEqual(
+      authorize(toolId, 'personal_assistant'),
+      { allowed: true },
+      `${toolId} is an operational verb the PA keeps`,
+    )
+  }
+})
+
+// Phase 4 (D8): creating and redesigning an agent moved to the Agent Designer.
+// The tools are not deleted — the Designer needs them — so the retirement is a
+// flag on the definition that removes the PA's kind arm, leaving only the
+// identity-delegated one.
+test('the personal assistant no longer reaches the designer-reserved tools', () => {
+  for (const toolId of DESIGNER_RESERVED_TOOLS) {
+    assert.deepEqual(
+      authorize(toolId, 'personal_assistant'),
+      { allowed: false, reason: 'personal_assistant_only' },
+      `${toolId} must be unreachable from the Personal Assistant`,
+    )
+  }
+
+  const paToolset = resolveAgentTools(
+    enabled,
+    BUILTIN_TOOL_DEFINITIONS,
+    null,
+    null,
+    'personal_assistant',
+    { inlineToolLimit: BUILTIN_TOOL_DEFINITIONS.length },
+  )
+  for (const toolId of DESIGNER_RESERVED_TOOLS) {
+    assert.equal(
+      paToolset.allowedIds.has(toolId),
+      false,
+      `${toolId} must be omitted from the PA's schema array, not offered then denied`,
+    )
+  }
+  for (const toolId of PA_OPERATIONAL_AGENT_TOOLS) {
+    assert.equal(paToolset.allowedIds.has(toolId), true)
+  }
+  // The doorway that replaces them.
+  assert.equal(paToolset.allowedIds.has('agent_handoff'), true)
+})
+
+test('the Designer still reaches every designer-reserved tool in its home DM', () => {
+  const admitted = resolveIdentityDelegatedToolIds(designerHome, USER)
+  for (const toolId of DESIGNER_RESERVED_TOOLS) {
+    assert.deepEqual(
+      authorize(toolId, 'shared', admitted),
+      { allowed: true },
+      `${toolId} must survive the retirement for the Designer`,
+    )
   }
 })
 

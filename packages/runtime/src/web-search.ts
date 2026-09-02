@@ -1,8 +1,6 @@
 import { z } from 'zod'
-import type {
-  LedgerAttribution,
-  LedgerIdentityService,
-} from '@nessie/runtime'
+import type { LedgerAttribution } from './ledger.js'
+import type { LedgerIdentityService } from './ledger-identity.js'
 
 const LEDGER_SERPER_PATH = '/v1/serper/search'
 const LEDGER_SERPER_TIMEOUT_MS = 15_000

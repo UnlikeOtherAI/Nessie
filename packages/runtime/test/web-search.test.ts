@@ -10,7 +10,7 @@ import {
   runWebSearch,
   WebSearchError,
   type WebSearchOptions,
-} from './web-search.js'
+} from '../src/web-search.js'
 
 const SERPER_BODY = {
   answerBox: { answer: '42' },

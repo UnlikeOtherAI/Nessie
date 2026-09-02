@@ -793,53 +793,40 @@ through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 facts). Invariants — the CHECKs, the ensure/policy-merge shape, the binding,
 trigger and run-placement refusals, the un-gated list arm, the delegation
 predicate with its one-arm identity-tool gate, and the handoff bounds:
-`AGENTS.md` → "A global agent is a blueprint in code". Spec:
+`AGENTS.md` → "A global agent is a blueprint in code". The mechanics beyond
+those — the Designer's toolset and its shared reads, the generated capability
+catalogue, `agent_handoff`'s delivery, and the sidebar's second face — are in
+[docs/global-agents.md](docs/global-agents.md). Spec:
 [docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
 
-Facts not restated there: bootstrap runs beside the PA's at login and user
-provisioning but **best-effort** (`attemptGlobalAgentsBootstrap`) — a global
-agent must never lock anyone out; the model is blueprint pin →
-`NESSIE_DESIGNER_MODEL` → organisation default; the sidebar finds the DM via
-`isGlobalAgentChannel`, and `AgentIdentityProvider` reads `scope=all`.
+Facts worth having on the map:
 
-- **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
-  provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog`,
-  `agent_avatar_update` — `personalAssistantOnly` builtins in
-  `pa-tools/agent-config.ts` over shared `@nessie/workspace-admin` functions.
-  `readAgentRecordForActor` applies exactly the list entitlement
-  (`buildAgentEntitlementWhere`, factored out of `listAgentsForUser` so list
-  and detail cannot disagree) and answers a `systemManaged` target with a
-  **config-only** projection. `updateAgentRecord`/`updateAgentAvatar` moved to
-  `agent-update.ts` there because the worker cannot import
-  `api/src/services/*`, so chat inherits the one `canEditAgent` the PUT route
-  uses. `loadAgentToolCatalog` is a **member-safe** projection
-  (`GET /api/mcp/tools` stays owner-only) built field-by-field from a narrow
-  selection, so no credential or endpoint can travel in it.
-  `generateAvatarForNewAgent` serves both `POST /api/agents` and
-  `agent_create`, and never throws.
-- **The capability catalogue is generated, never written**
-  (`worker/src/run/execute/global-agent-catalogue.ts`): parameters from the
-  contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS` plus the
-  organisation's live registry rows, models from `listLedgerAgentModels`.
-  Hand-written parameter or tool prose is forbidden — a new tool is in the
-  Designer's knowledge the deploy it ships. Injected at one `run-job.ts` call
-  site as its own `system` message after the cache-stable anchor.
-- **`agent_handoff`** (`worker/src/run/pa-tools/agent-handoff.ts`) is
-  default-on for every agent, `{ target: <slug>, brief }`, registry slugs only.
-  The requester is the actor, never `effectiveUserId`, on an `interactive` run
-  with a live membership re-read; the loop bound is structural in
-  `authorizeToolCall` (omitted from any `systemSlug` agent and from subtask
-  children); `AgentHandoffRequest` converges repeats under an advisory lock
-  (10-min cooldown, 60-min expiry). The brief is a hidden `system` message
-  delivered through `claimThreadRunOrPend` with `replyPlacement: 'channel'`
-  fused to it; its basis is `computeReplyBasis` then `subtractImpliedScopes`
-  against the requester's live viewer, and `run-job.ts` now feeds the trigger
-  message's basis into the run's sink — `loadConversation` excludes `system`
-  rows, so a hidden brief's restriction would otherwise leave through an
-  empty-basis reply. The origin doorway renders as `AgentHandoffDoorway`.
+- Bootstrap runs beside the PA's at login and user provisioning but
+  **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
+  lock anyone out. The model is blueprint pin → `NESSIE_DESIGNER_MODEL` →
+  organisation default on **both** faces (`resolveGlobalAgentModel`).
+- **Designing an agent is the Designer's alone.** `agent_create`, `agent_read`,
+  `agent_update`, `agent_tool_catalog` and `agent_avatar_update` carry
+  `identityDelegatedOnly`, which removes the Personal Assistant's own arm from
+  the `personalAssistantOnly` gate: the PA keeps the operational verbs on
+  existing agents and hands the conversation over with `agent_handoff`. The
+  tools are omitted from its schema array, never offered and denied.
+- **Two faces, one brain.** The Agent Designer page's sidebar keeps its own
+  transport — in-process SSE driving the open form, which the DM cannot do —
+  but renders the blueprint's persona and the same generated catalogue, reads
+  this organisation's tools server-side, searches through Ledger, and shows the
+  Designer's own name and portrait.
+- **A Nessie-managed agent has a read-only configuration view.**
+  `GET /api/agents/:agentId/config` (`readAgentConfigView`) answers name, role,
+  prompt, model, effort, limits and *resolved* tools under exactly the list
+  entitlement, and the admin renders `SystemAgentConfigPanel` in place of the
+  tabs. `isAgentAccessibleToActor` is deliberately NOT widened — status,
+  activity, messages and children stay closed, because a global agent's
+  activity spans every member's private DM.
+
 ## Personal assistant — workspace provisioning
 
-Five `personalAssistantOnly` builtins
+Four `personalAssistantOnly` builtins reach the PA
 (`worker/src/run/pa-tools/provisioning.ts`), each mirroring one REST route's
 authorization — no weaker, no stronger — and calling the same service function
 the route calls. The pattern, visible-refusal for owner-gated tools, the
@@ -856,16 +843,16 @@ a global agent on its own home DM are in `AGENTS.md`. Per-tool facts:
   /api/channels`. The team defaults from the run context: explicit `teamId`,
   else the session tenant/action team, else the team of the channel the
   conversation is in — never an invented default.
-- `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`. Any
-  active member, matching `POST /api/agents` (**not** owner-gated). Its schema
-  accepts optional `visibility` (`workspace` by default, or owner-only
-  `private`) and deliberately exposes no `agentKind`/`systemManaged`/
-  `surfacePolicy`/`delegationMode`/`parentAgentId`; private creation stamps the
-  live acting member as owner and atomically provisions its owner-only home DM,
-  returning that `homeChannelId`. Asking for somebody else's private agent is
-  refused in words. `assertGenericAgentToolPolicyInput` still refuses every
-  `requiresExplicitGrant` key and DeepWater provenance marker, so chat cannot
-  grant itself research.
+- `agent_create` is in this file but **not reachable from the PA** — it carries
+  `identityDelegatedOnly`, so only the Agent Designer calls it (above), and the
+  PA hands the conversation over with `agent_handoff`. It maps to
+  `assertLedgerAgentModelSelection` + `createAgentRecord`, is member-level like
+  `POST /api/agents`, accepts optional `visibility`, and exposes no
+  `agentKind`/`systemManaged`/`surfacePolicy`/`delegationMode`/`parentAgentId`;
+  private creation stamps the acting member as owner and atomically provisions
+  the owner-only home DM. `assertGenericAgentToolPolicyInput` refuses every
+  `requiresExplicitGrant` key and DeepWater marker, so chat cannot grant itself
+  research.
 - `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
   `POST /api/agents/:agentId/bindings`: channel membership
   (`getChannelIfMember`), the system-channel refusal (any non-null
@@ -879,9 +866,9 @@ Owner-gated tools stay **visible** to non-owners and refuse in words (the
 `connector_*` precedent). Role is re-read from the live `OrganizationMember` row
 at call time (`resolveActingMember`), because a run's `actorContext` is an
 enqueue-time snapshot while the API re-resolves per request; a deactivated
-membership is refused. Deliberately **not** included: agent delete,
-policy-target mutation, or anything touching the DeepWater bundle (agent update
-is the Designer's, above). `schedule_task` remains the un-gated "schedule *me*"
+membership is refused. Deliberately **not** included: agent creation or
+redesign (the Designer's, above), agent delete, policy-target mutation, or
+anything touching the DeepWater bundle. `schedule_task` remains the un-gated "schedule *me*"
 tool; `agent_trigger_create` is the owner action on *another* agent.
 
 Who may **edit** an agent is its ownership state, not the organisation owner

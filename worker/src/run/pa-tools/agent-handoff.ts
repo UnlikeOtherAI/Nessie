@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import {
   AgentHandoffBriefMetadataSchema,
   AgentHandoffDoorwayMetadataSchema,
@@ -6,22 +7,19 @@ import {
   AgentHandoffToolOutputSchema,
   parseAgentId,
   parseChannelId,
-  parseRunId,
-  parseTaskId,
   parseThreadId,
   parseUserId,
   withActionContext,
 } from '@nessie/schemas'
 import { resolveDisclosureViewer } from '@nessie/runtime'
 import {
+  deliverGlobalAgentBrief,
   ensureGlobalAgentBootstrap,
   getGlobalAgentBlueprint,
   listGlobalAgentBlueprints,
   type GlobalAgentBlueprint,
 } from '@nessie/workspace-admin'
 
-import { enqueueRunExecution } from '../../queue.js'
-import { claimThreadRunOrPend } from '../thread-serialization.js'
 import { createAgentMessage } from '../execute/agent-message.js'
 import {
   computeReplyBasis,
@@ -233,32 +231,33 @@ export const runAgentHandoffTool = async (
       })
     }
 
-    // A hidden `system` row, never a `user` one under the person's id. The
-    // integration-handoff precedent writes model text as the requester's own
-    // words — editable by them afterwards, and indistinguishable from something
-    // they typed. This is the trigger-kickoff mechanism instead: it drives the
-    // run, is excluded from the channel feed and from future model context, and
-    // the target's own first reply is the visible artifact in the DM.
-    const brief = await tx.message.create({
-      data: {
-        content: args.brief,
-        metadata: AgentHandoffBriefMetadataSchema.parse({
-          fromAgentId: context.agentId,
-          originChannelId: runContext.channel.id,
-          originRunId: runContext.run.id,
-          originThreadId: runContext.run.threadId,
-          requestedByUserId: requesterUserId,
-          targetSlug: blueprint.slug,
-        }) as Prisma.InputJsonValue,
-        role: 'system',
-        threadId: home.threadId,
-      },
-      select: { id: true },
+    // The one shared delivery (`deliverGlobalAgentBrief`): a hidden `system`
+    // row rather than a `user` one under the person's id, `claimThreadRunOrPend`
+    // so a busy home DM pends instead of double-running the agent, and the
+    // queue key as the crash guard beneath the cooldown row. The Agent Designer
+    // sidebar's "Continue in chat" hands its draft over through the same
+    // function, so the two mechanisms cannot drift apart.
+    const brief = await deliverGlobalAgentBrief(tx, { claimThreadRunOrPend, enqueueRunExecution }, {
+      agentId: home.agentId,
+      content: args.brief,
+      destinationChannelId: destination.id,
+      idempotencyKey: `handoff:${runContext.run.id}:${blueprint.slug}`,
+      metadata: AgentHandoffBriefMetadataSchema.parse({
+        fromAgentId: context.agentId,
+        originChannelId: runContext.channel.id,
+        originRunId: runContext.run.id,
+        originThreadId: runContext.run.threadId,
+        requestedByUserId: requesterUserId,
+        targetSlug: blueprint.slug,
+      }) as Prisma.InputJsonValue,
+      organizationId,
+      requesterActorContext: destinationActorContext,
+      threadId: home.threadId,
     })
     if (briefBasis.length > 0) {
       await tx.messageBasisScope.createMany({
         data: briefBasis.map((scope) => ({
-          messageId: brief.id,
+          messageId: brief.briefMessageId,
           organizationId,
           scopeId: scope.scopeId,
           scopeType: scope.scopeType,
@@ -267,67 +266,9 @@ export const runAgentHandoffTool = async (
       })
     }
 
-    // Slot discipline, exactly as an orchestrator decision takes it: a busy
-    // home DM — an open card, a turn still running — pends this brief for the
-    // batched follow-up instead of double-running the agent. Only the
-    // orchestrator's *judgement* is skipped here, never the claim.
-    const claim = await claimThreadRunOrPend(tx, {
-      agentId: home.agentId,
-      pending: {
-        actorContext: destinationActorContext,
-        channelId: destination.id,
-        interactive: true,
-        messageId: brief.id,
-      },
-      threadId: home.threadId,
-    })
-
-    if (claim === 'claimed') {
-      const run = await tx.run.create({
-        data: {
-          agentId: home.agentId,
-          // Paired with the hidden `system` brief above, for the reason
-          // trigger-run states: a reply threaded under an invisible root would
-          // never appear in the DM at all.
-          replyPlacement: 'channel',
-          status: 'pending',
-          threadId: home.threadId,
-          triggerMessageId: brief.id,
-        },
-        select: { id: true },
-      })
-      const task = await tx.task.create({
-        data: {
-          agentId: home.agentId,
-          organizationId,
-          purpose: args.brief.slice(0, 200),
-          runId: run.id,
-          status: 'inbox',
-        },
-        select: { id: true },
-      })
-      await enqueueRunExecution(
-        tx,
-        {
-          actorContext: withActionContext(destinationActorContext, {
-            taskId: parseTaskId(task.id),
-          }),
-          agentId: parseAgentId(home.agentId),
-          interactive: true,
-          messageId: brief.id,
-          runId: parseRunId(run.id),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(home.threadId),
-        },
-        // The crash guard beneath the cooldown row: a redelivered origin job
-        // re-running this tool cannot enqueue the same handoff twice.
-        `handoff:${runContext.run.id}:${blueprint.slug}`,
-      )
-    }
-
     await tx.agentHandoffRequest.create({
       data: {
-        briefMessageId: brief.id,
+        briefMessageId: brief.briefMessageId,
         cooldownUntil: new Date(now.getTime() + HANDOFF_COOLDOWN_MS),
         destinationChannelId: destination.id,
         destinationThreadId: home.threadId,

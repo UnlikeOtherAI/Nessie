@@ -159,90 +159,91 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `docs/brief.md` → "Current SSO identity invariant".
 - **A personal-assistant tool that does what a person does by clicking calls
   the same function that person's button calls, and mirrors that route's
-  authorization exactly — no weaker, no stronger.** The five provisioning
-  builtins (`agent_list`, `channel_create`, `agent_create`,
-  `agent_bind_channel`, `agent_trigger_create`, in
-  `worker/src/run/pa-tools/provisioning.ts`) are the
-  pattern: `agent_list`/`channel_create`/`agent_create` are member-level because
-  their routes carry only `requireActorContext`; binding reproduces all four
-  gates of
-  `POST /api/agents/:agentId/bindings` (channel membership, the
-  `personal_assistant` refusal, owner, `checkPolicy('agent','bind')`); trigger
-  creation parses the route's own `CreateAgentTriggerBodySchema` and refuses a
-  schedule with no UOA identity on a signing deployment. Because
-  `api/src/services/*` is unreachable from the worker, the shared functions live
-  in **`@nessie/workspace-admin`** and the api services re-export them — never a
-  second copy in `pa-tools`. `pa-tools/channels.ts` carried a "mirrored from
-  api/src/services" comment over a duplicated `canManageChannel` for exactly
-  that reason; on 2026-08-29 the predicate and the writes it gates moved to
-  `@nessie/workspace-admin` `channel-manage.ts`, which the api service
-  re-exports and the PA tool imports. An owner-gated
-  tool stays visible to non-owners and refuses in words, following
-  `pa-tools/connectors.ts`. Role comes from the live `OrganizationMember` row at
-  call time, not from the run's enqueue-time `actorContext`. **A tool that takes
-  an id ships with the read that resolves it**: in the UI the owner picks the
-  agent from a list, so `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s
-  own entitlement scoping) is what makes `agent_bind_channel` /
-  `agent_trigger_create` usable on an agent the user merely named, rather than
-  only on one created in the same conversation. Details:
-  `CLAUDE.md` → "Personal assistant — workspace provisioning".
+  authorization exactly — no weaker, no stronger.** The provisioning builtins in
+  `worker/src/run/pa-tools/provisioning.ts` are the pattern: `agent_list` and
+  `channel_create` are member-level because their routes carry only
+  `requireActorContext`; binding reproduces all four gates of
+  `POST /api/agents/:agentId/bindings` (channel membership, the system-channel
+  refusal, owner, `checkPolicy('agent','bind')`); trigger creation parses the
+  route's own `CreateAgentTriggerBodySchema` and refuses a schedule with no UOA
+  identity on a signing deployment. Because `api/src/services/*` is unreachable
+  from the worker, the shared functions live in **`@nessie/workspace-admin`**
+  and the api services re-export them — never a second copy in `pa-tools`.
+  `pa-tools/channels.ts` carried a "mirrored from api/src/services" comment over
+  a duplicated `canManageChannel` for exactly that reason; on 2026-08-29 the
+  predicate and the writes it gates moved to `channel-manage.ts`, which the api
+  service re-exports and the PA tool imports. An owner-gated tool stays visible
+  to non-owners and refuses in words, following `pa-tools/connectors.ts`. Role
+  comes from the live `OrganizationMember` row at call time, not from the run's
+  enqueue-time `actorContext`. **A tool that takes an id ships with the read
+  that resolves it**: in the UI the owner picks the agent from a list, so
+  `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s own entitlement
+  scoping) is what makes `agent_bind_channel` / `agent_trigger_create` usable on
+  an agent the user merely named. Details: `CLAUDE.md` → "Personal assistant —
+  workspace provisioning".
 - **A global agent is a blueprint in code, one row per organisation, and a
   single-agent DM.** App-provided agents (the Agent Designer is the first) live
   in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
-  each as one `systemManaged` row per organisation, keyed by the new
-  **`Agent.systemSlug`** — unique on `(organizationId, systemSlug)` with a CHECK
-  requiring `systemManaged` AND a non-null `organizationId`, so a cross-org
-  vendor row is a database impossibility rather than a convention, and so a
-  display name is never again the discriminator (the Librarian's fragility).
-  The ensure function is `ensurePersonalAssistantAgent` verbatim in shape —
-  advisory lock, find-by-discriminator, create-or-update-in-place, tool policy
-  merged under `acquireAgentToolPolicyLock` *after re-reading the row*, so a
-  targeted grant committed in between survives — and the blueprint's own policy
-  passes `assertGenericAgentToolPolicyInput` like user input, because vendor
-  config is not authority. Its home is a per-user private DM keyed
+  each as one `systemManaged` row per organisation, keyed by `Agent.systemSlug` —
+  unique on `(organizationId, systemSlug)` with a CHECK requiring `systemManaged`
+  AND a non-null `organizationId`, so a cross-org vendor row is a database
+  impossibility and a display name is never again the discriminator. The ensure function is
+  `ensurePersonalAssistantAgent` verbatim in shape, with tool policy merged
+  under `acquireAgentToolPolicyLock` *after re-reading the row* so a targeted
+  grant committed in between survives, and the blueprint's own policy passes
+  `assertGenericAgentToolPolicyInput` like user input: vendor config is not
+  authority. Its home is a per-user private DM keyed
   `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
   its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
-  and held to exactly its encoded member (owner at **segment 4**) by the
-  deferred home-membership trigger. Sole membership is not decoration: it is
-  what makes `effectiveUserId = poster` and the orchestrator's single-candidate
-  fast path safe, so it must hold at rest. Three refusals keep that true — no
-  agent binds into ANY system channel (`bindAgentToChannel`, both routes, the PA
-  tool; `canManageChannel` likewise refuses to rename, archive or re-member
-  one), `createAgentTrigger` refuses a `systemSlug` target because a scheduled
-  run re-arms its creator's identity, and `assertGlobalAgentRunPlacement` admits
-  only the agent's own home DM before any inference (trigger threads
-  deliberately excluded, unlike the private-agent rule). Reachability is the
-  point of the tier: `listAgentsForUser`'s `includeSystemManaged` arm is
-  `{ organizationId, systemManaged: true }` and no longer channel-gated, because
-  an app-provided agent nobody can find is the unreachable-capability defect
-  Rule zero names. Details: `CLAUDE.md` → "Global
-  agents"; spec:
+  and held to exactly its encoded member (owner at **segment 4**) by the deferred
+  home-membership trigger. Sole membership is what makes `effectiveUserId =
+  poster` and the single-candidate fast path safe, so it must hold at rest. Three
+  refusals keep it true: no agent binds into ANY system channel
+  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
+  refuses rename, archive and re-membering), `createAgentTrigger` refuses a
+  `systemSlug` target (a scheduled run re-arms its creator's identity), and
+  `assertGlobalAgentRunPlacement` admits only the home DM before any inference. Reachability is the point of the tier: `listAgentsForUser`'s
+  `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
+  longer channel-gated: an app-provided agent nobody can find is the
+  unreachable-capability defect Rule zero names. Finding one has to lead
+  somewhere, so a `systemManaged` agent answers a **narrow configuration read**
+  (`GET /api/agents/:agentId/config`) under exactly that list entitlement while
+  `isAgentAccessibleToActor` stays untouched — status, activity, messages and
+  children still 404, a global agent's activity spanning every member's private
+  DM. `docs/global-agents.md`; spec:
   `docs/plans/2026-09-02-agent-designer-global-agent.md`.
+- **A capability can be moved to a specialist without being deleted.**
+  `BuiltinToolDefinition.identityDelegatedOnly` narrows `personalAssistantOnly`
+  to the identity-delegated arm alone — `agent_create`, `agent_read`,
+  `agent_update`, `agent_tool_catalog`, `agent_avatar_update` are reachable only
+  by a blueprint that declares them, in its own home DM, on an interactive human
+  turn. Not even a Personal Assistant: it keeps the operational verbs on existing
+  agents and hands over with `agent_handoff`, the design catalogue being large
+  and belonging in one agent's context. A flag that removes an arm — the tool
+  *omitted* from the PA's schema, not offered and denied — is the honest
+  mechanism; deleting it would take it from the specialist too.
 - **"This run delegates to its requesting person" is ONE predicate, and the
   identity-tool gate widens by exactly one arm.** The worker keyed delegation on
-  `agentKind === 'personal_assistant'` in five places (memory scopes, realtime
+  `agentKind === 'personal_assistant'` in five places — memory scopes, realtime
   narrowing, reply attribution, the trigger binding waiver, the acting-member
-  helpers) because the PA was the only delegate. A global agent is
-  `agentKind: 'shared'` and delegates just as completely, so all five would have
-  treated it as an ordinary shared agent with no failing check anywhere.
+  helpers — because the PA was the only delegate. A global agent is
+  `agentKind: 'shared'` and delegates as completely, so all five would have
+  treated it as ordinary with no failing check anywhere.
   `runDelegatesToRequestingPerson` (`worker/src/run/delegated-identity.ts`) is
   the one answer: the PA in its own DM, or a `home: 'per_user_dm'` blueprint in
-  its own home DM, from agent kind + `systemSlug` → blueprint + the destination's
-  `systemChannelType`/`dmKey`, never content. It is surface-keyed on both arms,
-  because a PA presence in a shared room still carries its owner's identity: the
-  exemptions key on the surface, never the kind. Memory containment and realtime
-  narrowing moved onto it and placement shares its home-surface half; reply
-  re-attribution and the two *binding* waivers stay PA-only, a global agent being
-  genuinely bound to one channel. `personalAssistantOnly` gains one arm beside the
-  PA's: the blueprint's `identityToolIds` lists that id, the run is on the agent's
-  own home DM, and `payload.interactive === true` with a live human requester
-  whose id equals the stamped `effectiveUserId` — resolved **once** at run setup
-  by `resolveIdentityDelegatedToolIds` and passed to BOTH `resolveAgentTools`
-  (the schema omits them, never offer-then-deny) and `authorizeToolCall` (a
-  stale schema cannot be exercised), never to a delegate sub-agent. **Two locks
-  on triggers**: `createAgentTrigger` refuses a `systemSlug` target, governing
-  what can be *created*; the interactive arm governs what may be *exercised*,
-  including by a row predating it: remove either and an unattended run
+  its own home DM, derived from agent kind + `systemSlug` → blueprint + the
+  destination's `systemChannelType`/`dmKey`, never content. Both arms are
+  surface-keyed — a PA presence in a shared room still carries its owner's
+  identity, so the exemptions key on the surface, never the kind. Memory
+  containment and realtime narrowing moved onto it; reply re-attribution and both
+  *binding* waivers stay PA-only. `personalAssistantOnly` gains one arm
+  beside the PA's: the blueprint's `identityToolIds` lists that id, the run is on
+  the agent's own home DM, and `payload.interactive === true` with a live human
+  requester whose id equals the stamped `effectiveUserId` — resolved **once** at
+  run setup and passed to BOTH `resolveAgentTools` (the schema omits them, never
+  offer-then-deny) and `authorizeToolCall` (a stale schema cannot be exercised),
+  never to a delegate sub-agent. That interactive arm is the second of two locks
+  with the `createAgentTrigger` refusal: remove either and an unattended run
   reconstructing an absent creator's `effectiveUserId` creates agents and
   channels as that person. Delegated reads it opens feed the disclosure sink.
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
@@ -259,7 +260,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   cooldown row per `(requester, slug)` converges retries and continuations onto
   the one briefing. The brief's basis subtracts **every scope the requester
   satisfies**, or the DM's only member cannot read its own specialist. Delivery
-  claims the slot through `claimThreadRunOrPend`. `CLAUDE.md` → "Global agents".
+  is the one shared `deliverGlobalAgentBrief`, which claims the slot with
+  `claimThreadRunOrPend`. `docs/global-agents.md`.
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and
@@ -359,25 +361,24 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   deactivated steward leaves an agent with no editor); a **team-owned** agent —
   `ownerUserId` null — takes anyone entitled to it, plus org owners; a
   `systemManaged` agent takes nobody, refused **in the service**
-  (`SYSTEM_AGENT_IMMUTABLE` in `updateAgentRecord` and the avatar service) rather
-  than only hidden by route invisibility. Owner-ness is re-derived from the live
-  `OrganizationMember` row on every call, never the session claim or a run's
-  enqueue-time snapshot. A null owner is therefore a **deliberate state**, not
-  missing history: "team-owned" means any member who can see the agent may
-  rewrite its prompt, model, tools and limits, while *placement*
-  (`agent_bind_channel`) keeps its stricter four gates — editing improves the
-  shared agent in place, binding changes who is exposed to it. One predicate over
-  the whole PUT body would be wrong, because that body also carries `ownerUserId`
-  and `todosEnabled`: ownership transitions belong to the current owner or an org
-  owner (so *claiming* a team-owned agent is org-owner-only by construction) and
-  `todosEnabled` keeps its own org-owner gate — both firing only on an actual
-  change, so a form echoing the stored value back stays an ordinary edit.
-  Unchanged by all of it: protected/explicit-grant policy keys
-  (`assertGenericAgentToolPolicyInput` is the law for every editor), immutable
-  `visibility`, `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the
-  `agent.owner_changed` audit on both transfer and release. Details:
-  `docs/plans/2026-08-29-people-and-their-agents.md` → "Ownership carries edit
-  authority"; decision:
+  (`SYSTEM_AGENT_IMMUTABLE`) rather than only hidden by route invisibility.
+  Owner-ness is re-derived from the live `OrganizationMember` row on every call,
+  never the session claim or an enqueue-time snapshot. A null owner is a
+  **deliberate state**, not missing history: "team-owned" means any member who
+  can see the agent may rewrite its prompt, model, tools and limits, while
+  *placement* (`agent_bind_channel`) keeps its stricter four gates — editing
+  improves the shared agent in place, binding changes who is exposed to it. One
+  predicate over the whole PUT body would be wrong, because that body also
+  carries `ownerUserId` and `todosEnabled`: ownership transitions belong to the
+  current owner or an org owner (so *claiming* a team-owned agent is
+  org-owner-only by construction) and `todosEnabled` keeps its own org-owner
+  gate — both firing only on an actual change, so a form echoing the stored
+  value back stays an ordinary edit. Unchanged by all of it:
+  protected/explicit-grant policy keys (`assertGenericAgentToolPolicyInput` is
+  the law for every editor), immutable `visibility`,
+  `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the `agent.owner_changed` audit on
+  both transfer and release. Details:
+  `docs/plans/2026-08-29-people-and-their-agents.md`; decision:
   `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
 - **An interactive card is one system, and its press is claimed once.** Every
   agent that can talk can post a card (`card_post`, default-on) whose buttons a

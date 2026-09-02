@@ -6,7 +6,6 @@ import type {
 import { getBaseUrl, type AgentModelOption } from '../../lib/api-client'
 import { readSseStream } from '../../lib/sse'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import type { DesignerToolOption } from './tool-catalog'
 import type { DesignerPageContext } from '../../components/features/agents/designer/DesignerAssistantPanelContext'
 
 export type ChatMessage = {
@@ -87,10 +86,16 @@ const scrollSystemPromptToBottom = (): void => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+/**
+ * The sidebar's transport. It deliberately no longer sends a tool list: the
+ * service reads this organisation's live catalogue itself (the same member-safe
+ * projection `agent_tool_catalog` answers from), so the two faces of the Agent
+ * Designer cannot enumerate different tools and the browser is not the source
+ * of what the workspace has.
+ */
 export const useDesignerChat = (
   formState: AgentFormState,
   actions: AgentDesignerActions,
-  availableTools: DesignerToolOption[] = [],
   availableModels: AgentModelOption[] = [],
   options: DesignerChatOptions = {},
 ) => {
@@ -149,12 +154,6 @@ export const useDesignerChat = (
               model: formState.model,
               tools: formState.tools,
             },
-            availableTools: availableTools.map((tool) => ({
-              id: tool.key,
-              label: tool.label,
-              description: tool.description,
-              kind: tool.kind,
-            })),
             // Sent in picker order, so the prompt's "leading model" and the
             // form's preselection are the same entry.
             availableModels,
@@ -215,7 +214,6 @@ export const useDesignerChat = (
       formState,
       actions,
       token,
-      availableTools,
       availableModels,
       options,
     ],
