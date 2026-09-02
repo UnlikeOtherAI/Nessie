@@ -2,6 +2,7 @@ import {
   actInBrowser,
   CLOUD_BROWSER_ERROR_CODES,
   CloudBrowserUnknownOutcomeError,
+  ensureAgentBrowser,
   findLiveSessionForRun,
   isCloudBrowserError,
   observeBrowser,
@@ -13,6 +14,8 @@ import {
 import {
   BROWSER_ACT_TOOL_ID,
   BROWSER_CLOSE_TOOL_ID,
+  BROWSER_DOWNLOAD_TOOL_ID,
+  BROWSER_LOGIN_REQUEST_TOOL_ID,
   BROWSER_OBSERVE_TOOL_ID,
   BROWSER_OPEN_TOOL_ID,
 } from '@nessie/runtime'
@@ -25,10 +28,21 @@ import {
 import { isFatalToolExecutionError } from '../tool-execution-errors.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from '../tool-types.js'
 import { summarizeToolInput, truncateToolResult } from '../tool-util.js'
-import { acquireCdp, registerSession, releaseCdp } from './session-pool.js'
+import { downloadFromBrowser } from './download.js'
+import { requestBrowserLogin } from './login-request.js'
+import {
+  evaluateOriginGate,
+  noteVisitedOrigin,
+  readAuthenticatedOrigins,
+  type OriginGateState,
+} from './origin-gate.js'
+import { acquireCdp, originGateFor, registerSession, releaseCdp } from './session-pool.js'
 
-/** What a browser verb reports. Failure is a value; ambiguity is a throw. */
-type BrowserToolOutcome = { output: string; success: boolean }
+/**
+ * What a browser verb reports. Failure is a value; ambiguity is a throw.
+ * `cardId` is set only by the sign-in request, which parks the run on a card.
+ */
+type BrowserToolOutcome = { output: string; success: boolean; cardId?: string }
 
 /**
  * The cloud browser builtins.
@@ -60,6 +74,12 @@ const deniedForControl = (holder: string): BrowserToolOutcome => ({
 
 type BrowserToolContext = BuiltinToolRuntimeContext & {
   cloudBrowser?: CloudBrowserDeps
+  /**
+   * Visibility and stewardship decide which connection may hold this agent's
+   * durable browser, so the toolset carries them rather than re-reading the
+   * agent row on every call.
+   */
+  agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
 }
 
 const depsFor = (context: BrowserToolContext): CloudBrowserDeps | null =>
@@ -95,6 +115,12 @@ const liveSession = async (
   }
   if (session.controlledByUserId) {
     return { ok: false, result: deniedForControl('a person took control') }
+  }
+  if (session.authenticated) {
+    // Monotone: the session was already known to carry human logins, so
+    // re-registering here covers a run that reaches an existing session
+    // without having opened it itself.
+    context.consumedSources?.add({ scopeType: 'agent', scopeId: context.agentId })
   }
   if (session.expiresAt.getTime() <= Date.now()) {
     return {
@@ -133,24 +159,77 @@ const runOpen = async (
   context: BrowserToolContext,
   args: Record<string, unknown>,
 ): Promise<BrowserToolOutcome> => {
-  const parsed = ExecutorBrowserOpenArgumentsSchema.safeParse(args)
+  const parsed = ExecutorBrowserOpenArgumentsSchema.safeParse({ url: args.url })
   if (!parsed.success) {
     return { output: 'browser_open needs an https url.', success: false }
   }
+  const wantsDurable = args.mode === 'mine'
   try {
+    let agentBrowser: {
+      id: string
+      connectionId: string
+      browserbaseContextId: string
+      hasLogins: boolean
+    } | undefined
+
+    if (wantsDurable) {
+      const agent = context.agentIdentity
+      const browser = await ensureAgentBrowser(deps, {
+        organizationId: context.channel.organizationId,
+        agentId: context.agentId,
+        agentVisibility: agent?.visibility ?? 'workspace',
+        agentOwnerUserId: agent?.ownerUserId ?? null,
+      })
+      // An unattended run has nobody to answer for opening somebody's signed-in
+      // browser, and a schedule quietly acting inside a person's account is a
+      // different consent from "help me now".
+      if (browser.loginCount > 0 && !context.run.principalUserId) {
+        return {
+          output:
+            'This browser is signed in to services, so it can only be used in a '
+            + 'run somebody asked for — not on a schedule. Open a throwaway '
+            + 'browser instead, with mode "ephemeral".',
+          success: false,
+        }
+      }
+      agentBrowser = {
+        id: browser.id,
+        connectionId: browser.connectionId,
+        browserbaseContextId: browser.browserbaseContextId,
+        hasLogins: browser.loginCount > 0,
+      }
+      if (browser.loginCount > 0) {
+        // Everything read through a browser a person signed in is that
+        // agent's audience's material. Registered before the first page load,
+        // not after: an empty basis publishes to everyone.
+        context.consumedSources?.add({ scopeType: 'agent', scopeId: context.agentId })
+      }
+    }
+
     const opened = await openCloudBrowserSession(deps, {
       organizationId: context.channel.organizationId,
       runId: context.run.id,
       threadId: context.run.threadId,
       agentId: context.agentId,
       requestedByUserId: context.run.principalUserId ?? null,
+      ...(agentBrowser ? { agentBrowser } : {}),
     })
-    registerSession(opened.sessionId, opened.connectUrl)
+    const gate: OriginGateState = {
+      authenticatedOrigins: new Set(),
+      touchedAuthenticated: false,
+    }
+    registerSession(opened.sessionId, opened.connectUrl, gate)
     const cdp = await acquireCdp(opened.sessionId)
     if (!cdp) {
       return { output: 'The browser could not be reached after opening.', success: false }
     }
+    if (agentBrowser?.hasLogins) {
+      // Read once, before the first page: which origins this browser can act
+      // as somebody on is a property of its cookies, not of what it visits.
+      gate.authenticatedOrigins = await readAuthenticatedOrigins(cdp)
+    }
     await cdp.call('Page.navigate', { url: parsed.data.url })
+    noteVisitedOrigin(gate, parsed.data.url)
     const observation = await observeBrowser(cdp)
     return {
       output: untrusted(renderObservation(observation)),
@@ -211,8 +290,16 @@ const runAct = async (
         success: false,
       }
     }
+    const gate = originGateFor(session.sessionId)
+    if (gate) {
+      const before = await observeBrowser(cdp)
+      noteVisitedOrigin(gate, before.url)
+      const verdict = evaluateOriginGate(gate, before.url, parsed.data)
+      if (!verdict.allowed) return { output: verdict.reason, success: false }
+    }
     const result = await actInBrowser(cdp, parsed.data)
     const observation = await observeBrowser(cdp)
+    if (gate) noteVisitedOrigin(gate, observation.url)
     return {
       output: untrusted(
         [
@@ -248,13 +335,57 @@ const runClose = async (
   }
 }
 
+const runLoginRequest = async (
+  deps: CloudBrowserDeps,
+  context: BrowserToolContext,
+  args: Record<string, unknown>,
+): Promise<BrowserToolOutcome & { cardId?: string }> => {
+  const service = typeof args.service === 'string' ? args.service.trim() : ''
+  const reason = typeof args.reason === 'string' ? args.reason.trim() : ''
+  if (!service || !reason) {
+    return {
+      output: 'browser_login_request needs a service and a one-sentence reason.',
+      success: false,
+    }
+  }
+  return requestBrowserLogin(deps, context, { reason, service })
+}
+
+const runDownload = async (
+  deps: CloudBrowserDeps,
+  context: BrowserToolContext,
+  args: Record<string, unknown>,
+): Promise<BrowserToolOutcome> => {
+  const nodeId = typeof args.nodeId === 'number' ? args.nodeId : NaN
+  if (!Number.isInteger(nodeId) || nodeId < 0) {
+    return { output: 'browser_download needs a nodeId from browser_observe.', success: false }
+  }
+  const session = await liveSession(deps, context)
+  if (!session.ok) return session.result
+  try {
+    const cdp = await acquireCdp(session.sessionId)
+    if (!cdp) {
+      return {
+        output: 'The browser connection was lost. Open a new browser to continue.',
+        success: false,
+      }
+    }
+    return await downloadFromBrowser(cdp, context, {
+      gate: originGateFor(session.sessionId),
+      nodeId,
+    })
+  } catch (error) {
+    return asToolFailure(error, false)
+  }
+}
+
 const verbFor = (
   toolName: string,
 ): ((
   deps: CloudBrowserDeps,
   context: BrowserToolContext,
   args: Record<string, unknown>,
-) => Promise<BrowserToolOutcome>) | null => {
+) => Promise<BrowserToolOutcome & { cardId?: string }>) | null => {
   switch (toolName) {
     case BROWSER_OPEN_TOOL_ID:
       return runOpen
@@ -264,6 +395,10 @@ const verbFor = (
       return runAct
     case BROWSER_CLOSE_TOOL_ID:
       return (deps, context) => runClose(deps, context)
+    case BROWSER_LOGIN_REQUEST_TOOL_ID:
+      return runLoginRequest
+    case BROWSER_DOWNLOAD_TOOL_ID:
+      return runDownload
     default:
       return null
   }
@@ -292,6 +427,9 @@ export const cloudBrowserTool = (
         inputSummary,
         output: truncateToolResult(outcome.output),
         success: outcome.success,
+        // Parks the run on the card: decided after dispatch, because the card
+        // has to exist before anybody can press it.
+        ...(outcome.cardId ? { pendingInput: { cardId: outcome.cardId } } : {}),
       }
     } catch (error) {
       // An ambiguous outcome aborts the batch instead of becoming model input.

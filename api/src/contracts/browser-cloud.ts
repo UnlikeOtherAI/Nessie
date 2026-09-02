@@ -72,3 +72,35 @@ export type ConnectCloudBrowserBody = z.infer<typeof ConnectCloudBrowserBodySche
 export type CloudBrowserConnectionRecord = z.infer<typeof CloudBrowserConnectionSchema>
 export type CloudBrowserSessionSummary = z.infer<typeof CloudBrowserSessionSummarySchema>
 export type CloudBrowserSessionDetail = z.infer<typeof CloudBrowserSessionDetailSchema>
+
+export const AgentBrowserLoginSchema = z.object({
+  id: z.string().uuid(),
+  serviceHint: z.string(),
+  createdAt: z.string(),
+  signedInByUserId: z.string().uuid(),
+  signedInByName: z.string().nullable(),
+})
+
+export const AgentBrowserResponseSchema = z.object({
+  browser: z.object({
+    id: z.string().uuid(),
+    connectionScope: CloudBrowserScopeSchema,
+    createdAt: z.string(),
+    lastUsedAt: z.string().nullable(),
+    inUse: z.boolean(),
+    logins: z.array(AgentBrowserLoginSchema),
+  }).nullable(),
+})
+
+export const BrowserLoginListSchema = z.object({
+  logins: z.array(z.object({
+    id: z.string().uuid(),
+    agentId: z.string().uuid(),
+    agentName: z.string(),
+    serviceHint: z.string(),
+    createdAt: z.string(),
+  })),
+})
+
+export type AgentBrowserResponse = z.infer<typeof AgentBrowserResponseSchema>
+export type BrowserLoginList = z.infer<typeof BrowserLoginListSchema>

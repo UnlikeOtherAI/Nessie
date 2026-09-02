@@ -47,7 +47,9 @@ import {
 } from '@nessie/schemas'
 import { getPrismaClient } from '@nessie/db'
 import {
+  expireStaleControlClaims,
   reapExpiredCloudBrowserSessions,
+  reconcileTombstonedAgentBrowsers,
   releaseSessionsForRun,
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
@@ -779,6 +781,11 @@ export const startWorker = async (
     cloudBrowserReapInFlight = true
     try {
       await reapExpiredCloudBrowserSessions(cloudBrowser, { limit: 20 })
+      // A claim nobody refreshed must stop blocking the agent, and a
+      // tombstoned browser's context must actually be deleted at Browserbase
+      // rather than left behind holding somebody's login state.
+      await expireStaleControlClaims(prisma)
+      await reconcileTombstonedAgentBrowsers(cloudBrowser, { limit: 10 })
     } catch (error) {
       console.error('[worker.cloud-browser-reaper] failed', error)
     } finally {
