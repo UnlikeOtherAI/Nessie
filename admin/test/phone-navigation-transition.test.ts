@@ -356,35 +356,8 @@ test('a committed swipe is the one Back that gives a haptic', () => {
   assert.doesNotMatch(button, /haptic\(/)
 })
 
-test('stack containers clip rather than hide, so no descendant can scroll them', () => {
-  // A hidden-overflow box is still a scroll container: TabBar's mount-time
-  // scrollIntoView() inside a screen parked at translate3d(100%) scrolled the
-  // viewport sideways, and the compositor landed the slide short by that
-  // offset until the next layout clamped it — the "bounce". `clip` is not a
-  // scroll container. Reproduction: docs/plans/2026-09-01-navigation-motion-system/repro.mjs
-  const styles = readSource('../src/styles.css')
-  const viewportRule = styles.slice(
-    styles.indexOf('.phone-navigation-viewport {'),
-    styles.indexOf('.phone-navigation-page {'),
-  )
-  assert.match(viewportRule, /\.phone-navigation-viewport \{[\s\S]*?overflow: clip;/)
-  assert.match(viewportRule, /\.phone-navigation-screen \{[\s\S]*?overflow: clip;/)
-  assert.doesNotMatch(viewportRule, /overflow: hidden/)
 
-  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
-  assert.match(shell, /<main className="min-w-0 flex-1 overflow-clip/)
-
-  const columnBrowser = readSource(
-    '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',
-  )
-  assert.match(columnBrowser, /<div className="h-full w-full overflow-clip">/)
-  assert.equal(
-    (columnBrowser.match(/<div className="h-full w-full overflow-clip">/g) ?? []).length,
-    2,
-    'both the stacked and the track branch clip',
-  )
-
-  const tabBar = readSource('../src/components/primitives/TabBar.tsx')
-  assert.doesNotMatch(tabBar, /\.scrollIntoView\(/)
-  assert.match(tabBar, /track\.scrollLeft/)
-})
+// 'stack containers clip rather than hide, so no descendant can scroll
+// them' moved to admin/test/navigation-gates.test.ts (docs/navigation.md §10
+// "Gates") — it is one of the step-15 source-regex gates, not a
+// transition-suite pin.
