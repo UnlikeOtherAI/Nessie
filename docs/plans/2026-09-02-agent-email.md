@@ -1,6 +1,7 @@
 # Agent email — access to existing mailboxes, or a hosted mailbox of its own
 
-**Date:** 2026-09-02 (reframed twice same day; supersedes
+**Date:** 2026-09-02 (reframed twice, then hardened by two independent
+reviews the same day — §6; supersedes
 [2026-04-07-email-integration.md](2026-04-07-email-integration.md))
 **Status:** Design
 
@@ -17,6 +18,7 @@ There are two ways an agent gets email, and they are **different products**:
 | Interface | **None.** Tools only — you ask the agent things and it operates the mailbox | A full mailbox surface: address, stored messages, inbox UI, inbound triggering the agent |
 | Address identity | An existing human/shared mailbox | The agent's own `{name}@{deployment domain}` (`nessie.works` on the hosted deployment) |
 | Configured by | A person or team connecting a mailbox (native connector) | The deployment operator, via environment variables |
+| Tool ids | The Google plan's mailbox tool family | `email_read` / `email_list` / `email_send`, bound to the agent's own hosted mailbox **only** |
 | What Nessie persists | Credentials, audit, metering — no message copies | Every message, both directions |
 
 Model A is "the agent can reach into a mailbox": *"anything new from the
@@ -24,9 +26,11 @@ bank?"*, *"reply to Petra that Thursday works"* — asked in any conversation,
 answered via tools, no email UI anywhere in Nessie. Model B is "the agent has
 an email identity": people CC `research@nessie.works` into a thread, the mail
 arrives *in Nessie*, wakes the agent, and an actual mailbox view shows the
-correspondence. The mistake to avoid is building either one with the other's
-machinery — A must not grow a message store, and B cannot lean on a provider
-to hold state that only Nessie has.
+correspondence. The two tool surfaces are deliberately disjoint — the
+`email_*` tools never resolve a Model A connection, so an agent holding both
+never has an ambiguous send path; a run that can reach a hosted mailbox *and*
+external connections is addressing two different resources by two different
+names.
 
 ## 2. Model A — mailbox access (no interface)
 
@@ -51,10 +55,13 @@ Gmail read tools + disclosure sink wiring, `gmail_draft_create/update`,
 human Send, `ApprovalRequest.requiredApproverUserId`, the structural send
 gate, standing `SendAuthorizationGrant`s + the undo window, `gmail_send`
 direct, `gmail.modify` tools, and `email_received` as an `event` eventType.
-Four of those are **shared dependencies of this plan** and should be built
-once, in the Gmail lane, first: `requiredApproverUserId`, the
-content-fingerprint approval discipline, the standing-grant table, and the
-mailbox tool family that Model A's SMTP/IMAP joins. Conversely, the Gmail
+Three of those are **shared dependencies of this plan** and are built once,
+in whichever lane lands first, with the other consuming it:
+`requiredApproverUserId` + the longer send-approval expiry treatment (§3.6),
+the standing-grant table, and the mailbox tool family Model A's SMTP/IMAP
+joins. (The Google plan's *content fingerprint* is **not** a shared
+dependency — it exists for mutable provider-side drafts; Model B binds
+approvals to server-frozen tool args instead, §3.6.) Conversely, the Gmail
 plan's former P3 item "optional SMTP/IMAP transport" is ceded to **this**
 plan (§2.2) so it is never built twice.
 
@@ -73,51 +80,61 @@ there is no MCP transport, no external product, no Ledger leg.
   - **User scope** — a person connects a personal mailbox. Its tools resolve
     only when the effective user of the run is that person (the Google
     plan's `resolveEffectiveUserId` discipline: interactive requester, or
-    the PA's delegated owner) — the same reach as a user-scoped MCP install.
+    the PA's delegated owner).
   - **Team scope** — an owner/admin connects a shared mailbox
-    (`support@acme.com`) for a team. Any agent running in that team can
-    reach it, **if** that agent holds the explicit tool grant. Installing is
-    not granting, exactly as everywhere else.
-- **Storage:** a `MailboxConnection` row —
-  `{id, organizationId, scopeType user|team, scopeId, label, imapHost/Port,
-  smtpHost/Port, username, secretCiphertext (sealSecret packing), status
-  active|needs_reauthorization|disabled, statusReason, createdByUserId}` with
-  `@@unique([organizationId, scopeType, scopeId, username, imapHost])`.
-  Deliberately **not** a `CommsConnection` (those are strictly
-  user-owned import connections; a team scope does not fit their unique
-  key), and not an `McpServerInstance` (nothing here speaks MCP). A
-  connection test (IMAP LOGIN + SMTP EHLO/AUTH) must pass before the row is
-  written; later auth failures flip `needs_reauthorization` with a
+    (`support@acme.com`) for a team.
+- **A grant names the connection, not just the tool.** `toolPolicy` is
+  `Record<toolId, boolean>`, so a bare `requiresExplicitGrant` on the tool id
+  cannot say *which* mailbox an agent may touch — installing a second team
+  mailbox would silently widen every agent already granted the tool. Access
+  is therefore per-pair: a `MailboxConnectionAgentAccess` row
+  `(connectionId, agentId)`, managed from the connector card (the
+  DeepWater/app-access precedent of a targeted, locked policy mutation —
+  never a full-policy replacement). The builtin tools stay
+  `requiresExplicitGrant: true` (the tool-level switch) **and** resolve only
+  connections the agent holds an access row for; with more than one
+  reachable connection the tools take an explicit `connectionId` and refuse
+  ambiguity (`AMBIGUOUS_ACCOUNT` discipline). Cross-lane ambiguity — the
+  same mailbox connected via Gmail OAuth *and* an app password — is handled
+  the same way: distinct tool families, explicit handles, and the connector
+  card warns when a Model A connection's address matches an existing Google
+  connection's account.
+- **Storage — connection row and credential row are separate**, mirroring
+  `CommsConnection`/`CommsConnectionCredential` so list/status reads never
+  touch secret-bearing rows: `MailboxConnection`
+  `{id, organizationId, scopeType user|team, scopeId, label, address,
+  imapHost/Port, smtpHost/Port, username, status active|needs_reauthorization|disabled,
+  statusReason, createdByUserId}` +
+  `MailboxConnectionCredential {connectionId @unique, secretCiphertext
+  (sealSecret packing), keyVersion}`. A connection test must pass before the
+  rows are written; later auth failures flip `needs_reauthorization` with a
   remedy-naming reason, never silent retry-forever.
+- **Raw-socket egress: pin the validation, not the addresses.** `safeFetch`
+  is HTTP-only, so the IMAP/SMTP dialer gets its own discipline with the
+  same policy: vet the host at install/test time against the shared
+  private-range/special-use rules, then **re-resolve and re-vet on every
+  dial** with a custom lookup that connects only to a just-vetted address —
+  never cache IPs on the row (mail providers rotate; stale pins become
+  reliability bugs). TLS is mandatory: implicit TLS or STARTTLS that refuses
+  downgrade, certificate + SNI verified against the *configured hostname*
+  (the by-IP-dial gotcha), and credentials never sent before TLS is
+  established. The connection test enforces all of it.
 - **One honest capability.** IMAP is all-or-nothing — whoever holds the
   password reads everything and sends as the mailbox. Modelled as a single
   `mailbox.full` capability, never a fake catalog; the UI says so.
-- **Tools, not sync.** The agent tool surface is the *same* mailbox tool
-  family the Google plan defines, differing only in credential/transport
-  resolution at the chokepoint — search/list/read run **live against IMAP**
+- **Tools, not sync.** Search/list/read run **live against IMAP**
   (`UID SEARCH`/`FETCH` on demand); send goes out over SMTP. No import into
-  `CommsEvent`, no local copies. When a run can reach more than one
-  connection (a user-scoped one *and* the team's), the tools take an
-  explicit connection handle and refuse ambiguity — the `AMBIGUOUS_ACCOUNT`
-  discipline, never most-recently-updated wins.
-- **Same permission story.** Tools are `requiresExplicitGrant: true`; sends
-  ride the identical structural gate (approval bound to a content
-  fingerprint; `requiredApproverUserId` = the connection's installer for
-  user scope, the installer-or-org-owner rule for team scope; standing
-  grants keyed on `(connectionId, agentId)` with the same duration menu).
-  Reads may run unattended; sends never do without a standing grant.
-- **Egress hygiene:** IMAP/SMTP are raw sockets, not HTTP, so `safeFetch`
-  doesn't apply — but the same policy does: operator-supplied hosts resolve
-  once and are checked against the private-range rules the MCP endpoint
-  validation uses, and the connection pins the vetted addresses, so a member
-  cannot point IMAP at an internal service.
+  `CommsEvent`, no local copies. Reads feed the disclosure sink with the
+  connection's scope in the same change (the read-side obligation). Sends
+  ride the shared structural gate: approval bound to the server-frozen args
+  (§3.6's mechanism), `requiredApproverUserId` = the connection's installer
+  (user scope) or installer-else-org-owner (team scope), standing grants
+  keyed `(connectionId, agentId)`. Reads may run unattended; sends never do
+  without a standing grant.
 - **Home and doorways (Rule zero):** the Integrations page hosts the
-  connector card (connect, per-scope list, status, test, disconnect); the
-  Tools page grant row names which connection an agent's grant acts
-  through; `/settings/connections` links across for the user scope.
-
-That is the whole of Model A: one native connector, one shared tool family,
-zero new surfaces beyond the connector card.
+  connector card (connect, per-scope list, per-agent access rows, status,
+  test, disconnect); the Tools page shows the tool-level switch;
+  `/settings/connections` links across for the user scope.
 
 ## 3. Model B — the hosted mailbox (Nessie is the mailbox)
 
@@ -131,6 +148,15 @@ database constraint. On the hosted deployment the operator is us and the
 domain is `nessie.works` — that is the "default free email"; a self-hosted
 operator configures their own domain the same way.
 
+**Eligibility (P1):** a mailbox attaches only to a non-system,
+`inference`-mode, org-bound, **workspace-visible** agent. Private agents are
+deliberately unsupported for now — the private-agent placement guard permits
+runs only in the exact home DM or the agent's own trigger thread, and the
+owner-only stewardship rules conflict with an owner-gated mailbox lifecycle;
+extending both is its own decision, not a side effect. PA and subtask
+children are excluded (the PA acts as people, not as an address; children
+are transient).
+
 ### 3.1 Deployment configuration — thorough, env-driven, fails loudly
 
 The functionality is **off unless configured**, and partial configuration is
@@ -141,38 +167,48 @@ in `docs/deployment.md` in the same change that builds P1):
 |---|---|
 | `NESSIE_EMAIL_SES_REGION` | SES region. Presence of this + a credential source + the domain enables the feature. |
 | `NESSIE_EMAIL_SES_ACCESS_KEY_ID` / `NESSIE_EMAIL_SES_SECRET_ACCESS_KEY` | Static credentials. Optional — an instance-profile/IRSA role is preferred where available; the SDK default chain is honoured when both vars are unset but a region is set. |
-| `NESSIE_EMAIL_DOMAIN` | The deployment's default mail domain (e.g. `nessie.works`). Must be a verified SES identity; startup verifies via `GetEmailIdentity` and refuses to enable on an unverified identity. |
+| `NESSIE_EMAIL_DOMAIN` | The deployment's default mail domain (e.g. `nessie.works`). Must be a verified SES identity; startup verifies via the SESv2 API and refuses to enable on an unverified identity. |
 | `NESSIE_EMAIL_INBOUND_S3_BUCKET` / `NESSIE_EMAIL_INBOUND_S3_PREFIX` | Where the SES receipt rule writes raw inbound MIME. The worker fetches raw mail from here. |
-| `NESSIE_EMAIL_SNS_TOPIC_ARN` | The SNS topic the receipt rule and the configuration set publish to; the inbound webhook accepts only messages whose `TopicArn` matches. |
+| `NESSIE_EMAIL_SNS_TOPIC_ARN` | The SNS topic the receipt rule and the configuration set publish to. At startup the API **subscribes itself** to this topic via the SNS API; the public webhook **rejects** `SubscriptionConfirmation` messages outright (no confirmation oracle) and accepts only signature-verified notifications whose `TopicArn` equals this value. |
 | `NESSIE_EMAIL_CONFIGURATION_SET` | SES configuration set stamped on every send; its event destination (bounce, complaint, delivery) publishes to the same SNS topic. |
+| `NESSIE_EMAIL_INBOUND_RETENTION_DAYS` | How long raw MIME objects stay in the inbound bucket after successful processing (default 30; the worker deletes on schedule). |
 | `NESSIE_EMAIL_CUSTOM_DOMAINS` | `true` to let org owners verify additional domains through the deployment's SES account (§3.7). Default `false`. |
 | `NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR` | Per-mailbox outbound cap (default 30); overflow parks as approvals. |
-| `NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES` | Inbound size cap (default 25 MiB); oversize mail stores a stub naming the reason. |
+| `NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES` | Inbound size cap (default 25 MiB), enforced with `HeadObject` **before** streaming; oversize mail stores a stub naming the reason. |
 
 Operational facts pinned now:
 
+- **One SES client surface:** the SESv2 SDK (`SendEmail` raw mode,
+  `GetEmailIdentity`/`CreateEmailIdentity`) behind one thin wrapper in
+  `packages/agent-mail` — not two client stacks.
 - **AWS-side setup is documented, not automated:** verify the domain (DKIM),
   publish MX to SES inbound, create the receipt rule (catch-all for the
   domain → S3 + SNS), create the configuration set with an SNS event
-  destination. `docs/deployment.md` gets the exact click-path/CLI, the same
-  way MinIO and VAPID setup are documented. Startup *checks* what it can
-  (identity verified, bucket reachable) and names what it cannot.
+  destination, and restrict the SNS topic policy to the SES account plus the
+  bucket policy to SES writes. `docs/deployment.md` gets the exact
+  click-path/CLI, the way MinIO and VAPID setup are documented. Startup
+  *checks* what it can (identity verified, bucket reachable, subscription
+  present) and names what it cannot.
 - **Inbound endpoint:** `POST /api/integrations/email/inbound` — public,
   accepts SNS deliveries only after full **SNS signature verification**
-  (certificate URL pinned to the `sns.<region>.amazonaws.com` host pattern,
-  fetched via `safeFetch`, signature checked) *and* a `TopicArn` match;
-  handles `SubscriptionConfirmation` automatically under the same checks.
-  Ack fast, snapshot, enqueue `email.inbound.process` — the established
-  webhook ingestion pattern. Bounce/complaint/delivery events from the
-  configuration set arrive on the same route and queue.
-- **Outbound:** the worker calls SES `SendRawEmail` (SDK, fixed AWS
-  endpoints) with the configuration set stamped, and records the returned
-  provider message id on the `EmailMessage`.
+  (certificate URL host-pinned to the `sns.<region>.amazonaws.com` pattern,
+  fetched via `safeFetch` with a response size cap, signature checked) *and*
+  the `TopicArn` match. The handler discriminates the payload schema
+  strictly — SES *receipt* notifications vs configuration-set *bounce /
+  complaint / delivery* events — and rejects anything else. Ack fast,
+  snapshot, enqueue `email.inbound.process`.
+- **Raw S3 access is a named, narrow exception** to the one-`FileService`
+  blob chokepoint: the worker reads (and later deletes) raw MIME from the
+  inbound bucket as *transport staging only*. Every durable byte — parsed
+  attachments, anything a user can reach — goes through `FileService`
+  exclusively.
 - **Suppression and reputation are the deployment's own:** hard bounces and
-  complaints write to a local suppression table
+  complaints write a local suppression table
   (`email_suppressions {address, reason, occurredAt}`, org-agnostic —
-  reputation is per SES account, i.e. per deployment); `email_send` to a
-  suppressed address refuses with `RECIPIENT_SUPPRESSED` and the reason.
+  reputation is per SES account); `email_send` to a suppressed address
+  refuses with `RECIPIENT_SUPPRESSED` and the reason. The bounce/complaint
+  consumer that populates it is **P1**, not P2 — without it the refusal
+  floor is inert.
 - **Fail loudly, everywhere:** unconfigured ⇒ the claim flow refuses with
   `AGENT_MAIL_UNCONFIGURED` listing exactly which variables are missing, and
   the UI renders the same reason to owners (members see only that hosted
@@ -184,15 +220,17 @@ Operational facts pinned now:
 custom domain, §3.7). The local part is claimed first-come **within the
 deployment** — a plain DB unique, no external authority — lowercased, with a
 reserved-word list (`admin`, `postmaster`, `abuse`, `noreply`, …) and
-suggestions on conflict. Releasing an address quarantines the row
-(`deleting` → retained) so a recycled name cannot silently inherit an old
-correspondent's threads.
+suggestions on conflict. Deleting a mailbox **retires its address
+permanently**: the row is kept read-only, the unique constraint keeps the
+name off the market, and no recycled address can inherit an old
+correspondent's trust. (No quarantine state machine — retirement is one
+timestamp.)
 
 ### 3.3 Data model — an email store, not chat messages
 
 Emails are **not** `Message` rows. They are their own store, because a
-mailbox's semantics (folders, read state, delivery state, MIME identity,
-external participants) are not a chat thread's:
+mailbox's semantics (delivery state, MIME identity, external participants)
+are not a chat thread's:
 
 ```
 model AgentMailbox {                 // agent_mailboxes
@@ -200,9 +238,10 @@ model AgentMailbox {                 // agent_mailboxes
   address        String  @unique             // full, lowercased; unique per deployment
   domainId       String?                     // -> EmailDomain; null = NESSIE_EMAIL_DOMAIN
   channelId      String  @unique             // backing discussion channel (§3.5)
-  status         active | needs_attention | suspended | deleting
+  status         active | suspended          // suspended carries statusReason (remedy-naming)
   statusReason   String?
-  sendPolicy     approval | auto_reply | auto   @default(approval)
+  retiredAt      DateTime?                   // set on delete; row kept read-only
+  sendPolicy     approval | auto_reply | auto   @default(approval)   // P1 ships the column, PATCH + UI; P2 unlocks the non-default values
   displayName    String?                     // From: display name; defaults to agent name
   createdByUserId, createdAt, updatedAt
 }
@@ -210,46 +249,61 @@ model AgentMailbox {                 // agent_mailboxes
 model EmailDomain {                  // email_domains (P2, custom domains)
   id, organizationId, domain @unique
   status pending_dns | verified | failed | revoked
-  sesIdentityArn?, dnsRecords Json, verifiedAt, lastCheckedAt, createdByUserId
+  sesIdentityArn?, dkimTokens Json           // SES-returned facts; MX/SPF/DMARC guidance rendered at read, never stored
+  verifiedAt, lastCheckedAt, createdByUserId
 }
 
 model EmailConversation {            // email_conversations — one email thread
   id, organizationId, mailboxId
   subject, participants Json                 // denormalized for the list view
   threadId String @unique                    // backing Thread for runs/approvals (§3.5)
-  lastMessageAt, messageCount, unreadCount
-  state  open | needs_approval | muted
+  lastMessageAt, messageCount
   @@index([mailboxId, lastMessageAt])
 }
+// Deliberately NO unreadCount, NO muted, NO needs_approval state: per-viewer
+// read state would need the existing ThreadReadState pattern (add only if a
+// real need appears), and approval/bounce chips are DERIVED from the live
+// ApprovalRequest / EmailMessage rows — never a second mutable copy.
 
 model EmailMessage {                 // email_messages
   id, organizationId, mailboxId, conversationId
   direction      inbound | outbound
-  rfcMessageId   String                      // normalized; outbound = generated
+  receiptId      String? @unique            // inbound: SES receipt/SNS message id — the idempotency key
+  s3ObjectKey    String?                    // inbound: raw MIME staging reference
+  rfcMessageId   String                     // normalized; outbound = generated; inbound may be absent/forged — never an idempotency key
   inReplyTo?, referencesIds Json
-  fromAddress, fromName?, toAddresses Json, ccAddresses Json, bccAddresses Json?
-  subject, textBody, htmlBody?               // html stored sanitized at ingest
-  snippet        String                      // list-view preview
-  authResults    Json?                       // SPF/DKIM/DMARC/spam verdicts (inbound)
-  classification normal | bulk | dsn         // structural header classification
-  deliveryState  queued | sent | bounced | complained | null   // outbound only
-  sesMessageId?, sentByRunId?, approvalId?   // outbound provenance
-  attachment rows via the existing Attachment linking (FileService-stored)
+  fromAddress, fromName?, replyToAddress?
+  toAddresses Json, ccAddresses Json, bccAddresses Json @default("[]")
+  envelopeRecipients Json                   // inbound: SES receipt envelope — the routing truth
+  subject, textBody, htmlBody?              // html stored sanitized at ingest
+  snippet        String                     // list-view preview
+  authResults    Json?                      // SPF/DKIM/DMARC/spam/virus verdicts (inbound)
+  classification normal | bulk | dsn        // structural header classification
+  deliveryState  queued | sending | sent | delivery_unknown | bounced | complained | null   // outbound only
+  sesMessageId?, sentByRunId?, approvalId?  // projections of run/approval rows for list rendering — the ApprovalRequest stays authoritative
   occurredAt, createdAt
-  @@unique([mailboxId, rfcMessageId, direction])
   @@index([conversationId, occurredAt])
+  @@index([mailboxId, rfcMessageId])        // threading lookup — an index, not a uniqueness claim
 }
 ```
 
-Pinned facts: `Agent` gets **no** email column (the presenter joins
-`AgentMailbox`); one mailbox per agent (a second agent is cheap); this store
-is **not** `CommsConnection`/`CommsEvent` (those are a *person's* imported
-correspondence — different owner, lifecycle, and semantics); inbound
-threading resolves `In-Reply-To` then `References` against
-`(mailboxId, rfcMessageId)`, no hit ⇒ new conversation titled from the
-subject; outbound records its generated `Message-ID` and sets threading
-headers from the conversation's newest inbound message so external clients
-thread correctly.
+**Attachments get a real link, in the same change.** `Attachment` today
+links only `messageId`/`knowledgePageId`, and `FileService` accepts only
+those destinations — so P1 adds a nullable `emailMessageId` FK, the
+`FileService` destination, the attachment-ACL arm (readable to whoever can
+read the mailbox, §3.4), the presenter rule, and the Prisma-fake coverage,
+together — the exact defect class AGENTS.md records for project avatars.
+Inbound attachments hang off the `EmailMessage`, never off the compact chat
+reference message (chat visibility must not become the attachment's
+authority).
+
+Other pinned facts: `Agent` gets **no** email column (the presenter joins
+`AgentMailbox`); one mailbox per agent; this store is **not**
+`CommsConnection`/`CommsEvent`; inbound threading resolves `In-Reply-To`
+then `References` against the mailbox's known ids — absent, duplicate, or
+forged `Message-ID`s degrade to a new conversation, never to a dropped or
+mis-merged message; outbound generates its own `Message-ID` and sets
+threading headers from the conversation's newest inbound message.
 
 ### 3.4 The mailbox surface
 
@@ -257,142 +311,218 @@ This is the "entire email mailbox, displayed" part — the capability's home
 (Rule zero):
 
 - **Home:** `/agents/:id/mailbox` — a two-pane mailbox: conversation list
-  (subject, participants, snippet, unread, state chips like *awaiting
-  approval* / *bounced*) and a reading pane rendering the messages of a
-  conversation newest-last. HTML mail renders sanitized (allowlist,
-  remote images blocked by default with a per-message "load images" reveal —
+  (subject, participants, snippet, chips *derived* from live rows — a
+  pending `ApprovalRequest` renders *awaiting approval*, a `bounced`
+  outbound renders *bounced*) and a reading pane rendering the messages of a
+  conversation newest-last. HTML mail renders sanitized (allowlist, remote
+  images blocked by default with a per-message "load images" reveal —
   tracking pixels are the default leak). Outbound messages show delivery
-  state as it changes; a bounce renders on the message, not in a log.
-  It reuses the content-system primitives (`QueryState`, pagination
-  contract, `TabBar` for Inbox/Sent/All filters) — no bespoke kit.
+  state as it changes. It reuses the content-system primitives
+  (`QueryState`, the pagination contract, `TabBar` for Inbox/Sent/All) — no
+  bespoke kit.
+- **Read APIs, named:** `GET /api/agents/:agentId/mailbox/conversations`
+  (paginated per the standard contract), `GET …/conversations/:id/messages`,
+  and attachment fetch through the ordinary attachment routes once the ACL
+  arm exists. Authorization composes the shared live agent-visibility
+  predicate (`buildVisibleAgentWhere`) — whoever may see the agent may read
+  its mailbox; never ambient session scope.
 - **Doorways:** the agent detail page gets an **Email** section (address or
-  claim flow, status + reason, send policy, link to the mailbox); the
-  sidebar lists the mailbox beside the agent's channels; the Tools page
+  claim flow, status + reason, send policy control, link to the mailbox);
+  the sidebar lists the mailbox beside the agent's channels; the Tools page
   grant row for `email_send` names the address it acts through.
 - **Composing as a human is not in scope.** The mailbox view is read +
-  supervise; mail is sent by the agent through its tools. (A human "send as
-  the agent" affordance is listed as later, deliberately.)
+  supervise; mail is sent by the agent through its tools.
 
 Lifecycle is owner-gated (it mints an externally visible identity):
 `POST/GET/PATCH/DELETE /api/agents/:agentId/mailbox`, one service in
 `@nessie/workspace-admin` so a future PA builtin mirrors the route exactly.
-Deleting releases the address (quarantined) and keeps the store read-only.
 
 ### 3.5 How inbound mail wakes the agent
 
-The `email.inbound.process` worker job fetches the raw MIME from the inbound
-S3 bucket, parses it (one parser in a new `packages/agent-mail`, shared by
-ingest and send), stores attachments through `FileService`, resolves/creates
-the conversation, writes the `EmailMessage` — then wakes the agent.
+The `email.inbound.process` worker job:
+
+1. **Claims the delivery once.** Idempotency is the SES receipt / SNS
+   message id (+ the S3 object key), claimed by a conditional insert of the
+   `EmailMessage` row (`receiptId @unique`) — never the forgeable RFC
+   `Message-ID`. SNS retries and replays converge on the one row; the wake
+   happens in the same transaction, so "persist and wake once" is one
+   atomic decision, not two.
+2. **Routes on the envelope, never the headers.** The target `AgentMailbox`
+   is resolved from the SES **receipt envelope recipients** — MIME
+   `To:`/`Cc:` are attacker-controlled, omit Bcc, and can name another
+   tenant. A catch-all delivery naming several claimed addresses fans out
+   one `EmailMessage` per mailbox, deterministically; unknown local parts
+   are dropped (bounded logging, no bounce generation — backscatter).
+3. Verifies size (`HeadObject` first), fetches raw MIME from the staging
+   bucket, parses it (one parser in `packages/agent-mail`, shared by ingest
+   and send), sanitizes HTML, stores attachments through `FileService`
+   against the `EmailMessage`, resolves/creates the conversation, and
+   schedules staged-object deletion per the retention setting.
 
 Runs need a thread, and approvals/reports need somewhere to live, so each
 mailbox keeps **one backing channel** (`systemChannelType: 'agent_email'`,
-visibility following the agent — team-visible for workspace agents,
-owner-only for private ones) with **one `Thread` per `EmailConversation`**
-(the `threadId @unique` link above). The thread is the conversation's
-*operations room*, not the mail itself:
+`visibility: 'public'` — matching the workspace-visible agents mailboxes are
+restricted to; there is no "team-visible" channel entitlement to invent)
+with **one `Thread` per `EmailConversation`**. The thread is the
+conversation's *operations room*, not the mail itself. The wake is **not**
+the existing `AgentMailboxMessage` dispatcher (that path is agent-to-agent
+delivery with its own semantics) — it is a new intake that reuses the same
+primitives: post the compact server-authored reference message (sender,
+subject, link into the mailbox view), then `claimThreadRunOrPend` → run +
+enqueue, all inside the claim transaction of step 1, under a
+**service-actor context** — the external sender maps to *no* local user's
+authority, ever.
 
-- A new inbound `normal`-classified email posts a compact server-authored
-  reference message into its thread (sender, subject, link into the mailbox
-  view) and dispatches a run through the existing claim-or-pend discipline —
-  per-conversation serialization for free. Email addressed to the agent is
-  **structural engagement**; the model decides *what to do*, never whether
-  string-matching says it was spoken to.
+- Email addressed to the agent is **structural engagement**; the model
+  decides *what to do*, never whether string-matching says it was spoken to.
+  The run's context loader renders the conversation's `EmailMessage` rows
+  (inventory-line style for attachments) and **feeds the disclosure sink**
+  with the mailbox scope (§3.6) — chat `Message` history loading alone does
+  not cover the email store, so this loader is named P1 work.
 - `bulk`/`dsn`-classified mail (from `Auto-Submitted`, `Precedence:
   bulk/list`, `List-Id`, null return-path — structural header facts, not
-  content heuristics) is stored and shown in the mailbox but starts **no
-  run**: registered, no spend, no reply loops. Spam-verdict-failed mail
-  (SES receipt verdicts in `authResults`) likewise stores flagged, run-less.
-- The run's context carries the conversation's emails (rendered from the
-  store, inventory-line style for attachments); its reply to the outside
-  world is an `email_send` tool call, and its final chat text lands in the
-  thread as the work report. Humans discuss with the agent in that thread;
-  approval gate messages appear there; nothing a human types becomes
-  outgoing mail.
-- Inbound email content is untrusted third-party content and is framed as
-  such in the prompt; instructions inside mail are data.
-
-If a *different* agent should react to incoming mail, that is the existing
-event-trigger machinery (`POST /api/events` with an `email_received`
-eventType — the shape the Google plan reserved), not a second wake path.
+  content heuristics) stores and displays but starts **no run**. The same
+  applies to mail whose receipt verdicts fail — spam, **virus, SPF/DKIM/
+  DMARC failure** — stored flagged, run-less; a person can still read it in
+  the mailbox and engage the agent deliberately.
+- **The cold-inbound posture, assembled in one place:** a run woken by a
+  stranger's email is *unattended* and *service-actor*. It may read its own
+  mailbox and the thread it runs in; it may draft a reply, which under the
+  default policy parks an approval; it sends autonomously only under
+  `auto_reply`/`auto` and only as a reply (§3.6). Nothing in the email's
+  content can widen that envelope — sender identity never becomes local
+  authority, and the untrusted-content framing in the prompt is *in
+  addition to* these structural floors, not the defense itself.
+- If a *different* agent should react to incoming mail, that is the existing
+  event-trigger machinery (`POST /api/events` with an `email_received`
+  eventType — the shape the Google plan reserved). Such a trigger fires into
+  **its own configured target channel/thread** (existing `AgentTrigger`
+  behaviour), not into the mailbox's backing thread — the mailbox agent's
+  structural wake is the only path that lands there.
 
 ### 3.6 Sending — permission layered, default is a human approves
 
 The tools live beside the existing comms builtins
 (`packages/runtime/src/builtin-comms-tools.ts`; handlers
 `worker/src/run/pa-tools/agent-email.ts`), **not** `personalAssistantOnly` —
-any agent with a mailbox and the grant:
+any eligible agent with a mailbox and the grant:
 
 - `email_send` (`requiresExplicitGrant: true`, `safe: false`) —
-  `{to[], cc?, bcc?, subject?, text, attachmentIds?}`. Called from an email
-  conversation's backing thread it defaults to replying there (recipients
-  and `Re:` subject prefilled, threading headers set); called elsewhere with
-  explicit recipients it starts a new conversation (which appears in the
-  mailbox as Sent). Attachments must already be reachable to the run.
+  `{to[], cc?, bcc?, subject?, text}`. Called from an email conversation's
+  backing thread it defaults to replying there (recipients from the latest
+  inbound message — honouring `Reply-To` over `From` — `Re:` subject,
+  threading headers set); called elsewhere with explicit recipients it
+  starts a new conversation. **P1 has no attachment parameter at all**;
+  P2 adds `attachmentIds` together with its disclosure rule (below) — a
+  parameter that exists but errors is a trap.
 - `email_read` / `email_list` (`safe: true`, no grant) — the agent reading
   **its own** mailbox store, so *"what's in your inbox?"* works from any
-  conversation the agent is in, not only the backing channel. Scoped to the
-  run's agent's mailbox, nothing else's; reads feed the disclosure sink like
-  every other read.
+  conversation the agent is in. Scoped to the run's agent's mailbox,
+  nothing else's; reads feed the disclosure sink.
+
+**The approval binds the frozen args — no second fingerprint.** The
+existing tool gate already hashes the exact args (`argsHash`), freezes them
+server-side in `resumeState`, and replays them verbatim on resume; for a
+direct tool call there is no mutable draft to re-verify, so Model B reuses
+that machinery as-is. (The Google plan's content fingerprint remains
+correct *there* — it defends a provider-side draft that can be edited
+between approval and send.) What **is** new work:
+
+- **The approver sees the whole email, not a 200-char redacted summary.**
+  The gate message links an owner-gated
+  `GET …/mailbox/approvals/:approvalId/draft` that renders the full frozen
+  draft (recipients incl. Bcc, subject, body) from `resumeState` — informed
+  consent is the point of the gate.
+- **`ApprovalRequest.requiredApproverUserId`** — shared dependency with the
+  Google plan; built once by whichever lane lands first (§2.1). Pinned to
+  the agent's steward (`ownerUserId`); if the steward's membership is
+  deactivated before resolution, the request falls back to
+  `requiredApproverRole: 'owner'` rather than dying unanswerable.
+- **Send approvals outlive the 30-minute default.** Email is asynchronous —
+  an overnight approval that expires silently strands the conversation. Send
+  approvals get a longer configurable expiry plus a durable `UserAlert` on
+  raise **and** on expiry (the Google plan §7.3 treatment, shared).
+- **The send itself is crash-safe:** approval (or auto-policy pass) writes
+  the outbound `EmailMessage` as `queued`; dispatch claims it with a
+  conditional `queued → sending` update, calls SES, then records
+  `sesMessageId` + `sent`. A worker death between SES accept and the DB
+  write leaves `sending`, which resolves to `delivery_unknown` — surfaced
+  on the message, **never auto-retried** (a retry is a duplicate email).
 
 Permission layers, all reusing existing mechanisms:
 
-1. **Explicit tool grant** per agent from the Tools page
-   (`toolPolicy['email_send'] === true`; Agent Designer already filters
-   explicit-grant keys).
-2. **`AgentMailbox.sendPolicy`**:
-   - `approval` (default) — every send suspends via the existing
-     `waiting_approval` machinery, gate message in the conversation's
-     thread, approval bound to a **content fingerprint** (sha256 over
-     canonical recipients/subject/body/attachment ids — the Google plan's §9
-     discipline, shared not forked), `requiredApproverUserId` pinned to the
-     agent's steward (fallback `requiredApproverRole: owner`).
-   - `auto_reply` — replies within an existing conversation send
-     immediately; new outbound conversations still park an approval. The
-     support-bot mode.
-   - `auto` — everything sends. Owner-set only, risk stated in the UI.
+1. **Explicit tool grant** per agent from the Tools page. (Model B needs no
+   per-connection access rows — the tool reaches exactly the agent's own
+   mailbox, an unambiguous resource.)
+2. **`AgentMailbox.sendPolicy`** — `approval` (default, every send parks the
+   gate above), `auto_reply` (replies within an existing conversation send
+   immediately; new outbound conversations still park — the support-bot
+   mode), `auto` (owner-set only, risk stated in the UI). Column, PATCH and
+   UI ship in P1; the two non-default values unlock in P2.
 3. **Structural floors no policy relaxes:** unattended runs may send only
-   under `auto_reply`/`auto` and only as replies (an unattended new
-   conversation always parks an approval); suppressed recipients refuse;
-   the per-mailbox rate cap parks overflow as approvals rather than
+   under `auto_reply`/`auto` and only as replies; suppressed recipients
+   refuse; the per-mailbox rate cap parks overflow as approvals rather than
    dropping; auto sends stamp `Auto-Submitted: auto-replied`; ≥ N
    auto-replies per conversation per hour (default 4) degrades that
-   conversation to `approval` for the window; and a run whose reply basis is
-   restricted (`runReplyIsRestricted`) cannot `email_send` at all — content
-   with a limited audience inside Nessie is never mailed out of it.
+   conversation to `approval` for the window.
+
+**Disclosure for external recipients is its own decision — the chat
+predicate is the wrong test.** `runReplyIsRestricted` measures restriction
+*relative to the current chat destination*: team- or org-scoped material can
+look unrestricted to the backing thread while being wholly unauthorized for
+an outside recipient — and conversely, a naive "restricted ⇒ no send" would
+deadlock every reply (the mailbox's own content is privileged relative to
+somewhere). So:
+
+- Reading the mailbox store stamps a dedicated basis scope,
+  `email:{mailboxId}`, which the backing thread's destination **implies** —
+  so a run that read only the conversation it is answering is clean and can
+  reply under any policy. A test pins this non-deadlock property.
+- `email_send` inspects the run's full consumed-source set directly: if the
+  run consumed **any** privileged source beyond its own mailbox scope and
+  the thread it runs in (a private KB space, another channel's messages,
+  memory with narrower audience), the send **requires approval regardless
+  of `sendPolicy`**, and the gate names those sources — a human decides
+  whether that material may leave the building. Never a silent refusal, and
+  never auto-sent.
+- The P2 `attachmentIds` parameter applies the same rule per attachment: an
+  attachment whose provenance is not the mailbox/thread itself forces the
+  naming approval.
 
 ### 3.7 Custom domains (P2, behind `NESSIE_EMAIL_CUSTOM_DOMAINS`)
 
 Owner-only, in `/settings/organization` → **Email domains**. The deployment's
-SES account hosts the identity; Nessie drives it over the SES API:
+SES account hosts the identity; Nessie drives it over the SESv2 API:
 
 1. Owner adds `agents.acme.com` → `CreateEmailIdentity` → `EmailDomain` row
-   `pending_dns` with the returned DKIM CNAMEs plus the MX/SPF/DMARC records
-   rendered verbatim.
+   `pending_dns` storing the SES-returned DKIM tokens (facts); the DNS
+   records people paste — DKIM CNAMEs, MX, recommended SPF/DMARC — are
+   rendered from those facts at read time, never stored rendered.
 2. A worker sweep (and a "Check now" button) polls `GetEmailIdentity`;
    `verified` unlocks the domain in the mailbox claim flow (local parts on a
    custom domain are unique per domain). Verification failure follows the
    schedule-health discipline — persisted `status`/`statusReason`, one
    durable `UserAlert` to owners on the transition.
-3. Inbound requires the domain's MX to point at SES inbound and a receipt
-   rule covering it (documented; the sweep can verify MX via DNS lookup and
-   name what is missing). Revoking a domain suspends its mailboxes
-   (`needs_attention`, reason named) rather than deleting them.
+3. Inbound requires the domain's MX at SES inbound and a receipt rule
+   covering it (documented; the sweep verifies MX via DNS lookup and names
+   what is missing). Revoking a domain suspends its mailboxes
+   (`suspended`, reason named) rather than deleting them.
 
 DMARC alignment holds because the customer domain is DKIM-verified in the
 sending SES account — `From: acme.com` mail is signed with `acme.com` keys,
 never `nessie.works` spoofing a customer domain. The operator-level switch
-exists because every custom domain shares the deployment's SES reputation;
-the hosted deployment turns it on deliberately, a self-hoster may not want
-tenant domains in their AWS account at all.
+exists because every custom domain shares the deployment's SES reputation.
 
 ### 3.8 Metering, audit, limits
 
-- `enum ConnectorType` gains `email`; every send and processed inbound
-  writes `recordConnectorUsage` (`operation: 'send' | 'receive'`, full
-  attribution, **no cost fields** — commercial rating is UOA's, per the
-  standing rule). Model A's SMTP/IMAP tool calls meter through the same
-  member.
+- `enum ConnectorType` gains `email` — the Prisma enum **and** the runtime
+  union in `packages/runtime/src/connector-usage.ts`, in one change. Every
+  send and every processed inbound message writes `recordConnectorUsage`
+  (`operation: 'send' | 'receive'`, full attribution, **no cost fields** —
+  commercial rating is UOA's). Granularity is pinned: **one event per tool
+  call / per inbound message**, never per IMAP protocol command. Inbound
+  events attribute to the mailbox's agent + org with the service actor —
+  no synthetic user is ever minted for an external sender.
 - Every send writes an `AuditLog` entry (approval id when one existed);
   bounces and complaints audit too.
 - Inbound attachments ride storage quota/accounting by construction
@@ -400,29 +530,43 @@ tenant domains in their AWS account at all.
 
 ## 4. Phasing
 
-**P1 — hosted mailbox core (Model B).** Env configuration + startup checks +
-`docs/deployment.md` reference, schema (`AgentMailbox`, `EmailConversation`,
-`EmailMessage`, suppressions, `agent_email` channel type),
-`packages/agent-mail` (MIME parse/build, SES client, SNS verification),
-inbound route + worker pipeline, the mailbox UI + agent-detail Email
-section, backing channel/threads + run dispatch, `email_send` under
-`approval` policy + `email_read`/`email_list`, ConnectorType + audit.
-LocalStack-or-stub SES for tests; Playwright on the surfaces.
+**P1 — hosted mailbox core (Model B).** Env configuration + startup checks
+(incl. SNS self-subscribe) + `docs/deployment.md` reference; schema
+(`AgentMailbox` incl. `sendPolicy`, `EmailConversation`, `EmailMessage`,
+suppressions, `Attachment.emailMessageId` + FileService destination + ACL
+arm, `agent_email` channel type); `packages/agent-mail` (MIME parse/build,
+SESv2 wrapper, SNS verification); inbound route + worker pipeline
+(envelope routing, receipt-id idempotent claim-and-wake, HTML sanitizer,
+retention deletion); the **bounce/complaint consumer + suppression**; the
+mailbox UI + read APIs + agent-detail Email section; backing channel/threads
++ service-actor run dispatch + the email context loader feeding the
+disclosure sink (`email:{mailboxId}` scope); `email_send` under `approval`
+(frozen-args approval, rendered-draft route, `requiredApproverUserId`
+build-once, long expiry + alerts, crash-safe `queued → sending → sent /
+delivery_unknown`) + `email_read`/`email_list`; ConnectorType (both unions) +
+audit. Tests named now: SNS replay/idempotency, envelope-vs-header routing
+(incl. Bcc delivery), missing/forged `Message-ID`, send crash recovery,
+non-deadlock of the mailbox disclosure scope, external-disclosure approval
+forcing, attachment ACL (incl. Prisma-fake coverage), prompt-injected
+mutation attempts, private-agent/PA mailbox refusal. Stub SES/SNS harness;
+Playwright on the surfaces.
 
-**P2 — domains + autonomy.** `EmailDomain` + SES identity driving +
-settings surface + health alerts; `auto_reply`/`auto` with the structural
-floors; outbound attachments; bounce/complaint rendering.
+**P2 — domains + autonomy + attachments.** `EmailDomain` + SES identity
+driving + settings surface + health alerts; `auto_reply`/`auto` unlocked
+with the structural floors and loop caps; `email_send.attachmentIds` with
+the per-attachment disclosure rule; bounce/complaint rendering polish.
 
-**P3 — SMTP/IMAP native connector (Model A).** `MailboxConnection` with
-user/team scopes on the Integrations surface, connection test, sealed
-credentials, live IMAP/SMTP tools joining the Google plan's mailbox tool
-family and send-gate machinery (which is that plan's P1 — sequence
-accordingly), egress hygiene.
+**P3 — SMTP/IMAP native connector (Model A).** `MailboxConnection` +
+separate credential row, per-agent access rows, Integrations card,
+connection test enforcing the TLS/egress discipline, live IMAP/SMTP tools
+joining the Google plan's mailbox tool family and send-gate machinery
+(sequence with that plan's P1), disclosure-sink wiring for connection reads.
 
 **Later, deliberately unplanned:** human "send as the agent" from the
-mailbox; multiple mailboxes per agent; opt-in IMAP import into `CommsEvent`
-for Chief-of-Staff context; Gmail-as-agent-owned-transport (SMTP/IMAP with
-an app password already covers it).
+mailbox; multiple mailboxes per agent; private-agent mailboxes (placement +
+stewardship extension); per-viewer read state on conversations; opt-in IMAP
+import into `CommsEvent` for Chief-of-Staff context;
+Gmail-as-agent-owned-transport (app-password SMTP/IMAP covers it).
 
 ## 5. Superseded
 
@@ -434,6 +578,27 @@ table are all replaced here. Two earlier same-day revisions of *this*
 document are also dead: the first mapped hosted-mailbox email onto chat
 messages (replaced by the stored mailbox + surface), the second interposed a
 vendor-operated "Nessie Mail relay" between Nessie and SES (replaced by
-direct, env-configured SES integration — the deployment owns its mail
-infrastructure, and `nessie.works` is simply the hosted deployment's
-configured domain).
+direct, env-configured SES integration).
+
+## 6. Review adjudication (2026-09-02)
+
+Two independent reviews (Codex Sol, Kimix) ran against the previous
+revision; convergent and verified findings are folded above. The
+load-bearing corrections: external-recipient disclosure got its own decision
+(`email:{mailboxId}` scope + consumed-source inspection) instead of the
+destination-relative chat predicate, which was simultaneously too weak for
+outsiders and a deadlock for replies; approvals reuse the existing
+frozen-args/`argsHash` machinery with a rendered-draft view, longer expiry
+and a pinned approver, instead of a duplicate fingerprint system; inbound
+identity moved to the SES receipt envelope with receipt-id idempotency and
+an atomic claim-and-wake; Model A grants became per-`(connection, agent)`
+rows because `toolPolicy` cannot name a resource; the SMTP/IMAP dialer pins
+the validation (re-resolve + re-vet per dial, TLS/SNI rules), not cached
+addresses; `Attachment`/`FileService`/ACL work for email is named P1 scope;
+private agents are excluded until the placement guard is deliberately
+extended; sends got a crash-safe state machine with `delivery_unknown`; and
+the unimplementable `unreadCount`/`muted`/`needs_approval` aggregates were
+cut in favour of derived chips. One reviewer claim was narrowed rather than
+adopted: the content fingerprint is redundant only for Model B's direct
+tool-call sends — it remains correct in the Google plan for mutable
+provider-side drafts.
