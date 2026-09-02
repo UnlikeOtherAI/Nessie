@@ -48,15 +48,29 @@ import {
   removeGuestRuntimeBundleSnapshot,
   verifyGuestRuntimeBundle,
 } from './guest-runtime-bundle.js'
-import type { GuestVmHandshakeInput } from './guest-vm-handshake.js'
 import {
   assertGuestWorkspaceLeaseCurrent,
   releaseGuestWorkspaceLease,
+  type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
 import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
 import { WorkspacePathError } from './workspace-paths.js'
 
-export type GuestVmSessionInput = GuestVmHandshakeInput & {
+/**
+ * What booting a guest needs on every host: the three owner-private artifacts,
+ * the COW workspace lease the boot is bound to, and the state directory that
+ * lease lives in. The hypervisor is not among them — it is chosen from the
+ * host's own sandbox fact by `selectGuestVmBackend`.
+ */
+export type GuestVmBootInput = {
+  guestInitrdBuilderPath: string
+  kernelPath: string
+  lease: GuestWorkspaceLease
+  stateDir: string
+  vmHelperPath: string
+}
+
+export type GuestVmSessionInput = GuestVmBootInput & {
   codexAuthProfilePath?: string
   /** Omit egress entirely for a network-disabled command session. */
   egressPolicy?: ExecutorEgressPolicy

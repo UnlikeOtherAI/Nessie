@@ -6,14 +6,15 @@ export {
 } from './backend.js'
 export type { HyperVBackendDependencies } from './backend.js'
 export {
-  bootDiskPlan,
   bootDiskSizeBytes,
+  bootDiskTree,
   buildGuestBootImage,
   BOOT_DISK_INITRD_PATH,
   BOOT_DISK_LABEL,
   BOOT_DISK_LOADER_PATH,
 } from './boot-disk.js'
-export type { BootDiskPlan, MtoolsPaths } from './boot-disk.js'
+export { buildFat32Image, fat32Geometry, FAT32_MINIMUM_CLUSTER_COUNT, FAT32_SECTOR_BYTES } from './fat32.js'
+export type { Fat32Geometry, Fat32ImageInput, Fat32Node } from './fat32.js'
 export { bridgeArgv, startHyperVBridges } from './bridge.js'
 export type { HyperVBridge, HyperVBridgeSpawner } from './bridge.js'
 export {

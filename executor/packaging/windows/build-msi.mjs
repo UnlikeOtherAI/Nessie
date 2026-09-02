@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { prepareExecutorRuntime } from '../../scripts/prepare-runtime.mjs'
-import { BUILT_BINARIES, MTOOLS_FILES, msiFileName, msiVersion } from './msi-plan.mjs'
+import { BUILT_BINARIES, msiFileName, msiVersion } from './msi-plan.mjs'
 
 const run = promisify(execFile)
 
@@ -131,21 +131,6 @@ const stageResources = async (destination) => {
     await copyFile(join(packagingDirectory, 'scripts', name), join(destination, 'scripts', name))
   }
 
-  // GPL-3.0 and not built here. A release stages it; a build without it still
-  // installs, and the daemon refuses a sandboxed session in words.
-  const mtools = process.env.NESSIE_MTOOLS_DIR
-  if (mtools) {
-    await mkdir(join(destination, 'mtools'), { recursive: true })
-    for (const name of MTOOLS_FILES) {
-      const file = name.split('\\').pop()
-      await copyFile(join(mtools, file), join(destination, 'mtools', file))
-    }
-  } else {
-    process.stderr.write(
-      'warning: NESSIE_MTOOLS_DIR is unset, so this package ships no mtools and its guests '
-      + 'cannot be given a boot disk.\n',
-    )
-  }
 }
 
 /**
@@ -234,9 +219,6 @@ await run('wix', [
   '-arch', 'x64',
   '-d', `Version=${version}`,
   '-d', `StagingDir=${stagingDirectory}`,
-  // Defined only when a release supplied mtools; the authoring's <?ifdef?>
-  // leaves the component group out otherwise.
-  ...(process.env.NESSIE_MTOOLS_DIR ? ['-d', 'MtoolsDir=1'] : []),
   // The tray's autostart entry is a per-user registry value in a per-machine
   // package. That is the intent — the service serves everyone, the tray is one
   // person's control surface — and these two validators exist to warn about

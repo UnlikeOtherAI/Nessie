@@ -211,7 +211,10 @@ What landed, and where the design moved:
   bare ext4 image, so each image gains the specification's 512-byte footer in
   place and the script converts it. No `Mount-VHD`, no `Format-Volume`: all of
   those need an administrator.
-- **Boot is a FAT32 boot disk built with mtools**, carrying the guest kernel as
+- **Boot is a FAT32 boot disk the executor writes itself**
+  (`executor/src/hyperv/fat32.ts`, from Microsoft's FAT Specification —
+  deterministic output, no external tool and nothing to stage at release),
+  carrying the guest kernel as
   `\EFI\BOOT\BOOTX64.EFI` (built with `CONFIG_EFI_STUB`) and the session's
   initrd. `executor/guest/kernel/{PIN,config,build.sh}` pins the same 6.1.155
   release the Linux package uses and builds the `bzImage` in a Linux CI job.
