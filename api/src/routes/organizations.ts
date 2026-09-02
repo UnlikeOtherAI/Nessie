@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
+  type AuthorizedActionContext,
   isAdminRole,
   OrganizationSummarySchema,
   SetConversationalSetupEnabledRequestSchema,
@@ -9,6 +10,15 @@ import {
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
+import {
+  renameUoaOrganization,
+  resolveUoaRosterWorkspace,
+  UoaRosterIdentityError,
+  UoaRosterRejectedError,
+  UoaRosterUnavailableError,
+  withUoaRosterSubjectAssertion,
+  type UoaRosterDeps,
+} from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
 
 // Logos are served from a public, unauthenticated endpoint and rendered on the
@@ -17,8 +27,101 @@ import type { RouteDeps } from './types.js'
 // opened directly. The in-app cropper always produces image/png.
 const SAFE_LOGO_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
-export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+/**
+ * `rosterDeps` is the injectable egress seam (pinned fetch + DNS) for the one
+ * upstream call this file makes — renaming a UOA-bound organisation. Production
+ * passes nothing; it mirrors `registerWorkspaceMembersRoutes`.
+ */
+export const registerOrganizationRoutes = (
+  app: FastifyInstance,
+  deps: RouteDeps,
+  rosterDeps: UoaRosterDeps = {},
+): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
+
+  /**
+   * Relay a rename to UnlikeOtherAI and answer with the name UOA stored, or
+   * `null` once a refusal has been written to `reply`.
+   *
+   * A local-mode organisation (`externalOrgId` null — a no-IdP install or the
+   * generic-OIDC shared org) has no upstream authority over its name, so it
+   * keeps writing locally, byte-for-byte as before.
+   */
+  const renameOnUnlikeOtherAI = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    input: { actorContext: AuthorizedActionContext; name: string; organizationId: string },
+  ): Promise<string | null> => {
+    const organization = await prisma.organization.findUnique({
+      where: { id: input.organizationId },
+      select: { externalOrgId: true },
+    })
+    if (!organization?.externalOrgId) return input.name
+
+    // The assertion UOA verifies names the caller's active org AND team, so the
+    // relay needs the session team's UOA mapping — and it must be a mapping of
+    // *this* organisation, never a workspace the session drifted onto.
+    const workspace = await resolveUoaRosterWorkspace(prisma, {
+      organizationId: input.organizationId,
+      teamId: input.actorContext.tenant.teamId ?? input.actorContext.actionContext.teamId,
+    })
+    if (!workspace || workspace.externalOrgId !== organization.externalOrgId) {
+      sendApiError(
+        reply,
+        403,
+        'UOA_SESSION_REQUIRED',
+        'This organisation is managed by UnlikeOtherAI. Sign in with UnlikeOtherAI and select '
+          + 'this workspace to rename it.',
+      )
+      return null
+    }
+
+    try {
+      return await renameUoaOrganization(
+        workspace,
+        input.name,
+        withUoaRosterSubjectAssertion(
+          workspace,
+          input.actorContext.actionContext.uoaIdentity,
+          rosterDeps,
+        ),
+      )
+    } catch (error) {
+      if (error instanceof UoaRosterIdentityError) {
+        sendApiError(
+          reply,
+          403,
+          'UOA_SESSION_REQUIRED',
+          'This organisation is managed by UnlikeOtherAI. Sign in with UnlikeOtherAI and select '
+            + 'this workspace to rename it.',
+        )
+        return null
+      }
+      if (error instanceof UoaRosterRejectedError) {
+        // UOA re-resolves the caller's live capability and its own name rules,
+        // so its refusal is the answer — never a reason to write locally.
+        sendApiError(
+          reply,
+          error.statusCode === 403 || error.statusCode === 404 ? error.statusCode : 400,
+          'ORGANIZATION_RENAME_REJECTED',
+          'UnlikeOtherAI refused the rename. You may not have permission to rename this '
+            + 'organisation there.',
+        )
+        return null
+      }
+      if (error instanceof UoaRosterUnavailableError) {
+        request.log.warn({ err: error }, 'uoa organisation rename relay failed')
+        sendApiError(
+          reply,
+          502,
+          'UOA_DIRECTORY_UNAVAILABLE',
+          'The UnlikeOtherAI directory is temporarily unavailable',
+        )
+        return null
+      }
+      throw error
+    }
+  }
 
   app.get('/api/organizations/current', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -46,6 +149,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })
@@ -102,12 +206,29 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
       }
     }
 
+    // A rename of a UOA-bound organisation is UOA's write, not ours. It is
+    // relayed BEFORE the local row is touched: `Organization.name` is a mirror
+    // of UOA's `orgName`, and a local-only write both left every other product
+    // (UOA's own workspace chooser included) on the old name and was reverted
+    // by the next login's directory sync. A refusal or outage upstream
+    // therefore changes nothing locally.
+    let mirroredName = body.name
+    if (body.name !== undefined) {
+      const relayed = await renameOnUnlikeOtherAI(request, reply, {
+        actorContext,
+        name: body.name,
+        organizationId,
+      })
+      if (relayed === null) return reply
+      mirroredName = relayed
+    }
+
     // Each field is optional; only apply what was sent so a name-only PATCH
     // leaves the logo and metadata-stripping flag intact and vice versa.
     const organization = await prisma.organization.update({
       where: { id: organizationId },
       data: {
-        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(mirroredName !== undefined ? { name: mirroredName } : {}),
         ...(body.logoAttachmentId !== undefined ? { logoAttachmentId: body.logoAttachmentId } : {}),
         ...(body.stripImageMetadata !== undefined
           ? { stripImageMetadata: body.stripImageMetadata }
@@ -123,6 +244,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })
@@ -171,6 +293,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })

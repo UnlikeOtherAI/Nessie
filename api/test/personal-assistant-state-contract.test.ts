@@ -64,6 +64,22 @@ dbTest('the personal-assistant state parses its own contract, every required fie
     assert.ok(state, 'the bootstrapped assistant must load')
     assert.ok(state.agent, 'the assistant must carry its agent')
     assert.equal(typeof state.agent.todosEnabled, 'boolean')
+
+    // The same hand-assembly dropped `systemPrompt` outright: optional on the
+    // schema, so `.parse` accepted the omission and nothing failed. It cost the
+    // assistant its standing instructions on every voice call, which reads them
+    // off this record — the typed run loads the agent row directly and was
+    // unaffected, which is exactly why the gap stayed invisible.
+    await prisma.agent.update({
+      data: { systemPrompt: 'Prefer metric units.' },
+      where: { id: state.agent.id },
+    })
+    const reloaded = await helpers.loadPersonalAssistantState({
+      actionContext: {},
+      actor: { actorId: userId, actorType: 'user', roles: ['owner'] },
+      tenant: { organizationId, projectId: project.id, teamId: team.id },
+    } as never)
+    assert.equal(reloaded?.agent?.systemPrompt, 'Prefer metric units.')
   } finally {
     await prisma.organizationMember.deleteMany({ where: { organizationId } })
     await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
