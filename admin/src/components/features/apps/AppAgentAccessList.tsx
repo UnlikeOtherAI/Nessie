@@ -10,7 +10,8 @@ import {
 import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
-import { getAgentGlyph } from '../../shared/AgentAvatar'
+import { AgentAvatar } from '../../shared/AgentAvatar'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import {
@@ -57,19 +58,18 @@ const rowShell = [
  * row and the consequence summary on a managed one, and it is where a future
  * "12 of 42 capabilities" per-capability view lands without moving the layout.
  */
-const AgentIdentity = ({ caption, row }: { caption: string | null; row: AgentAccessRow }) => (
-  <>
-    {/* The access record carries no avatar, so the row uses the shared role
-        glyph rather than inventing avatar fields. */}
-    <span
-      aria-hidden="true"
-      className={[
-        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md',
-        'border border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-sm',
-      ].join(' ')}
-    >
-      {getAgentGlyph({ role: row.role ?? '' })}
-    </span>
+const AgentIdentity = ({ caption, row }: { caption: string | null; row: AgentAccessRow }) => {
+  const { token } = useAuthSession()
+  return (
+    <>
+    {/* The access record carries no avatar fields, so the picture comes from
+        the agent identity directory keyed by the row's own id. */}
+    <AgentAvatar
+      agent={{ id: row.agentId, name: row.name, role: row.role ?? '' }}
+      agentId={row.agentId}
+      size={32}
+      token={token}
+    />
     <span className="min-w-0 flex-1">
       <span className="flex items-center gap-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">{row.name}</span>
@@ -80,9 +80,10 @@ const AgentIdentity = ({ caption, row }: { caption: string | null; row: AgentAcc
       {caption ? (
         <span className="block truncate text-xs text-[color:var(--tx3)]">{caption}</span>
       ) : null}
-    </span>
-  </>
-)
+      </span>
+    </>
+  )
+}
 
 const ObservedAgentRow = ({ row }: { row: AgentAccessRow }) => (
   <li>

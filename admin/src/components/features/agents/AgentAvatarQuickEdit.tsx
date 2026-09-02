@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { AgentAvatar } from '../../shared/AgentAvatar'
+import { AgentAvatar, agentAvatarPx } from '../../shared/AgentAvatar'
+import { identityRingRadius } from '../../primitives/identity-shape'
 import { CircleImageCropper } from '../../shared/CircleImageCropper'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { Dialog } from '../../shared/Dialog'
@@ -141,7 +142,10 @@ export const AgentAvatarQuickEdit = ({
 
       <Dialog onClose={close} open={open} title={`${agent.name} avatar`}>
         <div className="flex flex-col items-center gap-4 pt-2">
-          <div className="rounded-2xl ring-1 ring-[color:var(--sep)]">
+          <div
+            className="ring-1 ring-[color:var(--sep)]"
+            style={{ borderRadius: identityRingRadius(agentAvatarPx('xl'), 1) }}
+          >
             <AgentAvatar agent={previewAgent} size="xl" token={token} />
           </div>
 

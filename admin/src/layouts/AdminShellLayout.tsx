@@ -11,6 +11,7 @@ import {
   usePhoneLayout,
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
+import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
 import { PushSurfacePresenceHeartbeat } from '../providers/PushSurfacePresenceHeartbeat';
 import { AttentionDisplayManager } from '../providers/AttentionDisplayManager';
@@ -277,84 +278,86 @@ const AuthenticatedAdminShellLayout = () => {
     .join(' ');
 
   return (
-    <PresenceProvider>
-      <AttentionDisplayManager />
-      <PushSurfacePresenceHeartbeat />
-      <ToastProvider>
-        <NotificationsProvider>
-          <TransientMenuProvider>
-            <AccountMenuProvider
-              onLogout={shell.logoutAndRedirect}
-              showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
-            >
-              <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-                <div className={frameClassName}>
-                  {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
-                  {hideTopBar ? null : (
-                    <TopBar
-                      hideSearch={nativeIPadApp}
-                      onLogout={shell.logoutAndRedirect}
-                      showAccountMenu={mobileLayout}
-                    />
-                  )}
-
-                  <div className="admin-shell">
-                    {!mobileLayout && (
-                      <SidebarRail
-                        onCreateChannel={() => shell.openCreateChannel()}
-                        onCreateMessage={shell.navigateToNewConversation}
-                        onCreateProject={shell.openCreateProject}
+    <AgentIdentityProvider>
+      <PresenceProvider>
+        <AttentionDisplayManager />
+        <PushSurfacePresenceHeartbeat />
+        <ToastProvider>
+          <NotificationsProvider>
+            <TransientMenuProvider>
+              <AccountMenuProvider
+                onLogout={shell.logoutAndRedirect}
+                showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
+              >
+                <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+                  <div className={frameClassName}>
+                    {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
+                    {hideTopBar ? null : (
+                      <TopBar
+                        hideSearch={nativeIPadApp}
                         onLogout={shell.logoutAndRedirect}
-                        pathname={shell.pathname}
+                        showAccountMenu={mobileLayout}
                       />
                     )}
 
-                    {shell.isKnowledgeRoute ? (
-                      <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
-                    ) : (
-                      contentRegion
-                    )}
+                    <div className="admin-shell">
+                      {!mobileLayout && (
+                        <SidebarRail
+                          onCreateChannel={() => shell.openCreateChannel()}
+                          onCreateMessage={shell.navigateToNewConversation}
+                          onCreateProject={shell.openCreateProject}
+                          onLogout={shell.logoutAndRedirect}
+                          pathname={shell.pathname}
+                        />
+                      )}
+
+                      {shell.isKnowledgeRoute ? (
+                        <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
+                      ) : (
+                        contentRegion
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {showWebTabBar && <MobileTabBar />}
-                {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
-                {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
-                {(nativeIPadApp || nativePhoneApp) ? (
-                  <UserMenuTrigger
-                    nativeShellBridge
-                    onLogout={shell.logoutAndRedirect}
-                    placement="topbar"
+                  {showWebTabBar && <MobileTabBar />}
+                  {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
+                  {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
+                  {(nativeIPadApp || nativePhoneApp) ? (
+                    <UserMenuTrigger
+                      nativeShellBridge
+                      onLogout={shell.logoutAndRedirect}
+                      placement="topbar"
+                    />
+                  ) : null}
+                  {nativePhoneApp ? (
+                    <NativePhoneCreationBridge
+                      onCreateChannel={shell.openCreateChannel}
+                      onCreateMessage={shell.navigateToNewConversation}
+                      onCreateProject={shell.openCreateProject}
+                    />
+                  ) : null}
+                  {nativeIPadApp && <NativeSearchOverlay />}
+
+                  <SidebarDialogs
+                    createChannelTarget={shell.createChannelTarget}
+                    createProjectOpen={shell.createProjectOpen}
+                    onCloseCreateChannel={shell.closeCreateChannel}
+                    onCloseCreateProject={shell.closeCreateProject}
+                    editProjectTarget={shell.editProjectTarget}
+                    onCloseEditProject={shell.closeEditProject}
                   />
-                ) : null}
-                {nativePhoneApp ? (
-                  <NativePhoneCreationBridge
-                    onCreateChannel={shell.openCreateChannel}
-                    onCreateMessage={shell.navigateToNewConversation}
-                    onCreateProject={shell.openCreateProject}
+
+                  <AgentDetailDrawer
+                    agent={shell.selectedAgent}
+                    onClose={shell.closeAgentDrawer}
+                    onSelectAgent={shell.selectAgent}
                   />
-                ) : null}
-                {nativeIPadApp && <NativeSearchOverlay />}
-
-                <SidebarDialogs
-                  createChannelTarget={shell.createChannelTarget}
-                  createProjectOpen={shell.createProjectOpen}
-                  onCloseCreateChannel={shell.closeCreateChannel}
-                  onCloseCreateProject={shell.closeCreateProject}
-                  editProjectTarget={shell.editProjectTarget}
-                  onCloseEditProject={shell.closeEditProject}
-                />
-
-                <AgentDetailDrawer
-                  agent={shell.selectedAgent}
-                  onClose={shell.closeAgentDrawer}
-                  onSelectAgent={shell.selectAgent}
-                />
-              </MobileNavProvider>
-            </AccountMenuProvider>
-          </TransientMenuProvider>
-        </NotificationsProvider>
-      </ToastProvider>
-    </PresenceProvider>
+                </MobileNavProvider>
+              </AccountMenuProvider>
+            </TransientMenuProvider>
+          </NotificationsProvider>
+        </ToastProvider>
+      </PresenceProvider>
+    </AgentIdentityProvider>
   );
 };

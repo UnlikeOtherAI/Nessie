@@ -86,10 +86,13 @@ Verified against docs.browserbase.com on 2026-09-02:
   (3 / 25 / 100 / 250+). Browser-hours are the metered unit, so sessions must
   be closed aggressively and their duration recorded. The free tier is the
   intended personal on-ramp — try it, upgrade when it bites; the connect UI
-  copy should say so. One caveat to verify in phase 2: whether the lower
-  plans' data-retention window bounds how long an *inactive* context's login
-  state survives — if it does, durable profiles effectively want a paid plan
-  and the profile UI should say that plainly.
+  copy should say so. Verified 2026-09-02: **contexts are exempt from the
+  retention windows** — the docs state contexts "live indefinitely" until
+  explicitly deleted (retention covers session artifacts like recordings and
+  logs), so a free account's login profiles do not expire on Browserbase's
+  side; re-login cadence is set by each website's own session policy. The
+  free plan's real bound is hours (1 h total, ~15-min sessions), which is
+  the number the personal connections panel surfaces as the upgrade nudge.
 
 ## 3. Design principles
 
@@ -236,11 +239,11 @@ When the agent hits a login wall (or wants to establish a new profile):
    single action: *Open browser*. The run exits through `pendingInput` and
    parks in `waiting_input` — the card/approval suspend-resume cores
    (`run-suspend.ts` / `run-resume-core.ts`), never a second copy.
-2. Pressing the card opens a centered dialog (the `Dialog` shell) embedding
-   the **interactive Live View** iframe. The live-view URL is fetched
-   per-open from a viewer-authorized API route (`GET
-   /api/browser-sessions/:id/live-view`, requester-only) — the URL itself is
-   never written into a message, card row, or realtime payload.
+2. Pressing the card opens the **screen viewer (§4.9) full-screen, in
+   control mode** — the interactive Live View iframe. The live-view URL is
+   fetched per-open from a viewer-authorized API route (`GET
+   /api/browser-sessions/:id`, requester-only) — the URL itself is never
+   written into a message, card row, or realtime payload.
 3. The person signs in, completes 2FA, solves any CAPTCHA — keystrokes go
    browser → Browserbase. Nessie relays nothing; the model sees nothing.
    **While the dialog is open in interactive mode, `browser_observe` /
@@ -252,10 +255,9 @@ When the agent hits a login wall (or wants to establish a new profile):
 5. Card expiry (agent-set, swept with the approval sweep) releases the parked
    session so an abandoned login doesn't burn browser-hours.
 
-The same dialog in `pointer-events: none` mode is the **watch affordance**: a
-person can open "what is the agent doing" on any live cloud session of their
-own run — with the existing cancel-run control beside it (the document-stream
-dialog precedent).
+Watching without controlling is the same viewer in watch mode — the screen
+panel of §4.9, with the existing cancel-run control beside it (the
+document-stream dialog precedent).
 
 ### 4.5 Disclosure and unattended use
 
@@ -287,6 +289,16 @@ for free, because the browser and its state are cloud-side and any of the
 person's devices can open the same live view and any run can attach the same
 context.
 
+**Session restore is server-side and involves no client storage.** Restarting
+the browser is the worker attaching the stored context id at session create
+(`browserSettings.context.id`) — Browserbase re-materializes the cookies/
+localStorage itself. Nothing is ever read from or written to the person's
+device, iCloud, or browser, which is why the web client has full parity with
+desktop and mobile: every client only ever renders the Live View iframe and
+the login card. The only thing no storage scheme can survive is the *site*
+invalidating the session (forced re-auth, password change) — that is a
+one-more-login via the §4.4 card, from any device.
+
 Recorded for the future so it isn't re-litigated: a device-keychain
 injection scheme (executor types a credential from the user's own
 iCloud-Keychain-synced item into the session over CDP) was designed and
@@ -314,8 +326,8 @@ cloud-persistent.
   context + row — the revocation story).
 - **Doorways**: the first-party `/apps` listing (§4.1a) whose Connect routes
   here by scope; the Agent Designer's existing explicit-grant switch
-  surfaces the browser bundle; the login card and live-view dialog live in
-  chat where the question arises; `/ops/usage` gains browser-hours per
+  surfaces the browser bundle; the login card and the §4.9 screen panel live
+  in chat where the question arises; `/ops/usage` gains browser-hours per
   org/agent/connection-scope from `CloudBrowserSession` durations
   (owner-only, no currency figures to members, per the budget-copy rule).
   A member on a personal connection sees their **own** hours in the
@@ -335,6 +347,71 @@ cloud-persistent.
   requesting user) for `/ops/usage`; no cost fields — the org's Browserbase
   bill is Browserbase's, and we don't mirror commercial state.
 
+### 4.9 Displaying the browser — the screen panel
+
+The person watches the agent's browser the way they read a reply thread: a
+right-hand panel beside the conversation, going full-screen on tap. (The
+reference gesture is Grok's "Assistant's screen" — thumbnail in the rail,
+tap → full-screen desktop. Grok shows Chrome + a filesystem + a terminal;
+Nessie's screen shows **only the browser**, deliberately — command/coding
+surfaces belong to the executor's own UI, not this panel.)
+
+- **One viewer component, two containers.** `AgentScreenViewer` = the
+  live-view iframe + our tab strip + a status row (agent name, run state,
+  cancel). It mounts in (a) the **screen panel** — the same right-hand shell
+  as the reply-thread panel: pushes ≥1280px, overlay 900–1279px, full-screen
+  <900px, drag-resized width persisted. That shell is currently implemented
+  *inside* the thread panel, so this work extracts it into a shared layout
+  primitive both panels mount — never a second copy of the breakpoint/resize
+  behaviour (Rule zero #4). And (b) a **full-screen takeover** on tap, which
+  is the only container where control mode exists. The §4.4 login handoff
+  opens this same viewer full-screen in control mode — there is exactly one
+  browser viewer in the admin, parameterised by container and mode.
+- **Tabs are our strip, not Chrome's.** The live view renders only the page
+  viewport; `sessions.debug().pages[]` exposes one live-view URL per tab
+  (verified 2026-09-02), and Browserbase reports no "active tab" — but the
+  **worker** owns the CDP connection, so it knows both the tab list and
+  which page the agent is acting on, and publishes them as ephemeral SSE
+  events beside the existing `stream.*` lanes (`stream.browser.tabs`: page
+  id, title, origin, agent-active flag; `pg_notify`-only, never durable —
+  the `stream.delta` write-amplification lesson). The client renders the
+  strip with `TabBar` (`role="tablist"` — the one tab bar, per the design
+  system). Picking a tab is a **local view choice**; "follow the agent" is
+  the default and re-engages when the agent switches tabs. Only tab
+  *metadata* crosses Nessie's wire — pixels always come straight from
+  Browserbase's iframe, so page content never transits our servers.
+- **Discovery and bootstrap** follow the document-stream route pattern:
+  `browser.session.started` / `.ended` ephemeral events on the thread
+  stream, `GET /api/threads/:id/browser-sessions?active=1` for late-join
+  bootstrap, `GET /api/browser-sessions/:id` for detail + the live-view URL
+  (minted per-open, never persisted). Every per-session route re-checks
+  `threadId` **and** `organizationId` — session ids are global, the thread
+  gate alone would leak across orgs (the document-stream rule verbatim).
+- **Doorways** (Rule zero #1): (1) a live **thumbnail** in the conversation
+  info drawer — "Agent's screen", the scaled watch-only iframe
+  (`pointer-events: none`, CSS-scaled), the Grok right-rail analog; (2) a
+  chip on the **thinking bubble** while the run is browsing ("browsing —
+  watch"), since the bubble is already where "what is it doing" gets asked;
+  (3) a deep-linkable route,
+  `/channels/:id/threads/:threadId/browser/:sessionId`, the reply-panel URL
+  discipline. All three open the panel; the panel's expand control (and any
+  tap under 900px) goes full-screen.
+- **Watch vs control.** The thumbnail and the panel are watch-only
+  (`pointer-events: none`). Full-screen shows **Take control** — only to the
+  run's requester, only on sessions their run owns — which flips the iframe
+  interactive, suppresses `browser_observe`/`browser_screenshot` for the
+  session (§4.4), and shows a persistent "Hand back" bar; handing back lifts
+  the suppression and the agent resumes. The login handoff card opens
+  straight into this state.
+- **Who may watch is the session's disclosure basis, reused.** A
+  profile-backed session renders only for its requester; an ephemeral
+  session renders for anyone who can see the thread — the same predicate the
+  reply messages answer to, and an unauthorized session is shaped exactly
+  like an absent one (the indistinguishable-404 discipline).
+- **One right panel at a time**: opening the screen panel closes the reply
+  panel and vice versa (v1) — two stacked right panels is the nested-frame
+  shape the content system forbids.
+
 ## 5. Phasing
 
 **Phase 1 — connect (both tiers) + ephemeral cloud browsing.**
@@ -345,8 +422,11 @@ secret-store keys, probe on connect, the first-party `/apps` listing in
 `buildCloudBrowserToolset` behind `requiresExplicitGrant` with the §4.1
 resolution order, shared logical tools
 (`browser_open/goto/act/observe/screenshot/close`, ephemeral only),
-screenshots via FileService, watch-only Live View dialog with cancel, ops
-usage rows + the member's own-hours readout. *Done when:* a member on a free
+screenshots via FileService, and the §4.9 display in watch-only form: the
+shared right-panel shell extracted from the thread panel, the screen panel +
+full-screen takeover, the tab strip fed by `stream.browser.tabs`, the info-
+drawer thumbnail, the thinking-bubble chip, the deep-link route, cancel-run,
+plus ops usage rows + the member's own-hours readout. *Done when:* a member on a free
 personal account can grant an agent the browser and ask "check what this
 page says", watch it happen, and see their hours — and an owner connecting
 the company account flips every browser-granted agent to it without anyone
@@ -355,7 +435,8 @@ reconfiguring.
 **Phase 2 — profiles + login handoff.**
 `BrowserProfile` + context create/attach (`persist: true`), single-session
 claim per profile, `browser_login_request` card + `waiting_input` park +
-interactive Live View + observe-suppression during takeover, structural
+the §4.9 viewer's control mode (Take control / Hand back,
+observe-suppression during takeover), structural
 prompt block listing the person's profiles, `user:<id>` disclosure basis on
 profile-backed opens, `/settings/connections` profile management with delete,
 unattended-run refusal. *Done when:* a person signs into a service once in

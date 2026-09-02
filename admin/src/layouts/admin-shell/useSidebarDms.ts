@@ -6,7 +6,6 @@ import {
 } from '../../facades/personal-assistant/hooks';
 import type { ResolvedChatAssistantSurface } from '../../facades/integrations/useProductSurfaces';
 import type { AgentRecord, ChannelRecord, MeResponse, UserRecord } from '../../lib/api-client';
-import { getDmStyle } from '../../lib/avatar';
 import type {
   SidebarAgentDm,
   SidebarGroupDm,
@@ -67,10 +66,9 @@ export const useSidebarDms = ({
         })),
     ];
 
-    return people.slice(0, 4).map((person, index) => ({
+    return people.slice(0, 4).map((person) => ({
       id: person.id,
       label: person.label,
-      style: getDmStyle(index),
       avatarUrl: person.avatarUrl,
       avatarAttachmentId: person.avatarAttachmentId,
       dmChannelId: person.id === me.user.id
@@ -117,12 +115,13 @@ export const useSidebarDms = ({
         // A channel pinned as a product assistant under the PA is never also
         // listed in the generic agent-DM list.
         .filter((channel) => !productAssistantChannelIds.has(channel.id))
-        .flatMap((channel) => {
+        .flatMap((channel): SidebarAgentDm[] => {
           const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
           if (agent) {
             return [{
               dmChannelId: channel.id,
               id: agent.id,
+              agentId: agent.id,
               label: agent.name,
             }];
           }
@@ -133,6 +132,7 @@ export const useSidebarDms = ({
             return [{
               dmChannelId: channel.id,
               id: channel.id,
+              agentId: null,
               label: channel.label,
             }];
           }

@@ -28,6 +28,7 @@ import {
 } from '../facades/integrations/hooks'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { IdentityTile } from '../components/primitives/IdentityTile'
 
 type SurfacePlan = {
   nativePage: string
@@ -121,15 +122,14 @@ const productAccentClass = (slug: string): string => {
 }
 
 const ProductGlyph = ({ product }: { product: IntegratedProductResponse }) => (
-  <span
-    className={[
-      'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold',
-      'text-[color:var(--on-accent)]',
-      productAccentClass(product.slug),
-    ].join(' ')}
-  >
-    {product.name.slice(0, 2).toUpperCase()}
-  </span>
+  <IdentityTile
+    className={productAccentClass(product.slug)}
+    color="var(--on-accent)"
+    fallback={{ kind: 'initials', text: product.name.slice(0, 2).toUpperCase() }}
+    imageUrl={null}
+    label={product.name}
+    size={40}
+  />
 )
 
 const LaunchIcon = () => (

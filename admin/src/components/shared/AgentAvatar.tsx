@@ -1,103 +1,88 @@
-import type { AgentRecord } from '../../lib/api-client'
 import { AGENT_AVATAR_BACKGROUND_COLORS } from '@nessie/schemas'
-import { useAuthedObjectUrl } from '../../lib/uploads'
 
-export type AgentAvatarSource = Pick<
-  AgentRecord,
-  'avatarAttachmentId' | 'avatarBackgroundColor' | 'id' | 'name' | 'role'
->
+import { useAuthedObjectUrl } from '../../lib/uploads'
+import { useAgentIdentity } from '../../providers/AgentIdentityProvider'
+import { IdentityTile } from '../primitives/IdentityTile'
+import { getAgentGlyph, type AgentIdentity } from './agent-identity'
+
+export type { AgentIdentity } from './agent-identity'
+export { getAgentGlyph } from './agent-identity'
+
+/** Retained name for the many call sites that already import it. */
+export type AgentAvatarSource = AgentIdentity
 
 type AgentAvatarProps = {
+  /** Whatever the call site already holds. May be partial, or absent. */
   agent?: AgentAvatarSource | null
+  /** Resolves the agent through the identity directory when no record is held. */
+  agentId?: string | null
   className?: string
   muted?: boolean
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | number
   token: string | null
 }
 
-const sizePx: Record<NonNullable<AgentAvatarProps['size']>, number> = {
+const NAMED_SIZES = {
   xs: 24,
   sm: 32,
   md: 36,
   lg: 46,
   xl: 96,
-}
+} as const
 
-const glyphSizeClass: Record<NonNullable<AgentAvatarProps['size']>, string> = {
-  xs: 'text-[10px]',
-  sm: 'text-sm',
-  md: 'text-lg',
-  lg: 'text-xl',
-  xl: 'text-4xl',
-}
+export const agentAvatarPx = (size: NonNullable<AgentAvatarProps['size']>): number =>
+  typeof size === 'number' ? size : NAMED_SIZES[size]
 
-export const getAgentGlyph = (agent?: Pick<AgentAvatarSource, 'role'> | null): string => {
-  if (!agent) {
-    return '⚡'
-  }
-
-  const role = agent.role.toLowerCase()
-  if (role.includes('research')) {
-    return '🔍'
-  }
-  if (role.includes('write')) {
-    return '📝'
-  }
-  return '⚡'
-}
-
-const fallbackBackgroundColor = (agent?: Pick<AgentAvatarSource, 'id'> | null): string => {
-  const identifier = agent?.id ?? ''
-  const hash = [...identifier].reduce(
+/**
+ * The palette entry an agent falls back to, derived from its id so the same
+ * agent keeps the same colour on every surface without storing one.
+ */
+const fallbackBackgroundColor = (agentId?: string | null): string => {
+  const hash = [...(agentId ?? '')].reduce(
     (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
     0,
   )
-  return AGENT_AVATAR_BACKGROUND_COLORS[
-    hash % AGENT_AVATAR_BACKGROUND_COLORS.length
-  ]!
+  return AGENT_AVATAR_BACKGROUND_COLORS[hash % AGENT_AVATAR_BACKGROUND_COLORS.length]!
 }
 
+/**
+ * An agent's picture, on every surface.
+ *
+ * The call site hands in whatever it holds — a full `AgentRecord`, a partial
+ * projection, or only an id — and the agent identity directory upgrades it.
+ * That upgrade is the point: a surface that knew only an id used to render the
+ * `⚡` placeholder, so the Personal Assistant appeared as a bolt in a thread
+ * panel while its real portrait sat in the sidebar.
+ */
 export const AgentAvatar = ({
   agent,
-  className = '',
+  agentId,
+  className,
   muted = false,
   size = 'md',
   token,
 }: AgentAvatarProps) => {
-  const objectUrl = useAuthedObjectUrl(agent?.avatarAttachmentId ?? null, token)
-  const dimension = sizePx[size]
-  const backgroundColor = agent?.avatarBackgroundColor ?? fallbackBackgroundColor(agent)
-  const classes = [
-    'flex flex-shrink-0 items-center justify-center overflow-hidden',
-    'rounded-md',
-    muted ? 'opacity-60' : '',
-    className,
-  ].join(' ')
-
-  if (objectUrl) {
-    return (
-      <img
-        alt={agent?.name ? `${agent.name} avatar` : 'Agent avatar'}
-        className={`${classes} object-cover`}
-        height={dimension}
-        src={objectUrl}
-        style={{ backgroundColor, height: dimension, width: dimension }}
-        width={dimension}
-      />
-    )
-  }
+  const resolvedId = agentId ?? agent?.id ?? null
+  const directoryEntry = useAgentIdentity(resolvedId)
+  // The directory wins on the picture, the caller wins on the label: a call
+  // site naming an agent (a product assistant's display label, a PA presence's
+  // display name) is stating what this surface should call it.
+  const identity: AgentIdentity | null = directoryEntry
+    ? { ...directoryEntry, name: agent?.name ?? directoryEntry.name, role: agent?.role ?? directoryEntry.role }
+    : agent ?? null
+  const attachmentId = identity?.avatarAttachmentId ?? null
+  const objectUrl = useAuthedObjectUrl(attachmentId, token)
+  const dimension = agentAvatarPx(size)
 
   return (
-    <div
-      aria-hidden="true"
-      className={[
-        classes,
-        'border border-[var(--accent)] bg-[var(--accent-soft)]',
-        glyphSizeClass[size],
-      ].join(' ')}
-      style={{ backgroundColor, height: dimension, width: dimension }}
-    >
-      {getAgentGlyph(agent)}
-    </div>
+    <IdentityTile
+      background={identity?.avatarBackgroundColor ?? fallbackBackgroundColor(resolvedId)}
+      className={className}
+      fallback={{ kind: 'glyph', glyph: getAgentGlyph(identity) }}
+      imageUrl={attachmentId ? objectUrl : null}
+      label={identity?.name ? `${identity.name} avatar` : 'Agent avatar'}
+      muted={muted}
+      size={dimension}
+    />
   )
 }

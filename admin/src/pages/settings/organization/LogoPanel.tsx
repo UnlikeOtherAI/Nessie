@@ -10,6 +10,7 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Card } from '../../../components/shared/Card'
 import { FormError, FormSuccess } from '../../../components/shared/FormActions'
+import { IdentityTile } from '../../../components/primitives/IdentityTile'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -76,23 +77,19 @@ export const LogoPanel = () => {
     <Card as="section">
       <SectionLabel>Logo</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        A round logo for {organization.name}, shown in the sidebar and on the sign-in screen.
+        The logo for {organization.name}, shown in the sidebar and on the sign-in screen.
       </div>
 
       <div className="mt-4 flex items-center gap-5">
-        <div
-          className={[
-            'flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full',
-            'border border-[color:var(--sep)] bg-[color:var(--accent-soft)]',
-            'text-2xl font-semibold text-[color:var(--accent)]',
-          ].join(' ')}
-        >
-          {logoUrl ? (
-            <img alt="Company logo" className="h-full w-full object-cover" src={logoUrl} />
-          ) : (
-            getInitials(organization.name)
-          )}
-        </div>
+        <IdentityTile
+          background="var(--accent-soft)"
+          border
+          color="var(--accent)"
+          fallback={{ kind: 'initials', text: getInitials(organization.name) }}
+          imageUrl={logoUrl ?? null}
+          label="Company logo"
+          size={96}
+        />
 
         {canEdit ? (
           <div className="flex flex-col gap-2">
@@ -138,11 +135,12 @@ export const LogoPanel = () => {
       {selectedFile && (
         <CircleImageCropper
           busy={busy}
-          description="Drag to reposition, scroll or use the slider to zoom. The circle is what becomes your logo."
+          description="Drag to reposition, scroll or use the slider to zoom. The framed area becomes your logo."
           file={selectedFile}
           onCancel={() => setSelectedFile(null)}
           onSave={handleSave}
           saveLabel="Save logo"
+          shape="rounded"
           title="Edit logo"
         />
       )}
