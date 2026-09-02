@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import type { AgentRecord, ChannelRecord, ProjectRecord } from '../../lib/api-client'
 
 export type FavoriteStarredItem = { type: 'agent' | 'channel' | 'user'; id: string }
@@ -19,13 +18,16 @@ export type SidebarPerson = {
   dmChannelId?: string
   id: string
   label: string
-  style: CSSProperties
   avatarUrl?: string | null
   avatarAttachmentId?: string | null
 }
+// The sidebar names an agent by its id and lets the agent identity directory
+// resolve the picture. `agentId` is null for an external-agent channel with no
+// local agent row, which is the one case that genuinely has no portrait.
 export type SidebarAgentDm = {
   dmChannelId: string
   id: string
+  agentId: string | null
   label: string
 }
 export type SidebarGroupDm = {

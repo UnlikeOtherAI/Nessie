@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { getInitials } from '../../lib/avatar'
 import { useAuthedObjectUrlFromPath } from '../../lib/uploads'
+import { IdentityTile } from './IdentityTile'
+import { identityInitials } from './identity-shape'
 
 // The company picture UnlikeOtherAI holds for a workspace. The relay needs a
 // bearer token, so it is fetched as an object URL rather than dropped into an
@@ -34,9 +34,9 @@ type WorkspaceAvatarProps = {
 }
 
 /**
- * Rounded-square workspace avatar, matching user and agent avatar tiles.
- * Prefers Nessie's authenticated relay, then UOA's public directory image, and
- * finally workspace initials. Deployments without UOA retain their old look.
+ * A workspace's picture. Prefers Nessie's authenticated relay, then UOA's
+ * public directory image, and finally workspace initials; the tile is the
+ * shared `IdentityTile`, so it matches a person and an agent at the same size.
  */
 export const WorkspaceAvatar = ({
   label,
@@ -56,31 +56,16 @@ export const WorkspaceAvatar = ({
   // Nessie can be cache-busted immediately. The public UOA URL fills the gap
   // for authorized workspaces that do not have a local Team row yet.
   const url = relayedUrl ?? imageUrl ?? null
-  const [broken, setBroken] = useState(false)
-
-  useEffect(() => setBroken(false), [url])
-
-  const showImage = Boolean(url) && !broken
 
   return (
-    <span
-      className={[
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-md',
-        'bg-[color:var(--overlay)] text-xs font-semibold text-[color:var(--tx)]',
-        className ?? '',
-      ].join(' ')}
-      style={{ width: size, height: size }}
-    >
-      {showImage ? (
-        <img
-          alt={label}
-          className="h-full w-full object-cover"
-          onError={() => setBroken(true)}
-          src={url ?? undefined}
-        />
-      ) : (
-        getInitials(label, 'W')
-      )}
-    </span>
+    <IdentityTile
+      background="var(--overlay)"
+      className={className}
+      color="var(--tx)"
+      fallback={{ kind: 'initials', text: identityInitials(label, 'W') }}
+      imageUrl={url}
+      label={label}
+      size={size}
+    />
   )
 }
