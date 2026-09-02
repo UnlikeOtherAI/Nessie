@@ -308,6 +308,10 @@ enum ChannelType {
 enum ChannelSystemType {
   personal_assistant
   external_agent
+  // The per-user private home DM of a global agent (the Agent Designer is the
+  // first). One member, one binding, key `gagent:{slug}:{orgId}:{userId}` —
+  // both enforced in the database. See docs/plans/2026-09-02-agent-designer-global-agent.md.
+  system_agent
   // Backing "operations room" for a hosted agent mailbox: one channel per
   // AgentMailbox, one Thread per EmailConversation. The mail itself lives in
   // email_messages — this channel carries run reports, approval gates, and the
@@ -2095,6 +2099,14 @@ model Agent {
   status                         AgentStatus                     @default(idle)
   agentKind                      AgentKind                       @default(shared) @map("agent_kind")
   systemManaged                  Boolean                         @default(false) @map("system_managed")
+  /// The global-agent blueprint this row instantiates ('agent-designer', ...).
+  /// One row per organisation per slug, and a database CHECK requires
+  /// `systemManaged` + a non-null `organizationId` alongside it, so a cross-org
+  /// or user-authored row carrying a slug cannot exist. This is the
+  /// discriminator `ensureGlobalAgent` keys on — never the display name, which
+  /// is what made the Librarian's bootstrap fragile — and the structural way
+  /// the worker knows which blueprint a run belongs to.
+  systemSlug                     String?                         @map("system_slug")
   surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
   delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
   visibility                     AgentVisibility                 @default(workspace) @map("visibility")
@@ -2189,6 +2201,7 @@ model Agent {
   cloudBrowserSessions CloudBrowserSession[]
 
   @@unique([organizationId, id])
+  @@unique([organizationId, systemSlug])
   @@index([organizationId])
   @@index([organizationId, projectId])
   @@index([avatarAttachmentId])

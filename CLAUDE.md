@@ -814,6 +814,29 @@ acting member and call the same `@nessie/workspace-admin` functions as the
 routes; `call_start` resolves membership from its target channel's organisation
 and stamps `Call.createdViaAgentId`.
 
+## Global agents — one blueprint, one row per organisation
+
+App-provided agents (the **Agent Designer**, `agent-designer`, is the first)
+are blueprints in `@nessie/workspace-admin`, instantiated by
+`ensureGlobalAgent` as one `systemManaged` row per organisation keyed by
+`Agent.systemSlug`, reachable through a per-user private home DM
+(`gagent:{slug}:{orgId}:{userId}`, `systemChannelType='system_agent'`, one
+member and one binding, both database facts). The invariants — slug CHECK,
+ensure/policy-merge shape, sole-membership trigger arm, the
+no-agent-binds-into-any-system-channel refusal, no self-triggers, the home-only
+run-start assertion, the un-gated `{ systemManaged: true }` list arm — are in
+`AGENTS.md` → "A global agent is a blueprint in code". Spec:
+[docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
+
+Facts not restated there: bootstrap runs beside the PA's at login and user
+provisioning but **best-effort** (`attemptGlobalAgentsBootstrap`) — the PA may
+fail a login, a global agent must never lock anyone out; the model is blueprint
+pin → `NESSIE_DESIGNER_MODEL` → organisation default, one rule for both Designer
+faces; the sidebar finds the DM via `isGlobalAgentChannel`, and
+`AgentIdentityProvider` reads `scope=all` so the picture resolves from an id
+anywhere. Phase 1 makes the Designer exist, be reachable and reply; identity
+tools, the catalogue, `agent_handoff` and the unified sidebar are phases 2–4.
+
 ## Personal assistant — workspace provisioning
 
 Five PA-only builtins (`personalAssistantOnly: true`,

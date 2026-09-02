@@ -28,7 +28,14 @@ const AgentIdentityContext = createContext<AgentIdentityContextValue | null>(nul
  * with an agent, only what it may draw.
  */
 export const AgentIdentityProvider = ({ children }: { children: ReactNode }) => {
-  const { data: agents = [] } = useAgents()
+  // `scope=all` is a strict superset of the default list: the same entitled
+  // agents plus the read-only system tier (the Personal Assistant, and global
+  // agents such as the Agent Designer). The directory has to answer for those
+  // too — a global agent owns a per-user DM and posts into it, so every message
+  // row, sidebar entry and participant chip needs its picture from its id
+  // alone. It stays identity-only; pickers, bindings and policy surfaces keep
+  // reading `useAgents()`, which still excludes system agents.
+  const { data: agents = [] } = useAgents({ scope: 'all' })
   // Unconditional: the directory has to answer for the Personal Assistant on
   // every surface, not only the ones that happen to be showing its channel.
   const { data: personalAssistant } = usePersonalAssistant()

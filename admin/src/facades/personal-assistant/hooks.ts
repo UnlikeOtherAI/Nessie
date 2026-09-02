@@ -21,10 +21,18 @@ export const isExternalAgentChannel = (channel?: ChannelRecord | null): boolean 
   channel?.systemChannelType === 'external_agent'
   || channel?.metadata?.systemChannelType === 'external_agent'
 
+// A global agent (the Agent Designer, ...) lives in a per-user private DM of
+// its own, keyed by `systemChannelType` exactly as the two above are. New
+// global agents are a backend blueprint entry, not a UI code fork.
+export const isGlobalAgentChannel = (channel?: ChannelRecord | null): boolean =>
+  channel?.systemChannelType === 'system_agent'
+  || channel?.metadata?.systemChannelType === 'system_agent'
+
 export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
   channel?.type === 'dm'
   && !isPersonalAssistantChannel(channel)
   && !isExternalAgentChannel(channel)
+  && !isGlobalAgentChannel(channel)
   && Boolean(channel.dmUserId)
 
 export const usePersonalAssistant = (enabled = true) => {

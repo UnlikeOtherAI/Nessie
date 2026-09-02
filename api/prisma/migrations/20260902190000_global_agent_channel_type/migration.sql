@@ -1,0 +1,12 @@
+-- A global agent (the Agent Designer is the first) lives in a per-user private
+-- DM, exactly as the Personal Assistant and the external-agent products do.
+-- That surface needs its own system-channel type so every rule keyed on the
+-- type — the surface CHECK, the effectiveUserId stamp, the orchestrator
+-- fast-path, the binding refusal — can name it rather than pattern-matching a
+-- key prefix.
+--
+-- Deliberately alone in its own migration and unused by any DDL here:
+-- PostgreSQL forbids a new enum value being *used* in the transaction that adds
+-- it, and Prisma runs one migration file in a single transaction. The
+-- constraints that reference it ship in 20260902190100_global_agent_foundation.
+ALTER TYPE "ChannelSystemType" ADD VALUE IF NOT EXISTS 'system_agent';

@@ -11,7 +11,16 @@ on-behalf message/reaction attribution, destination containment, and reduced
 presence toolsets. Structured presence mentions and the PA participant/display
 UI are implemented: canonical id-keyed mentions, viewer-relative names and
 avatars, minimal participant projections, and owner add/remove controls. Global
-agent reachability remains a later phase.
+agent reachability is implemented for the DM-homed tier: this doc's
+`{ systemManaged: true }` list branch now backs the Global tab (so an unbound
+vendor agent is never invisible to anyone), and a global agent reaches people
+through a per-user private home DM rather than by binding into shared channels
+— see
+[2026-09-02-agent-designer-global-agent.md](2026-09-02-agent-designer-global-agent.md)
+phase 1. The other half of the recommendation below — binding a `systemManaged`
+shared agent into ordinary channels, plus the read-only detail view — remains a
+later phase, and the binding chokepoint has since moved the other way for
+system *channels*: no agent may bind into any of them.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),

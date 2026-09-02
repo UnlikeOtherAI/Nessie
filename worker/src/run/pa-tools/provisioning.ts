@@ -37,7 +37,8 @@ import { formatSection } from './tool-output.js'
  * `GET /api/agents`, `POST /api/channels` and `POST /api/agents` carry only
  * `requireActorContext`, so those three are open to any active member;
  * bindings and triggers are owner-gated, and bindings additionally require
- * channel membership, refuse the Personal Assistant DM, and pass the
+ * channel membership, refuse every system-managed conversation (the Personal
+ * Assistant's DM, an external agent's, a global agent's home), and pass the
  * `agent`/`bind` policy check.
  */
 
@@ -299,8 +300,8 @@ export const runAgentBindChannelTool = async (
   if (!channel) {
     throw new Error('Channel not found, or you are not a member of it.')
   }
-  if (channel.systemChannelType === 'personal_assistant') {
-    throw new Error('Agents cannot be bound to a Personal Assistant DM.')
+  if (channel.systemChannelType) {
+    throw new Error('Agents cannot be bound to a system-managed conversation.')
   }
 
   requireOwnerMember(member, 'bind an agent to a channel')

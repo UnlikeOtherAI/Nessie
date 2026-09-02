@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   isExternalAgentChannel,
+  isGlobalAgentChannel,
   isPersonalAssistantChannel,
   isUserDmChannel,
 } from '../../facades/personal-assistant/hooks';
@@ -18,6 +19,12 @@ type UseSidebarDmsInput = {
   channels: ChannelRecord[];
   chatAssistants: ResolvedChatAssistantSurface[];
   me: MeResponse | null;
+  /**
+   * The read-only system tier (`GET /api/agents?scope=all`). `agents` above
+   * deliberately excludes it, so a global agent's home DM would otherwise
+   * resolve to no agent at all and be dropped from the list entirely.
+   */
+  systemAgents: AgentRecord[];
   users: UserRecord[];
 };
 
@@ -39,6 +46,7 @@ export const useSidebarDms = ({
   channels,
   chatAssistants,
   me,
+  systemAgents,
   users,
 }: UseSidebarDmsInput): UseSidebarDmsResult => {
   const sidebarPeople = useMemo<SidebarPerson[]>(() => {
@@ -136,9 +144,24 @@ export const useSidebarDms = ({
               label: channel.label,
             }];
           }
+          // A global agent (the Agent Designer, ...) is system-managed too, so
+          // it is absent from `agents` for the same reason — but it IS a real
+          // Nessie agent with a picture, so it resolves through the system tier
+          // and keeps its agent id for the identity directory.
+          if (isGlobalAgentChannel(channel)) {
+            const globalAgent = systemAgents.find((candidate) =>
+              candidate.channelIds.includes(channel.id),
+            );
+            return [{
+              dmChannelId: channel.id,
+              id: globalAgent?.id ?? channel.id,
+              agentId: globalAgent?.id ?? null,
+              label: globalAgent?.name ?? channel.label,
+            }];
+          }
           return [];
         }),
-    [agents, channels, productAssistantChannelIds],
+    [agents, channels, productAssistantChannelIds, systemAgents],
   );
 
   const sidebarGroupDms = useMemo<SidebarGroupDm[]>(

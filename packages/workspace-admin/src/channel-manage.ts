@@ -35,6 +35,14 @@ export const canManageChannel = async (
     return null
   }
 
+  // System channels are lifecycle-protected: their label, archive state and
+  // membership are bootstrap-owned facts other rules depend on (a global
+  // agent's home DM must stay reachable and single-member). Nobody manages one
+  // by clicking or by asking; the ensure functions repair them instead.
+  if (channel.systemChannelType) {
+    return null
+  }
+
   const [channelMember, orgMember, teamMember] = await Promise.all([
     prisma.channelMember.findUnique({
       where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },

@@ -17,6 +17,7 @@ import { resolveExternalWorkspaceSelection } from '../services/identity-display.
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
+import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
 import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { loadSessionUserByEmail, loadSessionUserById } from '../services/users.js'
@@ -369,6 +370,15 @@ export const registerAuthLoginRoute = (
           teamId: context.teamId,
           userId: context.userId,
         })
+        await attemptGlobalAgentsBootstrap(
+          prisma,
+          {
+            organizationId: context.organizationId,
+            teamId: context.teamId,
+            userId: context.userId,
+          },
+          (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
+        )
         await attemptPersonalAssistantAvatar({
           actorContext,
           config: deps.config.model,
@@ -463,6 +473,15 @@ export const registerAuthLoginRoute = (
       teamId: actorContext.tenant.teamId!,
       userId: user.id,
     })
+    await attemptGlobalAgentsBootstrap(
+      prisma,
+      {
+        organizationId: actorContext.tenant.organizationId,
+        teamId: actorContext.tenant.teamId!,
+        userId: user.id,
+      },
+      (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
+    )
     await attemptPersonalAssistantAvatar({
       actorContext,
       config: deps.config.model,

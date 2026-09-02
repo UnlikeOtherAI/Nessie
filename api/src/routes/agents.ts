@@ -524,12 +524,14 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType === 'personal_assistant') {
+    // Every system DM is a single-agent surface (see `bindAgentToChannel`), so
+    // the refusal covers all of them, not only the Personal Assistant's.
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'Agents cannot be bound to the Personal Assistant DM',
+        'Agents cannot be bound to a system-managed conversation',
       )
       return reply
     }
@@ -602,12 +604,12 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType === 'personal_assistant') {
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'The Personal Assistant DM binding is system managed',
+        'System-managed conversation bindings are owned by their bootstrap',
       )
       return reply
     }

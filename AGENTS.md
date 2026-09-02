@@ -186,6 +186,39 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **A global agent is a blueprint in code, one row per organisation, and a
+  single-agent DM.** App-provided agents (the Agent Designer is the first) live
+  in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
+  each as one `systemManaged` row per organisation, keyed by the new
+  **`Agent.systemSlug`** — unique on `(organizationId, systemSlug)` with a CHECK
+  requiring `systemManaged` AND a non-null `organizationId`, so a cross-org
+  vendor row is a database impossibility rather than a convention, and so a
+  display name is never again the discriminator (the Librarian's fragility).
+  The ensure function is `ensurePersonalAssistantAgent` verbatim in shape —
+  advisory lock, find-by-discriminator, create-or-update-in-place, tool policy
+  merged under `acquireAgentToolPolicyLock` *after re-reading the row*, so a
+  targeted grant committed in between survives — and the blueprint's own policy
+  passes `assertGenericAgentToolPolicyInput` like user input, because vendor
+  config is not authority. Its home is a per-user private DM keyed
+  `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
+  its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
+  and held to exactly its encoded member by the deferred home-membership
+  trigger, whose `gagent:` arm reads the owner at **segment 4** where an
+  `agent:` key carries it at segment 3. Sole membership is not decoration: it is
+  what makes `effectiveUserId = poster` and the orchestrator's single-candidate
+  fast path safe, so it must hold at rest. Three refusals keep that true — no
+  agent binds into ANY system channel (`bindAgentToChannel`, both routes, the PA
+  tool; `canManageChannel` likewise refuses to rename, archive or re-member
+  one), `createAgentTrigger` refuses a `systemSlug` target because a scheduled
+  run re-arms its creator's identity, and the worker's
+  `assertGlobalAgentRunPlacement` admits only the agent's own home DM before any
+  inference (trigger threads deliberately excluded, unlike the private-agent
+  rule). Reachability is the point of the tier: `listAgentsForUser`'s
+  `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
+  longer channel-gated, because an app-provided agent nobody can find is the
+  unreachable-capability defect Rule zero names. Details: `CLAUDE.md` → "Global
+  agents"; spec:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md`.
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and
