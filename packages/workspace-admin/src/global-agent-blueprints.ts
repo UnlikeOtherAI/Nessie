@@ -136,17 +136,12 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     agent_trigger_create: true,
     agent_update: true,
     channel_create: true,
-    delegate: false,
-    spawn_subtask: false,
-    // Builtins are deny-mode, so these entries change nothing on their own —
+    // Builtins are deny-mode, so the `true`s above change nothing on their own —
     // the `personalAssistantOnly` gate is what admits them, and it reads
     // `identityToolIds` below. They are written explicitly anyway so the stored
     // row states the intent, and so revoking one is a single `false`.
-    agent_bind_channel: true,
-    agent_create: true,
-    agent_list: true,
-    agent_trigger_create: true,
-    channel_create: true,
+    delegate: false,
+    spawn_subtask: false,
   },
   // The identity-delegated set (D3): each is `personalAssistantOnly`, each
   // mirrors one route's authorization exactly, and each acts as the sole member
