@@ -1,70 +1,91 @@
 # Call your Personal Assistant — Gemini Live voice on web, iPhone and Android
 
-**Status (2026-09-02): phase 1 built and merged — the server contract and the
-browser call. Phase 0 is done: the production Nessie Ledger key
-(`tk_98ffbd0b_95b4`) now carries the `gemini` scope with the live model, the
-`live-token` endpoint and a $50/day budget, so credentials mint. Phase 1a
-(live tool bridge) and 1b (iPhone/CallKit) are not started.**
+**You can place this call today.** Open the Personal Assistant DM and press
+the call button in the header: the browser opens a live voice conversation
+with your assistant, and audio flows straight between your device and Google.
+It works in the web admin, in the desktop shell, and in the iOS app in the
+foreground. Verified end to end on 2026-09-02 against the real services.
 
-Setting that budget needed a Ledger change of its own: a service scope's
-daily budget was settable only at token issuance, so a capability requiring
-one could be granted to an existing token and refused forever. Ledger now has
+Two things it is not yet. **A call cannot survive a locked screen** — there is
+no CallKit or Telecom integration, so backgrounding the app ends it; that is
+what makes it a voice feature rather than a phone call, and it is the largest
+remaining gap. And **the assistant cannot act mid-call** beyond handing work
+to itself: the only declared function is `pa_send`, which posts an ordinary
+message into the DM and starts a normal run. Live tools are designed but
+unbuilt.
+
+## Where the code is
+
+| Piece | Lives in |
+| --- | --- |
+| Credential broker + call lifecycle | `api/src/routes/voice.ts`, `api/src/services/voice/*` |
+| Wire contract | `packages/schemas/src/voice.ts` |
+| Durable state | `voice_installations`, `voice_sessions` (migration `20260902160000_voice_calling`) |
+| Browser client | `admin/src/facades/voice/*`, worklet at `admin/public/voice-capture-worklet.js` |
+| The one call button | `admin/src/components/features/channels/ChannelHeader.tsx` |
+| In-call surface | `admin/src/components/features/channels/VoiceCallDialog.tsx` |
+| Android build plan | [2026-09-02-voice-android.md](2026-09-02-voice-android.md) *(drafted, unreviewed)* |
+
+## The shape of it, in one paragraph
+
+Ledger mints a **one-use ephemeral Gemini credential**; the Nessie API is the
+broker that asks for one on the authenticated caller's behalf, carrying the
+deployment's `LEDGER_PROXY_TOKEN` and signed identity. The client then opens
+Google's *constrained* BidiGenerateContent socket **itself**, so audio never
+passes through Nessie and the app key never leaves the server. One call is one
+`voice_sessions` row that survives credential rotation, so a 30-minute
+credential can be replaced mid-call without splitting the usage stream or the
+transcript. The call ends as a single message in the assistant's voice with
+the transcript attached.
+
+The rest of this document is the reference for that design (what is settled
+and why), then what remains to build, then the evidence behind the decisions.
+Sections marked **shipped** describe code that exists; everything under
+"What remains" does not.
+
+## Operational prerequisites
+
+Voice needs Ledger reachable and granted, or the call button does not appear
+at all (`GET /api/voice/capability` gates it):
+
+- `LEDGER_PUBLIC_URL` + `LEDGER_PROXY_TOKEN` configured. The relay goes
+  through `safeFetch`, which refuses loopback and private addresses, so a
+  **local Ledger cannot be used in development** — point at the hosted service.
+- The Ledger key needs, on its `gemini` scope: the
+  `gemini-3.1-flash-live-preview` model, the `live-token` endpoint, **and a
+  positive daily budget**. Production's key (`tk_98ffbd0b_95b4`) carries all
+  three at $50/day.
+- Each device slot reserves $5/day of that budget, and the reservation is held
+  for the rest of the budget day. Repeated testing must reuse one device id,
+  or a handful of runs exhausts the budget and every mint returns 402.
+
+Setting that budget needed a Ledger change of its own: a service scope's daily
+budget was settable only at token issuance, so a capability requiring one
+could be granted to an existing token and refused forever. Ledger now has
 `manage_token_services` action `set_budget` (UnlikeOtherAI/ledger#14).
 
-Built and verified: `voice_installations` / `voice_sessions` + migration,
-`POST /api/voice/{installations,sessions,sessions/:id/rotate,usage,transcript,end}`,
-the Ledger credential relay with signed identity, role-preserving context
-seeding, the call-record writer, the browser client (AudioWorklet capture at
-16 kHz, WebAudio playback at 24 kHz, rotation, `pa_send`, persistent usage
-outbox), and the one call button on the Personal Assistant header.
+## Why CallKit, not CoreTelephony
 
-Three things live verification settled that the plan had left open — the
-first two were wrong guesses that only the real service could disprove:
-
-- **The browser sends the credential as `?access_token=`, not `?key=`.**
-  A browser cannot set WebSocket request headers, so Coder's
-  `Authorization: Token …` does not port. The first draft guessed `?key=`, on
-  the reasoning that an ephemeral credential stands in for an API key. That
-  guess was wrong, and only the live service says so: Google closes a `?key=`
-  socket with 1007 *"Missing or malformed auth token in request. Obtain one
-  from CreateAuthToken and pass it in an `access_token` query param"*.
-  Verified end to end on 2026-09-02 — mint through Ledger, socket open,
-  `setupComplete` received.
-- **Ledger requires `deviceId` to be a UUID.** The relay originally sent a raw
-  HMAC hex digest, which Ledger rejects with a 400. The digest is now
-  truncated to 16 bytes and stamped as a version-8 UUID; a unit test asserts
-  the shape, because a hex digest looks perfectly fine locally and fails only
-  at the one place that matters.
-- **A local Ledger cannot be used in dev.** The relay goes through
-  `safeFetch`, which refuses loopback and private addresses (correctly —
-  `LEDGER_PUBLIC_URL` is operator-supplied). Point it at the hosted service.
-
-Ondrej wants to *call* his Personal Assistant: real-time voice-to-voice,
-triggered by the existing call button in the top-right of the PA
-conversation header, on **every** client — the web admin included — and on
-iPhone presented to iOS as a phone call: lock-screen call UI,
-AirPods/Bluetooth routing, CarPlay, "Hey Siri, call my assistant". The Coder
-project (`/Volumes/External/Projects/Coder`, `ios/TalkIOS.swiftpm`) has a
-working implementation of exactly this shape against Gemini Live; this plan
-says what we port, what Nessie must do differently, and in what order.
-
-The credential model, confirmed: Ledger mints **temporary, one-use Gemini
-Live tokens** (it already ships this — see below), the client opens the
-Gemini WebSocket *directly* with that ephemeral token, and audio flows
-device↔Google. The deployment's main `LEDGER_PROXY_TOKEN` never leaves the
-server; the Nessie API is only the broker that asks Ledger for each
-ephemeral token on the authenticated user's behalf.
-
-One naming correction up front: the framework involved is **CallKit** (and
-App Intents for Siri initiation), not CoreTelephony. CoreTelephony is
-read-only carrier/radio information; CallKit is what makes a VoIP session a
-first-class system call — lock-screen answer UI, the green pill, Recents,
-and the CarPlay in-call screen all come from CallKit. CarPlay needs no
-separate entitlement for the case we need: an *active* CallKit call renders
+CoreTelephony is read-only carrier/radio information. **CallKit** is what makes
+a VoIP session a first-class system call — lock-screen answer UI, the green
+pill, Recents, and the CarPlay in-call screen all come from it. CarPlay needs
+no separate entitlement for the case we need: an *active* CallKit call renders
 on the CarPlay screen automatically, and Siri phrases registered through App
 Intents work from CarPlay's Siri. (Giving the app its own CarPlay surface —
 recents, favourites — is a different thing and does need a CarPlay calling
 entitlement Apple grants selectively. We are not asking for that.)
+
+Android's equivalent is a self-managed `ConnectionService`, which is *not* a
+drop-in equal: it grants audio focus, Telecom integration and Android Auto
+placement, but the app draws its own in-call UI.
+
+## The reference implementation we are porting from
+
+The Coder project (`/Volumes/External/Projects/Coder`,
+`ios/TalkIOS.swiftpm`) has a working iOS implementation of this exact shape.
+Phase 1 did **not** use its code — the browser client is new TypeScript — but
+it is the source for the native phases, and the section below records what is
+worth taking.
 
 ## What Coder proves, and what we take
 
@@ -119,7 +140,7 @@ endpoint grant, an active Gemini service, and a positive daily budget.
 `LEDGER_PROXY_TOKEN` before any of this works — that is a Ledger-side
 configuration task, not code.
 
-### Cost tracking — verified against Ledger main (2026-09-02)
+### Cost tracking — verified against Ledger main (2026-09-02) *(evidence)*
 
 The question was whether call spend can actually be tracked through Ledger
 so billing shows appropriately. Verified in code
@@ -211,7 +232,11 @@ so billing shows appropriately. Verified in code
   project spend/rate controls plus Nessie's own per-call caps (§2) and
   per-user mint caps (§1).
 
-## Where Nessie must differ from Coder
+## The design, and which parts are built
+
+Six decisions. **§1, §4 and §6 are shipped** — that code runs. §2, §3 and §5
+are the design for the phases that remain, and nothing in them exists yet.
+
 
 ### 1. The device never holds a Ledger credential — the API relays
 
@@ -471,7 +496,13 @@ the verification path, per the repo's install-on-named-device build rule.
   is adjusting for). Bare count/duration numbers with no action would fail
   Rule zero's third check. No currency figures.
 
-## Phases
+## What remains
+
+Phase 0 (Ledger grants) and phase 1 (server contract + browser call) are
+**done**. Everything below phase 1 is not started. The phases are listed in
+full, including the finished ones, because each records the constraints its
+successor inherits.
+
 
 **Phase 0 — decisions + ops (no code)**
 Add the `gemini-3.1-flash-live-preview` model grant and `live-token`
@@ -662,7 +693,7 @@ rather than a per-push obligation. Both are driven by one
 (`meeting_link_create` / `call_start` precedent), so "call me when the
 deploy finishes" works. Each of these is its own spec when we get there.
 
-## The call record — one folded message, full transcript inside
+## The call record — one folded message, full transcript inside *(shipped)*
 
 **Decided (2026-09-02):** the full transcript is persisted in the PA DM,
 folded into **one message per call**. The feed shows a collapsed call
@@ -732,6 +763,40 @@ folded-card requirement:
    designed in §3: a revocable server-state-backed voice credential with
    native-side refresh, not a bare short-lived JWT — review showed the
    stateless-JWT-with-foreground-refresh idea dies on a locked-phone call.
+
+## What only the live service could tell us
+
+Five bugs that every isolated check passed. Recorded because each is the kind
+of thing the next platform will have its own version of.
+
+- **The credential is `?access_token=`, not `?key=`.** A browser cannot set
+  WebSocket request headers, so Coder's `Authorization: Token …` does not
+  port. The first draft guessed `?key=`, reasoning that an ephemeral
+  credential stands in for an API key. Google closes that socket with 1007:
+  *"Obtain one from CreateAuthToken and pass it in an `access_token` query
+  param"*.
+- **Gemini answers in BINARY WebSocket frames.** Node's `ws` hands back a
+  Buffer that stringifies, so every probe passed; a browser gets a `Blob`,
+  which went into `JSON.parse` and died in the parser's catch. The socket
+  opened, setup was sent, `setupComplete` came back, and the client discarded
+  all of it — stuck on "Connecting…" with no console error anywhere. Fixed
+  with `binaryType = 'arraybuffer'` plus a decode. This is why a socket
+  closing during connect now fails the call loudly.
+- **Ledger requires `deviceId` to be a UUID.** The relay sent a raw HMAC hex
+  digest, which Ledger rejects with 400. It is now a version-8 UUID derived
+  from the same digest, with a test asserting the shape — a hex digest looks
+  perfectly fine locally and fails only at the one place that matters.
+- **The admin's CSP and permissions policy forbade the feature.** `connect-src`
+  had no Google origin, and `Permissions-Policy` denied the microphone
+  outright — correct when every call handed off to a provider, wrong the
+  moment a call captures audio in the admin.
+- **Both Apple shells lacked microphone entitlements.** The Mac app reported
+  `navigator.mediaDevices` undefined; the iOS app **crashed outright**, which
+  is iOS working as designed — touching the microphone with no
+  `NSMicrophoneUsageDescription` is a TCC violation and the process is
+  terminated, not handed a catchable error. The WebView also needed
+  `mediaCapturePermissionGrantType`, without which it would have stopped
+  crashing and then quietly failed.
 
 ## Review log
 
