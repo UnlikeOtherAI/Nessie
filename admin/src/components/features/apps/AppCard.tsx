@@ -154,7 +154,14 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
     >
       <div className="flex items-start gap-3">
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="card" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {/* A tight stack: the title, then the category, then the badges, each
+            following the one above it. The title used to reserve two lines
+            (`min-h-10`) so that every card's description began at the same y,
+            which left a one-line title floating 20px above its own category —
+            the identity block read as three unrelated rows. Cards still end
+            level because the footer is `mt-auto`, so the reservation bought
+            alignment nothing else needed. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           {/* A stretched link: real anchor semantics and one tab stop for the
               whole tile, while the footer action stays its own control (an
               anchor inside an anchor would not be valid markup). Every state
@@ -162,7 +169,7 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
               person whose install has stalled or whose app is unavailable. */}
           <Link
             className={[
-              'line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5',
+              'line-clamp-2 text-[0.9375rem] font-semibold leading-5',
               'text-[color:var(--tx)]',
               'after:absolute after:inset-0 after:content-[""]',
               'focus-visible:outline-none focus-visible:after:ring-2',
@@ -179,10 +186,13 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
               category truncated to "Project Manag…" on a grid tile, and a
               category the eye cannot read is a filter nobody can use. On its
               own line it has the card's full width. */}
-          <span className="truncate text-[11px] text-[color:var(--tx3)]">
+          <span className="truncate text-[11px] leading-4 text-[color:var(--tx3)]">
             {appCategoryLabel(app)}
           </span>
-          <div className="flex min-w-0 items-center gap-1.5 text-[11px]">
+          {/* `-mb-1` claws back the badge buttons' own optical padding: they
+              are 24px tall around a 12px glyph, so the row reads lower than it
+              measures and an even gap above it looks like a wider one. */}
+          <div className="-mb-1 flex min-w-0 items-center gap-1.5 text-[11px]">
             {kindPill && kindPill.label in KIND_BADGES ? (
               <AppIconBadge
                 {...KIND_BADGES[kindPill.label as keyof typeof KIND_BADGES]}

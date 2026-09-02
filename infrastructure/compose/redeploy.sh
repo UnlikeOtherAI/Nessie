@@ -18,32 +18,44 @@ if ! flock -w 1800 9; then
   exit 1
 fi
 
+# Image source. With NESSIE_IMAGE_TAG set (the Deploy workflow always sets it)
+# the images were built on GitHub runners and are pulled here; the host
+# compiles nothing. Unset, the script falls back to building locally, which is
+# the manual/first-deploy path only — building on this shared box drove it to
+# load ~340 with 0% idle and made the live site time out for the whole build.
+NESSIE_IMAGE_TAG="${NESSIE_IMAGE_TAG:-}"
+NESSIE_IMAGE_REPO="${NESSIE_IMAGE_REPO:-ghcr.io/unlikeotherai/nessie}"
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  export NESSIE_APP_IMAGE="${NESSIE_IMAGE_REPO}-app:${NESSIE_IMAGE_TAG}"
+  export NESSIE_ADMIN_IMAGE="${NESSIE_IMAGE_REPO}-admin:${NESSIE_IMAGE_TAG}"
+  export NESSIE_WEB_IMAGE="${NESSIE_IMAGE_REPO}-web:${NESSIE_IMAGE_TAG}"
+  echo "==> Using prebuilt images at tag ${NESSIE_IMAGE_TAG}"
+fi
+
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
-# Bound the Docker build cache BEFORE building. The shared host disk filled to
-# 100% repeatedly (build cache accumulates faster than time-based eviction),
-# crashing Postgres mid-deploy (PANIC: No space left on device) — but the
-# original fix, `builder prune -af`, wiped ALL cache and forced a full
-# from-scratch rebuild on every deploy, pinning the box's CPU/IO for ~15 min
-# per push and making the public site time out while it built. --keep-storage
-# keeps the newest cache under a fixed budget instead: the disk stays safe and
-# unchanged layers are reused, so routine rebuilds are shorter and lighter.
-echo "==> Bounding Docker build cache + pruning dangling images (pre-build)"
+# Reclaim disk. In the pull path this only drops images the swap orphaned; the
+# build cache is bounded rather than wiped, because a full wipe (`prune -af`)
+# forces the local-build fallback to rebuild from scratch every time.
+echo "==> Reclaiming disk (bounded build cache + dangling images)"
 docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 df -h / | tail -1
 
-# Build the three images ONE AT A TIME. Compose builds them in parallel by
-# default, and each image runs a full monorepo install+compile — measured at
-# load average 340 on this 8-core box with 0% idle, which made the live site
-# (API and static admin alike) time out for everyone while a deploy built.
-# Each build is already internally parallel; serializing them caps peak load
-# at one build's worth without adding much wall clock.
-echo "==> Building images (api, then admin, then web)"
-$COMPOSE build api
-$COMPOSE build admin
-$COMPOSE build web
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  echo "==> Pulling prebuilt images"
+  $COMPOSE pull api admin web
+else
+  # Local-build fallback (manual deploys / first deploy). ONE AT A TIME:
+  # Compose builds in parallel by default and each image runs a full monorepo
+  # install+compile — measured at load average 340 on this 8-core box with 0%
+  # idle, which made the live site time out for everyone while it built.
+  echo "==> No image tag supplied — building locally (api, then admin, then web)"
+  $COMPOSE build api
+  $COMPOSE build admin
+  $COMPOSE build web
+fi
 
 # The migrate step runs with --no-deps, which bypasses the nessie-postgres
 # `depends_on: service_healthy` gate. A freshly (re)started Postgres can still be
@@ -225,12 +237,23 @@ for url in \
   fi
 done
 
-# Bound build cache + prune dangling images post-deploy too, same budget as
-# the pre-build step (full wipe here would force the next deploy to rebuild
-# from scratch — the CPU/IO saturation that made the site time out).
-echo "==> Bounding Docker build cache + pruning dangling images (post-deploy)"
+# Post-swap reclaim: the previous release's images are now unreferenced. Each
+# deploy pulls a fresh SHA-tagged image, so without this the disk grows by an
+# image per deploy on a box shared with ~40 other apps.
+echo "==> Reclaiming disk (post-deploy)"
 docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
+
+# SHA-tagged release images are NOT dangling, so `image prune` never reclaims
+# them and the disk would grow by one full image per deploy. Drop every Nessie
+# release image except the one just deployed; Docker refuses to remove an image
+# a container still uses, which is the safety net if a rollback is mid-flight.
+if [ -n "$NESSIE_IMAGE_TAG" ]; then
+  docker images --format '{{.Repository}}:{{.Tag}}' \
+    | grep "^${NESSIE_IMAGE_REPO}-" \
+    | grep -v ":${NESSIE_IMAGE_TAG}$" \
+    | xargs -r docker rmi >/dev/null 2>&1 || true
+fi
 
 echo "==> Status"
 docker ps --filter name=nessie --format 'table {{.Names}}\t{{.Status}}'

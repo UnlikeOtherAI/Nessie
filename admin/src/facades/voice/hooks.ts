@@ -7,7 +7,7 @@ import { voiceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { createVoiceApi } from './voice-api'
 import { createVoiceCall, type VoiceCall, type VoiceCallState } from './voice-call-client'
-import { drainUsageOutbox } from './voice-usage-outbox'
+import { drainTranscriptOutbox, drainUsageOutbox } from './voice-usage-outbox'
 
 /**
  * The admin's handle on a live voice call.
@@ -68,14 +68,22 @@ export const useVoiceCall = () => {
   )
 
   /**
-   * Replays usage reports a previous visit could not deliver.
+   * Replays what a previous visit could not deliver.
    *
-   * A tab closed mid-call leaves spend nobody can attribute; this is the one
-   * chance to hand it over, so it runs on mount rather than at the next call.
+   * A tab closed mid-call leaves both spend nobody can attribute and a call
+   * with no record — the transcript existed only on that device. This is the
+   * one chance to hand both over, so it runs on mount rather than at the next
+   * call.
    */
   useEffect(() => {
     void drainUsageOutbox({
       send: (report) => api.reportUsage(report).then(() => undefined),
+    }).catch(() => undefined)
+    void drainTranscriptOutbox({
+      send: (entry) =>
+        api
+          .submitTranscript(entry.voiceSessionId, entry.lines, entry.durationMs)
+          .then(() => undefined),
     }).catch(() => undefined)
   }, [api])
 

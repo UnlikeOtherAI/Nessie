@@ -133,10 +133,13 @@ services:
   # below (nessie-api / nessie-admin / nessie-web), which every replica
   # carries, so the edge proxy config never changes across deploys.
   api:
+    # `build:` is retained for local/manual builds. In production redeploy.sh
+    # sets NESSIE_APP_IMAGE to the CI-built ghcr tag and pulls it instead:
+    # compiling on the shared host saturated it and took the live site down.
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.app
-    image: nessie-app:latest
+    image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -208,7 +211,8 @@ services:
       start_interval: 3s
 
   worker:
-    image: nessie-app:latest
+    # Same image as api — see Dockerfile.app.
+    image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
     container_name: nessie-worker
     restart: unless-stopped
     command: ["node", "worker/dist/index.js"]
@@ -261,7 +265,7 @@ services:
       dockerfile: infrastructure/docker/Dockerfile.admin
       args:
         VITE_API_BASE_URL: https://api.nessie.works
-    image: nessie-admin:latest
+    image: ${NESSIE_ADMIN_IMAGE:-nessie-admin:latest}
     restart: unless-stopped
     networks:
       edge:
@@ -279,7 +283,7 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
-    image: nessie-web:latest
+    image: ${NESSIE_WEB_IMAGE:-nessie-web:latest}
     restart: unless-stopped
     networks:
       edge:
