@@ -51,8 +51,22 @@ export {
  * ordinary member and a whole-workspace mutation — exactly as with the
  * workspace avatar relay.
  *
+ * **Per-user authorization needs a UOA-side change, not a Nessie one.** The
+ * load-bearing local gate above is not an oversight anyone can close from
+ * here: UOA offers exactly two credentials for `/org/*` — the user's own
+ * `X-UOA-Access-Token`, and the domain-hash bearer that selects backend mode
+ * and "bypasses per-user checks entirely". There is no product-signed
+ * assertion of the acting subject. An `X-UOA-Subject-Assertion` header was
+ * built against on 2026-08-31 and abandoned unmerged; it would have been
+ * ignored upstream while the code claimed the check now happened, so it is
+ * deliberately not on `main`. Closing this properly means either forwarding a
+ * real access token — which reverses the rule two paragraphs up, that Nessie
+ * never holds a spendable user credential — or UOA adding an assertion
+ * mechanism first. Do not re-attempt the header alone.
+ *
  * Contract verified 2026-08-15 against https://authentication.unlikeotherai.com/llm
- * §4.6b/§4.7/§4.7a/§4.7b and the machine-readable `/api` endpoint list.
+ * §4.6b/§4.7/§4.7a/§4.7b and the machine-readable `/api` endpoint list;
+ * header set re-verified against both sources 2026-09-02.
  */
 
 /** The invitee already belongs to another UOA org on this product domain. */

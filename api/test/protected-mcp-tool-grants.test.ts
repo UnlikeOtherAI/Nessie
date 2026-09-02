@@ -13,6 +13,9 @@ import {
   setAgentToolPolicyForRegistryEntry,
 } from '../src/services/agent-tool-policy-registry.js'
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const agentId = '00000000-0000-4000-8000-000000000002'
 const protectedToolId = '00000000-0000-4000-8000-000000000003'
@@ -68,14 +71,33 @@ const buildPrisma = (input: {
   const grants = input.grants ?? []
   let lockCalls = 0
 
+  // `ToolRegistryEntry.id` is `@db.Uuid`, so Postgres refuses a filter value
+  // that is not a UUID — it raises P2023 rather than simply not matching. A
+  // fake that accepts any string cannot see that, which is how a backfill
+  // feeding builtin policy names (`delegate`) into `id: { in }` reached
+  // production and crash-looped the API at startup.
+  const assertUuidFilter = (ids: string[]) => {
+    const invalid = ids.find((id) => !UUID_PATTERN.test(id))
+    if (invalid === undefined) return
+    const error = new Error(
+      `Inconsistent column data: Error creating UUID, invalid character: `
+      + `expected an optional prefix of \`urn:uuid:\` followed by `
+      + `[0-9a-fA-F-], found \`${invalid[2]}\` at 3`,
+    ) as Error & { code: string }
+    error.code = 'P2023'
+    throw error
+  }
+
   const matchingEntries = (where: {
     id?: { in: string[] }
-  }) =>
-    entries.filter((entry) =>
+  }) => {
+    if (where.id) assertUuidFilter(where.id.in)
+    return entries.filter((entry) =>
       (!where.id || where.id.in.includes(entry.id))
       && entry.handlerKind === 'mcp'
       && entry.metadata.requiresExplicitGrant === true,
     )
+  }
 
   const tx = {
     $executeRaw: async () => {
@@ -409,4 +431,53 @@ test('startup backfill preserves a legacy explicit deny and never overrides a di
       toolId: protectedToolId,
     },
   ])
+})
+
+// Regression: production ran an agent whose `toolPolicy` carried the builtin
+// names `delegate` and `spawn_subtask` beside registry ids. The startup
+// backfill passed every key into `ToolRegistryEntry.id: { in }`, Postgres
+// raised P2023 on the first non-UUID, and because the call sits unguarded in
+// `buildApp` the API exited 1 and crash-looped behind a 502.
+test('startup backfill ignores builtin tool-policy keys instead of failing on them', async () => {
+  const state = buildPrisma({
+    agents: [{
+      agentKind: 'shared',
+      id: agentId,
+      name: 'Agent With Builtin Policy',
+      organizationId,
+      role: 'assistant',
+      systemManaged: false,
+      toolPolicy: { delegate: true, spawn_subtask: true, [protectedToolId]: true },
+    }],
+  })
+
+  assert.deepEqual(
+    await backfillProtectedMcpToolGrants(state.prisma),
+    { agentCount: 1, grantCount: 1 },
+  )
+  assert.deepEqual(
+    state.grants.map((grant) => grant.toolId),
+    [protectedToolId],
+  )
+})
+
+test('an agent carrying only builtin policy keys is skipped without taking a lock', async () => {
+  const state = buildPrisma({
+    agents: [{
+      agentKind: 'shared',
+      id: agentId,
+      name: 'Builtin Only Agent',
+      organizationId,
+      role: 'assistant',
+      systemManaged: false,
+      toolPolicy: { delegate: true, spawn_subtask: false },
+    }],
+  })
+
+  assert.deepEqual(
+    await backfillProtectedMcpToolGrants(state.prisma),
+    { agentCount: 0, grantCount: 0 },
+  )
+  assert.equal(state.lockCalls, 0)
+  assert.deepEqual(state.grants, [])
 })
