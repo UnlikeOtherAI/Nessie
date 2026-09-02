@@ -289,7 +289,13 @@ test('the native phone shell clears the glass tab bar within the WebView content
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
-  assert.match(phoneLayer, /className="phone-navigation-page"/)
+  // `d173369e` made the class computed so a compose route can add a --fill
+  // modifier, so the literal attribute this used to match is gone. Assert the
+  // invariant that actually matters — the layer applies the page-scroll class,
+  // and the compose variant extends it rather than replacing it.
+  assert.match(phoneLayer, /'phone-navigation-page phone-navigation-page--fill'/)
+  assert.match(phoneLayer, /: 'phone-navigation-page'/)
+  assert.match(phoneLayer, /className=\{pageClassName\(/)
   assert.match(phoneLayer, /data-phone-navigation-page/)
   assert.match(nestedStage, /container\.className = 'phone-navigation-page'/)
   assert.match(nestedStage, /setAttribute\('data-phone-navigation-page', ''\)/)
