@@ -167,7 +167,12 @@ afterwards. Spec:
   matching). A resolved card also renders a state note beside its message
   content in every later window (`message-cards.ts`, joined by
   `withMessageNotes` exactly where the attachment inventory line goes), so
-  nothing ever rewrites a message.
+  nothing ever rewrites a message. Nor may a person: `updateMessage` refuses a
+  message carrying `agentCardResponse` (`409
+  MESSAGE_IMMUTABLE_CARD_RESPONSE`) and the admin hides the pencil, both
+  through the one `isAgentCardResponseMessage` predicate — a "Deny" edited into
+  an "Allow" would lie beside the card that is the authority. Deleting stays
+  allowed; a tombstone changes nothing on the card.
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
@@ -362,81 +367,51 @@ width".
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
 - Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
-- Agentic loop — run budgets (2026-08-05 redesign,
-  `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md`):
-  `Agent.effort` maps **only** to provider `reasoning_effort`; it no longer
-  implies spend caps. Per-dimension budget = `Agent.runLimits` (optional
-  explicit caps, Agent Designer "Run limits") `??` the deployment backstop
-  (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
-  defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a user
-  budget; resolution in `worker/src/run/run-budget.ts`). At 80% of any cap an
-  interactive, non-handoff run is **wound down first**: a one-time injected
-  instruction tells the model to finish and hand over with what it has inside
-  the remaining slice (new delegate fan-out refused structurally); a delivered
-  handover completes with the model's words as the notice plus a quiet
-  `wound_down` checkpoint (spec §3a). Only when the model overruns that does
-  the loop stop at ~90% with reserved headroom, write a durable `RunCheckpoint`
-  (work-state note + verbatim sources, `run.checkpointed` `TaskEvent`), and
-  deliver partial text + a classified notice (`iteration_limit` /
-  `tool_call_limit` / `time_limit` / `token_limit` / `cost_limit` /
-  `repeated_tool_calls` / `org_budget_blocked`,
-  `worker/src/run/execute/budget-stop.ts`; member-visible copy carries **no
-  currency figures**). The token dimension meters **effective** tokens —
-  `input + output + round(weight × cacheRead)` per invocation, degrading to
-  `totalTokens` when a provider reports no split — because cache reads are
-  re-served context priced at a fraction of fresh input; metering them flat
-  killed a run at a claimed 504,738 tokens whose true spend was ~37% of that.
-  The weight is a price ratio resolved once per run from the org's
-  `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
-  [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (default 0.25); resolution is
-  best-effort and never fails a run. A **pre-flight gate** also refuses to
-  dispatch a call whose estimated context would carry the run past the full
-  (100%) token limit, so a run can no longer overshoot by a whole context.
-  `run.budget_exhausted` reports the effective `tokensUsed` plus
-  `rawTokensUsed` + `cacheReadTokens`. The org `Budget` verdict is re-checked mid-run between
-  iterations (≥30 s apart, same human-interactive exemption as the pre-run
-  gate). Any follow-up run in the same thread/reply-thread auto-loads and
-  claims the newest unconsumed checkpoint (set-once conditional update) and
-  injects it as explicitly untrusted working notes — so a plain "keep going"
-  reply resumes instead of re-doing the work; the stop notice's
-  `metadata.runStop = { runId, stopReason, checkpointId?, continuable }`
-  additionally drives a one-tap admin Continue. Non-interactive runs
-  (triggers/schedules/workflows; `payload.interactive !== true`) never ask:
-  the worker auto-continues up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2)
-  generations (`run.continued` `TaskEvent`, `Run.continuationOfRunId`
-  lineage), yielding to the per-(agent, thread) run slot when busy. Context is
-  managed per-model (`worker/src/run/context-window.ts`, conservative 100k
-  default): at ~80% of the window the elder transcript folds into a rolling
-  work-state note via real compaction (`worker/src/run/context-compaction.ts`,
-  verbatim-URL sources, closed tool groups only, cooldown + bounded attempts,
-  invocations counted in run totals); silent trimming is emergency-fallback
-  only. `delegate` sub-agents run a fixed small budget, are capped per run by
-  `NESSIE_MAX_DELEGATES_PER_RUN` (default 16), and — like compaction — use
-  `NESSIE_UTILITY_MODEL` when it resolves through the run's own org provider
-  (else the run's model). A structural research-routing prompt block (from
-  toolset facts only, never message content) steers granted agents to offer
-  DeepWater for deep research and ungranted agents to research via
-  `web_search` + delegate digests; DeepWater launch turns get no routing block
-  and no checkpoint injection. All tool results (builtin, MCP, `delegate`) are
-  truncated **middle-out** at the single loop chokepoint before entering
-  context (head ~70% / tail ~30%, joined by
-  `\n\n[... truncated N chars ...]\n\n`, idempotent so a per-tool cap applied
-  earlier passes through unchanged). Per-tool caps keep discovery tools within
-  one order of magnitude of each other: 4,000 chars for `web_search` /
-  `web_fetch` / `document_read`, 12,000 for raw `http_fetch` bodies, 32,000 as
-  the chokepoint ceiling (`worker/src/run/tool-util.ts`). MCP tool descriptors
-  are name-sorted and their exposed names allocated in a fixed order, so the
-  model's tool array is byte-identical across iterations and the provider's
-  prompt-cache prefix survives. Allowed builtin sets above
-  `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a fixed hot set inline,
-  expose curated stubs for the rest, and return exact schemas through the
-  non-mutating `tool_spec` meta tool; smaller sets remain fully inline. Every run
-  also records a wall-clock-only stage-latency breakdown at its terminal state
-  (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
-  runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
-  toolCount }`, no cost data (`worker/src/run/execute/run-timing.ts`) — so a
-  slow run is diagnosable; owners read recent summaries at
-  `GET /api/ledger/runs/timing`.
+- Agentic loop — run budgets (2026-08-05 redesign). The model and the failures
+  behind each rule are the spec's:
+  [docs/plans/2026-08-05-run-budgets-context-and-research-routing.md](docs/plans/2026-08-05-run-budgets-context-and-research-routing.md)
+  — effective-token metering and the cache-read weight (§2a), the 80%
+  wind-down and the ~90% reserved-headroom stop with its `RunCheckpoint`
+  (§3/§3a), mid-run org-`Budget` recheck (§4), checkpoint continuation and the
+  admin Continue (§5/§6), TaskEvents (§7), per-model context window and real
+  compaction (§8), research routing (§9). Facts not restated there:
+  - `Agent.effort` maps **only** to provider `reasoning_effort`; it never
+    implies a spend cap. Per-dimension budget = `Agent.runLimits` (Agent
+    Designer "Run limits") `??` the deployment backstop
+    (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
+    defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a
+    user budget; `worker/src/run/run-budget.ts`).
+  - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
+    `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
+    (`worker/src/run/execute/budget-stop.ts`), and member-visible copy carries
+    **no currency figures**.
+  - The cache-read weight resolves once per run from the org
+    `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
+    [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (default 0.25); best-effort, and
+    never fails a run.
+  - Non-interactive runs (`payload.interactive !== true`) never ask and
+    auto-continue up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2), yielding
+    to the per-(agent, thread) slot when busy. `delegate` sub-agents take a
+    fixed small budget capped by `NESSIE_MAX_DELEGATES_PER_RUN` (default 16)
+    and — like compaction — use `NESSIE_UTILITY_MODEL` when it resolves through
+    the run's own org provider (else the run's model).
+  - Tool results (builtin, MCP, `delegate`) are truncated **middle-out** at the
+    single loop chokepoint (head ~70% / tail ~30%, idempotent so an earlier
+    per-tool cap passes through). Per-tool caps: 4,000 chars for `web_search` /
+    `web_fetch` / `document_read`, 12,000 for raw `http_fetch` bodies, 32,000
+    as the ceiling (`worker/src/run/tool-util.ts`).
+  - MCP tool descriptors are name-sorted with exposed names allocated in a
+    fixed order, so the tool array is byte-identical across iterations and the
+    provider's prompt-cache prefix survives. Builtin sets above
+    `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a hot set inline and
+    serve the rest through the non-mutating `tool_spec` meta tool
+    ([docs/context-window-optimization-audit.md](docs/context-window-optimization-audit.md)).
+  - Every run records a wall-clock-only stage breakdown at its terminal state
+    (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
+    runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
+    toolCount }`, no cost data (`worker/src/run/execute/run-timing.ts`). It is
+    written after the status flip and must never be able to fail a finished
+    run. Owners read summaries at `GET /api/ledger/runs/timing`.
 - **Budget threshold alerts + failed-run attribution** (local ops only, never
   UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
   (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an
@@ -814,6 +789,29 @@ acting member and call the same `@nessie/workspace-admin` functions as the
 routes; `call_start` resolves membership from its target channel's organisation
 and stamps `Call.createdViaAgentId`.
 
+## Global agents — one blueprint, one row per organisation
+
+App-provided agents (the **Agent Designer**, `agent-designer`, is the first)
+are blueprints in `@nessie/workspace-admin`, instantiated by
+`ensureGlobalAgent` as one `systemManaged` row per organisation keyed by
+`Agent.systemSlug`, reachable through a per-user private home DM
+(`gagent:{slug}:{orgId}:{userId}`, `systemChannelType='system_agent'`, one
+member and one binding, both database facts). The invariants — slug CHECK,
+ensure/policy-merge shape, sole-membership trigger arm, the
+no-agent-binds-into-any-system-channel refusal, no self-triggers, the home-only
+run-start assertion, the un-gated `{ systemManaged: true }` list arm — are in
+`AGENTS.md` → "A global agent is a blueprint in code". Spec:
+[docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
+
+Facts not restated there: bootstrap runs beside the PA's at login and user
+provisioning but **best-effort** (`attemptGlobalAgentsBootstrap`) — the PA may
+fail a login, a global agent must never lock anyone out; the model is blueprint
+pin → `NESSIE_DESIGNER_MODEL` → organisation default, one rule for both Designer
+faces; the sidebar finds the DM via `isGlobalAgentChannel`, and
+`AgentIdentityProvider` reads `scope=all` so the picture resolves from an id
+anywhere. Phase 1 makes the Designer exist, be reachable and reply; identity
+tools, the catalogue, `agent_handoff` and the unified sidebar are phases 2–4.
+
 ## Personal assistant — workspace provisioning
 
 Five PA-only builtins (`personalAssistantOnly: true`,
@@ -868,6 +866,14 @@ deactivated membership is refused. Deliberately **not** included: agent update,
 agent delete, policy-target mutation, or anything touching the DeepWater bundle.
 `schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
 is the owner action on *another* agent.
+
+Who may **edit** an agent is its ownership state, not the organisation owner
+role: private ⇒ the live owner alone, person-owned ⇒ the live owner plus org
+owners, team-owned (`ownerUserId` null) ⇒ anyone entitled plus org owners,
+`systemManaged` ⇒ nobody. Ownership transitions and `todosEnabled` keep their
+own narrower gates. Full rule: `AGENTS.md` → "Ownership decides who may edit";
+predicate: `@nessie/workspace-admin` `agent-edit-authority.ts`, mirrored for
+affordances by `admin/src/components/features/agents/agent-edit-authority.ts`.
 
 Private-agent transfer is deliberately unsupported: the owner-only home DM
 encodes the steward, so an `ownerUserId` change is refused with

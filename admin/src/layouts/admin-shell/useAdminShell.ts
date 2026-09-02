@@ -43,6 +43,14 @@ export const useAdminShell = () => {
   const projects = projectsQuery.data ?? [];
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
+  // The read-only system tier, shared (same query key) with the identity
+  // directory. A global agent's home DM resolves through it; nothing else
+  // in the shell widens on it.
+  const { data: allScopeAgents = [] } = useAgents({ scope: 'all' });
+  const systemAgents = useMemo(
+    () => allScopeAgents.filter((agent) => agent.systemManaged === true),
+    [allScopeAgents],
+  );
   const { data: favorites = [] } = useFavorites();
   const setFavorite = useSetFavorite();
   const isAdmin = me?.user.roleIds.includes('admin') ?? false;
@@ -304,6 +312,7 @@ export const useAdminShell = () => {
     channels,
     chatAssistants: productSurfaces.chatAssistants,
     me,
+    systemAgents,
     users,
   });
 

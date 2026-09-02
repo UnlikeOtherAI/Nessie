@@ -25,6 +25,7 @@ import {
 } from '../services/users.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
+import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
 import type { RouteDeps } from './types.js'
 
 // The membership mutators throw LAST_OWNER_ERROR from inside their transaction
@@ -116,6 +117,11 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         teamId,
         userId: user.id,
       })
+      await attemptGlobalAgentsBootstrap(
+        prisma,
+        { organizationId: actorContext.tenant.organizationId, teamId, userId: user.id },
+        (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
+      )
       await attemptPersonalAssistantAvatar({
         actorContext,
         config: deps.config.model,

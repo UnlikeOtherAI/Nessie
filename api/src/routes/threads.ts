@@ -323,6 +323,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'FORBIDDEN', 'Only the author can edit this message')
       return reply
     }
+    if (result.kind === 'immutable') {
+      sendApiError(
+        reply,
+        409,
+        'MESSAGE_IMMUTABLE_CARD_RESPONSE',
+        'This message records a card response and cannot be edited. Delete it instead, or ask the agent to post a new card.',
+      )
+      return reply
+    }
 
     const record = await mapMessageRecordWithAttachments(prisma, result.message)
     await realtimeHub.publishWs(

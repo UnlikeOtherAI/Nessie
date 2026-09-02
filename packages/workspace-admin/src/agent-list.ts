@@ -54,15 +54,15 @@ export const listAgentsForUser = async (
     )
   }
   if (includeSystemManaged) {
-    // System agents are a read-only Agents-page tier. They remain outside the
-    // shared non-system predicate and inherit the page's existing channel gate.
-    visibilityFilters.push({
-      organizationId,
-      systemManaged: true,
-      bindings: {
-        some: { channel: visibleChannelWhere },
-      },
-    })
+    // System agents are a read-only Agents-page tier, and they are app-provided
+    // — vendor definitions holding no tenant secrets. Availability must not
+    // depend on a binding accident: the channel-gated version of this arm made
+    // a global agent whose per-user DM had not been provisioned yet (or whose
+    // binding was bootstrapped for somebody else) invisible to everyone, which
+    // is exactly the unreachable-capability defect. The row is listed; what a
+    // caller may *do* with it is decided elsewhere, and per-agent reads still
+    // 404 on system agents.
+    visibilityFilters.push({ organizationId, systemManaged: true })
   }
 
   const agents = await prisma.agent.findMany({

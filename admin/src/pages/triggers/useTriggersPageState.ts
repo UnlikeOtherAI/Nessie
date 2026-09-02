@@ -8,7 +8,11 @@ import {
   useWorkflowTemplates,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
-import { parseHashAnchor, useConsumedHashIntent } from '../../navigation/intent'
+import {
+  parseHashAnchor,
+  useConsumedHashIntent,
+  useConsumedIntent,
+} from '../../navigation/intent'
 import { useTabParam } from '../../navigation/useTabParam'
 import type {
   AgentRecord,
@@ -88,6 +92,14 @@ export const useTriggersPageState = (): TriggersPageState => {
     undefined,
   )
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  // `/agents/triggers?create=<agentId>` — the "New trigger" button on an
+  // agent's own Triggers panel. The doorway lands in the create form already
+  // pointed at that agent rather than on a list the person then has to find it
+  // in; the registry declares `create` on this surface (it is the same intent
+  // the project → executors doorway uses), so the value is consumed once and
+  // stripped, and Back leaves the page instead of reopening the dialog.
+  const createForAgent = useConsumedIntent('create')
+  const [createTargetAgentId, setCreateTargetAgentId] = useState<string | undefined>(undefined)
   const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
   // The status narrowing is part of what the list shows, so it lives in the
@@ -168,6 +180,14 @@ export const useTriggersPageState = (): TriggersPageState => {
     if (linkedTrigger.value) setSelectedTriggerId(linkedTrigger.value)
   }, [linkedTrigger])
 
+  // Keyed on the capture, not its value: two arrivals of the same agent id are
+  // two presses of the button and must each open the dialog.
+  useEffect(() => {
+    if (!createForAgent.value) return
+    setCreateTargetAgentId(createForAgent.value)
+    setCreateDialogOpen(true)
+  }, [createForAgent])
+
   const statusCounts = useMemo<TriggerStatusCounts>(
     () => ({
       all: sortedTriggers.length,
@@ -195,6 +215,11 @@ export const useTriggersPageState = (): TriggersPageState => {
     [editingTriggerId, sortedTriggers],
   )
   const defaultCreateTarget = useMemo<CreateTarget>(() => {
+    // An explicit doorway outranks whatever row happens to be selected.
+    if (createTargetAgentId) {
+      return { targetKind: 'agent' as const, agentId: createTargetAgentId }
+    }
+
     if (!selectedTrigger) {
       return undefined
     }
@@ -232,7 +257,12 @@ export const useTriggersPageState = (): TriggersPageState => {
     searchQuery,
     selectedTrigger,
     selectedTriggerId,
-    setCreateDialogOpen,
+    setCreateDialogOpen: (open: boolean) => {
+      // Closing the dialog releases the doorway's target, so the next plain
+      // "New trigger" press on this page opens an unscoped form.
+      if (!open) setCreateTargetAgentId(undefined)
+      setCreateDialogOpen(open)
+    },
     setEditingTriggerId,
     setSearchQuery,
     setSelectedTriggerId,

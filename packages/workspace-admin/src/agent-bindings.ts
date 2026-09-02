@@ -83,10 +83,13 @@ export const bindAgentToChannel = async (
     return null
   }
 
-  if (
-    isSystemManagedAgent(agent)
-    || channel.systemChannelType === 'personal_assistant'
-  ) return null
+  // No second agent may ever join a system DM. A system channel is a
+  // single-agent surface by construction — one bound agent, one member — and
+  // everything built on that (the `effectiveUserId = poster` stamp, the
+  // orchestrator's single-candidate fast path, the design transcript staying
+  // private) breaks the moment another agent can read and answer in it. The
+  // refusal is therefore any non-null `systemChannelType`, not just the PA's.
+  if (isSystemManagedAgent(agent) || channel.systemChannelType) return null
 
   // Binding widens who can reach this agent, and its browser's sign-ins are
   // shared with exactly that audience — so a bind is the moment to confront

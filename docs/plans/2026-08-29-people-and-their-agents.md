@@ -158,7 +158,9 @@ rather than a live code path.
   would be unresolvable. It does not conflict with
   `agents_system_managed_invariants_chk`, which constrains only
   kind/surface/delegation/system-managed.
-- **`NULL` means unowned**, and is a rendered category, not an error.
+- **`NULL` means team-owned**, a rendered category and a real state — not an
+  error and, since 2026-09-02, not merely missing history. See "Ownership
+  carries edit authority" below.
 - **No backfill, and no inference.** Nothing records who created an agent:
   `agent.created` exists in `AuditActionSchema` but is emitted by no production
   path, and `AgentBinding` stores no user. Guessing an owner from the first
@@ -166,6 +168,57 @@ rather than a live code path.
   stops being true going forward.
 - The name collides with `Task.ownerUserId`, which means *assignment*. This one
   means *stewardship*. Worth a column comment.
+
+## Ownership carries edit authority (added 2026-09-02)
+
+Stewardship started as attribution and visibility. It now also answers **who may
+rewrite the agent**, because the previous answer was wrong: every agent-mutation
+route (`PUT /api/agents/:id`, both avatar routes) gated on the *organization
+owner* role, so no ordinary member could edit any agent — not even the private
+one they own. Nobody noticed because the people doing the editing were
+organization owners.
+
+`canEditAgent` / `assertAgentFieldAuthority`
+(`packages/workspace-admin/src/agent-edit-authority.ts`) replace that gate, and
+derive the answer from the ownership fact this document introduced:
+
+- **Private** (`visibility='private'`) — the live owner alone. An organization
+  owner cannot see a private agent, so cannot edit it: "private beats owner
+  omniscience" is unchanged.
+- **Workspace, person-owned** (`ownerUserId` set) — the live owner, plus
+  organization owners. The override stays because a person-owned agent whose
+  steward is deactivated would otherwise have no editor at all.
+- **Workspace, team-owned** (`ownerUserId` null) — anyone entitled to the agent
+  (`isAgentAccessibleToActor`), plus organization owners.
+- **Global** (`systemManaged`) — nobody. Refused in `updateAgentRecord` and the
+  avatar service, not merely hidden by route invisibility.
+
+Two consequences this document has to state plainly:
+
+- **A null owner is a deliberate state, not missing history.** Pre-stewardship
+  rows have no recorded author, and "anyone entitled may edit" is the honest
+  reading of that — and a strict widening only relative to a gate that was
+  itself wrong. So the bucket is *Team-owned*, and `AgentOwnerCell` says
+  "Team-owned" rather than "Unowned".
+- **Team-owned means any member who can see the agent may rewrite its prompt,
+  model, tools and limits.** *Placement* (`agent_bind_channel`) keeps its
+  stricter four gates; the asymmetry is intentional, because editing improves
+  the shared agent in place while binding changes who is exposed to it.
+
+Editing is **field-sensitive**, since `UpdateAgentBodySchema` also carries
+`ownerUserId` and `todosEnabled`: ownership transitions (transfer, and release
+to the team) belong to the current owner or an organization owner — which makes
+*claiming* a team-owned agent organization-owner-only by construction — and
+`todosEnabled` keeps its own organization-owner gate. Both fire only on an
+actual change, so a form echoing the stored value back is still an ordinary
+edit. Protected/explicit-grant tool-policy keys stay refused for every editor
+(`assertGenericAgentToolPolicyInput` is unchanged), and `visibility` remains
+immutable. Private agents still refuse transfer with
+`AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and `agent.owner_changed` audits both
+transfer and release.
+
+The agent detail header states the resulting state ("Owned by <person>" /
+"Team-owned") and carries the release/transfer control for whoever may use it.
 
 **Ownership is attribution and visibility — not lifecycle for workspace
 agents.** A workspace-visible agent owned by someone who leaves keeps
@@ -312,8 +365,10 @@ number of private agents paused because their owner is inactive, which the
 owner-gated `GET /api/agents/paused-private-count` supplies to the shared tree
 without exposing agent names, prompts, or configuration.
 
-**Buckets at team level:** *Unowned*; *System* (collapsed, read-only); *Owner
-not in this workspace*; *Owner deactivated* (phase 3).
+**Buckets at team level:** *Team-owned* (renamed from *Unowned* on 2026-09-02,
+when a null steward became a state with consequences rather than a gap);
+*System* (collapsed, read-only); *Owner not in this workspace*; *Owner
+deactivated* (phase 3).
 
 **Each person's own row shows their Personal Assistant** as a projection of
 their PA DM — never a per-person agent row, never asserted for anyone else, and

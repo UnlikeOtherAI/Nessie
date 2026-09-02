@@ -23,6 +23,7 @@ const otherOrganizationId = '00000000-0000-4000-8000-000000000002'
 const projectId = '00000000-0000-4000-8000-000000000003'
 const teamId = '00000000-0000-4000-8000-000000000004'
 const userId = '00000000-0000-4000-8000-000000000005'
+const otherUserId = '00000000-0000-4000-8000-000000000006'
 const channelId = '00000000-0000-4000-8000-000000000006'
 const agentId = '00000000-0000-4000-8000-000000000010'
 const foreignAgentId = '00000000-0000-4000-8000-000000000011'
@@ -46,6 +47,9 @@ const makeAgent = (
   model: 'gpt-5',
   name: 'Researcher',
   organizationId: agentOrganizationId,
+  // No steward: the pre-stewardship shape, read as "team-owned" by edit
+  // authority — anyone entitled to it may edit it.
+  ownerUserId: null as string | null,
   parentAgentId: null,
   projectId,
   provider: 'openai',
@@ -83,9 +87,16 @@ const makeApp = (
   const db = {
     $executeRaw: async () => 0,
     agent: {
-      count: async () => {
-        pausedPrivateCountReads += 1
-        return 2
+      // Two different reads land here: the owner-only paused-private aggregate,
+      // and the entitlement count `canEditAgent` composes for a team-owned
+      // agent. Distinguished by the `where`, so the owner-gate assertion stays
+      // honest.
+      count: async ({ where }: { where?: { visibility?: string } } = {}) => {
+        if (where?.visibility === 'private') {
+          pausedPrivateCountReads += 1
+          return 2
+        }
+        return 1
       },
       create: async ({ data }: { data: Partial<AgentRow> }) => {
         createCalls += 1
@@ -145,6 +156,21 @@ const makeApp = (
         where.organizationId === organizationId && where.userId === userId
           ? { id: '00000000-0000-4000-8000-000000000099' }
           : null,
+      // Edit authority re-derives the acting role from the LIVE membership row
+      // rather than the session claim, so the fake has to serve it.
+      findUnique: async ({
+        where,
+      }: {
+        where: { organizationId_userId: { organizationId: string; userId: string } }
+      }) =>
+        where.organizationId_userId.organizationId === organizationId
+        && where.organizationId_userId.userId === userId
+          ? { deactivatedAt: null, role }
+          : null,
+    },
+    // Named in an edit refusal ("this agent is owned by <name>").
+    user: {
+      findUnique: async () => ({ displayName: 'Another member' }),
     },
     toolRegistryEntry: {
       findMany: async ({
@@ -308,9 +334,9 @@ test('binding cannot attach a foreign agent to a local channel', async () => {
 })
 
 test('member cannot escalate an agent through generic toolPolicy PUT', async () => {
-  // Agent edits are owner-only: seeing a shared agent (via a channel binding)
-  // must not confer the right to rewrite it, so a member is refused outright
-  // before the payload is even inspected.
+  // A member may now edit a team-owned agent, which makes the protected-key
+  // gate — not the old organization-owner gate — the thing that has to hold.
+  // `assertGenericAgentToolPolicyInput` is the law for every editor.
   const state = makeApp('member', [makeAgent(agentId, organizationId)])
   try {
     const response = await state.app.inject({
@@ -321,8 +347,8 @@ test('member cannot escalate an agent through generic toolPolicy PUT', async () 
       url: `/api/agents/${agentId}`,
     })
 
-    assert.equal(response.statusCode, 403)
-    assert.equal(response.json().error.code, 'FORBIDDEN')
+    assert.equal(response.statusCode, 400)
+    assert.equal(response.json().error.code, 'TOOL_POLICY_PROTECTED_INPUT')
     assert.equal(state.updateCalls, 0)
   } finally {
     await state.app.close()
@@ -349,8 +375,28 @@ test('member cannot read the paused private-agent count', async () => {
   }
 })
 
-test('member cannot edit an ordinary field of a shared agent', async () => {
+test('an entitled member may edit a team-owned agent', async () => {
+  // The deliberate widening: an agent nobody stewards is the team's, and
+  // reaching it through a channel you can see IS the edit entitlement.
   const state = makeApp('member', [makeAgent(agentId, organizationId)])
+  try {
+    const response = await state.app.inject({
+      method: 'PUT',
+      payload: { systemPrompt: 'Summarise the weekly numbers.' },
+      url: `/api/agents/${agentId}`,
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.equal(state.updateCalls, 1)
+  } finally {
+    await state.app.close()
+  }
+})
+
+test('member cannot edit a shared agent somebody else stewards', async () => {
+  const state = makeApp('member', [
+    { ...makeAgent(agentId, organizationId), ownerUserId: otherUserId },
+  ])
   try {
     const response = await state.app.inject({
       method: 'PUT',
@@ -359,6 +405,24 @@ test('member cannot edit an ordinary field of a shared agent', async () => {
     })
 
     assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'AGENT_EDIT_OWNER_ONLY')
+    assert.equal(state.updateCalls, 0)
+  } finally {
+    await state.app.close()
+  }
+})
+
+test('member cannot claim a team-owned agent through the edit route', async () => {
+  const state = makeApp('member', [makeAgent(agentId, organizationId)])
+  try {
+    const response = await state.app.inject({
+      method: 'PUT',
+      payload: { ownerUserId: userId },
+      url: `/api/agents/${agentId}`,
+    })
+
+    assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'AGENT_OWNERSHIP_CHANGE_FORBIDDEN')
     assert.equal(state.updateCalls, 0)
   } finally {
     await state.app.close()

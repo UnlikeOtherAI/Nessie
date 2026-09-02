@@ -32,27 +32,18 @@ test('the ordinary agent list keeps the shared non-system visibility fragment in
   })
 })
 
-test('scope=all adds the channel-reachable system tier without widening the ordinary tier', async () => {
+test('scope=all adds the whole system tier without widening the ordinary tier', async () => {
+  // Deliberately NOT channel-gated: a global agent is app-provided, holds no
+  // tenant secrets, and its per-user home DM does not exist until that person's
+  // next login — so gating the tier on a binding made the Agent Designer
+  // invisible to everyone, the unreachable-capability defect. The ordinary
+  // (non-system) arm is untouched, and per-agent reads still 404 on these rows.
   assert.deepEqual(await listWhere(false, true), {
     AND: [buildAgentVisibilityWhere({ organizationId, userId })],
     organizationId,
     OR: [
       buildVisibleAgentWhere({ organizationId, userId }),
-      {
-        organizationId,
-        systemManaged: true,
-        bindings: {
-          some: {
-            channel: {
-              organizationId,
-              OR: [
-                { visibility: 'public' },
-                { members: { some: { userId } } },
-              ],
-            },
-          },
-        },
-      },
+      { organizationId, systemManaged: true },
     ],
   })
 })

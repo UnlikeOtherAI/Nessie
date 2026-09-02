@@ -9,6 +9,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'channel_find',
+    category: 'channels',
     summary: 'Resolve a channel name or scoped slug to its ID.',
     label: 'Find Channel',
     description:
@@ -34,6 +35,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'channel_list',
+    category: 'channels',
     summary: 'List visible organization channels and their details.',
     label: 'List Channels',
     description:
@@ -56,6 +58,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'channel_update',
+    category: 'channels',
     summary: "Update a channel's label, topic, or description.",
     label: 'Update Channel',
     personalAssistantOnly: true,
@@ -89,6 +92,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'channel_archive',
+    category: 'channels',
     summary: 'Archive or unarchive a channel without deleting history.',
     label: 'Archive Channel',
     personalAssistantOnly: true,
@@ -114,6 +118,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'channel_join',
+    category: 'channels',
     summary: 'Join a public organization channel.',
     label: 'Join Channel',
     personalAssistantOnly: true,
@@ -134,6 +139,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'channel_create',
+    category: 'channels',
     summary: 'Create a new organization channel.',
     label: 'Create Channel',
     personalAssistantOnly: true,

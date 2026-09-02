@@ -4,6 +4,7 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_ID = 'deep_water_run_update'
 
 export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: DEEP_WATER_RUN_UPDATE_TOOL_ID,
+  category: 'web',
   summary: 'Record an approved Ledger Deep Water research run update.',
   label: 'Deep Water Run Update',
   // Default OFF for every agent; grantable to any agent (personal assistant or

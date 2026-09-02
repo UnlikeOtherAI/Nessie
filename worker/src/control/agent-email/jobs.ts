@@ -7,7 +7,11 @@ import type {
   AgentEmailSendJobPayload,
 } from '@nessie/schemas'
 
-import { applySesDeliveryEvent, sweepInboundRetention } from './delivery-events.js'
+import {
+  applySesDeliveryEvent,
+  sweepInboundRetention,
+  sweepStuckSends,
+} from './delivery-events.js'
 import { processInboundReceipt } from './inbound.js'
 import { dispatchQueuedEmail } from './outbound.js'
 
@@ -67,4 +71,7 @@ export const processAgentEmailRetentionJob = async (
     },
     payload.limit,
   )
+  // Rides the same sweep: a send whose worker died mid-claim would otherwise
+  // sit in `sending` forever, telling nobody whether it went out.
+  await sweepStuckSends(deps.prisma)
 }

@@ -44,6 +44,7 @@ const addressArray = (description: string) => ({
 export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: GMAIL_SEARCH_TOOL_ID,
+    category: 'email-calendar',
     summary: "Search the requesting person's email.",
     label: 'Search Email',
     requiresExplicitGrant: true,
@@ -69,6 +70,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_THREAD_READ_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Read every message in one email thread.',
     label: 'Read Email Thread',
     requiresExplicitGrant: true,
@@ -86,6 +88,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_MESSAGE_READ_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Read one email message in full.',
     label: 'Read Email',
     requiresExplicitGrant: true,
@@ -101,6 +104,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_DRAFT_CREATE_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Compose an email draft and show it in the chat for approval.',
     label: 'Draft Email',
     requiresExplicitGrant: true,
@@ -128,6 +132,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_DRAFT_UPDATE_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Revise an email draft already shown in the chat.',
     label: 'Revise Draft',
     requiresExplicitGrant: true,
@@ -151,6 +156,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_DRAFT_SEND_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Send an email draft as the requesting person.',
     label: 'Send Email',
     requiresExplicitGrant: true,
@@ -172,6 +178,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_LIST_TOOL_ID,
+    category: 'email-calendar',
     summary: "List the requesting person's calendars.",
     label: 'List Calendars',
     requiresExplicitGrant: true,
@@ -181,6 +188,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_EVENTS_LIST_TOOL_ID,
+    category: 'email-calendar',
     summary: "Read events from the requesting person's calendar.",
     label: 'Read Calendar',
     requiresExplicitGrant: true,
@@ -200,6 +208,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_FREEBUSY_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Find when people are free.',
     label: 'Check Availability',
     requiresExplicitGrant: true,
@@ -220,6 +229,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_EVENT_CREATE_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Create a calendar event, optionally with a Google Meet link.',
     label: 'Create Event',
     requiresExplicitGrant: true,
@@ -251,6 +261,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_EVENT_UPDATE_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Change an existing calendar event.',
     label: 'Update Event',
     requiresExplicitGrant: true,
@@ -276,6 +287,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_EVENT_CANCEL_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Cancel a calendar event.',
     label: 'Cancel Event',
     requiresExplicitGrant: true,
@@ -295,6 +307,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CALENDAR_EVENT_RESPOND_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Accept, decline or tentatively answer an invitation.',
     label: 'Respond to Invite',
     requiresExplicitGrant: true,
@@ -319,6 +332,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_LABELS_LIST_TOOL_ID,
+    category: 'email-calendar',
     summary: "List the mailbox's labels.",
     label: 'List Labels',
     requiresExplicitGrant: true,
@@ -330,6 +344,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_ORGANISE_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Label, archive, mark read, or trash a thread.',
     label: 'Organise Email',
     requiresExplicitGrant: true,
@@ -354,6 +369,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: GMAIL_ATTACHMENT_READ_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Read the contents of an email attachment.',
     label: 'Read Attachment',
     requiresExplicitGrant: true,
@@ -372,6 +388,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: CONTACTS_SEARCH_TOOL_ID,
+    category: 'email-calendar',
     summary: 'Find an email address for a name.',
     label: 'Find Contact',
     requiresExplicitGrant: true,

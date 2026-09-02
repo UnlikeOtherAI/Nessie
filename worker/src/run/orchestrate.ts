@@ -44,17 +44,28 @@ export type OrchestrateDecideDeps = {
   realtimeTransport: PgRealtimeTransport
 }
 
-// A personal-assistant DM has exactly one server-managed agent binding. Its
+/**
+ * The single-agent system DMs: the Personal Assistant's, and a global agent's
+ * per-user home. Each has exactly one member and exactly one server-managed
+ * binding, both database facts, so there is no engagement judgement to make.
+ */
+export const isSingleAgentSystemDm = (
+  systemChannelType: string | null,
+): boolean =>
+  systemChannelType === 'personal_assistant' || systemChannelType === 'system_agent'
+
+// A single-agent system DM has exactly one server-managed agent binding. Its
 // replies are not an engagement judgement: every human turn is addressed to
 // that agent. Keeping this structural route out of the model-driven
 // orchestrator prevents a missing provider credential from making the DM go
-// silent before the actual assistant run can report the problem.
-export const resolvePersonalAssistantDecisions = (
+// silent before the actual assistant run can report the problem. Keyed on the
+// channel type alone — never on what a message says.
+export const resolveSystemDmDecisions = (
   systemChannelType: string | null,
   role: string,
   channelAgents: ChannelAgent[],
 ): OrchestratorDecision[] | null => {
-  if (systemChannelType !== 'personal_assistant') {
+  if (!isSingleAgentSystemDm(systemChannelType)) {
     return null
   }
 
@@ -63,8 +74,8 @@ export const resolvePersonalAssistantDecisions = (
     return []
   }
 
-  // Structural, like the @mention fast path: every turn in a PA DM is addressed
-  // to this one assistant, so its answer belongs to that exchange.
+  // Structural, like the @mention fast path: every turn in one of these DMs is
+  // addressed to its one agent, so its answer belongs to that exchange.
   return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'thread' }]
 }
 
@@ -139,7 +150,7 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
-  let decisions = resolvePersonalAssistantDecisions(
+  let decisions = resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
     channelAgents,
@@ -270,7 +281,7 @@ export const executeOrchestrateDecideJob = async (
   }
 
   const scopes =
-    channel.systemChannelType === 'personal_assistant'
+    isSingleAgentSystemDm(channel.systemChannelType)
       ? [
           {
             kind: 'channel' as const,
@@ -436,7 +447,7 @@ export const executeOrchestrateDecideJob = async (
       await publishReplyRunStarted({
         channelId,
         content,
-        isPersonalAssistantChannel: channel.systemChannelType === 'personal_assistant',
+        isSingleAgentSystemDm: isSingleAgentSystemDm(channel.systemChannelType),
         messageId,
         realtimeTransport: deps.realtimeTransport,
         role,

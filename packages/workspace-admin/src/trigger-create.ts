@@ -106,10 +106,16 @@ export const createAgentTrigger = async (
       id: true,
       agentKind: true,
       organizationId: true,
+      systemSlug: true,
     },
   })
 
-  if (!agent || agent.agentKind === 'personal_assistant') {
+  // v1 global agents own no automation. A scheduled run reconstructs its
+  // creator's identity, which is exactly the identity a DM-homed global agent
+  // delegates from — so an unattended fire would wield an absent person's
+  // authority. Every blueprint declares `allowsSelfTriggers: false`; this is
+  // that declaration enforced where triggers are actually written.
+  if (!agent || agent.agentKind === 'personal_assistant' || agent.systemSlug) {
     return null
   }
   if (isScheduled) {

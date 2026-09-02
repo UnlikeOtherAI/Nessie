@@ -393,6 +393,13 @@ export type PersonalAssistantBootstrapResponse = {
 
 export type ToolDescriptor = {
   builtin?: boolean
+  /**
+   * Where the tool belongs in every surface that lists tools, declared by the
+   * tool itself (`ToolCategoryId` in `@nessie/schemas`). Optional on the wire
+   * only because an organization-local registry entry is not a builtin and has
+   * none; every builtin carries one.
+   */
+  category?: string
   description: string
   enabled?: boolean
   handlerKind?: string

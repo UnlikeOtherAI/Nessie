@@ -63,6 +63,7 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
+import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import {
   AgentTodoScheduledConfigError,
@@ -221,6 +222,7 @@ export const executeRunJob = async (
 
   try {
     assertPrivateAgentRunPlacement(context)
+    assertGlobalAgentRunPlacement(context)
     // External-agent turns bypass the inference loop entirely: the driver
     // proxies the message to the external product. Placement is still checked
     // first so a malformed private binding cannot reach any provider.

@@ -19,8 +19,12 @@ export type PeopleAgentsPerson = {
 
 export type PeopleAgentsTree = {
   people: PeopleAgentsPerson[]
-  /** Agents nobody stewards — every pre-stewardship agent starts here. */
-  unowned: AgentRecord[]
+  /**
+   * Agents nobody stewards. A deliberate state rather than only missing
+   * history: a null owner is "team-owned", and every member entitled to such an
+   * agent may edit it. Every pre-stewardship agent starts here.
+   */
+  teamOwned: AgentRecord[]
   /**
    * Owned, but by somebody this workspace's roster does not list. Deliberately
    * NOT labelled "departed": the roster is keyed by *team*, so an active
@@ -51,7 +55,7 @@ export const buildPeopleAgentsTree = (
   input: { pausedPrivateAgentCount?: number } = {},
 ): PeopleAgentsTree => {
   const byOwner = new Map<string, AgentRecord[]>()
-  const unowned: AgentRecord[] = []
+  const teamOwned: AgentRecord[] = []
   const system: AgentRecord[] = []
 
   for (const agent of agents) {
@@ -61,7 +65,7 @@ export const buildPeopleAgentsTree = (
       continue
     }
     if (!agent.ownerUserId) {
-      unowned.push(agent)
+      teamOwned.push(agent)
       continue
     }
     const existing = byOwner.get(agent.ownerUserId)
@@ -85,6 +89,6 @@ export const buildPeopleAgentsTree = (
     pausedPrivateAgentCount: input.pausedPrivateAgentCount ?? 0,
     people,
     system,
-    unowned,
+    teamOwned,
   }
 }

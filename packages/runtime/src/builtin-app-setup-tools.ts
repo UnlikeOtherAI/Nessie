@@ -12,6 +12,7 @@ export const APP_CONNECT_REQUEST_TOOL_ID = 'app_connect_request'
 
 export const APP_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: APP_SEARCH_TOOL_ID,
+  category: 'apps',
   summary: 'Search the Apps catalogue for services the user may connect.',
   label: 'Search Apps',
   description:
@@ -46,6 +47,7 @@ export const APP_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
  */
 export const APP_CONNECT_REQUEST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: APP_CONNECT_REQUEST_TOOL_ID,
+  category: 'apps',
   summary: 'Offer an in-chat card to connect one of up to three Apps.',
   label: 'Request App Connection',
   personalAssistantOnly: true,

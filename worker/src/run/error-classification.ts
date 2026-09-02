@@ -4,6 +4,7 @@ import {
   providerFailureDetails,
 } from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
+import { GlobalAgentPlacementError } from './execute/global-agent-placement.js'
 import { PrivateAgentPlacementError } from './execute/private-agent-placement.js'
 
 export type FailoverReason =
@@ -20,6 +21,7 @@ export type FailoverReason =
   | 'model_not_found'
   | 'content_filter'
   | 'private_agent_placement'
+  | 'global_agent_placement'
   | 'format'
   | 'transient'
   | 'unknown'
@@ -60,6 +62,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
       return 'The model provider blocked this request under its content policy. Try rephrasing it.'
     case 'private_agent_placement':
       return 'This private agent can only run in its private home conversation.'
+    case 'global_agent_placement':
+      return 'This built-in agent can only run in your private conversation with it.'
     case 'format':
       return 'The model provider returned an invalid response. Please try again.'
     case 'unknown':
@@ -69,6 +73,7 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
 
 export const classifyError = (error: unknown): FailoverReason => {
   if (error instanceof PrivateAgentPlacementError) return 'private_agent_placement'
+  if (error instanceof GlobalAgentPlacementError) return 'global_agent_placement'
   if (!(error instanceof Error)) return 'unknown'
 
   if (isCreditsExhaustedError(error)) {
@@ -193,6 +198,7 @@ export const resolveRecovery = (
     case 'model_not_found':
     case 'content_filter':
     case 'private_agent_placement':
+    case 'global_agent_placement':
       return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     default:

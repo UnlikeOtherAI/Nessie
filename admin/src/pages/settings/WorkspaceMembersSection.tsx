@@ -275,7 +275,7 @@ export const WorkspaceMembersSection = ({
   )
   const hasUnassignedAgents = !needsWorkspaceReconnect && (
     tree.pausedPrivateAgentCount > 0
-    || tree.unowned.length > 0
+    || tree.teamOwned.length > 0
     || tree.ownedOutsideWorkspace.length > 0
   )
 
@@ -339,9 +339,10 @@ export const WorkspaceMembersSection = ({
 
         {/*
           Agents belonging to nobody in this workspace. Two groups, never one:
-          "unowned" predates stewardship, while an owner the *team* roster does
-          not list is equally an active colleague on another team — so this
-          bucket describes what is known rather than declaring anyone departed.
+          "team-owned" is a state (no steward, so anyone entitled may edit),
+          while an owner the *team* roster does not list is equally an active
+          colleague on another team — so this bucket describes what is known
+          rather than declaring anyone departed.
         */}
         {hasUnassignedAgents ? <WorkspaceAgentBuckets tree={tree} /> : null}
       </Section>

@@ -287,12 +287,12 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    if (channel.systemChannelType === 'personal_assistant') {
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'Personal Assistant DMs cannot be modified',
+        'System-managed conversations cannot be modified',
       )
       return reply
     }
@@ -335,12 +335,12 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType === 'personal_assistant') {
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'Personal Assistant DMs cannot be modified',
+        'System-managed conversations cannot be modified',
       )
       return reply
     }
