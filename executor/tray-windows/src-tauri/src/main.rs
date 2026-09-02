@@ -13,6 +13,15 @@
 //!
 //! It has one other mode, which it invokes on itself: `--grant-workspace <path>`
 //! is the elevated half of pairing.
+//!
+//! Everything except the Win32 modules also compiles and runs its tests on a
+//! non-Windows host, deliberately: the menu ids, the invitation parser, the
+//! icon state machine and the pipe protocol's decoding are where the behaviour
+//! lives, and a check that only ever runs on the release machine is a check
+//! nobody runs. On such a host the pipe and the grant are stubs, so the
+//! protocol's own error texts go unused — hence the one allow below, scoped to
+//! that build alone and never applied to the shipped binary.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 mod commands;
 mod grant;

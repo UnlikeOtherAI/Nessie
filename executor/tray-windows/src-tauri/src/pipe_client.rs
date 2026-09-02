@@ -8,31 +8,11 @@
 //! person can actually act on: the pipe is missing when the service is not
 //! running, and access is denied when this account has never been admitted —
 //! which is what pairing's one elevated step exists to fix.
-
-use std::{
-    io::{Read, Write},
-    mem::ManuallyDrop,
-    os::windows::{ffi::OsStrExt, io::FromRawHandle},
-};
-
-use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, HANDLE,
-    INVALID_HANDLE_VALUE, GENERIC_READ, GENERIC_WRITE,
-};
-use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING,
-};
-use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
+//!
+//! The protocol's answer shapes are portable and tested on any host; the pipe
+//! itself lives behind `cfg(windows)` in [`imp`].
 
 use crate::state::ExecutorStatus;
-
-const PIPE_NAME: &str = r"\\.\pipe\NessieExecutor";
-
-/// How long to wait for a free instance, and how many times. The service serves
-/// each connection on its own thread, so a busy pipe is a burst, not a queue.
-const BUSY_WAIT_MS: u32 = 2_000;
-
-const BUSY_ATTEMPTS: u32 = 3;
 
 /// Bounded so a service answering nonsense cannot exhaust this process.
 const MAX_ANSWER_BYTES: u64 = 1_048_576;
@@ -43,56 +23,98 @@ pub const SERVICE_NOT_RUNNING: &str =
 pub const NOT_ADMITTED: &str =
     "this account may not control the executor — pair one from this tray to be admitted";
 
-fn wide(value: &str) -> Vec<u16> {
-    std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
-}
+#[cfg(windows)]
+mod imp {
+    use std::{
+        io::{Read, Write},
+        mem::ManuallyDrop,
+        os::windows::{ffi::OsStrExt, io::FromRawHandle},
+    };
 
-fn open() -> Result<HANDLE, String> {
-    let name = wide(PIPE_NAME);
-    for _ in 0..BUSY_ATTEMPTS {
-        let handle = unsafe {
-            CreateFileW(
-                name.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                std::ptr::null(),
-                OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
-                std::ptr::null_mut(),
-            )
-        };
-        if handle != INVALID_HANDLE_VALUE && !handle.is_null() {
-            return Ok(handle);
-        }
-        match unsafe { GetLastError() } {
-            ERROR_PIPE_BUSY => {
-                unsafe { WaitNamedPipeW(name.as_ptr(), BUSY_WAIT_MS) };
-            }
-            ERROR_FILE_NOT_FOUND => return Err(SERVICE_NOT_RUNNING.to_owned()),
-            ERROR_ACCESS_DENIED => return Err(NOT_ADMITTED.to_owned()),
-            _ => return Err("the service could not be reached".to_owned()),
-        }
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY,
+        HANDLE, INVALID_HANDLE_VALUE, GENERIC_READ, GENERIC_WRITE,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING,
+    };
+    use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
+
+    use super::{decode, MAX_ANSWER_BYTES, NOT_ADMITTED, SERVICE_NOT_RUNNING};
+    use crate::state::ExecutorStatus;
+
+    const PIPE_NAME: &str = r"\\.\pipe\NessieExecutor";
+
+    /// How long to wait for a free instance, and how many times. The service
+    /// serves each connection on its own thread, so a busy pipe is a burst, not
+    /// a queue.
+    const BUSY_WAIT_MS: u32 = 2_000;
+
+    const BUSY_ATTEMPTS: u32 = 3;
+
+    fn wide(value: &str) -> Vec<u16> {
+        std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
     }
-    Err("the service is busy — try again in a moment".to_owned())
+
+    fn open() -> Result<HANDLE, String> {
+        let name = wide(PIPE_NAME);
+        for _ in 0..BUSY_ATTEMPTS {
+            let handle = unsafe {
+                CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    std::ptr::null(),
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    std::ptr::null_mut(),
+                )
+            };
+            if handle != INVALID_HANDLE_VALUE && !handle.is_null() {
+                return Ok(handle);
+            }
+            match unsafe { GetLastError() } {
+                ERROR_PIPE_BUSY => {
+                    unsafe { WaitNamedPipeW(name.as_ptr(), BUSY_WAIT_MS) };
+                }
+                ERROR_FILE_NOT_FOUND => return Err(SERVICE_NOT_RUNNING.to_owned()),
+                ERROR_ACCESS_DENIED => return Err(NOT_ADMITTED.to_owned()),
+                _ => return Err("the service could not be reached".to_owned()),
+            }
+        }
+        Err("the service is busy — try again in a moment".to_owned())
+    }
+
+    /// Sends one request and returns the executor list it answered with. A
+    /// refusal comes back as the service's own words, never as a status code
+    /// the tray would have to invent a sentence for.
+    pub fn call(request: &serde_json::Value) -> Result<Vec<ExecutorStatus>, String> {
+        let handle = open()?;
+        let file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_handle(handle as *mut _) });
+        let mut line = serde_json::to_string(request)
+            .map_err(|_| "the control request could not be prepared".to_owned())?;
+        line.push('\n');
+        let mut answer = String::new();
+        let exchange = (&*file)
+            .write_all(line.as_bytes())
+            .and_then(|()| (&*file).flush())
+            .and_then(|()| (&*file).take(MAX_ANSWER_BYTES).read_to_string(&mut answer));
+        unsafe { CloseHandle(handle) };
+        exchange.map_err(|_| "the service closed the connection".to_owned())?;
+        decode(&answer)
+    }
 }
 
-/// Sends one request and returns the executor list it answered with. A refusal
-/// comes back as the service's own words, never as a status code the tray would
-/// have to invent a sentence for.
+#[cfg(windows)]
+pub use imp::call;
+
+/// The pipe is a Windows object; on any other host the service is simply not
+/// there to answer, and the view says so in the words it would use for a
+/// stopped service.
+#[cfg(not(windows))]
 pub fn call(request: &serde_json::Value) -> Result<Vec<ExecutorStatus>, String> {
-    let handle = open()?;
-    let file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_handle(handle as *mut _) });
-    let mut line = serde_json::to_string(request)
-        .map_err(|_| "the control request could not be prepared".to_owned())?;
-    line.push('\n');
-    let mut answer = String::new();
-    let exchange = (&*file)
-        .write_all(line.as_bytes())
-        .and_then(|()| (&*file).flush())
-        .and_then(|()| (&*file).take(MAX_ANSWER_BYTES).read_to_string(&mut answer));
-    unsafe { CloseHandle(handle) };
-    exchange.map_err(|_| "the service closed the connection".to_owned())?;
-    decode(&answer)
+    let _ = request;
+    Err(SERVICE_NOT_RUNNING.to_owned())
 }
 
 /// The two shapes the protocol defines, and nothing else: an answer this reader
