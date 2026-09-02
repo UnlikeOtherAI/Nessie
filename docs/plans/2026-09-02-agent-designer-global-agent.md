@@ -209,7 +209,7 @@ resolves it):
 | Tool | Mirrors | Notes |
 |---|---|---|
 | `agent_read` | `GET /api/agents/:id` entitlement (`isAgentAccessibleToActor` + visibility) | full record (prompt, policy, limits, model) so an edit conversation can start from truth. Refuses system-managed targets in words. |
-| `agent_update` | `PUT /api/agents/:id` | the deliberately-missing tool, now homed where it belongs. Org-owner-gated exactly like the route (refuses in words for non-owners); `mergeGenericAgentToolPolicy` + `assertGenericAgentToolPolicyInput` stand, so protected/explicit-grant keys are untouchable; `systemManaged` targets refused. |
+| `agent_update` | `PUT /api/agents/:id` | the deliberately-missing tool, now homed where it belongs. Gated by the shared `canEditAgent` predicate (see "Edit authority" below) exactly like the route — refuses in words when the caller may not edit; `mergeGenericAgentToolPolicy` + `assertGenericAgentToolPolicyInput` stand, so protected/explicit-grant keys are untouchable; `systemManaged` targets refused. |
 | `agent_tool_catalog` | `GET /api/tools` + `GET /api/mcp/tools` projection | read-only live catalogue: builtins (deny-mode), this org's active connector tools (allow-mode), and — named but not togglable — the explicit-grant tier with the words for where it is granted (Apps agent-access, DeepWater toggle, executor review). Same filtering as the page's `tool-catalog.ts`, served server-side so the two faces can't drift. |
 | `agent_avatar_update` | `PATCH /api/agents/:id/avatar` + `POST …/avatar/generate` | owner-gated like the routes; create-time generation already happens inside `agent_create`. |
 
@@ -347,21 +347,89 @@ A fully thread-backed sidebar (real runs rendered in the rail) is named as
 the possible end-state but deliberately not built now: it trades the live
 form-filling UX for architectural purity the product doesn't need yet.
 
+## Edit authority — person-owned vs team-owned (decided 2026-09-02)
+
+Verified: every agent-mutation route (`PUT /api/agents/:id`, both avatar
+routes, bindings) gates on `requireOwner` = the **organization owner role**
+(`api/src/lib/server-context.ts:267`). A non-owner member cannot edit any
+agent today — not even their own private one. This never surfaced because
+the people doing the editing were org owners. It is a bug against the
+intended model, and both faces of the Designer inherit whatever replaces it,
+so the replacement ships first.
+
+The decided model — a fourth **state**, not a fourth tab, derived from the
+stewardship fact that already exists:
+
+| Agent | Encoding | Who may edit |
+|---|---|---|
+| Private | `visibility='private'` (owner required by CHECK) | the live owner, and nobody else — org owners cannot see it, so cannot edit it (the scopes doc's "private beats owner omniscience", unchanged) |
+| Workspace, **person-owned** | `ownerUserId` set | the live owner, plus org owners (governance/recovery override — see below) |
+| Workspace, **team-owned** | `ownerUserId` null | anyone entitled to the agent (`isAgentAccessibleToActor`), plus org owners |
+| Global | `systemManaged` | nobody; blueprint only |
+
+"Edit" covers name, role, system prompt, model/provider, effort, run
+limits, ordinary tool-policy keys, and avatar. It does **not** cover
+bindings (placement keeps its own four gates), explicit-grant keys
+(`assertGenericAgentToolPolicyInput` stands for every editor), or
+`todosEnabled` (keeps its org-owner gate for now — it authorizes
+trigger-driven work, a different blast radius).
+
+Mechanics:
+
+- **One predicate, `canEditAgent(actor, agent)`, in
+  `@nessie/workspace-admin`**, replacing `requireOwner` at every agent-edit
+  chokepoint (PUT, avatar update, avatar generate) and consumed verbatim by
+  the Designer's `agent_update` / `agent_avatar_update` — the routes and
+  the chat face cannot disagree by construction. Refusals are worded per
+  state ("this agent is owned by <name>; ask them or an org owner").
+- **Transitions are owner acts.** The existing PUT `ownerUserId` transfer
+  grows the null case: the owner (or an org owner) may *release* an agent
+  to the team (`ownerUserId → null`) or transfer it; `agent.owner_changed`
+  already audits both. Claiming a team-owned agent (null → self) is
+  deliberately **not** offered to arbitrary entitled members in v1 — an
+  edit improves the agent for everyone, a claim locks everyone else out,
+  and that social act stays with org owners until real use demands more.
+- **"Promote" is the existing publish act** (private → workspace, the
+  scopes doc's open question 4): ownership survives it, so a promoted
+  agent is person-owned — you work with it together, only you edit it —
+  exactly the asked-for behaviour. Team-owned is the explicit release
+  afterwards.
+- **Legacy unowned rows become team-owned.** Pre-stewardship agents have
+  `ownerUserId = null` and no recorded author; "anyone entitled may edit"
+  is the honest reading, and it is a strict widening only relative to a
+  gate that was itself wrong. The people-tree's "Unowned" bucket renames
+  to "Team-owned" in the same change.
+- **Org-owner override stays on workspace agents** (both flavours):
+  "only I can edit" is with respect to other members. Without the
+  override, a person-owned agent whose owner is deactivated has no editor
+  at all; the deactivation machinery pauses private agents but workspace
+  agents keep running and must stay governable. Private agents remain the
+  sanctioned exception.
+- **Admin surface:** the agent detail header states the state ("Owned by
+  <person>" / "Team-owned") with the release/transfer control for those
+  entitled to use it; the scope tabs are untouched.
+- **Doc obligation:** people-and-their-agents is amended in the same
+  change — ownership now carries edit authority for workspace agents, and
+  a null owner is a deliberate state ("team-owned"), not merely missing
+  history.
+
 ## The parameter map (what the Designer knows and may drive)
+
+"May edit" below = the `canEditAgent` predicate from "Edit authority".
 
 | Parameter | Set by | Designer verb | Notes |
 |---|---|---|---|
-| `name`, `role` | any member at create; org owner at update | `agent_create` / `agent_update` | |
+| `name`, `role` | any member at create; may-edit at update | `agent_create` / `agent_update` | |
 | `systemPrompt` | same | same | the Designer's main craft output |
 | `visibility` | create only | `agent_create` | immutable after; private ⇒ owner-only home DM, unbindable, untransferable |
-| `provider` + `model` | member/owner | same | exact pair from `listLedgerAgentModels`; needs linked UOA identity |
-| `effort` | member/owner | same | `low\|medium\|high\|xhigh` → provider `reasoning_effort` only |
-| `runLimits` | member/owner | same | 5 optional caps over the deployment backstop |
+| `provider` + `model` | member at create; may-edit at update | same | exact pair from `listLedgerAgentModels`; needs linked UOA identity |
+| `effort` | same | same | `low\|medium\|high\|xhigh` → provider `reasoning_effort` only |
+| `runLimits` | same | same | 5 optional caps over the deployment backstop |
 | `todosEnabled` | org owner only | `agent_create`/`agent_update`, refused in words otherwise | disabling checks trigger references |
-| `toolPolicy` (ordinary keys) | member/owner | same, via merge | deny-mode builtins, allow-mode connectors |
+| `toolPolicy` (ordinary keys) | may-edit | same, via merge | deny-mode builtins, allow-mode connectors |
 | `toolPolicy` (explicit-grant keys) | owner surfaces only | **never** — named in words, pointed at Apps/Integrations | `assertGenericAgentToolPolicyInput` is the law |
-| `avatarAttachmentId` / `avatarBackgroundColor` | owner | `agent_avatar_update`; auto-generated at create | |
-| `ownerUserId` | create: forced to actor; update: org-owner transfer | `agent_update` (refused for private agents) | |
+| `avatarAttachmentId` / `avatarBackgroundColor` | may-edit | `agent_avatar_update`; auto-generated at create | |
+| `ownerUserId` | create: forced to actor; update: owner/org-owner transfer **or release to team** (`null`) | `agent_update` (refused for private agents) | null = team-owned: anyone entitled may edit |
 | bindings | org owner + policy + membership | `agent_bind_channel` | PA channels + private agents refused structurally |
 | triggers | owner, UOA identity required for schedules | `agent_trigger_create` | |
 | `parentAgentId`, `agentKind`, `systemManaged`, `surfacePolicy`, `delegationMode`, `executionMode`, `routingProfileId` | server/bootstrap only | **never** | the Designer states this when asked |
@@ -419,6 +487,14 @@ EG = requiresExplicitGrant (owner-surface granted, never by the Designer).
 
 ## Phases
 
+0. **Edit authority (independent, ships first).** `canEditAgent` in
+   `@nessie/workspace-admin`; PUT + avatar routes migrate off
+   `requireOwner`; release-to-team on the transfer path; admin ownership
+   state + control; "Unowned" bucket renamed; people-and-their-agents
+   amended. DB-backed tests: private-owner edit allowed, foreign-private
+   denied even for org owners, person-owned denies other members, team-owned
+   allows any entitled member, org-owner override on workspace agents,
+   protected-key refusal unchanged for every editor.
 1. **Foundation.** `Agent.systemSlug` + CHECK extension (fourth tuple) +
    `gagent:` DM CHECK, blueprint registry + `ensureGlobalAgent`, the
    Designer blueprint, per-user DM provisioning + `system_agent` channel
@@ -448,20 +524,22 @@ inputs per the intent-is-model-judged rule.
 
 ## Open questions
 
-1. **Should `PUT /api/agents/:id` grow an owner-of-private-agent arm?**
-   Today only org owners may update any agent, so a member who designs their
-   own private agent cannot later edit it — through the page or the
-   Designer. The mirror rule says the tool inherits this; widening is a
-   deliberate route change to make once, for both faces.
-2. **Does the Designer get a per-org model pin?** Blueprint says org-default
+1. **Does the Designer get a per-org model pin?** Blueprint says org-default
    model (the Librarian's cost stance) vs pinning `NESSIE_DESIGNER_MODEL`
    for both faces. Recommended: org default, env override honoured.
-3. **Team-scoped DM keys?** `gagent:` omits the UOA team (unlike
+2. **Team-scoped DM keys?** `gagent:` omits the UOA team (unlike
    `extagent:`). Creation acts org-wide, so one DM per user per org seems
    right; confirm against the team-switch UX before the CHECK lands.
-4. **How eagerly does bootstrap run?** Login-time (PA-style) vs lazy on
+3. **How eagerly does bootstrap run?** Login-time (PA-style) vs lazy on
    first doorway use. Recommended: login-time — the sidebar DM row is a
    discovery surface and should simply be there.
+4. **May entitled members claim a team-owned agent?** v1 says no (org
+   owners only) — an edit helps everyone, a claim locks everyone else out.
+   Revisit if release/claim churn shows up in real use.
+
+(The former open question — whether `PUT /api/agents/:id` should grow an
+owner-of-private-agent arm — is resolved by the "Edit authority" section:
+the fix is the `canEditAgent` model, decided 2026-09-02.)
 
 ## Adjacent defects noticed while mapping (filed separately)
 
