@@ -67,9 +67,17 @@ export const useUpdateWorkflowTemplate = () => {
       requiredEnvironmentTemplateIds?: string[]
       triggers?: unknown
       variableSchema?: unknown
+      // The template version the designer hydrated from. Sent as `If-Match`, so
+      // an auto-save that lost a race is refused (409
+      // WORKFLOW_TEMPLATE_VERSION_CONFLICT) instead of taking the graph over.
+      expectedVersion?: number
     }) => {
-      const { workflowTemplateId, ...body } = input
-      return apiClient.put<WorkflowTemplateRecord>(`/api/workflows/${workflowTemplateId}`, body)
+      const { expectedVersion, workflowTemplateId, ...body } = input
+      return apiClient.put<WorkflowTemplateRecord>(
+        `/api/workflows/${workflowTemplateId}`,
+        body,
+        expectedVersion === undefined ? undefined : { 'if-match': String(expectedVersion) },
+      )
     },
     onSuccess: (workflow) => {
       void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })

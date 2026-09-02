@@ -10,6 +10,15 @@ import {
 import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { OptimisticMessage } from './channel-helpers'
+import { useDraft } from '../../../navigation/useDraft'
+import {
+  composerAttachmentIdsMatch,
+  composerDraftIsEmpty,
+  emptyComposerDraft,
+  reviveComposerDraft,
+  storableComposerAttachments,
+  type ComposerDraft,
+} from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 
 interface UseChannelComposerParams {
@@ -19,6 +28,10 @@ interface UseChannelComposerParams {
   // Optional per-send extras (reply-thread routing, #233) read at send time so
   // the "Also send to channel" checkbox can toggle without re-wiring the hook.
   getSendExtras?: () => SendMessageThreadExtras
+  // `draft:composer:<channelId>` / `draft:reply:<rootMessageId>` — the entity
+  // this composer belongs to. Null while it is not yet known; the composer then
+  // keeps its state in memory only.
+  draftKey: string | null
 }
 
 interface UseChannelComposerResult {
@@ -45,6 +58,11 @@ interface UseChannelComposerResult {
   dismissSecretCapture: () => void
 }
 
+const newClientMessageId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
+
 export type SecretCapture = {
   detected: DetectedSecret
   scopeId?: string
@@ -56,13 +74,24 @@ export const useChannelComposer = ({
   activeChannel,
   threadMessages,
   currentUserId,
+  draftKey,
   getSendExtras,
 }: UseChannelComposerParams): UseChannelComposerResult => {
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
   const uploadAttachment = useUploadAttachment()
   const attachments = useComposerAttachments()
   const bindAgent = useBindAgent()
-  const [message, setMessage] = useState('')
+  // Drafts (docs/navigation.md → "Drafts"): text and staged-attachment
+  // metadata persist per entity, so switching channels can no longer carry one
+  // conversation's unsent post into the next.
+  const draft = useDraft<ComposerDraft>(draftKey, {
+    initial: emptyComposerDraft,
+    isEmpty: composerDraftIsEmpty,
+    revive: reviveComposerDraft,
+  })
+  const message = draft.draft.text
+  const setDraft = draft.setDraft
+  const clearDraft = draft.clear
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
@@ -72,6 +101,44 @@ export const useChannelComposer = ({
   const [sendError, setSendError] = useState<string | null>(null)
   const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
+  // One idempotency key per unsent draft. It is minted at the first attempt and
+  // retained while that attempt is unresolved, so a double-submit or a client
+  // retry of the same post resolves to the message the first attempt created
+  // rather than a second copy; a success mints a fresh one for the next post.
+  const clientMessageIdRef = useRef<string | null>(null)
+
+  const setMessage = useCallback<React.Dispatch<React.SetStateAction<string>>>(
+    (value) => {
+      setDraft((current) => ({
+        ...current,
+        text: typeof value === 'function' ? value(current.text) : value,
+      }))
+    },
+    [setDraft],
+  )
+
+  // The composer's editor is uncontrolled, so it is repainted only when the
+  // draft was replaced by the hook itself (a channel switch, a restore, a
+  // send) — `revision`, never the text, which typing changes on every key.
+  const { revision: draftRevision } = draft
+  const draftValue = draft.draft
+  const restoreStaged = attachments.restoreStaged
+  useEffect(() => {
+    mentionRef.current?.setText(draftValue.text)
+    restoreStaged(draftValue.attachments)
+    // Reacting to the draft's own replacements only; `draftValue` is read at
+    // that render and must not re-trigger this on a keystroke.
+  }, [draftRevision])
+
+  // Finished uploads flow the other way, so a reload re-stages the same files.
+  const stagedAttachments = attachments.staged
+  useEffect(() => {
+    const storable = storableComposerAttachments(stagedAttachments)
+    setDraft((current) =>
+      composerAttachmentIdsMatch(current.attachments, storable)
+        ? current
+        : { ...current, attachments: storable })
+  }, [stagedAttachments])
 
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
@@ -97,6 +164,9 @@ export const useChannelComposer = ({
     setPendingInviteMessageIds({})
     setInviteErrors({})
     setSendError(null)
+    // A different conversation is a different post: never carry one channel's
+    // idempotency key into the next.
+    clientMessageIdRef.current = null
   }, [activeChannel?.id])
 
   const sendText = useCallback(
@@ -133,10 +203,9 @@ export const useChannelComposer = ({
         return
       }
 
-      const clientId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`
+      const clientId = newClientMessageId()
+      clientMessageIdRef.current ??= newClientMessageId()
+      const clientMessageId = clientMessageIdRef.current
       // An attachment-only post has no text to echo, so it skips the optimistic
       // bubble and appears on the refetch the send triggers.
       if (text) {
@@ -154,14 +223,18 @@ export const useChannelComposer = ({
 
       try {
         const result = await sendMessage.mutateAsync({
+          clientMessageId,
           content: text,
           ...(agentMentions.length > 0 ? { agentMentions } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
           ...getSendExtras?.(),
         })
         // Staged files are dropped only once they are safely linked, so a
-        // failed send keeps them for a retry.
+        // failed send keeps them for a retry. The draft goes with them: a sent
+        // message is no longer unsent.
         attachments.clearStaged()
+        clearDraft()
+        clientMessageIdRef.current = null
         // Surface @mentioned agents that aren't members of this channel so the
         // user can invite them; they were not dispatched.
         if (result.pendingAgentInvites.length > 0) {
@@ -190,7 +263,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, attachments, sendMessage, getSendExtras],
+    [activeChannel, attachments, clearDraft, sendMessage, getSendExtras],
   )
 
   const insertEmoji = useCallback((emoji: string) => {
@@ -294,6 +367,7 @@ export const useChannelComposer = ({
           // to the channel instead of into the open reply thread.
           ...getSendExtras?.(),
         })
+        clearDraft()
         setOversizePaste(null)
       } catch (error) {
         setSendError(
@@ -303,7 +377,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, uploadAttachment, sendMessage, getSendExtras],
+    [activeChannel, clearDraft, uploadAttachment, sendMessage, getSendExtras],
   )
 
   return {

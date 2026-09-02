@@ -26,6 +26,12 @@ export type ComposerAttachments = {
   addFiles: (files: File[]) => void
   removeStaged: (clientId: string) => void
   clearStaged: () => void
+  /**
+   * Re-stages a draft's finished uploads. Only metadata is ever persisted —
+   * the bytes already live server-side behind `attachmentId`, so an entry
+   * without one cannot be restored and is dropped by the caller.
+   */
+  restoreStaged: (entries: StagedAttachment[]) => void
 }
 
 const newClientId = (): string =>
@@ -179,6 +185,17 @@ export const useComposerAttachments = (): ComposerAttachments => {
     setError(null)
   }, [applyStaged])
 
+  const restoreStaged = useCallback(
+    (entries: StagedAttachment[]) => {
+      // In-flight uploads belong to this mount, so a restore replaces the list
+      // wholesale rather than merging into one the draft cannot know about.
+      abandoned.current.clear()
+      applyStaged(() => entries)
+      setError(null)
+    },
+    [applyStaged],
+  )
+
   return useMemo(
     () => ({
       staged,
@@ -190,7 +207,8 @@ export const useComposerAttachments = (): ComposerAttachments => {
       addFiles,
       removeStaged,
       clearStaged,
+      restoreStaged,
     }),
-    [addFiles, clearStaged, error, removeStaged, staged],
+    [addFiles, clearStaged, error, removeStaged, restoreStaged, staged],
   )
 }

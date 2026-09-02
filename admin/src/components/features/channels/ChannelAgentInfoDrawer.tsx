@@ -15,6 +15,7 @@ import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
 import { buildFeedItems, type ChannelAgentParticipant } from './channel-helpers'
 import { useStickToBottom } from '../../../hooks/useStickToBottom'
+import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import type { AvatarSources } from '../../primitives/UserAvatar'
@@ -125,6 +126,7 @@ export const ChannelAgentInfoDrawer = ({
   } = useChannelComposer({
     activeChannel,
     currentUserId: meUserId,
+    draftKey: channelComposerDraftKey(activeChannel?.id),
     threadMessages,
   })
   const {

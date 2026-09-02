@@ -1,4 +1,5 @@
-import { useCallback, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
 import {
@@ -41,6 +42,9 @@ export type AgentDesignerAction =
   | { enabled: boolean; type: 'set_todos_enabled' }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
   | { visibility: AgentVisibilityValue; type: 'set_visibility' }
+  // A stored draft coming back on mount. The reducer owns the state, so a
+  // restore is an action rather than a second writer.
+  | { state: AgentFormState; type: 'restore' }
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
 // to the tool kind's default (builtin on, connector off) — the same semantics
@@ -88,6 +92,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_visibility':
       return { ...state, visibility: action.visibility }
+    case 'restore':
+      return { ...action.state, streamingField: null }
     case 'set_streaming':
       return { ...state, streamingField: action.field }
     case 'clear_streaming':
@@ -116,11 +122,45 @@ export const useAgentDesigner = (
   // The catalogue the Design Assistant was shown, so a model it names can be
   // resolved back to the entry the picker renders.
   modelOptions: AgentModelOption[] = [],
+  // The agent being edited, or undefined for a new one — the draft's entity.
+  agentId?: string,
 ) => {
   const [state, dispatch] = useReducer(reducer, {
     ...DEFAULT_STATE,
     ...initialState,
   })
+
+  // Drafts (docs/navigation.md → "Drafts"): the form is buffered under
+  // `draft:agent-designer:<agentId | new>`, so leaving the designer — Back, a
+  // reload, a tab close — no longer discards a half-written system prompt.
+  // Local only: a debounced PUT would publish an agent's behaviour to every
+  // channel it is bound to on every keystroke, and creating one needs a model
+  // the form may not have yet, so Save stays the deliberate act.
+  const baseline: AgentFormState = { ...DEFAULT_STATE, ...initialState }
+  const formDraft = useDraft<AgentFormState>(draftKey('agent-designer', agentId ?? 'new'), {
+    initial: baseline,
+    // `streamingField` is a live indicator of the Design Assistant writing into
+    // a field right now; it belongs to the mount, never to the stored draft.
+    isEmpty: (value) =>
+      JSON.stringify({ ...value, streamingField: null })
+      === JSON.stringify({ ...baseline, streamingField: null }),
+  })
+  const { draft: draftState, revision: draftRevision, setDraft: setFormDraft } = formDraft
+
+  // The reducer stays the single writer of form state, so the draft is written
+  // from it rather than replacing it.
+  const restoredRevisionRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (restoredRevisionRef.current === draftRevision) return
+    restoredRevisionRef.current = draftRevision
+    if (draftRevision === 0) return
+    dispatch({ state: draftState, type: 'restore' })
+    // The draft's own replacements only; typing goes the other way.
+  }, [draftRevision])
+
+  useEffect(() => {
+    setFormDraft(state)
+  }, [setFormDraft, state])
 
   const setName = useCallback((name: string) => dispatch({ type: 'set_name', name }), [])
   const setRole = useCallback((role: string) => dispatch({ type: 'set_role', role }), [])
@@ -215,5 +255,5 @@ export const useAgentDesigner = (
     toggleTool,
   }
 
-  return { actions, state }
+  return { actions, clearDraft: formDraft.clear, state }
 }

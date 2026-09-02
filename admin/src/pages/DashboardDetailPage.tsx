@@ -3,10 +3,16 @@
  *
  * View is the default and is chrome-free. Edit adds the grid affordances and
  * saves the layout explicitly, which also appends a version — so every
- * rearrangement is recoverable and attributable.
+ * rearrangement is recoverable and attributable. Deliberately NOT a debounced
+ * server auto-save: each save appends a `DashboardVersion`, and one row per
+ * drag would bury the history the versions panel exists for. The arrangement
+ * is still never lost — it is buffered as a local draft under
+ * `draft:dashboard-layout:<id>` — and Done carries `If-Match`, so a save that
+ * lost a race is refused and the choice is offered in place
+ * (docs/navigation.md → "Drafts").
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
@@ -23,6 +29,7 @@ import {
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { dashboardKeys } from '../lib/query-keys'
+import { draftKey, useDraft } from '../navigation/useDraft'
 import { NestedStage } from '../navigation/NestedStage'
 
 /**
@@ -67,11 +74,27 @@ export const DashboardDetailPage = () => {
   const [editing, setEditing] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
   const [showAddWidget, setShowAddWidget] = useState(false)
-  const [draftLayout, setDraftLayout] = useState<DashboardLayout | null>(null)
+  // The revision the current edit started from; `If-Match` on the save.
+  const baseRevisionRef = useRef<number | null>(null)
+  const [conflictRevision, setConflictRevision] = useState<number | null>(null)
+
+  const layoutDraft = useDraft<DashboardLayout | null>(
+    draftKey('dashboard-layout', dashboardId),
+    {
+      initial: null,
+      // An arrangement identical to the server's is not a draft, so opening a
+      // dashboard and leaving stores nothing.
+      isEmpty: (value) =>
+        value === null
+        || JSON.stringify(value) === JSON.stringify(dashboard?.layout ?? null),
+    },
+  )
+  const draftLayout = layoutDraft.draft
+  const setDraftLayout = layoutDraft.setDraft
 
   useEffect(() => {
-    if (dashboard) setDraftLayout(dashboard.layout)
-  }, [dashboard])
+    if (dashboard && draftLayout === null) setDraftLayout(dashboard.layout)
+  }, [dashboard, draftLayout, setDraftLayout])
 
   const widgetKinds = useMemo(() => {
     const map = new Map<string, DashboardWidgetKind>()
@@ -113,6 +136,34 @@ export const DashboardDetailPage = () => {
       sm: ensure(base.sm, 4, 4),
     }
   }, [draftLayout, dashboard, widgetKinds])
+
+  // Never a blocking dialog: a refused save renders the choice as a bar over the
+  // grid, and the arrangement stays in the draft either way.
+  const saveArrangement = (revision?: number) => {
+    saveLayout.mutate(
+      { layout, ...(revision === undefined ? {} : { revision }) },
+      {
+        onError: (error) => {
+          const details = (error as { details?: { currentRevision?: number } }).details
+          setConflictRevision(
+            typeof details?.currentRevision === 'number' ? details.currentRevision : null,
+          )
+        },
+        onSuccess: () => {
+          layoutDraft.clear()
+          setConflictRevision(null)
+          setEditing(false)
+        },
+      },
+    )
+  }
+
+  const takeTheirs = () => {
+    layoutDraft.clear()
+    setConflictRevision(null)
+    setEditing(false)
+    void queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboardId ?? '') })
+  }
 
   if (isLoading) {
     return (
@@ -175,9 +226,7 @@ export const DashboardDetailPage = () => {
               <button
                 className="rounded px-3 py-1.5 text-xs font-medium"
                 disabled={saveLayout.isPending}
-                onClick={() => {
-                  saveLayout.mutate(layout, { onSuccess: () => setEditing(false) })
-                }}
+                onClick={() => saveArrangement(baseRevisionRef.current ?? undefined)}
                 style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
                 type="button"
               >
@@ -186,7 +235,11 @@ export const DashboardDetailPage = () => {
             ) : (
               <button
                 className="rounded px-3 py-1.5 text-xs font-medium"
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  baseRevisionRef.current = dashboard.revision
+                  setConflictRevision(null)
+                  setEditing(true)
+                }}
                 style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
                 type="button"
                 data-testid="dashboard-edit"
@@ -196,6 +249,35 @@ export const DashboardDetailPage = () => {
             )}
           </div>
         </header>
+
+        {conflictRevision !== null || saveLayout.isError ? (
+          <div
+            className="flex flex-wrap items-center gap-3 border-b px-6 py-2 text-xs"
+            role="status"
+            style={{ borderColor: 'var(--sep)', background: 'var(--overlay-weak)' }}
+          >
+            <span style={{ color: 'var(--tx2)' }}>
+              Somebody else rearranged this dashboard while you were editing.
+              Your arrangement is kept.
+            </span>
+            <button
+              className="rounded px-2.5 py-1 font-medium"
+              onClick={() => saveArrangement()}
+              style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
+              type="button"
+            >
+              Keep mine
+            </button>
+            <button
+              className="rounded px-2.5 py-1"
+              onClick={takeTheirs}
+              style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
+              type="button"
+            >
+              Take theirs
+            </button>
+          </div>
+        ) : null}
 
         <div
           className="min-h-0 flex-1 overflow-auto p-4"

@@ -103,6 +103,9 @@ export const WorkflowDesignerPage = () => {
           void testRun.startTestRun()
         }}
         testRunState={testRun.state}
+        versionConflict={graphIo.versionConflict}
+        onKeepMine={graphIo.keepMyWorkflow}
+        onTakeTheirs={graphIo.takeTheirWorkflow}
       />
 
       <WorkflowToolbar

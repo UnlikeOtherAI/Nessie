@@ -33,6 +33,9 @@ export const useSendMessage = (threadId?: string) => {
       content: string
       attachmentIds?: string[]
       agentMentions?: PersonalAssistantMention[]
+      // Idempotency key for this unsent draft: a retried send resolves to the
+      // message the first attempt created instead of posting a second one.
+      clientMessageId?: string
     } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {

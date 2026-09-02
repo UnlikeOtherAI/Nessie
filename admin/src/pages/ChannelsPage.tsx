@@ -29,6 +29,7 @@ import {
   type MessageUserIdentity,
 } from '../components/features/channels/channel-helpers'
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
+import { channelComposerDraftKey } from '../components/features/channels/composer-draft'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useShareRestrictedMessage } from '../facades/messages/hooks'
@@ -203,6 +204,7 @@ export const ChannelsPage = () => {
     activeChannel,
     threadMessages,
     currentUserId: me?.user.id,
+    draftKey: channelComposerDraftKey(activeChannel?.id),
   })
   // Dropping files anywhere over the conversation column stages them in the
   // composer. The reply panel is a sibling with its own zone, so the two never

@@ -26,6 +26,7 @@ import { IntervalTriggerFields } from './IntervalTriggerFields'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
+import { draftKey, useDraft } from '../../../navigation/useDraft'
 import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
 import { useOverlay } from '../../overlays/useOverlay'
@@ -59,11 +60,27 @@ export const TriggerEditorDialog = ({
   const createWorkflowTrigger = useCreateWorkflowInstallationTrigger()
   const updateTrigger = useUpdateTrigger()
   const [formError, setFormError] = useState<string | null>(null)
-  const [form, setForm] = useState<TriggerFormState>(() =>
-    trigger
-      ? getEditState(trigger, channels)
-      : getDefaultCreateState(agents, channels, workflowInstallations, defaultTarget),
+
+  // The trigger as stored (or the create defaults) — the draft's baseline, so a
+  // dialog opened and dismissed untouched leaves nothing behind.
+  const baseline = useMemo<TriggerFormState>(
+    () =>
+      trigger
+        ? getEditState(trigger, channels)
+        : getDefaultCreateState(agents, channels, workflowInstallations, defaultTarget),
+    [agents, channels, defaultTarget, trigger, workflowInstallations],
   )
+
+  // Drafts (docs/navigation.md → "Drafts"): a half-configured schedule survives
+  // a dismissal, keyed by the trigger being edited. Local only — a debounced
+  // PUT would re-arm a live schedule on every keystroke, so Save stays the act
+  // that changes when something fires.
+  const triggerDraft = useDraft<TriggerFormState>(
+    open ? draftKey('trigger', trigger?.id ?? 'new') : null,
+    { initial: baseline },
+  )
+  const form = triggerDraft.draft
+  const setForm = triggerDraft.setDraft
 
   const mode = trigger ? 'edit' : 'create'
 
@@ -95,16 +112,12 @@ export const TriggerEditorDialog = ({
     createWorkflowTrigger.isPending ||
     updateTrigger.isPending
 
+  // The draft hook seeds the form (from its stored row, else the baseline)
+  // whenever the key changes; opening only has to clear the last error.
   useEffect(() => {
     if (!open) return
-
     setFormError(null)
-    setForm(
-      trigger
-        ? getEditState(trigger, channels)
-        : getDefaultCreateState(agents, channels, workflowInstallations, defaultTarget),
-    )
-  }, [agents, channels, defaultTarget, open, trigger, workflowInstallations])
+  }, [open, trigger])
 
   useEffect(() => {
     if (form.targetKind !== 'agent') {
@@ -157,7 +170,14 @@ export const TriggerEditorDialog = ({
     }))
   }, [form.targetKind, selectedWorkflowInstallation, workflowInstallations])
 
+  // Dismissing is not discarding: the draft stays under this trigger's key.
   const handleClose = () => {
+    setFormError(null)
+    onClose()
+  }
+
+  const closeSaved = () => {
+    triggerDraft.clear()
     setFormError(null)
     onClose()
   }
@@ -197,7 +217,7 @@ export const TriggerEditorDialog = ({
             : {}),
         })
         onSaved(updated)
-        handleClose()
+        closeSaved()
         return
       }
 
@@ -222,7 +242,7 @@ export const TriggerEditorDialog = ({
           targetChannelId: form.targetChannelId,
         })
         onSaved(created)
-        handleClose()
+        closeSaved()
         return
       }
 
@@ -241,7 +261,7 @@ export const TriggerEditorDialog = ({
         nextRunAt: payload.nextRunAt,
       })
       onSaved(created)
-      handleClose()
+      closeSaved()
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Unable to save trigger.')
     }

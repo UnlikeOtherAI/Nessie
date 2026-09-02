@@ -137,7 +137,7 @@ export const AgentDesignerContent = ({
     }
   }, [editingAgent])
 
-  const { actions, state } = useAgentDesigner(initialState, modelOptions)
+  const { actions, clearDraft, state } = useAgentDesigner(initialState, modelOptions, editingAgent?.id)
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
 
   // A new agent cannot be saved without a model, and the Design Assistant may
@@ -235,6 +235,9 @@ export const AgentDesignerContent = ({
         visibility: state.visibility,
       })
     }
+
+    // Saved: the form is no longer unsent, so its draft goes.
+    clearDraft()
 
     if (embedded) {
       onDone?.()

@@ -11,6 +11,11 @@ import {
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
+  readIfMatchRevision,
+  sendMalformedIfMatch,
+  sendRevisionConflict,
+} from '../../lib/if-match.js'
+import {
   getWorkflowTemplateStepSamples,
   recordWorkflowStepSamples,
   WorkflowStepSamplesError,
@@ -20,6 +25,7 @@ import {
   getWorkflowTemplate,
   listWorkflowTemplates,
   updateWorkflowTemplate,
+  WorkflowTemplateVersionConflictError,
 } from '../../services/workflow-templates.js'
 import { WorkflowTemplateValidationError } from '../../services/workflow-validation.js'
 import { auditWorkflowMutation } from '../../services/workflow-audit.js'
@@ -170,6 +176,11 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     }
 
     const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    // The designer auto-saves, so it states the version it edited; a second
+    // editor's save is refused instead of silently taking the graph over.
+    const ifMatch = readIfMatchRevision(request)
+    if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)
+
     let workflow
     try {
       workflow = await updateWorkflowTemplate(
@@ -177,8 +188,17 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
         actorContext,
         workflowTemplateId,
         body,
+        ifMatch.kind === 'revision' ? ifMatch.revision : undefined,
       )
     } catch (error) {
+      if (error instanceof WorkflowTemplateVersionConflictError) {
+        return sendRevisionConflict(
+          reply,
+          'WORKFLOW_TEMPLATE_VERSION_CONFLICT',
+          'This workflow changed since you started editing',
+          error.currentVersion,
+        )
+      }
       if (sendTemplateSaveError(reply, error)) {
         return reply
       }

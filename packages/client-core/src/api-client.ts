@@ -3,9 +3,15 @@ import type { ApiError, ApiResponse } from '@nessie/schemas'
 export type ApiClient = {
   delete: <TData>(path: string) => Promise<TData>
   get: <TData>(path: string) => Promise<TData>
-  patch: <TData>(path: string, body?: unknown) => Promise<TData>
-  post: <TData>(path: string, body?: unknown) => Promise<TData>
-  put: <TData>(path: string, body?: unknown) => Promise<TData>
+  // `headers` exists for the conditional writes the auto-saving editors make:
+  // `If-Match: <revision>` is what lets the server refuse a stale save instead
+  // of taking the last write (docs/navigation.md → "Drafts").
+  patch: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
+  post: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
+  put: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
 }
 
 export type ApiClientConfig = {
@@ -28,6 +34,10 @@ export class ApiClientError extends Error {
     message: string,
     readonly code: string | undefined,
     readonly status: number,
+    // The server's structured `error.details`, kept because a 409 from a
+    // conditional write carries the current revision the client needs to offer
+    // "take theirs" without a second round trip.
+    readonly details?: unknown,
   ) {
     super(message)
     this.name = 'ApiClientError'
@@ -43,7 +53,12 @@ const toApiError = async (response: Response): Promise<ApiClientError> => {
   try {
     const payload = JSON.parse(text) as ApiError
     if (payload.error?.message) {
-      return new ApiClientError(payload.error.message, payload.error.code, response.status)
+      return new ApiClientError(
+        payload.error.message,
+        payload.error.code,
+        response.status,
+        payload.error.details,
+      )
     }
   } catch {
     // Fall through to raw body.
@@ -102,20 +117,23 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
   return {
     delete: (path) => request(path, { method: 'DELETE' }),
     get: (path) => request(path, { method: 'GET' }),
-    patch: (path, body) =>
+    patch: (path, body, headers) =>
       request(path, {
         method: 'PATCH',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
-    post: (path, body) =>
+    post: (path, body, headers) =>
       request(path, {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
-    put: (path, body) =>
+    put: (path, body, headers) =>
       request(path, {
         method: 'PUT',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
   }
 }

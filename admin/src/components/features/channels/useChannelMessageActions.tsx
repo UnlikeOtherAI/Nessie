@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { draftKey, useDraft } from '../../../navigation/useDraft'
 import {
   useAddMessageReaction,
   useDeleteMessage,
@@ -12,7 +13,15 @@ export const useChannelMessageActions = (threadId?: string) => {
     useUpdateMessage(threadId)
   const { mutate: deleteMessage } = useDeleteMessage(threadId)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
-  const [editingContent, setEditingContent] = useState('')
+  // The message's stored text: the draft's baseline, so an edit that changes
+  // nothing is never persisted and Escape on an untouched row leaves no trace.
+  const [editingBaseline, setEditingBaseline] = useState('')
+  // Drafts (docs/navigation.md → "Drafts"): an in-progress edit is keyed by the
+  // message, so Escape keeps it instead of discarding a person's rewrite.
+  const editDraft = useDraft<string>(draftKey('message-edit', editingMessageId), {
+    initial: editingBaseline,
+  })
+  const editingContent = editDraft.draft
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   // The confirm outlives a channel switch: this hook sits at page level while
@@ -25,13 +34,14 @@ export const useChannelMessageActions = (threadId?: string) => {
   }, [threadId])
 
   const startEdit = useCallback((messageId: string, content: string) => {
+    setEditingBaseline(content)
     setEditingMessageId(messageId)
-    setEditingContent(content)
   }, [])
 
+  // Closing the editor is not discarding it: the draft stays under this
+  // message's key and the next Edit reopens where the person left off.
   const cancelEdit = useCallback(() => {
     setEditingMessageId(null)
-    setEditingContent('')
   }, [])
 
   const submitEdit = useCallback(
@@ -43,11 +53,13 @@ export const useChannelMessageActions = (threadId?: string) => {
 
       try {
         await updateMessage({ content: next, messageId })
+        // Saved: the rewrite is no longer unsent, so its draft goes.
+        editDraft.clear()
       } finally {
-        cancelEdit()
+        setEditingMessageId(null)
       }
     },
-    [cancelEdit, editingContent, updateMessage],
+    [editDraft, editingContent, updateMessage],
   )
 
   // Asking is all this does now. `window.confirm` blocked here and returned the
@@ -95,7 +107,7 @@ export const useChannelMessageActions = (threadId?: string) => {
   return {
     addReaction,
     cancelEdit,
-    changeEditingContent: setEditingContent,
+    changeEditingContent: editDraft.setDraft,
     confirmDelete,
     deleteConfirm,
     editingContent,

@@ -92,6 +92,7 @@ export const mapPage = (page: PageRow): KnowledgePageRecord => ({
   latestVersion: mapVersion(page.versions[0] ?? null),
   publishedVersion: mapVersion(page.publishedVersion),
   publishedVersionId: page.publishedVersionId,
+  revision: page.revision,
   organizationId: page.organizationId,
   projectId: page.projectId,
   teamId: page.teamId,
