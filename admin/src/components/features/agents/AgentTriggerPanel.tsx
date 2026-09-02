@@ -21,6 +21,13 @@ import {
 
 type AgentTriggerPanelProps = {
   agent: AgentRecord
+  /**
+   * What this surface calls a trigger. The agent page says "Triggers" beside
+   * the rest of its configuration vocabulary; a conversation's Routines tab
+   * says "Routines", and the heading has to match the tab a person just
+   * pressed. One component, two labels — not two panels.
+   */
+  title?: string
 }
 
 const TriggerRow = ({
@@ -124,7 +131,7 @@ const TriggerRow = ({
   )
 }
 
-export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
+export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPanelProps) => {
   const isOwner = useIsOwner()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const pause = usePauseTrigger()
@@ -134,7 +141,7 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
   if (!isOwner) {
     return (
       <section className="admin-card p-4">
-        <SectionLabel>Triggers</SectionLabel>
+        <SectionLabel>{title}</SectionLabel>
         <div className="mt-3 text-sm text-[color:var(--tx3)]">Owner access required.</div>
       </section>
     )
@@ -144,7 +151,7 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
     <section className="admin-card p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <SectionLabel>Triggers</SectionLabel>
+          <SectionLabel>{title}</SectionLabel>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">
             Automatic activation and manual fire controls for this agent.
           </div>
