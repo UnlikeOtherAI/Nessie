@@ -3,6 +3,8 @@ import { UserAvatar } from '../../primitives/UserAvatar'
 
 type AgentOwnerCellProps = {
   owner?: AgentOwner | null
+  /** A blueprint-managed agent has no steward at all — see below. */
+  systemManaged?: boolean
   token: string | null
 }
 
@@ -16,11 +18,25 @@ type AgentOwnerCellProps = {
  * rather than guessing a name. A deactivated steward is said plainly, because
  * an agent whose owner has left keeps running and somebody has to notice.
  *
+ * A `systemManaged` agent is the one row where a null owner is NOT team-owned:
+ * nobody edits a blueprint agent, organisation owners included, so reading it
+ * as "Team-owned" would advertise an edit authority that does not exist.
+ *
  * The avatar is `loading="lazy"` inside `UserAvatar`'s relay: each person costs
  * one upstream fetch and only the roster subject set is cached, not the image,
  * so a long agent list would otherwise fan out on first paint.
  */
-export const AgentOwnerCell = ({ owner, token }: AgentOwnerCellProps) => {
+export const AgentOwnerCell = ({
+  owner,
+  systemManaged,
+  token,
+}: AgentOwnerCellProps) => {
+  if (systemManaged) {
+    return (
+      <span className="text-xs text-[color:var(--tx3)]">Provided by Nessie</span>
+    )
+  }
+
   if (!owner) {
     return (
       <span className="text-xs text-[color:var(--tx3)]">Team-owned</span>

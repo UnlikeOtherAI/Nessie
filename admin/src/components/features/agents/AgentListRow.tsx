@@ -52,7 +52,11 @@ export const AgentListRow = ({
       />
     </td>
     <td className="hidden w-44 px-3 py-2.5 align-middle sm:table-cell">
-      <AgentOwnerCell owner={agent.owner} token={token} />
+      <AgentOwnerCell
+        owner={agent.owner}
+        systemManaged={agent.systemManaged}
+        token={token}
+      />
     </td>
     <td className="w-9 py-2.5 pl-0 pr-4 text-right align-middle">
       <FontAwesomeIcon
