@@ -24,12 +24,16 @@ export const BROWSER_OPEN_TOOL_ID = 'browser_open'
 export const BROWSER_OBSERVE_TOOL_ID = 'browser_observe'
 export const BROWSER_ACT_TOOL_ID = 'browser_act'
 export const BROWSER_CLOSE_TOOL_ID = 'browser_close'
+export const BROWSER_LOGIN_REQUEST_TOOL_ID = 'browser_login_request'
+export const BROWSER_DOWNLOAD_TOOL_ID = 'browser_download'
 
 export const CLOUD_BROWSER_TOOL_IDS = [
   BROWSER_OPEN_TOOL_ID,
   BROWSER_OBSERVE_TOOL_ID,
   BROWSER_ACT_TOOL_ID,
   BROWSER_CLOSE_TOOL_ID,
+  BROWSER_LOGIN_REQUEST_TOOL_ID,
+  BROWSER_DOWNLOAD_TOOL_ID,
 ] as const
 
 export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
@@ -44,13 +48,24 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'a site that needs clicking through, a form, an app behind a UI. For '
       + 'simply reading a public page, web_fetch is cheaper and faster. '
       + 'The browser stays open for the rest of this run unless you close it, '
-      + 'and browser time is metered, so close it when the task is done.',
+      + 'and browser time is metered, so close it when the task is done.\n\n'
+      + 'mode "mine" opens your own browser, which keeps its logins between '
+      + 'runs — use it for anything behind a sign-in. mode "ephemeral" opens a '
+      + 'throwaway browser with no history, for public pages. Your own browser '
+      + 'can only be open in one run at a time.',
     parameters: {
       type: 'object',
       properties: {
         url: {
           type: 'string',
           description: 'The HTTPS URL to load.',
+        },
+        mode: {
+          type: 'string',
+          enum: ['mine', 'ephemeral'],
+          description:
+            'Which browser to open. Defaults to "ephemeral"; use "mine" when '
+            + 'the page needs a signed-in session.',
         },
       },
       required: ['url'],
@@ -136,5 +151,57 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: {} },
     requiresExplicitGrant: true,
     safe: true,
+  },
+  {
+    id: BROWSER_LOGIN_REQUEST_TOOL_ID,
+    label: 'Ask For A Sign-In',
+    summary: 'Ask the person to sign your browser into a service.',
+    description:
+      'Ask the person who started this run to sign your browser into a '
+      + 'service. Use it when a page needs credentials: you cannot type them, '
+      + 'and you must never ask for a password in chat. This posts a card with '
+      + 'a link that opens your browser for them to sign in themselves, and '
+      + 'pauses the run until they are done — your current browser is closed '
+      + 'first, so nothing is metered while they take their time. Once they '
+      + 'finish, the login stays in your browser for future runs too.',
+    parameters: {
+      type: 'object',
+      properties: {
+        service: {
+          type: 'string',
+          description:
+            'The service needing a sign-in, as a person would name it '
+            + '("Google", "Linear"). Shown on the card.',
+        },
+        reason: {
+          type: 'string',
+          description: 'One sentence on why you need it, shown on the card.',
+        },
+      },
+      required: ['service', 'reason'],
+    },
+    requiresExplicitGrant: true,
+    safe: false,
+  },
+  {
+    id: BROWSER_DOWNLOAD_TOOL_ID,
+    label: 'Download From Browser',
+    summary: 'Save a file from the open browser into this workspace.',
+    description:
+      'Download the file a link or image node points at, and save it as an '
+      + 'attachment you can send. Address it by the nodeId from the most recent '
+      + 'browser_observe, exactly as with click.',
+    parameters: {
+      type: 'object',
+      properties: {
+        nodeId: {
+          type: 'number',
+          description: `The link or image to download: ${NODE_ID_DESCRIPTION}`,
+        },
+      },
+      required: ['nodeId'],
+    },
+    requiresExplicitGrant: true,
+    safe: false,
   },
 ]

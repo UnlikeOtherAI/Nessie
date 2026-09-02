@@ -1,5 +1,7 @@
 import { connectCdp, type CdpClient } from '@nessie/browser-cloud'
 
+import type { OriginGateState } from './origin-gate.js'
+
 /**
  * Live CDP connections, keyed by our own session row id.
  *
@@ -17,6 +19,13 @@ type PooledSession = {
   connectUrl: string
   cdp: CdpClient | null
   lastUsedAt: number
+  /**
+   * Which origins this browser holds cookies for, and whether it has actually
+   * been to one. Read once at open from the browser itself, because the
+   * cross-origin write gate must key on a mechanical fact rather than on the
+   * display text somebody typed at sign-in.
+   */
+  originGate: OriginGateState
 }
 
 const pool = new Map<string, PooledSession>()
@@ -32,10 +41,18 @@ const evictIdle = (now: number): void => {
   }
 }
 
-export const registerSession = (sessionId: string, connectUrl: string): void => {
+export const registerSession = (
+  sessionId: string,
+  connectUrl: string,
+  originGate: OriginGateState = { authenticatedOrigins: new Set(), touchedAuthenticated: false },
+): void => {
   evictIdle(Date.now())
-  pool.set(sessionId, { connectUrl, cdp: null, lastUsedAt: Date.now() })
+  pool.set(sessionId, { connectUrl, cdp: null, lastUsedAt: Date.now(), originGate })
 }
+
+/** Null when this worker has no record of the session. */
+export const originGateFor = (sessionId: string): OriginGateState | null =>
+  pool.get(sessionId)?.originGate ?? null
 
 /**
  * Returns null when this worker has no record of the session — a different

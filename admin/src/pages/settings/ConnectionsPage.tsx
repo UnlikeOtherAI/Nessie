@@ -5,6 +5,7 @@ import {
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
+import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/MyBrowserLoginsPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
@@ -107,6 +108,7 @@ export const ConnectionsPage = () => {
 
         <ModelSubscriptionSection />
         <CloudBrowserPanel scope="user" />
+        <MyBrowserLoginsPanel />
       </div>
     </SettingsPanel>
   )
