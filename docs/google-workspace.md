@@ -1,7 +1,8 @@
 # Google Workspace in Nessie
 
 The operational detail behind `CLAUDE.md` → "Google scopes are a capability
-catalog". The invariants themselves are in `AGENTS.md`; this file carries
+catalog". The invariants themselves are in
+[standards/google-workspace.md](standards/google-workspace.md); this file carries
 the facts that live nowhere else. Split out of `CLAUDE.md` when that file
 reached its structure-lint cap.
 
@@ -11,7 +12,7 @@ reached its structure-lint cap.
 which Google scopes Nessie may request, what each lets an agent do, and its
 verification tier. Never hardcode a Google scope anywhere else, and never
 derive a capability from a raw scope string at a call site. Plan and phasing:
-[docs/plans/2026-08-31-google-workspace-email-calendar.md](docs/plans/2026-08-31-google-workspace-email-calendar.md).
+[docs/plans/2026-08-31-google-workspace-email-calendar.md](plans/2026-08-31-google-workspace-email-calendar.md).
 
 - **`grantedScopes` is what Google returned, never what we asked for.** A
   person can un-tick individual scopes on the consent screen, so the token
@@ -40,7 +41,7 @@ derive a capability from a raw scope string at a call site. Plan and phasing:
   the UI says "blocked locally — Disconnect to revoke at Google" and must not
   claim otherwise.
 - **A composed email is a durable row whose CONTENT an approval binds.**
-  Rule and rationale: `AGENTS.md` → "An approval over provider content binds
+  Rule and rationale: [standards/google-workspace.md](standards/google-workspace.md) → "An approval over provider content binds
   the content". Facts not restated there: `sendDraftForUser` holds a consented
   send for `NESSIE_GMAIL_UNDO_WINDOW_MS` (default 15s) so the card can offer
   Undo, and a worker sweep dispatches it when the window elapses — without the

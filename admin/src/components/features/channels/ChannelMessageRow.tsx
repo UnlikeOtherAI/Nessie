@@ -19,7 +19,7 @@ import {
   type MessageUserIdentity,
 } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
-import { VoiceCallMessage } from './VoiceCallMessage'
+import { readVoiceCallRecord, VoiceCallMessage } from './VoiceCallMessage'
 import {
   EmbeddedWidget,
   readMessageEmbedIds,
@@ -179,9 +179,8 @@ export const ChannelMessageRow = ({
   const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
   // A finished call: server-written metadata, so this is structural rather
   // than a reading of the text.
-  const carriesVoiceCall = Boolean(
-    (message.metadata as { voiceCall?: unknown } | undefined)?.voiceCall,
-  )
+  const voiceCall = readVoiceCallRecord(message.metadata)
+  const carriesVoiceCall = voiceCall !== null
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
@@ -383,9 +382,16 @@ export const ChannelMessageRow = ({
                   {message.content}
                 </MessageMarkdown>
               )}
-              {/* A call transcript printed in full buries the conversation it
-                  belongs to, so it collapses to its summary and opening turns. */}
-              {carriesVoiceCall ? <VoiceCallMessage content={message.content} /> : null}
+              {/* A call leaves a compaction in the message and the verbatim
+                  transcript as an attachment; the card shows the first and
+                  opens the second in place. */}
+              {voiceCall ? (
+                <VoiceCallMessage
+                  compacted={voiceCall.compacted}
+                  content={message.content}
+                  transcriptAttachmentId={voiceCall.transcriptAttachmentId}
+                />
+              ) : null}
               {message.restrictedSources && shareRestrictedMessage ? (
                 <div className="mt-2">
                   <RestrictedMessageCard

@@ -179,6 +179,14 @@ export type AgentRecord = {
    * structurally instead of matching a display name.
    */
   systemSlug?: string | null
+  /**
+   * Server-decided: addressing this system agent resolves to the caller's own
+   * pre-provisioned home DM instead of binding it into a new conversation.
+   * Present only when true — it is what puts the Personal Assistant and a
+   * global agent in the "New message" address book without a client naming a
+   * slug.
+   */
+  dmAddressable?: boolean
   todosEnabled: boolean
   /** Gemini Live voice for calls; null/absent = the deployment default. */
   voiceName?: string | null

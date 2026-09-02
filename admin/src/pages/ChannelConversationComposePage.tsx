@@ -8,6 +8,13 @@ import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
+import {
+  buildRecipientOptions,
+  recipientKey,
+  selectAddressableAgents,
+  type Recipient,
+  type RecipientOption,
+} from '../lib/channel-compose-recipients'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
@@ -19,28 +26,7 @@ import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
-type RecipientKind = 'agent' | 'user'
-
-type Recipient = {
-  id: string
-  kind: RecipientKind
-}
-
-type RecipientOption = Recipient & {
-  detail: string
-  label: string
-  user?: UserRecord
-}
-
-const optionKey = (option: Recipient): string => `${option.kind}:${option.id}`
-
-const matchesQuery = (option: RecipientOption, query: string): boolean => {
-  const term = query.trim().toLowerCase()
-  if (!term) {
-    return true
-  }
-  return `${option.label} ${option.detail}`.toLowerCase().includes(term)
-}
+const optionKey = recipientKey
 
 const getRecipientName = (
   recipient: Recipient,
@@ -60,7 +46,10 @@ export const ChannelConversationComposePage = () => {
   const { me, token } = useAuthSession()
   const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
-  const { data: allAgents = [] } = useAgents()
+  // `scope: 'all'` is the arm that includes the read-only system tier. The
+  // default list excludes every `systemManaged` agent, which is why no global
+  // agent and no Personal Assistant could ever appear in this address book.
+  const { data: allAgents = [] } = useAgents({ scope: 'all' })
   const startConversation = useStartChannelConversation()
   const sendMessage = useSendMessageToThread()
   const mentionRef = useRef<MentionInputHandle>(null)
@@ -101,7 +90,7 @@ export const ChannelConversationComposePage = () => {
     [users],
   )
   const agents = useMemo(
-    () => (isOwner ? allAgents : []),
+    () => selectAddressableAgents(allAgents, { isOwner }),
     [allAgents, isOwner],
   )
   const agentsById = useMemo(
@@ -112,26 +101,10 @@ export const ChannelConversationComposePage = () => {
     () => new Set(recipients.map(optionKey)),
     [recipients],
   )
-  const options = useMemo<RecipientOption[]>(() => {
-    const userOptions = users.map((user) => ({
-      detail: user.email,
-      id: user.id,
-      kind: 'user' as const,
-      label: user.displayName,
-      user,
-    }))
-    const agentOptions = agents.map((agent) => ({
-      detail: agent.role,
-      id: agent.id,
-      kind: 'agent' as const,
-      label: agent.name,
-    }))
-
-    return [...userOptions, ...agentOptions]
-      .filter((option) => !selectedKeys.has(optionKey(option)))
-      .filter((option) => matchesQuery(option, query))
-      .slice(0, 8)
-  }, [agents, query, selectedKeys, users])
+  const options = useMemo<RecipientOption[]>(
+    () => buildRecipientOptions({ agents, limit: 8, query, selectedKeys, users }),
+    [agents, query, selectedKeys, users],
+  )
 
   const mentionEntities = useMemo<MentionEntity[]>(
     () =>

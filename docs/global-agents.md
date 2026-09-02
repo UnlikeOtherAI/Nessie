@@ -1,6 +1,6 @@
 # Global agents — the Agent Designer's mechanics
 
-The invariants live in `AGENTS.md` → "A global agent is a blueprint in code",
+The invariants live in [standards/global-agents.md](standards/global-agents.md),
 and the map entry in `CLAUDE.md` → "Global agents". This file holds the
 mechanics beyond both: what the Agent Designer's tools stand on, how its
 capability catalogue is generated, how `agent_handoff` delivers a briefing, and
@@ -9,6 +9,14 @@ one.
 
 Spec and full history:
 [plans/2026-09-02-agent-designer-global-agent.md](plans/2026-09-02-agent-designer-global-agent.md).
+
+## The model a global agent runs on
+
+Blueprint pin → `NESSIE_DESIGNER_MODEL` → the organisation's default, resolved
+once by `resolveGlobalAgentModel` and used by **both** Designer faces, so the
+chat agent and the page sidebar can never answer on different models. A
+blueprint that pins nothing (the Librarian's cost stance) simply inherits the
+organisation's choice.
 
 ## The Designer's toolset
 
@@ -118,17 +126,71 @@ is gone.
   draft to the person's own Designer DM through `deliverGlobalAgentBrief`, so it
   is the same hidden server-authored briefing a handoff writes.
 
-## The read-only configuration view
+## The detail surface: the ordinary one, disabled
 
-`readAgentConfigView` composes `readAgentRecordForActor` with
-`loadAgentToolCatalog`, resolving the sparse policy map into the tools the agent
-actually has: `default` (a deny-mode builtin nothing removed), `policy`
-(switched on for this agent), or `reserved` (a blueprint identity tool no policy
-can grant, exercisable only in the agent's own conversation).
+A global agent renders **the same** agent detail page every other agent renders.
+Its Edit tab is `AgentDesignerContent` → `AgentDesignerForm` in `readOnly` mode:
+the same sections in the same order — avatar, name, role, visibility, model,
+reasoning effort, run limits, to-dos, system prompt — with every input, select,
+combobox and switch `disabled`, no Save button rendered at all (there is nothing
+to save), and no Design Assistant drawer (it exists to fill in a form this reader
+cannot submit). A lead-in note at the top of the form says the agent ships with
+Nessie and changes only when the deployment is updated.
 
-`GET /api/agents/:agentId/config` serves it under exactly the list entitlement,
-and `admin/src/components/features/agents/SystemAgentConfigPanel.tsx` renders it
-in place of the detail tabs for any `systemManaged` agent, with no edit
-affordance at all. `isAgentAccessibleToActor` is deliberately untouched: status,
-activity, messages and children still 404 on a system agent, because a global
-agent's activity spans every member's private DM.
+This replaced a bespoke `SystemAgentConfigPanel` card, deleted 2026-09-02: it was
+a second implementation of a view that already existed, re-rendering name, role,
+model, effort, limits, prompt and tools in its own layout — the defect Rule zero
+#4 names. With it went `GET /api/agents/:agentId/config` and
+`readAgentConfigView`, its only consumers. `agent_read` (the Designer's own tool)
+still answers configuration for a `systemManaged` agent through
+`readAgentRecordForActor`, and `agent_tool_catalog` still describes the reserved
+blueprint tools; the admin needs neither, because `GET /api/agents?scope=all`
+already returns the whole record — prompt, policy, model, effort, limits — for a
+system agent, and the detail page seeds the form from it.
+
+**Which sections a global agent has is structural, stated once** in
+`AgentDetailTabs` (`SYSTEM_AGENT_TABS`): Edit and Tools, and nothing else.
+`isAgentAccessibleToActor` is deliberately untouched, so status, activity,
+sub-agents, messages, to-dos, documents, the mailbox and the cloud browser all
+404 on a system agent — a global agent's activity spans every member's private
+DM and must stay closed. Those tabs are not rendered and their reads are not
+issued. The Tools tab is `AgentAvailableTools`, which already resolves to its
+read-only `ToolPicker` for an agent the viewer cannot edit — the same catalogue,
+the same search, the switches disabled.
+
+## Addressable, not bound — the "New message" address book
+
+The Direct-messages list shows *conversations*: a row appears once its channel
+carries a message. The address book behind **New message** answers the opposite
+question — everything you can start a conversation with — so every agent a
+person may talk to belongs in it, the Agent Designer and the Personal Assistant
+included, whether or not they have written to it yet.
+
+A DM-homed system agent is never *bound* into a new conversation:
+`bindAgentToChannel` refuses every `systemManaged` agent and every system
+channel, and a system DM holds exactly one member by database constraint. It
+already owns one home DM per person, so addressing it **resolves** to that
+channel.
+
+- **One predicate, both sides.** `isDmAddressableSystemAgent`
+  (`@nessie/workspace-admin`) is true for the Personal Assistant and for any
+  global agent whose blueprint homes it `per_user_dm`. `mapAgentRecord` emits it
+  as `AgentRecord.dmAddressable` — present only when true — and the picker
+  (`admin/src/lib/channel-compose-recipients.ts`) offers exactly the rows
+  carrying it, so no client hand-names a slug and the picker cannot offer an
+  option the route would refuse. It reads `GET /api/agents?scope=all`: the
+  default list excludes every `systemManaged` row, which is why no global agent
+  and no Personal Assistant could ever appear in that address book.
+- **The server branch is structural and member-level.**
+  `POST /api/channels/conversations` calls `resolveSystemAgentConversation`,
+  which ensures the home through the one provisioning path each agent already
+  owns (`openGlobalAgentHome` → `ensureGlobalAgentBootstrap`, or
+  `ensurePersonalAssistantBootstrap` — never a second provisioner) and returns
+  that channel with its `defaultThreadId`. No owner gate: that gate exists
+  because binding an arbitrary agent into a new conversation is *placement*, and
+  opening your own pre-provisioned home DM is not placement at all. It stands
+  unchanged for every other agent recipient, which still reaches
+  `requireOwner` + `findOrCreatePrivateConversationChannel`.
+- **Combining one with anybody else is refused in words**
+  (`SYSTEM_AGENT_CONVERSATION_EXCLUSIVE`), never half-honoured: there is no
+  shape of channel that could hold it.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   useLocation,
@@ -78,14 +78,28 @@ type AgentDesignerContentProps = {
   // bar, no navigation on save) so it can live as the Edit tab inside the agent
   // detail page. `onDone` fires after a successful embedded save.
   embedded?: boolean
+  /**
+   * A note rendered at the top of the form column, inside the ordinary layout.
+   * A global agent uses it to say why its controls are inert.
+   */
+  leadIn?: ReactNode
   onDone?: () => void
+  /**
+   * Render the whole designer as a reader sees it: every control disabled and
+   * no save affordance at all — not a disabled one, because there is nothing to
+   * save. A Nessie-managed agent takes this path so it renders the *same*
+   * surface as every other agent rather than a second, bespoke one.
+   */
+  readOnly?: boolean
 }
 
 export const AgentDesignerContent = ({
   agents,
   editingAgent,
   embedded = false,
+  leadIn,
   onDone,
+  readOnly = false,
 }: AgentDesignerContentProps) => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -275,40 +289,47 @@ export const AgentDesignerContent = ({
     }
     void navigate('/agents')
   }
+  // A read-only view offers no save at all. A *disabled* Save would promise
+  // that something here could be saved once some condition is met, and nothing
+  // ever will be: the agent's configuration ships with the deployment.
   const headerActions: PageHeaderAction[] = [
     {
       id: 'cancel',
-      label: 'Cancel',
+      label: readOnly ? 'Back' : 'Cancel',
       onSelect: handleBack,
       priority: 60,
     },
-    {
-      disabled: !canSave,
-      id: 'save-agent',
-      label: isSaving
-        ? (isEditMode ? 'Saving...' : 'Creating...')
-        : (isEditMode ? 'Save changes' : 'Create agent'),
-      onSelect: () => void handleSave(),
-      primary: true,
-      priority: 100,
-      ...(saveBlocker ? { title: saveBlocker } : {}),
-    },
+    ...(readOnly
+      ? []
+      : [{
+        disabled: !canSave,
+        id: 'save-agent',
+        label: isSaving
+          ? (isEditMode ? 'Saving...' : 'Creating...')
+          : (isEditMode ? 'Save changes' : 'Create agent'),
+        onSelect: () => void handleSave(),
+        primary: true,
+        priority: 100,
+        ...(saveBlocker ? { title: saveBlocker } : {}),
+      } satisfies PageHeaderAction]),
   ]
 
   return (
     <div className="flex h-full flex-col">
       {embedded ? (
-        <div className="flex flex-shrink-0 items-center justify-end gap-3 border-b border-[color:var(--sep)] px-5 py-2.5">
-          <button
-            className="admin-button admin-button-primary"
-            disabled={!canSave}
-            onClick={() => void handleSave()}
-            title={saveBlocker ?? undefined}
-            type="button"
-          >
-            {isSaving ? 'Saving...' : 'Save changes'}
-          </button>
-        </div>
+        readOnly ? null : (
+          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-b border-[color:var(--sep)] px-5 py-2.5">
+            <button
+              className="admin-button admin-button-primary"
+              disabled={!canSave}
+              onClick={() => void handleSave()}
+              title={saveBlocker ?? undefined}
+              type="button"
+            >
+              {isSaving ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        )
       ) : (
         // A Flow that returns to an explicit address the registry cannot
         // know (the list it was opened from), so it owns its Back on every
@@ -324,7 +345,7 @@ export const AgentDesignerContent = ({
 
       {/* The disabled save button is in the header, so its reason sits directly
           under it — a tooltip would leave the dead button unexplained. */}
-      {saveBlocker && !isSaving ? (
+      {saveBlocker && !isSaving && !readOnly ? (
         <div
           className={[
             'flex-shrink-0 border-b border-[color:var(--sep)] bg-[color:var(--overlay-weak)]',
@@ -351,13 +372,15 @@ export const AgentDesignerContent = ({
                     role: state.role.trim() || 'assistant',
                     systemPrompt: state.systemPrompt,
                   }}
-                  canEdit={isOwner}
+                  canEdit={isOwner && !readOnly}
                   size="xl"
                 />
                 <div className="min-w-0">
                   <SectionLabel>Avatar</SectionLabel>
                   <p className="mt-1 text-sm text-[color:var(--tx3)]">
-                    Tap the pencil to upload an image or generate a headshot.
+                    {readOnly
+                      ? 'Provided with this agent.'
+                      : 'Tap the pencil to upload an image or generate a headshot.'}
                   </p>
                 </div>
               </section>
@@ -373,10 +396,12 @@ export const AgentDesignerContent = ({
               actions={actions}
               canManageExplicitTools={isOwner}
               canManageTodos={isOwner}
+              leadIn={leadIn}
               modelOptions={modelOptions}
               modelOptionsError={modelOptionsError}
               modelsLoading={modelOptionsQuery.isLoading}
               parentAgentName={parentAgent?.name}
+              readOnly={readOnly}
               showTools={!isEditMode}
               state={state}
               toolGroups={toolCatalog.groups}
@@ -386,7 +411,12 @@ export const AgentDesignerContent = ({
           </div>
         </div>
 
-        {assistantPanel?.panelOutlet
+        {/* No design assistant on a read-only view: it exists to fill in a form
+            this reader cannot save. The detail page already withholds the
+            drawer, so this only covers the standalone route. */}
+        {readOnly
+          ? null
+          : assistantPanel?.panelOutlet
           ? createPortal(
               <DesignerChat
                 continuingInChat={continueInChat.isPending}

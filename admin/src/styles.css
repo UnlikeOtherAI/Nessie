@@ -601,6 +601,23 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   }
 }
 
+/* Pinned while the content-only refresh runs: the gesture is released, the data
+   is re-fetching, and the spinner holds at the pull offset and spins in place
+   until the refetch settles. */
+.phone-navigation-refresh[data-refreshing='true'] {
+  opacity: 1;
+  animation: phone-refresh-active 800ms linear infinite;
+}
+
+@keyframes phone-refresh-active {
+  from {
+    transform: translate3d(0, 48px, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 48px, 0) rotate(360deg);
+  }
+}
+
 /* The scrim over a revealed lower layer. Each screen carries one; it shows
    only while another screen rests over this one, and runStackTransition (or
    the finger, during a swipe) lifts it in step with the slide. */
@@ -2222,6 +2239,17 @@ button.reaction-pill-active:focus-visible {
   box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
+/* Disabled state, matching `.admin-button:disabled` below. A field with no rule
+   of its own falls back to the browser's grey, which on a themed panel reads as
+   a broken control rather than one that is simply not the reader's to change —
+   and that difference is the whole point of a read-only form (a global agent's
+   configuration) being the same form, dimmed. `:disabled` is inherited from an
+   enclosing `<fieldset disabled>`, so the run-limits fieldset gets it too. */
+.admin-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .admin-button {
   display: inline-flex;
   align-items: center;
@@ -2301,6 +2329,14 @@ button.reaction-pill-active:focus-visible {
    secondary buttons and a filled red would over-weight the row. */
 .admin-button.admin-button-danger {
   color: var(--danger-text);
+}
+
+/* A header action whose mark turns red under the pointer: the channel's
+   routine-recording control, where red is what a record button means. Only
+   the icon is tinted — the box keeps the neutral header treatment every
+   other action in the row shares. */
+.page-header-action-danger:hover:not(:disabled) svg {
+  color: var(--danger);
 }
 
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
