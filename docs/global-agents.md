@@ -10,6 +10,14 @@ one.
 Spec and full history:
 [plans/2026-09-02-agent-designer-global-agent.md](plans/2026-09-02-agent-designer-global-agent.md).
 
+## The model a global agent runs on
+
+Blueprint pin → `NESSIE_DESIGNER_MODEL` → the organisation's default, resolved
+once by `resolveGlobalAgentModel` and used by **both** Designer faces, so the
+chat agent and the page sidebar can never answer on different models. A
+blueprint that pins nothing (the Librarian's cost stance) simply inherits the
+organisation's choice.
+
 ## The Designer's toolset
 
 The toolset is the blueprint's `identityToolIds`: the five Personal Assistant
