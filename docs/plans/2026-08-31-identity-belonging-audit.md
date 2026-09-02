@@ -31,7 +31,7 @@ changed by join/invite/switch — and diagnose a concrete reported bug:
 | Fact | Where | Authority |
 |---|---|---|
 | Person | `User.uoaSub` unique nullable ([schema.prisma:853](../../api/prisma/schema.prisma)) — the principal key on the UOA path; `email` unique, adoption bridge only | UOA |
-| Organisation | `Organization.externalOrgId` unique nullable ([schema.prisma:1039](../../api/prisma/schema.prisma)); `name` a non-authoritative mirror healed by `syncExternalOrganizationNames` | UOA |
+| Organisation | `Organization.externalOrgId` unique nullable ([schema.prisma:1039](../../api/prisma/schema.prisma)); `name` a non-authoritative mirror healed by `syncExternalOrganizationNames`, renamed only by relaying `PUT /org/organisations/:orgId` | UOA |
 | Workspace | `Team.externalWorkspaceId` unique + `externalOrgId` ([schema.prisma:1379-1380](../../api/prisma/schema.prisma)); one workspace = Project + Team + `#general` | UOA |
 | Membership | `OrganizationMember` / `ProjectMember` / `TeamMember` rows — a **create-only projection** of the verified `org.org_role` / `org.team_roles[workspaceId]` claims ([workspace-principal.ts:146-175](../../api/src/services/workspace-principal.ts), [uoa-roles.ts:170-198](../../api/src/services/uoa-roles.ts)) | UOA (projected) |
 | Credential | `UoaSessionCredential` (encrypted refresh material), `ProductAccountLink` per org with `uoaSub`/`uoaTokenVersion`/`activeOrgId`/`activeTeamId` | Nessie (permitted retention) |

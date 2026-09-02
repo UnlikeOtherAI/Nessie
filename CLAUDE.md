@@ -34,7 +34,7 @@ section below points into `AGENTS.md`, that pointer is the rule.
 Where UOA SSO is configured, UOA is the sole authority for identity, profiles,
 and organisation/team membership, and its hierarchy maps **1:1** into Nessie
 (`Organization.externalOrgId`, unique; one UOA workspace = one `Team`). No
-second local copy of identity or org structure may exist. Full rule:
+second local copy may exist, and renaming it **relays to UOA**. Full rule:
 `AGENTS.md` → "UOA owns the org structure"; model and migration:
 [docs/plans/2026-08-15-uoa-org-tenancy.md](docs/plans/2026-08-15-uoa-org-tenancy.md);
 the invariant itself: [docs/brief.md](docs/brief.md) → "Current SSO identity
