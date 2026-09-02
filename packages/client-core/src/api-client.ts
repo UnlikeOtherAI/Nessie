@@ -166,6 +166,7 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
 // `import { ... } from '@nessie/client-core'` call sites keep working.
 export type {
   AgentRecord,
+  AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   AuthProviderDescriptor,
