@@ -1,5 +1,5 @@
+import { faCircleDot } from '@fortawesome/free-regular-svg-icons'
 import {
-  faCircleDot,
   faCircleInfo,
   faGear,
   faMagnifyingGlass,
@@ -149,12 +149,17 @@ export const ChannelHeader = ({
     } satisfies PageHeaderAction] : []),
     ...(boundAgents.length > 0 ? [{
       compact: true,
+      // The record mark, and the regular set's only appearance in the admin:
+      // a hairline ring around a filled dot is what a record button looks
+      // like, and the solid set draws the same name as a filled disc with a
+      // hole punched out of it.
       icon: faCircleDot,
       id: 'record-routine',
       label: routineRecording ? 'Recording routine' : 'Record routine',
       onSelect: onToggleRoutineRecording,
       priority: 55,
       selected: routineRecording,
+      tone: 'danger',
     } satisfies PageHeaderAction] : []),
     activeCall && callMeetingUri && !voiceCallSupported
       ? {
