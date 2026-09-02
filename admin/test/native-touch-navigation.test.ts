@@ -289,7 +289,11 @@ test('the native phone shell clears the glass tab bar within the WebView content
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
-  assert.match(phoneLayer, /className="phone-navigation-page"/)
+  // The class now arrives through `pageClassName`, which adds the fill variant
+  // for a surface that owns its own scroller; the shell class itself is still
+  // on every page.
+  assert.match(phoneLayer, /className=\{pageClassName\(/)
+  assert.match(phoneLayer, /: 'phone-navigation-page'/)
   assert.match(phoneLayer, /data-phone-navigation-page/)
   assert.match(nestedStage, /container\.className = 'phone-navigation-page'/)
   assert.match(nestedStage, /setAttribute\('data-phone-navigation-page', ''\)/)

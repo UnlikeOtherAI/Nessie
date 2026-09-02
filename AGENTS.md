@@ -151,9 +151,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   pre-2026-08-15 shared-org model — or keeping any second local copy of the org
   hierarchy is the same violation as duplicating identity rows, and gets the
   same remedy: an API-backed refactor plus a data migration, never a
-  compatibility copy. The org name is a non-authoritative mirror of UOA's, and
-  a local install with no IdP keeps one unbound organisation (`externalOrgId`
-  null). Budgets, policies, audit, the member directory, and org settings
+  compatibility copy. The org name is UOA's mirror, so a **rename is a relayed
+  `PUT /org/organisations/:orgId` write**; an install with no IdP keeps one
+  unbound organisation (`externalOrgId` null). Budgets, policies, audit, the member directory, and org settings
   therefore scope per UOA organisation. Model, migration, and verification:
   `docs/plans/2026-08-15-uoa-org-tenancy.md`; the rule itself lives in
   `docs/brief.md` → "Current SSO identity invariant".

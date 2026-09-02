@@ -20,11 +20,18 @@ export type AgentFormState = {
   // Optional explicit per-run caps; blank fields mean "governed by the
   // deployment backstop". Separate from `effort`, which is reasoning depth only.
   runLimits: RunLimitsFormState
+  /**
+   * How this agent talks to people. The stored value is the *text*, never the
+   * preset that seeded it — see `AGENT_SPEAKING_STYLE_PRESETS`. Empty = none.
+   */
+  speakingStyle: string
   streamingField: string | null
   systemPrompt: string
   todosEnabled: boolean
   tools: Record<string, boolean>
   visibility: AgentVisibilityValue
+  /** One of `GEMINI_LIVE_VOICES`, or '' for the deployment default. */
+  voiceName: string
 }
 
 export type AgentDesignerAction =
@@ -40,6 +47,8 @@ export type AgentDesignerAction =
   | { role: string; type: 'set_role' }
   | { field: RunLimitsField; type: 'set_run_limit'; value: string }
   | { enabled: boolean; type: 'set_todos_enabled' }
+  | { style: string; type: 'set_speaking_style' }
+  | { type: 'set_voice_name'; voiceName: string }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
   | { visibility: AgentVisibilityValue; type: 'set_visibility' }
   // A stored draft coming back on mount. The reducer owns the state, so a
@@ -56,11 +65,13 @@ const DEFAULT_STATE: AgentFormState = {
   provider: '',
   role: 'assistant',
   runLimits: emptyRunLimitsForm,
+  speakingStyle: '',
   streamingField: null,
   systemPrompt: '',
   todosEnabled: false,
   tools: {},
   visibility: 'workspace',
+  voiceName: '',
 }
 
 const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormState => {
@@ -88,6 +99,10 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       }
     case 'set_todos_enabled':
       return { ...state, todosEnabled: action.enabled }
+    case 'set_speaking_style':
+      return { ...state, speakingStyle: action.style }
+    case 'set_voice_name':
+      return { ...state, voiceName: action.voiceName }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_visibility':
@@ -111,8 +126,10 @@ export type AgentDesignerActions = {
   setName: (name: string) => void
   setRole: (role: string) => void
   setRunLimit: (field: RunLimitsField, value: string) => void
+  setSpeakingStyle: (style: string) => void
   setSystemPrompt: (prompt: string) => void
   setTodosEnabled: (enabled: boolean) => void
+  setVoiceName: (voiceName: string) => void
   toggleTool: (toolId: string, enabled: boolean) => void
   setVisibility: (visibility: AgentVisibilityValue) => void
 }
@@ -208,6 +225,14 @@ export const useAgentDesigner = (
     (enabled: boolean) => dispatch({ enabled, type: 'set_todos_enabled' }),
     [],
   )
+  const setSpeakingStyle = useCallback(
+    (style: string) => dispatch({ style, type: 'set_speaking_style' }),
+    [],
+  )
+  const setVoiceName = useCallback(
+    (voiceName: string) => dispatch({ type: 'set_voice_name', voiceName }),
+    [],
+  )
 
   const applyToolCall = useCallback((name: string, args: Record<string, unknown>) => {
     switch (name) {
@@ -264,9 +289,11 @@ export const useAgentDesigner = (
     setName,
     setRole,
     setRunLimit,
+    setSpeakingStyle,
     setSystemPrompt,
     setVisibility,
     setTodosEnabled,
+    setVoiceName,
     toggleTool,
   }
 

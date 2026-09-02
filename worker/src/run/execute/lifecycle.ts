@@ -142,6 +142,7 @@ export const loadRunContext = async (
           // Optional explicit per-run caps; absent keys fall through to the
           // deployment backstop (see run-budget.ts).
           runLimits: true,
+          speakingStyle: true,
           systemPrompt: true,
           systemSlug: true,
           visibility: true,

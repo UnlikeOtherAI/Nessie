@@ -2129,6 +2129,16 @@ model Agent {
   // see docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
   runLimits                      Json?                           @map("run_limits")
   todosEnabled                   Boolean                         @default(false) @map("todos_enabled")
+  /// The Gemini Live voice this agent speaks in on a call, as one of
+  /// `GEMINI_LIVE_VOICES` (`packages/schemas/src/voice.ts`). NULL = the
+  /// deployment default (`NESSIE_VOICE_GEMINI_VOICE`). Stored as text rather
+  /// than an enum because the set is Google's, not ours: it changes when Google
+  /// publishes a voice, and a migration per voice would be the wrong ceremony.
+  voiceName                      String?                         @map("voice_name")
+  /// How this agent talks to people, in the person's own words. Prompt text,
+  /// never a preset id — the Agent Designer's dropdown only seeds the field.
+  /// Reaches both the typed system prompt and the voice system instruction.
+  speakingStyle                  String?                         @map("speaking_style")
   provider                       String?                         @map("provider")
   model                          String?                         @map("model")
   /// Set when this agent runs on its owner's personal subscription. The

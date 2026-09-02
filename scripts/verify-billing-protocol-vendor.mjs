@@ -1,6 +1,7 @@
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,8 +17,8 @@ async function listFiles(directory) {
 
   for (const entry of entries) {
     if (
-      entry.isDirectory()
-      && [".turbo", "dist", "node_modules"].includes(entry.name)
+      entry.isDirectory() &&
+      [".turbo", "dist", "node_modules"].includes(entry.name)
     ) {
       continue;
     }
@@ -26,11 +27,22 @@ async function listFiles(directory) {
     if (entry.isDirectory()) {
       files.push(...(await listFiles(absolutePath)));
     } else if (entry.isFile()) {
-      files.push(relative(packageRoot, absolutePath));
+      files.push(relative(packageRoot, absolutePath).replaceAll(sep, "/"));
     }
   }
 
   return files.sort();
+}
+
+async function upstreamFileDigest(file) {
+  const contents = await readFile(join(packageRoot, file));
+  // The upstream manifest is recorded from Git's LF checkout. Text files in a
+  // Windows checkout can be CRLF through core.autocrlf without being modified.
+  const canonicalContents = isUtf8(contents)
+    ? Buffer.from(contents.toString("utf8").replaceAll("\r\n", "\n"), "utf8")
+    : contents;
+
+  return createHash("sha256").update(canonicalContents).digest("hex");
 }
 
 const manifest = (await readFile(manifestPath, "utf8"))
@@ -54,9 +66,7 @@ for (const file of actualFiles) {
     continue;
   }
 
-  const actualHash = createHash("sha256")
-    .update(await readFile(join(packageRoot, file)))
-    .digest("hex");
+  const actualHash = await upstreamFileDigest(file);
   if (actualHash !== expected.get(file)) {
     failures.push(`checksum mismatch: ${file}`);
   }
