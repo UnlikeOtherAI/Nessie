@@ -41,15 +41,38 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
-FAILED_CHANNEL_SLUG_MIGRATION="$(
-  $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
-    "SELECT 1 FROM _prisma_migrations WHERE migration_name = '20260613100000_channel_project_slugs' AND finished_at IS NULL AND rolled_back_at IS NULL LIMIT 1;" \
-    2>/dev/null | tr -d '[:space:]' || true
-)"
-if [ "$FAILED_CHANNEL_SLUG_MIGRATION" = "1" ]; then
-  echo "==> Marking interrupted channel slug migration for retry"
-  $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:resolve-rolled-back-channel-slugs
-fi
+# Prisma stops at the first failed migration and refuses every later one
+# (P3009), so a single migration that died mid-deploy parks the whole
+# installation until somebody clears it by hand — production sat un-deployable
+# for a day that way. Listed here are the migrations known to have failed
+# *atomically*: each is wholly transactional, so Postgres rolled the entire file
+# back and the database is exactly as it was before it ran. Marking one of those
+# rolled-back is therefore safe, and lets `migrate deploy` replay it against a
+# database that the repair migration ahead of it has since fixed.
+#
+# Only add a name here after confirming in the deploy log that it failed on a
+# statement inside the transaction, and that something now makes the replay
+# succeed. A migration that half-applied has to be resolved by hand.
+RESOLVABLE_FAILED_MIGRATIONS=(
+  # Interrupted mid-deploy; replays cleanly.
+  20260613100000_channel_project_slugs
+  # Failed 22P02 comparing against the enum value that
+  # 20260901195000_tool_grant_source_snake_case renames into existence. That
+  # repair migration now runs first, so the replay succeeds.
+  20260901200000_tool_grant_principal_integrity
+)
+
+for migration in "${RESOLVABLE_FAILED_MIGRATIONS[@]}"; do
+  failed="$(
+    $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
+      "SELECT 1 FROM _prisma_migrations WHERE migration_name = '$migration' AND finished_at IS NULL AND rolled_back_at IS NULL LIMIT 1;" \
+      2>/dev/null | tr -d '[:space:]' || true
+  )"
+  if [ "$failed" = "1" ]; then
+    echo "==> Marking failed migration $migration for retry"
+    $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api run prisma:migrate:resolve-rolled-back "$migration"
+  fi
+done
 
 echo "==> Applying database migrations"
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
