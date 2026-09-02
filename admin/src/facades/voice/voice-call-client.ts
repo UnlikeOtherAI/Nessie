@@ -213,9 +213,13 @@ export const createVoiceCall = (deps: {
   const openSocket = (accessToken: string, websocketUrl: string): Promise<void> =>
     new Promise((resolve, reject) => {
       // A browser cannot set request headers on a WebSocket, so the ephemeral
-      // credential travels as the documented query parameter — which is
-      // exactly what Google's ephemeral tokens are shaped for.
-      const url = `${websocketUrl}?key=${encodeURIComponent(accessToken)}`
+      // credential travels in the query string. It must be `access_token`,
+      // not `key`: an ephemeral `auth_tokens/…` credential is not an API key,
+      // and Google closes a `?key=` socket with 1007 "Obtain one from
+      // CreateAuthToken and pass it in an `access_token` query param".
+      // Verified against the live service, which is the only place the
+      // difference shows.
+      const url = `${websocketUrl}?access_token=${encodeURIComponent(accessToken)}`
       const next = new WebSocket(url)
       socket = next
       let settled = false

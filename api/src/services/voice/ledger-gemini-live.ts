@@ -124,13 +124,32 @@ const buildLedgerHeaders = async (input: LedgerCallInput, proxyToken: string) =>
 /**
  * The device identifier Ledger sees.
  *
- * Ledger keys its per-device credential slots (and their daily budget
+ * Ledger keys its per-device credential slots (and their daily-budget
  * reservations) on this value, so it must be stable per installation and
  * unguessable. Hashing the installation id with the auth secret means the raw
- * row id never leaves the deployment and two organisations cannot collide.
+ * row id never leaves the deployment and two deployments cannot collide.
+ *
+ * Formatted as a UUID because Ledger's contract requires one — it expects an
+ * app-generated Keychain UUID. The digest is truncated to 16 bytes and stamped
+ * with version 8 (RFC 9562's "custom" version, which is exactly what a derived
+ * identifier is) plus the standard variant bits.
  */
-export const ledgerDeviceId = (installationId: string, authSecret: string): string =>
-  createHmac('sha256', authSecret).update(`voice-installation:${installationId}`).digest('hex')
+export const ledgerDeviceId = (installationId: string, authSecret: string): string => {
+  const digest = createHmac('sha256', authSecret)
+    .update(`voice-installation:${installationId}`)
+    .digest()
+  const bytes = Uint8Array.prototype.slice.call(digest, 0, 16)
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x80
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
+  const hex = Buffer.from(bytes).toString('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-')
+}
 
 const parseCredential = (payload: unknown, fallbackWebsocketUrl: string): LedgerVoiceCredential => {
   const body = (payload ?? {}) as Record<string, unknown>
