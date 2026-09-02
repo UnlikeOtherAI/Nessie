@@ -21,7 +21,8 @@ export const APP_CONNECTION_REQUEST_ACTION_ERROR_CODES = {
 
 export class AppConnectionRequestActionError extends Error {
   constructor(
-    readonly code: (typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES)[keyof typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES],
+    readonly code:
+      (typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES)[keyof typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES],
     message: string,
   ) {
     super(message)
