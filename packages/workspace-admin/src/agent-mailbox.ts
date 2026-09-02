@@ -118,6 +118,15 @@ const CHANNEL_LABEL = (agentName: string, address: string): string =>
   `${agentName} — ${address}`
 
 /**
+ * A standard channel must carry a slug (`channels_standard_slug_required`).
+ * Derived from the address so the room is findable by the name people already
+ * know it by, and suffixed with the mailbox's own uniqueness rather than a
+ * retry loop — the address is already unique per deployment.
+ */
+const channelSlugForAddress = (address: string): string =>
+  `mail-${address.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
+
+/**
  * Create the mailbox, its backing channel and that channel's default thread in
  * one transaction. A half-made mailbox — an address with no room to work in, or
  * a channel nothing routes to — is not a state anything should have to handle.
@@ -210,6 +219,7 @@ export const createAgentMailbox = async (
           label: CHANNEL_LABEL(agent.name, address),
           organizationId: input.organizationId,
           projectId,
+          slug: channelSlugForAddress(address),
           systemChannelType: 'agent_email',
           teamId,
           // Workspace-visible agents only (see assertMailboxEligible), so the
