@@ -246,6 +246,12 @@ const makeOwnerBootstrapApp = () => {
       findMany: async () => projectedEntries,
       upsert: async () => ({}),
     },
+    // PA bootstrap reconciles descriptor-bound protected grants independently
+    // of the legacy bundle policy that this route asserts below.
+    toolGrant: {
+      create: async () => ({}),
+      findMany: async () => [],
+    },
   }
   const prisma = {
     ...db,
