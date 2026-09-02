@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { toFormErrors } from '../../../facades/form-errors'
@@ -58,8 +58,18 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
     }
   }
 
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
+      initialFocusRef={initialFieldRef}
       onClose={handleClose}
       open={open}
       title="Create a space"
@@ -71,6 +81,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
             onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Engineering"
             value={name}
+            ref={initialFieldRef}
           />
         </FormField>
 

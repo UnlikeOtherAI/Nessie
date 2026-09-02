@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { MAX_PAGE_LIMIT } from '@nessie/schemas'
 import type {
   AgentTriggerRecord,
   WorkflowInstallationRecord,
@@ -10,12 +11,26 @@ import type {
 import { workflowKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
+/**
+ * The whole set, for a picker or a panel — not a browsed list.
+ *
+ * `PaginationFooter` and `usePagedList` cover a list a person reads a page at
+ * a time; this covers the callers that need every option to choose from, where
+ * a missing row is a wrong answer rather than a shorter screen. It asks for
+ * `MAX_PAGE_LIMIT` explicitly because the shared contract's default is 25, and
+ * these endpoints previously returned up to 200 — a picker that silently
+ * dropped its 26th option would be a correctness bug, not a layout one.
+ *
+ * The ceiling is real: past 100 these callers need their own paging, or the
+ * API needs the scoping filter that would make each set small. Both are noted
+ * in the content-system plan.
+ */
 export const useWorkflowTemplates = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkflowTemplateRecord[]>({
     queryKey: workflowKeys.templates,
-    queryFn: () => apiClient.get('/api/workflows'),
+    queryFn: () => apiClient.get(`/api/workflows?limit=${MAX_PAGE_LIMIT}`),
     enabled,
   })
 }
@@ -85,11 +100,13 @@ export const useWorkflowInstallations = (enabled = true, channelId?: string) => 
 
   return useQuery<WorkflowInstallationRecord[]>({
     queryKey: workflowKeys.installationsForChannel(channelId),
+    // Whole-set read, same reasoning as `useWorkflowTemplates` above.
     queryFn: () =>
       apiClient.get(
         channelId
           ? `/api/workflow-installations?channelId=${encodeURIComponent(channelId)}`
-          : '/api/workflow-installations',
+            + `&limit=${MAX_PAGE_LIMIT}`
+          : `/api/workflow-installations?limit=${MAX_PAGE_LIMIT}`,
       ),
     enabled,
   })

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 
 import type { ProjectRecord } from '../../../lib/api-client'
 import type { CreateSecretInput } from '../../../facades/secrets/hooks'
@@ -95,10 +95,20 @@ export const CreateSecretDialog = ({
 
   const canSave = Boolean(buildSecretCreateInput({ name, scopeId, scopeType, value }))
 
+  /**
+   * Opens the dialog on the first field rather than on whatever the shell
+   * finds first — which is the close cross, since it precedes the form in the
+   * DOM. The dialog carried this before the form moved to `FormField`; it was
+   * dropped because the field no longer had a fixed id to target, and a person
+   * opening "Save a secret" then had to tab out of Close to start typing.
+   */
+  const nameRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
       description="Secret values go directly to Infisical and are never stored in Nessie, chat, or agent context."
       dismissDisabled={pending}
+      initialFocusRef={nameRef}
       onClose={handleClose}
       open={open}
       title="Save a secret"
@@ -109,6 +119,7 @@ export const CreateSecretDialog = ({
             autoComplete="off"
             onChange={(event) => setName(event.target.value.toUpperCase())}
             placeholder="STRIPE_API_KEY"
+            ref={nameRef}
             value={name}
           />
         </FormField>

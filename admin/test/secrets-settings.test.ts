@@ -248,13 +248,20 @@ test('the secret dialog opens and closes through the shared modal shell', async 
     assert.ok(opener)
     await act(async () => opener.click())
     assert.ok(container.querySelector('[role="dialog"]'))
-    // No hardcoded id — FormField mints its own via useId(). Initial focus
-    // lands on the Secret key input, the dialog's first focusable field.
+    // No hardcoded id — `FormField` mints its own via `useId()` — so focus is
+    // pinned with `initialFocusRef` instead. Without it the shell focuses its
+    // own close cross, which precedes the form in the DOM.
+    //
+    // Compared as a boolean, never `assert.equal(node, node)`: a failed
+    // strict-equal on two DOM nodes sends `util.inspect` through JSDOM's
+    // prototype graph to build a diff, which took this file's process past
+    // 13 GB and 100 seconds before the runner killed it. The failure it was
+    // hiding is this very assertion.
     const nameInput = container.querySelector<HTMLInputElement>(
       'input[placeholder="STRIPE_API_KEY"]',
     )
     assert.ok(nameInput)
-    assert.equal(dom.window.document.activeElement, nameInput)
+    assert.equal(dom.window.document.activeElement === nameInput, true)
 
     const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
     assert.ok(close)

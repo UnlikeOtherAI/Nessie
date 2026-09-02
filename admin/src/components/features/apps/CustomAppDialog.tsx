@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import type { AppDetailRecord } from '@nessie/schemas'
 
 import { useAddCustomApp } from '../../../facades/apps/connect-hooks'
@@ -56,8 +56,18 @@ export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps
     }
   }
 
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
+      initialFocusRef={initialFieldRef}
       description="Paste the secure address supplied by the app. Nessie will check how it connects, then show you the sign-in details before creating an account."
       dismissDisabled={addCustomApp.isPending}
       onClose={close}
@@ -72,6 +82,7 @@ export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps
             placeholder="https://example.com/mcp"
             type="url"
             value={address}
+            ref={initialFieldRef}
           />
         </FormField>
         <FormField

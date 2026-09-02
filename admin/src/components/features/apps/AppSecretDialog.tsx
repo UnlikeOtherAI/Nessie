@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 
 import { useSetAppConnectionSecret } from '../../../facades/apps/connect-hooks'
 import { toFormErrors, type FormErrors } from '../../../facades/form-errors'
@@ -60,8 +60,18 @@ export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: Ap
     }
   }
 
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
+      initialFocusRef={initialFieldRef}
       description="Nessie encrypts this key and never shows it again."
       dismissDisabled={setSecret.isPending}
       onClose={close}
@@ -100,6 +110,7 @@ export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: Ap
             onChange={(event) => setSecretValue(event.target.value)}
             type="password"
             value={secret}
+            ref={initialFieldRef}
           />
         </FormField>
         <FormError>{errors.formError}</FormError>

@@ -37,11 +37,14 @@ const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
  * default; a genuine outlier keeps its markup AND composes `useModalA11y`, at
  * which point it does not belong on this list.
  */
-const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {
-  'src/components/features/triggers/TriggerEditorDialog.tsx':
-    'Documented in file: its subtitle is mt-1 text-sm where the shell renders a description at '
-    + 'text-xs, and its 680px panel is not one of the three geometries the shell ships.',
-}
+/**
+ * Empty as of 2026-09-01: every centred modal in the admin now composes the
+ * shell or the hook. The last entry, `TriggerEditorDialog`, was exempted for a
+ * 680px panel the shell did not ship — it moved to `size="lg"` (640px) during
+ * the content-system migration rather than keep a geometry of its own, and
+ * this test is what said so.
+ */
+const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {}
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {

@@ -27,6 +27,13 @@ export type PillRadius = 'capsule' | 'chip'
 type PillProps = {
   children: ReactNode
   className?: string
+  /**
+   * A hook for a test to find this chip. Named explicitly rather than spread
+   * from a rest prop: a `{...rest}` here would also let a call site pass
+   * `style`, `tone` classes or a second radius, which is exactly the drift the
+   * geometry props above exist to prevent.
+   */
+  'data-testid'?: string
   height?: PillHeight
   radius?: PillRadius
   size?: PillSize
@@ -123,6 +130,7 @@ const casingClasses: Record<'sentence' | 'uppercase', string> = {
 export const Pill = ({
   children,
   className,
+  'data-testid': testId,
   height = 'auto',
   radius = 'capsule',
   size = 'md',
@@ -131,6 +139,7 @@ export const Pill = ({
   uppercase = true,
 }: PillProps) => (
   <span
+    data-testid={testId}
     title={title}
     className={[
       'inline-flex items-center',
