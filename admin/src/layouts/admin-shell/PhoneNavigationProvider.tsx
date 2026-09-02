@@ -22,6 +22,7 @@ import { NativePhoneNavigationBridge } from './NativePhoneNavigationBridge'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { useNativeLargePhoneLandscapeApp } from '../../lib/mobile-shell'
 import { resolveBack, type BackAction } from '../../navigation/back'
+import { ANNOUNCER_ATTRIBUTE } from '../../navigation/settle'
 import { canGoBack, canGoForward, resolveSectionTarget } from '../../navigation/history'
 import {
   deferredRedirect,
@@ -219,6 +220,10 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
     <PhoneNavigationContext.Provider value={value}>
       {children}
       <NativePhoneNavigationBridge />
+      {/* The one polite live region: the settled screen's heading, debounced
+          (docs/navigation.md §11). Overlays announce through their own
+          dialog semantics instead. */}
+      <div aria-live="polite" className="sr-only" role="status" {...{ [ANNOUNCER_ATTRIBUTE]: '' }} />
     </PhoneNavigationContext.Provider>
   )
 }

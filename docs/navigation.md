@@ -501,7 +501,30 @@ day.
 | every `router.tsx` path present in the surface registry | `scripts/lint-navigation-surfaces.mjs` (`pnpm lint:navigation-surfaces`), also `admin/test/navigation-surfaces-total.test.ts` | n/a — the registry is total by construction (§4.1) |
 | a `role="dialog"` surface without `Dialog`/`ConfirmDialog`/`Sheet`/`Popover`/`useOverlay(` | source-regex test, `admin/test/navigation-gates.test.ts` | an array in the test file, self-checked against `git ls-files` |
 
-## 11. Everything else — **planned**
+## 11. Focus, announcement and scroll — **built** (step 11, the settle)
+
+The stack settles a slide, never mid-slide (`navigation/settle.ts`):
+
+- **Push**: focus the landed screen's `h1` with `preventScroll` (a focus
+  that scrolls is how the bounce was made; the heading gets `tabindex=-1`
+  if it lacks one). **Pop**: focus the retained screen's `h1` only if the
+  popped screen held focus, so a person tabbing through a list keeps their
+  place when a detail above it closes. Overlays move focus in and restore it
+  on close through `useOverlay` (§7).
+- **One polite live region** (`PhoneNavigationProvider`,
+  `data-navigation-announcer`) announces the settled screen's heading,
+  debounced, so two settles inside the window announce once with the later
+  title. Overlays announce through their own dialog semantics, never both.
+- **A push blurs the active element** explicitly before the slide, so a
+  composer's soft keyboard closes on purpose rather than because the
+  outgoing layer became inert.
+- **Scroll**: the browser's restoration is `manual` at the root
+  (`main.tsx`); retained layers keep their position for free, a fresh push
+  starts at 0. Per-layer `useScrollMemory` on `split` and the second-scroller
+  lint follow with the header work.
+- Pinned by `admin/test/navigation-settle.test.ts`.
+
+## 12. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

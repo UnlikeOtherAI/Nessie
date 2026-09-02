@@ -32,6 +32,7 @@ import { useReducedMotion } from '../../navigation/reduced-motion'
 import type { NavigationLayout } from '../../navigation/layout'
 import { NestedStageHostContext, type NestedStageHost } from '../../navigation/NestedStage'
 import { haptic } from '../../lib/haptics'
+import { announceScreen, blurBeforePush, layerHoldsFocus, settleFocus } from '../../navigation/settle'
 import { resolveBack } from '../../navigation/back'
 import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
@@ -62,6 +63,9 @@ type ActiveTransition = {
   direction: PhoneNavigationDirection
   fromLayerKey: string
   id: number
+  // Whether the leaving screen held focus when the transition began; the
+  // settle reads it to decide where focus lands (docs/navigation.md §11).
+  outgoingHadFocus: boolean
   phase: 'preparing' | 'running'
   toLayerKey: string
 }
@@ -131,9 +135,16 @@ export const PhoneNavigationViewport = ({
   }, [])
 
   const finishTransition = useCallback((id: number): void => {
-    if (transitionRef.current?.id !== id) return
+    const finished = transitionRef.current
+    if (finished?.id !== id) return
     commitStack(dropPhoneNavigationEntriesAboveCurrent(stackRef.current))
     commitTransition(null)
+    // The settle: focus and announce the screen that has landed, never
+    // mid-slide. The DOM still carries the transition's layer names here,
+    // and the landing layer is "incoming" for a push and a pop alike.
+    const top = viewportRef.current?.querySelector('[data-phone-navigation-layer="incoming"]') ?? null
+    settleFocus({ direction: finished.direction, top, outgoingHadFocus: finished.outgoingHadFocus })
+    announceScreen(top)
   }, [commitStack, commitTransition])
 
   const startTransition = useCallback((
@@ -141,11 +152,20 @@ export const PhoneNavigationViewport = ({
     fromLayerKey: string,
     toLayerKey: string,
   ): void => {
+    const active = typeof document === 'undefined' ? null : document.activeElement
+    // The DOM still shows the pre-transition pose: the screen that is about
+    // to leave (a pop) or be covered (a push) is the current layer.
+    const outgoing = viewportRef.current?.querySelector('[data-phone-navigation-layer="current"]') ?? null
+    const outgoingHadFocus = layerHoldsFocus(outgoing, active)
+    // A push closes the soft keyboard on purpose, not as a side effect of
+    // the outgoing layer becoming inert.
+    if (direction === 'forward') blurBeforePush(active)
     transitionId.current += 1
     commitTransition({
       direction,
       fromLayerKey,
       id: transitionId.current,
+      outgoingHadFocus,
       // Back already has two painted, retained screens. A forward push has
       // just mounted its destination, so hold it offscreen until the browser
       // has painted that DOM once before starting either transform.

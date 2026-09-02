@@ -21,7 +21,7 @@ import { useOverlay } from './useOverlay'
  * The admin's one edge-anchored overlay shell (docs/navigation.md §7).
  *
  * Eight drawers each hand-rolled the same three things — a fixed scrim, a
- * literal `z-40`/`z-50` pair, and a `transition-transform` slide — and none of
+ * literal stacking pair, and a `transition-transform` slide — and none of
  * them had Escape, a focus trap, focus restore, a `role="dialog"` or a Back
  * registration. This composes {@link useOverlay} unconditionally, so a drawer
  * cannot be built without them, and the slide comes from the shared overlay
