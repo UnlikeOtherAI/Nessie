@@ -45,6 +45,13 @@ export const RowList = ({ children, className, label }: RowListProps) => {
 }
 
 type RowProps = {
+  /**
+   * Overrides what assistive tech announces for an interactive row. The
+   * visible title is the label by default, which is right for most rows; use
+   * this where the title alone does not say what activating the row does
+   * ("Open folder Designs" against a row reading "Designs").
+   */
+  ariaLabel?: string
   /** Right-hand side: a chip, a timestamp, a control. Never the whole action. */
   trailing?: ReactNode
   children?: ReactNode
@@ -82,6 +89,7 @@ const selectedClass = 'bg-[color:var(--accent-soft)]'
  * directions.
  */
 export const Row = ({
+  ariaLabel,
   children,
   className,
   depth = 0,
@@ -130,12 +138,19 @@ export const Row = ({
   return (
     <li>
       {href ? (
-        <Link aria-current={selected ? 'true' : undefined} className={classes} style={style} to={href}>
+        <Link
+          aria-current={selected ? 'true' : undefined}
+          aria-label={ariaLabel}
+          className={classes}
+          style={style}
+          to={href}
+        >
           {content}
         </Link>
       ) : onClick ? (
         <button
           aria-current={selected ? 'true' : undefined}
+          aria-label={ariaLabel}
           className={classes}
           onClick={onClick}
           style={style}

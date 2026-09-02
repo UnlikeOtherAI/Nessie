@@ -30,6 +30,13 @@ type PillProps = {
   height?: PillHeight
   radius?: PillRadius
   size?: PillSize
+  /**
+   * A hover title for a chip whose label had to be abbreviated to fit. Not a
+   * substitute for a visible label — a title is invisible on touch and to
+   * anyone not hovering — but where the full text is genuinely longer than the
+   * chip, it is better than nothing.
+   */
+  title?: string
   tone?: PillTone
   uppercase?: boolean
 }
@@ -119,10 +126,12 @@ export const Pill = ({
   height = 'auto',
   radius = 'capsule',
   size = 'md',
+  title,
   tone = 'muted',
   uppercase = true,
 }: PillProps) => (
   <span
+    title={title}
     className={[
       'inline-flex items-center',
       radiusClasses[radius],

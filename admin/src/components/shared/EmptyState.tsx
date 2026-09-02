@@ -12,6 +12,14 @@ type EmptyStateProps = {
   action?: ReactNode
   children: ReactNode
   /**
+   * Spacing and placement only — the dashed border, the fill and the text
+   * scale are what make an empty state recognisable as one, and are not the
+   * caller's to change. It exists because an empty state has to sit correctly
+   * in whatever it replaces: full-bleed in a table's body, inset in a drawer,
+   * centred in a panel.
+   */
+  className?: string
+  /**
    * A bold line above the body. Optional because the majority of empty states
    * are a single sentence and a title would only restate them; supply one when
    * the body has to explain a next step rather than state a fact.
@@ -33,12 +41,15 @@ type EmptyStateProps = {
  * a person cannot tell from "Could not load documents." rendered in an empty
  * frame whether to wait, retry, or create something.
  */
-export const EmptyState = ({ action, children, title }: EmptyStateProps) => (
+export const EmptyState = ({ action, children, className, title }: EmptyStateProps) => (
   <div
     className={[
       'rounded-xl border border-dashed border-[color:var(--sep)]',
       'bg-[color:var(--overlay-weak)] p-5 text-sm leading-6 text-[color:var(--tx3)]',
-    ].join(' ')}
+      className ?? '',
+    ]
+      .filter(Boolean)
+      .join(' ')}
   >
     {title ? (
       <div className="font-semibold text-[color:var(--tx2)]">{title}</div>
