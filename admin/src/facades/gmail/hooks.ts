@@ -93,8 +93,37 @@ export type SendGrant = {
   agentId: string
   agentName: string
   connectionId: string
+  /** Which mailbox — ambiguous without it once two accounts are connected. */
+  accountEmail: string
+  mode: 'always' | 'judged'
+  boundary: string | null
+  decidedCount: number
+  askedCount: number
   expiresAt: string | null
   createdAt: string
+}
+
+export type GrantSendInput = {
+  connectionId: string
+  agentId: string
+  duration: '10m' | 'today' | '30d' | 'forever'
+  mode?: 'always' | 'judged'
+  boundary?: string
+}
+
+export const useGrantSendAuthorization = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: GrantSendInput) =>
+      apiClient.post<{ id: string; expiresAt: string | null }>(
+        '/api/gmail/send-grants',
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: gmailKeys.sendGrants })
+    },
+  })
 }
 
 export const useSendGrants = () => {

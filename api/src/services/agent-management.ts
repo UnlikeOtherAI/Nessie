@@ -47,6 +47,12 @@ export const updateAgentRecord = async (
     agentKind?: 'personal_assistant' | 'shared'
     effort?: AgentEffort
     model?: string
+    /**
+     * `undefined` leaves the pointer alone; `null` clears it. The validator
+     * always returns an explicit value when the model/provider pair is being
+     * written, so a Ledger selection actively clears a stale subscription.
+     */
+    modelSubscriptionId?: string | null
     name?: string
     /** undefined = leave stewardship alone; null = return to the unowned pool. */
     ownerUserId?: string | null
@@ -71,6 +77,13 @@ export const updateAgentRecord = async (
       },
     })
     if (!existing) return null
+
+    // A transfer is any change of steward to a different person (or to the
+    // unowned pool) on an agent currently running on a personal subscription.
+    const transfersOwnership =
+      existing.modelSubscriptionId !== null
+      && input.ownerUserId !== undefined
+      && input.ownerUserId !== existing.ownerUserId
 
     if (existing.todosEnabled && input.todosEnabled === false) {
       await acquireAgentTodoAgentLock(tx, agentId)
@@ -136,7 +149,17 @@ export const updateAgentRecord = async (
         agentKind: existing.agentKind,
         delegationMode: existing.delegationMode,
         effort: input.effort ?? existing.effort,
-        model: input.model ?? existing.model,
+        model: transfersOwnership ? null : input.model ?? existing.model,
+        // An owner transfer takes the agent off the previous owner's personal
+        // plan. Clearing all three together is what stops the new owner
+        // inheriting spend on somebody else's subscription; the run-time gate
+        // would refuse it anyway, but a silently broken agent is a worse
+        // outcome than one that falls back to the deployment default.
+        modelSubscriptionId: transfersOwnership
+          ? null
+          : input.modelSubscriptionId === undefined
+            ? existing.modelSubscriptionId
+            : input.modelSubscriptionId,
         name: existing.systemManaged
           ? existing.name
           : input.name ?? existing.name,
@@ -145,7 +168,7 @@ export const updateAgentRecord = async (
           : input.ownerUserId === undefined
             ? existing.ownerUserId
             : input.ownerUserId,
-        provider: input.provider ?? existing.provider,
+        provider: transfersOwnership ? null : input.provider ?? existing.provider,
         role: input.role ?? existing.role,
         runLimits: runLimitsWriteValue(input.runLimits),
         surfacePolicy: existing.surfacePolicy,
@@ -223,9 +246,16 @@ export const cloneAgentRecord = async (
       teamId: true,
       todosEnabled: true,
       toolPolicy: true,
+      modelSubscriptionId: true,
     },
   })
   if (!source || isSystemManagedAgent(source)) return null
+
+  // A clone belongs to whoever cloned it, and a personal subscription is not
+  // transferable: the copy would otherwise spend the ORIGINAL owner's plan.
+  // Both halves of the selection are dropped together so the copy falls back to
+  // the deployment default rather than becoming a broken agent.
+  const clonesSubscription = source.modelSubscriptionId !== null
 
   const toolPolicy = await stripProtectedAgentToolPolicy(
     prisma,
@@ -240,11 +270,11 @@ export const cloneAgentRecord = async (
       avatarBackgroundColor: randomAgentAvatarBackgroundColor(),
       delegationMode: 'none',
       effort: source.effort,
-      model: source.model,
+      model: clonesSubscription ? null : source.model,
       name: `${source.name} (copy)`,
       organizationId: source.organizationId,
       ownerUserId: clonedByUserId,
-      provider: source.provider,
+      provider: clonesSubscription ? null : source.provider,
       projectId: source.projectId,
       role: source.role,
       // Run limits are ordinary agent configuration (not a protected key), so a

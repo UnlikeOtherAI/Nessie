@@ -22,7 +22,16 @@ import type { QueueAttempt } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
 import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
-import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
+import {
+  persistRunSubscriptionBinding,
+  resolveRunSubscriptionBinding,
+  subscriptionUnavailableNotice,
+} from './subscription-binding.js'
+import {
+  applyBudgetGate,
+  createBudgetBlockedProbe,
+  terminalizeBudgetBlockedRun,
+} from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
 import { isInteractiveRun } from './continuation.js'
 import { createRunInference } from './run-inference.js'
@@ -239,7 +248,39 @@ export const executeRunJob = async (
     }
     await validateRunActorContext(deps.prisma, payload.actorContext, context)
 
+    // Which purse this run spends, decided once and pinned. Resolved BEFORE
+    // the budget gate because the gate's verdict depends on the answer: an
+    // organization cost or token cap exists to protect the organization's
+    // spend, and must not block a run the organization is not paying for.
+    const subscriptionLane = await resolveRunSubscriptionBinding(deps, context)
+    if (subscriptionLane.kind === 'unavailable') {
+      // Never a quiet fallback to Ledger: that would move a person's spend onto
+      // the organization without anyone agreeing to it. Fail with the remedy.
+      await terminalizeBudgetBlockedRun(
+        deps,
+        payload,
+        context,
+        subscriptionUnavailableNotice({
+          isOwnerViewing:
+            context.agent.ownerUserId !== null
+            && context.agent.ownerUserId === payload.actorContext.actionContext.effectiveUserId,
+          reason: subscriptionLane.reason,
+        }),
+        {},
+      )
+      return
+    }
+    const subscriptionBinding =
+      subscriptionLane.kind === 'subscription' ? subscriptionLane.binding : null
+    if (subscriptionBinding) {
+      await persistRunSubscriptionBinding(deps, {
+        binding: subscriptionBinding,
+        runId: context.run.id,
+      })
+    }
+
     const budgetGate = await applyBudgetGate(deps, context, payload, {
+      subscriptionPinned: subscriptionBinding !== null,
       ...(handoffLocator
         ? {
             beforeBlockedRunTerminalization: async () => {
@@ -383,13 +424,20 @@ export const executeRunJob = async (
 
     // Utility model resolution is telemetry-grade: if it cannot be confirmed on
     // the run's own provider route, the run's own model is used.
-    const utilityModel = await resolveUtilityModel(deps.prisma, {
-      organizationId: context.channel.organizationId,
-      providerKey: budgetGate.modelOverride?.provider ?? context.agent.provider,
-    }).catch(() => null)
+    // A subscription run has no utility model. `NESSIE_UTILITY_MODEL` names a
+    // model from the Ledger catalogue, which a subscription backend may simply
+    // not serve — resolving it would fail every compaction and note call. This
+    // returns null explicitly rather than relying on the org lookup missing.
+    const utilityModel = subscriptionBinding
+      ? null
+      : await resolveUtilityModel(deps.prisma, {
+        organizationId: context.channel.organizationId,
+        providerKey: budgetGate.modelOverride?.provider ?? context.agent.provider,
+      }).catch(() => null)
 
     const inference = createRunInference(executionDeps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
+      subscription: subscriptionBinding,
       thinkingRecorder,
       utilityModel,
     })
@@ -408,7 +456,9 @@ export const executeRunJob = async (
         organizationId: context.channel.organizationId,
         provider: budgetGate.modelOverride?.provider ?? context.agent.provider,
       }),
-      checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
+      checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload, {
+        subscriptionPinned: subscriptionBinding !== null,
+      }),
       inference,
       isHandoffTurn: handoffLocator !== null,
       initialMessages: setup.initialMessages,

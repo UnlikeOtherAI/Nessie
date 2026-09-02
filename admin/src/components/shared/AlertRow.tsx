@@ -49,6 +49,11 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // No actor: nobody did this, a schedule stopped being able to run.
     return 'A scheduled task stopped running'
   }
+  if (alert.kind === 'approval_requested') {
+    // Deliberately generic: the alert body reaches a lock screen, and what is
+    // waiting for approval is exactly the thing that must not travel there.
+    return `${actor} needs your approval`
+  }
   if (alert.kind === 'task_assigned') return `${actor} assigned work to you`
   if (alert.kind === 'knowledge_published') return `${actor} published knowledge for you`
   if (alert.kind === 'call_missed') {

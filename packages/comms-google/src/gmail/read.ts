@@ -230,3 +230,95 @@ export const getGmailThread = async (
     }]
   })
 }
+
+export type GmailLabelRef = { id: string; name: string; type: string }
+
+export const listGmailLabels = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+): Promise<GmailLabelRef[]> => {
+  const { body } = await requestJson(
+    fetchImpl,
+    'labels.list',
+    `${GMAIL_API_BASE}/labels`,
+    { headers: { authorization: `Bearer ${accessToken}` } },
+  )
+  const labels = (body as { labels?: unknown[] }).labels ?? []
+  return labels.flatMap((raw) => {
+    const label = raw as { id?: unknown; name?: unknown; type?: unknown }
+    return typeof label?.id === 'string'
+      ? [{
+          id: label.id,
+          name: typeof label.name === 'string' ? label.name : label.id,
+          type: typeof label.type === 'string' ? label.type : 'user',
+        }]
+      : []
+  })
+}
+
+/**
+ * Add and remove labels on a thread.
+ *
+ * Archive and mark-read are the same operation to Gmail — removing the `INBOX`
+ * or `UNREAD` label — so there is one function rather than three that would
+ * drift apart.
+ */
+export const modifyGmailThread = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  input: { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] },
+): Promise<void> => {
+  await requestJson(
+    fetchImpl,
+    'threads.modify',
+    `${GMAIL_API_BASE}/threads/${encodeURIComponent(input.threadId)}/modify`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        addLabelIds: input.addLabelIds ?? [],
+        removeLabelIds: input.removeLabelIds ?? [],
+      }),
+    },
+  )
+}
+
+/** Move a thread to trash. Recoverable in Gmail for 30 days. */
+export const trashGmailThread = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  threadId: string,
+): Promise<void> => {
+  await requestJson(
+    fetchImpl,
+    'threads.trash',
+    `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}/trash`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  )
+}
+
+/** One attachment's bytes, for handing to the FileService. */
+export const getGmailAttachment = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  input: { messageId: string; attachmentId: string },
+): Promise<Buffer> => {
+  const { body } = await requestJson(
+    fetchImpl,
+    'attachments.get',
+    `${GMAIL_API_BASE}/messages/${encodeURIComponent(input.messageId)}`
+      + `/attachments/${encodeURIComponent(input.attachmentId)}`,
+    { headers: { authorization: `Bearer ${accessToken}` } },
+  )
+  const data = (body as { data?: unknown }).data
+  if (typeof data !== 'string') {
+    throw new Error('[comms-google] attachment carried no data')
+  }
+  return Buffer.from(data, 'base64url')
+}

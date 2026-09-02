@@ -61,6 +61,8 @@ interface ChannelConversationSurfaceProps {
   conversationAgent: AgentRecord | null
   callEligible: boolean
   callStarting: boolean
+  voiceCallActive: boolean
+  voiceCallSupported: boolean
   channelLiveness: ReturnType<typeof useAgentLivenessHint>
   channelUsers: UserRecord[]
   chatDrop: ReturnType<typeof useFileDrop>
@@ -152,6 +154,8 @@ export const ChannelConversationSurface = ({
   boundAgents,
   callEligible,
   callStarting,
+  voiceCallActive,
+  voiceCallSupported,
   channelLiveness,
   channelUsers,
   chatDrop,
@@ -244,6 +248,8 @@ export const ChannelConversationSurface = ({
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}
         callStarting={callStarting}
+        voiceCallActive={voiceCallActive}
+        voiceCallSupported={voiceCallSupported}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}

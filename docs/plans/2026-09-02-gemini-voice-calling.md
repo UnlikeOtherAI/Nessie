@@ -1,6 +1,28 @@
 # Call your Personal Assistant — Gemini Live voice + CallKit on iPhone
 
-**Status: plan (2026-09-02). Nothing here is built yet.**
+**Status (2026-09-02): phase 1 built — the server contract and the browser
+call. Phase 0 (Ledger grants) is still an ops task, so no call can complete
+end to end yet; phase 1a (live tool bridge) and 1b (iPhone/CallKit) are not
+started.**
+
+Built and verified: `voice_installations` / `voice_sessions` + migration,
+`POST /api/voice/{installations,sessions,sessions/:id/rotate,usage,transcript,end}`,
+the Ledger credential relay with signed identity, role-preserving context
+seeding, the call-record writer, the browser client (AudioWorklet capture at
+16 kHz, WebAudio playback at 24 kHz, rotation, `pa_send`, persistent usage
+outbox), and the one call button on the Personal Assistant header.
+
+Two things verification settled that the plan had left open:
+
+- **The browser sends the credential as `?key=`.** A browser cannot set
+  WebSocket request headers, so Coder's `Authorization: Token …` does not
+  port. Google's ephemeral `auth_tokens/…` credential is designed to be used
+  in place of an API key, which is the documented browser path. **This is the
+  one thing still unproven against the live service** — it needs a real
+  credential, so it is the first assertion to make once phase 0 lands.
+- **A local Ledger cannot be used in dev.** The relay goes through
+  `safeFetch`, which refuses loopback and private addresses (correctly —
+  `LEDGER_PUBLIC_URL` is operator-supplied). Point it at the hosted service.
 
 Ondrej wants to *call* his Personal Assistant: real-time voice-to-voice,
 triggered by the existing call button in the top-right of the PA

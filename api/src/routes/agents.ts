@@ -38,9 +38,9 @@ import {
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
 import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
-  assertLedgerAgentModelSelection,
+  assertAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
-  listLedgerAgentModels,
+  listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
 } from '@nessie/workspace-admin'
 import { checkPolicy } from '../services/policy.js'
@@ -136,20 +136,29 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    try {
-      const models = await listLedgerAgentModels({
-        config: deps.config.model,
-        ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
-        requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
-          actorContext,
-          ledgerIdentity: deps.ledgerIdentity,
-        }),
+    // Two independent sources: the deployment's Ledger catalogue and this
+    // person's own linked subscriptions. A Ledger failure must not hide the
+    // subscriptions — that would take away the one option still able to run —
+    // so the composer resolves them separately and only reports the Ledger
+    // error when it produced nothing at all.
+    const { ledgerError, options } = await listAgentModelOptionsForUser(prisma, {
+      config: deps.config.model,
+      ...(process.env.LEDGER_PUBLIC_URL
+        ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
+        : {}),
+      organizationId: actorContext.tenant.organizationId,
+      requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
+        actorContext,
+        ledgerIdentity: deps.ledgerIdentity,
+      }),
+      userId: actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId,
+    })
+    if (ledgerError && options.length === 0) {
+      return reply.code(503).send({
+        error: { code: ledgerError.code, message: ledgerError.message },
       })
-      return createApiResponse(AgentModelOptionSchema.array().parse(models))
-    } catch (error) {
-      if (sendAgentModelCatalogError(reply, error)) return reply
-      throw error
     }
+    return createApiResponse(AgentModelOptionSchema.array().parse(options))
   })
 
   app.post('/api/agents', async (request, reply) => {
@@ -199,17 +208,25 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         toolPolicy: body.toolPolicy,
         visibility: body.visibility,
       })
+      let modelSubscriptionId: string | null = null
       if (body.model !== undefined || body.provider !== undefined) {
-        await assertLedgerAgentModelSelection({
+        const selection = await assertAgentModelSelection(prisma, {
+          actingUserId: actorContext.actor.actorId,
           config: deps.config.model,
-          ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+          ...(process.env.LEDGER_PUBLIC_URL
+            ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
+            : {}),
           model: body.model,
+          modelSubscriptionId: body.modelSubscriptionId,
+          organizationId: actorContext.tenant.organizationId,
+          ownerUserId: actorContext.actor.actorId,
           provider: body.provider,
-          requestHeaders: () => ledgerAgentModelCatalogRequestHeaders({
+          requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
             actorContext,
             ledgerIdentity: deps.ledgerIdentity,
           }),
         })
+        modelSubscriptionId = selection.modelSubscriptionId
       }
       let generatedAvatar
       if (!body.avatarAttachmentId) {
@@ -230,6 +247,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         })
       }
       agent = await createAgentRecord(prisma, {
+        modelSubscriptionId,
         avatarAttachmentId: body.avatarAttachmentId ?? generatedAvatar?.avatarAttachmentId,
         avatarBackgroundColor: generatedAvatar?.avatarBackgroundColor,
         effort: body.effort,
@@ -293,6 +311,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       },
       select: {
         model: true,
+        modelSubscriptionId: true,
         ownerUserId: true,
         provider: true,
         systemManaged: true,
@@ -315,20 +334,38 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     let agent
     try {
+      // Validated as the RESULTING pair, not the patch, and against the agent's
+      // owner-to-be rather than the editor: a subscription is the owner's to
+      // spend. `modelSubscription` is returned explicitly so a Ledger selection
+      // clears any previous pointer and the two can never disagree about which
+      // lane this agent runs on.
+      let modelSubscriptionId: string | null | undefined
       if (body.model !== undefined || body.provider !== undefined) {
-        await assertLedgerAgentModelSelection({
+        const selection = await assertAgentModelSelection(prisma, {
+          actingUserId: actorContext.actor.actorId,
           config: deps.config.model,
-          ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+          ...(process.env.LEDGER_PUBLIC_URL
+            ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
+            : {}),
           model: body.model ?? existingAgent.model ?? undefined,
+          modelSubscriptionId:
+            body.modelSubscriptionId ?? existingAgent.modelSubscriptionId ?? undefined,
+          organizationId: actorContext.tenant.organizationId,
+          ownerUserId:
+            body.ownerUserId === undefined
+              ? existingAgent.ownerUserId
+              : body.ownerUserId,
           provider: body.provider ?? existingAgent.provider ?? undefined,
-          requestHeaders: () => ledgerAgentModelCatalogRequestHeaders({
+          requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
             actorContext,
             ledgerIdentity: deps.ledgerIdentity,
           }),
         })
+        modelSubscriptionId = selection.modelSubscriptionId
       }
       agent = await updateAgentRecord(prisma, agentId, {
         ...body,
+        ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
         organizationId: actorContext.tenant.organizationId,
       })
     } catch (error) {

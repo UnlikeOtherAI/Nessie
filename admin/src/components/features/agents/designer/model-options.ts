@@ -4,6 +4,14 @@ export const modelOptionKey = (
   option: Pick<AgentModelOption, 'model' | 'provider'>,
 ): string => `${option.provider} ${option.model}`
 
+/**
+ * Which purse an option spends. Absent means the deployment's Ledger credits —
+ * the shape every option had before personal subscriptions existed.
+ */
+export const modelOptionSource = (
+  option: Pick<AgentModelOption, 'source'>,
+): 'ledger' | 'subscription' => option.source ?? 'ledger'
+
 export const modelOptionLabel = (option: AgentModelOption): string =>
   option.displayName === option.model
     ? option.model
@@ -16,6 +24,9 @@ export const modelOptionSubtitle = (option: AgentModelOption): string =>
   [
     option.displayName === option.model ? undefined : option.model,
     option.description,
+    // Only when a person has linked two accounts at one provider does the
+    // server send this; otherwise it would be noise beside every row.
+    option.accountLabel,
   ]
     .filter(Boolean)
     .join(' — ')
@@ -50,6 +61,7 @@ export const filterModelOptions = (
       option.model,
       option.providerDisplayName,
       option.description ?? '',
+      option.accountLabel ?? '',
     ]
       .join(' ')
       .toLowerCase()
