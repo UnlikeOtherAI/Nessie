@@ -344,6 +344,33 @@ take — a database sitting on an older schema, not a fresh dev database:
   `task_events`, `runs`, `audit_logs`; on a large install those lock the
   table for the duration of the build, so review them before release.
 
+### A failed migration parks every deploy after it
+
+`prisma migrate deploy` stops at the first failed migration and refuses every
+later one with **P3009**, so one bad migration takes the whole installation
+out of service until somebody clears it — production spent a day rejecting
+every deploy this way when
+`20260901200000_tool_grant_principal_integrity` died on `22P02` (it compared
+against an enum value that did not exist yet; `20260901195000_tool_grant_source_snake_case`
+is the repair, and now runs before it).
+
+`redeploy.sh` clears such a migration itself, from the
+`RESOLVABLE_FAILED_MIGRATIONS` list near the top: for each name it asks
+`_prisma_migrations` whether that migration is parked (`finished_at IS NULL AND
+rolled_back_at IS NULL`), and if so runs `prisma migrate resolve --rolled-back`
+before migrating. The check makes the block a no-op on a healthy database, so
+the list is safe to keep.
+
+Only add a name to that list once the deploy log shows the migration failed on
+a statement **inside its transaction** — Postgres then rolled the whole file
+back and the database is untouched, which is what makes `--rolled-back` the
+truthful answer — and something now makes the replay succeed. Confirm the
+rollback rather than assuming it: none of the objects the migration creates
+should exist, and any object it alters should still be in its original shape.
+A migration that half-applied (one containing `CREATE INDEX CONCURRENTLY`, say,
+which cannot run in a transaction) is **not** a candidate and has to be
+resolved by hand against the real database.
+
 ### One-time: per-UOA-organisation tenancy (2026-08-15)
 
 Nessie now keeps **one `Organization` per UOA organisation**
