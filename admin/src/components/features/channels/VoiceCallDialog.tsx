@@ -99,7 +99,10 @@ const VoiceCallDialog = ({
           ref={transcriptRef}
           style={{ maxHeight: '18rem', minHeight: '6rem' }}
         >
-          {state.transcript.length === 0
+          {/* The prompt to speak belongs to a call that is actually up; on a
+              failed call the error is the whole message. */}
+          {live
+          && state.transcript.length === 0
           && !state.liveUserText
           && !state.liveAssistantText ? (
             <p className="text-sm" style={{ color: 'var(--tx3)' }}>
