@@ -11,10 +11,12 @@ import {
   loadInlineImages,
   loadMessageAttachments,
 } from '../message-attachments.js'
+import { loadMessageCardNotes } from '../message-cards.js'
 import {
   buildResearchRoutingBlock,
   type ResearchRoutingFacts,
 } from './research-routing.js'
+import { buildAgentCardsBlock } from './agent-cards-prompt.js'
 import {
   buildAgentDocumentsBlock,
   type AgentDocumentsPromptFacts,
@@ -27,13 +29,16 @@ import type { RunContext, StoredConversationMessage } from './types.js'
 // any files that came with it. The note is what makes an image-only message a
 // message at all, and what tells the model which attachments it can reach with
 // `attachment_read` when it cannot look at them directly.
-const withAttachmentNote = (message: StoredConversationMessage): string => {
-  if (!message.attachmentNote) {
+const withMessageNotes = (message: StoredConversationMessage): string => {
+  const notes = [message.attachmentNote, message.cardNote].filter(
+    (note): note is string => Boolean(note),
+  )
+  if (notes.length === 0) {
     return message.content
   }
   return message.content.trim()
-    ? `${message.content}\n${message.attachmentNote}`
-    : message.attachmentNote
+    ? `${message.content}\n${notes.join('\n')}`
+    : notes.join('\n')
 }
 
 /**
@@ -48,7 +53,7 @@ const toProviderConversationMessage = (
   message: StoredConversationMessage,
   actingAgentId: string,
 ): ProviderMessage => {
-  const content = withAttachmentNote(message)
+  const content = withMessageNotes(message)
   const isOtherAgent =
     message.role === 'assistant'
     && !!message.authorAgentId
@@ -89,6 +94,8 @@ export const buildModelPrompt = (
     todoFacts?: AgentTodoPromptFacts | null
     /** Structural home-space and toolset facts driving the documents block. */
     documents?: AgentDocumentsPromptFacts
+    /** True when `card_post` is in this run's resolved builtin toolset. */
+    hasCardTool?: boolean
     /** Clock for the volatile time message. Injectable so tests can prove the
      * stable anchor carries no time at all. */
     now?: Date
@@ -174,6 +181,7 @@ export const buildModelPrompt = (
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
+    buildAgentCardsBlock({ hasCardTool: options.hasCardTool ?? false }) ?? '',
   ].filter((part) => part.length > 0)
 
   const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
@@ -309,6 +317,7 @@ export const loadConversation = async (
   // withheld turn must not leak through its images or its attachment inventory.
   const readableIds = readable.map((message) => message.id)
   const attachments = await loadMessageAttachments(prisma, input.organizationId, readableIds)
+  const cardNotes = await loadMessageCardNotes(prisma, input.organizationId, readableIds)
   const images = input.files
     ? await loadInlineImages(input.files, input.organizationId, readableIds, attachments)
     : new Map<string, ProviderImage[]>()
@@ -323,6 +332,7 @@ export const loadConversation = async (
       }
     }
     const note = describeAttachments(attachments.get(message.id) ?? [])
+    const cardNote = cardNotes.get(message.id)
     const inlined = images.get(message.id)
     return {
       content: message.content,
@@ -330,6 +340,7 @@ export const loadConversation = async (
       authorAgentId: message.agentId,
       authorAgentName: message.agent?.name ?? null,
       ...(note ? { attachmentNote: note } : {}),
+      ...(cardNote ? { cardNote } : {}),
       ...(inlined?.length ? { images: inlined } : {}),
     }
   })

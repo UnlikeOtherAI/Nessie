@@ -16,6 +16,8 @@ enum AgentStatus {
   thinking
   executing
   waiting_approval
+  /// Suspended on an interactive card, waiting for a person to press a button.
+  waiting_input
   error
   offline
 }

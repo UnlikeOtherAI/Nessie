@@ -23,6 +23,8 @@ export const DOCUMENT_STREAM_ERROR_REASONS = [
   'save_failed',
   'budget_stopped',
   'approval_required',
+  /** The run suspended waiting for a person to press a button on a card. */
+  'card_response',
   'invalid_args',
   'truncated',
   'superseded',

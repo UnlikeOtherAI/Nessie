@@ -5,6 +5,7 @@
 -- exactly like `waiting_approval`. Deliberately a distinct value: the status
 -- label is user-visible, and "waiting for approval" is the wrong words for a form.
 ALTER TYPE "RunStatus" ADD VALUE IF NOT EXISTS 'waiting_input';
+ALTER TYPE "AgentStatus" ADD VALUE IF NOT EXISTS 'waiting_input';
 
 CREATE TYPE "AgentCardStatus" AS ENUM ('open', 'resolved', 'expired', 'cancelled');
 

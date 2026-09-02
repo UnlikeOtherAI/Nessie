@@ -14,10 +14,20 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
 
+/**
+ * A tool that posted an interactive card and asked to wait for the answer.
+ * Unlike an approval gate — decided *before* dispatch — this is decided after,
+ * because the card has to exist before anybody can press it.
+ */
+export type AgentCardSuspension = {
+  cardId: string
+}
+
 export type ToolExecutionResult = {
   connectorUsage?: ToolExecutionUsage
   inputSummary: string
   outputPreview: string
+  pendingInput?: AgentCardSuspension
   toolName: string
 }
 
@@ -29,6 +39,7 @@ export type AgenticToolResult = {
   connectorUsage?: ToolExecutionUsage
   inputSummary: string
   output: string
+  pendingInput?: AgentCardSuspension
   success: boolean
   /** A pre-created durable ToolCall used by an executor command. */
   toolCallRecordId?: string

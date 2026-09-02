@@ -26,6 +26,7 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import { hasCardPromptTools } from './agent-cards-prompt.js'
 import {
   hasDocumentsPromptTools,
   hasKbWriteTools,
@@ -327,6 +328,7 @@ export const prepareRunExecution = async (
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
+      hasCardTool: hasCardPromptTools(resolvedToolIds),
       todoFacts,
       documents: documentsHome
         ? {

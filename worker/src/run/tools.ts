@@ -6,6 +6,7 @@ import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
   runAppConnectRequestTool,
   runAppSearchTool,
+  runCardPostTool,
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
@@ -147,6 +148,8 @@ const executeBuiltinToolUncorrected = async (
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
   if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {
+    case 'card_post':
+      return wrapTool(inputSummary, () => runCardPostTool(context, args))
     case 'app_search':
       return wrapTool(inputSummary, () => runAppSearchTool(context, args))
     case 'app_connect_request':
