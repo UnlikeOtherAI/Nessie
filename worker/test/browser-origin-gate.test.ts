@@ -17,6 +17,7 @@ import {
 
 const gateWith = (origins: string[], touched: boolean): OriginGateState => ({
   authenticatedOrigins: new Set(origins),
+  currentUrl: null,
   touchedAuthenticated: touched,
 })
 
@@ -100,10 +101,14 @@ test('reads and movement are never gated — narrowing them would kill the capab
   }
 })
 
-test('visiting a signed-in origin arms the gate', () => {
+test('visiting a signed-in origin arms the gate and tracks the page', () => {
   const gate = gateWith(['https://mail.example.com'], false)
   noteVisitedOrigin(gate, 'https://news.example.org/')
   assert.equal(gate.touchedAuthenticated, false)
+  // Tracked so the approval gate can decide without a second CDP round trip
+  // before every action.
+  assert.equal(gate.currentUrl, 'https://news.example.org/')
   noteVisitedOrigin(gate, 'https://mail.example.com/inbox')
   assert.equal(gate.touchedAuthenticated, true)
+  assert.equal(gate.currentUrl, 'https://mail.example.com/inbox')
 })

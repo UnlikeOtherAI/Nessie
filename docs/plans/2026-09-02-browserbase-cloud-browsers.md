@@ -742,35 +742,37 @@ Sign out & reset provably signs the agent out.
 Built 2026-09-02. Deliberate departures from the spec above, recorded rather
 than silently rewritten:
 
-- **The cross-origin write gate refuses rather than asks.** §6.1 specified a
-  one-tap approval; the shipped gate returns a refusal naming the origin and
-  telling the model to ask the person to take control. Stricter, and it
-  needed no approval plumbing — but it *will* block a legitimate
-  cross-origin hop (an OAuth redirect mid-task) that an approval would have
-  let through. Converting it to an approval is a contained follow-up: the
-  verdict is already computed in one place (`origin-gate.ts`).
+- **The cross-origin write gate is the approval §6.1 specified** (converted
+  2026-09-02, after shipping first as a flat refusal). Refusing was safer but
+  wrong in one common case: an agent signed in to one service, asked to carry
+  something into a form on another — "find the invoice number in my mail, put
+  it in the vendor portal" — which only the person can judge. It now rides
+  the existing structural-approval seam (`requiresApproval` in code, not
+  policy data), so the ask is a one-tap approval addressed to whoever started
+  the run. The decision moved out of the tool handler entirely: one place
+  decides, and that place can escalate rather than dead-end.
+  `composeStructuralGates` lets the mail and browser families each own their
+  tools without an `if` chain inside the authorizer.
 - **The gate's trigger is CDP cookie domains**, read once at open, exactly as
   §6.1 required — never `serviceHint`, which is display text a person typed.
   Its stated limits live in the module: page scripts act below the tool
   layer, and material carried across runs in the model's own memory is the
   generic model-knows-a-secret problem, shared with `http_fetch`.
-- **"Authenticated" is decided at open, not per read.** The session row's
-  `authenticated` flag is set when the durable browser already carries login
-  rows, and every later verb re-registers the `agent:<id>` basis from it.
-  The plan also wanted a control claim to flip it; a claim on a session that
-  was not already authenticated does not currently do so, which is a real
-  (small) gap: somebody could sign in during an ad-hoc control claim on an
-  unauthenticated browser and the run would not register a basis. Closing it
-  means writing a login row (or setting the flag) on hand-back.
+- **"Authenticated" is monotone and set at three moments**: a durable browser
+  that already carries login rows at open, a completed sign-in handoff, and
+  **hand-back of a control claim** — a person takes the controls largely in
+  order to sign in, and the agent resumes into whatever they left behind, so
+  the flag is set on release. Over-restricting is the safe direction.
 - **Sign-out is all-or-nothing**, as §6a said it would be: reset clears every
   signer's login together, and the copy says so. Per-service cookie deletion
   stays phase 3.
-- **The publish-transition and channel-bind guards are not built.** §4.2 puts
-  an obligation on any transition that widens an agent's audience; private →
-  workspace publishing still does not exist, and the channel-bind guard
-  (`BROWSER_LOGINS_PRESENT`) is not wired. A workspace agent bound into a
-  wider channel therefore widens its browser's audience with no prompt —
-  the highest-value thing left in this area.
+- **The channel-bind guard is built; the publish one still cannot be.**
+  Binding an agent whose browser holds sign-ins is refused with
+  `AGENT_BROWSER_LOGINS_PRESENT`, naming the services, until the caller
+  passes `confirmBrowserSharing`. A browser with nothing signed in binds
+  silently — asking would be noise. Private → workspace publishing still does
+  not exist in the codebase, so its guard remains an obligation on whoever
+  builds it (§4.2).
 - **The browser panel lives on the agent's Tools tab**, not a new tab: a
   browser is a tool, and an eighth tab is the drift Rule zero names.
 - **`browser_download` runs our own fixed script in the page** (a `fetch`

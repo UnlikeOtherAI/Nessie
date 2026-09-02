@@ -26,6 +26,12 @@ export type OriginGateState = {
   authenticatedOrigins: Set<string>
   /** Whether this session has actually loaded one of them. */
   touchedAuthenticated: boolean
+  /**
+   * The page the session is on, tracked as it navigates so the approval gate
+   * can decide without a CDP round trip of its own — the gate runs before
+   * every `browser_act`, and a second observe per action would be felt.
+   */
+  currentUrl: string | null
 }
 
 const originOf = (url: string): string | null => {
@@ -123,6 +129,7 @@ export const evaluateOriginGate = (
 export const noteVisitedOrigin = (state: OriginGateState, url: string): void => {
   const origin = originOf(url)
   if (!origin) return
+  state.currentUrl = url
   if (originIsAuthenticated(origin, state.authenticatedOrigins)) {
     state.touchedAuthenticated = true
   }

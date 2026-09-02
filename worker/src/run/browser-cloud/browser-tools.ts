@@ -31,7 +31,6 @@ import { summarizeToolInput, truncateToolResult } from '../tool-util.js'
 import { downloadFromBrowser } from './download.js'
 import { requestBrowserLogin } from './login-request.js'
 import {
-  evaluateOriginGate,
   noteVisitedOrigin,
   readAuthenticatedOrigins,
   type OriginGateState,
@@ -216,6 +215,7 @@ const runOpen = async (
     })
     const gate: OriginGateState = {
       authenticatedOrigins: new Set(),
+      currentUrl: null,
       touchedAuthenticated: false,
     }
     registerSession(opened.sessionId, opened.connectUrl, gate)
@@ -290,13 +290,9 @@ const runAct = async (
         success: false,
       }
     }
+    // The cross-origin decision was already made at authorization, where it
+    // can ask a person rather than dead-end the run.
     const gate = originGateFor(session.sessionId)
-    if (gate) {
-      const before = await observeBrowser(cdp)
-      noteVisitedOrigin(gate, before.url)
-      const verdict = evaluateOriginGate(gate, before.url, parsed.data)
-      if (!verdict.allowed) return { output: verdict.reason, success: false }
-    }
     const result = await actInBrowser(cdp, parsed.data)
     const observation = await observeBrowser(cdp)
     if (gate) noteVisitedOrigin(gate, observation.url)

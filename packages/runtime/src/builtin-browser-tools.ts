@@ -134,6 +134,14 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['action'],
     },
     requiresExplicitGrant: true,
+    /**
+     * Conditional, decided in code: an ordinary action is not gated at all.
+     * The ask happens only for a write on an origin this browser is not
+     * signed in to, once it has visited one that it is — the exfiltration
+     * shape the disclosure basis cannot see, because those bytes leave
+     * through the browser rather than through a message.
+     */
+    requiresApproval: true,
     safe: false,
   },
   {
