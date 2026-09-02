@@ -133,6 +133,16 @@ export const buildEmailSendApprovalHook = (
     if (!decision.required) return null
     return {
       approvalActionType: `email.send.${decision.reason}`,
+      // What the approver is actually shown. A reply passes no `to`, so the
+      // raw arguments alone would render an empty recipient list; the send
+      // path resolves the same recipients deterministically from the same
+      // newest inbound message.
+      contextExtra: {
+        emailDraft: await describeDraft(prisma, context, input.args),
+        externalDisclosureSources: decision.externalSources.map(
+          (scope) => `${scope.scopeType}:${scope.scopeId}`,
+        ),
+      },
       expiryMs: EMAIL_APPROVAL_EXPIRY_MS,
       // The mailbox belongs to the agent, and the agent belongs to its steward:
       // a send acting as their agent is theirs to authorize. Falls back to the
@@ -157,4 +167,49 @@ const resolveLiveSteward = async (
     },
   })
   return live > 0 ? ownerUserId : null
+}
+
+/**
+ * The recipients and subject a send will actually use, resolved now so the
+ * approval carries them. Best-effort: a resolution failure must never stop the
+ * gate from parking the send — an unreviewable draft is still better than an
+ * unreviewed one going out.
+ */
+const describeDraft = async (
+  prisma: PrismaClient,
+  context: RunContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  const explicitTo = Array.isArray(args.to) ? (args.to as string[]) : []
+  const subject = typeof args.subject === 'string' ? args.subject : ''
+  if (explicitTo.length > 0 || !context.emailConversationId) {
+    return {
+      bcc: Array.isArray(args.bcc) ? args.bcc : [],
+      cc: Array.isArray(args.cc) ? args.cc : [],
+      isReply: false,
+      subject,
+      to: explicitTo,
+    }
+  }
+  try {
+    const newest = await prisma.emailMessage.findFirst({
+      orderBy: { occurredAt: 'desc' },
+      select: { ccAddresses: true, fromAddress: true, replyToAddress: true, toAddresses: true },
+      where: { conversationId: context.emailConversationId, direction: 'inbound' },
+    })
+    const conversation = await prisma.emailConversation.findUnique({
+      select: { subject: true },
+      where: { id: context.emailConversationId },
+    })
+    const primary = newest?.replyToAddress ?? newest?.fromAddress ?? null
+    return {
+      bcc: Array.isArray(args.bcc) ? args.bcc : [],
+      cc: Array.isArray(newest?.ccAddresses) ? newest?.ccAddresses : [],
+      isReply: true,
+      subject: subject || conversation?.subject || '',
+      to: primary ? [primary] : [],
+    }
+  } catch {
+    return { bcc: [], cc: [], isReply: true, subject, to: [] }
+  }
 }

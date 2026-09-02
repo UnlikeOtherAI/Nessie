@@ -72,7 +72,17 @@ export type ToolAuthorizationContext = {
   forceApproval?: (input: {
     toolName: string
     args: Record<string, unknown>
-  }) => Promise<{ approvalActionType: string; expiryMs?: number; requiredApproverUserId?: string | null } | null>
+  }) => Promise<{
+    approvalActionType: string
+    expiryMs?: number
+    requiredApproverUserId?: string | null
+    /**
+     * Server-authored facts the approver is shown. For a send this carries the
+     * *resolved* recipients — a reply passes no `to` at all, so the raw
+     * arguments alone would show an approver an empty recipient list.
+     */
+    contextExtra?: Record<string, unknown>
+  } | null>
   toolPolicy: Record<string, boolean> | null
 }
 
@@ -203,6 +213,7 @@ export const authorizeToolExecution = async (
       approvalActionType: structural.approvalActionType,
       args,
       context,
+      contextExtra: structural.contextExtra,
       expiryMs: structural.expiryMs,
       interactive: auth.resumeState.interactive,
       messageId: auth.resumeState.messageId,
@@ -278,6 +289,7 @@ const createToolApprovalRequest = async (
     approvalActionType?: string
     args: Record<string, unknown>
     context: RunContext
+    contextExtra?: Record<string, unknown>
     expiryMs?: number
     interactive: boolean
     messageId: string
@@ -303,6 +315,7 @@ const createToolApprovalRequest = async (
       inputSummary: summarizeToolInput(input.args),
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
+      ...(input.contextExtra ?? {}),
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
     // Email is asynchronous: an overnight send parked behind the 30-minute
