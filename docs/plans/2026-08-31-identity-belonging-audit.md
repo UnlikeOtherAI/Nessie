@@ -347,6 +347,12 @@ directory label; only org names heal
 Visible wherever the local name renders — the fallback directory and every
 local team surface.
 
+**Fixed 2026-09-02.** Team and Project names now heal from the verified UOA
+workspace directory via `syncExternalWorkspaceNames`, run beside
+`syncExternalOrganizationNames` at both arrival sites (login and token
+refresh), so the cold-cache fallback and every local team surface render the
+real UOA label once any verified `/org/me` read has occurred.
+
 **F8 — Owner-facing belonging reads still local (low-medium, known-open).**
 `GET /api/users` lists local `OrganizationMember` rows — under UOA an
 incomplete projection (only people who have logged in) that disagrees with the

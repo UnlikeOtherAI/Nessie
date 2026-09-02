@@ -122,6 +122,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The bundle is a release artifact, so do not bypass the repository's
+      # lint gate when invoking Tauri directly below.
+      - name: Lint repository
+        run: pnpm lint
+
       # The generated Prisma client is intentionally excluded from source
       # control. Generate it once before Turbo builds `@nessie/db`, rather than
       # letting concurrent package builds race to create it.
@@ -249,7 +254,11 @@ jobs:
               ConvertTo-Json -Depth 5 -Compress
             $arguments += @('--config', $config)
           }
-          pnpm --filter @nessie/desktop tauri:build -- @arguments
+          # Call Tauri directly after runtime preparation. Passing a second
+          # argument separator through the package script reaches Cargo as a
+          # literal `--`, so Cargo mistakes the bundle flags for its own.
+          pnpm --dir desktop run prepare:executor-runtime
+          pnpm --dir desktop exec tauri build @arguments
 
       # Tauri signs what it bundles; the executor package is not a Tauri artifact.
       # The build script signs the three binaries it produces *before* staging

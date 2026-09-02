@@ -139,6 +139,18 @@ lands short of its resting place until the next layout clamps it. That was
 the bounce. The page scroller itself stays `overflow-x: hidden; overflow-y:
 auto` (a `clip` axis computes to `hidden` beside a scrolling axis).
 
+A **full-height surface** — a screen with a fixed header and bottom-anchored
+composer and a scrolling region between them, i.e. the chat conversation — is
+the exception: it owns its own inner scroller, so the page scroller must be a
+non-scrolling flex column it can fill rather than a block scroller its
+`flex-1`/`h-full` column collapses inside (which floats the composer up under
+the last message with a gap below). A row declares this with
+`fillsViewport: true`; `RoutedScreen` then adds `.phone-navigation-page--fill`
+(`display: flex; flex-direction: column; overflow: hidden`, with the surface
+host's `min-height` zeroed so the inner feed scrolls rather than growing the
+column). It is only meaningful on `single` — `split` already bounds the detail
+column — and is never inferred from a breakpoint.
+
 Consequences for page code:
 
 - `TabBar` scrolls its own track (`track.scrollLeft`) and never calls
