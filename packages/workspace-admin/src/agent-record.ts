@@ -22,6 +22,8 @@ import {
 } from '@nessie/schemas'
 import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
 
+import { getGlobalAgentBlueprint } from './global-agent-blueprints.js'
+
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 
 export type { AgentVisibilityScope } from '@nessie/db'
@@ -53,6 +55,28 @@ export const isSystemManagedAgent = (agent: {
   systemManaged: boolean
 }): boolean =>
   agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
+/**
+ * A system agent somebody can *address*: the Personal Assistant, and every
+ * global agent whose blueprint homes it in a per-person DM.
+ *
+ * Such an agent is never bound into a new conversation — `bindAgentToChannel`
+ * refuses every `systemManaged` agent and every system channel by design.
+ * It already owns one channel per person, so addressing it resolves to that
+ * home DM. This one predicate decides it for the server (the branch in
+ * `POST /api/channels/conversations`) and, through `dmAddressable` on the
+ * record, for every client's address book — so a picker offers exactly what
+ * the route will accept, and neither side hand-names a slug.
+ */
+export const isDmAddressableSystemAgent = (agent: {
+  agentKind: string
+  systemManaged: boolean
+  systemSlug?: string | null
+}): boolean => {
+  if (!isSystemManagedAgent(agent)) return false
+  if (agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND) return true
+  return getGlobalAgentBlueprint(agent.systemSlug)?.home === 'per_user_dm'
+}
 
 /**
  * A stored `ownerUserId` names a membership row that exists — the composite
@@ -214,6 +238,8 @@ export const mapAgentRecord = (agent: {
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
     systemSlug: agent.systemSlug ?? null,
+    // Present only when true, so an ordinary agent's payload is unchanged.
+    ...(isDmAddressableSystemAgent(agent) ? { dmAddressable: true } : {}),
     visibility: agent.visibility,
     ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,

@@ -807,8 +807,8 @@ binding, trigger and run-placement refusals, the un-gated list arm, the
 delegation predicate with its one-arm identity-tool gate, and the handoff
 bounds: `AGENTS.md` → "A global agent is a blueprint in code". The mechanics —
 the Designer's toolset and shared reads, the generated capability catalogue,
-`agent_handoff`'s delivery, the sidebar's second face, and the disabled detail
-surface: [docs/global-agents.md](docs/global-agents.md). Spec:
+`agent_handoff`'s delivery, the sidebar's second face, the address book and
+the disabled detail surface: [docs/global-agents.md](docs/global-agents.md). Spec:
 [docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
 
 **Direct messages lists conversations, not a directory.** Every DM channel there
@@ -826,6 +826,7 @@ form staying for field edits — the create menu's last row, and on the phone
 sheet the last row *above* its morphing Message button
 (`mobile/src/lib/native-creation-menu.ts`). One `openAgentDesignerChat` serves
 every client via `POST /api/global-agents/:slug/home`, which *ensures* that DM.
+
 ## Personal assistant — workspace provisioning
 
 Four `personalAssistantOnly` builtins reach the PA
