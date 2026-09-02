@@ -290,6 +290,9 @@ export const AuditActionSchema = z.enum([
   'comms.connection.disconnected',
   'comms.connection.data_deleted',
   'comms.connection.capabilities_changed',
+  'gmail.draft.sent',
+  'gmail.send_grant.created',
+  'gmail.send_grant.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 
