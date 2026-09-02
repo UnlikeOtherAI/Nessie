@@ -58,3 +58,13 @@ export {
   type ConnectionScope,
   type ConnectionSummary,
 } from './connection-management.js'
+
+export {
+  describeAgentBrowser,
+  ensureAgentBrowser,
+  recordAgentBrowserLogin,
+  reconcileTombstonedAgentBrowsers,
+  resetAgentBrowser,
+  resolveDurableBrowserConnection,
+  type AgentBrowserRow,
+} from './agent-browser.js'

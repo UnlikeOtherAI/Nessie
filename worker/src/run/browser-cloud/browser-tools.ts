@@ -2,6 +2,7 @@ import {
   actInBrowser,
   CLOUD_BROWSER_ERROR_CODES,
   CloudBrowserUnknownOutcomeError,
+  ensureAgentBrowser,
   findLiveSessionForRun,
   isCloudBrowserError,
   observeBrowser,
@@ -60,6 +61,12 @@ const deniedForControl = (holder: string): BrowserToolOutcome => ({
 
 type BrowserToolContext = BuiltinToolRuntimeContext & {
   cloudBrowser?: CloudBrowserDeps
+  /**
+   * Visibility and stewardship decide which connection may hold this agent's
+   * durable browser, so the toolset carries them rather than re-reading the
+   * agent row on every call.
+   */
+  agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
 }
 
 const depsFor = (context: BrowserToolContext): CloudBrowserDeps | null =>
@@ -95,6 +102,12 @@ const liveSession = async (
   }
   if (session.controlledByUserId) {
     return { ok: false, result: deniedForControl('a person took control') }
+  }
+  if (session.authenticated) {
+    // Monotone: the session was already known to carry human logins, so
+    // re-registering here covers a run that reaches an existing session
+    // without having opened it itself.
+    context.consumedSources?.add({ scopeType: 'agent', scopeId: context.agentId })
   }
   if (session.expiresAt.getTime() <= Date.now()) {
     return {
@@ -133,17 +146,60 @@ const runOpen = async (
   context: BrowserToolContext,
   args: Record<string, unknown>,
 ): Promise<BrowserToolOutcome> => {
-  const parsed = ExecutorBrowserOpenArgumentsSchema.safeParse(args)
+  const parsed = ExecutorBrowserOpenArgumentsSchema.safeParse({ url: args.url })
   if (!parsed.success) {
     return { output: 'browser_open needs an https url.', success: false }
   }
+  const wantsDurable = args.mode === 'mine'
   try {
+    let agentBrowser: {
+      id: string
+      connectionId: string
+      browserbaseContextId: string
+      hasLogins: boolean
+    } | undefined
+
+    if (wantsDurable) {
+      const agent = context.agentIdentity
+      const browser = await ensureAgentBrowser(deps, {
+        organizationId: context.channel.organizationId,
+        agentId: context.agentId,
+        agentVisibility: agent?.visibility ?? 'workspace',
+        agentOwnerUserId: agent?.ownerUserId ?? null,
+      })
+      // An unattended run has nobody to answer for opening somebody's signed-in
+      // browser, and a schedule quietly acting inside a person's account is a
+      // different consent from "help me now".
+      if (browser.loginCount > 0 && !context.run.principalUserId) {
+        return {
+          output:
+            'This browser is signed in to services, so it can only be used in a '
+            + 'run somebody asked for — not on a schedule. Open a throwaway '
+            + 'browser instead, with mode "ephemeral".',
+          success: false,
+        }
+      }
+      agentBrowser = {
+        id: browser.id,
+        connectionId: browser.connectionId,
+        browserbaseContextId: browser.browserbaseContextId,
+        hasLogins: browser.loginCount > 0,
+      }
+      if (browser.loginCount > 0) {
+        // Everything read through a browser a person signed in is that
+        // agent's audience's material. Registered before the first page load,
+        // not after: an empty basis publishes to everyone.
+        context.consumedSources?.add({ scopeType: 'agent', scopeId: context.agentId })
+      }
+    }
+
     const opened = await openCloudBrowserSession(deps, {
       organizationId: context.channel.organizationId,
       runId: context.run.id,
       threadId: context.run.threadId,
       agentId: context.agentId,
       requestedByUserId: context.run.principalUserId ?? null,
+      ...(agentBrowser ? { agentBrowser } : {}),
     })
     registerSession(opened.sessionId, opened.connectUrl)
     const cdp = await acquireCdp(opened.sessionId)

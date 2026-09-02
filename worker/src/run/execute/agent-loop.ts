@@ -127,6 +127,11 @@ export const runExecutionAgentLoop = async (
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    agentIdentity: {
+      ownerUserId: context.agent.ownerUserId ?? null,
+      visibility: (context.agent.visibility === 'private' ? 'private' : 'workspace') as
+        'private' | 'workspace',
+    },
     cloudBrowser: deps.cloudBrowser,
     consumedSources: context.consumedSources,
     documentStream: deps.documentStream,
