@@ -1652,6 +1652,10 @@ enum UserAlertKind {
   trigger_health
   call_missed
   workspace_invitation
+  // An agent is waiting on this person to approve an action it cannot take
+  // alone. Durable rather than push-only for the same reason as
+  // trigger_health: a push at 06:00 is missable and the request expires.
+  approval_requested
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1673,6 +1677,7 @@ model UserAlert {
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
   triggerId       String?        @map("trigger_id") @db.Uuid
   callId          String?        @map("call_id") @db.Uuid
+  approvalRequestId String?      @map("approval_request_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1691,6 +1696,7 @@ model UserAlert {
   project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
   trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   call            Call?          @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -4147,6 +4153,7 @@ model ApprovalRequest {
   task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
   agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userAlerts           UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -5440,8 +5447,28 @@ enum GmailDraftActionState {
 ///
 /// It never covers an unattended run, never covers a requester who is not the
 /// mailbox owner, and never replaces the content-fingerprint check.
+/// How a grant behaves. `always` sends whenever the owner asks; `judged` has
+/// the assistant weigh each action against the owner's own written boundary
+/// and ask when it is unsure. There is deliberately no "deny" outcome — the
+/// assistant never silently refuses on somebody's behalf, so anything outside
+/// the boundary becomes a question rather than a rejection.
+enum SendAuthorizationMode {
+  always
+  judged
+}
+
 model SendAuthorizationGrant {
   id             String    @id @default(uuid()) @db.Uuid
+  mode           SendAuthorizationMode @default(always)
+  /// The owner's boundary, in their own words. Judged by a model on every
+  /// action, never parsed: a rule builder with keyword fields could not honour
+  /// a boundary written in Czech about mail written in Slovak. Owner-private —
+  /// it is read through an owner-gated route and never leaves in metadata.
+  boundary       String?
+  /// Running shape, so the settings row can say "12 sent · 3 asked you".
+  decidedCount   Int       @default(0) @map("decided_count")
+  askedCount     Int       @default(0) @map("asked_count")
+  lastDecidedAt  DateTime? @map("last_decided_at")
   organizationId String    @map("organization_id") @db.Uuid
   connectionId   String    @map("connection_id") @db.Uuid
   agentId        String    @map("agent_id") @db.Uuid

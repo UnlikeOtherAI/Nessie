@@ -64,6 +64,46 @@ export const hasStandingSendAuthorization = async (
     return false
   }
 
+  const grant = await loadLiveSendGrant(prisma, input, now)
+  // Only an `always` grant proceeds without a judgement. A `judged` grant is
+  // consent to *decide*, not consent to send, so the caller must run the
+  // boundary judge before anything leaves.
+  return grant !== null && grant.mode === 'always'
+}
+
+export type LiveSendGrant = {
+  id: string
+  mode: 'always' | 'judged'
+  boundary: string | null
+}
+
+/**
+ * The live grant for this exact (mailbox, agent) pair, or null.
+ *
+ * One exact-key lookup with no wildcard, inheritance or fallback — the
+ * `ScopeDisclosureGrant` discipline — plus the two structural conditions that
+ * no grant can waive: an unattended run is not a person asking, and the grant
+ * is only the mailbox owner's to spend.
+ */
+export const loadLiveSendGrant = async (
+  prisma: PrismaClient,
+  input: SendAuthorizationContext,
+  now: Date = new Date(),
+): Promise<LiveSendGrant | null> => {
+  if (!input.interactive) return null
+
+  const connection = await prisma.commsConnection.findFirst({
+    where: {
+      id: input.connectionId,
+      organizationId: input.organizationId,
+      status: 'active',
+    },
+    select: { ownerUserId: true },
+  })
+  if (!connection || connection.ownerUserId !== input.requestingUserId) {
+    return null
+  }
+
   const grant = await prisma.sendAuthorizationGrant.findUnique({
     where: {
       connectionId_agentId: {
@@ -71,10 +111,25 @@ export const hasStandingSendAuthorization = async (
         agentId: input.agentId,
       },
     },
-    select: { expiresAt: true, revokedAt: true },
+    select: { id: true, expiresAt: true, revokedAt: true, mode: true, boundary: true },
   })
-  if (!grant || grant.revokedAt !== null) return false
-  return grant.expiresAt === null || grant.expiresAt > now
+  if (!grant || grant.revokedAt !== null) return null
+  if (grant.expiresAt !== null && grant.expiresAt <= now) return null
+  return { id: grant.id, mode: grant.mode, boundary: grant.boundary }
+}
+
+/** Record what the assistant did, so the settings row can show its shape. */
+export const recordSendDecision = async (
+  prisma: PrismaClient,
+  grantId: string,
+  outcome: 'decided' | 'asked',
+): Promise<void> => {
+  await prisma.sendAuthorizationGrant.update({
+    where: { id: grantId },
+    data: outcome === 'decided'
+      ? { decidedCount: { increment: 1 }, lastDecidedAt: new Date() }
+      : { askedCount: { increment: 1 } },
+  })
 }
 
 export const grantSendAuthorization = async (
@@ -85,6 +140,8 @@ export const grantSendAuthorization = async (
     agentId: string
     grantedByUserId: string
     duration: SendGrantDuration
+    mode?: 'always' | 'judged'
+    boundary?: string | null
   },
   now: Date = new Date(),
 ): Promise<{ id: string; expiresAt: Date | null }> => {
@@ -102,9 +159,17 @@ export const grantSendAuthorization = async (
       agentId: input.agentId,
       grantedByUserId: input.grantedByUserId,
       expiresAt,
+      mode: input.mode ?? 'always',
+      boundary: input.boundary ?? null,
     },
     // Re-granting clears a previous revocation; that is the point of granting.
-    update: { expiresAt, revokedAt: null, grantedByUserId: input.grantedByUserId },
+    update: {
+      expiresAt,
+      revokedAt: null,
+      grantedByUserId: input.grantedByUserId,
+      ...(input.mode ? { mode: input.mode } : {}),
+      ...(input.boundary !== undefined ? { boundary: input.boundary } : {}),
+    },
     select: { id: true, expiresAt: true },
   })
   return row
@@ -133,6 +198,12 @@ export type SendGrantRecord = {
   agentId: string
   agentName: string
   connectionId: string
+  /** Which mailbox this grant is about — ambiguous without it on two accounts. */
+  accountEmail: string
+  mode: 'always' | 'judged'
+  boundary: string | null
+  decidedCount: number
+  askedCount: number
   expiresAt: string | null
   createdAt: string
 }
@@ -155,7 +226,12 @@ export const listSendAuthorizations = async (
       connectionId: true,
       expiresAt: true,
       createdAt: true,
+      mode: true,
+      boundary: true,
+      decidedCount: true,
+      askedCount: true,
       agent: { select: { name: true } },
+      connection: { select: { externalUserId: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -164,6 +240,11 @@ export const listSendAuthorizations = async (
     agentId: row.agentId,
     agentName: row.agent?.name ?? 'Agent',
     connectionId: row.connectionId,
+    accountEmail: row.connection?.externalUserId ?? '',
+    mode: row.mode,
+    boundary: row.boundary,
+    decidedCount: row.decidedCount,
+    askedCount: row.askedCount,
     expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   }))
@@ -177,6 +258,12 @@ export const listSendAuthorizations = async (
  * anything it does not recognise: an unknown gated tool must fall through to
  * the human gate, never past it.
  */
+export type StandingConsentDecision =
+  | { outcome: 'proceed'; grantId?: string }
+  | { outcome: 'ask' }
+  /** A `judged` grant applies: the caller must run the boundary judge. */
+  | { outcome: 'judge'; grantId: string; boundary: string; connectionId: string }
+
 export const resolveStandingConsentForToolCall = async (
   prisma: PrismaClient,
   input: {
@@ -187,28 +274,98 @@ export const resolveStandingConsentForToolCall = async (
     requestingUserId: string | null
     interactive: boolean
   },
-): Promise<boolean> => {
-  if (!input.requestingUserId) return false
-  if (input.toolName !== 'gmail_draft_send') return false
+): Promise<StandingConsentDecision> => {
+  if (!input.requestingUserId) return { outcome: 'ask' }
 
-  const draftId = input.args.draftId
-  if (typeof draftId !== 'string') return false
-
-  const draft = await prisma.gmailDraftAction.findFirst({
-    where: {
-      id: draftId,
-      organizationId: input.organizationId,
-      ownerUserId: input.requestingUserId,
-    },
-    select: { connectionId: true },
+  // A calendar write is gated because it MAILS PEOPLE. With no guests to
+  // notify, nobody is contacted and there is nothing for a person to approve —
+  // putting lunch in your own diary should not stop a run. The tool definition
+  // said this; only the chokepoint makes it true.
+  if (
+    input.toolName === 'calendar_event_create'
+    || input.toolName === 'calendar_event_update'
+  ) {
+    const attendees = input.args.attendees
+    if (!Array.isArray(attendees) || attendees.length === 0) {
+      return { outcome: 'proceed' }
+    }
+  }
+  // Cancelling always notifies whoever was invited, so it is only ungated when
+  // the event has no guests — which the caller cannot assert, so it always asks.
+  // Cancelling notifies whoever was invited and the caller cannot prove there
+  // were none, so it always reaches the grant.
+  //
+  // Everything gated resolves against the owner's mailbox grant. Only a
+  // draft-backed send can be judged: a direct send has no durable projection,
+  // no hold and no undo, so it always asks whatever the grant says.
+  const connectionId = await resolveGatedConnectionId(prisma, {
+    ...input,
+    requestingUserId: input.requestingUserId,
   })
-  if (!draft) return false
+  if (!connectionId) return { outcome: 'ask' }
 
-  return hasStandingSendAuthorization(prisma, {
+  const grant = await loadLiveSendGrant(prisma, {
     organizationId: input.organizationId,
-    connectionId: draft.connectionId,
+    connectionId,
     agentId: input.agentId,
     requestingUserId: input.requestingUserId,
     interactive: input.interactive,
   })
+  if (!grant) return { outcome: 'ask' }
+  if (grant.mode === 'always') return { outcome: 'proceed', grantId: grant.id }
+  if (!grant.boundary || grant.boundary.trim().length === 0) {
+    // A judged grant with no boundary has nothing to judge against, so it asks
+    // rather than inventing one.
+    return { outcome: 'ask' }
+  }
+  return {
+    outcome: 'judge',
+    grantId: grant.id,
+    boundary: grant.boundary,
+    connectionId,
+  }
+}
+
+/**
+ * The mailbox a gated tool call acts on.
+ *
+ * A draft names its connection; a calendar call does not, so it resolves the
+ * caller's single active Google account — and refuses when there are two,
+ * because a grant is per mailbox and guessing which one would spend the wrong
+ * person's consent.
+ */
+const resolveGatedConnectionId = async (
+  prisma: PrismaClient,
+  input: {
+    toolName: string
+    args: Record<string, unknown>
+    organizationId: string
+    requestingUserId: string
+  },
+): Promise<string | null> => {
+  if (input.toolName === 'gmail_draft_send') {
+    const draftId = input.args.draftId
+    if (typeof draftId !== 'string') return null
+    const draft = await prisma.gmailDraftAction.findFirst({
+      where: {
+        id: draftId,
+        organizationId: input.organizationId,
+        ownerUserId: input.requestingUserId,
+      },
+      select: { connectionId: true },
+    })
+    return draft?.connectionId ?? null
+  }
+  if (!input.toolName.startsWith('calendar_')) return null
+  const connections = await prisma.commsConnection.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ownerUserId: input.requestingUserId,
+      provider: 'google',
+      status: 'active',
+    },
+    select: { id: true },
+    take: 2,
+  })
+  return connections.length === 1 ? (connections[0]?.id ?? null) : null
 }

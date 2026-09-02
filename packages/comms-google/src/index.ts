@@ -74,3 +74,16 @@ export {
   type BusyBlock,
   type CreateEventInput,
 } from './calendar/client.js'
+
+export { respondToEvent } from './calendar/client.js'
+export {
+  listGmailLabels,
+  modifyGmailThread,
+  trashGmailThread,
+  getGmailAttachment,
+  type GmailLabelRef,
+} from './gmail/read.js'
+export {
+  searchGoogleContacts,
+  type GoogleContact,
+} from './contacts/people.js'

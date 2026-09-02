@@ -328,6 +328,13 @@ export const prepareRunExecution = async (
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
+      mailbox: {
+        hasMailboxTools: resolvedToolIds.has('gmail_search')
+          || resolvedToolIds.has('gmail_draft_create'),
+        hasCalendarTools: resolvedToolIds.has('calendar_events_list')
+          || resolvedToolIds.has('calendar_event_create'),
+        hasDelegate: resolvedToolIds.has('delegate'),
+      },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       todoFacts,
       documents: documentsHome
