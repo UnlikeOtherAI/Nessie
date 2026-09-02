@@ -58,7 +58,7 @@ export const ConnectionsPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="Account" title="Connected accounts">
+    <SettingsPanel eyebrow="User" title="Connected accounts">
       <div className="flex max-w-3xl flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
           Link your Slack, Gmail, or Microsoft account so your Chief of Staff can

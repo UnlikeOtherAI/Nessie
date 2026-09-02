@@ -316,7 +316,7 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
 
   return (
     <SettingsPanel
-      eyebrow="Account"
+      eyebrow="User"
       title="Notifications"
       actions={[
         {

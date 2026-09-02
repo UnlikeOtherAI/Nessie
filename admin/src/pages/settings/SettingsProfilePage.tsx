@@ -63,8 +63,8 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
 
   return (
     <SettingsPanel
-      eyebrow="Account"
-      title="Profile & Session"
+      eyebrow="User"
+      title="Profile"
       actions={[
         {
           id: 'sign-out',

@@ -9,7 +9,7 @@ import { TypePanel } from './appearance/TypePanel'
  * parameter the parent already owns.
  */
 export const AppearancePage = ({ tabs }: SettingsTabHostProps) => (
-  <SettingsPanel eyebrow="Account" title="Appearance">
+  <SettingsPanel eyebrow="User" title="Appearance">
     {tabs}
     <div className="grid gap-4">
       <ColoursPanel />

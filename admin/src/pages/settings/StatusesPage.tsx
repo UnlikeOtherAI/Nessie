@@ -215,7 +215,7 @@ export const StatusesPage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="Account"
+      eyebrow="User"
       title="Statuses"
       actions={[
         {

@@ -101,7 +101,7 @@ export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
   const isLocalAccount = me.auth.providerType === 'local-bootstrap'
 
   return (
-    <SettingsPanel eyebrow="Account" title="Security">
+    <SettingsPanel eyebrow="User" title="Security">
       {tabs}
       <div className="grid w-full gap-4">
         <section className="admin-card p-4">

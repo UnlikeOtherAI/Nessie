@@ -72,7 +72,7 @@ const isAgentDetailRoute = (pathname: string): boolean =>
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
+type AdminNavGroupId = 'agents' | 'user' | 'team' | 'organization' | 'governance' | 'platform';
 
 type AdminNavGroup = {
   id: AdminNavGroupId;
@@ -173,8 +173,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    id: 'account',
-    heading: 'Account',
+    id: 'user',
+    heading: 'User',
     items: [
       {
         path: '/settings/account',
@@ -241,12 +241,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    id: 'organization',
-    heading: 'Organization',
+    id: 'team',
+    heading: 'Team',
     items: [
       {
         path: '/settings/team',
-        label: 'Team',
+        label: 'Settings',
         visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
         icon: icon(
           <>
@@ -256,6 +256,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
+    ],
+  },
+  {
+    id: 'organization',
+    heading: 'Organization',
+    items: [
       {
         path: '/settings/organization',
         label: 'Settings',

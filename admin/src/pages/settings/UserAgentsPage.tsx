@@ -8,7 +8,7 @@ import { SettingsPanel, type SettingsTabHostProps } from './settings-shared'
  * is a capability your agents borrow, and the logins it holds are yours.
  */
 export const UserAgentsPage = ({ tabs }: SettingsTabHostProps) => (
-  <SettingsPanel eyebrow="Account" title="Agents">
+  <SettingsPanel eyebrow="User" title="Agents">
     {tabs}
     <div className="grid gap-4">
       <CloudBrowserPanel scope="user" />
