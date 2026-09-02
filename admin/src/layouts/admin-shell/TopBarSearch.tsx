@@ -16,6 +16,10 @@ import {
   type ThoughtSearchHit,
 } from '../../facades/search/hooks'
 import { selectBestPassage } from '../../lib/highlight-passage'
+import {
+  SearchResultMarker,
+  type SearchMarkerSubject,
+} from '../../components/shared/SearchResultMarker'
 
 // A single selectable entry in the flattened results list. Flattening lets the
 // keyboard handler move a single cursor across every group in display order.
@@ -33,19 +37,25 @@ type ResultItem =
     }
   | { kind: 'thought'; id: string; primary: string; secondary: string; data: ThoughtSearchHit }
 
+// The suggestion list and the full search page draw the same tile from the same
+// hit, so the mapping into it lives beside the item type rather than in either
+// surface's render.
+const searchMarkerSubject = (item: ResultItem): SearchMarkerSubject => {
+  if (item.kind === 'person') {
+    return { kind: 'person', user: item.data, displayName: item.primary }
+  }
+  if (item.kind === 'project') {
+    return { kind: 'project', project: item.data }
+  }
+  return { kind: item.kind }
+}
+
 const SearchGlyph = () => (
   <svg fill="none" height="16" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="16">
     <circle cx="11" cy="11" r="7" />
     <path d="m20 20-3.5-3.5" strokeLinecap="round" />
   </svg>
 )
-
-const markerClass = [
-  'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md',
-  'bg-[color:var(--overlay-weak)] text-[12px] font-semibold text-[color:var(--tx2)]',
-].join(' ')
-
-const initial = (value: string): string => value.trim().charAt(0).toUpperCase() || '?'
 
 type TopBarSearchProps = {
   autoFocus?: boolean
@@ -283,17 +293,7 @@ export const TopBarSearch = ({
                 role="option"
                 type="button"
               >
-                <span className={markerClass}>
-                  {item.kind === 'channel'
-                    ? '#'
-                    : item.kind === 'message'
-                      ? '💬'
-                      : item.kind === 'knowledge'
-                        ? '📄'
-                        : item.kind === 'thought'
-                          ? 'M'
-                          : initial(item.primary)}
-                </span>
+                <SearchResultMarker size={28} subject={searchMarkerSubject(item)} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-[color:var(--tx)]">
                     {item.primary}
