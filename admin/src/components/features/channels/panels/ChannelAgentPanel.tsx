@@ -5,11 +5,11 @@ import type {
   PersonalAssistantPresenceParticipant,
   PersonalAssistantStateResponse,
 } from '../../../../lib/api-client'
+import { useCanEditAgent } from '../../agents/agent-edit-authority'
 import { AgentAvailableTools } from '../../agents/AgentAvailableTools'
 import { AgentIdentityBlock } from '../../agents/AgentIdentityBlock'
 import { PersonalAssistantConfigBanner } from '../../personal-assistant/PersonalAssistantSurface'
 import { SectionLabel } from '../../../primitives/SectionLabel'
-import { useIsOwner } from '../../../shared/OwnerGate'
 import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPresences'
 
 /**
@@ -23,7 +23,7 @@ import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPre
  *
  * Identity and tools are the same `AgentIdentityBlock` and
  * `AgentAvailableTools` that `/agents/:id` renders — the tools card therefore
- * carries the owner's switches and everyone else's read-only resolution
+ * carries the editor's switches and everyone else's read-only resolution
  * without a second implementation of either. Editing is a link to that page,
  * not a second designer.
  */
@@ -45,10 +45,11 @@ export const ChannelAgentPanel = ({
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
 }) => {
   const navigate = useNavigate()
-  const isOwner = useIsOwner()
-  // A system-managed agent has no Designer to open; the Personal Assistant is
-  // configured through its own banner instead.
-  const canEdit = isOwner && !agent.systemManaged
+  // Who may edit is the agent's ownership state, not the organization owner
+  // role. A system-managed agent has no Designer to open either — the Personal
+  // Assistant is configured through its own banner instead — which
+  // `canEditAgent` already refuses.
+  const canEdit = useCanEditAgent(agent)
 
   return (
     <div className="grid gap-4 p-5" data-testid="channel-agent-panel">

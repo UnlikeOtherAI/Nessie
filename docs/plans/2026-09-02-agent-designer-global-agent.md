@@ -492,6 +492,9 @@ form-filling UX for architectural purity the product doesn't need yet.
 
 ## Edit authority — person-owned vs team-owned (decided 2026-09-02)
 
+**Status: implemented 2026-09-02** (phase 0). The prose below is the decision as
+made; the built shape and its test coverage are listed under Phases → 0.
+
 Verified: every agent-mutation route (`PUT /api/agents/:id`, both avatar
 routes, bindings) gates on `requireOwner` = the **organization owner role**
 (`api/src/lib/server-context.ts:267`). A non-owner member cannot edit any
@@ -651,17 +654,39 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
 
 ## Phases
 
-0. **Edit authority (independent, ships first).** `canEditAgent` +
-   `assertAgentFieldAuthority` in `@nessie/workspace-admin`; PUT + avatar
-   routes migrate off `requireOwner` with the actor threaded into the
-   service; explicit service-level `systemManaged` refusal in
-   `updateAgentRecord` + avatar service; release-to-team on the transfer
-   path; admin ownership state + control; "Unowned" bucket renamed;
-   people-and-their-agents amended. DB-backed tests: private-owner edit
-   allowed, foreign-private denied even for org owners, person-owned denies
-   other members, team-owned allows any entitled member, transfer/claim/
-   todos refused for mere editors, org-owner override, system-managed
-   refusal, protected-key refusal unchanged for every editor.
+0. **Edit authority — IMPLEMENTED 2026-09-02.** `canEditAgent` /
+   `resolveAgentEditAuthority` / `assertAgentEditAuthority` /
+   `assertAgentFieldAuthority` live in
+   `packages/workspace-admin/src/agent-edit-authority.ts` (re-exported by
+   `api/src/services/agent-management.ts`). `PUT /api/agents/:agentId`,
+   `PATCH …/avatar` and `POST …/avatar/generate` no longer call `requireOwner`;
+   the acting person is threaded into `updateAgentRecord` and
+   `updateAgentAvatar`, so the field-sensitive refusals are expressed in the
+   services rather than only at the routes, and the refusal is also asked at the
+   PUT route *before* the billed Ledger model-catalogue call. `systemManaged` is
+   refused explicitly in both services (`SYSTEM_AGENT_IMMUTABLE`) instead of
+   relying on route invisibility. Release-to-team rides the existing
+   `ownerUserId` transfer path and keeps emitting `agent.owner_changed`; private
+   agents keep `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`. Refusals carry distinct
+   codes (`AGENT_EDIT_PRIVATE_OWNER_ONLY`, `AGENT_EDIT_OWNER_ONLY`,
+   `AGENT_EDIT_NOT_ENTITLED`, `AGENT_EDIT_MEMBERSHIP_INACTIVE`,
+   `AGENT_OWNERSHIP_CHANGE_FORBIDDEN`, `AGENT_TODOS_OWNER_REQUIRED`,
+   `SYSTEM_AGENT_IMMUTABLE`) as 403s. The admin mirrors the rule in one place
+   (`admin/src/components/features/agents/agent-edit-authority.ts`): the detail
+   page, its tabs, the Tools editor, the avatar controls, the detail drawer and
+   the channel agent panel all gate on `useCanEditAgent`; the header carries an
+   `AgentOwnershipState` line ("Owned by <person>" / "Team-owned") with a
+   confirmed Release-to-team / Take-ownership control for whoever may use it;
+   and the people-tree bucket is renamed `teamOwned` / "Team-owned agents".
+   Tests: `api/test/agent-edit-authority.test.ts` (DB-backed — private-owner
+   edit allowed, foreign private denied to org owners, person-owned denies
+   another member, team-owned allows any entitled member and refuses a
+   deactivated or unreachable one, transfer/claim/`todosEnabled` refused for a
+   mere editor, org-owner override, system-managed refusal in both services,
+   protected-key refusal unchanged for every editor) plus route cases in
+   `api/test/agent-policy-routes.test.ts` and the mirrored client predicate in
+   `admin/test/agent-edit-authority.test.ts`. `AGENTS.md` and
+   `docs/plans/2026-08-29-people-and-their-agents.md` carry the rule.
 1. **Foundation — implemented 2026-09-02.** Migrations
    `20260902190000_global_agent_channel_type` (the `system_agent` enum value,
    alone in its own file because PostgreSQL forbids using a new enum value in

@@ -50,11 +50,11 @@ export const PersonAgents = ({
 
 /**
  * Agents that belong to no one in this workspace. Split into two labelled
- * groups on purpose: "unowned" is every agent that predates stewardship, while
- * "owned outside this workspace" covers an owner the *team* roster does not
- * list — which an active colleague in another team and a departed person both
- * produce. Merging them would either bury the real orphans or call present
- * colleagues gone.
+ * groups on purpose: "team-owned" is a real state — nobody stewards the agent,
+ * so anyone entitled to it may edit it — while "owned outside this workspace"
+ * covers an owner the *team* roster does not list, which an active colleague in
+ * another team and a departed person both produce. Merging them would either
+ * hide who may edit what or call present colleagues gone.
  */
 export const UnassignedAgents = ({
   agents,
