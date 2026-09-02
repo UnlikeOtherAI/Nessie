@@ -891,18 +891,18 @@ exist.
      than two. It takes the queue functions as parameters
      (`AgentTodoRunQueue`'s precedent) because this package is loaded from
      `dist` by processes that resolve `@nessie/db` differently.
-   - **The read-only detail view (D7).** `readAgentConfigView` composes
-     `readAgentRecordForActor` with `loadAgentToolCatalog`, resolving the sparse
-     policy map into the tools the agent actually has (`default` / `policy` /
-     `reserved` — the last being blueprint identity tools no policy can grant).
-     Served at `GET /api/agents/:agentId/config` under exactly the list
-     entitlement; `isAgentAccessibleToActor` is untouched, so status, activity,
-     messages and children still 404 on a system agent. The admin's
-     `SystemAgentConfigPanel` replaces the tabs for any `systemManaged` agent,
-     with no edit affordance at all.
+   - **The read-only detail view (D7).** Shipped as a bespoke
+     `SystemAgentConfigPanel` over a narrow `GET /api/agents/:agentId/config`
+     read; **both were deleted on 2026-09-02** as a Rule zero #4 violation — a
+     second implementation of a view that already existed. A `systemManaged`
+     agent now renders the ordinary detail surface with the designer form
+     disabled and only the Edit + Tools tabs, seeded from the entitled agent
+     list. `isAgentAccessibleToActor` is still untouched, so status, activity,
+     messages and children still 404. See `docs/global-agents.md`.
    - Tests: `api/test/designer-continue-in-chat.test.ts` (DB — the hidden
      `system` brief, one run, the `gagent:` DM shape, convergence on a second
-     click, deactivated-member and unknown-slug refusals), config-view cases in
+     click, deactivated-member and unknown-slug refusals), the
+     `readAgentRecordForActor` entitlement cases in
      `api/test/agent-designer-reads.test.ts`, the retirement and the Designer's
      continued access in `worker/test/identity-delegation.test.ts`, and the
      rewritten designer prompt/service suites (the catalogue reaches the prompt

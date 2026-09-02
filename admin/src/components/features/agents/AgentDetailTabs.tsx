@@ -50,6 +50,24 @@ const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'Email', value: 'email' },
 ]
 
+/**
+ * The sections a Nessie-managed (global / system) agent actually has.
+ *
+ * This is a structural fact about the agent record, not a preference: the
+ * server's `isAgentAccessibleToActor` hard-codes `systemManaged: false`, so
+ * status, activity, sub-agents, messages, to-dos, documents, the mailbox and
+ * the cloud browser all 404 on one — mounting them made "you cannot edit this"
+ * read as "this is broken". And a global agent's activity genuinely must stay
+ * closed: it is an organisation-wide singleton working inside every member's
+ * private DM with it.
+ *
+ * What remains is what resolves from the entitled agent list alone: its
+ * configuration (rendered as the ordinary designer form, disabled) and its
+ * resolved tools. Stated once, here, rather than as `systemManaged &&` checks
+ * scattered across the call sites.
+ */
+const SYSTEM_AGENT_TABS: ReadonlySet<Tab> = new Set<Tab>(['edit', 'tools'])
+
 const PAGE_SIZE = 10
 
 const pageContextForTab: Record<Tab, DesignerPageContext> = {
@@ -107,10 +125,13 @@ type AgentDetailTabsProps = {
 
 export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailTabsProps) => {
   const assistantPanel = useDesignerAssistantPanel()
-  const tabs = useMemo(
-    () => (editSlot ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS] : DETAIL_TABS),
-    [editSlot],
-  )
+  const isSystemManaged = agent.systemManaged === true
+  const tabs = useMemo(() => {
+    const all = editSlot
+      ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS]
+      : DETAIL_TABS
+    return isSystemManaged ? all.filter((item) => SYSTEM_AGENT_TABS.has(item.value)) : all
+  }, [editSlot, isSystemManaged])
   // Land on the first tab actually rendered, so the selection and the leading
   // tab can never disagree when the tab order changes.
   const tabValues = useMemo(() => tabs.map((item) => item.value), [tabs])
@@ -121,16 +142,20 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
   const [activeTab, setActiveTab] = useTabParam(
     'agentTab',
     tabValues,
-    editSlot ? 'edit' : FIRST_DETAIL_TAB,
+    tabs[0]?.value ?? FIRST_DETAIL_TAB,
   )
   const [messagePage, setMessagePage] = useState(0)
 
-  const { data: status } = useAgentStatus(agent.id)
-  const { data: activity } = useAgentActivity(agent.id)
-  const { data: childAgents = [] } = useAgentChildren(agent.id)
+  // The operational reads are closed for a Nessie-managed agent (see
+  // `SYSTEM_AGENT_TABS`), and their tabs are not rendered. Passing no id leaves
+  // the queries idle rather than firing four requests that can only 404.
+  const operationalAgentId = isSystemManaged ? undefined : agent.id
+  const { data: status } = useAgentStatus(operationalAgentId)
+  const { data: activity } = useAgentActivity(operationalAgentId)
+  const { data: childAgents = [] } = useAgentChildren(operationalAgentId)
   // Fetch PAGE_SIZE + 1 to detect whether a next page exists
   const { data: rawMessages = [] } = useAgentMessages(
-    agent.id,
+    operationalAgentId,
     PAGE_SIZE + 1,
     messagePage * PAGE_SIZE,
   )
@@ -214,8 +239,13 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
 
         {activeTab === 'tools' && (
           <div className="grid gap-6">
+            {/* `AgentAvailableTools` already resolves to its read-only list for
+                an agent this viewer may not edit — the same ToolPicker, without
+                the switches. The cloud browser is one of the closed operational
+                reads, so it is left off a Nessie-managed agent rather than
+                rendering "no browser yet" over a 404. */}
             <AgentAvailableTools agent={agent} />
-            <AgentBrowserPanel agent={agent} />
+            {isSystemManaged ? null : <AgentBrowserPanel agent={agent} />}
           </div>
         )}
 
