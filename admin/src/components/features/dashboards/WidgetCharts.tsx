@@ -62,10 +62,9 @@ const WidgetTooltip = ({
   if (!active || !payload?.length) return null
   return (
     <div
-      className="rounded border px-2 py-1.5 text-xs shadow"
-      style={{ background: 'var(--panel)', borderColor: 'var(--sep)', color: 'var(--tx)' }}
+      className="rounded border border-[color:var(--sep)] bg-[color:var(--panel)] px-2 py-1.5 text-xs text-[color:var(--tx)] shadow"
     >
-      <div className="mb-1" style={{ color: 'var(--tx3)' }}>
+      <div className="mb-1 text-[color:var(--tx3)]">
         {String(label ?? '')}
       </div>
       {payload.map((entry, index) => (

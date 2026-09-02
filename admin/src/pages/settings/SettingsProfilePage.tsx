@@ -6,7 +6,10 @@ import { useStatuses } from '../../facades/statuses/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { AvatarPanel } from './profile/AvatarPanel'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
+import { Notice } from '../../components/primitives/Notice'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { Card } from '../../components/shared/Card'
+import { KeyValueList } from '../../components/shared/KeyValueList'
 import { SettingsPanel } from './settings-shared'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
@@ -20,17 +23,27 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   custom: 'Custom provider',
 }
 
-const fieldLabelClass =
-  'text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]'
-
 export const SettingsProfilePage = () => {
   const navigate = useNavigate()
   const { me, logout } = useAuthSession()
-  const { data: statuses = [] } = useStatuses()
-  const { data: organization } = useCurrentOrganization()
-  const { data: teams } = useTeams()
-  const { data: providers } = useAuthProviders()
+  const statusesQuery = useStatuses()
+  const organizationQuery = useCurrentOrganization()
+  const teamsQuery = useTeams()
+  const providersQuery = useAuthProviders()
+  const statuses = statusesQuery.data ?? []
+  const organization = organizationQuery.data
+  const teams = teamsQuery.data
+  const providers = providersQuery.data
   const activeStatus = statuses.find((status) => status.activeNow)
+
+  // A failed read here must not render as if the account simply had no
+  // organization, team, or provider — the person reading this page cannot
+  // tell "unset" from "the fetch failed" unless the two are shown differently.
+  const hasLoadError =
+    statusesQuery.isError
+    || organizationQuery.isError
+    || teamsQuery.isError
+    || providersQuery.isError
 
   if (!me) {
     return null
@@ -61,12 +74,30 @@ export const SettingsProfilePage = () => {
         } satisfies PageHeaderAction,
       ]}
     >
+      {hasLoadError && (
+        <Notice className="mb-4" role="alert" tone="danger">
+          Some account details failed to load.{' '}
+          <button
+            className="underline"
+            onClick={() => {
+              void statusesQuery.refetch()
+              void organizationQuery.refetch()
+              void teamsQuery.refetch()
+              void providersQuery.refetch()
+            }}
+            type="button"
+          >
+            Retry
+          </button>
+        </Notice>
+      )}
+
       <div className="mb-4">
         <AvatarPanel />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="admin-card p-4">
+        <Card variant="section">
           <SectionLabel>Profile</SectionLabel>
           <div className="mt-4 text-2xl font-semibold text-[color:var(--tx)]">
             {me.user.displayName}
@@ -82,52 +113,36 @@ export const SettingsProfilePage = () => {
             </div>
           )}
           <div className="mt-1 text-sm text-[color:var(--tx2)]">{me.user.email}</div>
-          <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
-            <div>
-              <div className={fieldLabelClass}>Organization</div>
-              <div className="mt-0.5 text-[color:var(--tx)]">{organizationName}</div>
-            </div>
-            <div>
-              <div className={fieldLabelClass}>Team</div>
-              <div className="mt-0.5 text-[color:var(--tx)]">{teamName}</div>
-            </div>
-            <div>
-              <div className={fieldLabelClass}>Provider</div>
-              <div className="mt-0.5 text-[color:var(--tx)]">{providerName}</div>
-              {providerUrl && (
-                <div className="text-xs text-[color:var(--tx3)]">{providerUrl}</div>
-              )}
-            </div>
-          </div>
-        </section>
+          <KeyValueList
+            className="mt-4"
+            items={[
+              { label: 'Organization', value: organizationName },
+              { label: 'Team', value: teamName },
+              {
+                label: 'Provider',
+                value: providerUrl ? (
+                  <>
+                    {providerName}
+                    <div className="mt-0.5 text-xs text-[color:var(--tx3)]">{providerUrl}</div>
+                  </>
+                ) : providerName,
+              },
+            ]}
+            layout="grid"
+          />
+        </Card>
 
-        <section className="admin-card p-4">
+        <Card variant="section">
           <SectionLabel>Session</SectionLabel>
-          <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
-            <div className="admin-card p-3">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                Session ID
-              </div>
-              <div className="mt-1 break-all font-mono text-xs text-[color:var(--tx)]">
-                {me.session.sessionId}
-              </div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                Issued
-              </div>
-              <div className="mt-1">{new Date(me.session.issuedAt).toLocaleString()}</div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                Auto redirect
-              </div>
-              <div className="mt-1">
-                {me.auth.autoRedirectToSso ? 'Enabled' : 'Disabled'}
-              </div>
-            </div>
-          </div>
-        </section>
+          <KeyValueList
+            className="mt-4"
+            items={[
+              { label: 'Session ID', mono: true, value: me.session.sessionId },
+              { label: 'Issued', value: new Date(me.session.issuedAt).toLocaleString() },
+              { label: 'Auto redirect', value: me.auth.autoRedirectToSso ? 'Enabled' : 'Disabled' },
+            ]}
+          />
+        </Card>
       </div>
     </SettingsPanel>
   )

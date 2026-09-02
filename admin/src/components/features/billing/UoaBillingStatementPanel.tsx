@@ -14,32 +14,16 @@ import {
   useUoaBillingHostedAction,
   useUoaBillingStatement,
 } from '../../../facades/billing/hooks'
+import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { Card } from '../../shared/Card'
+import { QueryState } from '../../shared/QueryState'
+import { StatGrid, StatTile } from '../../shared/StatTile'
 import { UoaBillingCancellationDialog } from './UoaBillingCancellationDialog'
 import { UoaBillingStatementDetails } from './UoaBillingStatementDetails'
 
 const errorMessage = (error: unknown): string | null =>
   error instanceof Error ? error.message : null
-
-const SummaryCard = ({
-  detail,
-  label,
-  value,
-}: {
-  detail: string
-  label: string
-  value: string
-}) => (
-  <div className="rounded-lg border border-[color:var(--sep)] p-3">
-    <SectionLabel>{label}</SectionLabel>
-    <div className="mt-1 font-semibold text-[color:var(--tx)]">
-      {value}
-    </div>
-    <div className="mt-1 text-xs text-[color:var(--tx2)]">
-      {detail}
-    </div>
-  </div>
-)
 
 const actionButtonClass = (
   action: BillingStatementAction,
@@ -103,7 +87,7 @@ export const UoaBillingStatementPanel = () => {
   return (
     <section className="mb-8" data-testid="uoa-billing-statement">
       <SectionLabel>Customer statement</SectionLabel>
-      <div className="mt-2 admin-card p-5">
+      <Card className="mt-2" variant="section">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-[color:var(--tx)]">
@@ -115,123 +99,114 @@ export const UoaBillingStatementPanel = () => {
               Nessie does not calculate commercial billing.
             </p>
           </div>
-          {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
           {data && (
-            <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
+            <Pill tone="outline">
               {data.period.key} · {data.period.state}
-            </div>
+            </Pill>
           )}
         </div>
 
-        {statement.isLoading && (
-          <div className="mt-4 text-sm text-[color:var(--tx2)]">
-            Loading customer statement…
-          </div>
-        )}
-        {/* Unconverted: the border deliberately matches the fill (both --warning-soft), so no outline shows. */}
-        {statement.error && (
-          <div className="mt-4 rounded-md border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
-            Billing is unavailable: {statement.error.message}
-          </div>
-        )}
+        <QueryState
+          className="mt-4 py-6"
+          errorLabel="Billing is unavailable."
+          loadingLabel="Loading customer statement…"
+          query={statement}
+        >
+          {() => data && (
+            <>
+              <StatGrid className="mt-5 sm:grid-cols-2 xl:grid-cols-4">
+                <StatTile
+                  detail={data.plan.markup_display}
+                  label="Plan"
+                  value={data.plan.display_name}
+                />
+                <StatTile
+                  detail={`${data.plan.assignment.scope} assignment`}
+                  label="Monthly"
+                  value={data.plan.monthly_subscription.display}
+                />
+                <StatTile
+                  detail={
+                    data.subscription?.cancel_at_period_end
+                      ? 'Cancellation is scheduled'
+                      : data.subscription
+                        ? 'Subscription managed by SSO'
+                        : 'No direct subscription'
+                  }
+                  label="Subscription"
+                  value={data.subscription?.display_status ?? 'Not subscribed'}
+                />
+                <StatTile
+                  detail="Subscription, usage, add-ons, and credits"
+                  label="Total due"
+                  value={
+                    data.totals.length === 1
+                      ? data.totals[0]?.total_due.display ?? 'Unavailable'
+                      : `${data.totals.length} currency totals`
+                  }
+                />
+              </StatGrid>
 
-        {data && (
-          <>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SummaryCard
-                detail={data.plan.markup_display}
-                label="Plan"
-                value={data.plan.display_name}
-              />
-              <SummaryCard
-                detail={`${data.plan.assignment.scope} assignment`}
-                label="Monthly"
-                value={data.plan.monthly_subscription.display}
-              />
-              <SummaryCard
-                detail={
-                  data.subscription?.cancel_at_period_end
-                    ? 'Cancellation is scheduled'
-                    : data.subscription
-                      ? 'Subscription managed by SSO'
-                      : 'No direct subscription'
-                }
-                label="Subscription"
-                value={data.subscription?.display_status ?? 'Not subscribed'}
-              />
-              <SummaryCard
-                detail="Subscription, usage, add-ons, and credits"
-                label="Total due"
-                value={
-                  data.totals.length === 1
-                    ? data.totals[0]?.total_due.display ?? 'Unavailable'
-                    : `${data.totals.length} currency totals`
-                }
-              />
-            </div>
-
-            {data.totals.length > 0 && (
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {data.totals.map((total) => (
-                  <div
-                    className="rounded-lg bg-[color:var(--overlay-weak)] p-3 text-xs text-[color:var(--tx2)]"
-                    key={total.currency}
-                  >
-                    <div className="font-semibold text-[color:var(--tx)]">
-                      {total.total_due.display} due
-                    </div>
-                    <div className="mt-1">
-                      Monthly {total.monthly.display} · Usage{' '}
-                      {total.usage.display} · Add-ons {total.add_ons.display} ·
-                      Credits {total.credits.display}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <UoaBillingStatementDetails statement={data} />
-
-            <div className="mt-6">
-              <SectionLabel>Subscription actions</SectionLabel>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                {data.actions.map((action) => (
-                  <div
-                    className="rounded-lg border border-[color:var(--sep)] p-3"
-                    key={action.id}
-                  >
-                    <button
-                      className={`${actionButtonClass(action)} w-full`}
-                      data-testid={`uoa-billing-action-${action.id}`}
-                      disabled={!action.enabled || actionPending}
-                      onClick={() => {
-                        void runAction(action)
-                      }}
-                      type="button"
+              {data.totals.length > 0 && (
+                <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {data.totals.map((total) => (
+                    <li
+                      className="rounded-md bg-[color:var(--overlay-weak)] p-3 text-xs text-[color:var(--tx2)]"
+                      key={total.currency}
                     >
-                      {action.label}
-                    </button>
-                    <div className="mt-2 text-xs text-[color:var(--tx2)]">
-                      {action.description}
-                    </div>
-                    {!action.enabled && action.disabled_reason && (
-                      <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                        {action.disabled_reason}
+                      <div className="font-semibold text-[color:var(--tx)]">
+                        {total.total_due.display} due
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <div className="mt-1">
+                        Monthly {total.monthly.display} · Usage{' '}
+                        {total.usage.display} · Add-ons {total.add_ons.display} ·
+                        Credits {total.credits.display}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <UoaBillingStatementDetails statement={data} />
+
+              <div className="mt-6">
+                <SectionLabel>Subscription actions</SectionLabel>
+                <ul className="mt-2 divide-y divide-[color:var(--sep)]">
+                  {data.actions.map((action) => (
+                    <li className="flex flex-wrap items-center gap-3 py-2.5" key={action.id}>
+                      <button
+                        className={actionButtonClass(action)}
+                        data-testid={`uoa-billing-action-${action.id}`}
+                        disabled={!action.enabled || actionPending}
+                        onClick={() => {
+                          void runAction(action)
+                        }}
+                        type="button"
+                      >
+                        {action.label}
+                      </button>
+                      <div className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
+                        {action.description}
+                        {!action.enabled && action.disabled_reason && (
+                          <div className="mt-0.5 text-[color:var(--tx3)]">
+                            {action.disabled_reason}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </QueryState>
 
         {actionError && (
           <div className="mt-4 text-sm text-[color:var(--danger-text)]">
             {actionError}
           </div>
         )}
-      </div>
+      </Card>
 
       {(preview || confirmation) && (
         <UoaBillingCancellationDialog

@@ -1,5 +1,4 @@
 import type {
-  BillingCreditAmount,
   BillingCreditsManagerV1,
   BillingCreditsMemberV1,
   BillingCreditsV1,
@@ -13,81 +12,52 @@ import {
   useUoaBillingCredits,
   useUoaBillingCreditTopUp,
 } from '../../../facades/billing/hooks'
+import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { Card } from '../../shared/Card'
+import { KeyValueList } from '../../shared/KeyValueList'
+import { Section } from '../../shared/PageBody'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
+import { StatGrid, StatTile } from '../../shared/StatTile'
 
 const isManagerCredits = (
   credits: BillingCreditsV1,
 ): credits is BillingCreditsManagerV1 =>
   credits.viewer.role === 'billing_manager'
 
-const CreditCard = ({
-  detail,
-  label,
-  value,
-}: {
-  detail: string
-  label: string
-  value: BillingCreditAmount
-}) => (
-  <div className="rounded-lg border border-[color:var(--sep)] p-3">
-    <SectionLabel>{label}</SectionLabel>
-    <div className="mt-1 text-xl font-semibold text-[color:var(--tx)]">
-      {value.display}
-    </div>
-    <div className="mt-1 text-xs text-[color:var(--tx2)]">{detail}</div>
-  </div>
-)
-
 const ManagerServiceBreakdown = ({
   credits,
 }: {
   credits: BillingCreditsManagerV1
 }) => (
-  <div className="mt-5">
-    <SectionLabel>Credits used by service</SectionLabel>
-    <div className="mt-2 grid gap-2">
-      {credits.credit_summary.consumed_breakdown.length === 0 && (
-        <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
-          No credits used in this period.
-        </div>
-      )}
-      {credits.credit_summary.consumed_breakdown.map((item) => (
-        <div
-          className="rounded-lg border border-[color:var(--sep)] p-3"
-          key={item.service.id}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="font-semibold text-[color:var(--tx)]">
-                {item.service.name}
+  <Section title="Credits used by service">
+    {credits.credit_summary.consumed_breakdown.length === 0 ? (
+      <p className="text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
+    ) : (
+      <RowList label="Credits used by service">
+        {credits.credit_summary.consumed_breakdown.map((item) => (
+          <Row
+            key={item.service.id}
+            subtitle={`${item.users.length} attributed user${item.users.length === 1 ? '' : 's'} · ${item.unattributed_credits_consumed.display} unattributed`}
+            title={item.service.name}
+            trailing={<span className="font-semibold text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
+          >
+            {item.users.length > 0 && (
+              <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx2)]">
+                {item.users.map((user) => (
+                  <div className="flex justify-between gap-3" key={user.user_id}>
+                    <span>{user.display_name}</span>
+                    <span>{user.credits_consumed.display}</span>
+                  </div>
+                ))}
               </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {item.users.length} attributed user
-                {item.users.length === 1 ? '' : 's'} ·{' '}
-                {item.unattributed_credits_consumed.display} unattributed
-              </div>
-            </div>
-            <div className="shrink-0 font-semibold text-[color:var(--tx)]">
-              {item.credits_consumed.display}
-            </div>
-          </div>
-          {item.users.length > 0 && (
-            <div className="mt-3 grid gap-1 border-t border-[color:var(--sep)] pt-2 text-xs text-[color:var(--tx2)]">
-              {item.users.map((user) => (
-                <div
-                  className="flex justify-between gap-3"
-                  key={user.user_id}
-                >
-                  <span>{user.display_name}</span>
-                  <span>{user.credits_consumed.display}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  </div>
+            )}
+          </Row>
+        ))}
+      </RowList>
+    )}
+  </Section>
 )
 
 const MemberServiceBreakdown = ({
@@ -95,38 +65,22 @@ const MemberServiceBreakdown = ({
 }: {
   credits: BillingCreditsMemberV1
 }) => (
-  <div className="mt-5">
-    <SectionLabel>Credits used by service</SectionLabel>
-    <div className="mt-2 grid gap-2">
-      {credits.credit_summary.consumed_breakdown.length === 0 && (
-        <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
-          No credits used in this period.
-        </div>
-      )}
-      {credits.credit_summary.consumed_breakdown.map((item) => (
-        <div
-          className="rounded-lg border border-[color:var(--sep)] p-3"
-          key={item.service.id}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="font-semibold text-[color:var(--tx)]">
-                {item.service.name}
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {item.viewer_credits_consumed.display} yours ·{' '}
-                {item.other_team_members_credits_consumed.display} other members
-                {' '}· {item.unattributed_credits_consumed.display} unattributed
-              </div>
-            </div>
-            <div className="shrink-0 font-semibold text-[color:var(--tx)]">
-              {item.credits_consumed.display}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
+  <Section title="Credits used by service">
+    {credits.credit_summary.consumed_breakdown.length === 0 ? (
+      <p className="text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
+    ) : (
+      <RowList label="Credits used by service">
+        {credits.credit_summary.consumed_breakdown.map((item) => (
+          <Row
+            key={item.service.id}
+            subtitle={`${item.viewer_credits_consumed.display} yours · ${item.other_team_members_credits_consumed.display} other members · ${item.unattributed_credits_consumed.display} unattributed`}
+            title={item.service.name}
+            trailing={<span className="font-semibold text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
+          />
+        ))}
+      </RowList>
+    )}
+  </Section>
 )
 
 const ServiceBreakdown = ({ credits }: { credits: BillingCreditsV1 }) =>
@@ -141,31 +95,29 @@ const ManagerAutomaticTopUp = ({
 }) => {
   const automatic = credits.automatic_top_up
   return (
-    <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
+    <Section title="Automatic top-up">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <SectionLabel>Automatic top-up</SectionLabel>
-          <div className="mt-1 font-semibold text-[color:var(--tx)]">
+          <div className="font-semibold text-[color:var(--tx)]">
             {automatic.display_status}
           </div>
           <p className="mt-1 text-xs text-[color:var(--tx2)]">
             {automatic.description}
           </p>
         </div>
-        {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
-        <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
-          {automatic.state}
-        </div>
+        <Pill tone="outline">{automatic.state}</Pill>
       </div>
-      <div className="mt-3 grid gap-2 text-xs text-[color:var(--tx2)] sm:grid-cols-2 xl:grid-cols-4">
-        <div>Threshold: {automatic.threshold?.display ?? 'Not set'}</div>
-        <div>Monthly cap: {automatic.monthly_cap?.display ?? 'Not set'}</div>
-        <div>Charged this month: {automatic.charged_this_month.display}</div>
-        <div>
-          Cap remaining: {automatic.remaining_monthly_cap?.display ?? 'Not set'}
-        </div>
-      </div>
-    </div>
+      <KeyValueList
+        className="mt-3"
+        items={[
+          { label: 'Threshold', value: automatic.threshold?.display ?? 'Not set' },
+          { label: 'Monthly cap', value: automatic.monthly_cap?.display ?? 'Not set' },
+          { label: 'Charged this month', value: automatic.charged_this_month.display },
+          { label: 'Cap remaining', value: automatic.remaining_monthly_cap?.display ?? 'Not set' },
+        ]}
+        layout="grid"
+      />
+    </Section>
   )
 }
 
@@ -174,15 +126,14 @@ const MemberAutomaticTopUp = ({
 }: {
   credits: BillingCreditsMemberV1
 }) => (
-  <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
-    <SectionLabel>Automatic top-up</SectionLabel>
-    <div className="mt-2 text-sm font-semibold text-[color:var(--tx)]">
+  <Section title="Automatic top-up">
+    <div className="text-sm font-semibold text-[color:var(--tx)]">
       Payment method status: {credits.automatic_top_up.payment_method.status}
     </div>
     <p className="mt-1 text-xs text-[color:var(--tx2)]">
       Detailed automatic top-up settings are managed by billing managers.
     </p>
-  </div>
+  </Section>
 )
 
 const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) =>
@@ -191,42 +142,31 @@ const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) =>
     : <MemberAutomaticTopUp credits={credits} />
 
 const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
-  <div className="mt-5">
-    <SectionLabel>Recent credit activity</SectionLabel>
-    <div className="mt-2 grid gap-2">
-      {credits.recent_entries.length === 0 && (
-        <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
-          No recent credit activity.
-        </div>
-      )}
-      {credits.recent_entries.map((entry) => (
-        <div
-          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[color:var(--sep)] p-3"
-          key={entry.id}
-        >
-          <div>
-            <div className="font-semibold text-[color:var(--tx)]">
-              {entry.label}
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--tx2)]">
-              {entry.detail}
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--tx3)]">
-              {new Date(entry.occurred_at).toLocaleString()}
-            </div>
-          </div>
-          <div className="text-right text-sm">
-            <div className="font-semibold text-[color:var(--tx)]">
-              {entry.direction === 'credit' ? '+' : '−'}{entry.credits.display}
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--tx2)]">
-              {entry.credit_balance_after.display} remaining
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
+  <Section title="Recent credit activity">
+    {credits.recent_entries.length === 0 ? (
+      <p className="text-sm text-[color:var(--tx2)]">No recent credit activity.</p>
+    ) : (
+      <RowList label="Recent credit activity">
+        {credits.recent_entries.map((entry) => (
+          <Row
+            key={entry.id}
+            subtitle={`${entry.detail} · ${new Date(entry.occurred_at).toLocaleString()}`}
+            title={entry.label}
+            trailing={
+              <div className="text-right text-sm">
+                <div className="font-semibold text-[color:var(--tx)]">
+                  {entry.direction === 'credit' ? '+' : '−'}{entry.credits.display}
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                  {entry.credit_balance_after.display} remaining
+                </div>
+              </div>
+            }
+          />
+        ))}
+      </RowList>
+    )}
+  </Section>
 )
 
 const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
@@ -246,10 +186,9 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
     .find((value): value is Error => value instanceof Error)
 
   return (
-    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-      <div className="rounded-lg border border-[color:var(--sep)] p-4">
-        <SectionLabel>{credits.funding_policy.title}</SectionLabel>
-        <p className="mt-1 text-xs text-[color:var(--tx2)]">
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Section title={credits.funding_policy.title}>
+        <p className="text-xs text-[color:var(--tx2)]">
           {credits.funding_policy.description}
         </p>
         <div className="mt-3 grid gap-2">
@@ -272,35 +211,20 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
             </button>
           ))}
         </div>
-      </div>
+      </Section>
 
-      <div className="rounded-lg border border-[color:var(--sep)] p-4">
-        <SectionLabel>Automatic top-up options</SectionLabel>
-        <div className="mt-3 grid gap-3">
+      <Section title="Automatic top-up options">
+        <RowList label="Automatic top-up options">
           {credits.automatic_top_up.options.map((option) => {
             const optionId = option.setup_action.request.body.option_id
             return (
-              <div
-                className="rounded-md bg-[color:var(--overlay-weak)] p-3"
+              <Row
                 key={optionId}
+                subtitle={option.description}
+                title={option.label}
+                trailing={option.selected ? <Pill tone="outline">Selected</Pill> : undefined}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-[color:var(--tx)]">
-                      {option.label}
-                    </div>
-                    <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                      {option.description}
-                    </div>
-                  </div>
-                  {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
-                  {option.selected && (
-                    <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-xs text-[color:var(--tx2)]">
-                      Selected
-                    </span>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     className="admin-button admin-button-primary admin-button-compact"
                     disabled={!option.setup_action.enabled || pending}
@@ -330,10 +254,10 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
                     {option.update_action.label}
                   </button>
                 </div>
-              </div>
+              </Row>
             )
           })}
-        </div>
+        </RowList>
         <div className="mt-3 flex flex-wrap gap-2">
           {credits.automatic_top_up.disable_action && (
             <button
@@ -369,7 +293,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
             {error.message}
           </div>
         )}
-      </div>
+      </Section>
     </div>
   )
 }
@@ -381,68 +305,64 @@ export const UoaBillingCreditsPanel = () => {
   return (
     <section className="mb-8" data-testid="uoa-billing-credits">
       <SectionLabel>Team credits</SectionLabel>
-      <div className="mt-2 admin-card p-5">
-        {credits.isLoading && (
-          <div className="text-sm text-[color:var(--tx2)]">
-            Loading team credits…
-          </div>
-        )}
-        {/* Unconverted: the border deliberately matches the fill (both --warning-soft), so no outline shows. */}
-        {credits.error && (
-          <div className="rounded-md border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
-            Credits are unavailable: {credits.error.message}
-          </div>
-        )}
-        {data && (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-3xl font-semibold text-[color:var(--tx)]" data-testid="remaining-credits">
-                  {data.credit_balance.display}
+      <Card className="mt-2" variant="section">
+        <QueryState
+          errorLabel="Credits are unavailable."
+          loadingLabel="Loading team credits…"
+          query={credits}
+        >
+          {() => data && (
+            <div className="grid gap-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-3xl font-semibold text-[color:var(--tx)]" data-testid="remaining-credits">
+                    {data.credit_balance.display}
+                  </div>
+                  <h2 className="mt-1 text-sm font-semibold text-[color:var(--tx)]">
+                    {data.credit_balance.label}
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
+                    {data.credit_balance.description}
+                  </p>
                 </div>
-                <h2 className="mt-1 text-sm font-semibold text-[color:var(--tx)]">
-                  {data.credit_balance.label}
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
-                  {data.credit_balance.description}
+                <Pill tone="outline">
+                  {data.viewer.role === 'billing_manager'
+                    ? 'Full team detail'
+                    : 'Your usage + team totals'}
+                </Pill>
+              </div>
+
+              <div>
+                <StatGrid className="sm:grid-cols-3">
+                  <StatTile
+                    detail={data.pending_credits.description}
+                    label={data.pending_credits.label}
+                    value={data.credit_summary.pending_credits.display}
+                  />
+                  <StatTile
+                    detail="Credits added during the current period"
+                    label="Added"
+                    value={data.credit_summary.credits_added.display}
+                  />
+                  <StatTile
+                    detail="Credits used across connected services this period"
+                    label="Used"
+                    value={data.credit_summary.credits_consumed.display}
+                  />
+                </StatGrid>
+                <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                  {data.conversion.description}
                 </p>
               </div>
-              {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
-              <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
-                {data.viewer.role === 'billing_manager'
-                  ? 'Full team detail'
-                  : 'Your usage + team totals'}
-              </div>
-            </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <CreditCard
-                detail={data.pending_credits.description}
-                label={data.pending_credits.label}
-                value={data.credit_summary.pending_credits}
-              />
-              <CreditCard
-                detail="Credits added during the current period"
-                label="Added"
-                value={data.credit_summary.credits_added}
-              />
-              <CreditCard
-                detail="Credits used across connected services this period"
-                label="Used"
-                value={data.credit_summary.credits_consumed}
-              />
+              <ServiceBreakdown credits={data} />
+              <RecentActivity credits={data} />
+              <AutomaticTopUp credits={data} />
+              <FundingActions credits={data} />
             </div>
-
-            <p className="mt-3 text-xs text-[color:var(--tx3)]">
-              {data.conversion.description}
-            </p>
-            <ServiceBreakdown credits={data} />
-            <RecentActivity credits={data} />
-            <AutomaticTopUp credits={data} />
-            <FundingActions credits={data} />
-          </>
-        )}
-      </div>
+          )}
+        </QueryState>
+      </Card>
     </section>
   )
 }

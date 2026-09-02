@@ -14,6 +14,8 @@ import { DashboardGrid } from '../components/features/dashboards/DashboardGrid'
 import { DashboardWidgetCard } from '../components/features/dashboards/DashboardWidgetCard'
 import { DashboardVersionsPanel } from '../components/features/dashboards/DashboardVersionsPanel'
 import { AddWidgetPanel } from '../components/features/dashboards/AddWidgetPanel'
+import { Skeleton } from '../components/primitives/Skeleton'
+import { QueryState } from '../components/shared/QueryState'
 import {
   useDashboard,
   useSaveLayout,
@@ -47,10 +49,7 @@ const WidgetSlot = ({
       {projection ? (
         <DashboardWidgetCard onRetry={() => void refetch()} projection={projection} />
       ) : (
-        <div
-          className="h-full animate-pulse rounded-lg border"
-          style={{ background: 'var(--panel)', borderColor: 'var(--sep)' }}
-        />
+        <Skeleton className="rounded-lg" height="h-full" />
       )}
     </div>
   )
@@ -58,7 +57,8 @@ const WidgetSlot = ({
 
 export const DashboardDetailPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
-  const { data: dashboard, isLoading } = useDashboard(dashboardId)
+  const dashboardQuery = useDashboard(dashboardId)
+  const { data: dashboard } = dashboardQuery
   const saveLayout = useSaveLayout(dashboardId ?? '')
   const queryClient = useQueryClient()
 
@@ -112,156 +112,143 @@ export const DashboardDetailPage = () => {
     }
   }, [draftLayout, dashboard, widgetKinds])
 
-  if (isLoading) {
-    return (
-      <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
-        Loading…
-      </p>
-    )
-  }
-  if (!dashboard) {
-    return (
-      <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
-        This dashboard is not available.
-      </p>
-    )
-  }
-
   return (
-    <div className="flex h-full min-h-0" data-testid="dashboard-detail">
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Left hand-rolled: AdminPageHeader has no subtitle slot for
-            `dashboard.description` under the title — its only secondary line is
-            `eyebrow`, a 10px uppercase tracking-[0.2em] rail above the title,
-            which is not the same element. */}
-        <header
-          className="flex items-center gap-3 border-b px-6 py-3"
-          style={{ borderColor: 'var(--sep)' }}
-        >
-          <PhoneNavigationButton />
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold" style={{ color: 'var(--tx)' }}>
-              {dashboard.title}
-            </h1>
-            {dashboard.description ? (
-              <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
-                {dashboard.description}
-              </p>
-            ) : null}
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              className="rounded px-2.5 py-1.5 text-xs"
-              onClick={() => setShowVersions((open) => !open)}
-              style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-              type="button"
-            >
-              History
-            </button>
-            {editing ? (
-              <button
-                className="rounded px-2.5 py-1.5 text-xs"
-                onClick={() => setShowAddWidget(true)}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-                type="button"
-                data-testid="dashboard-add-widget"
-              >
-                + Add widget
-              </button>
-            ) : null}
-            {editing ? (
-              <button
-                className="rounded px-3 py-1.5 text-xs font-medium"
-                disabled={saveLayout.isPending}
-                onClick={() => {
-                  saveLayout.mutate(layout, { onSuccess: () => setEditing(false) })
-                }}
-                style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
-                type="button"
-              >
-                {saveLayout.isPending ? 'Saving…' : 'Done'}
-              </button>
-            ) : (
-              <button
-                className="rounded px-3 py-1.5 text-xs font-medium"
-                onClick={() => setEditing(true)}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-                type="button"
-                data-testid="dashboard-edit"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-        </header>
+    <QueryState
+      className="flex h-full items-center justify-center py-8"
+      emptyLabel="This dashboard is not available."
+      errorLabel="Failed to load this dashboard."
+      isEmpty={!dashboard}
+      loadingLabel="Loading…"
+      query={dashboardQuery}
+    >
+      {() => dashboard && (
+        <div className="flex h-full min-h-0" data-testid="dashboard-detail">
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* Left hand-rolled: AdminPageHeader has no subtitle slot for
+                `dashboard.description` under the title — its only secondary line is
+                `eyebrow`, a 10px uppercase tracking-[0.2em] rail above the title,
+                which is not the same element. */}
+            <header className="flex items-center gap-3 border-b border-[color:var(--sep)] px-6 py-3">
+              <PhoneNavigationButton />
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-semibold text-[color:var(--tx)]">
+                  {dashboard.title}
+                </h1>
+                {dashboard.description ? (
+                  <p className="truncate text-xs text-[color:var(--tx3)]">
+                    {dashboard.description}
+                  </p>
+                ) : null}
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  onClick={() => setShowVersions((open) => !open)}
+                  type="button"
+                >
+                  History
+                </button>
+                {editing ? (
+                  <button
+                    className="admin-button admin-button-secondary admin-button-compact"
+                    onClick={() => setShowAddWidget(true)}
+                    type="button"
+                    data-testid="dashboard-add-widget"
+                  >
+                    + Add widget
+                  </button>
+                ) : null}
+                {editing ? (
+                  <button
+                    className="admin-button admin-button-primary admin-button-compact"
+                    disabled={saveLayout.isPending}
+                    onClick={() => {
+                      saveLayout.mutate(layout, { onSuccess: () => setEditing(false) })
+                    }}
+                    type="button"
+                  >
+                    {saveLayout.isPending ? 'Saving…' : 'Done'}
+                  </button>
+                ) : (
+                  <button
+                    className="admin-button admin-button-secondary admin-button-compact"
+                    onClick={() => setEditing(true)}
+                    type="button"
+                    data-testid="dashboard-edit"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            </header>
 
-        <div
-          className="min-h-0 flex-1 overflow-auto p-4"
-          style={
-            editing
-              ? {
-                backgroundImage: 'radial-gradient(var(--overlay-weak) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }
-              : undefined
-          }
-        >
-          {dashboard.widgets.length === 0 ? (
             <div
-              className="rounded-lg border p-8 text-center"
-              style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
-              data-testid="dashboard-empty"
+              className="min-h-0 flex-1 overflow-auto p-4"
+              style={
+                editing
+                  ? {
+                    backgroundImage: 'radial-gradient(var(--overlay-weak) 1px, transparent 1px)',
+                    backgroundSize: '24px 24px',
+                  }
+                  : undefined
+              }
             >
-              <p className="text-sm font-medium" style={{ color: 'var(--tx)' }}>
-                No widgets yet
-              </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--tx3)' }}>
-                Ask your assistant to add one, or connect a data source to get started.
-              </p>
-              <button
-                className="mt-4 rounded px-3 py-1.5 text-sm"
-                onClick={() => {
-                  setEditing(true)
-                  setShowAddWidget(true)
-                }}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-                type="button"
-              >
-                Add a widget yourself
-              </button>
-            </div>
-          ) : (
-            <DashboardGrid
-              editable={editing}
-              layout={layout}
-              onLayoutChange={setDraftLayout}
-              widgetKinds={widgetKinds}
-            >
-              {dashboard.widgets.map((widget) => (
-                <div key={widget.id}>
-                  <WidgetSlot editable={editing} widget={widget} />
+              {dashboard.widgets.length === 0 ? (
+                <div
+                  className="admin-card p-8 text-center"
+                  data-testid="dashboard-empty"
+                >
+                  <p className="text-sm font-medium text-[color:var(--tx)]">
+                    No widgets yet
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--tx3)]">
+                    Ask your assistant to add one, or connect a data source to get started.
+                  </p>
+                  <button
+                    className="admin-button admin-button-secondary mt-4"
+                    onClick={() => {
+                      setEditing(true)
+                      setShowAddWidget(true)
+                    }}
+                    type="button"
+                  >
+                    Add a widget yourself
+                  </button>
                 </div>
-              ))}
-            </DashboardGrid>
-          )}
+              ) : (
+                <DashboardGrid
+                  editable={editing}
+                  layout={layout}
+                  onLayoutChange={setDraftLayout}
+                  widgetKinds={widgetKinds}
+                >
+                  {dashboard.widgets.map((widget) => (
+                    <div key={widget.id}>
+                      <WidgetSlot editable={editing} widget={widget} />
+                    </div>
+                  ))}
+                </DashboardGrid>
+              )}
+            </div>
+          </div>
+
+          {showAddWidget ? (
+            <AddWidgetPanel
+              dashboardId={dashboard.id}
+              onAdded={() => queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboard.id) })}
+              onClose={() => setShowAddWidget(false)}
+            />
+          ) : null}
+
+          {showVersions ? (
+            <DashboardVersionsPanel
+              dashboardId={dashboard.id}
+              onClose={() => setShowVersions(false)}
+            />
+          ) : null}
         </div>
-      </div>
-
-      {showAddWidget ? (
-        <AddWidgetPanel
-          dashboardId={dashboard.id}
-          onAdded={() => queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboard.id) })}
-          onClose={() => setShowAddWidget(false)}
-        />
-      ) : null}
-
-      {showVersions ? (
-        <DashboardVersionsPanel
-          dashboardId={dashboard.id}
-          onClose={() => setShowVersions(false)}
-        />
-      ) : null}
-    </div>
+      )}
+    </QueryState>
   )
 }
 

@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom'
 import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
 import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
+import { Notice } from '../components/primitives/Notice'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import {
   getUoaBillingCheckoutReturnNotice,
@@ -66,17 +67,15 @@ export const TokenUsagePage = () => {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {checkoutNotice && (
-          <div
-            className="admin-card mb-4 border border-[color:var(--sep)] p-4"
-            data-testid="uoa-billing-checkout-return"
-            role="status"
-          >
-            <div className="font-semibold text-[color:var(--tx)]">
-              {checkoutNotice.title}
-            </div>
-            <p className="mt-1 text-sm text-[color:var(--tx2)]">
-              {checkoutNotice.message}
-            </p>
+          <div className="mb-4" data-testid="uoa-billing-checkout-return">
+            <Notice padding="lg" role="status" tone="info">
+              <div className="font-semibold text-[color:var(--tx)]">
+                {checkoutNotice.title}
+              </div>
+              <p className="mt-1 text-sm">
+                {checkoutNotice.message}
+              </p>
+            </Notice>
           </div>
         )}
         <UoaBillingCreditsPanel />

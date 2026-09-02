@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { budgetKeys, opsTelemetryKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { QueryState } from '../../shared/QueryState'
 
 export type PricingProfile = {
   profileId: string
@@ -34,10 +36,12 @@ export const PricingManager = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
-  const { data: profiles = [] } = useQuery<PricingProfile[]>({
+  const profilesQuery = useQuery<PricingProfile[]>({
     queryKey: opsTelemetryKeys.pricingProfiles,
     queryFn: () => apiClient.get('/api/ledger/tokens/pricing'),
   })
+  const profiles = profilesQuery.data ?? []
+  const [pendingDelete, setPendingDelete] = useState<PricingProfile | null>(null)
 
   const [provider, setProvider] = useState('openai')
   const [modelPattern, setModelPattern] = useState('')
@@ -78,7 +82,10 @@ export const PricingManager = () => {
   const remove = useMutation({
     mutationFn: (profileId: string) =>
       apiClient.delete(`/api/ledger/tokens/pricing/${profileId}`),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setPendingDelete(null)
+      invalidate()
+    },
   })
 
   // Re-price historical events that were logged before pricing existed (they
@@ -204,31 +211,54 @@ export const PricingManager = () => {
       </div>
       {recomputeMsg && <div className="mt-2 text-xs text-[color:var(--tx2)]">{recomputeMsg}</div>}
       <div className="mt-2 grid gap-2">
-        {profiles.map((p) => (
-          <div key={p.profileId} className="admin-card flex items-center justify-between gap-2 p-3">
-            <div className="min-w-0">
-              <span className="font-semibold text-[var(--tx)]">{p.provider}</span>
-              <span className="ml-2 font-mono text-xs text-[color:var(--tx2)]">{p.modelPattern}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[color:var(--tx2)]">
-                in {rate(p.inputPerMillion)} · out {rate(p.outputPerMillion)} · cache {rate(p.cacheReadPerMillion)}
-              </span>
-              <button
-                className="admin-button admin-button-secondary"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate(p.profileId)}
-                type="button"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-        {profiles.length === 0 && (
-          <div className="py-6 text-center text-[color:var(--tx3)]">No pricing configured</div>
-        )}
+        <QueryState
+          emptyLabel="No pricing configured"
+          errorLabel="Failed to load pricing."
+          isEmpty={profiles.length === 0}
+          loadingLabel="Loading pricing…"
+          query={profilesQuery}
+        >
+          {() => (
+            <>
+              {profiles.map((p) => (
+                <div key={p.profileId} className="admin-card flex items-center justify-between gap-2 p-3">
+                  <div className="min-w-0">
+                    <span className="font-semibold text-[var(--tx)]">{p.provider}</span>
+                    <span className="ml-2 font-mono text-xs text-[color:var(--tx2)]">{p.modelPattern}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[color:var(--tx2)]">
+                      in {rate(p.inputPerMillion)} · out {rate(p.outputPerMillion)} · cache{' '}
+                      {rate(p.cacheReadPerMillion)}
+                    </span>
+                    <button
+                      className="admin-button admin-button-secondary"
+                      disabled={remove.isPending}
+                      onClick={() => setPendingDelete(p)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </QueryState>
       </div>
+
+      <ConfirmDialog
+        body={pendingDelete ? `This removes the ${pendingDelete.provider} / ${pendingDelete.modelPattern} rate.` : undefined}
+        confirmLabel="Delete pricing"
+        destructive
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) remove.mutate(pendingDelete.profileId)
+        }}
+        open={pendingDelete != null}
+        pending={remove.isPending}
+        title="Delete this pricing rule?"
+      />
     </div>
   )
 }
