@@ -19,6 +19,9 @@ import { registerCallRoutes } from './routes/calls.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
 import { registerCommsConnectionRoutes } from './routes/comms-connections.js'
+import { registerAgentEmailDraftRoutes } from './routes/agent-email-draft.js'
+import { registerAgentEmailInboundRoutes } from './routes/agent-email-inbound.js'
+import { registerAgentMailboxRoutes } from './routes/agent-mailbox.js'
 import { registerModelSubscriptionRoutes } from './routes/model-subscriptions.js'
 import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
@@ -105,6 +108,9 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerModelSubscriptionRoutes(app, deps)
   registerGmailDraftRoutes(app, deps)
   registerCommsWebhookRoutes(app, deps)
+  registerAgentEmailInboundRoutes(app, deps)
+  registerAgentEmailDraftRoutes(app, deps)
+  registerAgentMailboxRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)

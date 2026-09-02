@@ -84,6 +84,9 @@ export const runReplyBasis = (context: RunContext): BasisScope[] =>
     context.consumedSources.list(),
     destinationFor(context),
     context.boundAgentIds,
+    // When the destination IS a mailbox's operations room, that mailbox's own
+    // correspondence is not privileged here.
+    context.emailMailboxId ?? null,
   )
 
 export const runReplyIsRestricted = (context: RunContext): boolean =>

@@ -189,6 +189,30 @@ export const NessieConfigSchema = z.object({
       subject: z.string().min(1).optional(),
     })
     .default({}),
+  // Hosted agent mailboxes (docs/plans/2026-09-02-agent-email.md Model B).
+  // Amazon SES is integrated directly: the deployment's own SES account sends
+  // and receives, so an address is unique per deployment and no intermediary
+  // service exists. The feature is OFF unless region + domain + inbound bucket
+  // + SNS topic are all present; partial configuration is named at startup
+  // rather than degraded silently (see `resolveAgentEmailReadiness`).
+  // Credentials are optional: with none set the AWS SDK default chain applies,
+  // which is how an instance profile / IRSA role is used.
+  email: z
+    .object({
+      sesRegion: z.string().min(1).optional(),
+      accessKeyId: z.string().min(1).optional(),
+      secretAccessKey: z.string().min(1).optional(),
+      domain: z.string().min(1).optional(),
+      inboundBucket: z.string().min(1).optional(),
+      inboundPrefix: z.string().default(''),
+      snsTopicArn: z.string().min(1).optional(),
+      configurationSet: z.string().min(1).optional(),
+      inboundRetentionDays: z.number().int().nonnegative().default(30),
+      customDomains: z.boolean().default(false),
+      maxSendsPerHour: z.number().int().positive().default(30),
+      maxInboundBytes: z.number().int().positive().default(25 * 1024 * 1024),
+    })
+    .default({}),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -265,6 +289,18 @@ export const ConfigEnvMap = {
   NESSIE_WEBPUSH_PUBLIC_KEY: 'webPush.publicKey',
   NESSIE_WEBPUSH_PRIVATE_KEY: 'webPush.privateKey',
   NESSIE_WEBPUSH_SUBJECT: 'webPush.subject',
+  NESSIE_EMAIL_SES_REGION: 'email.sesRegion',
+  NESSIE_EMAIL_SES_ACCESS_KEY_ID: 'email.accessKeyId',
+  NESSIE_EMAIL_SES_SECRET_ACCESS_KEY: 'email.secretAccessKey',
+  NESSIE_EMAIL_DOMAIN: 'email.domain',
+  NESSIE_EMAIL_INBOUND_S3_BUCKET: 'email.inboundBucket',
+  NESSIE_EMAIL_INBOUND_S3_PREFIX: 'email.inboundPrefix',
+  NESSIE_EMAIL_SNS_TOPIC_ARN: 'email.snsTopicArn',
+  NESSIE_EMAIL_CONFIGURATION_SET: 'email.configurationSet',
+  NESSIE_EMAIL_INBOUND_RETENTION_DAYS: 'email.inboundRetentionDays',
+  NESSIE_EMAIL_CUSTOM_DOMAINS: 'email.customDomains',
+  NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR: 'email.maxSendsPerHour',
+  NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES: 'email.maxInboundBytes',
 } as const
 
 export type LoadConfigOptions = {
@@ -342,6 +378,13 @@ const DEFAULT_CONFIG: NessieConfig = {
     repo: 'Nessie',
   },
   webPush: {},
+  email: {
+    inboundPrefix: '',
+    inboundRetentionDays: 30,
+    customDomains: false,
+    maxSendsPerHour: 30,
+    maxInboundBytes: 25 * 1024 * 1024,
+  },
 }
 
 const isJsonObject = (value: unknown): value is JsonObject =>

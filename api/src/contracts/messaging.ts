@@ -108,6 +108,7 @@ export const AttachmentRecordSchema = z.object({
   uploaderId: z.string().uuid().optional(),
   messageId: z.string().uuid().optional(),
   knowledgePageId: z.string().uuid().optional(),
+  emailMessageId: z.string().uuid().optional(),
   kind: NonEmptyStringSchema,
   mime: NonEmptyStringSchema,
   filename: NonEmptyStringSchema,
@@ -139,6 +140,7 @@ type AttachmentRowLike = {
   uploaderId: string | null
   messageId: string | null
   knowledgePageId: string | null
+  emailMessageId?: string | null
   kind: string
   mime: string
   filename: string
@@ -171,6 +173,7 @@ export const toAttachmentRecord = (row: AttachmentRowLike): AttachmentRecord =>
     uploaderId: row.uploaderId ?? undefined,
     messageId: row.messageId ?? undefined,
     knowledgePageId: row.knowledgePageId ?? undefined,
+    emailMessageId: row.emailMessageId ?? undefined,
     kind: row.kind,
     mime: row.mime,
     filename: row.filename,

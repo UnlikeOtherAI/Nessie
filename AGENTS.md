@@ -366,6 +366,31 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   (`ToolPicker`, `readOnly` for a viewer who cannot change a tool); the
   separate read-only renderer that used to exist had drifted to its own
   grouping, its own cards and no search at all.
+- **An agent's mailbox is its own store, and everything about it is
+  structural.** Hosted agent email (`support@nessie.works`, Amazon SES
+  integrated directly, off unless four `NESSIE_EMAIL_*` variables are set) keeps
+  mail in `email_messages` rather than `Message` rows, with one backing
+  `agent_email` channel per mailbox and one thread per conversation as the
+  operations room. Four invariants carry it, each closing a fail-open: inbound
+  **routes on the SES receipt envelope**, never the sender-written MIME headers,
+  which omit Bcc and can name another tenant; delivery is **claimed once on the
+  receipt id in the same transaction that wakes the run**, so an SNS retry
+  cannot double-send or double-spend, while the forgeable `Message-ID` stays a
+  threading index that degrades to a new conversation; **waking is a header
+  fact** (`bulk`/`dsn`, failed spam/virus/auth verdicts store without spending a
+  run) and never a keyword list; and **sending is gated structurally in
+  `email-send-gate.ts` through `forceApproval`**, not in `PolicyRule` rows,
+  because `evaluateToolInvokePolicy` defaults to allow and seeds no send rule —
+  a policy-only gate would be absent wherever nobody configured one. That gate
+  additionally forces an approval, naming the sources, whenever a run consumed
+  anything beyond its own mailbox and thread; `email:{mailboxId}` is the scope
+  that makes "answered from this correspondence" distinguishable, and it must
+  stay implied by the mailbox's own thread or every reply deadlocks (four tests
+  pin this). A send is `queued` → conditional `sending` → `sent`, with an
+  ambiguous outcome parked at `delivery_unknown` and **never retried** — a retry
+  is a duplicate in someone's inbox. Deleting a mailbox retires its address
+  permanently. Details: `CLAUDE.md` → "Agent email"; plan:
+  `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

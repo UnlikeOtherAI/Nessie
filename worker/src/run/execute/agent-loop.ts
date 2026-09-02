@@ -21,6 +21,7 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
@@ -203,6 +204,11 @@ export const runExecutionAgentLoop = async (
         skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
+        structuralGate: buildEmailSendApprovalHook(
+          deps.prisma,
+          context,
+          payload.interactive === true,
+        ),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         // The send-boundary judge. Inference the run paid for, so its
         // invocations count in the run's totals like compaction's do.

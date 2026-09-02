@@ -1,3 +1,4 @@
+import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 /**
@@ -407,7 +408,11 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
 
 /** Tool ids whose approval requirement is declared in code, not in policy data. */
 export const STRUCTURALLY_APPROVAL_GATED_TOOL_IDS = new Set(
-  GOOGLE_TOOL_DEFINITIONS
+  // Every builtin family carrying the flag, not Google's alone: a hosted agent
+  // mailbox's `email_send` needs exactly the same treatment (a longer expiry, a
+  // pinned approver, no accidental ungating), and two sets would be two chances
+  // to forget one.
+  [...GOOGLE_TOOL_DEFINITIONS, ...EMAIL_TOOL_DEFINITIONS]
     .filter((tool) => tool.requiresApproval)
     .map((tool) => tool.id),
 )

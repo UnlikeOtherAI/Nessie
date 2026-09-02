@@ -253,6 +253,39 @@ export const requireActiveSession = async (
 export const hasExceededDuration = (session: VoiceSession, now = new Date()): boolean =>
   now.getTime() - session.startedAt.getTime() > session.maxDurationMs
 
+/**
+ * Loads a call whose record has not been written yet.
+ *
+ * Deliberately accepts an *ended* call, not only a live one. A client that
+ * died mid-call submits its transcript on a later launch, and a call can also
+ * be ended by its own duration cap or by a second tab — refusing those would
+ * throw away exactly the records hardest to reproduce. The single-record
+ * guarantee comes from the set-once transcript slot, not from the status.
+ */
+export const requireRecordableSession = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; sessionId: string; userId: string },
+): Promise<VoiceSession> => {
+  const session = await prisma.voiceSession.findFirst({
+    where: {
+      id: input.sessionId,
+      organizationId: input.organizationId,
+      userId: input.userId,
+    },
+  })
+  if (!session) {
+    throw new VoiceSessionError('VOICE_SESSION_NOT_FOUND', 'Call not found.', 404)
+  }
+  if (session.transcriptMessageId) {
+    throw new VoiceSessionError(
+      'VOICE_TRANSCRIPT_ALREADY_RECORDED',
+      'This call already has a record.',
+      409,
+    )
+  }
+  return session
+}
+
 export type RotateVoiceSessionInput = {
   actorContext: AuthorizedActionContext
   authSecret: string

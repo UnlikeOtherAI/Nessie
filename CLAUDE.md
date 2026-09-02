@@ -898,6 +898,25 @@ Ledger agent-model catalogue, `checkPolicy`, and the `getChannelIfMember` /
 moved to `@nessie/schemas` for the same reason; `api/src/contracts` re-exports
 them.
 
+## Agent email — an agent's own mailbox
+
+Every agent can hold its own address (`support@nessie.works`): people CC it into
+a thread and it replies. **Amazon SES is integrated directly** — the
+deployment's own account sends and receives, an address is unique per
+deployment, and the feature is OFF unless four `NESSIE_EMAIL_*` variables are
+set (partial configuration is *named*, never degraded). Mail is **its own
+store**, not `Message` rows; each mailbox owns one backing channel
+(`ChannelSystemType.agent_email`) with one `Thread` per `EmailConversation` —
+the *operations room* for run reports and approval gates, while
+`/agents/:agentId/mailbox` is the mail itself. Invariants: `AGENTS.md` → "An
+agent's mailbox is its own store"; plan and build detail (the `email:{mailboxId}`
+disclosure scope and its non-deadlock property, the `forceApproval` send gate,
+the rendered-draft approval route, attachment linking):
+[docs/plans/2026-09-02-agent-email.md](docs/plans/2026-09-02-agent-email.md);
+operator guide: [docs/agent-email.md](docs/agent-email.md). Model A of that plan
+— an agent operating an *existing* mailbox over Gmail or SMTP/IMAP, with no
+interface — is deliberately not built.
+
 ## Individual Communications Connector
 
 Core rules (adapter registry wired only via `@nessie/comms-providers`

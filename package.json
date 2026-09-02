@@ -23,6 +23,7 @@
     "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^20.19.24",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
@@ -33,5 +34,11 @@
     "tsx": "^4.20.6",
     "turbo": "^2.5.8",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/client-sesv2": "^3.1124.0",
+    "@aws-sdk/client-sns": "^3.1124.0",
+    "mailparser": "^3.9.20"
   }
 }

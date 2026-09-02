@@ -5,6 +5,10 @@ import type { PrismaClient } from '@prisma/client'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { loadRunContext } from './lifecycle.js'
 
+// Every delegate `loadRunContext` touches needs a stub in these fakes, and the
+// client is cast — a model one omits is `undefined` at call time rather than a
+// type error. `emailConversation` arrived with hosted mailboxes and took this
+// suite down with a bare TypeError until it was modelled here too.
 test('loadRunContext resolves bindings and the active demonstration once', async () => {
   const bindingQueries: unknown[] = []
   const demonstrationQueries: unknown[] = []
@@ -21,6 +25,7 @@ test('loadRunContext resolves bindings and the active demonstration once', async
         return { id: 'demonstration-1' }
       },
     },
+    emailConversation: { findUnique: async () => null },
     run: {
       findUnique: async () => ({
         agent: {
@@ -90,4 +95,101 @@ test('loadRunContext resolves bindings and the active demonstration once', async
       threadId: 'thread-1',
     },
   })
+})
+
+test('loadRunContext carries the mailbox when the thread is an email conversation', async () => {
+  const prisma = {
+    agentBinding: { findMany: async () => [{ agentId: 'agent-1' }] },
+    demonstration: { findFirst: async () => null },
+    // The one indexed lookup that makes reading a mailbox's own correspondence
+    // unprivileged in its own operations room. Without it on the context, the
+    // disclosure gate would restrict every email reply against its own thread.
+    emailConversation: {
+      findUnique: async () => ({ id: 'conversation-1', mailboxId: 'mailbox-1' }),
+    },
+    run: {
+      findUnique: async () => ({
+        agent: {
+          agentKind: 'shared',
+          effort: 'medium',
+          executionMode: 'inference',
+          id: 'agent-1',
+          model: null,
+          name: 'Support',
+          parentAgentId: null,
+          provider: null,
+          runLimits: null,
+          systemPrompt: null,
+        },
+        createdAt: new Date('2026-09-02T00:00:00.000Z'),
+        id: 'run-1',
+        replyPlacement: null,
+        tasks: [{ id: 'task-1' }],
+        thread: {
+          channel: {
+            id: 'channel-1',
+            organizationId: 'org-1',
+            projectId: 'project-1',
+            systemChannelType: 'agent_email',
+            teamId: 'team-1',
+          },
+          id: 'thread-1',
+        },
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const context = await loadRunContext(
+    prisma,
+    { runId: 'run-1', taskId: 'task-1' } as RunExecuteJobPayload,
+  )
+
+  assert.equal(context?.emailMailboxId, 'mailbox-1')
+  assert.equal(context?.emailConversationId, 'conversation-1')
+})
+
+test('an ordinary thread carries no mailbox, so nothing extra is implied', async () => {
+  const prisma = {
+    agentBinding: { findMany: async () => [] },
+    demonstration: { findFirst: async () => null },
+    emailConversation: { findUnique: async () => null },
+    run: {
+      findUnique: async () => ({
+        agent: {
+          agentKind: 'shared',
+          effort: 'medium',
+          executionMode: 'inference',
+          id: 'agent-1',
+          model: null,
+          name: 'Writer',
+          parentAgentId: null,
+          provider: null,
+          runLimits: null,
+          systemPrompt: null,
+        },
+        createdAt: new Date('2026-09-02T00:00:00.000Z'),
+        id: 'run-1',
+        replyPlacement: null,
+        tasks: [{ id: 'task-1' }],
+        thread: {
+          channel: {
+            id: 'channel-1',
+            organizationId: 'org-1',
+            projectId: 'project-1',
+            systemChannelType: null,
+            teamId: 'team-1',
+          },
+          id: 'thread-1',
+        },
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const context = await loadRunContext(
+    prisma,
+    { runId: 'run-1', taskId: 'task-1' } as RunExecuteJobPayload,
+  )
+
+  assert.equal(context?.emailMailboxId, null)
+  assert.equal(context?.emailConversationId, null)
 })

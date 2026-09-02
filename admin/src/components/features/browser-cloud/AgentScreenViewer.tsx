@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import { useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 
@@ -31,22 +32,15 @@ const STATUS_LABEL: Record<string, string> = {
  */
 export const AgentScreenViewer = ({ sessionId, variant }: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
-  const [activeTab, setActiveTab] = useState<string | null>(null)
 
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
 
-  // Follow the agent by default: when it opens or closes tabs, snap back to
-  // the first one rather than leaving the viewer pointed at a dead frame.
-  useEffect(() => {
-    if (tabs.length === 0) {
-      setActiveTab(null)
-      return
-    }
-    if (!activeTab || !tabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(tabs[0]?.id ?? null)
-    }
-  }, [tabs, activeTab])
+  // Follow the agent by default: the hook reads an id the session no longer
+  // has as its fallback, so when the agent closes the tab being watched the
+  // viewer snaps back to the first one rather than pointing at a dead frame.
+  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
+  const [activeTab, setActiveTab] = useTabParam('browserTab', tabIds, tabIds[0] ?? '')
 
   const frameUrl = useMemo(() => {
     if (!session.data) return null
@@ -79,7 +73,7 @@ export const AgentScreenViewer = ({ sessionId, variant }: AgentScreenViewerProps
             }))}
             onChange={setActiveTab}
             size="sm"
-            value={activeTab ?? tabs[0]?.id ?? ''}
+            value={activeTab}
           />
         </div>
       ) : null}

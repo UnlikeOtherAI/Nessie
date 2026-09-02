@@ -60,9 +60,11 @@ App Intents for Siri initiation), not CoreTelephony. CoreTelephony is
 read-only carrier/radio information; CallKit is what makes a VoIP session a
 first-class system call — lock-screen answer UI, the green pill, Recents,
 and the CarPlay in-call screen all come from CallKit. CarPlay needs no
-separate entitlement for this: a CallKit call renders on the CarPlay screen
-automatically, and Siri phrases registered through App Intents work from
-CarPlay's Siri.
+separate entitlement for the case we need: an *active* CallKit call renders
+on the CarPlay screen automatically, and Siri phrases registered through App
+Intents work from CarPlay's Siri. (Giving the app its own CarPlay surface —
+recents, favourites — is a different thing and does need a CarPlay calling
+entitlement Apple grants selectively. We are not asking for that.)
 
 ## What Coder proves, and what we take
 
@@ -508,6 +510,13 @@ server work in the plan and is what turns the call from a relay into
 call loop proves out so the plumbing lands on a working audio path.
 
 **Phase 1b — the iPhone call (CallKit)**
+Note a hard server dependency the phase must carry: the browser client reaches
+the assistant through the *generic* message routes on ordinary session auth,
+and the voice-scoped device credential is deliberately not accepted there. So
+the voice-scoped `pa-send` and reply-poll endpoints named in §3 do not exist
+yet and are part of this phase, with the authorization matrix updated in the
+same change — a native call cannot hand anything to the assistant without
+them.
 Mobile: local Expo module with the ported `GeminiLiveClient` +
 `AgentCallCoordinator` + `AgentCallSession` seam; credential source swapped
 to the Nessie routes; the same header call button in the mobile WebView
@@ -518,16 +527,53 @@ from lock screen, end from lock screen.
 **Phase 1c — the Android call (Telecom)**
 The same local Expo module, second platform. Android's equivalent of CallKit
 is a **self-managed `ConnectionService`**: register a `PhoneAccount` with
-`CAPABILITY_SELF_MANAGED`, and the system gives the call its own in-call UI,
-audio focus, Bluetooth/car routing and Android Auto placement — the same
-things CallKit buys, through a different door. The `AgentCallSession` seam
+`CAPABILITY_SELF_MANAGED` and the system gives the call audio focus, Telecom
+integration, Bluetooth/car routing and Android Auto placement. It does **not**
+give a system in-call screen — self-managed exists precisely so an app draws
+its own, which is the opposite of CallKit and is real UI work to budget: a
+notification, a full-screen intent, and an in-app call screen. The `AgentCallSession` seam
 (connect must not start I/O; audio starts when the platform says the call is
 active) ports unchanged, because it was written against the *lifecycle*, not
 against CallKit. The Gemini protocol client, the credential relay, rotation,
 the usage outbox and the transcript submission are all shared — only the
 audio plumbing (`AudioRecord`/`AudioTrack` at 16 kHz in, 24 kHz out) and the
-call framework differ. `MODIFY_AUDIO_SETTINGS` + `RECORD_AUDIO` +
-`MANAGE_OWN_CALLS` are the permissions.
+call framework differ. Permissions are more than the obvious three: `RECORD_AUDIO`,
+`MODIFY_AUDIO_SETTINGS`, `MANAGE_OWN_CALLS`, `POST_NOTIFICATIONS`,
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, and — for phase 3's
+incoming calls — `USE_FULL_SCREEN_INTENT` plus
+`FOREGROUND_SERVICE_PHONE_CALL`, which carries a Play Console declaration.
+
+**What a native call has to survive (acceptance criteria for 1b and 1c)**
+None of this is optional polish; each is a routine event that silently kills
+a call if unhandled, and none of it is exercised by the browser client:
+
+- **A real phone call arriving mid-call.** On iOS CallKit holds or ends the
+  agent call; on Android it is `AUDIOFOCUS_LOSS_TRANSIENT`. Decide and state
+  what the person hears in each case — the Gemini side needs to pause input
+  rather than stream silence into a turn that will be billed.
+- **Route changes.** AirPods removed, handoff to a car, speaker toggle. The
+  platform picks the route, but the audio *engine* must reconfigure or audio
+  dies silently mid-call (`AVAudioSession.routeChangeNotification`,
+  `AudioDeviceCallback`). Verify against a real headset, not the simulator.
+- **Credential rotation while backgrounded and locked.** This is the
+  sharpest one. Gemini's credential lives 30 minutes and rotation goes
+  through the Nessie API, so a 35-minute locked-screen call needs an HTTPS
+  round trip plus a socket re-open from the background. CallKit keeps the
+  *audio* session alive; that is not the same as arbitrary networking on a
+  timer. Either prove rotation works inside the call's execution window on a
+  real device on cellular (NAT rebinding is worst there), or cap a
+  locked-phone call under 30 minutes and say so in the product.
+- **Rehydration after a JS reload.** The call is native and survives, but the
+  JS event stream does not — so the module needs a `getActiveCallState()` the
+  shell asks on mount, or a reload leaves the UI blind while a call runs.
+
+**Store review is a design input, not a final step.** CallKit, a calling
+intent, and writing contacts are three of the more heavily policed surfaces
+on both stores; Google additionally requires a Play Console declaration for
+contacts permissions and for a phone-call foreground service. Plan the
+usage-description copy, the demo path a reviewer can follow, and the contacts
+removal flow up front — and keep App Shortcuts as the fallback if the calling
+domain is refused, since it needs none of this.
 
 **Phase 2 — "call my assistant" on both platforms, in-car, polish**
 
@@ -541,20 +587,28 @@ buys "Call my assistant with Nessie" — not a bare "call my personal
 assistant". It works from the lock screen, the Shortcuts app, and CarPlay's
 Siri with no setup after install.
 
-The Android equivalent of App Shortcuts is **App Actions**: a
-`shortcuts.xml` capability for `actions.intent.CREATE_CALL`, which buys
-"Hey Google, call my assistant on Nessie" — and carries the same app-name
-constraint, for the same reason.
+The Android side of this is **unresolved and must be checked against live
+docs before the phase starts**. App Actions (`shortcuts.xml` + a
+`actions.intent.CREATE_CALL` built-in intent) was the equivalent mechanism,
+but Google has been winding App Actions down in favour of Gemini extensions,
+and `CREATE_CALL` has historically resolved to the *Phone* app rather than a
+third party. Treat "Hey Google, call my assistant on Nessie" as unproven; the
+contacts path below is the one that does not depend on it.
 
 *Calling domain + Contacts (the real thing, both platforms).* To say "Hey
 Siri, call Ada" with no app name, the agent has to look like a person you
 can call — which is exactly how WhatsApp and Skype work, and it is a
 supported path rather than a trick:
 
-- The app adopts the **SiriKit calling domain**: an Intents extension
-  handling `INStartCallIntent` (resolve → confirm → handle), declared in
-  `Info.plist` via `IntentsSupported` + `NSUserActivityTypes`. CallKit is a
-  prerequisite, so this sits strictly after phase 1b.
+- The app adopts a **calling intent**, and which API is an open decision
+  that has to be made before the phase starts, because it changes the build:
+  SiriKit's `INStartCallIntent` needs a separate **Intents app-extension
+  target** (its own bundle id, entitlements and provisioning), which an Expo
+  config plugin cannot create — it needs `expo-apple-targets`-style Xcode
+  surgery and EAS multi-target credentials. App Intents with
+  `AssistantSchemas` (iOS 18+) needs no extension target and is where Apple
+  is steering new work, at the cost of dropping older iOS. Either way CallKit
+  is a prerequisite, so this sits strictly after phase 1b.
 - Nessie writes the caller's agents into a **dedicated `CNContactGroup`**
   ("Nessie Agents") through `CNContactStore`, one contact per agent carrying
   an app-specific handle, behind an explicit opt-in on the mobile settings
@@ -567,8 +621,12 @@ supported path rather than a trick:
   entitlement the Agents screen uses, so a person never gets a contact for
   an agent they cannot reach.
 - Each completed call **donates an `INStartCallIntent` interaction**, which
-  is what teaches Siri the association and puts the agent in the call
-  suggestions a person actually sees.
+  teaches Siri the association over time. Be honest about the ceiling: this
+  is best-effort resolution, not a guarantee. Even for WhatsApp, Siri
+  routinely asks "call Ada with Phone or Nessie?" until the person has placed
+  a few calls through the app, so the acceptance criterion is "reachable
+  without naming the app, disambiguation prompt allowed", not "always
+  resolves silently".
 - The PA gets the additional plain alias people will reach for ("Personal
   Assistant"), so "call my personal assistant" resolves without naming
   Nessie.

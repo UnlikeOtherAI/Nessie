@@ -15,6 +15,7 @@
  */
 
 const STORAGE_KEY = 'nessie.voice.usage-outbox'
+const TRANSCRIPT_KEY = 'nessie.voice.transcript-outbox'
 /**
  * Cap on retained reports. A pathological offline session should not grow the
  * store without bound; oldest entries go first because newer ones carry the
@@ -112,4 +113,75 @@ const isPermanentRejection = (error: unknown): boolean => {
   // and the entry is safe to drop. Other 4xx are malformed or unauthorized and
   // will never succeed. 5xx and network errors stay queued.
   return typeof status === 'number' && status >= 400 && status < 500
+}
+
+/**
+ * A call record waiting to be written.
+ *
+ * The transcript only exists on the device that heard the call, so a tab that
+ * dies mid-call is the one case where the record is unrecoverable. Buffering
+ * it beside the usage reports means the next visit writes it — the server
+ * accepts a record for an ended call precisely so this can work.
+ */
+export type PendingTranscript = {
+  voiceSessionId: string
+  lines: Array<{ speaker: 'user' | 'assistant'; text: string; atMs: number }>
+  durationMs: number
+}
+
+const readTranscripts = (): PendingTranscript[] => {
+  try {
+    const raw = window.localStorage.getItem(TRANSCRIPT_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as PendingTranscript[]) : []
+  } catch {
+    return []
+  }
+}
+
+const writeTranscripts = (entries: PendingTranscript[]): void => {
+  try {
+    window.localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(entries.slice(-10)))
+  } catch {
+    // A call that cannot buffer its record still completes.
+  }
+}
+
+/** Records the in-progress transcript, replacing any earlier snapshot of it. */
+export const stashTranscript = (entry: PendingTranscript): void => {
+  writeTranscripts([
+    ...readTranscripts().filter((held) => held.voiceSessionId !== entry.voiceSessionId),
+    entry,
+  ])
+}
+
+export const clearTranscript = (voiceSessionId: string): void => {
+  writeTranscripts(readTranscripts().filter((held) => held.voiceSessionId !== voiceSessionId))
+}
+
+export const pendingTranscripts = (): PendingTranscript[] => readTranscripts()
+
+/**
+ * Submits buffered call records.
+ *
+ * A permanent rejection drops the entry: the commonest is the server already
+ * holding a record for that call, which means the work is done, not lost.
+ */
+export const drainTranscriptOutbox = async (deps: {
+  send: (entry: PendingTranscript) => Promise<void>
+}): Promise<void> => {
+  for (const entry of readTranscripts()) {
+    try {
+      await deps.send(entry)
+      clearTranscript(entry.voiceSessionId)
+    } catch (error) {
+      const status = (error as { status?: unknown } | null)?.status
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        clearTranscript(entry.voiceSessionId)
+        continue
+      }
+      return
+    }
+  }
 }
