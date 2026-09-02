@@ -21,7 +21,7 @@ import { DesignerAssistantDrawer } from '../components/features/agents/designer/
 
 const getStatusTone = (status: AgentRecord['status']) => {
   if (status === 'error') return 'danger'
-  if (status === 'waiting_approval') return 'warning'
+  if (status === 'waiting_approval' || status === 'waiting_input') return 'warning'
   if (status === 'idle' || status === 'offline') return 'muted'
   return 'accent'
 }

@@ -13,6 +13,8 @@ export const AgentStatusSchema = z.enum([
   'thinking',
   'executing',
   'waiting_approval',
+  /** Suspended on an interactive card, waiting for a person to press a button. */
+  'waiting_input',
   'error',
   'offline',
 ])
@@ -108,6 +110,11 @@ export const RunStatusSchema = z.enum([
   'pending',
   'running',
   'waiting_approval',
+  /**
+   * Suspended on an interactive card posted with `wait: true`. Non-terminal
+   * and holds the (agent, thread) run slot, exactly like `waiting_approval`.
+   */
+  'waiting_input',
   'completed',
   'failed',
   'cancelled',

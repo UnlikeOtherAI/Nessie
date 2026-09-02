@@ -168,7 +168,7 @@ export const requestRunCancellation = async (
   // Queued or approval-suspended: cancel immediately in one atomic statement so
   // the (never-executed) run is skipped by the worker's terminal-state guard.
   const immediate = await prisma.run.updateMany({
-    where: { id: run.id, status: { in: ['pending', 'waiting_approval'] } },
+    where: { id: run.id, status: { in: ['pending', 'waiting_approval', 'waiting_input'] } },
     data: { status: 'cancelled', finishedAt: now, cancelRequestedAt: now, cancelRequestedByUserId: input.cancelledByUserId },
   })
   if (immediate.count === 1) {

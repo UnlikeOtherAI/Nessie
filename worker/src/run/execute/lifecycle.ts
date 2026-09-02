@@ -84,7 +84,12 @@ export const claimRunForExecution = async (
 export const setAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
-  status: 'idle' | 'thinking' | 'executing' | 'waiting_approval' | 'error',
+  status: | 'idle'
+    | 'thinking'
+    | 'executing'
+    | 'waiting_approval'
+    | 'waiting_input'
+    | 'error',
 ): Promise<void> => {
   await prisma.agent.update({
     where: { id: agentId },

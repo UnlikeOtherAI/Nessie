@@ -3,7 +3,12 @@ import type { RunStatus } from '@nessie/schemas'
 
 // Statuses a run can be in while it is still live — the set the status surface
 // lists and the only set from which a run can be cancelled.
-export const ACTIVE_RUN_STATUSES: RunStatus[] = ['pending', 'running', 'waiting_approval']
+export const ACTIVE_RUN_STATUSES: RunStatus[] = [
+  'pending',
+  'running',
+  'waiting_approval',
+  'waiting_input',
+]
 
 // A run is restartable only from a genuinely finished, non-successful terminal
 // state. A `completed` run (including a budget-stop that delivered a partial

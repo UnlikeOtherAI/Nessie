@@ -18,7 +18,7 @@ const getStatusTone = (status: AgentRecord['status']) => {
     return 'danger'
   }
 
-  if (status === 'waiting_approval') {
+  if (status === 'waiting_approval' || status === 'waiting_input') {
     return 'warning'
   }
 

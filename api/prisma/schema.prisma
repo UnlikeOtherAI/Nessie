@@ -69,6 +69,12 @@ enum RunStatus {
   pending
   running
   waiting_approval
+  /// The run posted an interactive card with `wait: true` and is suspended
+  /// until a person presses one of its buttons. Non-terminal and holds the
+  /// (agent, thread) run slot, exactly like `waiting_approval` — deliberately
+  /// a distinct value because "waiting for approval" is the wrong words for a
+  /// form, and that label is user-visible in four admin surfaces.
+  waiting_input
   completed
   failed
   cancelled
@@ -997,6 +1003,8 @@ model User {
   agentAppConnectionRequests          AgentAppConnectionRequest[]
   avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
+  resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
+
   @@map("users")
 }
 
@@ -1045,27 +1053,27 @@ model RefreshToken {
 /// exact compare-and-swap without persisting plaintext. `lastLocalTokenId`
 /// couples every upstream rotation to one deterministic local successor.
 model UoaSessionCredential {
-  familyId               String       @id @map("family_id") @db.Uuid
-  userId                 String       @map("user_id") @db.Uuid
-  providerId             String       @map("provider_id")
-  subject                String       @map("subject")
+  familyId               String                    @id @map("family_id") @db.Uuid
+  userId                 String                    @map("user_id") @db.Uuid
+  providerId             String                    @map("provider_id")
+  subject                String                    @map("subject")
   // UOA's OWN organization/team identifiers, not local Organization/Team ids —
   // they are opaque provider strings, so no foreign key belongs here.
-  organizationId         String       @map("organization_id")
-  teamId                 String       @map("team_id")
-  tokenVersion           Int          @map("token_version")
-  configUrl              String       @map("config_url")
-  refreshTokenHash       String       @unique @map("refresh_token_hash")
-  refreshTokenCiphertext String       @map("refresh_token_ciphertext")
-  refreshTokenIv         String       @map("refresh_token_iv")
-  refreshTokenAuthTag    String       @map("refresh_token_auth_tag")
-  refreshTokenExpiresAt  DateTime     @map("refresh_token_expires_at") @db.Timestamptz(6)
-  lastLocalTokenId       String       @unique @map("last_local_token_id") @db.Uuid
-  generation             Int          @default(0)
-  createdAt              DateTime     @default(now()) @map("created_at")
-  updatedAt              DateTime     @updatedAt @map("updated_at")
-  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastLocalToken         RefreshToken @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
+  organizationId         String                    @map("organization_id")
+  teamId                 String                    @map("team_id")
+  tokenVersion           Int                       @map("token_version")
+  configUrl              String                    @map("config_url")
+  refreshTokenHash       String                    @unique @map("refresh_token_hash")
+  refreshTokenCiphertext String                    @map("refresh_token_ciphertext")
+  refreshTokenIv         String                    @map("refresh_token_iv")
+  refreshTokenAuthTag    String                    @map("refresh_token_auth_tag")
+  refreshTokenExpiresAt  DateTime                  @map("refresh_token_expires_at") @db.Timestamptz(6)
+  lastLocalTokenId       String                    @unique @map("last_local_token_id") @db.Uuid
+  generation             Int                       @default(0)
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastLocalToken         RefreshToken              @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
   workspaceSwitchIntent  UoaWorkspaceSwitchIntent?
 
   @@index([userId])
@@ -1078,78 +1086,78 @@ model UoaSessionCredential {
 /// the atomic rescope commit, an explicit safe upstream refusal, or family
 /// revocation.
 model UoaWorkspaceSwitchIntent {
-  familyId                 String               @id @map("family_id") @db.Uuid
-  userId                   String               @map("user_id") @db.Uuid
-  providerId               String               @map("provider_id")
-  subject                  String
-  sourceOrganizationId     String               @map("source_organization_id")
-  sourceTeamId             String               @map("source_team_id")
-  sourceTokenVersion       Int                  @map("source_token_version")
-  sourceGeneration         Int                  @map("source_generation")
-  sourceLocalTokenId       String               @map("source_local_token_id") @db.Uuid
-  sourceUpstreamTokenHash  String               @map("source_upstream_token_hash")
-  targetOrganizationId     String               @map("target_organization_id")
-  targetTeamId             String               @map("target_team_id")
-  createdAt                DateTime             @default(now()) @map("created_at")
-  updatedAt                DateTime             @updatedAt @map("updated_at")
-  user                     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  credential               UoaSessionCredential @relation(fields: [familyId], references: [familyId], onDelete: Cascade)
+  familyId                String               @id @map("family_id") @db.Uuid
+  userId                  String               @map("user_id") @db.Uuid
+  providerId              String               @map("provider_id")
+  subject                 String
+  sourceOrganizationId    String               @map("source_organization_id")
+  sourceTeamId            String               @map("source_team_id")
+  sourceTokenVersion      Int                  @map("source_token_version")
+  sourceGeneration        Int                  @map("source_generation")
+  sourceLocalTokenId      String               @map("source_local_token_id") @db.Uuid
+  sourceUpstreamTokenHash String               @map("source_upstream_token_hash")
+  targetOrganizationId    String               @map("target_organization_id")
+  targetTeamId            String               @map("target_team_id")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  user                    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential              UoaSessionCredential @relation(fields: [familyId], references: [familyId], onDelete: Cascade)
 
   @@index([userId])
   @@map("uoa_workspace_switch_intents")
 }
 
 model Organization {
-  id                     String                  @id @default(uuid()) @db.Uuid
+  id                         String                      @id @default(uuid()) @db.Uuid
   // For a UOA-provisioned organization, `name` is a NON-authoritative mirror of
   // UOA's `orgName` (same doctrine as the user profile mirror): synced wherever
   // the workspace directory carries it, placeholder
   // `Organisation ${externalOrgId.slice(0, 8)}` at first provisioning.
-  name                   String
+  name                       String
   // Stable UnlikeOtherAI organisation id this Organization mirrors 1:1.
   // Null = a local-mode organization (bootstrap / no-SSO installs, and the
   // generic-OIDC shared organization).
-  externalOrgId          String?                 @unique @map("external_org_id")
-  logoAttachmentId       String?                 @map("logo_attachment_id") @db.Uuid
+  externalOrgId              String?                     @unique @map("external_org_id")
+  logoAttachmentId           String?                     @map("logo_attachment_id") @db.Uuid
   // Instance-level login branding. The unauthenticated sign-in screen belongs
   // to the instance, not to any one tenant, so which organisation's logo it
   // carries is an instance-operator decision (`nessie set-instance-brand`),
   // never an org admin's. At most one organisation carries it; unset on every
   // organisation means the sign-in screen shows Nessie's own mark.
-  instanceBrand          Boolean                 @default(false) @map("instance_brand")
+  instanceBrand              Boolean                     @default(false) @map("instance_brand")
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
-  stripImageMetadata     Boolean                 @default(true) @map("strip_image_metadata")
+  stripImageMetadata         Boolean                     @default(true) @map("strip_image_metadata")
   // Narrow, product-specific early-access gate for conversational agent setup.
   // It is organization configuration, not UOA-owned identity or hierarchy.
-  conversationalSetupEnabled Boolean             @default(false) @map("conversational_setup_enabled")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  logoAttachment         Attachment?             @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
-  members                OrganizationMember[]
-  projects               Project[]
-  channels               Channel[]
-  thoughts               Thought[]
-  knowledgeSpaces        KnowledgeSpace[]
-  knowledgePages         KnowledgePage[]
-  knowledgePageChunks    KnowledgePageChunk[]
-  dashboards             Dashboard[]
-  dashboardDataSources   DashboardDataSource[]
-  tasks                  Task[]
-  budgets                Budget[]
-  plans                  Plan[]
-  approvalRequests       ApprovalRequest[]
-  resourceLocks          ResourceLock[]
-  userStatuses           UserStatus[]
-  userAlerts             UserAlert[]
-  feedback               Feedback[]
-  favorites              Favorite[]
-  productAccountLinks    ProductAccountLink[]
-  productTeamEnablements ProductTeamEnablement[]
-  productIntegrationRuns ProductIntegrationRun[]
-  productWebhookSecrets  ProductWebhookSecret[]
-  secrets                Secret[]
+  conversationalSetupEnabled Boolean                     @default(false) @map("conversational_setup_enabled")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  logoAttachment             Attachment?                 @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
+  members                    OrganizationMember[]
+  projects                   Project[]
+  channels                   Channel[]
+  thoughts                   Thought[]
+  knowledgeSpaces            KnowledgeSpace[]
+  knowledgePages             KnowledgePage[]
+  knowledgePageChunks        KnowledgePageChunk[]
+  dashboards                 Dashboard[]
+  dashboardDataSources       DashboardDataSource[]
+  tasks                      Task[]
+  budgets                    Budget[]
+  plans                      Plan[]
+  approvalRequests           ApprovalRequest[]
+  resourceLocks              ResourceLock[]
+  userStatuses               UserStatus[]
+  userAlerts                 UserAlert[]
+  feedback                   Feedback[]
+  favorites                  Favorite[]
+  productAccountLinks        ProductAccountLink[]
+  productTeamEnablements     ProductTeamEnablement[]
+  productIntegrationRuns     ProductIntegrationRun[]
+  productWebhookSecrets      ProductWebhookSecret[]
+  secrets                    Secret[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
@@ -1209,6 +1217,8 @@ model Organization {
   agentTodoTemplates               AgentTodoTemplate[]
   agentTodos                       AgentTodo[]
   demonstrations                   Demonstration[]
+
+  agentCards AgentCard[]
 
   @@map("organizations")
 }
@@ -1519,6 +1529,8 @@ model Channel {
   pushSurfacePresences   UserPushSurfacePresence[]
   demonstrations         Demonstration[]
 
+  agentCards AgentCard[]
+
   @@index([organizationId, type])
   @@index([projectId])
   @@map("channels")
@@ -1541,27 +1553,29 @@ model ChannelMember {
 }
 
 model Thread {
-  id                       String                    @id @default(uuid()) @db.Uuid
-  channelId                String                    @map("channel_id") @db.Uuid
-  title                    String?
-  metadata                 Json?                     @default("{}")
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  updatedAt                DateTime                  @updatedAt @map("updated_at")
-  channel                  Channel                   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  mailboxMessages          AgentMailboxMessage[]
-  messages                 Message[]
-  workflowRunOrigins       WorkflowRun[]             @relation("WorkflowRunOriginThread")
-  readStates               ThreadReadState[]
-  userAlerts               UserAlert[]
-  runs                     Run[]
-  runThreadPendingMessages RunThreadPendingMessage[]
-  streamEvents             ThreadStreamEvent[]
-  triggerTargets           AgentTrigger[]            @relation("TriggerTargetThread")
-  productIntegrationRuns   ProductIntegrationRun[]
-  pushSurfacePresences     UserPushSurfacePresence[]
-  agentTodos               AgentTodo[]
-  demonstrations           Demonstration[]
+  id                         String                      @id @default(uuid()) @db.Uuid
+  channelId                  String                      @map("channel_id") @db.Uuid
+  title                      String?
+  metadata                   Json?                       @default("{}")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  channel                    Channel                     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  mailboxMessages            AgentMailboxMessage[]
+  messages                   Message[]
+  workflowRunOrigins         WorkflowRun[]               @relation("WorkflowRunOriginThread")
+  readStates                 ThreadReadState[]
+  userAlerts                 UserAlert[]
+  runs                       Run[]
+  runThreadPendingMessages   RunThreadPendingMessage[]
+  streamEvents               ThreadStreamEvent[]
+  triggerTargets             AgentTrigger[]              @relation("TriggerTargetThread")
+  productIntegrationRuns     ProductIntegrationRun[]
+  pushSurfacePresences       UserPushSurfacePresence[]
+  agentTodos                 AgentTodo[]
+  demonstrations             Demonstration[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
+
+  agentCards AgentCard[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1588,17 +1602,17 @@ model ThreadReadState {
 // ThreadReadState remains the migration baseline for roots that have not yet
 // been explicitly acknowledged under this precise model.
 model MessageConversationReadState {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  rootMessageId String   @map("root_message_id") @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  lastReadAt    DateTime @map("last_read_at")
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rootMessageId     String   @map("root_message_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  lastReadAt        DateTime @map("last_read_at")
   // Paired with the timestamp because Postgres stores timestamps at
   // millisecond precision; this makes the conversation high-water mark exact.
-  lastReadMessageId String? @map("last_read_message_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  rootMessage   Message  @relation("MessageConversationReadRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessageId String?  @map("last_read_message_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  rootMessage       Message  @relation("MessageConversationReadRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([rootMessageId, userId])
   @@index([userId])
@@ -1680,14 +1694,14 @@ model ThreadStreamEvent {
 }
 
 model RealtimeEvent {
-  id             BigInt       @id @default(autoincrement())
-  organizationId String       @map("organization_id") @db.Uuid
-  channelId      String?      @map("channel_id") @db.Uuid
-  recipientUserId String?     @map("recipient_user_id") @db.Uuid
-  eventType      String       @map("event_type")
-  payload        Json         @db.JsonB
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id              BigInt       @id @default(autoincrement())
+  organizationId  String       @map("organization_id") @db.Uuid
+  channelId       String?      @map("channel_id") @db.Uuid
+  recipientUserId String?      @map("recipient_user_id") @db.Uuid
+  eventType       String       @map("event_type")
+  payload         Json         @db.JsonB
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
   @@index([organizationId, recipientUserId, id], map: "idx_realtime_events_user_replay")
@@ -1832,49 +1846,51 @@ model UserStatusRule {
 }
 
 model Message {
-  id                       String                         @id @default(uuid()) @db.Uuid
-  threadId                 String                         @map("thread_id") @db.Uuid
-  agentId                  String?                        @map("agent_id") @db.Uuid
+  id                          String                         @id @default(uuid()) @db.Uuid
+  threadId                    String                         @map("thread_id") @db.Uuid
+  agentId                     String?                        @map("agent_id") @db.Uuid
   // Present only when the organization-singleton Personal Assistant spoke from
   // a member's explicit shared-channel presence. It is structural provenance,
   // never a display-name inference.
-  onBehalfOfUserId         String?                        @map("on_behalf_of_user_id") @db.Uuid
-  userId                   String?                        @map("user_id") @db.Uuid
-  role                     MessageRole
-  content                  String
-  metadata                 Json?                          @default("{}")
+  onBehalfOfUserId            String?                        @map("on_behalf_of_user_id") @db.Uuid
+  userId                      String?                        @map("user_id") @db.Uuid
+  role                        MessageRole
+  content                     String
+  metadata                    Json?                          @default("{}")
   // Message-level reply threads: null = top-level post in the container
   // thread; set = reply belonging to that root's reply thread (one level
   // deep — replies to replies attach to the same root).
-  rootMessageId            String?                        @map("root_message_id") @db.Uuid
+  rootMessageId               String?                        @map("root_message_id") @db.Uuid
   // Materialized per-root reply metadata, maintained transactionally on
   // reply create. replyParticipantIds holds distinct author ids (user or
   // agent) of replies, capped for cheap collapsed-bar rendering.
-  replyCount               Int                            @default(0) @map("reply_count")
-  lastReplyAt              DateTime?                      @map("last_reply_at")
-  replyParticipantIds      String[]                       @map("reply_participant_ids") @db.Uuid
-  createdAt                DateTime                       @default(now()) @map("created_at")
-  editedAt                 DateTime?                      @map("edited_at")
-  deletedAt                DateTime?                      @map("deleted_at")
-  thread                   Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  agent                    Agent?                         @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  user                     User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  rootMessage              Message?                       @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
-  replies                  Message[]                      @relation("MessageReplies")
-  reactions                MessageReaction[]
-  userAlerts               UserAlert[]
-  threadFollows            MessageThreadFollow[]
-  productIntegrationRuns   ProductIntegrationRun[]
-  appConnectionRequestCards AgentAppConnectionRequest[] @relation("AgentAppConnectionRequestCardMessage")
-  originAppConnectionRequests AgentAppConnectionRequest[] @relation("AgentAppConnectionRequestOriginTriggerMessage")
-  triggeredRuns            Run[]                          @relation("RunTriggerMessage")
-  workflowRunOrigins       WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
-  workflowRunReplyRoots    WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
-  runThreadPendingMessages RunThreadPendingMessage[]
-  basisScopes              MessageBasisScope[]
-  disclosureGrants         DisclosureGrant[]
-  pushSurfacePresences     UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
-  conversationReadStates   MessageConversationReadState[] @relation("MessageConversationReadRoot")
+  replyCount                  Int                            @default(0) @map("reply_count")
+  lastReplyAt                 DateTime?                      @map("last_reply_at")
+  replyParticipantIds         String[]                       @map("reply_participant_ids") @db.Uuid
+  createdAt                   DateTime                       @default(now()) @map("created_at")
+  editedAt                    DateTime?                      @map("edited_at")
+  deletedAt                   DateTime?                      @map("deleted_at")
+  thread                      Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent                       Agent?                         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user                        User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rootMessage                 Message?                       @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
+  replies                     Message[]                      @relation("MessageReplies")
+  reactions                   MessageReaction[]
+  userAlerts                  UserAlert[]
+  threadFollows               MessageThreadFollow[]
+  productIntegrationRuns      ProductIntegrationRun[]
+  appConnectionRequestCards   AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestCardMessage")
+  agentCards                  AgentCard[]                    @relation("AgentCardMessage")
+  agentCardResponses          AgentCard[]                    @relation("AgentCardResponseMessage")
+  originAppConnectionRequests AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestOriginTriggerMessage")
+  triggeredRuns               Run[]                          @relation("RunTriggerMessage")
+  workflowRunOrigins          WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
+  workflowRunReplyRoots       WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
+  runThreadPendingMessages    RunThreadPendingMessage[]
+  basisScopes                 MessageBasisScope[]
+  disclosureGrants            DisclosureGrant[]
+  pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
+  conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -2093,9 +2109,9 @@ model Agent {
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
-  docsSpaces                     KnowledgeSpace[]                 @relation("AgentDocsSpaces")
+  docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   userAlertActivity              UserAlert[]
-  callsCreatedVia                Call[]                           @relation("CallCreatedViaAgent")
+  callsCreatedVia                Call[]                          @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
   todoTemplates                  AgentTodoTemplate[]             @relation("AgentTodoTemplateAgent")
   todos                          AgentTodo[]                     @relation("AgentTodoAgent")
@@ -2108,6 +2124,8 @@ model Agent {
   // organizationId along with its owner. organization_members rows are never
   // deleted (deactivation is a reversible flag), so this never fires.
   ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  agentCards AgentCard[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -2243,78 +2261,82 @@ model AgentBinding {
 }
 
 model Run {
-  id                             String                          @id @default(uuid()) @db.Uuid
-  agentId                        String                          @map("agent_id") @db.Uuid
-  threadId                       String                          @map("thread_id") @db.Uuid
+  id                                  String                          @id @default(uuid()) @db.Uuid
+  agentId                             String                          @map("agent_id") @db.Uuid
+  threadId                            String                          @map("thread_id") @db.Uuid
   // Set only for a PA presence run. This makes its per-principal slot durable
   // across queue redelivery and pending-message drains.
-  principalUserId                String?                         @map("principal_user_id") @db.Uuid
-  triggerId                      String?                         @map("trigger_id") @db.Uuid
-  triggerDeliveryId              String?                         @unique @map("trigger_delivery_id") @db.Uuid
-  status                         RunStatus                       @default(pending)
-  startedAt                      DateTime?                       @map("started_at")
-  finishedAt                     DateTime?                       @map("finished_at")
-  createdAt                      DateTime                        @default(now()) @map("created_at")
+  principalUserId                     String?                         @map("principal_user_id") @db.Uuid
+  triggerId                           String?                         @map("trigger_id") @db.Uuid
+  triggerDeliveryId                   String?                         @unique @map("trigger_delivery_id") @db.Uuid
+  status                              RunStatus                       @default(pending)
+  startedAt                           DateTime?                       @map("started_at")
+  finishedAt                          DateTime?                       @map("finished_at")
+  createdAt                           DateTime                        @default(now()) @map("created_at")
   // Cooperative-cancel signal. Set by POST /api/runs/:id/cancel; the agentic
   // loop polls it between iterations and between tool-call batches and exits via
   // the classified-stop machinery with reason `cancelled`. Also recorded on a
   // queued run so its (never-executed) job is skipped by the idempotency guard.
-  cancelRequestedAt              DateTime?                       @map("cancel_requested_at")
+  cancelRequestedAt                   DateTime?                       @map("cancel_requested_at")
   // Who asked for the cancellation. The worker reads this to attribute the
   // terminal `run.cancelled` TaskEvent; the queued-cancel path records it in the
   // same statement that flips the run to `cancelled`.
-  cancelRequestedByUserId        String?                         @map("cancel_requested_by_user_id") @db.Uuid
+  cancelRequestedByUserId             String?                         @map("cancel_requested_by_user_id") @db.Uuid
   // The user message that started this run. Populated by the chat orchestrator
   // and integration handoffs. Enables the cancel handoff-guard (reads the
   // message's `integrationLaunch` metadata) and restart (replays the same input).
-  triggerMessageId               String?                         @map("trigger_message_id") @db.Uuid
+  triggerMessageId                    String?                         @map("trigger_message_id") @db.Uuid
   // Set on a run created by POST /api/runs/:id/restart, pointing at the original
   // terminal run it re-runs.
-  restartOfRunId                 String?                         @map("restart_of_run_id") @db.Uuid
+  restartOfRunId                      String?                         @map("restart_of_run_id") @db.Uuid
   // Set on a run created by continue (user tap, natural-language resume, or the
   // worker's non-interactive auto-continue), pointing at the run whose
   // RunCheckpoint seeded it.
-  continuationOfRunId            String?                         @map("continuation_of_run_id") @db.Uuid
+  continuationOfRunId                 String?                         @map("continuation_of_run_id") @db.Uuid
   // Pre-run reply-placement judgement (the orchestrator's model decision, or a
   // structural 'thread' for @mentions and PA DMs). Null ≡ historical default.
   // This is the *input* to placement resolution, not its outcome.
-  replyPlacement                 RunReplyPlacement?              @map("reply_placement")
+  replyPlacement                      RunReplyPlacement?              @map("reply_placement")
   // The *resolved* reply anchor, persisted by the worker right after
   // `resolveReplyRootMessageId` runs (so the structural carve-outs — DeepWater
   // handoff, external agents — are already applied). Plain uuid with no
   // relation, mirroring `Message.replyParticipantIds`: readers (the thinking
   // bootstrap endpoint) never re-derive placement.
-  replyRootMessageId             String?                         @map("reply_root_message_id") @db.Uuid
-  agent                          Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  thread                         Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  trigger                        AgentTrigger?                   @relation(fields: [triggerId], references: [id], onDelete: SetNull)
-  triggerDelivery                AgentTriggerDelivery?           @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
-  cancelRequestedBy              User?                           @relation("RunCancelledBy", fields: [cancelRequestedByUserId], references: [id], onDelete: SetNull)
-  triggerMessage                 Message?                        @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
-  restartOfRun                   Run?                            @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
-  restarts                       Run[]                           @relation("RunRestart")
-  continuationOfRun              Run?                            @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
-  continuations                  Run[]                           @relation("RunContinuation")
-  checkpoint                     RunCheckpoint?
-  tasks                          Task[]
-  toolCalls                      ToolCall[]
-  plans                          Plan[]
-  approvalRequests               ApprovalRequest[]
-  resourceLocks                  ResourceLock[]
-  workflowRuns                   WorkflowRun[]                   @relation("WorkflowParentRun")
-  workflowStepRuns               WorkflowStepRun[]               @relation("WorkflowAgentRun")
-  executionEnvironmentInstances  ExecutionEnvironmentInstance[]
-  executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
-  thinkingChunks                 RunThinkingChunk[]
-  documentSessions               RunDocumentSession[]
-  basisScopes                    RunBasisScope[]
-  executorSessions               ExecutorSession[]
-  executorBindings               ExecutorBinding[]
-  proposedAgentTodoTemplates     AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
-  activeAgentTodos               AgentTodo[]                     @relation("AgentTodoActiveRun")
-  demonstrationSteps             DemonstrationStep[]
-  originAppConnectionRequests    AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
-  continuationForAppConnectionRequest AgentAppConnectionRequest? @relation("AgentAppConnectionRequestContinuationRun")
+  replyRootMessageId                  String?                         @map("reply_root_message_id") @db.Uuid
+  agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  trigger                             AgentTrigger?                   @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery                     AgentTriggerDelivery?           @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  cancelRequestedBy                   User?                           @relation("RunCancelledBy", fields: [cancelRequestedByUserId], references: [id], onDelete: SetNull)
+  triggerMessage                      Message?                        @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
+  restartOfRun                        Run?                            @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
+  restarts                            Run[]                           @relation("RunRestart")
+  continuationOfRun                   Run?                            @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
+  continuations                       Run[]                           @relation("RunContinuation")
+  checkpoint                          RunCheckpoint?
+  tasks                               Task[]
+  toolCalls                           ToolCall[]
+  plans                               Plan[]
+  approvalRequests                    ApprovalRequest[]
+  resourceLocks                       ResourceLock[]
+  workflowRuns                        WorkflowRun[]                   @relation("WorkflowParentRun")
+  workflowStepRuns                    WorkflowStepRun[]               @relation("WorkflowAgentRun")
+  executionEnvironmentInstances       ExecutionEnvironmentInstance[]
+  executorAvailabilityCandidates      ExecutorAvailabilityCandidate[]
+  thinkingChunks                      RunThinkingChunk[]
+  documentSessions                    RunDocumentSession[]
+  basisScopes                         RunBasisScope[]
+  executorSessions                    ExecutorSession[]
+  executorBindings                    ExecutorBinding[]
+  proposedAgentTodoTemplates          AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
+  activeAgentTodos                    AgentTodo[]                     @relation("AgentTodoActiveRun")
+  demonstrationSteps                  DemonstrationStep[]
+  originAppConnectionRequests         AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
+  continuationForAppConnectionRequest AgentAppConnectionRequest?      @relation("AgentAppConnectionRequestContinuationRun")
+
+  postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
+  waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
+  resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -2327,52 +2349,122 @@ model Run {
 /// Durable state for a user-approved app connection proposed by an agent in a
 /// conversation. The corresponding assistant message stores only this row's
 /// opaque id; it never becomes mutable connection authority.
+/// Terminal states of an agent-posted chat card. Every transition is claimed by
+/// one conditional UPDATE whose WHERE carries `status = 'open'`, so two presses
+/// — or a press racing the expiry sweep — have exactly one winner.
+enum AgentCardStatus {
+  open
+  resolved
+  expired
+  cancelled
+}
+
+/// An interactive card an agent posted into a conversation: a ticket summary,
+/// an email overview, an image with a caption, a small form. This row is the
+/// authority — the assistant message carries only this id, and never becomes
+/// mutable card state (the same discipline `AgentAppConnectionRequest` follows).
+///
+/// Design: docs/plans/2026-09-01-agent-chat-cards.md
+model AgentCard {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  channelId         String          @map("channel_id") @db.Uuid
+  threadId          String          @map("thread_id") @db.Uuid
+  messageId         String          @unique @map("message_id") @db.Uuid
+  agentId           String          @map("agent_id") @db.Uuid
+  runId             String          @map("run_id") @db.Uuid
+  /// Set only when the posting run suspended on this card (`wait: true`), so
+  /// the press knows which run to resume. Unique: one run waits on one card.
+  waitRunId         String?         @unique @map("wait_run_id") @db.Uuid
+  /// Enqueue-time actor context for the continuation, exactly as
+  /// `ApprovalRequest.resumeState`. Server-only; never presented to a client.
+  resumeState       Json?           @map("resume_state")
+  /// The validated `AgentCardSpec`. Immutable after insert — a changed ticket
+  /// is a new card, never an edit, so what a person pressed cannot be rewritten
+  /// underneath their decision.
+  spec              Json
+  /// Empty = anyone who can read the card message may press. Otherwise exactly
+  /// these people, resolved at post time from the agent's `respondents` choice.
+  respondentUserIds String[]        @map("respondent_user_ids") @db.Uuid
+  status            AgentCardStatus @default(open)
+  expiresAt         DateTime?       @map("expires_at")
+  resolvedAt        DateTime?       @map("resolved_at")
+  resolvedByUserId  String?         @map("resolved_by_user_id") @db.Uuid
+  resolvedActionKey String?         @map("resolved_action_key")
+  /// Submitted input values only. A secret's value is never here, and never
+  /// anywhere else — see `secretOutcomes`.
+  resolutionValues  Json?           @map("resolution_values")
+  responseMessageId String?         @unique @map("response_message_id") @db.Uuid
+  /// `{ [fieldKey]: { kind, instanceId, placement } }` — the fact that a secret
+  /// was stored and where it landed. Never a reference, never a value.
+  secretOutcomes    Json?           @map("secret_outcomes")
+  resumedByRunId    String?         @unique @map("resumed_by_run_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel         Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thread          Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message         Message      @relation("AgentCardMessage", fields: [messageId], references: [id], onDelete: Cascade)
+  responseMessage Message?     @relation("AgentCardResponseMessage", fields: [responseMessageId], references: [id], onDelete: SetNull)
+  agent           Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  run             Run          @relation("AgentCardPostingRun", fields: [runId], references: [id], onDelete: Cascade)
+  waitRun         Run?         @relation("AgentCardWaitRun", fields: [waitRunId], references: [id], onDelete: SetNull)
+  resumedByRun    Run?         @relation("AgentCardResumedByRun", fields: [resumedByRunId], references: [id], onDelete: SetNull)
+  resolvedBy      User?        @relation("AgentCardResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, expiresAt])
+  @@index([threadId, status])
+  @@index([agentId, status])
+  @@map("agent_cards")
+}
+
 model AgentAppConnectionRequest {
-  id                         String                          @id @default(uuid()) @db.Uuid
-  organizationId             String                          @map("organization_id") @db.Uuid
-  threadId                   String                          @map("thread_id") @db.Uuid
-  messageId                  String                          @unique @map("message_id") @db.Uuid
-  originRunId                String                          @map("origin_run_id") @db.Uuid
-  originTriggerMessageId     String?                         @map("origin_trigger_message_id") @db.Uuid
-  agentId                    String                          @map("agent_id") @db.Uuid
-  requestedByUserId          String                          @map("requested_by_user_id") @db.Uuid
-  candidateCatalogEntryIds   String[]                        @map("candidate_catalog_entry_ids") @db.Uuid
-  selectedCatalogEntryId     String?                         @map("selected_catalog_entry_id") @db.Uuid
-  connectionBackend          AgentAppConnectionBackend?      @map("connection_backend")
-  mcpInstanceId              String?                         @map("mcp_instance_id") @db.Uuid
-  commsConnectionId          String?                         @map("comms_connection_id") @db.Uuid
-  scopeType                  McpServerScopeType?             @map("scope_type")
-  scopeId                    String?                         @map("scope_id") @db.Uuid
-  status                     AgentAppConnectionRequestStatus @default(offered)
+  id                        String                          @id @default(uuid()) @db.Uuid
+  organizationId            String                          @map("organization_id") @db.Uuid
+  threadId                  String                          @map("thread_id") @db.Uuid
+  messageId                 String                          @unique @map("message_id") @db.Uuid
+  originRunId               String                          @map("origin_run_id") @db.Uuid
+  originTriggerMessageId    String?                         @map("origin_trigger_message_id") @db.Uuid
+  agentId                   String                          @map("agent_id") @db.Uuid
+  requestedByUserId         String                          @map("requested_by_user_id") @db.Uuid
+  candidateCatalogEntryIds  String[]                        @map("candidate_catalog_entry_ids") @db.Uuid
+  selectedCatalogEntryId    String?                         @map("selected_catalog_entry_id") @db.Uuid
+  connectionBackend         AgentAppConnectionBackend?      @map("connection_backend")
+  mcpInstanceId             String?                         @map("mcp_instance_id") @db.Uuid
+  commsConnectionId         String?                         @map("comms_connection_id") @db.Uuid
+  scopeType                 McpServerScopeType?             @map("scope_type")
+  scopeId                   String?                         @map("scope_id") @db.Uuid
+  status                    AgentAppConnectionRequestStatus @default(offered)
   // Server-derived ids, trust label, known capability keys, target agent and
   // scope only. URLs and credentials never enter this immutable consent record.
-  consentSnapshot            Json                            @map("consent_snapshot")
-  failureCode                String?                         @map("failure_code")
+  consentSnapshot           Json                            @map("consent_snapshot")
+  failureCode               String?                         @map("failure_code")
   // A lookup aid only: the final status-transition transaction remains the
   // one-shot guard because PostgreSQL allows multiple NULLs in this key.
-  continuationRunId          String?                         @unique @map("continuation_run_id") @db.Uuid
-  offerCooldownUntil         DateTime                        @map("offer_cooldown_until")
-  connectAttemptRevision     Int                             @default(0) @map("connect_attempt_revision")
-  returnedAt                 DateTime?                       @map("returned_at")
-  returnRevision             Int                             @default(0) @map("return_revision")
-  returnClaimedBySessionId   String?                         @map("return_claimed_by_session_id")
-  returnClaimLeaseExpiresAt  DateTime?                       @map("return_claim_lease_expires_at")
-  expiresAt                  DateTime                        @map("expires_at")
-  createdAt                  DateTime                        @default(now()) @map("created_at")
-  updatedAt                  DateTime                        @updatedAt @map("updated_at")
-  completedAt                DateTime?                       @map("completed_at")
+  continuationRunId         String?                         @unique @map("continuation_run_id") @db.Uuid
+  offerCooldownUntil        DateTime                        @map("offer_cooldown_until")
+  connectAttemptRevision    Int                             @default(0) @map("connect_attempt_revision")
+  returnedAt                DateTime?                       @map("returned_at")
+  returnRevision            Int                             @default(0) @map("return_revision")
+  returnClaimedBySessionId  String?                         @map("return_claimed_by_session_id")
+  returnClaimLeaseExpiresAt DateTime?                       @map("return_claim_lease_expires_at")
+  expiresAt                 DateTime                        @map("expires_at")
+  createdAt                 DateTime                        @default(now()) @map("created_at")
+  updatedAt                 DateTime                        @updatedAt @map("updated_at")
+  completedAt               DateTime?                       @map("completed_at")
 
-  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  thread                Thread             @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  message               Message            @relation("AgentAppConnectionRequestCardMessage", fields: [messageId], references: [id], onDelete: Cascade)
-  originRun             Run                @relation("AgentAppConnectionRequestOriginRun", fields: [originRunId], references: [id], onDelete: Cascade)
-  originTriggerMessage  Message?           @relation("AgentAppConnectionRequestOriginTriggerMessage", fields: [originTriggerMessageId], references: [id], onDelete: SetNull)
-  agent                 Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  requestedByUser       User               @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
-  selectedCatalogEntry  McpCatalogEntry?   @relation(fields: [selectedCatalogEntryId], references: [id], onDelete: SetNull)
-  mcpInstance           McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
-  commsConnection       CommsConnection?   @relation(fields: [commsConnectionId], references: [id], onDelete: SetNull)
-  continuationRun       Run?               @relation("AgentAppConnectionRequestContinuationRun", fields: [continuationRunId], references: [id], onDelete: SetNull)
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  thread               Thread             @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message              Message            @relation("AgentAppConnectionRequestCardMessage", fields: [messageId], references: [id], onDelete: Cascade)
+  originRun            Run                @relation("AgentAppConnectionRequestOriginRun", fields: [originRunId], references: [id], onDelete: Cascade)
+  originTriggerMessage Message?           @relation("AgentAppConnectionRequestOriginTriggerMessage", fields: [originTriggerMessageId], references: [id], onDelete: SetNull)
+  agent                Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  requestedByUser      User               @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  selectedCatalogEntry McpCatalogEntry?   @relation(fields: [selectedCatalogEntryId], references: [id], onDelete: SetNull)
+  mcpInstance          McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
+  commsConnection      CommsConnection?   @relation(fields: [commsConnectionId], references: [id], onDelete: SetNull)
+  continuationRun      Run?               @relation("AgentAppConnectionRequestContinuationRun", fields: [continuationRunId], references: [id], onDelete: SetNull)
 
   @@index([requestedByUserId, agentId, threadId, createdAt(sort: Desc)], map: "app_conn_req_requester_agent_thread_created_idx")
   @@index([organizationId, status, expiresAt], map: "app_conn_req_organization_status_expires_idx")
@@ -2426,13 +2518,13 @@ model RunCheckpoint {
 /// tool-call *index* restarts at 0 for every HTTP attempt and cannot correlate
 /// a retried or re-issued call with the handler that later executes it.
 model RunDocumentSession {
-  id             String  @id @default(uuid()) @db.Uuid
-  runId          String  @map("run_id") @db.Uuid
-  threadId       String  @map("thread_id") @db.Uuid
-  agentId        String  @map("agent_id") @db.Uuid
-  organizationId String  @map("organization_id") @db.Uuid
-  invocationId   String  @map("invocation_id")
-  toolCallId     String  @map("tool_call_id")
+  id             String @id @default(uuid()) @db.Uuid
+  runId          String @map("run_id") @db.Uuid
+  threadId       String @map("thread_id") @db.Uuid
+  agentId        String @map("agent_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  invocationId   String @map("invocation_id")
+  toolCallId     String @map("tool_call_id")
 
   status      RunDocumentSessionStatus @default(streaming)
   errorReason String?                  @map("error_reason")
@@ -2458,7 +2550,7 @@ model RunDocumentSession {
   updatedAt  DateTime  @updatedAt @map("updated_at")
   finishedAt DateTime? @map("finished_at")
 
-  run    Run                 @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run    Run                @relation(fields: [runId], references: [id], onDelete: Cascade)
   chunks RunDocumentChunk[]
 
   @@unique([runId, invocationId, toolCallId], map: "run_document_sessions_identity_key")
@@ -2742,25 +2834,25 @@ model AgentTodoStep {
 /// An opt-in structural trace of work an agent performed in one conversation.
 /// Raw recordings are review-only; they are never a runnable automation.
 model Demonstration {
-  id              String              @id @default(uuid()) @db.Uuid
-  organizationId  String              @map("organization_id") @db.Uuid
-  agentId         String              @map("agent_id") @db.Uuid
-  channelId       String              @map("channel_id") @db.Uuid
-  threadId        String              @map("thread_id") @db.Uuid
-  startedByUserId String              @map("started_by_user_id") @db.Uuid
-  status          DemonstrationStatus @default(recording)
-  stepCount       Int                 @default(0) @map("step_count")
-  generalizationError String?         @map("generalization_error")
-  startedAt       DateTime            @default(now()) @map("started_at")
-  capturedAt      DateTime?           @map("captured_at")
-  expiresAt       DateTime            @map("expires_at")
-  workflowTemplate WorkflowTemplate?  @relation("DemonstrationWorkflowTemplate")
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  agent           Agent               @relation("AgentDemonstrations", fields: [agentId], references: [id], onDelete: Cascade)
-  channel         Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  thread          Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  startedByUser   User                @relation("DemonstrationStartedBy", fields: [startedByUserId], references: [id], onDelete: Cascade)
-  steps           DemonstrationStep[]
+  id                  String              @id @default(uuid()) @db.Uuid
+  organizationId      String              @map("organization_id") @db.Uuid
+  agentId             String              @map("agent_id") @db.Uuid
+  channelId           String              @map("channel_id") @db.Uuid
+  threadId            String              @map("thread_id") @db.Uuid
+  startedByUserId     String              @map("started_by_user_id") @db.Uuid
+  status              DemonstrationStatus @default(recording)
+  stepCount           Int                 @default(0) @map("step_count")
+  generalizationError String?             @map("generalization_error")
+  startedAt           DateTime            @default(now()) @map("started_at")
+  capturedAt          DateTime?           @map("captured_at")
+  expiresAt           DateTime            @map("expires_at")
+  workflowTemplate    WorkflowTemplate?   @relation("DemonstrationWorkflowTemplate")
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent               Agent               @relation("AgentDemonstrations", fields: [agentId], references: [id], onDelete: Cascade)
+  channel             Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thread              Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  startedByUser       User                @relation("DemonstrationStartedBy", fields: [startedByUserId], references: [id], onDelete: Cascade)
+  steps               DemonstrationStep[]
 
   @@index([organizationId, startedByUserId, startedAt(sort: Desc)])
   @@index([agentId, threadId, status])
@@ -3298,61 +3390,61 @@ model McpCatalogEntry {
   // address an app in a URL. `slug` is the immutable public identity behind
   // `/apps/:slug`: set once at creation, never rewritten by registry sync, and
   // globally unique when present so a deep link survives every rename.
-  slug              String?                @unique
+  slug              String?                  @unique
   /// Curated overrides. Registry sync writes `upstream`, never these — that
   /// separation is what lets a sync run at any time without clobbering copy a
   /// human wrote. Readers fall back: displayName ?? label.
-  displayName       String?                @map("display_name")
-  shortDescription  String?                @map("short_description")
-  longDescription   String?                @map("long_description")
-  websiteUrl        String?                @map("website_url")
-  documentationUrl  String?                @map("documentation_url")
-  repositoryUrl     String?                @map("repository_url")
+  displayName       String?                  @map("display_name")
+  shortDescription  String?                  @map("short_description")
+  longDescription   String?                  @map("long_description")
+  websiteUrl        String?                  @map("website_url")
+  documentationUrl  String?                  @map("documentation_url")
+  repositoryUrl     String?                  @map("repository_url")
   /// Icon bytes are fetched, validated, and cached through the one
   /// `FileService` chokepoint; `iconUrl` above stays as the raw upstream URL
   /// for provenance and is NEVER rendered directly (untrusted external SVG).
-  iconAttachmentId  String?                @map("icon_attachment_id") @db.Uuid
-  iconSource        String?                @map("icon_source")
-  iconResolvedAt    DateTime?              @map("icon_resolved_at")
-  primaryCategory   McpAppCategory         @default(other) @map("primary_category")
-  categories        McpAppCategory[]       @default([])
-  tags              String[]               @default([])
+  iconAttachmentId  String?                  @map("icon_attachment_id") @db.Uuid
+  iconSource        String?                  @map("icon_source")
+  iconResolvedAt    DateTime?                @map("icon_resolved_at")
+  primaryCategory   McpAppCategory           @default(other) @map("primary_category")
+  categories        McpAppCategory[]         @default([])
+  tags              String[]                 @default([])
   /// Curated synonyms — how "email" finds Gmail and "issues" finds Linear.
-  aliases           String[]               @default([])
-  trustLevel        McpAppTrustLevel       @default(unknown) @map("trust_level")
-  moderationState   McpAppModerationState  @default(discovered) @map("moderation_state")
-  appSource         McpAppSource           @default(nessie) @map("app_source")
-  distribution      McpAppDistribution     @default(remote)
-  featured          Boolean                @default(false)
-  featuredOrder     Int?                   @map("featured_order")
+  aliases           String[]                 @default([])
+  trustLevel        McpAppTrustLevel         @default(unknown) @map("trust_level")
+  moderationState   McpAppModerationState    @default(discovered) @map("moderation_state")
+  appSource         McpAppSource             @default(nessie) @map("app_source")
+  distribution      McpAppDistribution       @default(remote)
+  featured          Boolean                  @default(false)
+  featuredOrder     Int?                     @map("featured_order")
   /// Upstream registry provenance. `upstream` holds the raw normalized record
   /// so a re-sync can diff without a second fetch.
   /// The upstream registry id, and the database-arbitrated identity of an
   /// ingested app: unique where present (partial index, see the migration) so
   /// two concurrent sweeps cannot both insert the same server.
-  registryName      String?                @map("registry_name")
-  registryVersion   String?                @map("registry_version")
-  upstream          Json                   @default("{}")
-  upstreamUpdatedAt DateTime?              @map("upstream_updated_at")
+  registryName      String?                  @map("registry_name")
+  registryVersion   String?                  @map("registry_version")
+  upstream          Json                     @default("{}")
+  upstreamUpdatedAt DateTime?                @map("upstream_updated_at")
   /// Cached capability counts, so a card can say "42 capabilities" without a
   /// probe. Refreshed on install, reconnect, and registry sync.
-  toolCount         Int?                   @map("tool_count")
-  resourceCount     Int?                   @map("resource_count")
-  promptCount       Int?                   @map("prompt_count")
-  capabilitiesAt    DateTime?              @map("capabilities_at")
+  toolCount         Int?                     @map("tool_count")
+  resourceCount     Int?                     @map("resource_count")
+  promptCount       Int?                     @map("prompt_count")
+  capabilitiesAt    DateTime?                @map("capabilities_at")
   /// Weighted full-text search document, maintained by a BEFORE INSERT/UPDATE
   /// trigger (see the migration) rather than by application code, so it cannot
   /// drift from the row it describes. Not a GENERATED column: the expression
   /// uses `array_to_string`, which is only STABLE, and Postgres refuses a
   /// non-immutable generation expression.
-  searchVector      Unsupported("tsvector")?  @map("search_vector")
+  searchVector      Unsupported("tsvector")? @map("search_vector")
 
-  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner              User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  reviewer           User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  instances          McpServerInstance[]
-  integratedProducts IntegratedProduct[]
-  health             McpServerHealth?
+  organization          Organization?               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                 User?                       @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  reviewer              User?                       @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  instances             McpServerInstance[]
+  integratedProducts    IntegratedProduct[]
+  health                McpServerHealth?
   appConnectionRequests AgentAppConnectionRequest[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
@@ -3379,19 +3471,19 @@ model McpCatalogEntry {
 /// completed run is the normal "one bad record, rest imported" outcome,
 /// because a malformed upstream record must never fail the whole import.
 model McpRegistrySyncRun {
-  id              String    @id @default(uuid()) @db.Uuid
-  source          String    @default("mcp-registry")
-  startedAt       DateTime  @default(now()) @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  serversFetched  Int       @default(0) @map("servers_fetched")
-  serversCreated  Int       @default(0) @map("servers_created")
-  serversUpdated  Int       @default(0) @map("servers_updated")
-  serversFailed   Int       @default(0) @map("servers_failed")
-  iconsCached     Int       @default(0) @map("icons_cached")
-  error           String?
+  id             String    @id @default(uuid()) @db.Uuid
+  source         String    @default("mcp-registry")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  serversFetched Int       @default(0) @map("servers_fetched")
+  serversCreated Int       @default(0) @map("servers_created")
+  serversUpdated Int       @default(0) @map("servers_updated")
+  serversFailed  Int       @default(0) @map("servers_failed")
+  iconsCached    Int       @default(0) @map("icons_cached")
+  error          String?
   /// Per-record failures, capped, so one poison record is identifiable
   /// without trawling logs.
-  failures        Json      @default("[]")
+  failures       Json      @default("[]")
 
   @@index([startedAt])
   @@index([completedAt])
@@ -3402,14 +3494,14 @@ model McpRegistrySyncRun {
 /// side table and never awaited by a catalogue read: health must not be able
 /// to slow or fail the store rendering.
 model McpServerHealth {
-  catalogEntryId           String    @id @map("catalog_entry_id") @db.Uuid
-  reachable                Boolean   @default(false)
-  initializationSuccessful Boolean   @default(false) @map("initialization_successful")
-  latencyMs                Int?      @map("latency_ms")
-  toolCount                Int?      @map("tool_count")
-  resourceCount            Int?      @map("resource_count")
-  promptCount              Int?      @map("prompt_count")
-  checkedAt                DateTime  @default(now()) @map("checked_at")
+  catalogEntryId           String   @id @map("catalog_entry_id") @db.Uuid
+  reachable                Boolean  @default(false)
+  initializationSuccessful Boolean  @default(false) @map("initialization_successful")
+  latencyMs                Int?     @map("latency_ms")
+  toolCount                Int?     @map("tool_count")
+  resourceCount            Int?     @map("resource_count")
+  promptCount              Int?     @map("prompt_count")
+  checkedAt                DateTime @default(now()) @map("checked_at")
   error                    String?
 
   catalogEntry McpCatalogEntry @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
@@ -3419,28 +3511,28 @@ model McpServerHealth {
 }
 
 model McpServerInstance {
-  id                  String                  @id @default(uuid()) @db.Uuid
-  catalogEntryId      String                  @map("catalog_entry_id") @db.Uuid
-  organizationId      String                  @map("organization_id") @db.Uuid
-  scopeType           McpServerScopeType      @map("scope_type")
-  scopeId             String                  @map("scope_id") @db.Uuid
-  credentialRef       String?                 @map("credential_ref")
-  transportConfig     Json                    @default("{}") @map("transport_config")
-  discoveredTools     Json                    @default("[]") @map("discovered_tools")
+  id                        String                  @id @default(uuid()) @db.Uuid
+  catalogEntryId            String                  @map("catalog_entry_id") @db.Uuid
+  organizationId            String                  @map("organization_id") @db.Uuid
+  scopeType                 McpServerScopeType      @map("scope_type")
+  scopeId                   String                  @map("scope_id") @db.Uuid
+  credentialRef             String?                 @map("credential_ref")
+  transportConfig           Json                    @default("{}") @map("transport_config")
+  discoveredTools           Json                    @default("[]") @map("discovered_tools")
   /// This connection's tools are default-OFF and need an explicit per-agent
   /// grant (`worker` `isExposed`). Set when the App Store creates the
   /// connection, because installing an app and letting an agent use it are two
   /// decisions. A durable column rather than a stamp at the projection call
   /// site: the OAuth callback and the generic refresh both re-project, and
   /// would otherwise quietly widen the app on the next probe.
-  requiresExplicitToolGrant Boolean             @default(false) @map("requires_explicit_tool_grant")
-  lifecycleState      McpServerLifecycleState @default(pending_setup) @map("lifecycle_state")
-  healthLastCheckedAt DateTime?               @map("health_last_checked_at")
-  healthFailureCount  Int                     @default(0) @map("health_failure_count")
-  lastError           String?                 @map("last_error")
-  installedBy         String                  @map("installed_by") @db.Uuid
-  createdAt           DateTime                @default(now()) @map("created_at")
-  updatedAt           DateTime                @updatedAt @map("updated_at")
+  requiresExplicitToolGrant Boolean                 @default(false) @map("requires_explicit_tool_grant")
+  lifecycleState            McpServerLifecycleState @default(pending_setup) @map("lifecycle_state")
+  healthLastCheckedAt       DateTime?               @map("health_last_checked_at")
+  healthFailureCount        Int                     @default(0) @map("health_failure_count")
+  lastError                 String?                 @map("last_error")
+  installedBy               String                  @map("installed_by") @db.Uuid
+  createdAt                 DateTime                @default(now()) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @map("updated_at")
 
   catalogEntry           McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
   credentialOverrides    McpServerCredentialOverride[]
@@ -4785,10 +4877,10 @@ model Call {
   revision          Int               @default(0)
   channel           Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
   startedBy         User              @relation("CallStarter", fields: [startedById], references: [id], onDelete: Cascade)
-  createdViaAgent  Agent?            @relation("CallCreatedViaAgent", fields: [createdViaAgentId], references: [id], onDelete: SetNull)
+  createdViaAgent   Agent?            @relation("CallCreatedViaAgent", fields: [createdViaAgentId], references: [id], onDelete: SetNull)
   participants      CallParticipant[]
   invites           CallInvite[]
-  missedAlerts      UserAlert[]      @relation("CallMissedAlert")
+  missedAlerts      UserAlert[]       @relation("CallMissedAlert")
 
   @@index([channelId])
   @@index([status])
@@ -5202,13 +5294,13 @@ model CommsConnection {
   createdAt              DateTime              @default(now()) @map("created_at")
   updatedAt              DateTime              @updatedAt @map("updated_at")
 
-  credential    CommsConnectionCredential?
-  resources     CommsResource[]
-  syncJobs      CommsSyncJob[]
-  events        CommsEvent[]
-  subscriptions CommsSubscription[]
+  credential            CommsConnectionCredential?
+  resources             CommsResource[]
+  syncJobs              CommsSyncJob[]
+  events                CommsEvent[]
+  subscriptions         CommsSubscription[]
   appConnectionRequests AgentAppConnectionRequest[]
-  organization  Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization          Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, ownerUserId, provider, externalTenantId, externalUserId])
   @@index([organizationId, ownerUserId])

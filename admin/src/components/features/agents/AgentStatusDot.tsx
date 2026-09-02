@@ -5,6 +5,7 @@ type AgentStatus =
   | 'offline'
   | 'thinking'
   | 'waiting_approval'
+  | 'waiting_input'
 
 type AgentStatusDotProps = {
   status: AgentStatus
@@ -17,6 +18,7 @@ const statusClasses: Record<AgentStatus, string> = {
   offline: 'bg-[color:var(--muted)]/25',
   thinking: 'bg-[color:var(--thinking)] status-pulse',
   waiting_approval: 'bg-[color:var(--warning)]',
+  waiting_input: 'bg-[color:var(--warning)]',
 }
 
 export const AgentStatusDot = ({ status }: AgentStatusDotProps) => (
