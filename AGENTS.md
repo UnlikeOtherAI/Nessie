@@ -35,8 +35,14 @@ Four checks, applied to every change that adds or alters a capability:
    admin's single-select strip is `components/primitives/TabBar.tsx` and nothing
    else. It had drifted into nine look-alikes (`.admin-tab`, `SegmentedControl`,
    `IntegrationTabs`, six inline ones) that disagreed on shape, colour, counts,
-   and ARIA; they were collapsed into one on 2026-08-29. See `CLAUDE.md` →
-   "Theming / design system".
+   and ARIA; they were collapsed into one on 2026-08-29. The identity picture is
+   the same story one level down: `components/primitives/IdentityTile.tsx` draws
+   every avatar, its radius is a function of the rendered size rather than a
+   `rounded-*` class, and an agent's picture resolves from its id through one
+   directory — seventeen hand-rolled tiles across twelve radii were collapsed
+   into it on 2026-09-02, which is also what stopped the Personal Assistant
+   rendering as a portrait in the sidebar and a lightning bolt in the thread
+   panel. See `CLAUDE.md` → "Theming / design system".
 
 A new server capability ships with its surface in the same change, or with a
 deliberate, written decision that it is machine-only. "The API exists" is not a

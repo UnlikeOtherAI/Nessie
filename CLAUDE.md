@@ -632,6 +632,26 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
   parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
   `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
+- **One identity picture, one shape, one source.** Every avatar in the admin —
+  person, agent, project, workspace, app, search hit — is
+  `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
+  for its kind (`UserAvatar`, `AgentAvatar`, `ProjectAvatar`, `WorkspaceAvatar`,
+  `AppIcon`, `SearchResultMarker`). The tile owns the shape, the broken-image
+  reset and the fallback; the wrapper owns only *which* source wins; a call site
+  describes what it depicts and never assembles a tile. The radius is
+  proportional — `identityTileRadius(size) = max(3, round(size × 0.28))`
+  (`primitives/identity-shape.ts`), `identityRingRadius` for rings — because the
+  `--radius-*` tokens are re-declared on `:root`, so `rounded-md` was a flat
+  10px at every size: a 96px portrait read as a square, an 18px tile a circle. An agent's picture resolves from its **id** through
+  `providers/AgentIdentityProvider.tsx`, which merges the agents list with the
+  Personal Assistant — `GET /api/agents` omits `systemManaged` agents, which is
+  why the PA was a portrait in the sidebar and a `⚡` in the thread panel. It is
+  identity-only: pickers and policy surfaces still read `useAgents()`.
+  `AGENT_AVATAR_BACKGROUND_COLORS` has one importer; `lib/avatar.ts` keeps only
+  `getInitials`. The native chrome duplicates the contract in
+  `mobile/src/lib/identity-shape.ts`; `identity-avatar-consistency.test.ts`
+  asserts they match, that the radius never reaches a circle, and that no
+  gradient tile returns (2026-09-02: 17 tiles across 12 radii collapsed here).
 - **One composer, and at rest it is one line.** Every message composer in the
   admin is `components/features/channels/ChannelComposer.tsx` (channel feed,
   thread reply panel, both info drawers, the Threads inbox card). At rest it is
