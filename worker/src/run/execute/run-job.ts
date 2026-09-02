@@ -63,6 +63,7 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
+import { loadGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
 import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import {
@@ -414,6 +415,26 @@ export const executeRunJob = async (
       prompt,
     })
 
+    // A global agent's authority is generated, never written: the design
+    // catalogue renders from the live tool definitions, this organisation's
+    // registry rows and the Ledger model list, so a new tool is in the Agent
+    // Designer's knowledge the deploy it ships. It rides as its own system
+    // message after the cache-stable anchor, exactly as the memory and
+    // checkpoint injections do, and is assembled only for a run whose agent has
+    // a blueprint — every other run pays nothing.
+    const catalogueBlock = await loadGlobalAgentCatalogueBlock(deps.prisma, context, {
+      actorContext: payload.actorContext,
+      ledgerIdentity: deps.ledgerIdentity ?? null,
+      resolvedToolIds: setup.resolvedToolIds,
+    })
+    const initialMessages = catalogueBlock
+      ? [
+        setup.initialMessages[0]!,
+        { content: catalogueBlock, role: 'system' as const },
+        ...setup.initialMessages.slice(1),
+      ]
+      : setup.initialMessages
+
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
       // Where this run's reply will land, so viewers can anchor the live
@@ -464,7 +485,7 @@ export const executeRunJob = async (
       identityToolIds: setup.identityToolIds,
       inference,
       isHandoffTurn: handoffLocator !== null,
-      initialMessages: setup.initialMessages,
+      initialMessages,
       executorToolset: setup.executorToolset,
       invocationSink: invocations,
       deepWaterHandoffGuard,

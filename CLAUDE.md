@@ -796,20 +796,42 @@ blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
 one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
 through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
-facts). Every invariant — the CHECKs, the ensure/policy-merge shape, the binding,
+facts). Invariants — the CHECKs, the ensure/policy-merge shape, the binding,
 trigger and run-placement refusals, the un-gated list arm, and the delegation
-predicate with its one-arm identity-tool gate — is in `AGENTS.md`. Spec:
-[docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
+predicate with its one-arm identity-tool gate: `AGENTS.md` → "A global agent is
+a blueprint in code".
+Spec: [docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
 
 Facts not restated there: bootstrap runs beside the PA's at login and user
-provisioning but **best-effort** (`attemptGlobalAgentsBootstrap`) — the PA may
-fail a login, a global agent must never lock anyone out; the model is blueprint
-pin → `NESSIE_DESIGNER_MODEL` → organisation default, one rule for both Designer
-faces; the sidebar finds the DM via `isGlobalAgentChannel`, and
-`AgentIdentityProvider` reads `scope=all`. **Phase 2a** gave the Designer the
-five identity-delegated provisioning tools on its own home DM, interactive turns
-only; the capability catalogue, `agent_read`/`agent_update`/`agent_tool_catalog`/
-`agent_avatar_update`, `agent_handoff` and the sidebar are phases 2b–4.
+provisioning but **best-effort** — a global agent must never lock anyone out;
+the model is blueprint pin → `NESSIE_DESIGNER_MODEL` → organisation default, one
+rule for both Designer faces; the sidebar finds the DM via
+`isGlobalAgentChannel`, and `AgentIdentityProvider` reads `scope=all`.
+
+- **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
+  provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog`,
+  `agent_avatar_update` — `personalAssistantOnly` builtins in
+  `pa-tools/agent-config.ts` over shared `@nessie/workspace-admin` functions.
+  `readAgentRecordForActor` applies exactly the list entitlement
+  (`buildAgentEntitlementWhere`, factored out of `listAgentsForUser` so list and
+  detail cannot disagree), answers a `systemManaged` target with a
+  **config-only** projection, and stamps the `agent:` scope into the sink.
+  `updateAgentRecord`/`updateAgentAvatar` moved to `agent-update.ts` there
+  because the worker cannot import `api/src/services/*`, so chat inherits the
+  one `canEditAgent`/`assertAgentFieldAuthority` the PUT route uses.
+  `loadAgentToolCatalog` is a **member-safe** projection (`GET /api/mcp/tools`
+  stays owner-only) assembled field-by-field from a narrow selection, so no
+  credential, endpoint, auth or transport config has a shape to travel in.
+- **One avatar seam**, `generateAvatarForNewAgent`, serves `POST /api/agents`
+  and `agent_create`, so a chat-created agent is no longer the only faceless
+  one; it never throws — a billed image call is not worth failing a creation.
+- **The capability catalogue is generated, never written**
+  (`worker/src/run/execute/global-agent-catalogue.ts`): parameters from the
+  contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS` plus the
+  organisation's live registry rows, models from `listLedgerAgentModels`.
+  Hand-written parameter or tool prose is forbidden — a new tool is in the
+  Designer's knowledge the deploy it ships. Injected at one `run-job.ts` call
+  site as its own `system` message after the cache-stable anchor.
 
 ## Personal assistant — workspace provisioning
 

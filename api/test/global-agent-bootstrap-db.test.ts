@@ -134,16 +134,23 @@ dbTest('bootstrap is idempotent and writes the sanctioned system tuple', async (
     assert.equal(agent.delegationMode, 'act_as_requesting_user')
     assert.equal(agent.systemSlug, 'agent-designer')
     assert.equal(agent.name, 'Agent Designer')
+    // The blueprint's policy, byte for byte: the deny-mode narrowing plus the
+    // Designer's own configuration verbs. The identity-delegated set is stated
+    // on the row (phase 2, D3) — deny-mode means the `true`s change nothing on
+    // their own, the worker's gate arm is what admits them, but the stored
+    // policy must state the intent and every id must be one the blueprint
+    // actually declares.
     assert.deepEqual(agent.toolPolicy, AGENT_DESIGNER_BLUEPRINT.toolPolicy)
-    // The identity-delegated set is stated on the row (phase 2, D3). Deny-mode
-    // means the `true`s change nothing on their own — the worker's gate arm is
-    // what admits them — but the stored policy must state the intent, and every
-    // id must be one the blueprint actually declares.
+    assert.equal(
+      (agent.toolPolicy as Record<string, boolean>)['delegate'],
+      false,
+      'a design conversation still fans out to nothing',
+    )
     for (const toolId of AGENT_DESIGNER_BLUEPRINT.identityToolIds) {
       assert.equal(
         (agent.toolPolicy as Record<string, boolean>)[toolId],
         true,
-        `${toolId} must be enabled in the stored policy`,
+        `${toolId} is declared on the stored row`,
       )
     }
 

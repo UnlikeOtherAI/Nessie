@@ -28,18 +28,25 @@ import {
  * same channel-visibility filter still applies, so a member sees a system
  * agent only through a channel it can already reach (e.g. their own PA DM).
  */
-export const listAgentsForUser = async (
-  prisma: PrismaClient,
-  userId: string,
-  organizationId: string,
-  includeUnbound: boolean,
-  includeSystemManaged = false,
-): Promise<AgentRecord[]> => {
-  const visibleChannelWhere = buildAccessibleChannelWhere({
-    includeAllOrgChannels: includeUnbound,
-    organizationId,
-    userId,
-  })
+export type AgentEntitlementScope = {
+  includeSystemManaged?: boolean
+  /** Organization owners reach every agent in the tenant, bound or not. */
+  includeUnbound: boolean
+  organizationId: string
+  userId: string
+}
+
+/**
+ * The entitlement half of the list, on its own.
+ *
+ * `readAgentRecordForActor` answers the same question about ONE agent, and a
+ * second `where` beside this one would be exactly the fork Rule zero names —
+ * the list and the detail read would start agreeing and quietly stop.
+ */
+export const buildAgentEntitlementWhere = (
+  scope: AgentEntitlementScope,
+): Prisma.AgentWhereInput => {
+  const { includeSystemManaged = false, includeUnbound, organizationId, userId } = scope
   const visibilityFilters: Prisma.AgentWhereInput[] = [
     buildVisibleAgentWhere({ organizationId, userId }),
   ]
@@ -54,65 +61,97 @@ export const listAgentsForUser = async (
     )
   }
   if (includeSystemManaged) {
-    // System agents are a read-only Agents-page tier, and they are app-provided
-    // — vendor definitions holding no tenant secrets. Availability must not
-    // depend on a binding accident: the channel-gated version of this arm made
-    // a global agent whose per-user DM had not been provisioned yet (or whose
-    // binding was bootstrapped for somebody else) invisible to everyone, which
-    // is exactly the unreachable-capability defect. The row is listed; what a
-    // caller may *do* with it is decided elsewhere, and per-agent reads still
-    // 404 on system agents.
+    // System agents are a read-only tier, and they are app-provided — vendor
+    // definitions holding no tenant secrets. Availability must not depend on a
+    // binding accident: the channel-gated version of this arm made a global
+    // agent whose per-user DM had not been provisioned yet (or whose binding
+    // was bootstrapped for somebody else) invisible to everyone, which is
+    // exactly the unreachable-capability defect. The row is listed; what a
+    // caller may *do* with it is decided elsewhere.
     visibilityFilters.push({ organizationId, systemManaged: true })
   }
 
+  return {
+    AND: [buildAgentVisibilityWhere({ organizationId, userId })],
+    organizationId,
+    OR: visibilityFilters,
+  }
+}
+
+/** The joins `mapAgentRecord` reads, scoped to channels the caller can see. */
+export const agentEntitlementInclude = (scope: AgentEntitlementScope) => {
+  const visibleChannelWhere = buildAccessibleChannelWhere({
+    includeAllOrgChannels: scope.includeUnbound,
+    organizationId: scope.organizationId,
+    userId: scope.userId,
+  })
+  return {
+    ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
+    bindings: {
+      where: { channel: visibleChannelWhere },
+      orderBy: { createdAt: 'asc' },
+      select: { channelId: true },
+    },
+    messages: {
+      where: { thread: { channel: visibleChannelWhere } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+      take: 1,
+    },
+    runs: {
+      include: {
+        toolCalls: {
+          orderBy: { startedAt: 'desc' },
+          select: {
+            endedAt: true,
+            startedAt: true,
+            toolName: true,
+          },
+          take: 1,
+        },
+      },
+      where: { thread: { channel: visibleChannelWhere } },
+      orderBy: { createdAt: 'desc' },
+      take: 1,
+    },
+  } satisfies Prisma.AgentInclude
+}
+
+export const listAgentsForUser = async (
+  prisma: PrismaClient,
+  userId: string,
+  organizationId: string,
+  includeUnbound: boolean,
+  includeSystemManaged = false,
+): Promise<AgentRecord[]> => {
+  const scope: AgentEntitlementScope = {
+    includeSystemManaged,
+    includeUnbound,
+    organizationId,
+    userId,
+  }
   const agents = await prisma.agent.findMany({
-    where: {
-      AND: [buildAgentVisibilityWhere({ organizationId, userId })],
-      organizationId,
-      OR: visibilityFilters,
-    },
-    include: {
-      ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
-      bindings: {
-        where: {
-          channel: visibleChannelWhere,
-        },
-        orderBy: { createdAt: 'asc' },
-        select: { channelId: true },
-      },
-      messages: {
-        where: {
-          thread: {
-            channel: visibleChannelWhere,
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
-        take: 1,
-      },
-      runs: {
-        include: {
-          toolCalls: {
-            orderBy: { startedAt: 'desc' },
-            select: {
-              endedAt: true,
-              startedAt: true,
-              toolName: true,
-            },
-            take: 1,
-          },
-        },
-        where: {
-          thread: {
-            channel: visibleChannelWhere,
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
+    where: buildAgentEntitlementWhere(scope),
+    include: agentEntitlementInclude(scope),
     orderBy: { createdAt: 'asc' },
   })
 
   return agents.map(mapAgentRecord)
+}
+
+/**
+ * One agent, through exactly the list's entitlement. Returns null for an agent
+ * the caller could not have seen in the list — indistinguishable from an agent
+ * that does not exist, which is the refusal every per-agent route already makes.
+ */
+export const findEntitledAgent = async (
+  prisma: PrismaClient,
+  agentId: string,
+  scope: AgentEntitlementScope,
+): Promise<AgentRecord | null> => {
+  const agent = await prisma.agent.findFirst({
+    where: { ...buildAgentEntitlementWhere(scope), id: agentId },
+    include: agentEntitlementInclude(scope),
+  })
+  return agent ? mapAgentRecord(agent) : null
 }
