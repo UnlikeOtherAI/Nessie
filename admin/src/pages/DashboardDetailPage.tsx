@@ -21,7 +21,9 @@ import {
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { dashboardKeys } from '../lib/query-keys'
+import { NestedStage } from '../navigation/NestedStage'
 
 /**
  * Each widget loads its own data so one inaccessible widget degrades to a lock
@@ -247,20 +249,32 @@ export const DashboardDetailPage = () => {
         </div>
       </div>
 
-      {showAddWidget ? (
+      <NestedStage
+        active={showAddWidget}
+        id="dashboard:add-widget"
+        label="Back to dashboard"
+        onBack={() => setShowAddWidget(false)}
+        priority={LOCAL_BACK_PRIORITY.dashboardPanel}
+      >
         <AddWidgetPanel
           dashboardId={dashboard.id}
           onAdded={() => queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboard.id) })}
           onClose={() => setShowAddWidget(false)}
         />
-      ) : null}
+      </NestedStage>
 
-      {showVersions ? (
+      <NestedStage
+        active={showVersions}
+        id="dashboard:versions"
+        label="Back to dashboard"
+        onBack={() => setShowVersions(false)}
+        priority={LOCAL_BACK_PRIORITY.dashboardVersions}
+      >
         <DashboardVersionsPanel
           dashboardId={dashboard.id}
           onClose={() => setShowVersions(false)}
         />
-      ) : null}
+      </NestedStage>
     </div>
   )
 }

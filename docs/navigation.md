@@ -271,7 +271,10 @@ editor, a dashboard's add-widget panel. It is **one component**,
 Adopters (this step, in progress): `ColumnBrowserViewport` on `single`
 mounts each column beyond the first as a stage; Knowledge's folder /
 document / history / editor become stages and `animate-kb-view-slide` is
-deleted; the executor and dashboard side panels become stages on `single`;
+deleted; `ExecutorsPage`'s `ExecutorCreatePanel` (`executors:create`) and
+`DashboardDetailPage`'s `AddWidgetPanel` / `DashboardVersionsPanel`
+(`dashboard:add-widget`, `dashboard:versions`) are `NestedStage`s — a phone
+full screen, today's fixed-width side panel unchanged on `split`;
 `AgentDetailPage` drops its own Back registration now that `/agents/:id` is
 a real depth-2 route.
 
