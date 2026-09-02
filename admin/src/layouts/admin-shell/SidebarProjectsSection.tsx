@@ -7,6 +7,7 @@ import {
 } from './SidebarRow';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -91,6 +92,7 @@ export const SidebarProjectsSection = ({
   visibleSidebarProjects,
 }: SidebarProjectsSectionProps) => {
   const { token } = useAuthSession();
+  const prewarm = usePrewarm();
   const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState(() =>
     parseCollapsedProjectIds(getCookie(COLLAPSED_PROJECT_IDS_COOKIE)),
@@ -194,6 +196,7 @@ export const SidebarProjectsSection = ({
                 className="sidebar-project-link"
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
+                {...prewarmRowHandlers(prewarm, `/projects/${project.id}`)}
               >
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
@@ -330,6 +333,7 @@ export const SidebarProjectsSection = ({
                       ].join(' ')}
                       onClick={() => onNavigateChannel(channel.id)}
                       type="button"
+                      {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                     >
                       <span className={channelHashClassName}>#</span>
                       <GroupDmSidebarLabel label={channel.label} />

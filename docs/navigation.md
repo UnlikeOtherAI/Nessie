@@ -584,6 +584,9 @@ day.
 | a new `phone-navigation-*`/`kb-view-*` `@keyframes`, or a `transition:` inside a `.phone-navigation-*` rule | source-regex test, `admin/test/navigation-gates.test.ts` | an array in the test file |
 | every `router.tsx` path present in the surface registry | `scripts/lint-navigation-surfaces.mjs` (`pnpm lint:navigation-surfaces`), also `admin/test/navigation-surfaces-total.test.ts` | n/a — the registry is total by construction (§4.1) |
 | a `role="dialog"` surface without `Dialog`/`ConfirmDialog`/`Sheet`/`Popover`/`useOverlay(` | source-regex test, `admin/test/navigation-gates.test.ts` | an array in the test file, self-checked against `git ls-files` |
+| `animate-pulse` markup outside `components/primitives/Skeleton.tsx` | source-regex test, `admin/test/skeleton.test.ts` | an array in the test file, self-checked against `git ls-files` |
+| a facade `useQuery` keyed by, or gated on, an entity id without `placeholderData: keepPreviousData` | source-regex test, `admin/test/skeleton.test.ts` | an array in the test file (billing only, §12) |
+| a `/api/` URL literal inside `navigation/prewarm.ts`, and every wired row spreading `prewarmRowHandlers` | source-regex test, `admin/test/prewarm.test.ts` | the wired-row list in the test file |
 
 ## 11. Focus, announcement and scroll — **built** (step 11, the settle)
 
@@ -608,10 +611,78 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   lint follow with the header work.
 - Pinned by `admin/test/navigation-settle.test.ts`.
 
-## 12. Everything else — **planned**
+## 12. Arriving with content — **built** (step 10)
 
-Nested stages, overlay kinds and layers, screen headers, prewarm and
-skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,
-scroll, keyboard, haptics, pull-to-refresh, cold-start seeding, and the
-transition test suite: all specified in the plan and added here as each
-lands.
+The stack slides for 300 ms; the destination has to have something to show
+for it. Four pieces, plus one cache underneath them all.
+
+- **Prewarm on intent** — `admin/src/navigation/prewarm.ts`. `usePrewarm()`
+  returns `prewarm(to)`; `prewarmRowHandlers(prewarm, to)` is what a row
+  spreads onto its element, firing on `pointerdown`, `touchstart` and `focus`
+  — all *before* the click, so the destination's first query is in flight
+  before the slide starts. The registry is six entries, keyed by destination
+  path: `/channels/:id` → that channel's first messages page (its thread id
+  read out of the already-cached channel list), `/projects/:id` (and its six
+  section routes) → the board, `/agents/:id` → the agent's status,
+  `/dashboards/:id` → the dashboard, `/knowledge-base/spaces/:id` → the space
+  and its pages, `/apps/:slug` → the app. Each entry calls the **exact
+  `fetch*` function the destination's hook calls**, under the exact key from
+  `lib/query-keys.ts` — a URL spelled here would be a second fetcher, and the
+  first divergence would fill the cache under the right key with the wrong
+  shape (pinned: `prewarm.ts` contains no `/api/` literal). No hover storms:
+  a per-hook TTL map (`PREWARM_TTL_MS`, 10 s) makes a focus/pointerdown/touch
+  burst one request, and `prefetchQuery` honours the same `staleTime` so a
+  warm entry costs nothing. Wired to the sidebar channel/DM/project/starred
+  rows, the knowledge space list, the agents table, the app cards and the
+  dashboards list.
+- **Sibling swaps keep previous data.** Every facade `useQuery` that is keyed
+  by an entity id, or gated on one (`enabled: Boolean(id)`), passes
+  `placeholderData: keepPreviousData`, so channel A → B shows A's feed until
+  B's arrives instead of flashing empty. Pinned by
+  `admin/test/skeleton.test.ts`; the one exemption is billing, whose keys are
+  scoped per UOA org/team and must never reuse another team's projection.
+  The corollary is that **`isSuccess` no longer means "this entity's data"** —
+  a query serving placeholder data reports success — so a consumer that acts
+  on identity guards with the id: the thread read marker refuses while its
+  messages are placeholders (`isConversationReadReady`'s
+  `messagesArePlaceholder`, or it would advance the new thread's cursor to a
+  message it never held), and the dashboard editor seeds its draft layout only
+  from `dashboard.id === dashboardId`.
+- **Pending is never "empty".** The three lists that asserted "nothing here
+  yet" while still loading now render the skeleton: the knowledge space list
+  (both its sidebar and the project Documents tab), the triggers column, and
+  the workflows column. Each takes the fact from its own query, and a *disabled*
+  query — the non-owner case, whose refusal is the page's own gate — is
+  deliberately not "loading".
+- **One `Skeleton`, four page types** —
+  `admin/src/components/primitives/Skeleton.tsx`: `list`, `detail`, `feed`,
+  `board`, plus `SkeletonBlock` for the placeholders that are one sized
+  rectangle (a dashboard tile holding its grid cell open, a pill standing in
+  for a count). A screen picks the variant its content is shaped like, so the
+  reveal lands on a plausible shell. It replaced three systems on two
+  different tokens (`AppSkeletons`, `SectionSkeleton`, the agents/sessions
+  table rows, the dashboard rectangle); `admin/test/skeleton.test.ts` pins
+  that no other file under `admin/src` declares `animate-pulse` markup, with
+  two allowed exceptions that pulse a live status rather than a placeholder.
+- **One blob cache** — `admin/src/lib/blob-cache.ts`, behind
+  `useAuthedObjectUrl` / `useAuthedObjectUrlFromPath`. An authed image cannot
+  be a plain `<img src>`, so every avatar, app icon and attachment preview was
+  fetched and decoded again on *every mount*. The cache is a bounded LRU
+  (96 entries) of object URLs keyed by request path plus the caller's pinned
+  MIME, reference-counted: an entry is revoked only when evicted, and only an
+  entry nobody holds may be evicted — a `blob:` URL dropped without revoking
+  leaks for the life of the tab, and one revoked under a live `<img>` renders
+  as a broken image. A hit is read during render (`peekBlobUrl`), so a
+  retained or re-entered screen paints its faces on the first frame; the
+  resolved URL carries the key it belongs to, so a path change reads as a miss
+  on that same render rather than one effect later. It is deliberately **not**
+  keyed by token — the bytes stay valid across the 30-minute rotation that
+  used to re-fetch every image on screen — and it is cleared with the query
+  cache when the session ends.
+
+## 13. Everything else — **planned**
+
+Nested stages, overlay kinds and layers, screen headers, drafts (auto-save,
+no confirm dialogs), focus and announcements, scroll, keyboard, haptics,
+pull-to-refresh, cold-start seeding, and the transition test suite: all
+specified in the plan and added here as each lands.

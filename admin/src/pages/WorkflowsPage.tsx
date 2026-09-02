@@ -17,6 +17,7 @@ import {
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { workflowKeys } from '../lib/query-keys'
 import { Pill } from '../components/primitives/Pill'
+import { Skeleton } from '../components/primitives/Skeleton'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
@@ -88,7 +89,8 @@ export const WorkflowsPage = () => {
   // W19: template authoring stays admin-gated; the member-facing read surface
   // is the installations list (entitlement-scoped server-side) plus the
   // failed-runs triage view.
-  const { data: templates = [] } = useWorkflowTemplates(isWorkflowAdmin)
+  const { data: templates = [], isPending: templatesPending } =
+    useWorkflowTemplates(isWorkflowAdmin)
   const { data: installations = [] } = useWorkflowInstallations(true)
   const { data: failedRuns = [] } = useFailedWorkflowRuns(true)
   const installWorkflowTemplate = useInstallWorkflowTemplate()
@@ -332,7 +334,11 @@ export const WorkflowsPage = () => {
             }}
           />
         </div>
-        {filteredTemplates.length === 0 ? (
+        {isWorkflowAdmin && templatesPending ? (
+          // A disabled query stays `pending` forever, so the non-admin case
+          // (whose refusal is the page's own gate) must not read as loading.
+          <Skeleton className="py-4" count={4} variant="list" />
+        ) : filteredTemplates.length === 0 ? (
           <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
             {sortedTemplates.length === 0
               ? 'No workflows yet. Build one in the designer.'

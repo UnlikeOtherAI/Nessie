@@ -52,20 +52,6 @@ export const DashboardSectionCard = ({
   </section>
 )
 
-/** Skeleton rows shared by the list-shaped sections. */
-export const SectionSkeleton = ({ rows = 3, circles }: { rows?: number; circles?: boolean }) => (
-  <div className="flex flex-col gap-1 p-2">
-    {Array.from({ length: rows }, (_, index) => (
-      <div className="flex items-center gap-3" key={index}>
-        {circles ? (
-          <span className="h-7 w-7 animate-pulse rounded-full bg-[color:var(--overlay)]" />
-        ) : null}
-        <span className="h-4 flex-1 animate-pulse rounded bg-[color:var(--overlay)]" />
-      </div>
-    ))}
-  </div>
-)
-
 /** Quiet one-liner used for both empty and failed sections. */
 export const SectionNotice = ({ children }: { children: ReactNode }) => (
   <p className="px-2 py-3 text-sm leading-5 text-[color:var(--tx3)]">{children}</p>

@@ -1,4 +1,5 @@
 import type { ChannelRecord } from '../../lib/api-client';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -25,6 +26,8 @@ export const SidebarChannelsSection = ({
   starredChannelIds,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
+  const prewarm = usePrewarm();
+
   return (
     <SidebarMenuSection
       action={
@@ -54,6 +57,7 @@ export const SidebarChannelsSection = ({
             ].join(' ')}
             onClick={() => onNavigateChannel(channel.id)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
           >
             <span className={channelHashClassName}>#</span>
             <GroupDmSidebarLabel label={channel.label} />

@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { DashboardWidgetProjection } from '@nessie/schemas'
 import { dashboardKeys } from '../../../lib/query-keys'
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { DashboardWidgetCard, type WidgetSurface } from './DashboardWidgetCard'
 
@@ -56,14 +57,9 @@ export const EmbeddedWidget = ({
 
   if (isLoading) {
     return (
-      <div
-        className="h-32 animate-pulse rounded-lg border"
-        style={{
-          background: 'var(--panel)',
-          borderColor: 'var(--sep)',
-          maxWidth: surface === 'message' ? 520 : undefined,
-        }}
-      />
+      <div style={{ maxWidth: surface === 'message' ? 520 : undefined }}>
+        <SkeletonBlock className="h-32 rounded-lg" />
+      </div>
     )
   }
   if (!data?.visible) return <UnavailableCard surface={surface} />

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
@@ -115,6 +115,7 @@ export const useMessageSearch = (channelId: string | undefined, query: string) =
   const trimmed = query.trim()
 
   return useQuery<MessageSearchResult[]>({
+    placeholderData: keepPreviousData,
     queryKey: channelKeys.messageSearch(channelId, trimmed),
     queryFn: () =>
       apiClient.get(

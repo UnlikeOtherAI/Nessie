@@ -18,6 +18,7 @@ export const TriggersPage = () => {
     <TriggerListColumn
       effectiveTriggerId={state.effectiveTriggerId}
       filteredTriggers={state.filteredTriggers}
+      isPending={state.isPending}
       key="triggers"
       leading={<PhoneNavigationButton />}
       onCreate={() => state.setCreateDialogOpen(true)}

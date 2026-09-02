@@ -39,6 +39,8 @@ export type TriggersPageState = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
   isCreateDialogOpen: boolean
+  /** The triggers read has not settled; the list shows a skeleton, not "none yet". */
+  isPending: boolean
   registry: TriggerRegistryMaps
   searchQuery: string
   selectedTrigger?: AgentTriggerRecord
@@ -62,7 +64,7 @@ export const useTriggersPageState = (): TriggersPageState => {
   // The three owner-only reads below stay gated on this flag; the page's
   // refusal is <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
-  const { data: triggers = [] } = useTriggers(isOwner)
+  const { data: triggers = [], isPending: triggersPending } = useTriggers(isOwner)
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
   const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
@@ -202,6 +204,9 @@ export const useTriggersPageState = (): TriggersPageState => {
     effectiveTriggerId,
     filteredTriggers,
     isCreateDialogOpen: createDialogOpen,
+    // A disabled query reports `pending` forever, so a non-owner (whose
+    // refusal is <OwnerGate>) must not read as loading.
+    isPending: isOwner && triggersPending,
     registry,
     searchQuery,
     selectedTrigger,

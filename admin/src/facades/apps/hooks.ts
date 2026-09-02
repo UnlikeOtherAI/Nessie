@@ -1,9 +1,10 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type {
   AppCategory,
   AppDetailRecord,
   AppListResponse,
 } from '@nessie/schemas'
+import type { ApiClient } from '../../lib/api-client'
 import { appKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -153,12 +154,20 @@ export const useAppCategoryPages = (input: {
  * One app by its slug. `slug` is the route parameter, so it is optional here
  * and the query simply stays disabled until the router supplies one.
  */
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchApp = (
+  apiClient: ApiClient,
+  slug: string,
+): Promise<AppDetailRecord> =>
+  apiClient.get(`/api/apps/${encodeURIComponent(slug)}`)
+
 export const useApp = (slug: string | undefined) => {
   const apiClient = useApiClient()
 
   return useQuery<AppDetailRecord>({
+    placeholderData: keepPreviousData,
     queryKey: appKeys.detail(slug),
-    queryFn: () => apiClient.get(`/api/apps/${encodeURIComponent(slug ?? '')}`),
+    queryFn: () => fetchApp(apiClient, slug ?? ''),
     enabled: Boolean(slug),
   })
 }

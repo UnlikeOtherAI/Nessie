@@ -6,6 +6,7 @@ import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { agentGradient } from '../../lib/avatar';
 import type { AgentRecord } from '../../lib/api-client';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { renderUnreadCount } from './SidebarRow';
@@ -67,6 +68,7 @@ export const SidebarDmSection = ({
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
   const { token } = useAuthSession();
+  const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   const avatarSize = nativeTouchShell ? 24 : 18;
@@ -120,6 +122,7 @@ export const SidebarDmSection = ({
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(assistant.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${assistant.dmChannelId}`)}
           >
             <span
               className={[
@@ -145,6 +148,7 @@ export const SidebarDmSection = ({
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(agent.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${agent.dmChannelId}`)}
           >
             <span
               className={[
@@ -170,6 +174,7 @@ export const SidebarDmSection = ({
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === group.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(group.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${group.dmChannelId}`)}
           >
             <svg
               aria-hidden="true"
@@ -204,6 +209,11 @@ export const SidebarDmSection = ({
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}
             type="button"
+            // A person with no DM channel yet has nothing to warm: opening
+            // the conversation creates it, so there is no id to fetch.
+            {...(person.dmChannelId
+              ? prewarmRowHandlers(prewarm, `/channels/${person.dmChannelId}`)
+              : {})}
           >
             <UserAvatar
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { demonstrationKeys, workflowKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -35,6 +35,7 @@ export const useDemonstrations = () => {
 export const useActiveDemonstrations = (channelId?: string) => {
   const apiClient = useApiClient()
   return useQuery<DemonstrationRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: demonstrationKeys.active(channelId),
     queryFn: () => apiClient.get(`/api/demonstrations/active/${channelId}`),
     enabled: Boolean(channelId),

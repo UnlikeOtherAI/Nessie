@@ -6,6 +6,7 @@ import type {
   TriggerStatusFilter,
   TriggerTypeFilter,
 } from '../../../pages/triggers/useTriggersPageState'
+import { Skeleton } from '../../primitives/Skeleton'
 import { TabBar } from '../../primitives/TabBar'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
 import {
@@ -28,6 +29,7 @@ import {
 type TriggerListColumnProps = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
+  isPending: boolean
   leading?: ReactNode
   onCreate: () => void
   onSearchChange: (query: string) => void
@@ -106,6 +108,7 @@ const TriggerRow = ({
 export const TriggerListColumn = ({
   effectiveTriggerId,
   filteredTriggers,
+  isPending,
   leading,
   onCreate,
   onSearchChange,
@@ -171,7 +174,9 @@ export const TriggerListColumn = ({
         ))}
       </select>
 
-      {filteredTriggers.length === 0 ? (
+      {isPending ? (
+        <Skeleton className="py-4" count={4} variant="list" />
+      ) : filteredTriggers.length === 0 ? (
         <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
           {totalCount === 0
             ? 'No triggers yet. Create one to wake an agent or workflow automatically.'

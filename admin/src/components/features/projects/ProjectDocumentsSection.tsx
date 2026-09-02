@@ -1,9 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-hooks'
+import { Skeleton } from '../../primitives/Skeleton'
 import {
   DashboardSectionCard,
   SectionNotice,
-  SectionSkeleton,
   dashboardRowClass,
 } from './DashboardSectionCard'
 import { formatRelativeAge } from './project-dashboard-data'
@@ -32,7 +32,7 @@ export const ProjectDocumentsSection = ({
       links={[{ label: 'Open docs', to: docsHref }]}
       title="Documents"
     >
-      {isPending ? <SectionSkeleton /> : null}
+      {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? (
         <SectionNotice>Recent documents could not be loaded. Please refresh.</SectionNotice>
       ) : null}

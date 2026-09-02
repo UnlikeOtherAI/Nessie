@@ -3,11 +3,11 @@ import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { useIsOwner } from '../../shared/OwnerGate'
+import { Skeleton } from '../../primitives/Skeleton'
 import {
   DashboardSectionCard,
   SectionNotice,
   SectionOverflowHint,
-  SectionSkeleton,
   dashboardRowClass,
   type SectionLink,
 } from './DashboardSectionCard'
@@ -50,7 +50,7 @@ export const ProjectMembersSection = ({ className, projectId }: ProjectMembersSe
       links={links}
       title="Members"
     >
-      {isPending ? <SectionSkeleton circles /> : null}
+      {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? <SectionNotice>Members could not be loaded. Please refresh.</SectionNotice> : null}
       {!isPending && !isError && ordered.length === 0 ? (
         <SectionNotice>No members yet. Owners can add people in Settings.</SectionNotice>

@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AppCard } from '../components/features/apps/AppCard'
 import { AppCategorySection } from '../components/features/apps/AppCategorySection'
 import { AppFeaturedStrip } from '../components/features/apps/AppFeaturedStrip'
-import { AppCatalogueSkeleton } from '../components/features/apps/AppSkeletons'
+import { Skeleton } from '../components/primitives/Skeleton'
 import { AppsToolbar } from '../components/features/apps/AppsToolbar'
 import { CustomAppDialog } from '../components/features/apps/CustomAppDialog'
 import { appDetailHref } from '../components/features/apps/app-card-presentation'
@@ -204,7 +204,7 @@ export const AppsPage = () => {
           />
 
           {isPending ? (
-            <AppCatalogueSkeleton />
+            <Skeleton className="mt-10" variant="board" />
           ) : isError ? (
             // Never let a failed load render as "nothing is published" — that
             // is a different fact with a different next move.

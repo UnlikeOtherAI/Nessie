@@ -5,7 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
-import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
+import { Skeleton } from '../components/primitives/Skeleton'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import {
   appDetailTabs,
@@ -90,7 +90,7 @@ export const AppDetailPage = () => {
         {header}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 pb-8">
           {isPending ? (
-            <AppDetailSkeleton />
+            <Skeleton variant="detail" />
           ) : (
             <div className="flex flex-1 items-center justify-center py-16 text-sm text-[color:var(--tx3)]">
               {appNotFoundMessage(false)}

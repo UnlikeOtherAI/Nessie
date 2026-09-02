@@ -34,6 +34,8 @@ export const KnowledgeSidebarNav = () => {
   const phoneLayout = usePhoneLayout()
   const {
     spaces,
+    spacesLoaded,
+    spacesLoadFailed,
     myDocsSpaceId,
     selectedSpaceId,
     scopeProjectId,
@@ -191,6 +193,7 @@ export const KnowledgeSidebarNav = () => {
         >
         <KnowledgeSpaceList
           emptyLabel="No spaces yet"
+          isPending={!spacesLoaded && !spacesLoadFailed}
           onSelect={openSpace}
           projectLabels={projectLabels}
           selectedSpaceId={activeProductView || !showSelectedSpace ? undefined : selectedSpaceId}

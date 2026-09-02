@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AgentTriggerRecord,
   WorkflowInstallationRecord,
@@ -27,6 +27,7 @@ export const useWorkflowTemplate = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowTemplateRecord>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.template(workflowTemplateId),
     queryFn: () => apiClient.get(`/api/workflows/${workflowTemplateId}`),
     enabled: enabled && Boolean(workflowTemplateId),
@@ -84,6 +85,7 @@ export const useWorkflowInstallations = (enabled = true, channelId?: string) => 
   const apiClient = useApiClient()
 
   return useQuery<WorkflowInstallationRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.installationsForChannel(channelId),
     queryFn: () =>
       apiClient.get(
@@ -160,6 +162,7 @@ export const useWorkflowInstallationRuns = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.installationRuns(installationId),
     queryFn: () =>
       apiClient.get(`/api/workflow-installations/${installationId}/runs`),
@@ -177,6 +180,7 @@ export const useWorkflowStepSamples = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowStepSamplesRecord | null>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.templateStepSamples(workflowTemplateId),
     queryFn: async () => {
       try {
@@ -225,6 +229,7 @@ export const useWorkflowInstallationTriggers = (
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.installationTriggers(installationId),
     queryFn: () =>
       apiClient.get(`/api/workflow-installations/${installationId}/triggers`),
@@ -240,6 +245,7 @@ export const useWorkflowRun = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunDetail>({
+    placeholderData: keepPreviousData,
     queryKey: workflowKeys.run(workflowRunId),
     queryFn: () => apiClient.get(`/api/workflow-runs/${workflowRunId}`),
     enabled: enabled && Boolean(workflowRunId),

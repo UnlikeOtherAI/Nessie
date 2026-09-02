@@ -3,6 +3,7 @@ import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
@@ -47,6 +48,7 @@ export const SidebarStarredSection = ({
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   if (entries.length === 0) {
@@ -82,6 +84,7 @@ export const SidebarStarredSection = ({
               className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
+              {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
             >
               <AgentAvatar agent={agent} size="xs" token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
@@ -105,6 +108,7 @@ export const SidebarStarredSection = ({
               className={`admin-sb-item group ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
               onClick={() => onNavigateChannel(channel.id)}
               type="button"
+              {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
             >
               <span className={channelHashClassName}>#</span>
               <GroupDmSidebarLabel label={channel.label} />
@@ -137,6 +141,7 @@ export const SidebarStarredSection = ({
                 ].join(' ')}
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
+                {...prewarmRowHandlers(prewarm, `/projects/${project.id}`)}
               >
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
@@ -169,6 +174,7 @@ export const SidebarStarredSection = ({
                   ].join(' ')}
                   onClick={() => onNavigateChannel(channel.id)}
                   type="button"
+                  {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                 >
                   <span className={channelHashClassName}>#</span>
                   <GroupDmSidebarLabel label={channel.label} />
@@ -198,6 +204,9 @@ export const SidebarStarredSection = ({
             className={`admin-sb-item group ${personUnreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}
             type="button"
+            {...(person.dmChannelId
+              ? prewarmRowHandlers(prewarm, `/channels/${person.dmChannelId}`)
+              : {})}
           >
             <UserAvatar
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}

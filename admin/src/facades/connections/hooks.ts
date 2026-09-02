@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   CommsConnectionDetail,
   CommsConnectionListResponse,
@@ -27,6 +27,7 @@ export const useCommsConnections = () => {
 export const useCommsConnection = (id: string | null) => {
   const apiClient = useApiClient()
   return useQuery<CommsConnectionDetail>({
+    placeholderData: keepPreviousData,
     queryKey: commsKeys.connection(id ?? 'none'),
     queryFn: () => apiClient.get(`/api/comms/connections/${id}`),
     enabled: id !== null,
