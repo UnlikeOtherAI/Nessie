@@ -116,6 +116,31 @@ its first adopter. The in-conversation call banner stays in flow in its
 conversation and the incoming-call ring stays a dialog — it asks for a decision
 and needs focus, which is exactly what a card refuses to take.
 
+### The reply thread panel on `split`
+
+The right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`)
+pushes the conversation aside at ≥1280px, overlays it at 900–1279px and is a
+full screen below that; its drag-resized width persists, and `T` opens the
+focused message's thread. Its close is choreographed so the route never
+outruns the motion:
+
+- **The panel leaves before the route does.** `closeThread` sets `isClosing`,
+  holds the navigation for `THREAD_PANEL_CLOSE_MS`, and only then goes to the
+  channel — the panel's queries are keyed on the open root, so navigating
+  first would blank it mid-animation. Reduced motion navigates at once.
+- **What animates is the footprint, not the width.** The panel is the
+  conversation column's flex sibling, so a negative `margin-inline-end` hands
+  its space back (the conversation expands into it) while the panel rides out
+  on a `translateX`. Animating its width would rewrap the whole thread every
+  frame and read as the panel being crushed rather than pushed. The row clips
+  only while that runs.
+- **Tapping back into the conversation closes it** — the desktop equivalent
+  of the scrim the overlay band already has — through one `onClickCapture` on
+  the conversation surface. Capture phase means a reply control inside the
+  column still runs afterwards, and `openThread` cancels the close the same
+  click started rather than racing it. A click that ended a text selection is
+  reading, not leaving, and is ignored.
+
 Still planned: the centred-panel rendering of a Flow on `split`. The row
 field exists (`flowPresentation`, §1) and every Flow today declares
 `screen`, so nothing reads the other value yet.

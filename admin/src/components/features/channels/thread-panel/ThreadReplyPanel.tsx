@@ -102,6 +102,7 @@ export const ThreadReplyPanel = ({
   const {
     activeThreadId,
     closeThread,
+    isClosing,
     openRootMessageId,
     panelWidth,
     persistPanelWidth,
@@ -292,14 +293,15 @@ export const ThreadReplyPanel = ({
     <>
       <button
         aria-label="Back to channel"
-        className="fixed inset-0 z-40 hidden bg-[var(--scrim-strong)] min-[900px]:max-xl:block"
+        className="thread-panel-scrim fixed inset-0 z-40 hidden bg-[var(--scrim-strong)] min-[900px]:max-xl:block"
+        data-closing={isClosing ? 'true' : 'false'}
         onClick={closeThread}
         type="button"
       />
       <aside
         aria-label="Thread"
         className={[
-          'admin-chat-surface z-50 flex w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)]',
+          'thread-panel admin-chat-surface z-50 flex w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)]',
           // The regular admin columns receive the status-bar inset from the
           // WebView bridge. This fixed overlay sits outside those columns, so
           // it owns the inset itself and keeps its header controls out from
@@ -310,6 +312,7 @@ export const ThreadReplyPanel = ({
           'min-[900px]:max-xl:shadow-[0_32px_80px_var(--scrim-strong)]',
           'xl:relative xl:z-auto xl:h-full xl:shrink-0',
         ].join(' ')}
+        data-closing={isClosing ? 'true' : 'false'}
         style={{ '--thread-panel-width': `${panelWidth}px` } as CSSProperties}
         {...replyDrop.dropHandlers}
       >
