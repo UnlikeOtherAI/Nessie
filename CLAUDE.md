@@ -953,40 +953,19 @@ derive a capability from a raw scope string at a call site. Plan and phasing:
   grant, so removing one capability is a local gate enforced at the chokepoint;
   the UI says "blocked locally — Disconnect to revoke at Google" and must not
   claim otherwise.
-- **A composed email is a durable row, and an approval binds its CONTENT.**
-  `GmailDraftAction` tracks each draft Nessie composed. Hashing the draft *id*
-  would prove nothing — a Gmail draft stays mutable through the chat card's
-  Edit button, through Gmail itself, and through another run — so
-  `contentFingerprint` (recipients + subject + body + attachments, canonical)
-  is re-read from Gmail and compared on **every** send path before dispatch.
-  That row is also where the conditional `draft → sending → sent` claim lives,
-  so a double click or a redelivered job cannot send twice, and a provider
-  failure returns it to `draft` rather than stranding it. `sendDraftForUser` in
-  `@nessie/workspace-admin` is the one implementation; the API route behind the
-  card's Send button and the worker's `gmail_draft_send` both call it, because
-  api services are unreachable from the worker and a second copy would fork the
-  state claim and the audit trail immediately.
-- **Sending is gated structurally, and only the mailbox owner may approve.**
-  `gmail_draft_send` and the calendar write tools declare `requiresApproval` in
-  their *definition*; the tool chokepoint enforces it. A seeded `PolicyRule`
-  could not: `evaluateToolInvokePolicy` defaults to `allow`, so a data-driven
-  gate is absent in every organisation whose seed never ran. The one bypass is
-  standing consent — `SendAuthorizationGrant`, keyed exactly on
-  `(connectionId, agentId)` with no wildcard, inheritance or fallback, modelled
-  on `ScopeDisclosureGrant` and sharing its `10m | today | 30d | forever` menu.
-  A grant never covers an unattended run, never covers a requester who is not
-  the mailbox owner, and never replaces the fingerprint check.
-  `ApprovalRequest.requiredApproverUserId` pins a send gate to that one person:
-  approval visibility otherwise reaches any member who can read a **public**
-  channel, so without it a colleague could authorise an email sent in your name.
+- **A composed email is a durable row whose CONTENT an approval binds.**
+  Rule and rationale: `AGENTS.md` → "An approval over provider content binds
+  the content". Facts not restated there: `sendDraftForUser` holds a consented
+  send for `NESSIE_GMAIL_UNDO_WINDOW_MS` (default 15s) so the card can offer
+  Undo, and a worker sweep dispatches it when the window elapses — without the
+  sweep a held send would sit in `sending` forever. A provider failure returns
+  the row to `draft` so the person keeps an affordance.
 - **The draft card carries identifiers only.** Message metadata is readable by
-  everyone who can read the message, and a dictated draft involves no read at
+  everyone who can read the message, and a *dictated* draft involves no read at
   all — so the run basis would be empty and the message unrestricted. The card
-  therefore stores `{ draftActionId }` and fetches recipients, subject and body
-  from an owner-gated route that 404s indistinguishably; mailbox cards stamp the
+  stores `{ draftActionId }` and fetches recipients, subject and body from an
+  owner-gated route that 404s indistinguishably; every mailbox card stamps the
   owner's basis explicitly rather than relying on the run having read anything.
-  A held send is dispatched by a worker sweep once its undo window elapses —
-  without that, offering Undo would strand the mail in `sending` forever.
 - **OAuth state binds its target.** The state row carries the connection being
   widened, the expected provider account and the requested capabilities; the
   callback refuses `account_mismatch` when a different Google account completes
