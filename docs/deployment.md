@@ -470,8 +470,13 @@ rejecting connections — which also blocks `prisma migrate deploy`). Mitigation
 now in place:
 
 - `redeploy.sh` waits for Postgres to accept connections (`pg_isready`) before
-  migrating, and after recreate prunes build cache older than 48h
-  (`docker builder prune -f --filter until=48h`) plus dangling images.
+  migrating, and bounds the build cache to a fixed budget before and after
+  building (`docker builder prune -f --keep-storage 40GB`) plus dangling
+  images. It deliberately does **not** wipe the cache (`-af`): that forced a
+  full from-scratch rebuild on every deploy, which — combined with Compose
+  building api/admin/web in parallel — drove the 8-core host to load ~340 with
+  0% idle and made the live site time out while deploys built. The script also
+  builds the three images sequentially for the same reason.
 - If the disk fills anyway, the safe manual reclaim (does **not** touch named
   volumes / running images): `docker builder prune -af` (build cache, 0 active)
   then `docker image prune -f` (dangling only). Avoid `image prune -a` and
