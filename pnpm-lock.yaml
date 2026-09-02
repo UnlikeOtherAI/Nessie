@@ -178,6 +178,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.2.0
         version: 11.2.0
+      '@nessie/agent-mail':
+        specifier: workspace:*
+        version: link:../packages/agent-mail
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../packages/comms-connect
@@ -802,6 +805,9 @@ importers:
 
   worker:
     dependencies:
+      '@nessie/agent-mail':
+        specifier: workspace:*
+        version: link:../packages/agent-mail
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../packages/comms-connect

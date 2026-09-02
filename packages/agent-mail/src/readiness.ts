@@ -10,18 +10,18 @@
  */
 
 export type AgentMailSettings = {
-  sesRegion?: string
-  accessKeyId?: string
-  secretAccessKey?: string
-  domain?: string
-  inboundBucket?: string
-  inboundPrefix: string
-  snsTopicArn: string | undefined
-  configurationSet?: string
-  inboundRetentionDays: number
-  customDomains: boolean
-  maxSendsPerHour: number
-  maxInboundBytes: number
+  sesRegion?: string | undefined
+  accessKeyId?: string | undefined
+  secretAccessKey?: string | undefined
+  domain?: string | undefined
+  inboundBucket?: string | undefined
+  inboundPrefix?: string | undefined
+  snsTopicArn?: string | undefined
+  configurationSet?: string | undefined
+  inboundRetentionDays?: number | undefined
+  customDomains?: boolean | undefined
+  maxSendsPerHour?: number | undefined
+  maxInboundBytes?: number | undefined
 }
 
 export type AgentMailConfig = {
@@ -80,13 +80,13 @@ export const resolveAgentMailReadiness = (
     config: {
       accessKeyId: settings.accessKeyId,
       configurationSet: settings.configurationSet,
-      customDomains: settings.customDomains,
+      customDomains: settings.customDomains ?? false,
       domain: normalizeDomain(settings.domain as string),
       inboundBucket: settings.inboundBucket as string,
-      inboundPrefix: settings.inboundPrefix,
-      inboundRetentionDays: settings.inboundRetentionDays,
-      maxInboundBytes: settings.maxInboundBytes,
-      maxSendsPerHour: settings.maxSendsPerHour,
+      inboundPrefix: settings.inboundPrefix ?? '',
+      inboundRetentionDays: settings.inboundRetentionDays ?? 30,
+      maxInboundBytes: settings.maxInboundBytes ?? 25 * 1024 * 1024,
+      maxSendsPerHour: settings.maxSendsPerHour ?? 30,
       secretAccessKey: settings.secretAccessKey,
       sesRegion: settings.sesRegion as string,
       snsTopicArn: settings.snsTopicArn as string,

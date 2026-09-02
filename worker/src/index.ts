@@ -91,6 +91,21 @@ import {
   renewCommsSubscriptions,
 } from './control/comms-sync.js'
 import { processCommsWebhookJob } from './control/comms-webhook.js'
+import {
+  processAgentEmailInboundJob,
+  processAgentEmailRetentionJob,
+  processAgentEmailSendJob,
+  type AgentEmailJobDeps,
+} from './control/agent-email/jobs.js'
+import { createAgentMailTransport, resolveAgentMailReadiness } from '@nessie/agent-mail'
+import {
+  AGENT_EMAIL_INBOUND_TOPIC,
+  AGENT_EMAIL_RETENTION_TOPIC,
+  AGENT_EMAIL_SEND_TOPIC,
+  AgentEmailInboundJobPayloadSchema,
+  AgentEmailRetentionJobPayloadSchema,
+  AgentEmailSendJobPayloadSchema,
+} from '@nessie/schemas'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { enqueueCommsSubscriptionsRenew } from './queue.js'
 import { executeExecutorCommandJob } from './control/executor-commands.js'
@@ -569,6 +584,49 @@ export const startWorker = async (
     },
     { signal: abortController.signal },
   )
+
+  // Hosted agent mail. The three handlers register only when the deployment is
+  // configured for it: an unconfigured instance parks nothing and claims
+  // nothing, and the public inbound route already answers 503 in that state.
+  const agentMailReadiness = resolveAgentMailReadiness(config.email)
+  if (agentMailReadiness.ready) {
+    const agentEmailDeps: AgentEmailJobDeps = {
+      config: agentMailReadiness.config,
+      files: fileService,
+      prisma,
+      realtimeTransport,
+      transport: createAgentMailTransport(agentMailReadiness.config),
+    }
+
+    queueProvider.subscribe(
+      AGENT_EMAIL_INBOUND_TOPIC,
+      async (job) => {
+        const payload = AgentEmailInboundJobPayloadSchema.parse(job.payload)
+        await processAgentEmailInboundJob(agentEmailDeps, payload)
+      },
+      { signal: abortController.signal },
+    )
+
+    queueProvider.subscribe(
+      AGENT_EMAIL_SEND_TOPIC,
+      async (job) => {
+        const payload = AgentEmailSendJobPayloadSchema.parse(job.payload)
+        await processAgentEmailSendJob(agentEmailDeps, payload)
+      },
+      { signal: abortController.signal },
+    )
+
+    queueProvider.subscribe(
+      AGENT_EMAIL_RETENTION_TOPIC,
+      async (job) => {
+        const payload = AgentEmailRetentionJobPayloadSchema.parse(job.payload)
+        await processAgentEmailRetentionJob(agentEmailDeps, payload)
+      },
+      { signal: abortController.signal },
+    )
+  } else {
+    console.info('[worker.agent-email] disabled', { missing: agentMailReadiness.missing })
+  }
 
   await registerExecutionRunners(prisma, {
     labelPrefix: runnerLabelPrefix,
