@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../components/shared/AlertRow'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { PageBody } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { RowList } from '../components/shared/RowList'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import {
   getAlertLink,
@@ -64,7 +64,7 @@ export const AlertsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader actions={headerActions} title="Alerts" />
+      <ScreenHeader actions={headerActions} title="Alerts" />
 
       <PageBody width="regular">
         <QueryState

@@ -13,7 +13,7 @@ import { useCancelRun } from '../../../facades/runs/hooks'
 import { useCursorFollow } from '../../../hooks/useCursorFollow'
 import { useLeaveGuard } from '../../../hooks/useLeaveGuard'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { useModalA11y } from '../../shared/useModalA11y'
+import { useOverlay } from '../../overlays/useOverlay'
 import { DocumentStreamChip } from './DocumentStreamChip'
 import { DocumentStreamLeaveConfirm } from './DocumentStreamLeaveConfirm'
 import { DocumentTargetBar } from './DocumentTargetBar'
@@ -56,7 +56,6 @@ export const DocumentStreamDialog = ({
   store,
   threadId,
 }: DocumentStreamDialogProps) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const phoneLayout = usePhoneLayout()
   const live = useDocumentStreamSnapshot(store, entry)
   const streaming = isDocumentStreamActive(live)
@@ -70,7 +69,13 @@ export const DocumentStreamDialog = ({
     }
     onHide()
   }, [onHide, streaming])
-  useModalA11y(panelRef, requestClose, !confirmLeave)
+  const overlay = useOverlay({
+    id: `document-stream-${entry.sessionId}`,
+    kind: 'modal',
+    label: 'Hide document',
+    onClose: requestClose,
+    open: true,
+  })
 
   const cursorFollow = useCursorFollow({
     active: streaming,
@@ -103,11 +108,17 @@ export const DocumentStreamDialog = ({
 
   return (
     <>
+      {/* Not the shared `Dialog`: it branches its scrim on phone layout (a
+          full-screen sheet with no backdrop, vs. a centred card) — a decision
+          the shell's one panel shape cannot express. `useOverlay` still gives
+          it the Back registration, focus trap, drag-safe scrim and layer
+          every other overlay gets (docs/navigation/overview.md §7). */}
       <div
+        {...(phoneLayout ? {} : overlay.scrimProps)}
         className={
           phoneLayout
-            ? 'fixed inset-0 z-[95] bg-[color:var(--main)]'
-            : 'fixed inset-0 z-[95] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm'
+            ? 'fixed inset-0 bg-[color:var(--main)]'
+            : 'fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm'
         }
         onKeyDown={(event) => {
           // The popup can be open over the reply panel, which closes itself on a
@@ -116,14 +127,8 @@ export const DocumentStreamDialog = ({
             event.stopPropagation()
           }
         }}
-        onMouseDown={(event) => {
-          // Backdrop dismiss is off on a phone: the sheet fills the screen and a
-          // stray tap must not make the document disappear.
-          if (!phoneLayout && event.target === event.currentTarget) {
-            requestClose()
-          }
-        }}
         role="presentation"
+        style={overlay.layerStyle}
       >
         <div
           aria-labelledby="document-stream-title"
@@ -135,7 +140,7 @@ export const DocumentStreamDialog = ({
               : 'max-h-[calc(100dvh-3rem)] w-full max-w-3xl rounded-xl border border-[color:var(--sep)] bg-[var(--panel)] shadow-2xl',
           ].join(' ')}
           data-testid="document-stream-dialog"
-          ref={panelRef}
+          ref={overlay.panelRef}
           role="dialog"
           tabIndex={-1}
         >

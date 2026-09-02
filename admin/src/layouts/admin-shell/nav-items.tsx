@@ -16,13 +16,9 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/ops',
 ];
 
-// Strip query/hash and trailing slashes so route-family checks compare the
-// semantic pathname only (a tab root with ?state stays its root screen).
-export const normalizeAdminPathname = (pathname: string): string => {
-  const normalized = (pathname.split(/[?#]/, 1)[0] ?? '/').replace(/\/+$/, '');
-  return normalized || '/';
-};
-
+// Pathname normalization for route-family checks lives with the surface
+// registry (`admin/src/navigation/surfaces.ts` → normalizeNavigationPathname);
+// this module keeps only the nav's own section membership.
 export const matchesAdminRoute = (pathname: string): boolean =>
   ADMIN_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

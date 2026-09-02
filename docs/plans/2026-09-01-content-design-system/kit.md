@@ -4,10 +4,11 @@ Status: **built** (2026-09-01). This is what a content page is made of. The
 audit that produced it is in `overview.md`; the per-area evidence is in
 `audit/`.
 
-Scope: the body of a page. **Not** navigation, page headers
-(`AdminPageHeader`, `ResponsivePageHeader`, `PageHeaderMenu`), `TabBar`,
+Scope: the body of a page. **Not** navigation, page headers (`ScreenHeader`,
+which composes `ResponsivePageHeader`, plus `PageHeaderMenu`), `TabBar`,
 button styling (`.admin-button*`), or any chat surface. A control that
-already lives in a page header stays there.
+already lives in a page header stays there. The header is the navigation
+framework's — [docs/navigation/overview.md](../../navigation/overview.md) §9.
 
 ## The seven rules
 

@@ -7,7 +7,7 @@ import {
 } from '../components/features/budgets/PricingManager'
 import { Notice } from '../components/primitives/Notice'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { QueryState } from '../components/shared/QueryState'
 import { StatGrid, StatTile } from '../components/shared/StatTile'
@@ -159,14 +159,20 @@ export const OperationalTelemetryPage = () => {
   // owner — OwnerGate refuses either way. This early return is what narrows
   // `me` for <BudgetManager> below.
   if (!me) {
-    return <OwnerGate />
+    return (
+      <section className="flex h-full min-h-0 flex-col">
+        <ScreenHeader title="Operational usage" />
+        <OwnerGate />
+      </section>
+    )
   }
 
   return (
-    <OwnerGate>
-      <section className="flex h-full min-h-0 flex-col">
-        <AdminPageHeader title="Operational usage" />
-
+    <section className="flex h-full min-h-0 flex-col">
+      {/* The header is always rendered: a refusal is a state of this screen,
+          not a screen of its own, so Back never disappears with it. */}
+      <ScreenHeader title="Operational usage" />
+      <OwnerGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-4 w-full max-w-xs">
             <select
@@ -398,7 +404,7 @@ export const OperationalTelemetryPage = () => {
             )}
           </QueryState>
         </div>
-      </section>
-    </OwnerGate>
+      </OwnerGate>
+    </section>
   )
 }

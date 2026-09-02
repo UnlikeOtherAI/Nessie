@@ -81,15 +81,13 @@ export const appDetailTabs = (app: AppDetailRecord): AppDetailTabModel[] => {
 }
 
 /**
- * `?tab=` is deep-linkable, so it arrives from anywhere — an old bookmark, a
- * link pasted before the app was disconnected. A tab that is not on offer falls
- * back to Overview rather than rendering a blank panel.
+ * The tab ids this app actually offers, in strip order. It is what
+ * `useTabParam` validates `?tab=` against, so an old bookmark to a tab the app
+ * no longer has (Accounts after a disconnect) reads as Overview rather than
+ * painting a blank panel. Nothing else resolves a tab: one validator.
  */
-export const resolveAppDetailTab = (
-  raw: string | null,
-  tabs: readonly AppDetailTabModel[],
-): AppDetailTab =>
-  tabs.find((tab) => tab.id === raw)?.id ?? 'overview'
+export const appDetailTabIds = (tabs: readonly AppDetailTabModel[]): readonly AppDetailTab[] =>
+  tabs.map((tab) => tab.id)
 
 // ─── Hero ───────────────────────────────────────────────────────────────────
 

@@ -162,10 +162,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(shell, /useNativeLargePhoneLandscapeApp/)
   assert.match(shell, /ResizableSidebar fixed=\{nativeLargePhoneLandscape\}/)
   // The tab-root set (channels/projects/knowledge/settings/search) lives in
-  // the shared phone-navigation module so shell, tab bar, and Back agree.
+  // the surface registry so shell, tab bar, and Back agree.
   assert.match(shell, /isPhoneTabRoot,/)
-  const phoneNav = readSource('../src/layouts/admin-shell/phone-navigation.ts')
-  assert.ok(phoneNav.includes(String.raw`/^\/search$/`))
+  const surfaces = readSource('../src/navigation/surfaces.ts')
+  assert.ok(surfaces.includes(String.raw`/^\/search$/`))
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger\s+nativeShellBridge/)
@@ -275,13 +275,18 @@ test('the native Admin actions retain the cache-busting full refresh', () => {
 
 test('the native phone shell clears the glass tab bar within the WebView content', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
-  const phoneViewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  // The page scroll shell is the layer's (a route's subtree and a nested
+  // stage's container both carry it).
+  const phoneLayer = readSource('../src/layouts/admin-shell/PhoneNavigationLayer.tsx')
+  const nestedStage = readSource('../src/navigation/NestedStage.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
-  assert.match(phoneViewport, /className="phone-navigation-page"/)
-  assert.match(phoneViewport, /data-phone-navigation-page/)
+  assert.match(phoneLayer, /className="phone-navigation-page"/)
+  assert.match(phoneLayer, /data-phone-navigation-page/)
+  assert.match(nestedStage, /container\.className = 'phone-navigation-page'/)
+  assert.match(nestedStage, /setAttribute\('data-phone-navigation-page', ''\)/)
   assert.match(
     styles,
     /\.phone-navigation-page\s*\{[\s\S]*?overflow-y: auto[\s\S]*?overscroll-behavior-y: contain/,

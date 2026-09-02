@@ -7,9 +7,10 @@ import { IdentityTile } from '../../components/primitives/IdentityTile';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import type { AgentRecord } from '../../lib/api-client';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
-import { renderUnreadCount } from './SidebarRow';
+import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
@@ -85,6 +86,7 @@ export const SidebarDmSection = ({
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
   const { token } = useAuthSession();
+  const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   const avatarSize = nativeTouchShell ? 24 : 18;
@@ -135,10 +137,12 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(assistant.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === assistant.dmChannelId)}
             key={assistant.productSlug}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(assistant.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${assistant.dmChannelId}`)}
           >
             <IdentityTile
               background="var(--accent-soft)"
@@ -162,10 +166,12 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === agent.dmChannelId)}
             key={agent.id}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(agent.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${agent.dmChannelId}`)}
           >
             <AgentAvatar
               agent={{ id: agent.id, name: agent.label, role: '' }}
@@ -184,10 +190,12 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(group.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === group.dmChannelId)}
             key={group.dmChannelId}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === group.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(group.dmChannelId)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${group.dmChannelId}`)}
           >
             <IdentityTile
               background="var(--overlay)"
@@ -214,10 +222,18 @@ export const SidebarDmSection = ({
         const presence = getPresence(person.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(
+              Boolean(person.dmChannelId && activeDmChannelId === person.dmChannelId),
+            )}
             key={person.id}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}
             type="button"
+            // A person with no DM channel yet has nothing to warm: opening
+            // the conversation creates it, so there is no id to fetch.
+            {...(person.dmChannelId
+              ? prewarmRowHandlers(prewarm, `/channels/${person.dmChannelId}`)
+              : {})}
           >
             <UserAvatar
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}

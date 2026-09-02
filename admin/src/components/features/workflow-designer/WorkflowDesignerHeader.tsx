@@ -21,6 +21,11 @@ type WorkflowDesignerHeaderProps = {
   onSave: () => void
   onTestRun: () => void
   testRunState: WorkflowTestRunState
+  // A save the server refused as stale. The two answers replace Save in place —
+  // never a blocking dialog (docs/navigation/overview.md → "Drafts").
+  versionConflict: boolean
+  onKeepMine: () => void
+  onTakeTheirs: () => void
 }
 
 const TEST_RUN_LABELS: Record<WorkflowTestRunState, string> = {
@@ -43,16 +48,21 @@ export const WorkflowDesignerHeader = ({
   hasWorkflowToSave,
   isSavingWorkflow,
   onBack,
+  onKeepMine,
   onSave,
+  onTakeTheirs,
   onTestRun,
   testRunState,
+  versionConflict,
 }: WorkflowDesignerHeaderProps) => {
   const isTestRunBusy = testRunState === 'starting' || testRunState === 'running'
   const status = isWorkflowTemplateLoading
     ? 'Loading workflow'
-    : saveError
-      ? saveError
-      : saveMessage ?? (workflowTemplateId ? 'Saved workflow' : 'New workflow')
+    : versionConflict
+      ? 'Somebody else saved this workflow — your canvas is kept'
+      : saveError
+        ? saveError
+        : saveMessage ?? (workflowTemplateId ? 'Saved workflow' : 'New workflow')
   const actions: PageHeaderAction[] = [
     {
       id: 'auto-save',
@@ -70,14 +80,33 @@ export const WorkflowDesignerHeader = ({
       onSelect: onTestRun,
       priority: 70,
     },
-    {
-      disabled: !hasWorkflowToSave || isSavingWorkflow,
-      id: 'save',
-      label: isSavingWorkflow ? 'Saving...' : 'Save',
-      onSelect: onSave,
-      primary: true,
-      priority: 100,
-    },
+    ...(versionConflict
+      ? [
+        {
+          id: 'take-theirs',
+          label: 'Take theirs',
+          onSelect: onTakeTheirs,
+          priority: 90,
+        },
+        {
+          disabled: isSavingWorkflow,
+          id: 'keep-mine',
+          label: isSavingWorkflow ? 'Saving...' : 'Keep mine',
+          onSelect: onKeepMine,
+          primary: true,
+          priority: 100,
+        },
+      ]
+      : [
+        {
+          disabled: !hasWorkflowToSave || isSavingWorkflow,
+          id: 'save',
+          label: isSavingWorkflow ? 'Saving...' : 'Save',
+          onSelect: onSave,
+          primary: true,
+          priority: 100,
+        },
+      ]),
   ]
 
   return (

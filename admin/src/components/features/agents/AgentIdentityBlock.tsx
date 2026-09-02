@@ -8,12 +8,23 @@ import { agentStatusTone } from './agent-presentation'
 
 type AgentIdentityBlockProps = {
   agent: AgentRecord
+  /**
+   * Renders the avatar ahead of the text column. A caller whose own chrome
+   * already places the avatar — `ScreenHeader`'s leading lane on the detail
+   * page — passes false and keeps only the identity text.
+   */
+  avatar?: boolean
   avatarSize?: 'lg' | 'xl'
   canEditAvatar: boolean
   /** Extra content under the role line — the detail page's private-home link. */
   children?: ReactNode
-  /** The page's own heading vs. a panel's, for correct document structure. */
-  headingLevel?: 'h1' | 'h2'
+  /**
+   * The page's own heading vs. a panel's, for correct document structure.
+   * `'none'` is for a caller whose screen header already renders the one `h1`
+   * (docs/navigation/overview.md §9): a second heading here would be the second `h1`
+   * the settle and the live region cannot choose between.
+   */
+  headingLevel?: 'h1' | 'h2' | 'none'
 }
 
 /**
@@ -29,22 +40,27 @@ type AgentIdentityBlockProps = {
  */
 export const AgentIdentityBlock = ({
   agent,
+  avatar = true,
   avatarSize = 'lg',
   canEditAvatar,
   children,
   headingLevel = 'h2',
 }: AgentIdentityBlockProps) => {
   const { data: status } = useAgentStatus(agent.id)
-  const Heading = headingLevel
+  const Heading = headingLevel === 'none' ? null : headingLevel
 
   return (
     <>
-      <AgentAvatarQuickEdit agent={agent} canEdit={canEditAvatar} size={avatarSize} />
+      {avatar ? (
+        <AgentAvatarQuickEdit agent={agent} canEdit={canEditAvatar} size={avatarSize} />
+      ) : null}
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <Heading className="truncate text-2xl font-semibold text-[color:var(--tx)]">
-            {agent.name}
-          </Heading>
+          {Heading ? (
+            <Heading className="truncate text-2xl font-semibold text-[color:var(--tx)]">
+              {agent.name}
+            </Heading>
+          ) : null}
           <AgentStatusDot status={agent.status} />
           <Pill tone={agentStatusTone(agent.status)}>{agent.status}</Pill>
         </div>

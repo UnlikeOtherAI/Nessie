@@ -23,7 +23,12 @@ export type MessageUserIdentity = {
 // projection instead of being coerced into the private AgentRecord surface.
 export type ChannelAgentParticipant = AgentRecord | PersonalAssistantPresenceParticipant
 
-export type ChannelTab = 'agents' | 'automations' | 'files' | 'messages'
+// The conversation's four sections, in the order the strip lists them. The
+// array is what `useTabParam` validates `?tab=` against; the type is derived
+// from it so a new section cannot be added to one and forgotten in the other.
+export const CHANNEL_TABS = ['messages', 'files', 'automations', 'agents'] as const
+
+export type ChannelTab = (typeof CHANNEL_TABS)[number]
 
 export type FeedItem =
   | { kind: 'date'; key: string; label: string }

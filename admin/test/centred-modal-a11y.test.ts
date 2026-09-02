@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url'
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const SHELL = resolve(SRC, 'components/shared/Dialog.tsx')
 const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
+// The shared overlay hook (docs/navigation/overview.md §7) composes useModalA11y for
+// every modal; a file on it is guarded the same way.
+const OVERLAY_HOOK = resolve(SRC, 'components/overlays/useOverlay.ts')
 
 /**
  * Centred modals that compose neither the shell nor the hook. Two kinds of
@@ -127,7 +130,8 @@ for (const path of walk(SRC).filter((file) => file.endsWith('.tsx'))) {
   const paintsScrim = paintsCentredScrim(source)
   if (!paintsScrim && !rendersShell) continue
   modals.push({
-    composesA11yHook: (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y'),
+    composesA11yHook: (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
+      || (imports.get(OVERLAY_HOOK) ?? []).includes('useOverlay'),
     file: relative(SRC, path),
     importsShell,
     paintsScrim,
@@ -194,4 +198,33 @@ test('no exception has stopped needing to be one', () => {
       `${path}: an exception carries a reason naming what the shell cannot express.`,
     )
   }
+})
+
+// `useOverlay` (docs/navigation/overview.md §7) is the one place that composes
+// `useModalA11y` and `useOverlayDismiss` — every other overlay goes through
+// it (or the shell, which goes through it too) so the registry, the layer and
+// the motion cannot be forgotten by a call site that reaches for the raw
+// primitives instead. This pin is what makes that "nothing else may" durable:
+// without it, a new bespoke overlay can quietly reintroduce direct
+// composition and nothing here would notice.
+test('useModalA11y and useOverlayDismiss are composed only by useOverlay', () => {
+  const offenders: string[] = []
+  for (const path of walk(SRC).filter((file) => file.endsWith('.ts') || file.endsWith('.tsx'))) {
+    if (path === OVERLAY_HOOK) continue
+    const source = stripComments(readFileSync(path, 'utf8'))
+    const imports = importTargets(source, path)
+    const importsA11yHook = (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
+    const importsDismissHook = (imports.get(resolve(SRC, 'components/shared/useOverlayDismiss.ts')) ?? [])
+      .includes('useOverlayDismiss')
+    if (importsA11yHook || importsDismissHook) {
+      offenders.push(`src/${relative(SRC, path)}`)
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.join(', ')}: imports useModalA11y/useOverlayDismiss directly. Compose useOverlay `
+    + '(components/overlays/useOverlay.ts) instead — it is the only file allowed to reach for either '
+    + 'primitive (docs/navigation/overview.md §7).',
+  )
 })

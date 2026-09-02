@@ -10,12 +10,16 @@ const readSource = (relativePath: string): string =>
 
 test('every phone Back doorway renders through the one shared PhoneBackButton', () => {
   const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
-  assert.match(navigation, /useLocalBackSnapshot/)
-  // Ownership order: local registry first, the route's deterministic Back
-  // second, the section menu at tab roots.
+  // The doorway renders the one resolver's decision and never re-derives it.
+  assert.match(navigation, /resolveBackAction\(location\.pathname\)/)
+  assert.doesNotMatch(navigation, /getPhoneNavigationBackTarget/)
+  // Ownership order lives in the resolver: a registered owner first, the
+  // route's deterministic Back second, nothing at a root.
+  const resolver = readSource('../src/navigation/back.ts')
   assert.ok(
-    navigation.indexOf('if (localBack)') < navigation.indexOf('if (backTarget)'),
-    'local Back must resolve before the route provider',
+    resolver.indexOf('const owner = owners?.active')
+      < resolver.indexOf('const target = getPhoneNavigationBackTarget('),
+    'an owner must resolve before the route parent',
   )
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')
@@ -28,6 +32,9 @@ test('registrations use explicit numeric priority, never mount order', () => {
   assert.match(context, /LOCAL_BACK_PRIORITY/)
   assert.match(context, /columnBackPriority/)
   assert.match(context, /useLayoutEffect/)
+  // A column browser carries that precedence onto the stage it pushes.
+  const viewport = readSource('../src/components/shared/column-browser/ColumnBrowserViewport.tsx')
+  assert.match(viewport, /columnBackPriority\(index\)/)
 
   const hook = readSource('../src/layouts/admin-shell/local-back/local-back-registry.ts')
   assert.match(hook, /byPriority\(right\) - byPriority\(left\)/)
@@ -46,35 +53,50 @@ test('admin column-browser pages delegate Back to the shared column, with no ad-
   }
 })
 
-test('app detail keeps Apps as its one visible phone return doorway', () => {
+test('app detail keeps Apps as its one visible return doorway', () => {
+  // Step 9: the page's own Back moved into `ScreenHeader`'s leading lane. On
+  // a phone the shared doorway resolves it; on a wide layout the header
+  // renders this `onBack` because the registry says the screen has a parent.
   const page = readSource('../src/pages/AppDetailPage.tsx')
   assert.match(page, /usePhoneLayout/)
   assert.match(page, /usePhoneNavigation/)
   assert.match(page, /phoneNavigation\.performBack\(\)/)
-  assert.match(page, /!phoneLayout \? <PhoneNavigationButton \/> : null/)
-  assert.match(page, /data-testid="app-detail-back"/)
+  assert.match(page, /<ScreenHeader/)
+  assert.match(page, /backLabel="Back to Apps"/)
+  assert.doesNotMatch(page, /<header/, 'no second header beside the ScreenHeader')
 })
 
 // ─── Column browser doorway ──────────────────────────────────────────────────
 
-test('only the phone-visible column browser column holds the Back doorway', () => {
+test('a pushed column browser column owns Back through its stage, registered once', () => {
+  // docs/navigation/overview.md §6: on `single` the deeper columns are nested stages,
+  // so the layer's own registration is the only one — a retained column can
+  // no longer compete for the doorway because it is no longer rendered.
   const viewport = readSource('../src/components/shared/column-browser/ColumnBrowserViewport.tsx')
-  assert.match(viewport, /phoneVisibleIndex/)
+  assert.match(viewport, /<NestedStage/)
+  assert.match(viewport, /priority=\{columnBackPriority\(index\)\}/)
+  assert.match(viewport, /id=\{stageId\(index\)\}/)
   assert.match(viewport, /ColumnBackProvider/)
-  assert.match(viewport, /const phoneHidden = isMobile && index !== phoneVisibleIndex/)
-  assert.match(viewport, /aria-hidden=\{phoneHidden \|\| undefined\}/)
-  assert.match(viewport, /inert=\{phoneHidden \|\| undefined\}/)
+  // Column 0 is the page, not a layer, so its Back is an ordinary owner.
+  assert.match(viewport, /active: stacked && baseReport !== undefined/)
+  assert.doesNotMatch(viewport, /phoneVisible/)
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')
-  assert.match(column, /active: phoneLayout && phoneVisible && Boolean\(showBack && onBack\)/)
-  assert.match(column, /priority: columnBackPriority\(index \?\? 0\)/)
-  assert.match(column, /phoneLayout\s*\? phoneVisible\s*\? <PhoneNavigationButton/)
-  // Wider layouts keep the shared circular Back beside the column title.
+  // The column reports its Back up the one-way channel and registers nothing.
+  assert.doesNotMatch(column, /useLocalBack\b/)
+  assert.match(column, /reportBack\(index, \{ label: backLabel, onBack: runBack \}\)/)
+  assert.match(column, /stacked\s*\? <PhoneNavigationButton/)
+  // A plain track keeps the shared circular Back beside the column title.
   assert.match(column, /: <PhoneBackButton label=\{backLabel\} onBack=\{onBack\}/)
 
+  const context = readSource('../src/layouts/admin-shell/local-back/LocalBackContext.tsx')
+  assert.match(context, /reportBack: \(\(index: number, report: ColumnStageReport \| null\) => void\) \| null/)
+  assert.doesNotMatch(context, /phoneVisible/)
+
+  // The doorway no longer reads the column context at all: the stack decides
+  // which layer is interactive.
   const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
-  assert.match(navigation, /useColumnBackContext/)
-  assert.match(navigation, /column\.index !== null && !column\.phoneVisible/)
+  assert.doesNotMatch(navigation, /useColumnBackContext/)
 })
 
 test('every stateful column-browser detail column owns exactly one Back action', () => {

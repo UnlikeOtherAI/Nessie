@@ -14,6 +14,7 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
   const {
     spaces,
     spacesLoaded,
+    spacesLoadFailed,
     selectedSpaceId,
     selectSpace,
     createSpace,
@@ -49,6 +50,7 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
           <KnowledgeSpaceList
             emptyLabel="No documents filed under this project yet"
+            isPending={!spacesLoaded && !spacesLoadFailed}
             onSelect={selectSpace}
             selectedSpaceId={selectedSpaceId}
             spaces={spaces}

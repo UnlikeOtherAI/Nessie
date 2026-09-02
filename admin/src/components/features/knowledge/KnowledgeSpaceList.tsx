@@ -1,7 +1,16 @@
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
+import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
+import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
+import { Skeleton } from '../../primitives/Skeleton'
 
 type KnowledgeSpaceListProps = {
   emptyLabel: string
+  /**
+   * The spaces query has not settled yet. Without it an empty array read as
+   * "no spaces yet" on every cold load, which is a different fact with a
+   * different next move (docs/navigation/overview.md §"Arriving with content").
+   */
+  isPending: boolean
   onSelect: (spaceId: string) => void
   // Project name per project id, passed only when the list spans more than one
   // project. Two projects each auto-seeded a space called "General", so
@@ -18,11 +27,18 @@ type KnowledgeSpaceListProps = {
 // views, headers) differs, so that stays with each caller.
 export const KnowledgeSpaceList = ({
   emptyLabel,
+  isPending,
   onSelect,
   projectLabels,
   selectedSpaceId,
   spaces,
 }: KnowledgeSpaceListProps) => {
+  const prewarm = usePrewarm()
+
+  if (isPending) {
+    return <Skeleton className="px-4 py-3" variant="list" />
+  }
+
   if (spaces.length === 0) {
     return <div className="px-4 py-3 text-sm text-[color:var(--tx3)]">{emptyLabel}</div>
   }
@@ -31,10 +47,12 @@ export const KnowledgeSpaceList = ({
     <>
       {spaces.map((space) => (
         <button
+          aria-current={sidebarAriaCurrent(space.id === selectedSpaceId)}
           className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
           key={space.id}
           onClick={() => onSelect(space.id)}
           type="button"
+          {...prewarmRowHandlers(prewarm, `/knowledge-base/spaces/${space.id}`)}
         >
           <svg
             className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"

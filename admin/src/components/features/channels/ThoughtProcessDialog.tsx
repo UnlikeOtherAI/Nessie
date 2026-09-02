@@ -15,9 +15,8 @@ import {
   toThinkingEntries,
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
+import { useOverlay } from '../../overlays/useOverlay'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { useModalA11y } from '../../shared/useModalA11y'
-import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type ThoughtProcessDialogProps = {
   agent: AgentRecord | null
@@ -44,12 +43,16 @@ export const ThoughtProcessDialog = ({
   threadId,
   token,
 }: ThoughtProcessDialogProps) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [pinned, setPinned] = useState(true)
   const close = useCallback(() => onClose(), [onClose])
-  useModalA11y(panelRef, close)
-  const overlayDismiss = useOverlayDismiss(close)
+  const overlay = useOverlay({
+    id: `thought-process-${entry.runId}`,
+    kind: 'modal',
+    label: `Close ${agentName} thought process`,
+    onClose: close,
+    open: true,
+  })
 
   // A bubble seeded from the bootstrap only holds a tail of the log, so the
   // full record is read from the API and merged under the live chunks.
@@ -76,12 +79,16 @@ export const ThoughtProcessDialog = ({
   }, [blocks.length, pinned, tailLength])
 
   return (
-    // Not the shared `Dialog`: a `max-w-3xl` scrolling flex column with a
-    // `text-base` heading, and a scrim that stops Escape from also closing the
-    // reply panel underneath. It already composes `useModalA11y`.
+    // Not the shared `Dialog`: a fixed-header + independently-scrolling log +
+    // fixed-footer flex column at `max-w-3xl` with a `text-base` heading —
+    // none of the shell's four panel geometries express that split, and a
+    // scrim that stops Escape from also closing the reply panel underneath.
+    // `useOverlay` still gives it the Back registration, focus trap,
+    // drag-safe scrim and layer every other overlay gets
+    // (docs/navigation/overview.md §7).
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-      {...overlayDismiss}
+      {...overlay.scrimProps}
+      className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
       onKeyDown={(event) => {
         // The dialog can be opened from inside the reply panel, which closes
         // itself on a window-level Escape. Its own Escape must not close both.
@@ -89,16 +96,17 @@ export const ThoughtProcessDialog = ({
           event.stopPropagation()
         }
       }}
+      style={overlay.layerStyle}
     >
       <div
         aria-labelledby="thought-process-title"
         aria-modal="true"
         className={[
-          'flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
+          'flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
           'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
         ].join(' ')}
         data-testid="thought-process-dialog"
-        ref={panelRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={-1}
       >

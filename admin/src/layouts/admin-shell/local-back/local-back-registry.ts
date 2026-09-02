@@ -17,6 +17,10 @@ export type LocalBackRegistration = {
   // never happen between live owners: only one column/detail per browser is
   // visible on a phone, and hidden owners must pass active: false.
   priority?: number
+  // Whether the edge swipe may drive this owner closed. Default true; an
+  // owner that must not be dismissed by a gesture (an editor mid-flush, a
+  // streaming document) registers false. Read by resolveBack.
+  swipeable?: boolean
 }
 
 export type LocalBackSnapshot = {

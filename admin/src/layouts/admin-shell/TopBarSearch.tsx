@@ -77,6 +77,11 @@ export const TopBarSearch = ({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  // The overlay's mode stays a device preference rather than a `useTabParam`
+  // host (docs/navigation/overview.md §1, "Tab hosts"): this search floats over
+  // whatever route the reader is on, so writing `?mode=` would put a claim
+  // about the overlay onto the page underneath. /search does own its URL and
+  // uses the hook.
   const [mode, setMode] = usePersistedGlobalSearchMode()
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)

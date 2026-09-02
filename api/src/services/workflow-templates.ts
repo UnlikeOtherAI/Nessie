@@ -163,6 +163,18 @@ export const getWorkflowTemplate = async (
   return template ? mapWorkflowTemplate(template) : null
 }
 
+/**
+ * The caller's `If-Match` version is not the row's current one: a second editor
+ * saved in between. Never resolved by taking the last write — the choice is the
+ * person's (docs/navigation/overview.md → "Drafts").
+ */
+export class WorkflowTemplateVersionConflictError extends Error {
+  constructor(readonly currentVersion: number) {
+    super('Workflow template version conflict')
+    this.name = 'WorkflowTemplateVersionConflictError'
+  }
+}
+
 export const updateWorkflowTemplate = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
@@ -176,6 +188,8 @@ export const updateWorkflowTemplate = async (
     triggers?: unknown
     variableSchema?: unknown
   },
+  // The version the caller edited, from `If-Match`. Undefined = no opinion.
+  expectedVersion?: number,
 ): Promise<WorkflowTemplateRecord | null> => {
   await validateWorkflowGraphSteps(
     prisma,
@@ -201,6 +215,10 @@ export const updateWorkflowTemplate = async (
 
   if (!existingTemplate) {
     return null
+  }
+
+  if (expectedVersion !== undefined && existingTemplate.version !== expectedVersion) {
+    throw new WorkflowTemplateVersionConflictError(existingTemplate.version)
   }
 
   const template = await prisma.workflowTemplate.update({

@@ -1,43 +1,21 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useId, useRef, useState } from 'react'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { Popover } from '../../overlays/Popover'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
 import { toolbarButtonClass } from './channel-helpers'
 
 // Composer emoji picker: the same panel the message reactions use, opened as a
-// popover above the toolbar and inserting the picked glyph into the input.
-// Dismissal mirrors the reaction picker — outside pointerdown or Escape.
+// Popover above the toolbar and inserting the picked glyph into the input.
 export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) => void }) => {
   const phoneLayout = usePhoneLayout()
   const pickerId = useId()
-  const pickerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => {
-    if (!open) {
-      return undefined
-    }
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [open])
-
-  const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation()
-      setOpen(false)
-    }
-  }
-
   return (
-    <div className="admin-compose-emoji" onKeyDown={closeOnEscape} ref={pickerRef}>
+    <div className="admin-compose-emoji">
       <button
         aria-controls={open ? pickerId : undefined}
         aria-expanded={open}
@@ -45,22 +23,29 @@ export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) =>
         aria-label="Insert emoji"
         className={toolbarButtonClass}
         onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
         title="Insert emoji"
         type="button"
       >
         <FontAwesomeIcon className="admin-compose-action-icon h-4 w-4" icon={faFaceSmile} />
       </button>
-      {open ? (
-        <div className="admin-compose-emoji-menu" id={pickerId} role="dialog">
-          <EmojiPickerPanel
-            autoFocusSearch={!phoneLayout}
-            onSelect={(emoji) => {
-              onSelect(emoji)
-              setOpen(false)
-            }}
-          />
-        </div>
-      ) : null}
+      <Popover
+        anchorRef={triggerRef}
+        className="admin-compose-emoji-menu"
+        id={pickerId}
+        label="Insert emoji"
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="top-start"
+      >
+        <EmojiPickerPanel
+          autoFocusSearch={!phoneLayout}
+          onSelect={(emoji) => {
+            onSelect(emoji)
+            setOpen(false)
+          }}
+        />
+      </Popover>
     </div>
   )
 }

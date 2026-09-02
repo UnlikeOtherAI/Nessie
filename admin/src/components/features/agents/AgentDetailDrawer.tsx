@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { Sheet } from '../../overlays/Sheet'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { AgentIdentityBlock } from './AgentIdentityBlock'
@@ -23,12 +24,10 @@ export const AgentDetailDrawer = ({
   }
 
   return (
-    <>
-      <button className="fixed inset-0 z-40 bg-[var(--scrim-strong)]" onClick={onClose} type="button" />
-      <aside
+    <Sheet onClose={onClose} open side="right" size="lg" title={`${agent.name} details`}>
+      <div
         className={[
-          'fixed inset-y-3 right-3 z-50 flex',
-          'w-[min(620px,calc(100vw-1.5rem))] flex-col overflow-hidden',
+          'flex h-full w-full min-h-0 flex-col overflow-hidden',
           'rounded-2xl border border-[color:var(--sep)] bg-[color:var(--sb)]',
           'shadow-[0_32px_80px_var(--scrim-strong)]',
         ].join(' ')}
@@ -63,7 +62,7 @@ export const AgentDetailDrawer = ({
         </header>
 
         <AgentDetailTabs key={agent.id} agent={agent} onSelectAgent={onSelectAgent} />
-      </aside>
-    </>
+      </div>
+    </Sheet>
   )
 }

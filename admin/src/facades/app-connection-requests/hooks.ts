@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   BeginAppConnectionRequestResponse,
   AppSetupCardPresenter,
@@ -12,6 +12,7 @@ export const useAppConnectionRequestCard = (requestId: string | undefined) => {
   const apiClient = useApiClient()
 
   return useQuery<AppSetupCardPresenter>({
+    placeholderData: keepPreviousData,
     queryKey: appConnectionRequestKeys.card(requestId),
     queryFn: () => apiClient.get(`/api/agent-app-connection-requests/${requestId}`),
     enabled: Boolean(requestId),

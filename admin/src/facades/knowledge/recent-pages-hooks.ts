@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { KnowledgePageKind } from './hooks'
@@ -23,6 +23,7 @@ export const useProjectRecentPages = (projectId?: string, limit = 5) => {
   const apiClient = useApiClient()
 
   return useQuery<RecentKnowledgePage[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.recentPages(projectId, limit),
     queryFn: () =>
       apiClient.get(

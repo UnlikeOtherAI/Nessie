@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { JSDOM } from 'jsdom'
+import type { ReactNode } from 'react'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost/channels',
@@ -55,6 +56,62 @@ Object.defineProperty(dom.window.HTMLElement.prototype, 'clientWidth', {
   get: () => 390,
 })
 
+// jsdom has no Web Animations API. Navigation motion runs entirely on
+// element.animate() (admin/src/navigation/motion.ts), so the harness supplies
+// a timeline that finishes after the requested duration on real timers — the
+// same clock the tests' flush() waits on — and can be cancelled or finished
+// early. Tests drive transitions to completion through it, not through the
+// viewport's fallback timer.
+type FakeAnimation = {
+  currentTime: number
+  effect: { getTiming: () => { duration: number } }
+  playState: 'running' | 'finished' | 'idle'
+  onfinish: (() => void) | null
+  oncancel: (() => void) | null
+  finish: () => void
+  cancel: () => void
+}
+const fakeAnimations = new Set<FakeAnimation>()
+Object.defineProperty(dom.window.Element.prototype, 'animate', {
+  configurable: true,
+  writable: true,
+  value: function animate(
+    this: Element,
+    _keyframes: unknown,
+    options?: number | { duration?: number | string },
+  ): FakeAnimation {
+    const duration = typeof options === 'number'
+      ? options
+      : Number(options?.duration ?? 0)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const animation: FakeAnimation = {
+      currentTime: 0,
+      effect: { getTiming: () => ({ duration }) },
+      playState: 'running',
+      onfinish: null,
+      oncancel: null,
+      finish: () => {
+        if (animation.playState !== 'running') return
+        if (timer) clearTimeout(timer)
+        animation.playState = 'finished'
+        animation.currentTime = duration
+        fakeAnimations.delete(animation)
+        animation.onfinish?.()
+      },
+      cancel: () => {
+        if (animation.playState === 'idle') return
+        if (timer) clearTimeout(timer)
+        animation.playState = 'idle'
+        fakeAnimations.delete(animation)
+        animation.oncancel?.()
+      },
+    }
+    fakeAnimations.add(animation)
+    timer = setTimeout(() => animation.finish(), duration)
+    return animation
+  },
+})
+
 const React = await import('react')
 const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')
@@ -62,12 +119,48 @@ const { MemoryRouter, useLocation, useNavigate } = await import('react-router-do
 const { PhoneNavigationViewport } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationViewport'
 )
+const { NestedStage } = await import('../../src/navigation/NestedStage')
 const { PhoneNavigationProvider } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationProvider'
 )
+const { LocalBackProvider, useLocalBackSnapshot } = await import(
+  '../../src/layouts/admin-shell/local-back/LocalBackContext'
+)
+type BackOwner = { id: string; label: string; onBack: () => void } | null
+
+const { usePhoneNavigation } = await import(
+  '../../src/layouts/admin-shell/PhoneNavigationProvider'
+)
+
+// The stages the detail screen renders. A page keeps every stage mounted and
+// toggles `active`; the default is one, and a caller that needs a ladder (a
+// Knowledge folder → document → history) passes its own with real priorities.
+export type HarnessStage = {
+  id: string
+  label: string
+  priority: number
+  swipeable?: boolean
+}
+
+const DEFAULT_STAGES: readonly HarnessStage[] = [
+  { id: 'inspector', label: 'Back from inspector', priority: 30 },
+]
 
 export type PhoneNavigationViewportHarness = {
+  // The registry's current Back owner — the deepest registered stage or
+  // overlay — or null when the route's own parent owns the doorway.
+  backOwner: () => BackOwner
   container: HTMLElement
+  // Opens or closes one of the detail screen's nested stages (a state-driven
+  // screen the page pushes over itself), the way a page toggles its own
+  // state. Defaults to the first declared stage.
+  setStage: (active: boolean, id?: string) => Promise<void>
+  // Runs Back for the current location through the one resolver — what the
+  // shell doorway and hardware Back do.
+  pressBack: () => Promise<void>
+  // The Back the resolver would run right now: an owner's id, or a route
+  // (`route:<to>`); null at a root.
+  backTarget: () => string | null
   currentPathname: () => HTMLElement | null
   flush: (ms?: number) => Promise<void>
   goTo: (pathname: string, paint?: boolean) => Promise<void>
@@ -76,6 +169,8 @@ export type PhoneNavigationViewportHarness = {
   locationLabel: () => string
   mounts: () => Record<string, number>
   paintFrame: () => Promise<void>
+  // Runs `mutate` inside act(), for a test driving the page's own state.
+  render: (mutate: () => void) => Promise<void>
   scrollTops: () => Record<string, number>
   touch: (
     type: string,
@@ -87,12 +182,26 @@ export type PhoneNavigationViewportHarness = {
   unmount: () => Promise<void>
 }
 
+export type PhoneNavigationViewportOptions = {
+  // Replaces the detail route's default nested-stage fixture. An adopter that
+  // mounts its own stages (the column browser) renders itself here and drives
+  // them with `render`, while `setStage` keeps serving the default fixture.
+  renderDetail?: () => ReactNode
+  // Seeds the registry's parent chain beneath a cold start's landing route
+  // with a labelled placeholder per seeded pathname (docs/navigation/overview.md §8).
+  seed?: boolean
+  // The detail screen's stage ladder; defaults to one `inspector` stage.
+  stages?: readonly HarnessStage[]
+}
+
 // One component type renders every route, so mount counts prove which exact
 // instances survive navigation. The controlled frame queue makes the forward
 // screen's prepare/paint/run lifecycle deterministic without a paint engine.
 export const mountPhoneNavigationViewport = async (
   initialPathname: string,
+  options: PhoneNavigationViewportOptions = {},
 ): Promise<PhoneNavigationViewportHarness> => {
+  const stages = options.stages ?? DEFAULT_STAGES
   pendingFrames.clear()
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
   for (const [key, value] of Object.entries(domGlobals)) {
@@ -103,6 +212,9 @@ export const mountPhoneNavigationViewport = async (
   document.body.appendChild(container)
   let pathname = initialPathname
   let navigateTo: ((to: string | number) => void) | null = null
+  // The controller, captured from inside the provider so a test can run the
+  // one Back resolver rather than reaching for the router.
+  let navigation: ReturnType<typeof usePhoneNavigation> = null
   const mounts: Record<string, number> = {}
   const scrollTops: Record<string, number> = {}
 
@@ -127,6 +239,38 @@ export const mountPhoneNavigationViewport = async (
     }, [])
     return h(Screen, { label: '/channels' })
   }
+  // The detail's nested stages are toggled from outside React through a tiny
+  // store, so a test can open and close them like the page's own state.
+  const stageListeners = new Set<() => void>()
+  const activeStages = new Set<string>()
+  const publishStages = () => {
+    for (const listener of stageListeners) listener()
+  }
+  const subscribeStages = (listener: () => void) => {
+    stageListeners.add(listener)
+    return () => stageListeners.delete(listener)
+  }
+  const StageLayer = ({ stage }: { stage: HarnessStage }) => {
+    const active = React.useSyncExternalStore(
+      subscribeStages,
+      () => activeStages.has(stage.id),
+    )
+    return h(
+      NestedStage,
+      {
+        active,
+        id: stage.id,
+        label: stage.label,
+        onBack: () => {
+          activeStages.delete(stage.id)
+          publishStages()
+        },
+        priority: stage.priority,
+        swipeable: stage.swipeable,
+      },
+      h('div', { 'data-stage': stage.id }, `stage:${stage.id}`),
+    )
+  }
   const ChannelsDetail = () => {
     React.useEffect(() => {
       mounts['channels-detail'] = (mounts['channels-detail'] ?? 0) + 1
@@ -134,12 +278,27 @@ export const mountPhoneNavigationViewport = async (
         mounts['channels-detail'] = (mounts['channels-detail'] ?? 1) - 1
       }
     }, [])
-    return h(Screen, { label: '/channels/channel_a' })
+    if (options.renderDetail) return options.renderDetail()
+    return h(
+      React.Fragment,
+      null,
+      h(Screen, { label: '/channels/channel_a' }),
+      ...stages.map((stage) => h(StageLayer, { key: stage.id, stage })),
+    )
+  }
+
+  // Reads the one Back registry the shell doorway reads, so a test can assert
+  // which owner holds Back and invoke exactly the action a tap would.
+  let backOwner: BackOwner = null
+  const BackProbe = () => {
+    backOwner = useLocalBackSnapshot()?.active ?? null
+    return null
   }
 
   const Host = () => {
     const location = useLocation()
     const navigate = useNavigate()
+    navigation = usePhoneNavigation()
     pathname = location.pathname
     navigateTo = (next: string | number) => {
       if (typeof next === 'number') navigate(next)
@@ -150,7 +309,12 @@ export const mountPhoneNavigationViewport = async (
     }
     return h(
       PhoneNavigationViewport,
-      { pathname: location.pathname },
+      {
+        pathname: location.pathname,
+        ...(options.seed
+          ? { seed: (seeded: string) => h('div', { 'data-seeded': seeded }, `seeded:${seeded}`) }
+          : {}),
+      },
       h(ScreenForPath, { path: location.pathname }),
     )
   }
@@ -175,7 +339,11 @@ export const mountPhoneNavigationViewport = async (
       h(
         MemoryRouter,
         { initialEntries: ['/outside', initialPathname], initialIndex: 1 },
-        h(PhoneNavigationProvider, null, h(Host)),
+        h(
+          LocalBackProvider,
+          null,
+          h(PhoneNavigationProvider, null, h(BackProbe), h(Host)),
+        ),
       ),
     )
   })
@@ -213,7 +381,28 @@ export const mountPhoneNavigationViewport = async (
   }
 
   return {
+    backOwner: () => backOwner,
     container,
+    render: async (mutate: () => void) => {
+      await act(async () => mutate())
+      await flush()
+    },
+    setStage: async (active: boolean, id = stages[0]!.id) => {
+      if (active) activeStages.add(id)
+      else activeStages.delete(id)
+      await act(async () => publishStages())
+      await flush()
+    },
+    pressBack: async () => {
+      assert.ok(navigation, 'controller ready')
+      await act(async () => navigation?.performBack())
+      await flush()
+    },
+    backTarget: () => {
+      const action = navigation?.resolveBackAction() ?? null
+      if (!action) return null
+      return action.kind === 'owner' ? action.id : `route:${action.to}`
+    },
     currentPathname: () =>
       container.querySelector(
         '[data-phone-navigation-layer="current"] [data-screen-label]',

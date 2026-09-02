@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui; }
+  /* Mirrors admin/src/styles.css .phone-navigation-* exactly, apart from the
+     animation duration, which is a page variable so the experiment can slow
+     the motion down. */
+  .phone-navigation-viewport {
+    position: relative; isolation: isolate; display: flex;
+    min-width: 0; min-height: 0; flex: 1 1 0%; overflow: hidden;
+    background: #f4efe8; width: 100vw; height: 100vh;
+  }
+  .phone-navigation-screen {
+    position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0;
+    overflow: hidden; background: #f4efe8;
+    animation-duration: var(--dur, 300ms); animation-fill-mode: both;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    backface-visibility: hidden; will-change: transform;
+  }
+  .phone-navigation-page { min-width: 0; min-height: 0; flex: 1 1 0%; overflow-x: hidden; overflow-y: auto; }
+  .phone-navigation-screen--current { z-index: 1; animation: none; will-change: auto; }
+  .phone-navigation-screen--forward-out { z-index: 1; animation-name: fo; pointer-events: none; }
+  .phone-navigation-screen--forward-source-ready { z-index: 1; animation: none; transform: translate3d(0,0,0); }
+  .phone-navigation-screen--forward-ready { z-index: 2; animation: none; transform: translate3d(100%,0,0); }
+  .phone-navigation-screen--forward-in { z-index: 2; animation-name: fi; box-shadow: -12px 0 32px rgba(0,0,0,.2); }
+  @keyframes fo { from { transform: translate3d(0,0,0);} to { transform: translate3d(-28%,0,0);} }
+  @keyframes fi { from { transform: translate3d(100%,0,0);} to { transform: translate3d(0,0,0);} }
+
+  .header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+  .back { width: 28px; height: 28px; border-radius: 8px; background: #ddd; }
+  .tabbar { display: flex; gap: 2px; overflow-x: auto; padding: 3px; margin: 0 12px; background: #e6dfd5; border-radius: 10px; scrollbar-width: none; }
+  .tabbar button { flex: 1 0 auto; padding: 10px 14px; border: 0; background: transparent; }
+  .row { display: flex; gap: 10px; padding: 12px 16px; }
+  .avatar { width: 40px; height: 40px; border-radius: 8px; background: #a44; flex: 0 0 auto; }
+  .edge { position: fixed; left: 0; top: 0; bottom: 0; width: 1px; background: red; z-index: 99; }
+</style>
+</head>
+<body>
+<div class="edge"></div>
+<div class="phone-navigation-viewport" id="viewport">
+  <div class="phone-navigation-screen phone-navigation-screen--current" id="list">
+    <div class="phone-navigation-page"><div class="header">Channels (list root)</div></div>
+  </div>
+</div>
+<script>
+  // Push a "channel" screen the way PhoneNavigationViewport does: mount it in
+  // the --forward-ready pose (translate3d(100%)), let a descendant run the
+  // TabBar's mount-time scrollIntoView, paint once, then start --forward-in.
+  window.push = ({ scrollIntoView, durationMs, clip }) => {
+    const viewport = document.getElementById('viewport')
+    viewport.style.setProperty('--dur', `${durationMs}ms`)
+    if (clip) viewport.style.overflow = 'clip'
+    const list = document.getElementById('list')
+    const screen = document.createElement('div')
+    screen.id = 'detail'
+    screen.className = 'phone-navigation-screen phone-navigation-screen--forward-ready'
+    screen.innerHTML = `
+      <div class="phone-navigation-page">
+        <div class="header"><div class="back"></div><strong>kilo-research</strong></div>
+        <div class="tabbar">
+          <button id="tab-messages">Messages</button><button>Files</button>
+          <button>Automations</button><button>Agents</button>
+        </div>
+        <div class="row"><div class="avatar"></div><div>Ondrej Rafaj — message text</div></div>
+      </div>`
+    list.className = 'phone-navigation-screen phone-navigation-screen--forward-source-ready'
+    viewport.appendChild(screen)
+    if (scrollIntoView) {
+      // TabBar.tsx useLayoutEffect: keep the selected control wholly visible.
+      document.getElementById('tab-messages').scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+    const scrollLeftAfterMount = viewport.scrollLeft
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        list.className = 'phone-navigation-screen phone-navigation-screen--forward-out'
+        screen.className = 'phone-navigation-screen phone-navigation-screen--forward-in'
+        resolve({ scrollLeftAfterMount })
+      }))
+    })
+  }
+  window.flushLayout = () => document.getElementById('viewport').scrollLeft
+  window.finish = () => {
+    const viewport = document.getElementById('viewport')
+    document.getElementById('detail').className = 'phone-navigation-screen phone-navigation-screen--current'
+    document.getElementById('list').remove()
+    return { scrollLeftAfterFinish: viewport.scrollLeft, detailLeft: document.getElementById('detail').getBoundingClientRect().left }
+  }
+</script>
+</body>
+</html>

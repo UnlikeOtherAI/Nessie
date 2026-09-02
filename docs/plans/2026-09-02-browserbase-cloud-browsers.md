@@ -112,7 +112,12 @@ Verified against docs.browserbase.com on 2026-09-02:
 2. **Sessions, not passwords.** Nessie persists a context *id*; the cookies
    live encrypted at Browserbase; the password lives nowhere on our side.
    There is deliberately **no server-side credential vault** — that was
-   considered and rejected as too dangerous for us to hold.
+   considered and rejected as too dangerous for us to hold. Stated
+   honestly per review: the API key + context id pair *is*
+   session-equivalent material (whoever holds both can launch the context
+   and act as the logged-in user), so the secret store and these rows are
+   protected accordingly — the claim is "no passwords, no vault", never
+   "nothing sensitive".
 3. **Login is a human act.** First sign-in (and any re-auth, CAPTCHA, or 2FA
    challenge) is the person typing into the interactive Live View. The agent
    parks, the person acts, the agent resumes. We never automate CAPTCHA
@@ -127,8 +132,14 @@ Verified against docs.browserbase.com on 2026-09-02:
    human-authenticated browser enters the run context with the agent's
    `agent:<id>` audience basis (`ConsumedSourceSink`), same obligation as
    every other read path — a private agent's audience is its owner alone.
-6. **Default OFF.** Browser tools are `requiresExplicitGrant` per agent, the
-   DeepWater discipline: absent/inherited policy does not expose them.
+6. **Default OFF — and the cloud grant is its own key.** Browser tools are
+   `requiresExplicitGrant` per agent, the DeepWater discipline:
+   absent/inherited policy does not expose them. The cloud-browser bundle
+   is a **distinct policy key from the executor browser bundle** (review
+   finding): a grant made for an isolated local sandbox must not silently
+   become third-party, credential-bearing cloud browsing the day an owner
+   connects Browserbase — each agent is granted the cloud bundle
+   explicitly.
 
 ## 4. Architecture
 
@@ -156,7 +167,17 @@ Verified against docs.browserbase.com on 2026-09-02:
   discipline (user-scope installs surface only in the installing user's
   runs). Resolution at toolset assembly: the org connection when one is
   healthy, else the requester's personal connection, else no cloud browser
-  toolset. One connection per run — never mixed mid-run.
+  toolset. One connection per run — never mixed mid-run. Two review
+  refinements: a **workspace agent's** `mode: 'mine'` requires the org
+  connection — while it is degraded the tool refuses with the repair named,
+  never silently falling back to an individual's key for workspace work
+  (ephemeral may still resolve personally for the requester's own runs);
+  and a **private agent's** durable browser prefers its owner's personal
+  connection even when an org connection exists, because a private
+  browsing session on the company account is replayable by the company's
+  Browserbase admin — if the owner has no personal connection, the org
+  one is used and the agent's Browser panel says exactly that, instead of
+  claiming a privacy the account topology cannot deliver.
 - Verified 2026-09-02: Browserbase authenticates by **API key only**
   (`x-bb-api-key`, per project) — there is no OAuth flow a third party
   could use, so personal-vs-company cannot be inferred from the auth
@@ -206,8 +227,16 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   personal connections were in use, personal-connection browsers cannot be
   transferred — the agent starts a fresh browser under the org connection
   and any logins are performed once more (the UI says so; it is one login
-  per service, not a migration). Deleting the agent deletes its browser
-  (context included) in the same transaction.
+  per service, not a migration). **Remote resources are never "deleted in
+  the same transaction"** (review finding — an external REST call cannot
+  join a DB transaction, and either half can fail alone): agent deletion
+  and Sign out & reset tombstone the `AgentBrowser` row transactionally,
+  then a durable queue job deletes the Browserbase context with retries,
+  and a reconciliation sweep reaps contexts whose rows are gone. Rows
+  carry composite tenancy FKs (`(organizationId, agentId)`,
+  `(organizationId, connectionId)`; login `userId` through the
+  organization-member composite key, the `Agent.ownerUserId` precedent) so
+  one tenant's context can never ride another tenant's key.
 - **Which connection may hold an agent's durable browser** follows from who
   can reach the agent: a **workspace agent's** browser lives on the org
   connection only — on a personal connection its state would be reachable
@@ -237,22 +266,46 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   handed to the wider audience. Past browsing-derived messages stay bounded
   by the owner-only home DM they live in. The §4.9 shared-browser banner
   starts rendering the moment the agent is workspace-visible.
-- `CloudBrowserSession` `{ id, organizationId, runId, agentBrowserId?,
-  browserbaseSessionId, status (active|released|expired), startedAt, endedAt,
-  releasedBy }` — the lifecycle row. **One live session per agent browser**:
-  a persistent open is claimed with a conditional UPDATE (`status = 'active'`
-  unique partial index per `agentBrowserId`), because one agent can run
-  concurrently in different threads and Browserbase warns against two
-  sessions on one context. The loser gets a clear "this agent's browser is
-  in use by another run" tool error and can proceed ephemeral or retry.
-  Different agents never contend at all — that is the point of
-  browser-per-agent.
-- **Release is fused to the run's terminal transition**, the working-marker
-  precedent (`lifecycle.ts` `updateRunStatus`): completion, failure, budget
-  stop, and cancellation all release the Browserbase session without anyone
-  remembering to; a sweep beside `sweepExpiredApprovals` reaps sessions whose
-  run crashed before the transition. Browser-hours are money — nothing may
-  leak an open session.
+- `CloudBrowserSession` `{ id, organizationId, runId, connectionId,
+  agentBrowserId?, browserbaseSessionId?, status, controlledByUserId?,
+  controlClaimedAt?, startedAt, endedAt, releasedBy }`. `connectionId` is
+  mandatory (review finding: an ephemeral session's reaper otherwise
+  cannot know which API key owns it, and `/ops/usage` cannot attribute by
+  connection scope). Status is a real remote-resource state machine —
+  `allocating | active | releasing | released | failed | unknown` — not a
+  boolean: a create timeout leaves a paid remote session with no local id
+  (`allocating` + reconcile), a crash after claim must not hold a ghost
+  lock forever, and `active` may only clear after Browserbase confirms
+  termination. Two unique partial indexes: one live session per
+  `agentBrowserId` (one agent running concurrently in two threads gets a
+  clean "this agent's browser is in use" error and can go ephemeral or
+  retry — Browserbase warns against two sessions on one context), and one
+  live session per `runId` (so `goto`/`observe`/`close` always have an
+  unambiguous current browser).
+- **Release is fused to every terminal writer, not just the worker's.**
+  The working-marker precedent covers `lifecycle.ts` `updateRunStatus`
+  (completion, failure, budget stop, worker cancel) — but the review found
+  the API also writes terminal `Run.status` directly (service-side cancel,
+  and card resume paths), and the card-expiry sweep flips only the card
+  row. Each of those writers releases the session (and the expiry sweep
+  resumes-or-fails the parked run, §4.4.5). A sweep beside
+  `sweepExpiredApprovals` reaps sessions whose run crashed before any
+  transition — and reaping means **calling Browserbase to stop the remote
+  session**, not just flipping the row; every create also sets the
+  platform-side session `timeout` to the §4.8 TTL so a dead worker's
+  session dies remotely too. Browser-hours are money — nothing may leak an
+  open session.
+- **Widening the agent's audience confronts the browser — today, not just
+  at future publishing.** The review pointed out that `agent:<id>` widens
+  whenever a workspace agent is bound into a public or newly-joined
+  channel, and `bindAgentToChannel` performs no browser guard. Phase 2
+  adds one shared guard at every audience-widening transition (channel
+  bind now; visibility publish when it ships): a browser carrying
+  `AgentBrowserLogin` rows refuses the widening with
+  `BROWSER_LOGINS_PRESENT` until the owner either resets the browser or
+  explicitly confirms, naming each signed-in service being handed to the
+  wider audience. The future publish flow inherits this guard instead of
+  being a documentation-only obligation.
 
 ### 4.3 Toolset assembly and dispatch
 
@@ -269,6 +322,15 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   chokepoint; screenshots go through `FileService` as attachments and ride the
   existing images-in-context path (`worker/src/run/message-attachments.ts`),
   never a second byte path.
+- **One logical surface means one, mechanically** (review finding: the
+  first draft named new `browser_*` tools while the executor already
+  exposes `executor.browser.open/observe/act` registry ids — two parallel
+  families is the fork Rule zero forbids). The operations below are
+  defined by **extending the existing logical tool registry**
+  (`packages/executor-manage/src/executor-logical-tools.ts`) with the new
+  operation keys; registry ids, policy keys, and model-facing names are
+  unified across transports in one migration, so the model sees one
+  browser vocabulary whether the transport is the device or the cloud.
 - Model-facing tools (shared schemas, both transports):
   - `browser_open` `{ mode: 'mine' | 'ephemeral' }` — `'mine'` opens **the
     agent's own browser** (its `AgentBrowser` context attached,
@@ -291,57 +353,89 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
 
 ### 4.4 Login handoff — the person types, the agent waits
 
-When the agent hits a login wall in its own browser (or needs a service
-signed in for the first time):
+Reworked after the 2026-09-02 adversarial review, which broke the first
+draft three independent ways: the card machinery is **one-shot** (every
+action press conditionally resolves `open → resolved` and resumes the
+waiting run — `api/src/routes/agent-cards.ts` — so an "Open browser" press
+followed by a later "Done" press is a second lifecycle the claim-once
+invariant forbids); Browserbase ends a session when its automation
+connection closes unless paid-plan `keepAlive` is set, so a session the
+parked worker abandoned would be a **dead iframe on the free tier**; and
+context changes are only durably saved on session close, so resuming
+against the same context immediately can read **stale, logged-out state**.
 
-1. `browser_login_request` posts an **agent card** (`card_post` machinery, one
-   card system) addressed to the requesting user only, with the reason and a
-   single action: *Open browser*. The run exits through `pendingInput` and
-   parks in `waiting_input` — the card/approval suspend-resume cores
-   (`run-suspend.ts` / `run-resume-core.ts`), never a second copy.
-2. Pressing the card opens the **screen viewer (§4.9) full-screen, in
-   control mode** — the interactive Live View iframe. The live-view URL is
-   fetched per-open from a viewer-authorized API route (`GET
-   /api/browser-sessions/:id`, requester-only) — the URL itself is never
-   written into a message, card row, or realtime payload.
-3. The person signs in, completes 2FA, solves any CAPTCHA — keystrokes go
-   browser → Browserbase. Nessie relays nothing; the model sees nothing.
-   **While the dialog is open in interactive mode, `browser_observe` /
-   `browser_screenshot` for that session are refused** ("a person is at the
-   controls"), so the model cannot watch credentials being entered.
-4. The person presses *Done* on the card, confirming the service label. The
-   press is the ordinary `agentCardResponse` user turn; the run resumes;
-   cookies are now in the agent's context (`persist: true`), and an
-   `AgentBrowserLogin` row is written in the press transaction recording
-   **this user** signed **this service** into **this agent's browser** —
-   audit and revocation surface. Consent is handled by the §4.9 banner, not
-   a per-login declaration: on a workspace agent, signing in *is* sharing
-   with everyone who can reach the agent, and the viewer says so before the
-   first keystroke.
-5. Card expiry (agent-set, swept with the approval sweep) releases the parked
-   session so an abandoned login doesn't burn browser-hours.
+The corrected flow — the login session is **human-only** and never driven
+by the worker at all:
 
-Watching without controlling is the same viewer in watch mode — the screen
-panel of §4.9, with the existing cancel-run control beside it (the
-document-stream dialog precedent).
+1. `browser_login_request` posts an **agent card** addressed to the
+   requesting user only, with the reason, a **link block** that opens the
+   screen viewer (§4.9), and exactly one action: *Done*. The run exits
+   through `pendingInput`, parks in `waiting_input`, and — critically —
+   **releases its own browser session first**; the parked run holds no
+   session, so nothing burns hours while a human dawdles.
+2. Opening the viewer from the card's link mints a **fresh, human-only
+   session** on the agent's context (`persist: true`): no worker CDP
+   connection exists or is needed, so the keepAlive question never arises.
+   The live-view URL is fetched per-open from the viewer-authorized detail
+   route (§4.9's one authorization rule; during a login handoff it narrows
+   to the card's addressee) — the URL itself is never written into a
+   message, card row, or realtime payload.
+3. The person signs in and completes 2FA — keystrokes go browser →
+   Browserbase. Nessie relays nothing; the model sees nothing (no worker is
+   even attached). Sessions are created with `solveCaptchas: false`,
+   `recordSession: false`, and logging disabled (§6.2/§6.5), so the
+   platform neither solves challenges for us nor records the person's
+   keystrokes for the Browserbase account holder to replay.
+4. The person presses *Done* — the card's single one-shot action,
+   confirming the service label. The press transaction writes the
+   `AgentBrowserLogin` row (**this user**, **this service**, **this
+   browser** — audit and revocation), **releases the login session**, and
+   resumes the run through the shared resume core. The continuation waits
+   for Browserbase's context sync (bounded delay + a logged-in re-check)
+   before reopening the context, because context persistence is
+   asynchronous on session close.
+5. Card expiry is **deployment-clamped** (default ~15 min, never
+   model-chosen beyond the clamp) and swept beside the approval sweep; the
+   sweep must do all three things the press does minus the login row —
+   release any login session, resolve the card, and resume-or-fail the
+   parked run — because a card row flipped to expired while the run stays
+   `waiting_input` would hold the thread slot forever.
+
+Consent is the §4.9 banner, not a per-login declaration: on a workspace
+agent, signing in *is* sharing with everyone who can reach the agent, and
+the viewer says so before the first keystroke. Watching without controlling
+is the same viewer in watch mode (§4.9), with the cancel-run control beside
+it.
 
 ### 4.5 Disclosure and unattended use
 
 - **Logins are shared with the agent's audience — warned, not partitioned**
-  (decided 2026-09-02). A human-authenticated agent browser registers the
-  existing `agent:<agentId>` basis scope in `ConsumedSourceSink` at open —
-  the vocabulary already defines it as *exactly the people who pass the
-  shared live agent-visibility predicate*, which is precisely "the users
-  who have access to the agent". So material read through a workspace
-  agent's browser is readable by whoever can reach that agent, and on a
-  private agent the same scope resolves to its owner alone — one uniform
-  rule, no per-login declaration. The consent mechanism is the §4.9
-  banner: a person who signs a service into a shared agent's browser does
-  it knowing it is shared. The card and banner copy still steer:
-  **personal accounts belong in your private agent's browser**; a
-  workspace agent's browser is for service accounts the agent's audience
-  may share. An agent browser with no recorded logins, and every ephemeral
-  session, browses the public web like `web_fetch` and adds no basis.
+  (decided 2026-09-02). An authenticated browser registers the existing
+  `agent:<agentId>` basis scope in `ConsumedSourceSink` — the vocabulary
+  already defines it as *exactly the people who pass the shared live
+  agent-visibility predicate*. Material read through a workspace agent's
+  browser is readable by whoever can reach that agent; on a private agent
+  the same scope resolves to its owner alone. The consent mechanism is the
+  §4.9 banner; the copy still steers: **personal accounts belong in your
+  private agent's browser**.
+- **"Authenticated" is a monotone session fact, never derived from login
+  rows alone** (review finding — the row-derived version failed open two
+  ways: registration happened only at `browser_open`, so the sanctioned
+  first-login handoff authenticated the browser *mid-run* with nothing in
+  the sink; and a person signing in during generic Take-control — or a
+  magic-link/SSO completion the agent itself clicks through — writes no
+  row at all). The fact is set, and the scope registered, at the **first**
+  of: session open on a context whose **CDP-enumerated cookies** are
+  non-empty (the mechanical authenticated-origin set — `serviceHint` is
+  display text, never the trigger); a login-handoff resume; or **any
+  control claim** taken on the session. Hand-back of a control claim on a
+  persistent session also writes an `AgentBrowserLogin` row (service
+  "unlabeled" until the person names it), so ad-hoc sign-ins during
+  control are recorded, and an ephemeral session that had a control claim
+  is treated as authenticated for the rest of its run. Once set it never
+  clears within the session — monotone, like `runReplyIsRestricted`. A
+  session that never trips any trigger browses the public web like
+  `web_fetch` and adds no basis.
 - Web pages are untrusted content; nothing on a page is an instruction. The
   existing prompt-side framing for fetched content applies to `browser_observe`
   output verbatim.
@@ -420,13 +514,21 @@ cloud-persistent.
 
 ### 4.8 Budgets and limits
 
-- Session wall-clock counts against the run's existing time budget; a session
-  also carries its own hard TTL (default ~10 min, agent-extendable to a
-  deployment cap) independent of the run, so a hung CDP connection cannot run
-  a browser for 45 minutes.
+- Browser-hours are bounded by the session TTL and the concurrency cap,
+  not the run budget: the review showed the run wall-clock resets across
+  `waiting_input` continuations, so the session's own hard TTL (default
+  ~10 min, agent-extendable only up to a deployment ceiling enforced **at
+  create**, and mirrored into Browserbase's platform-side session
+  `timeout`) is the real spend bound; a hung CDP connection or dead worker
+  cannot run a browser past it.
 - Concurrency: org-level cap (`NESSIE_BROWSER_CLOUD_MAX_CONCURRENT`, default
-  well under the Browserbase plan cap) enforced at session create with a
-  clear tool error, so one agent fan-out cannot exhaust the org's plan.
+  well under the Browserbase plan cap) taken as an **atomic claim** in the
+  create transaction (counter row or advisory lock — a count-then-insert
+  under fan-out admits N past the cap; the claim-once rule applies to caps
+  too), with a clear tool error for the loser. Browserbase's own 429
+  (concurrency or creation-rate) maps to the same clear error, and usage
+  copy accounts for their one-minute minimum charge per created session —
+  local durations under-report the billed allowance otherwise.
 - Every session writes a connector-usage-style event (duration, run, agent,
   requesting user) for `/ops/usage`; no cost fields — the org's Browserbase
   bill is Browserbase's, and we don't mirror commercial state.
@@ -480,24 +582,46 @@ surfaces belong to the executor's own UI, not this panel.)
   `/channels/:id/threads/:threadId/browser/:sessionId`, the reply-panel URL
   discipline. All three open the panel; the panel's expand control (and any
   tap under 900px) goes full-screen.
-- **Watch vs control — and control is a claimed semaphore.** The thumbnail
-  and the panel are watch-only (`pointer-events: none`). Full-screen shows
-  **Take control**, and because a shared agent's session can render to many
-  entitled viewers at once, control is serialized exactly like every other
-  one-winner transition in the codebase: `CloudBrowserSession` carries
-  `controlledByUserId` + `controlClaimedAt`, claimed by a conditional UPDATE
-  (`controlledByUserId IS NULL` in the WHERE), so two simultaneous presses
-  have one winner. While claimed: the claimant's iframe is interactive,
-  every other viewer stays watch-only and sees "«name» is at the controls",
-  and `browser_observe`/`browser_screenshot` are suppressed for the session
-  (§4.4) — the agent, the claimant, and other viewers can never drive at
-  once. Release is explicit ("Hand back", which lifts the suppression and
-  resumes the agent) and also structural: session end releases it, and the
-  claim expires after a short keepalive timeout so a closed laptop lid never
-  holds a team's browser hostage. Eligibility to claim at all: the run's
-  requester always, and any viewer the session's basis already admits (for
-  a workspace agent, its audience). The login handoff card opens straight
-  into the claimed state for the pressing user.
+- **Watch vs control — and the URL, not CSS, is the boundary.** The review
+  killed the first draft's framing: `pointer-events: none` is a styling
+  choice any viewer flips in devtools, and the live-view URL Browserbase
+  returns is interactive for whoever holds it. So the real access decision
+  is **who may fetch the URL at all** — the viewer-authorized detail route
+  — and every viewer it admits must be treated as *able to drive*, which
+  is acceptable precisely because that set is the agent's audience, the
+  same people the logins are declared shared with. Phase 1 verifies
+  whether Browserbase offers a genuinely non-interactive live-view
+  variant and per-URL expiry; until proven, the URL is handled as a
+  live-session bearer capability: minted per-open, never persisted,
+  never logged, and its unverified expiry is a phase-1 gate (§6.3).
+- **The control claim is coordination and audit, not the security
+  boundary** — but it does gate the *agent*. `CloudBrowserSession` carries
+  `controlledByUserId` + `controlClaimedAt`, claimed by a conditional
+  UPDATE (`controlledByUserId IS NULL` in the WHERE): one winner, every
+  other viewer sees "«name» is at the controls". While any claim is held,
+  **every** browser tool for that session is refused — `browser_act`,
+  `browser_goto`, and `browser_close` included, not just observe and
+  screenshot, because Nessie dispatches tool batches concurrently and an
+  agent mid-navigation while a person types credentials is exactly the
+  race the first draft claimed away — and the worker re-checks the claim
+  per dispatch, with input enabled in the viewer only after the session's
+  in-flight tool calls settle. Release is explicit ("Hand back") and
+  structural (session end; a short keepalive timeout so a closed laptop
+  lid never holds a team's browser hostage).
+- **One authorization rule for the whole live surface, and it is the
+  run's, not just the browser's.** The first draft contradicted itself
+  (requester-only in §4.4, audience in §4.9) and checked only browser
+  authentication, ignoring everything else the run consumed — but a run
+  that read a private document and then typed it into a public web form
+  is exactly what `runReplyIsRestricted` exists to cut. The rule: a
+  session's live surface (live-view URL minting, `stream.browser.tabs`,
+  `browser.session.*` events) is authorized against the **union of the
+  session's basis and the owning run's current basis**, re-evaluated on
+  the same monotone predicate the other live lanes use. Restricted tab
+  events carry `restricted: true` with no titles/origins, and entitled
+  viewers resolve through the authorized detail route — the
+  document-stream pattern verbatim. During a login handoff the surface
+  narrows further, to the card's addressee alone.
 - **The shared-browser banner.** On a workspace agent's browser, the viewer
   renders a dismissible notice pinned above the iframe: *"Other people can
   use this agent's browser. Anything you sign in to here is shared with
@@ -506,13 +630,8 @@ surfaces belong to the executor's own UI, not this panel.)
   control mode**, because that is the moment the sentence is load-bearing.
   Private agents' browsers render no banner; there is nobody else. This is
   the consent half of §4.5's warn-not-partition decision.
-- **Who may watch is the session's disclosure basis, reused.** A session on
-  a human-authenticated agent browser renders only for viewers who satisfy
-  its `agent:<id>` scope (the agent's audience; a private agent's owner
-  alone); an unauthenticated or ephemeral session renders for anyone who
-  can see the thread — the same predicate the reply messages answer to, and
-  an unauthorized session is shaped exactly like an absent one (the
-  indistinguishable-404 discipline).
+- An unauthorized session is shaped exactly like an absent one (the
+  indistinguishable-404 discipline); authorization is the union rule above.
 - **One right panel at a time**: opening the screen panel closes the reply
   panel and vice versa (v1) — two stacked right panels is the nested-frame
   shape the content system forbids.
@@ -534,8 +653,8 @@ drawer thumbnail, the thinking-bubble chip, the deep-link route, cancel-run,
 plus ops usage rows + the member's own-hours readout. *Done when:* a member on a free
 personal account can grant an agent the browser and ask "check what this
 page says", watch it happen, and see their hours — and an owner connecting
-the company account flips every browser-granted agent to it without anyone
-reconfiguring.
+the company account makes the cloud bundle grantable org-wide (each agent
+still granted explicitly, §3.6 — a prior executor grant never converts).
 
 **Phase 2 — agent browsers + login handoff.**
 `AgentBrowser` + `AgentBrowserLogin`, context create/attach
@@ -578,30 +697,47 @@ that let `browser.connected.*` be advertised.
    same-origin writes (doing the task on the signed-in service) stay free,
    and unauthenticated/ephemeral sessions are entirely ungated, so the
    common cases feel nothing. Owners *may* additionally pin a browser to a
-   domain allowlist — opt-in hardening, never the default. Residual risk
-   accepted and named, not solved: same-origin exfiltration (a webmail
-   draft to an attacker) and data smuggled through navigation URLs; the
-   opt-in pinning closes the second for browsers that want it. Phase 1
-   (ephemeral-only) carries ordinary `web_fetch`-grade exposure.
-2. **The Browserbase dashboard bypasses disclosure.** Whoever holds the
-   Browserbase account can replay every session in Browserbase's own UI —
-   including a private agent's browsing on the org connection, and possibly
-   login handoffs. Phase 1: verify whether recordings can be disabled per
-   session and whether replays mask password fields; the connect UI states
-   the fact either way. Private agents on personal connections avoid the
-   org-admin case by construction.
-3. **Live-view URL semantics are unverified.** If `debuggerFullscreenUrl`
-   is a long-lived bearer link, a leaked URL sidesteps viewer authorization
-   and the control semaphore. Phase 1 verifies expiry/auth empirically;
-   until then it is minted per-open, never persisted, never logged.
+   domain allowlist — opt-in hardening, never the default (its home is the
+   Agent Designer Browser panel, per Rule zero). The gate's trigger set is
+   the §4.5 mechanical authenticated-origin fact (CDP cookie domains),
+   never `serviceHint` text; "write" covers typed input, submitting
+   clicks, and cross-origin navigation carrying data, and the review's
+   honest limits are recorded: page-script requests (CSRF, redirects,
+   popups) act below the tool layer and are not interceptable; the gate is
+   per-run, so material carried across runs via memory can be egressed by
+   a later clean session (the generic model-knows-secrets egress problem,
+   shared with `http_fetch` — not new here); and same-origin exfiltration
+   (a webmail draft to an attacker) stays open by the §7.1 decision, whose
+   trade — a page's injected instruction can trigger a same-origin
+   destructive action, and the person's ask is still treated as the
+   consent — the review objected to and the decision-maker accepted. The
+   opt-in pinning closes the navigation-URL channel for browsers that want
+   it. Phase 1 (ephemeral-only) carries ordinary `web_fetch`-grade
+   exposure.
+2. **The Browserbase dashboard bypasses disclosure — mitigated by session
+   flags** (upgraded by review: the flags are documented, not
+   hypothetical). Recording and session logging are ON by default; every
+   Nessie session is created with `recordSession: false` and logging
+   disabled, so login handoffs and authenticated browsing are not
+   replayable from the Browserbase dashboard. Residual: the account holder
+   still sees session metadata and could change nothing we control at
+   Browserbase's side; the connect UI says so, and §4.1's private-agent
+   personal-connection preference exists for exactly this.
+3. **Live-view URL semantics are unverified — phase-1 gate.** Browserbase
+   documents neither expiry nor single-use for `debuggerFullscreenUrl`; if
+   it is a long-lived bearer link, a leaked URL outlives membership
+   revocation and sidesteps the control claim. §4.9 already treats every
+   URL holder as a potential driver and admits only the session's
+   authorized audience; the empirical expiry check is a gate on phase 1,
+   not a to-do.
 4. **Anti-bot lockouts hit the person's real account.** Handoff copy warns;
    and a structural steering block (toolset facts only, the research-routing
    precedent) points agents at first-party connectors where one exists —
    the browser is for services without a connector.
-5. **CAPTCHA policy vs platform default.** Paid Browserbase plans enable
-   auto captcha solving; our stance is human-solves-via-Live-View. Phase 1:
-   pass the session setting that disables it if the API offers one, else
-   amend §3.3's claim to match reality.
+5. **CAPTCHA policy vs platform default — resolved.** Solving is ON by
+   default and `browserSettings.solveCaptchas: false` is documented; every
+   Nessie session create passes it, making §3.3's human-solves stance true
+   by construction.
 6. **Handoff burn + free-tier session cap.** `waiting_input` keeps the
    session alive: default card expiry ~15 min, and the handoff UI must
    detect a platform-killed session (free tier caps at ~15 min) and offer a
@@ -622,6 +758,61 @@ that let `browser.connected.*` be advertised.
    plainly where session state lives. No product mitigation needed; the
    transport abstraction remains the hedge for orgs that want browsers on
    their own infrastructure later.
+10. **A connection that stops working owns the way a person finds out.**
+    Keys get revoked, projects deleted, accounts suspended, plans
+    downgraded — Browserbase names project deletion and account
+    suspension as context invalidators. `CloudBrowserConnection` gets the
+    trigger-health treatment (AGENTS.md's transition-owns-the-alert rule):
+    a runtime auth failure claims a classified `needs_attention` state by
+    conditional UPDATE with a persisted reason, alerts the owner (or the
+    personal connection's member) exactly once per transition, stops
+    advertising the toolset, and recovery is an explicit re-key — never
+    silent retry against a dead key, and never a stale toolset promising a
+    browser that cannot open.
+11. **Passkeys and remote browsers do not mix.** A service that mandates
+    passkeys/WebAuthn cannot complete login in a cloud browser (the
+    authenticator is on the person's device), and mobile live-view typing
+    needs Browserbase's virtual-keyboard option. Named limitation: the
+    handoff card says so when the person reports a passkey wall, and the
+    mobile viewer passes the keyboard parameter — "sign in from your
+    phone" is a phase-2 acceptance test, not an assumption.
+
+## 6a. Adversarial-review addenda (2026-09-02, Kimix + Codex Sol)
+
+Accepted findings that are requirements rather than section rewrites:
+
+- **Non-idempotent actions get the executor's ambiguity protocol.** A click
+  can place an order and then lose the CDP response; the device transport
+  already handles this with a stable per-tool-call idempotency identity
+  and a fatal unknown-outcome error (`executor-toolset.ts`) — the cloud
+  dispatch mirrors it: never silently retry an action whose outcome is
+  unknown, never report it failed when it may have happened.
+- **A pinned WSS dial is new work, not a reused precedent.** The MCP SSE
+  transport rides HTTP `safeFetch`, and the raw pinned connector returns a
+  TCP socket without a TLS/WebSocket handshake — `@nessie/browser-cloud`
+  builds the resolve-pin-then-TLS(SNI)-then-upgrade client as its own
+  deliverable on the `url-safety.ts` primitives. `browser_goto` also
+  refuses non-http(s) schemes, matching the executor's egress posture
+  (navigation egresses from Browserbase's network, so the SSRF surface is
+  theirs, but scheme hygiene is ours).
+- **"Sign out & reset" is authorized and honest.** Reset is available to
+  the agent's steward/owner and to any recorded signer (their own
+  revocation right) — not to every member, or it is a one-click DoS on a
+  team's logins. It first force-releases any active session through the
+  ordinary claim, and the copy says both truths: it wipes *all* logins
+  (per-service selective sign-out via CDP cookie deletion is phase-3
+  polish), and it does not revoke the service's own server-side session —
+  fully revoking means the service's own security page too.
+- **Unattended opt-in granularity is the browser, not the login.** One
+  context carries every service's cookies at once, so a per-login
+  per-trigger opt-in would be audit metadata pretending to be a boundary;
+  phase 3's opt-in is per-browser and the copy says which services ride
+  along.
+- **One context per agent is a recorded trade.** Browserbase recommends a
+  context per site identity (large contexts slow sessions; one poisoned
+  context takes every login down). v1 keeps one context per agent for the
+  Grok-parity mental model and revisits if session startup degrades —
+  the escape hatch is per-service contexts behind the same tools.
 
 ## 7. Open questions
 

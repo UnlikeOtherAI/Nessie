@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { type InfiniteData, keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
@@ -12,6 +12,7 @@ import {
 } from './document-stream'
 import type { DocumentStreamStore } from './document-stream-store'
 import type { DocumentStreamEntry } from './document-stream-helpers'
+import { fetchThreadMessages } from './queries'
 import {
   classifyStreamResponse,
   runStreamConnectionLoop,
@@ -63,8 +64,9 @@ export const useThreadMessages = (threadId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: threadKeys.messages(threadId),
-    queryFn: () => apiClient.get(`/api/threads/${threadId}/messages`),
+    queryFn: () => fetchThreadMessages(apiClient, threadId ?? ''),
     enabled: Boolean(threadId),
   })
 }
@@ -74,6 +76,7 @@ export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: threadKeys.repliesOf(threadId, rootMessageId),
     queryFn: () =>
       apiClient.get(`/api/threads/${threadId}/messages?rootMessageId=${rootMessageId}`),
@@ -91,6 +94,7 @@ export const useThreadMessage = (threadId?: string, messageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageDetail>({
+    placeholderData: keepPreviousData,
     queryKey: threadKeys.message(threadId, messageId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages/${messageId}`),
     enabled: Boolean(threadId) && Boolean(messageId),
@@ -135,6 +139,7 @@ export const useRunThinkingLog = (
   const apiClient = useApiClient()
 
   return useQuery<RunThinkingLog>({
+    placeholderData: keepPreviousData,
     queryKey: threadKeys.runThinking(threadId, runId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/runs/${runId}/thinking`),
     enabled: enabled && Boolean(threadId) && Boolean(runId),

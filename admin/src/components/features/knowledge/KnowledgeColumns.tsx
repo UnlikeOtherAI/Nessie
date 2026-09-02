@@ -147,7 +147,7 @@ export const KnowledgeColumns = ({
   ]
 
   return (
-    <div className="animate-kb-view-slide h-full w-full">
+    <div className="h-full w-full">
       <ColumnBrowserViewport
         activeColumn={columns.length - 1}
         columnWidth={columnWidth}

@@ -12,10 +12,8 @@ import { AgentDesignerForm } from '../components/features/agents/designer/AgentD
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useDesignerAssistantPanel } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { revealDesignerToolCall } from '../components/features/agents/designer/reveal-control'
-import {
-  ResponsivePageHeader,
-  type PageHeaderAction,
-} from '../components/shared/ResponsivePageHeader'
+import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   buildRunLimits,
   readAgentRunLimits,
@@ -36,6 +34,7 @@ import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/too
 import type { AgentRecord } from '../lib/api-client'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 
 export const AgentDesignerPage = () => {
   const { agentId } = useParams<{ agentId?: string }>()
@@ -89,6 +88,7 @@ export const AgentDesignerContent = ({
 }: AgentDesignerContentProps) => {
   const location = useLocation()
   const navigate = useNavigate()
+  const navigation = usePhoneNavigation()
   const [searchParams] = useSearchParams()
   const isOwner = useIsOwner()
   const parentId = searchParams.get('parentId') ?? undefined
@@ -143,7 +143,7 @@ export const AgentDesignerContent = ({
     }
   }, [editingAgent])
 
-  const { actions, state } = useAgentDesigner(initialState, modelOptions)
+  const { actions, clearDraft, state } = useAgentDesigner(initialState, modelOptions, editingAgent?.id)
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
 
   // A new agent cannot be saved without a model, and the Design Assistant may
@@ -195,23 +195,14 @@ export const AgentDesignerContent = ({
     return null
   }, [location.state])
 
+  // The shared smart Back: an explicit return address wins, else a real
+  // previous entry is popped, else the list replaces the cold deep link.
   const handleBack = () => {
-    const historyIndex =
-      typeof window.history.state?.idx === 'number'
-        ? window.history.state.idx
-        : 0
-
-    if (historyIndex > 0) {
-      void navigate(-1)
+    if (navigation) {
+      navigation.back({ returnTo, fallback: '/agents' })
       return
     }
-
-    if (returnTo) {
-      void navigate(returnTo, { replace: true })
-      return
-    }
-
-    void navigate('/agents', { replace: true })
+    void navigate(returnTo ?? '/agents', { replace: true })
   }
 
   const handleSave = async () => {
@@ -250,6 +241,9 @@ export const AgentDesignerContent = ({
         visibility: state.visibility,
       })
     }
+
+    // Saved: the form is no longer unsent, so its draft goes.
+    clearDraft()
 
     if (embedded) {
       onDone?.()
@@ -292,8 +286,13 @@ export const AgentDesignerContent = ({
           </button>
         </div>
       ) : (
-        <ResponsivePageHeader
+        // A Flow that returns to an explicit address the registry cannot
+        // know (the list it was opened from), so it owns its Back on every
+        // layout rather than deferring to the shared doorway.
+        <ScreenHeader
           actions={headerActions}
+          backLabel="Back"
+          flowOwnsBack
           onBack={handleBack}
           title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
         />

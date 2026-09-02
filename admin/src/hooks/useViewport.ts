@@ -174,14 +174,20 @@ const createViewportStore = (thresholds: BreakpointThresholds): ViewportStore =>
 }
 
 const createBrowserViewportStore = (): ViewportStore => {
+  // A window without computed styles (a bare DOM shim) has no tokens to read,
+  // which the branch below treats exactly like a stylesheet without them.
   const readToken = (name: string): string =>
-    getComputedStyle(document.documentElement).getPropertyValue(name)
+    (typeof getComputedStyle === 'function'
+      ? getComputedStyle(document.documentElement).getPropertyValue(name)
+      : '')
   const thresholds = readBreakpointThresholds(readToken)
   if (thresholds === null) {
     // Fail loud in dev: a missing token means styles.css lost its @theme block and
     // every band would silently derive as 'base'. Production degrades to the base
     // snapshot instead of throwing mid-render.
-    if (import.meta.env.DEV) {
+    // `import.meta.env` exists only under Vite; a plain Node runtime (the
+    // test loader) is not dev and degrades like production.
+    if (import.meta.env?.DEV) {
       const missing =
         BREAKPOINT_NAMES.find(
           (name) => parseCssLengthToPx(readToken(`--breakpoint-${name}`)) === null,

@@ -14,6 +14,7 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
 import { usePagedList } from '../facades/usePagedList'
 import { workflowKeys } from '../lib/query-keys'
 import { Pill } from '../components/primitives/Pill'
+import { Skeleton } from '../components/primitives/Skeleton'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
@@ -382,72 +383,80 @@ export const WorkflowsPage = () => {
         {/* Search narrows only the loaded page: `/api/workflows` has no
             server-side text filter to page a search against, so paging past
             the first screen and searching are two different ways to reach
-            more templates rather than one combined query. */}
-        <QueryState
-          emptyLabel={
-            sortedTemplates.length === 0
-              ? 'No workflows yet. Build one in the designer.'
-              : 'No workflows match the search.'
-          }
-          errorLabel="Workflows could not be loaded."
-          isEmpty={filteredTemplates.length === 0}
-          loadingLabel="Loading workflows…"
-          query={templatesList.query}
-        >
-          {() => (
-            <>
-              <RowList label="Workflows">
-                {filteredTemplates.map((template) => {
-                  const summary = summarizeInstallations(template.installationSummary)
+            more templates rather than one combined query.
 
-                  return (
-                    <Row
-                      key={template.id}
-                      onClick={() => selectTemplate(template)}
-                      selected={template.id === selectedTemplate?.id}
-                      subtitle={
-                        `v${template.version} · ${template.graph.steps.length} step`
-                        + `${template.graph.steps.length === 1 ? '' : 's'}`
-                        + (template.installationSummary?.total
-                          ? ` · ${template.installationSummary.total} installation${
-                              template.installationSummary.total === 1 ? '' : 's'
-                            }`
-                          : '')
-                        + ' · '
-                        + (formatRelativeTime(template.updatedAt)
-                          ?? formatTimestamp(template.updatedAt))
-                      }
-                      title={
-                        <span className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate">
-                            {template.name}
+            A list whose shape is already known shows that shape while it
+            loads rather than the word Loading (docs/navigation/overview.md §14); the
+            kit's QueryState still owns the error and empty lines. */}
+        {templatesList.query.isLoading ? (
+          <Skeleton className="py-4" count={4} variant="list" />
+        ) : (
+          <QueryState
+            emptyLabel={
+              sortedTemplates.length === 0
+                ? 'No workflows yet. Build one in the designer.'
+                : 'No workflows match the search.'
+            }
+            errorLabel="Workflows could not be loaded."
+            isEmpty={filteredTemplates.length === 0}
+            loadingLabel="Loading workflows…"
+            query={templatesList.query}
+          >
+            {() => (
+              <>
+                <RowList label="Workflows">
+                  {filteredTemplates.map((template) => {
+                    const summary = summarizeInstallations(template.installationSummary)
+
+                    return (
+                      <Row
+                        key={template.id}
+                        onClick={() => selectTemplate(template)}
+                        selected={template.id === selectedTemplate?.id}
+                        subtitle={
+                          `v${template.version} · ${template.graph.steps.length} step`
+                          + `${template.graph.steps.length === 1 ? '' : 's'}`
+                          + (template.installationSummary?.total
+                            ? ` · ${template.installationSummary.total} installation${
+                                template.installationSummary.total === 1 ? '' : 's'
+                              }`
+                            : '')
+                          + ' · '
+                          + (formatRelativeTime(template.updatedAt)
+                            ?? formatTimestamp(template.updatedAt))
+                        }
+                        title={
+                          <span className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate">
+                              {template.name}
+                            </span>
+                            {summary ? (
+                              <Pill height="control" tone={summary.tone}>
+                                {summary.label}
+                              </Pill>
+                            ) : null}
+                            {template.source === 'demonstration' ? (
+                              <Pill height="control" tone="accent">Learned</Pill>
+                            ) : null}
                           </span>
-                          {summary ? (
-                            <Pill height="control" tone={summary.tone}>
-                              {summary.label}
-                            </Pill>
-                          ) : null}
-                          {template.source === 'demonstration' ? (
-                            <Pill height="control" tone="accent">Learned</Pill>
-                          ) : null}
-                        </span>
-                      }
-                    />
-                  )
-                })}
-              </RowList>
-              <PaginationFooter
-                canNext={templatesList.canNext}
-                canPrevious={templatesList.canPrevious}
-                className="mt-3"
-                hideWhenSinglePage
-                label={templatesList.label}
-                onPageChange={templatesList.onPageChange}
-                page={templatesList.page}
-              />
-            </>
-          )}
-        </QueryState>
+                        }
+                      />
+                    )
+                  })}
+                </RowList>
+                <PaginationFooter
+                  canNext={templatesList.canNext}
+                  canPrevious={templatesList.canPrevious}
+                  className="mt-3"
+                  hideWhenSinglePage
+                  label={templatesList.label}
+                  onPageChange={templatesList.onPageChange}
+                  page={templatesList.page}
+                />
+              </>
+            )}
+          </QueryState>
+        )}
       </div>
     </ColumnBrowserColumn>,
   )

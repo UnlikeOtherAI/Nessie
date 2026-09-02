@@ -7,12 +7,13 @@
  * page.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   DashboardLayout,
   DashboardWidgetProjection,
   WidgetDefinition,
 } from '@nessie/schemas'
+import type { ApiClient } from '../../lib/api-client'
 import { dashboardKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -79,15 +80,24 @@ export const useDashboards = (filter?: { home?: string; projectId?: string }) =>
   })
 }
 
+export type DashboardDetailRecord = DashboardRecord & {
+  widgets: DashboardWidgetRecord[]
+}
+
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchDashboard = (
+  client: ApiClient,
+  dashboardId: string,
+): Promise<DashboardDetailRecord> =>
+  client.get<DashboardDetailRecord>(`/api/dashboards/${dashboardId}`)
+
 export const useDashboard = (dashboardId: string | undefined) => {
   const client = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     enabled: Boolean(dashboardId),
     queryKey: dashboardKeys.detail(dashboardId),
-    queryFn: () =>
-      client.get<DashboardRecord & { widgets: DashboardWidgetRecord[] }>(
-        `/api/dashboards/${dashboardId}`,
-      ),
+    queryFn: () => fetchDashboard(client, dashboardId ?? ''),
   })
 }
 
@@ -95,6 +105,7 @@ export const useWidgetData = (widgetId: string, options?: { compact?: boolean })
   const client = useApiClient()
   const suffix = options?.compact ? '?compact=true' : ''
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: dashboardKeys.widgetDataView(widgetId, suffix),
     queryFn: () =>
       client.get<DashboardWidgetProjection>(`/api/dashboard-widgets/${widgetId}/data${suffix}`),
@@ -115,6 +126,7 @@ export const useDashboardSources = () => {
 export const useDashboardVersions = (dashboardId: string | undefined) => {
   const client = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     enabled: Boolean(dashboardId),
     queryKey: dashboardKeys.versions(dashboardId ?? ''),
     queryFn: () =>
@@ -141,8 +153,15 @@ export const useSaveLayout = (dashboardId: string) => {
   const client = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (layout: DashboardLayout) =>
-      client.put<DashboardRecord>(`/api/dashboards/${dashboardId}/layout`, layout),
+    // `If-Match` carries the revision the editor started from, so a save that
+    // lost a race is refused (409 DASHBOARD_REVISION_CONFLICT) rather than
+    // overwriting a widget somebody else moved.
+    mutationFn: ({ layout, revision }: { layout: DashboardLayout; revision?: number }) =>
+      client.put<DashboardRecord>(
+        `/api/dashboards/${dashboardId}/layout`,
+        layout,
+        revision === undefined ? undefined : { 'if-match': String(revision) },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboardId) })
       queryClient.invalidateQueries({ queryKey: dashboardKeys.versions(dashboardId) })

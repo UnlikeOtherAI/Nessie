@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { KnowledgeSpaceResponse } from '@nessie/schemas'
+import type { ApiClient } from '../../lib/api-client'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -97,19 +98,35 @@ export const useKnowledgeSpaces = (projectId?: string, enabled = true) => {
   const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
 
   return useQuery<KnowledgeSpaceRecord[]>({
+    placeholderData: keepPreviousData,
     enabled,
     queryKey: knowledgeKeys.scopedSpaces(projectId),
     queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
   })
 }
 
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchKnowledgeSpace = (
+  apiClient: ApiClient,
+  spaceId: string,
+): Promise<KnowledgeSpaceRecord> =>
+  apiClient.get(`/api/knowledge-base/spaces/${spaceId}`)
+
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchKnowledgeSpacePages = (
+  apiClient: ApiClient,
+  spaceId: string,
+): Promise<KnowledgePageRecord[]> =>
+  apiClient.get(`/api/knowledge-base/spaces/${spaceId}/pages`)
+
 export const useKnowledgeSpace = (spaceId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgeSpaceRecord>({
+    placeholderData: keepPreviousData,
     enabled: Boolean(spaceId),
     queryKey: knowledgeKeys.space(spaceId),
-    queryFn: () => apiClient.get(`/api/knowledge-base/spaces/${spaceId}`),
+    queryFn: () => fetchKnowledgeSpace(apiClient, spaceId ?? ''),
   })
 }
 
@@ -117,8 +134,9 @@ export const useKnowledgePages = (spaceId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.pages(spaceId),
-    queryFn: () => apiClient.get(`/api/knowledge-base/spaces/${spaceId}/pages`),
+    queryFn: () => fetchKnowledgeSpacePages(apiClient, spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 }
@@ -127,6 +145,7 @@ export const useKnowledgePage = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.page(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}`),
     enabled: Boolean(pageId),
@@ -156,6 +175,7 @@ export const useKnowledgeVersions = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgeVersionRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.versions(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/versions`),
     enabled: Boolean(pageId),

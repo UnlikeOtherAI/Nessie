@@ -7,7 +7,8 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { useConsumedIntents } from '../navigation/intent'
 import {
   WsEventSchema,
   parseChannelId,
@@ -28,6 +29,7 @@ import { CallRealtimeContext } from '../facades/calls/realtime-context'
 import { getBaseUrl, type CallRecord } from '../lib/api-client'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { isDesktopApp } from '../lib/desktop'
+import { haptic, stopHaptic } from '../lib/haptics'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { openExternalUrl } from '../lib/open-external-url'
 import { readSseStream, type SseFrame } from '../lib/sse'
@@ -133,9 +135,12 @@ const useRingtone = (enabled: boolean): void => {
     gain.gain.value = 0.05
     oscillator.connect(gain).connect(context.destination)
     oscillator.start()
-    navigator.vibrate?.([180, 120, 180])
+    // Native has no repeating-pattern haptic, only one-shot notifications, so
+    // a ring is a single `warning` there; the web keeps its own repeating
+    // vibrate pattern via the same helper's browser fallback.
+    haptic('warning')
     return () => {
-      navigator.vibrate?.(0)
+      stopHaptic()
       oscillator.stop()
       oscillator.disconnect()
       gain.disconnect()
@@ -148,12 +153,13 @@ const useRingtone = (enabled: boolean): void => {
  * is reconciled against the live call route before it can make sound; an event
  * stream proves delivery, never that a stale ring still deserves attention.
  */
+const CALL_INTENTS = ['incomingCall', 'acceptCall'] as const
+
 export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
   const apiClient = useApiClient()
   const { me, token } = useAuthSession()
   const { focusModeEnabled } = useFocusMode()
   const location = useLocation()
-  const navigate = useNavigate()
   const currentUserId = me?.user.id ?? null
   const [state, dispatch] = useReducer(incomingCallReducer, undefined, initialReducer)
   const [now, setNow] = useState(Date.now())
@@ -301,48 +307,46 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
     }
   }
 
+  // `?incomingCall=` / `?acceptCall=` on a channel path are the push
+  // notification's intents (docs/navigation/overview.md §8): consumed once the channel
+  // and the signed-in user are known, then stripped, so Back never re-rings.
+  const channelId = parseChannelIdFromPath(location.pathname)
+  const callIntent = useConsumedIntents(CALL_INTENTS, {
+    enabled: channelId !== null && currentUserId !== null,
+  })
+  const { acceptCall: acceptCallId, incomingCall: incomingCallId } = callIntent.values
   useEffect(() => {
-    const parameters = new URLSearchParams(location.search)
-    const incomingCallId = parameters.get('incomingCall')
-    const acceptCallId = parameters.get('acceptCall')
     const requestedCallId = acceptCallId ?? incomingCallId
-    const channelId = parseChannelIdFromPath(location.pathname)
     if (!requestedCallId || !channelId || !currentUserId) return
 
     let cancelled = false
     const consumeUrlIntent = async () => {
-      try {
-        const call = await apiClient.get<CallRecord | null>(`/api/channels/${channelId}/call`)
-        if (cancelled || !call || call.id !== requestedCallId) return
-        const incoming = asIncomingCall(call)
-        if (!incoming) return
-        if (acceptCallId) {
-          try {
-            const result = await apiClient.post<CallAcceptResponse>(`/api/calls/${call.id}/accept`, {})
-            if (!cancelled) setPresentedCall({ call: incoming, presentation: mapAcceptResponse(result.code) })
-          } catch (error) {
-            if (!cancelled) setPresentedCall({
-              call: incoming,
-              presentation: mapAcceptResponse(error instanceof ApiClientError ? error.code : undefined),
-            })
-          }
-        } else if (isLiveInviteFor(call, currentUserId, Date.now()) && !cancelled) {
-          setDeepLinkedCall(incoming)
+      const call = await apiClient.get<CallRecord | null>(`/api/channels/${channelId}/call`)
+      if (cancelled || !call || call.id !== requestedCallId) return
+      const incoming = asIncomingCall(call)
+      if (!incoming) return
+      if (acceptCallId) {
+        try {
+          const result = await apiClient.post<CallAcceptResponse>(`/api/calls/${call.id}/accept`, {})
+          if (!cancelled) setPresentedCall({ call: incoming, presentation: mapAcceptResponse(result.code) })
+        } catch (error) {
+          if (!cancelled) setPresentedCall({
+            call: incoming,
+            presentation: mapAcceptResponse(error instanceof ApiClientError ? error.code : undefined),
+          })
         }
-      } finally {
-        if (!cancelled) {
-          const next = new URLSearchParams(location.search)
-          next.delete('incomingCall')
-          next.delete('acceptCall')
-          void navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' }, { replace: true })
-        }
+      } else if (isLiveInviteFor(call, currentUserId, Date.now()) && !cancelled) {
+        setDeepLinkedCall(incoming)
       }
     }
-    void consumeUrlIntent()
+    void consumeUrlIntent().catch(() => {
+      // The call lookup failed; the strip already happened and nothing rings.
+    })
     return () => {
       cancelled = true
     }
-  }, [apiClient, currentUserId, location.pathname, location.search, navigate])
+    // `callIntent.serial` re-runs this for a second link to the same call.
+  }, [acceptCallId, apiClient, callIntent.serial, channelId, currentUserId, incomingCallId])
 
   const realtimeValue = useMemo(() => ({
     inviteUpdates: state.inviteUpdates,

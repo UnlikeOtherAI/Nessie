@@ -1,27 +1,24 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
-import { allowsNativeBackForwardGestures } from './webview-back-gesture'
+import { NATIVE_BACK_FORWARD_GESTURES } from './webview-back-gesture'
+import { shouldInstallNativeBackHandler } from './native-phone-navigation'
 
-test('phones never get the native back/forward gesture', () => {
-  // iPhone portrait and landscape.
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 393, heightDp: 852 }), false)
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 852, heightDp: 393 }), false)
-  // Android phone portrait and landscape.
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 412, heightDp: 915 }), false)
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 915, heightDp: 412 }), false)
+// The native back/forward swipe is a WebView-wide switch that cannot be
+// scoped to a column; the admin's stack owns the edge swipe on phones and
+// every screen header carries a Back on the wider layouts, so the switch is
+// off everywhere (docs/navigation/overview.md §10).
+test('the native back/forward gesture is off on every form factor', () => {
+  assert.equal(NATIVE_BACK_FORWARD_GESTURES, false)
+  const webView = readFileSync(join(process.cwd(), 'src', 'components', 'MobileAdminWebView.tsx'), 'utf8')
+  assert.match(webView, /allowsBackForwardNavigationGestures=\{NATIVE_BACK_FORWARD_GESTURES\}/)
+  const app = readFileSync(join(process.cwd(), 'App.tsx'), 'utf8')
+  assert.doesNotMatch(app, /allowsNativeBackForwardGestures|nativeBackForwardGestures/)
 })
 
-test('tablets keep the native gesture only when both dimensions pass 600', () => {
-  // iPad portrait and landscape.
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 820, heightDp: 1180 }), true)
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 1180, heightDp: 820 }), true)
-  // Android tablet.
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 800, heightDp: 1280 }), true)
-  // Exactly at the threshold counts as tablet.
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 600, heightDp: 600 }), true)
-})
-
-test('one phone-sized dimension is enough to disable the native gesture', () => {
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 599, heightDp: 1200 }), false)
-  assert.equal(allowsNativeBackForwardGestures({ widthDp: 1200, heightDp: 599 }), false)
+// Android's hardware Back listener is a separate decision and installs on
+// every Android form factor regardless of the gesture switch.
+test('the gesture switch never gates the hardware Back handler', () => {
+  assert.equal(shouldInstallNativeBackHandler(true), true)
 })

@@ -243,6 +243,7 @@ export const AgentAvatarQuickEdit = ({
         />
 
         <ConfirmDialog
+          blocking
           body="This removes the agent's custom avatar. This can't be undone."
           confirmLabel="Remove image"
           destructive

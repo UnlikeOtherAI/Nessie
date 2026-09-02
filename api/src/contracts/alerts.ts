@@ -51,10 +51,9 @@ export const UserAlertRecordSchema = z.object({
 })
 export type UserAlertRecord = z.infer<typeof UserAlertRecordSchema>
 
-export const ListAlertsResponseSchema = z.object({
-  alerts: z.array(UserAlertRecordSchema),
-  unreadCount: z.number().int().nonnegative(),
-})
+// The page itself. `meta` carries the cursors and the total; the unread count
+// is `GET /api/alerts/summary`'s answer, not a field smuggled into a page.
+export const ListAlertsResponseSchema = z.array(UserAlertRecordSchema)
 export type ListAlertsResponse = z.infer<typeof ListAlertsResponseSchema>
 
 export const AttentionSummarySchema = z.object({

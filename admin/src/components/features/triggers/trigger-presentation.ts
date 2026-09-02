@@ -29,12 +29,6 @@ export type TriggerRegistryMaps = {
   workflowTemplatesById: Map<string, WorkflowTemplateRecord>
 }
 
-export const parseTriggerHash = (hash: string): string | undefined => {
-  const match = hash.match(/^#trigger-(.+)$/)
-  const encodedTriggerId = match?.[1]
-  return encodedTriggerId ? decodeURIComponent(encodedTriggerId) : undefined
-}
-
 export const formatTimestamp = (value?: string) =>
   value ? new Date(value).toLocaleString() : '—'
 

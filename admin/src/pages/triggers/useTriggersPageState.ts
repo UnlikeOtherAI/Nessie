@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { useLocation } from 'react-router-dom'
 import { useTriggers } from '../../facades/triggers/hooks'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -9,6 +8,8 @@ import {
   useWorkflowTemplates,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
+import { parseHashAnchor, useConsumedHashIntent } from '../../navigation/intent'
+import { useTabParam } from '../../navigation/useTabParam'
 import type {
   AgentRecord,
   AgentTriggerRecord,
@@ -18,7 +19,6 @@ import type {
 } from '../../lib/api-client'
 import {
   formatTriggerTarget,
-  parseTriggerHash,
   type TriggerRegistryMaps,
 } from '../../components/features/triggers/trigger-presentation'
 
@@ -28,6 +28,16 @@ type CreateTarget =
   | undefined
 
 export type TriggerStatusFilter = 'all' | AgentTriggerRecord['status']
+
+// The four segments the status strip offers, and what `?status=` is validated
+// against — a status the strip does not list (needs_reauthorization) reads as
+// All rather than silently emptying the list.
+export const TRIGGER_STATUS_FILTERS: readonly TriggerStatusFilter[] = [
+  'all',
+  'active',
+  'paused',
+  'error',
+]
 export type TriggerTypeFilter = 'all' | AgentTriggerRecord['type']
 
 export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
@@ -40,6 +50,8 @@ export type TriggersPageState = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
   isCreateDialogOpen: boolean
+  /** The triggers read has not settled; the list shows a skeleton, not "none yet". */
+  isPending: boolean
   registry: TriggerRegistryMaps
   searchQuery: string
   selectedTrigger?: AgentTriggerRecord
@@ -59,13 +71,15 @@ export type TriggersPageState = {
   workflowTemplates: WorkflowTemplateRecord[]
 }
 
+const parseTriggerHash = parseHashAnchor('trigger')
+
 export const useTriggersPageState = (): TriggersPageState => {
-  const location = useLocation()
   // The three owner-only reads below stay gated on this flag; the page's
   // refusal is <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
   const triggersQuery = useTriggers(isOwner)
   const triggers = triggersQuery.data ?? []
+  const triggersPending = triggersQuery.isPending
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
   const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
@@ -76,7 +90,10 @@ export const useTriggersPageState = (): TriggersPageState => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<TriggerStatusFilter>('all')
+  // The status narrowing is part of what the list shows, so it lives in the
+  // URL: `/triggers?status=error` is linkable and survives a refresh, and
+  // Back leaves the page rather than undoing the filter.
+  const [statusFilter, setStatusFilter] = useTabParam('status', TRIGGER_STATUS_FILTERS, 'all')
   const [typeFilter, setTypeFilter] = useState<TriggerTypeFilter>('all')
 
   // Soonest-to-fire first, so the list itself answers "what runs next" and no
@@ -143,10 +160,13 @@ export const useTriggersPageState = (): TriggersPageState => {
     })
   }, [registry, searchQuery, sortedTriggers, statusFilter, typeFilter])
 
+  // A "scheduled" link (`/agents/triggers#trigger-<id>`) selects its row
+  // once; the fragment is consumed, so Back and a refresh keep the person's
+  // own later selection (docs/navigation/overview.md §8).
+  const linkedTrigger = useConsumedHashIntent('trigger', parseTriggerHash)
   useEffect(() => {
-    const hashedTriggerId = parseTriggerHash(location.hash)
-    if (hashedTriggerId) setSelectedTriggerId(hashedTriggerId)
-  }, [location.hash])
+    if (linkedTrigger.value) setSelectedTriggerId(linkedTrigger.value)
+  }, [linkedTrigger])
 
   const statusCounts = useMemo<TriggerStatusCounts>(
     () => ({
@@ -205,6 +225,9 @@ export const useTriggersPageState = (): TriggersPageState => {
     effectiveTriggerId,
     filteredTriggers,
     isCreateDialogOpen: createDialogOpen,
+    // A disabled query reports `pending` forever, so a non-owner (whose
+    // refusal is <OwnerGate>) must not read as loading.
+    isPending: isOwner && triggersPending,
     registry,
     searchQuery,
     selectedTrigger,

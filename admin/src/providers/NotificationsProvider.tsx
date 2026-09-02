@@ -10,7 +10,7 @@ import {
   DESKTOP_NOTIFICATION_OPEN_EVENT,
   readDesktopNotificationOpenPath,
 } from '../facades/notifications/desktop-native-notification'
-import { isDesktopApp } from '../lib/desktop'
+import { consumeDesktopPendingPath, isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { useToasts } from './ToastProvider'
 import { useFocusMode } from './FocusModeProvider'
@@ -34,6 +34,9 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
     if (!isDesktopApp()) return undefined
     const openDesktopNotification = (event: Event) => {
       const path = readDesktopNotificationOpenPath(event)
+      // The live subscriber consumes the retained copy, so the root
+      // redirect never replays a click that was already handled here.
+      consumeDesktopPendingPath()
       if (path) {
         window.focus()
         void navigate(path)

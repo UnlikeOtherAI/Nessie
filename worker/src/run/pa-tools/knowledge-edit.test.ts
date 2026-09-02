@@ -52,6 +52,7 @@ const page = (status: 'draft' | 'published'): KnowledgePageRecord => ({
   projectId: 'project-1',
   publishedVersion: null,
   publishedVersionId: status === 'published' ? 'version-1' : null,
+  revision: 0,
   sensitivityTier: 'normal',
   spaceId: 'space-1',
   status,
