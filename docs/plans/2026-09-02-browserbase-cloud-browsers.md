@@ -557,7 +557,52 @@ proxy/geo options, Stagehand-style `browser_act` if observe/act proves too
 low-level. Separately tracked, not this plan: the disclosure preconditions
 that let `browser.connected.*` be advertised.
 
-## 6. Open questions
+## 6. Known risks — named, with owners in the phasing
+
+1. **Injection → exfiltration through the browser itself.** A hostile page
+   can steer the agent to read the signed-in tab and type what it finds
+   into an attacker's form — leaving via Browserbase's egress, so the
+   disclosure basis never fires. **Phase-2 blocker**: authenticated
+   browsing does not ship without a decided mitigation — candidate set:
+   human-set per-browser domain scoping (structural, not content-judged),
+   and/or approval-gated form submission in authenticated sessions.
+   Phase 1 (ephemeral-only) carries ordinary `web_fetch`-grade exposure.
+2. **The Browserbase dashboard bypasses disclosure.** Whoever holds the
+   Browserbase account can replay every session in Browserbase's own UI —
+   including a private agent's browsing on the org connection, and possibly
+   login handoffs. Phase 1: verify whether recordings can be disabled per
+   session and whether replays mask password fields; the connect UI states
+   the fact either way. Private agents on personal connections avoid the
+   org-admin case by construction.
+3. **Live-view URL semantics are unverified.** If `debuggerFullscreenUrl`
+   is a long-lived bearer link, a leaked URL sidesteps viewer authorization
+   and the control semaphore. Phase 1 verifies expiry/auth empirically;
+   until then it is minted per-open, never persisted, never logged.
+4. **Anti-bot lockouts hit the person's real account.** Handoff copy warns;
+   and a structural steering block (toolset facts only, the research-routing
+   precedent) points agents at first-party connectors where one exists —
+   the browser is for services without a connector.
+5. **CAPTCHA policy vs platform default.** Paid Browserbase plans enable
+   auto captcha solving; our stance is human-solves-via-Live-View. Phase 1:
+   pass the session setting that disables it if the API offers one, else
+   amend §3.3's claim to match reality.
+6. **Handoff burn + free-tier session cap.** `waiting_input` keeps the
+   session alive: default card expiry ~15 min, and the handoff UI must
+   detect a platform-killed session (free tier caps at ~15 min) and offer a
+   clean retry instead of a dead iframe.
+7. **One browser per agent is a throughput ceiling** — deliberate: a busy
+   team agent serializes authenticated browsing; ephemeral absorbs public
+   work. If it bites, the escape hatch is multiple browsers per agent,
+   never loosening the single-session claim.
+8. **No downloads/uploads yet.** Later phase: `browser_download` lands
+   bytes through the one `FileService` chokepoint (accounted, quota-gated);
+   uploads are the reverse. No improvised second byte path.
+9. **Data residency.** Cookies for corporate services live in Browserbase's
+   cloud; some orgs will refuse. The transport abstraction is the hedge — a
+   self-hosted pool or the device executor can back the same tools later —
+   and the connect UI says where session state lives.
+
+## 7. Open questions
 
 1. **Sensitive-action gating.** Should `browser_act` in a human-authenticated
    session require an approval for irreversible-looking actions (submitting
