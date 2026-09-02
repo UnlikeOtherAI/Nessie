@@ -74,7 +74,9 @@ export const AppDetailHero = ({
               {app.displayName}
             </h2>
             <AppTrustBadge trustLevel={app.trustLevel} />
-            {status.kind === 'pill' || status.kind === 'indicator' ? (
+            {/* The hero is the surface with room for words: the card carries
+                the same state as a dot and hands this label to its tooltip. */}
+            {status.kind === 'indicator' ? (
               <Pill tone={status.tone}>{status.label}</Pill>
             ) : null}
           </div>

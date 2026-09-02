@@ -176,7 +176,7 @@ grid gap-4
 │                                      │
 │ 12 capabilities                      │  meta line (--tx3), clamp-1
 │                        ┌──────────┐  │
-│ ● Connected            │  Connect │  │  footer: status | action
+│ ●  2                   │  Connect │  │  footer: status dot (+count) | action
 │                        └──────────┘  │
 └────────────────────────────────────┘
 ```
@@ -223,24 +223,26 @@ A "Built-in" app (e.g. Nessie's own document composer, or DeepWater where grante
 
 State derivation (all from data the client already has: catalog flags + instance rows for this user/team/org):
 
-| # | State | Derivation | Footer status label | Token family | Icon | Card clickable | Footer action |
-|---|---|---|---|---|---|---|---|
-| 1 | **AVAILABLE** | no instance, app healthy | *(none — status slot empty)* | none | — | yes → detail | **Connect** (primary) |
-| 2 | **CONNECTING** | install/OAuth flow in flight (client-side flag) | `Connecting…` | `--thinking` (accent family) | spinner (`animate-spin`, `text-[color:var(--thinking)]`) | no (inert during connect) | button disabled, label `Connecting…` |
-| 3 | **CONNECTED** | ≥1 healthy instance visible to me | `● Connected` | `success` | `●` dot glyph in `text-[color:var(--success-text)]` | yes | **Manage** (secondary) |
-| 4 | **MULTIPLE_ACCOUNTS** | >1 healthy instance | `● 3 accounts` | `success` | same `●` dot | yes | **Manage** (secondary) |
-| 5 | **AUTH_EXPIRED** | instance exists, auth invalid/expired | `⚠ Reconnect` | `warning` | `⚠` in `text-[color:var(--warning-text)]` | yes | **Reconnect** (primary) |
-| 6 | **ERROR** | probe/connection failure, not auth | `⚠ Connection error` | `danger` | `⚠` in `text-[color:var(--danger-text)]` | yes (detail explains in words) | **Retry** (primary) |
-| 7 | **DISABLED** | app locked/deprecated by admin, no live instance | `Unavailable` | muted (`--tx3` plain text, no pill) | — | yes (detail says why in words: "Your admin has turned this app off") | none — button hidden, not disabled-shown |
-| 8 | **UNAVAILABLE** | server flagged unreachable/discontinued before any install | `Not available right now` | muted (`--tx3` plain text) | — | yes | none |
+| # | State | Derivation | Card footer | Count | Token family | Label (tooltip + detail hero) | Card clickable | Footer action |
+|---|---|---|---|---|---|---|---|---|
+| 1 | **AVAILABLE** | no instance, app healthy | *(none — status slot empty)* | — | none | — | yes → detail | **Connect** (primary) |
+| 2 | **CONNECTING** | install/OAuth flow in flight | filled dot | when >1 | `--thinking` (accent family) | `Connecting` | yes → **Finish setup** | link, `Finish setup` |
+| 3 | **CONNECTED** | ≥1 healthy instance visible to me | filled dot | never (a lone `1` is noise) | `success` | `Connected` | yes | **Manage** (secondary) |
+| 4 | **MULTIPLE_ACCOUNTS** | >1 healthy instance | filled dot + count | always | `success` | `3 accounts connected` | yes | **Manage** (secondary) |
+| 5 | **AUTH_EXPIRED** | instance exists, auth invalid/expired | filled dot + count | when >1 | `warning` | `needs reconnecting` / `2 accounts · needs reconnecting` | yes | **Reconnect** (primary) |
+| 6 | **ERROR** | probe/connection failure, not auth | filled dot + count | when >1 | `danger` | `connection error` / `2 accounts · connection error` | yes (detail explains in words) | **Retry** (primary) |
+| 6b | **PAUSED** | every visible account switched off | **hollow** dot + count | when >1 | `muted` | `Turned off` | yes | **View accounts** (secondary) |
+| 7 | **DISABLED** | app locked/deprecated by admin, no live instance | `Unavailable` | — | muted (`--tx3` plain text, no pill) | — | yes (detail says why in words: "Your admin has turned this app off") | none — button hidden, not disabled-shown |
+| 8 | **UNAVAILABLE** | server flagged unreachable/discontinued before any install | `Not available right now` | — | muted (`--tx3` plain text) | — | yes | none |
 
 Notes on the states:
 
-- **Multiple status precedence:** ERROR > AUTH_EXPIRED > CONNECTING > MULTIPLE_ACCOUNTS > CONNECTED. A card with two healthy instances and one expired shows `⚠ Reconnect` — the decision-relevant state wins; the detail view enumerates accounts.
-- **StatusPill mapping:** states 3–6 render as the existing `StatusPill` primitive: CONNECTED/MULTIPLE_ACCOUNTS → `tone="success"`, AUTH_EXPIRED → `tone="warning"`, ERROR → `tone="danger"`, CONNECTING → `tone="accent"` (its `text-[color:var(--thinking)]` foreground is exactly the in-progress colour). States 1, 7, 8 deliberately render as plain `--tx3` text, **not** `tone="muted"` — an uppercased tracked pill for "Available" shouts; absence/muted text is the calm default (principle 4).
-- **StatusPill change needed:** one small extension — the dot/warning glyph. Today `StatusPill` renders children only, so `●`/`⚠` is passed as part of children (`<StatusPill tone="success">● Connected</StatusPill>`). No new variant is required; if we want the glyph aligned with a real icon font later, add an optional `icon?: ReactNode` prop rendered before children — an additive change, not a new tone. The uppercase/tracking style of `StatusPill` is kept as-is for visual consistency with the rest of admin; copy inside pills is short enough that uppercase stays legible.
+- **Multiple status precedence:** ERROR > AUTH_EXPIRED > CONNECTING > MULTIPLE_ACCOUNTS > CONNECTED. A card with two healthy instances and one expired shows the **warning** dot carrying a `3` — the decision-relevant state decides the colour, the count says how many accounts sit behind it, and the detail view enumerates them.
+- **On a card a connection state is a dot, not a pill.** A tracked uppercase pill reading `CONNECTED` or `2 ACCOUNTS` was wider than the app's own name and sat beside a `Manage` button that already said the app was connected, so a shelf of connected apps read as a wall of green banners. States 2–6b render as `AppCardStatusIndicator`: a 10px dot in the state's token colour, plus the account count in the same colour when — and only when — there is more than one. One account is the ordinary case and a lone `1` beside a dot reads as a rendering fault.
+- **The words are not lost, they move.** `AppCardStatus.label` is the card's `aria-label`/`title` (the focusable indicator gives keyboard users the same tooltip) and is what `AppDetailHero` renders as a full `Pill` — the detail view is the surface with room to spell a state out. That is why the labels carry no `●`/`⚠` glyph any more: the card draws the mark, the hero writes the sentence.
+- **Colour is health, the number is quantity.** `success` / `warning` / `danger` / `accent` come straight from the theme tokens, so two accounts of which one has expired render as an amber dot with a `2` beside it rather than a green one. `paused` is the one **hollow** dot (`border`, no fill): the same relationship in its off position, not an availability verdict. States 1, 7, 8 stay plain `--tx3` text, **not** a muted pill — an uppercased tracked pill for "Available" shouts; absence is the calm default (principle 4).
 - **Button copy, full matrix:** Connect / Connecting… / Manage / Manage / Reconnect / Retry / *(none)* / *(none)*. "Install" is never used — installing is what the system does; the user *connects*.
-- **CONNECTING is the only non-clickable card** — it is transient (seconds), and clicking mid-OAuth would open a detail view with nothing to show.
+- **Every card opens, in every state**, CONNECTING included: it is `pending_setup`, which an install waiting on an unentered API key sits in indefinitely, so the detail page has to stay one click away (its action is `Finish setup`, not a disabled restatement of the dot).
 
 ---
 

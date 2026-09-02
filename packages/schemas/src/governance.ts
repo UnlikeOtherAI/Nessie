@@ -84,6 +84,7 @@ export const PolicyConditionsSchema = z.object({
   ipRanges: z.array(z.string()).optional(),
   requiresApproval: z.boolean().optional(),
   approvalActionType: z.string().optional(),
+  reviewMode: z.enum(['auto']).optional(),
   maxUsagePerHour: z.number().int().positive().optional(),
 })
 export type PolicyConditions = z.infer<typeof PolicyConditionsSchema>
@@ -103,6 +104,7 @@ export const PolicyDecisionSchema = z.object({
   ]),
   requiresApproval: z.boolean().optional(),
   approvalActionType: z.string().optional(),
+  reviewMode: z.enum(['auto']).optional(),
   /** Internal worker signal: a verified proof satisfied this decision. */
   approvalProofUsed: z.boolean().optional(),
 })
@@ -290,6 +292,9 @@ export const AuditActionSchema = z.enum([
   'comms.connection.disconnected',
   'comms.connection.data_deleted',
   'comms.connection.capabilities_changed',
+  'gmail.draft.sent',
+  'gmail.send_grant.created',
+  'gmail.send_grant.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

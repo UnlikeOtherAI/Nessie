@@ -19,12 +19,18 @@ const localTeamId = '00000000-0000-4000-8000-000000000004'
 const userId = '00000000-0000-4000-8000-00000000000a'
 const externalOrgId = 'org_acme'
 const externalTeamId = 'team_design'
+const uoaPrivateKeyPem = String(
+  generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+    format: 'pem',
+    type: 'pkcs8',
+  }),
+)
 
 const uoaEnv = {
   UOA_BASE_URL: 'https://uoa.test',
   UOA_CLIENT_SECRET: 'test-client-secret',
   UOA_CONFIG_JWT_KID: 'test-kid',
-  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
+  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(uoaPrivateKeyPem).toString('base64'),
   UOA_CONFIG_URL: 'https://nessie.test/uoa/config.jwt',
   UOA_DOMAIN: 'nessie.test',
   UOA_JWKS_URL: 'https://nessie.test/.well-known/jwks.json',
@@ -97,7 +103,15 @@ const actorContextFor = (
     projectId,
     teamId: overrides.teamId ?? teamId,
   },
-  actionContext: { requestId: 'req-workspace-members' },
+  actionContext: {
+    requestId: 'req-workspace-members',
+    uoaIdentity: {
+      organizationId: externalOrgId,
+      subject: 'usr_ada',
+      teamId: externalTeamId,
+      tokenVersion: 7,
+    },
+  },
 })
 
 type StubCall = {
@@ -105,6 +119,7 @@ type StubCall = {
   method: string
   authorization?: string
   hasAccessToken: boolean
+  subjectAssertion?: string
   body?: string
 }
 
@@ -118,8 +133,9 @@ const stubFetch = (calls: StubCall[], respond: Responder): PinnedFetch =>
       method: init?.method ?? 'GET',
       authorization: headers.get('authorization') ?? undefined,
       // UOA reads a present-but-blank access token as a malformed credential,
-      // so backend mode requires the header to be absent in every form.
+      // so the signed-subject path keeps it absent in every form.
       hasAccessToken: headers.has('x-uoa-access-token'),
+      subjectAssertion: headers.get('x-uoa-subject-assertion') ?? undefined,
       ...(typeof init?.body === 'string' ? { body: init.body } : {}),
     }
     calls.push(call)
@@ -270,7 +286,27 @@ test('GET /api/workspace/members joins the UOA team and organisation reads', asy
       ])
       for (const call of calls) {
         assert.match(call.authorization ?? '', /^Bearer [0-9a-f]{64}$/)
-        assert.equal(call.hasAccessToken, false, 'backend mode must omit the access token')
+        assert.equal(call.hasAccessToken, false, 'UOA access tokens are never persisted or forwarded')
+        assert.ok(call.subjectAssertion, 'the current UOA subject must be asserted upstream')
+        const claims = JSON.parse(
+          Buffer.from(call.subjectAssertion!.split('.')[1]!, 'base64url').toString('utf8'),
+        ) as Record<string, unknown>
+        assert.deepEqual(
+          {
+            active: claims.active,
+            aud: claims.aud,
+            source_domain: claims.source_domain,
+            sub: claims.sub,
+            tv: claims.tv,
+          },
+          {
+            active: { orgId: externalOrgId, teamId: externalTeamId },
+            aud: 'https://uoa.test/org',
+            source_domain: 'nessie.test',
+            sub: 'usr_ada',
+            tv: 7,
+          },
+        )
       }
     } finally {
       await app.close()

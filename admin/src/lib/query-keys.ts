@@ -114,6 +114,8 @@ export const agentCardKeys = {
 
 export const approvalKeys = {
   all: ['approvals'] as const,
+  detail: (approvalId?: string) => ['approvals', approvalId ?? null] as const,
+  pendingCount: ['approvals', 'pending-count'] as const,
 }
 
 export const demonstrationKeys = {
@@ -502,4 +504,11 @@ export const workspaceKeys = {
   avatarRevision: ['workspace', 'avatar', 'revision'] as const,
   invitations: ['workspace', 'invitations'] as const,
   members: ['workspace', 'members'] as const,
+}
+
+export const browserCloudKeys = {
+  connections: ['browser-cloud', 'connections'] as const,
+  session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,
+  threadSessions: (threadId?: string) =>
+    ['browser-cloud', 'threads', threadId, 'sessions'] as const,
 }

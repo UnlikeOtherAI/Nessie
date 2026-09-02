@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@nessie/comms-connect": "workspace:*",
+    "@nessie/comms-google": "workspace:*",
     "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/dashboard": "workspace:*",
@@ -29,6 +30,7 @@
     "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
+    "@nessie/browser-cloud": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
     "@nessie/memory": "workspace:*",
     "@nessie/push": "workspace:*",

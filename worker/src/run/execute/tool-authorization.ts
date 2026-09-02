@@ -1,9 +1,19 @@
-import { BUILTIN_TOOL_DEFINITIONS, DEEP_WATER_START_FAILURE_DETAIL } from '@nessie/runtime'
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  DEEP_WATER_START_FAILURE_DETAIL,
+  STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
+} from '@nessie/runtime'
+import { resolveStandingConsentForToolCall } from '@nessie/workspace-admin'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
 import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import {
+  reviewableToolSurface,
+  type AutoReviewResult,
+  type ReviewableToolSurface,
+} from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
 import {
@@ -29,6 +39,7 @@ export type ToolAuthorizationDecision =
       decision: 'suspend'
       approval: {
         id: string
+        notice: string
         toolName: string
       }
     }
@@ -48,11 +59,17 @@ export type ToolAuthorizationContext = {
    * skip it and still pass the policy/approval evaluation.
    */
   externalToolNames?: Set<string>
+  /** The main loop's live view, including deferred MCP names loaded mid-run. */
+  mcpToolNames?: ReadonlySet<string>
+  /** The executor operations actually exposed for this run. */
+  executorToolNames?: ReadonlySet<string>
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
   /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
   consumeApprovalProof?: boolean
+  /** A prepared call has already received its single auto-review verdict. */
+  skipAutoReview?: boolean
   resumeState?: {
     actorContext: AuthorizedActionContext
     interactive: boolean
@@ -68,6 +85,12 @@ export type ToolAuthorizationAuditEmitter = (
 
 export type ToolAuthorizationHooks = {
   deepWaterHandoffGuard: DeepWaterHandoffGuard
+  /** One bounded utility-model review, supplied by the caller that owns metering. */
+  reviewProposedAction?: (input: {
+    args: Record<string, unknown>
+    surface: ReviewableToolSurface
+    toolName: string
+  }) => Promise<AutoReviewResult>
   // Audit defaults to `emitWorkerAuditEvent` in `authorizeToolExecution`; the
   // seam exists so flows whose audit identity is out of scope for this change
   // (the delegate sub-agent) keep their previous recording behaviour exactly.
@@ -166,7 +189,7 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const policyDecision = await evaluateToolInvokePolicy(
+  const rawPolicyDecision = await evaluateToolInvokePolicy(
     prisma,
     toolActorContext,
     context,
@@ -174,6 +197,40 @@ export const authorizeToolExecution = async (
     args,
     { consumeApprovalProof: auth.consumeApprovalProof },
   )
+
+  // A tool may declare its approval requirement in CODE rather than relying on
+  // a `PolicyRule` row. The evaluator's default verdict is `allow`, so a purely
+  // data-driven gate is simply absent in any organization whose seed never ran
+  // — which is every organization created before the rule existed. Sending mail
+  // as a person is not something that may be ungated by accident.
+  //
+  // The one legitimate bypass is standing consent the mailbox owner gave for
+  // this exact agent, resolved here so the decision lives at the chokepoint
+  // every tool execution passes through rather than in each handler.
+  const policyDecision = await (async () => {
+    if (
+      !rawPolicyDecision.allowed
+      || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+      || toolActorContext.approval?.approvalProof
+    ) {
+      return rawPolicyDecision
+    }
+    const consented = await resolveStandingConsentForToolCall(prisma, {
+      toolName,
+      args,
+      organizationId: context.channel.organizationId,
+      agentId: context.agent.id,
+      requestingUserId: toolActorContext.actionContext.effectiveUserId ?? null,
+      interactive: auth.resumeState?.interactive ?? false,
+    })
+    if (consented) return rawPolicyDecision
+    return {
+      ...rawPolicyDecision,
+      allowed: false as const,
+      reason: 'approval_required' as const,
+    }
+  })()
+
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       approvalActionType: policyDecision.approvalActionType,
@@ -193,7 +250,14 @@ export const authorizeToolExecution = async (
         interactive: auth.resumeState.interactive,
         messageId: auth.resumeState.messageId,
       })
-      return { decision: 'suspend', approval: { id: approval.id, toolName } }
+      return {
+        decision: 'suspend',
+        approval: {
+          id: approval.id,
+          notice: `⚠️ I need approval before I can run ${toolName}.`,
+          toolName,
+        },
+      }
     }
     return {
       decision: 'deny',
@@ -210,7 +274,119 @@ export const authorizeToolExecution = async (
     }
   }
 
+  if (policyDecision.reviewMode === 'auto' && !auth.skipAutoReview) {
+    const surface = reviewableToolSurface(toolName, {
+      executorToolNames: auth.executorToolNames,
+      mcpToolNames: auth.mcpToolNames,
+    })
+    if (surface) {
+      const review = await runAutoReview(hooks, { args, surface, toolName })
+      await recordAutoReview(prisma, emitAudit, toolActorContext, context, toolName, surface, review)
+
+      if (review.verdict === 'deny') {
+        return {
+          decision: 'deny',
+          result: toolDeniedResult(toolName, args, {
+            message: `Automated review denied ${toolName}: ${review.reason}`,
+            policyRuleId: policyDecision.policyRuleId,
+            policySource: policyDecision.policySource,
+            reason: 'auto_review_denied',
+          }),
+        }
+      }
+
+      if (review.verdict === 'require_approval') {
+        const notice = `Automated review asked for approval before ${toolName}: ${review.reason}`
+        if (auth.maySuspendForApproval && auth.resumeState) {
+          const approval = await createToolApprovalRequest(prisma, {
+            actorContext: auth.resumeState.actorContext,
+            args,
+            context,
+            interactive: auth.resumeState.interactive,
+            messageId: auth.resumeState.messageId,
+            policyRuleId: policyDecision.policyRuleId,
+            reason: notice,
+            toolCallId,
+            toolName,
+          })
+          return { decision: 'suspend', approval: { id: approval.id, notice, toolName } }
+        }
+        return {
+          decision: 'deny',
+          result: toolDeniedResult(toolName, args, {
+            message: notice,
+            policyRuleId: policyDecision.policyRuleId,
+            policySource: policyDecision.policySource,
+            reason: 'approval_required',
+          }),
+        }
+      }
+    }
+  }
+
   return { decision: 'allow', toolActorContext }
+}
+
+const runAutoReview = async (
+  hooks: ToolAuthorizationHooks,
+  input: { args: Record<string, unknown>; surface: ReviewableToolSurface; toolName: string },
+): Promise<AutoReviewResult> => {
+  if (!hooks.reviewProposedAction) {
+    return {
+      reason: 'The automated reviewer was unavailable, so a human must decide.',
+      reviewerModel: null,
+      verdict: 'require_approval',
+    }
+  }
+  try {
+    return await hooks.reviewProposedAction(input)
+  } catch {
+    return {
+      reason: 'The automated reviewer was unavailable, so a human must decide.',
+      reviewerModel: null,
+      verdict: 'require_approval',
+    }
+  }
+}
+
+const recordAutoReview = async (
+  prisma: PrismaClient,
+  emitAudit: ToolAuthorizationAuditEmitter,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+  surface: ReviewableToolSurface,
+  review: AutoReviewResult,
+): Promise<void> => {
+  await prisma.taskEvent.create({
+    data: {
+      eventType: 'tool.auto_reviewed',
+      payload: {
+        surface,
+        toolName,
+        verdict: review.verdict,
+      },
+      taskId: context.task.id,
+    },
+  })
+  await emitAudit(actorContext, {
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      autoReview: {
+        reviewerModel: review.reviewerModel,
+        verdict: review.verdict,
+      },
+      runId: context.run.id,
+      surface,
+      taskId: context.task.id,
+      toolId: toolName,
+    },
+    outcome: review.verdict === 'deny' ? 'denied' : 'success',
+    ...(review.verdict === 'deny' ? { reason: 'auto_review_denied' } : {}),
+    resourceId: toolName,
+    resourceType: 'tool',
+  })
 }
 
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
@@ -230,6 +406,7 @@ const createToolApprovalRequest = async (
     interactive: boolean
     messageId: string
     policyRuleId?: string
+    reason?: string
     toolCallId: string
     toolName: string
   },
@@ -255,8 +432,16 @@ const createToolApprovalRequest = async (
     expiresAt: new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_MS),
     organizationId: input.context.channel.organizationId,
     projectId: input.context.channel.projectId,
-    reason: `Tool ${input.toolName} requires approval before it can run.`,
+    reason: input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
+    // A send-as-you gate is resolvable ONLY by the person whose account it
+    // acts as. Approval visibility otherwise reaches any member who can read a
+    // public channel, so without this a colleague could authorise an email
+    // sent in somebody else's name.
+    requiredApproverUserId:
+      STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
+        ? input.actorContext.actionContext.effectiveUserId ?? null
+        : null,
     resumeState: {
       actorContext: input.actorContext,
       args: input.args,

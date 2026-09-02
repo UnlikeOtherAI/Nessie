@@ -1,5 +1,6 @@
 export * from './budget.js'
 export * from './credits.js'
+export * from './builtin-browser-tools.js'
 export * from './builtin-connector-tools.js'
 export * from './builtin-comms-tools.js'
 export * from './builtin-integration-tools.js'
@@ -32,3 +33,5 @@ export * from './fts.js'
 export * from './url-safety.js'
 export * from './disclosure-predicate.js'
 export * from './disclosure-access.js'
+
+export * from './builtin-google-tools.js'

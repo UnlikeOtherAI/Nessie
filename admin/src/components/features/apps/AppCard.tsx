@@ -60,31 +60,61 @@ const ACTION_TONE = {
   secondary: 'admin-button admin-button-compact admin-button-secondary',
 } as const
 
+// `muted` is the one hollow dot: a turned-off account is the same relationship
+// in its off position, so it keeps the shape and loses the fill.
 const STATUS_INDICATOR_TONE: Record<AppCardStatusTone, string> = {
   accent: 'bg-[color:var(--thinking)]',
   danger: 'bg-[color:var(--danger-text)]',
-  muted: 'bg-[color:var(--tx3)]',
+  muted: 'border border-[color:var(--tx3)]',
   success: 'bg-[color:var(--success-text)]',
   warning: 'bg-[color:var(--warning-text)]',
 }
 
+const STATUS_COUNT_TONE: Record<AppCardStatusTone, string> = {
+  accent: 'text-[color:var(--thinking)]',
+  danger: 'text-[color:var(--danger-text)]',
+  muted: 'text-[color:var(--tx3)]',
+  success: 'text-[color:var(--success-text)]',
+  warning: 'text-[color:var(--warning-text)]',
+}
+
 /**
- * A state still needs to be discoverable without reserving a pill's width.
- * The focusable target gives keyboard users the same native tooltip as hover.
+ * Every connection state, in the width of a dot: one mark, tone-coded, with the
+ * number of accounts beside it when there is more than one. A card sits in a
+ * shelf of cards, so a state that reserves a tracked uppercase pill's width
+ * ("CONNECTED", "2 ACCOUNTS") crowds out the app's own name and its action for
+ * a fact the dot already carries.
+ *
+ * The words are not lost — they are the tooltip, and the detail hero renders
+ * the same `label` in full. The focusable target gives keyboard users that
+ * tooltip too, and the count renders as text so it survives at any zoom.
  */
 const AppCardStatusIndicator = ({
+  count,
   label,
   tone,
-}: Pick<Extract<ReturnType<typeof appCardStatus>, { kind: 'indicator' }>, 'label' | 'tone'>) => (
+}: Pick<
+  Extract<ReturnType<typeof appCardStatus>, { kind: 'indicator' }>,
+  'count' | 'label' | 'tone'
+>) => (
   <span
     aria-label={label}
-    className="relative z-10 inline-flex h-6 w-6 shrink-0 cursor-help items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+    className={[
+      'relative z-10 inline-flex h-6 shrink-0 cursor-help items-center gap-1 rounded-full',
+      count === null ? 'w-6 justify-center' : 'px-1.5',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
+    ].join(' ')}
     data-testid="app-card-status"
     role="img"
     tabIndex={0}
     title={label}
   >
     <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${STATUS_INDICATOR_TONE[tone]}`} />
+    {count === null ? null : (
+      <span aria-hidden="true" className={`text-xs font-medium ${STATUS_COUNT_TONE[tone]}`}>
+        {count}
+      </span>
+    )}
   </span>
 )
 
@@ -185,9 +215,7 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         <div className="min-w-0">
           {status.kind === 'indicator' ? (
-            <AppCardStatusIndicator label={status.label} tone={status.tone} />
-          ) : status.kind === 'pill' ? (
-            <Pill tone={status.tone}>{status.label}</Pill>
+            <AppCardStatusIndicator count={status.count} label={status.label} tone={status.tone} />
           ) : status.kind === 'quiet' ? (
             <span className="truncate text-xs text-[color:var(--tx3)]">{status.label}</span>
           ) : null}

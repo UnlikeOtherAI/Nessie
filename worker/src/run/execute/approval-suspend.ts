@@ -28,7 +28,7 @@ export const prepareApprovalSuspend = async (
   deps: ExecutionDependencies,
   context: RunContext,
   input: {
-    approval: { id: string; toolName: string }
+    approval: { id: string; notice: string; toolName: string }
     goal: string
     inference: RunInference
     invocationSink: InvocationRecord[]
@@ -50,7 +50,7 @@ export const prepareApprovalSuspend = async (
   return {
     approvalId: input.approval.id,
     checkpointId,
-    notice: `⚠️ I need approval before I can run ${input.approval.toolName}.`,
+    notice: input.approval.notice,
     toolName: input.approval.toolName,
   }
 }

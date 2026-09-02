@@ -19,6 +19,7 @@ import {
 } from '../../components/features/channels/CallerCallDialog'
 import VoiceCallDialog from '../../components/features/channels/VoiceCallDialog'
 import type { VoiceCallState } from '../../facades/voice/voice-call-client'
+import { AgentScreenPanel } from '../../components/features/browser-cloud/AgentScreenPanel'
 
 /** What the page hands the overlay layer to render a live voice call. */
 type VoiceCallOverlay = {
@@ -45,6 +46,9 @@ interface ChannelOverlaysProps {
   agents: AgentRecord[]
   allUsers: UserRecord[]
   boundAgents: AgentRecord[]
+  /** The agent browser session being watched, if any. */
+  browserSessionId: string | null
+  onCloseBrowserSession: () => void
   channelUsers: UserRecord[]
   callerCallActionError: unknown
   callerCallActionPending: boolean
@@ -136,6 +140,8 @@ export const ChannelOverlays = ({
   onCloseSettings,
   onGroupCreated,
   onInsertTrimmed,
+  browserSessionId,
+  onCloseBrowserSession,
   onCloseCallerDialog,
   onCloseStartCallFailure,
   onFinishCall,
@@ -164,6 +170,10 @@ export const ChannelOverlays = ({
         thread={replyThread}
         token={token}
       />
+    ) : null}
+
+    {browserSessionId && !replyThread.openRootMessageId ? (
+      <AgentScreenPanel onClose={onCloseBrowserSession} sessionId={browserSessionId} />
     ) : null}
 
     {deepWaterDialog}

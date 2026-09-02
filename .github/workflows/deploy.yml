@@ -8,6 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One deploy at a time, and a running deploy is never killed. This group is
+# load-bearing: it is what stops one run's rsync from rewriting /srv/nessie
+# while another run's build/redeploy is still reading it. GitHub keeps only the
+# newest PENDING run per group, so under heavy merge traffic intermediate
+# queued deploys show as "cancelled" — that is subsumption, not lost work: the
+# newer run deploys a tree that already contains their commits.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -16,6 +22,11 @@ jobs:
   deploy:
     name: Build & deploy to Hetzner
     runs-on: ubuntu-latest
+    # A deploy is ~15-20 min; without this a hung ssh holds the
+    # deploy-production concurrency slot for the 6h default and every deploy
+    # behind it stalls (happened 2026-09-02: the remote redeploy died, the
+    # runner's ssh never noticed, and the queue was blocked for the duration).
+    timeout-minutes: 45
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -31,6 +42,14 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Keepalives so a silently dropped connection fails the step in ~2
+          # minutes instead of hanging until the job timeout. Applies to every
+          # ssh below and to rsync's ssh transport.
+          {
+            echo 'Host *'
+            echo '  ServerAliveInterval 15'
+            echo '  ServerAliveCountMax 8'
+          } >> ~/.ssh/config
 
       - name: Sync source to host
         # Mirror the tree with --delete so files REMOVED from the repo don't
