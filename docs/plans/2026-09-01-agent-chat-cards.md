@@ -625,6 +625,21 @@ code is authoritative and the difference is noted here:
 - **`storeInstanceSecret` and `upsertOverride` now accept a transaction
   client**, so the credential placement commits with the press. The ref is
   still minted on the store's own handle — an unreferenced secret row is inert.
+- **The edit refusal is enforced, by one shared predicate.** §4.2 always said
+  the message-edit service refuses a message carrying `agentCardResponse`, but
+  the guard was missing on both sides: `updateMessage` selected no `metadata`
+  and authorized on `userId` alone, and the admin offered the pencil on any own
+  user message — so a presser could edit a "Deny" into an "Allow" beside a card
+  that said otherwise. `isAgentCardResponseMessage` (`@nessie/schemas`) is now
+  the single predicate for that question: `updateMessage` selects `metadata`
+  and returns `immutable`, which the route maps to `409
+  MESSAGE_IMMUTABLE_CARD_RESPONSE`, and `ChannelMessageRow` gates `canEdit` on
+  the same call so the affordance never walks a presser into that error. It
+  matches the key's presence rather than the strict whole-object schema, so a
+  future sibling key cannot silently reopen the edit. Deleting stays allowed
+  exactly as §4.2 says — a tombstone changes nothing on the card — and the
+  non-author 403 still answers first, so an edit attempt on somebody else's
+  press does not disclose that it was one.
 
 ### Original plan
 
