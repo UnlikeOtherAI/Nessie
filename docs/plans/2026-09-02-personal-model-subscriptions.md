@@ -81,7 +81,7 @@ and worker. An adapter is a code-level declaration, one per provider:
 interface SubscriptionProviderAdapter {
   key: SubscriptionProviderKey;            // 'openai-codex' | 'kimi' | 'glm' | 'grok'
   displayName: string;
-  authStrategy: 'oauth_loopback' | 'api_key';
+  authStrategy: 'oauth_device' | 'oauth_loopback' | 'api_key';
   transport: {
     runtimeProvider: ModelProviderName;    // which compiled connector carries it
     baseUrl: string;                       // code constant — never user-supplied
@@ -100,22 +100,23 @@ interface SubscriptionProviderAdapter {
   parameterised to Zhipu's Anthropic-compatible endpoint, or
   `openai-compatible` against their OpenAI-shape endpoint — decided at
   implementation time by probing which endpoint the coding-plan key accepts.
-- **Grok** → `'oauth_loopback'`, tied to the consumer subscription
+- **Grok** → `'oauth_device'`, tied to the consumer subscription
   (SuperGrok Heavy, $300/mo, includes the Grok Bot beta and coding; launch
-  reporting also cites SuperGrok / X Premium+ tiers). xAI's open-source
-  terminal agent **Grok Build** (`xai-org/grok-build`) is the reference
-  client: standard OIDC discovery
-  (`{issuer}/.well-known/openid-configuration`), authorization-code + PKCE,
-  scopes `openid profile email offline_access api:access`, and — unlike
-  Codex — a **port-agnostic loopback redirect** (`http://127.0.0.1/callback`,
-  RFC 8252), so the desktop capture can bind an ephemeral port. Tokens live in
-  `~/.grok/auth.json` with silent refresh; subscription eligibility is
-  enforced at auth time, so an ineligible account simply fails the link. The
-  issuer, client_id, backend endpoint and protocol shape (expected
-  OpenAI-compatible; models `grok-4` family + `grok-code-fast`) are pinned at
-  implementation time from the Grok Build source, like Codex (§2.5). Same
-  `auth.json` import fallback applies.
-- **OpenAI Codex** → `'oauth_loopback'` + a **new `codex-subscription`
+  reporting also cites SuperGrok / X Premium+ tiers). xAI's flow needs **no
+  loopback at all**: OIDC discovery against `https://auth.x.ai`
+  (`/.well-known/openid-configuration`) + the RFC 8628 device-code grant,
+  shared public client `b1a00492-073a-47ea-816f-4c329264a828`, scopes
+  `openid profile email offline_access grok-cli:access api:access`;
+  discovered endpoints must pass an `x.ai`/`*.x.ai` host check. Inference
+  rides the existing `openai-compatible` connector against
+  `https://cli-chat-proxy.grok.com/v1` with an `X-XAI-Token-Auth` header.
+  Subscription eligibility is enforced by xAI at auth time; a token response
+  without a `refresh_token` is a hard link failure, and xAI's consent screen
+  may label the app "Grok Build" because the client is shared (say so in the
+  linking UI). (Constants verified against OpenClaw `extensions/xai/`,
+  2026-09-02 — §2.5.)
+- **OpenAI Codex** → `'oauth_device'` primary, `'oauth_loopback'` optional
+  desktop nicety, + a **new `codex-subscription`
   connector** (§2.5). Ships in phase 2.
 
 Base URLs and OAuth endpoints are adapter constants, so there is no
@@ -213,59 +214,88 @@ Ownership transfer of an agent whose model is `subscription/*` clears the
 model back to null (deployment default) in the same transaction — the new
 owner never inherits spend on the old owner's plan.
 
-### 2.5 The OAuth-loopback adapters: Codex and Grok (phase 2)
+### 2.5 The OAuth adapters: Codex and Grok (phase 2) — our own grant, always
 
-OpenAI's "Sign in with ChatGPT" is authorization-code + PKCE against
-`auth.openai.com` with a client registered for **one fixed redirect:
-`http://localhost:1455/auth/callback`**. So the browser leg must terminate on
-the user's own machine. All endpoint/client details below are to be pinned at
-implementation time from the current open-source Codex CLI, not hardcoded
-from memory: authorize + token endpoints on `auth.openai.com`, the Codex CLI
-`client_id`, scopes (`openid profile email offline_access`), the
-`chatgpt_account_id` claim in the id_token, and the backend
-`https://chatgpt.com/backend-api/codex/responses` contract (Responses API
-shape, `store: false`, streaming, `chatgpt-account-id` + `OpenAI-Beta`
-headers, and the allowed model list — `gpt-5-codex` family).
+**Prior art: OpenClaw** (sibling repo, verified at origin/main
+`64807afd269`, 2026-09-02). It hit exactly the failure this section is
+designed against and documents it (`docs/concepts/oauth.md`, "The token
+sink"): providers mint a new refresh token on login/refresh and invalidate
+the previous one, so two apps sharing one grant randomly log each other out.
+Its Codex-CLI credential-import path was **removed** (their changelog
+#70390); their rule is that the app runs its **own authorization request**
+and its own stored refresh token is canonical.
 
-**Grok** shares the whole flow with better manners: the Grok Build reference
-client uses ordinary OIDC discovery + PKCE with a **port-agnostic** loopback
-(`http://127.0.0.1/callback`), so its capture binds an ephemeral port instead
-of fighting over a fixed one, and eligibility (SuperGrok Heavy / eligible
-tiers) is enforced by the provider at auth time. Its issuer, client_id, and
-backend contract are pinned from `xai-org/grok-build` the same way Codex's
-are pinned from the Codex CLI.
+Nessie adopts the same principle, stated as an invariant:
 
-Two linking paths, desktop first — one generic capture, parameterised per
-adapter (never a per-provider fork):
+> **A subscription link is Nessie's own OAuth grant.** Nessie never reads,
+> imports, or accepts the vendor CLI's stored credentials
+> (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain items). One grant =
+> one refresh owner = no rotation conflicts with the app the person already
+> uses. The earlier `auth.json` import fallback is dropped from this plan
+> for exactly that reason.
 
-1. **Desktop loopback (primary).** A new Tauri command
-   (`subscription_auth_capture`) binds the adapter-declared loopback —
-   `127.0.0.1:1455` for Codex, an ephemeral `127.0.0.1` port for Grok — for
-   the duration of the flow, guarded by the same
-   `assert_approved_companion_caller` origin check as the executor commands.
-   Flow: admin calls `POST /api/model-subscriptions/:provider/start` → server
-   mints PKCE + one-shot state (verifier stays server-side) and returns the
-   authorize URL → shell opens the system browser (`tauri-plugin-opener`) and
-   starts the listener → the listener answers the redirect with a constant
-   "return to Nessie" page (the MCP callback-page discipline: constant HTML,
-   no redirect) and hands `code`+`state` to the admin → admin posts them to
-   `…/complete` → the **server** performs the token exchange, verifies the
-   id_token, seals the bundle. Tokens are never parked in the browser.
-2. **Import fallback (web-only users).** The person runs the provider's own
-   login (`codex login` → `~/.codex/auth.json`; Grok Build → `~/.grok/auth.json`)
-   on their Mac and pastes the file's contents into a one-time form; the
-   server validates shape + probes, then seals it. Blunt but universal, and
-   honest about what it is.
+**Primary flow for both: RFC 8628 device code, run entirely server-side.**
+Both providers support it (constants verified against OpenClaw's
+`extensions/openai/openai-chatgpt-device-code.ts` and
+`extensions/xai/xai-oauth.ts`):
 
-Refresh: `grant_type=refresh_token` at the adapter's token endpoint, through
-the locked coordinator. Connector work: Codex needs a new
-`codex-subscription` runtime provider speaking the Responses API (streaming
-deltas mapped onto the existing `output_text.delta` / `tool_call.delta` event
-shape so the loop, thinking recorder, and document streaming see nothing
-new); Grok's backend is expected to be OpenAI-compatible and would ride the
-existing connector with bearer-token headers — confirmed against Grok Build's
-source before building. Vision per each backend's actual support;
-`structuredOutputMode` and tool calling are native for both.
+1. `POST /api/model-subscriptions/:provider/start` — the server asks the
+   provider's device-authorization endpoint for a code and returns
+   `{ userCode, verificationUrl, expiresAt }`; PKCE material and the pending
+   state live in the one-shot pg state row.
+2. The settings page shows the code and link ("enter **XXXX-XXXX** at
+   …"); the person completes consent in any browser on any device — no
+   loopback listener, no desktop dependency, works for web-only users.
+3. The server polls the token endpoint at the provider's stated interval
+   (honouring `slow_down`), performs the exchange, verifies the id_token,
+   seals the bundle. Tokens never touch the browser.
+
+This removes the Tauri loopback command from the critical path entirely. A
+loopback browser flow (Codex's fixed `localhost:1455` redirect) can be added
+later as a desktop nicety; it is no longer load-bearing.
+
+Adapter constants, to be re-pinned from the reference clients at
+implementation time:
+
+- **Codex:** `auth.openai.com` authorize/token/deviceauth endpoints, the
+  public Codex client `app_EMoamEEZ73f0CkXaXp7hrann`, scopes
+  `openid profile email offline_access`, the `chatgpt_account_id` claim, and
+  the backend `https://chatgpt.com/backend-api/codex/responses` contract
+  (Responses API shape, `store: false`, streaming, `chatgpt-account-id` +
+  `OpenAI-Beta` headers, `gpt-5-codex` family). OpenAI's flow accepts an
+  `originator` parameter — Nessie sends `originator=nessie`, identifying
+  itself honestly as a distinct client of the shared public app rather than
+  impersonating the CLI (OpenClaw's precedent; OpenAI documents subscription
+  OAuth as supported in external tools).
+- **Grok:** §2.1 — OIDC discovery on `auth.x.ai`, shared public client,
+  device-code grant, `cli-chat-proxy.grok.com/v1` backend on the
+  `openai-compatible` connector.
+
+**Refresh discipline (hardening §2.2's coordinator with OpenClaw's field
+lessons):**
+
+- One refresh owner per token family: the Nessie server, under the
+  `FOR UPDATE` row lock. Inside the lock, **re-read before spending** — a
+  caller that was queued behind a peer's successful refresh adopts the fresh
+  token instead of burning the rotated refresh token.
+- **Never retry a refresh grant on a transport failure.** A response lost
+  after the provider consumed the token has already rotated it; a resend
+  burns the family (xAI rotates aggressively — OpenClaw retries only
+  Cloudflare-challenge responses, and only for xAI).
+- Refresh proactively at a 5-minute expiry margin, not on 401.
+- Classify `refresh_token_reused` / `invalid_grant` / `revoked` as distinct
+  reasons: reuse means a race or a second client on the same grant (re-read
+  once, then `needs_reauthorization`); the others go straight to
+  `needs_reauthorization`. A token response missing `refresh_token` fails
+  the link immediately.
+
+Connector work: Codex needs a new `codex-subscription` runtime provider
+speaking the Responses API (streaming deltas mapped onto the existing
+`output_text.delta` / `tool_call.delta` event shape so the loop, thinking
+recorder, and document streaming see nothing new); Grok rides the existing
+`openai-compatible` connector with its header additions. Vision per each
+backend's actual support; `structuredOutputMode` and tool calling are native
+for both.
 
 ### 2.6 Metering, budgets, ops
 
@@ -303,10 +333,11 @@ source before building. Vision per each backend's actual support;
 
 ## 3. Terms-of-service honesty
 
-Each adapter carries a `termsNote` rendered verbatim at link time. For Codex:
-subscription auth is intended by OpenAI for Codex clients; using it from
-Nessie is the person's own choice against their own account, may violate
-OpenAI's terms, and can get the account rate-limited or actioned. Similar
+Each adapter carries a `termsNote` rendered verbatim at link time. For
+Codex: OpenClaw's docs state OpenAI explicitly supports subscription OAuth
+in external tools (re-verify against OpenAI's own published policy at
+implementation time); the note still says this spends the person's own
+account, is their own choice, and can hit their plan's rate windows. Similar
 notes for Kimi/GLM coding-plan keys and the Grok subscription login. The
 feature is per-user opt-in,
 default absent, and never provisioned by an admin on someone's behalf.
@@ -319,25 +350,28 @@ Anthropic: excluded outright (§ top).
    group + two-armed validation, `resolveStageProviderConfig` branch +
    ownership gate + failure classification, metering split. No new connector
    code — `kimi` and `openai-compatible` carry both transports.
-2. **Phase 2 — OAuth loopback: Codex + Grok.** Server OAuth
-   start/complete/refresh, the generic desktop loopback command + admin flow,
-   `auth.json` import fallback for both; the `codex-subscription`
-   Responses-API connector; Grok pinned from `xai-org/grok-build` (expected
-   to ride `openai-compatible`). Grok's ephemeral-port loopback is the
-   simpler of the two — build the capture against it first, then add Codex's
-   fixed-port case.
+2. **Phase 2 — OAuth device-code: Codex + Grok.** Server-side device flow
+   (start/poll/complete/refresh with the §2.5 refresh discipline), settings
+   UI for the code+link step, the `codex-subscription` Responses-API
+   connector; Grok on `openai-compatible`. Entirely server-side — no desktop
+   work in the critical path.
 3. **Phase 3 — polish.** Health probe sweep (mark dead links before a run
    trips on them), quota-window classification per provider, owner alert
-   copy, `/ops/usage` split refinement.
+   copy, `/ops/usage` split refinement, optional desktop loopback browser
+   flow for Codex as a convenience.
 
 ## 5. Open decisions (for Ondrej)
 
 1. **Shared-channel spend.** Plan says: owner pays for every run of their
    agent, stated clearly at selection time. Alternative: v1 restricts
    subscription models to `visibility: private` agents + the owner's PA.
-2. **Import fallback scope.** Ship the `auth.json` paste path at all, or
-   desktop-only linking for Codex/Grok?
 
-*(Resolved 2026-09-02: Grok is included as a first-class subscription
-adapter — SuperGrok Heavy's $300/mo plan covers Grok Bot + coding, and Grok
-Build proves a subscription-linked OAuth path exists.)*
+Resolved:
+
+- *2026-09-02 — Grok included* as a first-class subscription adapter:
+  SuperGrok Heavy's $300/mo plan covers Grok Bot + coding, and xAI's
+  device-code OAuth is a sanctioned subscription-linked path.
+- *2026-09-02 — no credential import.* The `auth.json` paste fallback is
+  dropped; every link is Nessie's own grant (§2.5), so linking never fights
+  the vendor CLI's session. Device code makes this work for web-only users
+  anyway.
