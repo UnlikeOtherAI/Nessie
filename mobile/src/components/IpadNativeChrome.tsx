@@ -19,12 +19,13 @@ import {
   type IpadTopChromeMode,
   type IpadNativeChromeTheme,
 } from '../lib/ipad-native-chrome'
+import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS } from '../lib/tabs'
 
 type IpadNativeChromeProps = {
   activeIndex: number
   account: IpadNativeAccount
-  badgeCounts: { assignedWork: number; channels: number; knowledge: number }
+  badgeCounts: NativeAttentionBadges
   insetLeft: number
   insetRight: number
   leadingReservedWidth: number

@@ -2,6 +2,7 @@ import { DEFAULT_TOOLBAR_STATE, type ToolbarState } from './native-toolbar-state
 import { statusBarStyleForScheme } from '../lib/status-bar'
 import { DEFAULT_BG, parseRgb } from '../lib/webview-inject'
 import type { NativeShellMessage } from '../lib/native-shell-message'
+import { TABS, type TabKey } from '../lib/tabs'
 
 type NativeAccount = {
   avatarUrl: string | null
@@ -11,11 +12,10 @@ type NativeAccount = {
   statusEmoji: string | null
 }
 
-type AttentionBadges = {
-  assignedWork: number
-  channels: number
-  knowledge: number
-}
+// A badge count per tab section. `nessie:attention` reports `{ badges: {
+// [section]: count } }`; a section it omits — including one it does not know
+// about yet — reads as 0 rather than being dropped or crashing the reducer.
+export type AttentionBadges = Record<TabKey, number>
 
 export type NativeShellPresentation = {
   accent: string
@@ -36,9 +36,12 @@ export type NativeShellPresentation = {
   workspaceName: string | null
 }
 
+const zeroAttentionBadges = (): AttentionBadges =>
+  Object.fromEntries(TABS.map((tab) => [tab.key, 0])) as AttentionBadges
+
 export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   accent: '#7c3aed',
-  attentionBadges: { assignedWork: 0, channels: 0, knowledge: 0 },
+  attentionBadges: zeroAttentionBadges(),
   background: DEFAULT_BG,
   chromeSurface: '#222629',
   inactive: '#8a8f98',
@@ -61,16 +64,18 @@ const optionalText = (value: unknown): string | null =>
 const badgeCount = (value: unknown): number =>
   typeof value === 'number' && value > 0 ? Math.floor(value) : 0
 
-const attentionBadges = (message: NativeShellMessage): AttentionBadges => ({
-  assignedWork: badgeCount(message.assignedWork),
-  channels: badgeCount(message.channels),
-  knowledge: badgeCount(message.knowledge),
-})
+// Defensive per section: an omitted, unrecognized, or malformed section reads
+// as 0 rather than being dropped or crashing the reducer.
+const attentionBadges = (message: NativeShellMessage): AttentionBadges => {
+  const source = message.badges ?? {}
+  return Object.fromEntries(
+    TABS.map((tab) => [tab.key, badgeCount(source[tab.key])]),
+  ) as AttentionBadges
+}
 
 export const nativeAttentionTotal = (message: NativeShellMessage): number => {
-  if (typeof message.total === 'number' && message.total >= 0) return message.total
   const badges = attentionBadges(message)
-  return badges.channels + badges.assignedWork + badges.knowledge
+  return TABS.reduce((total, tab) => total + badges[tab.key], 0)
 }
 
 export const isNativeShellPresentationMessage = (message: NativeShellMessage): boolean =>

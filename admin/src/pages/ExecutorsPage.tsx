@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import type {
   ExecutorCreateResponse,
   PreparedExecutorAccessChangeResponse,
@@ -30,8 +30,11 @@ import {
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { NestedStage } from '../navigation/NestedStage'
+import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
 
 const statusClass = (status: string): string => status === 'online'
   ? 'text-[color:var(--success-text)]'
@@ -41,20 +44,25 @@ const statusClass = (status: string): string => status === 'online'
       ? 'text-[color:var(--danger-text)]'
       : 'text-[color:var(--tx3)]'
 
-const getConfirmationToken = (): string | null => {
-  if (typeof window === 'undefined') return null
-  return new URLSearchParams(window.location.hash.slice(1)).get('confirmationToken')
-}
+// A project's "add executor" doorway (`?create=project&scopeProjectId=`) and
+// a Personal Assistant review link (`#confirmationToken=`) are one-shot
+// intents the registry declares for this route (docs/navigation/overview.md §8): both
+// are captured once and stripped, so the token never survives in history or
+// a shared address. A token this page mints itself lives in state only.
+const CREATE_INTENTS = ['create', 'scopeProjectId'] as const
+const parseConfirmationToken = parseHashParam('confirmationToken')
 
 export const ExecutorsPage = () => {
   const { me } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
-  const fixedProjectId = searchParams.get('create') === 'project'
-    ? searchParams.get('scopeProjectId') ?? undefined
+  const createIntent = useConsumedIntents(CREATE_INTENTS)
+  const fixedProjectId = createIntent.values.create === 'project'
+    ? createIntent.values.scopeProjectId ?? undefined
     : undefined
-  const [showCreate, setShowCreate] = useState(() => Boolean(fixedProjectId))
+  const [showCreate, setShowCreate] = useState(false)
   const [created, setCreated] = useState<ExecutorCreateResponse | null>(null)
-  const [confirmationToken, setConfirmationToken] = useState<string | null>(getConfirmationToken)
+  const linkedToken = useConsumedHashIntent('confirmationToken', parseConfirmationToken)
+  const [confirmationToken, setConfirmationToken] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
   const executorsQuery = useExecutors()
@@ -80,10 +88,11 @@ export const ExecutorsPage = () => {
   const rejectPromotion = useRejectExecutorWorkspacePromotion()
 
   useEffect(() => {
-    const updateToken = () => setConfirmationToken(getConfirmationToken())
-    window.addEventListener('hashchange', updateToken)
-    return () => window.removeEventListener('hashchange', updateToken)
-  }, [])
+    if (fixedProjectId) setShowCreate(true)
+  }, [createIntent.serial, fixedProjectId])
+  useEffect(() => {
+    if (linkedToken.value) setConfirmationToken(linkedToken.value)
+  }, [linkedToken])
 
   const reviewChange = changeQuery.data
   const promotionChange = promotionQuery.data
@@ -92,8 +101,7 @@ export const ExecutorsPage = () => {
     next.set('executorId', executorId)
     next.delete('accessChange')
     next.delete('promotion')
-    setSearchParams(next)
-    if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(null)
   }
   const openReview = (prepared: PreparedExecutorAccessChangeResponse) => {
@@ -101,24 +109,16 @@ export const ExecutorsPage = () => {
     next.set('accessChange', prepared.accessChangeId)
     next.set('executorId', prepared.executorId)
     next.delete('promotion')
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(prepared.confirmationToken)
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}?${next}#confirmationToken=${prepared.confirmationToken}`,
-      )
-    }
   }
   const clearReview = () => {
     const next = new URLSearchParams(searchParams)
     next.delete('accessChange')
     next.delete('promotion')
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(null)
     setCurrentPassword('')
-    if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
   }
   const openPromotion = (prepared: {
     confirmationToken: string
@@ -129,15 +129,8 @@ export const ExecutorsPage = () => {
     next.delete('accessChange')
     next.set('executorId', prepared.executorId)
     next.set('promotion', prepared.promotionId)
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(prepared.confirmationToken)
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}?${next}#confirmationToken=${prepared.confirmationToken}`,
-      )
-    }
   }
   const handleCreated = (result: ExecutorCreateResponse) => {
     setCreated(result)
@@ -209,51 +202,58 @@ export const ExecutorsPage = () => {
     : null, [created])
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
-        {/* Hand-rolled, and inside the max-w-7xl column so the title aligns with
-            the body: AdminPageHeader fixes the title at text-[17px] font-bold in
-            an h-[50px] full-bleed bar and cannot express this 24px font-semibold
-            hero, its 0.18em eyebrow, or the paragraph beneath it.
-            The cost of keeping it: this action row gets no measured overflow, so
-            the two buttons never fold into a "More" menu. The header wraps, so
-            at 375px they drop to their own line and still fit; below roughly
-            350px of content width — a 320px-class phone, a narrow split view, or
-            any browser zoom — their labels wrap inside the buttons into a ragged
-            two-height row. Fixable by measuring this row without touching the
-            title. */}
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <PhoneNavigationButton />
-            <div>
-              {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
-              <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
-              <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">
-                Pair governed sandboxes and coding sessions. Executors are separate from connectors:
-                connectors provide remote services; executors run approved work on a paired machine or guest runtime.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Link className="admin-button admin-button-secondary" to="/apps">Manage apps</Link>
-            <button className="admin-button admin-button-primary" onClick={() => setShowCreate((open) => !open)} type="button">
-              {showCreate ? 'Close pairing' : 'Pair executor'}
-            </button>
-          </div>
-        </header>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* The hero's eyebrow, title and paragraph are the one header's
+          eyebrow, title and subtitle; its two buttons are measured actions
+          that fold into More rather than wrapping into a ragged row. */}
+      <ScreenHeader
+        actions={[
+          {
+            href: '/apps',
+            id: 'manage-apps',
+            kind: 'link',
+            label: 'Manage apps',
+            priority: 40,
+          },
+          {
+            id: 'pair-executor',
+            label: showCreate ? 'Close pairing' : 'Pair executor',
+            onSelect: () => setShowCreate((open) => !open),
+            primary: true,
+            priority: 100,
+          },
+        ]}
+        eyebrow="Agents"
+        subtitle={
+          <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
+            Pair governed sandboxes and coding sessions. Executors are separate from connectors:
+            connectors provide remote services; executors run approved work on a paired machine or guest runtime.
+          </p>
+        }
+        title="Executors"
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
 
-        {showCreate && me ? (
-          <ExecutorCreatePanel
-            agents={agentsQuery.data ?? []}
-            currentUserId={me.user.id}
-            fixedProjectId={fixedProjectId}
-            onCreated={handleCreated}
-            organizationId={me.context.organizationId}
-            projects={projectsQuery.data ?? []}
-            users={usersQuery.data ?? []}
-          />
-        ) : null}
+        <NestedStage
+          active={showCreate && Boolean(me)}
+          id="executors:create"
+          label="Back to executors"
+          onBack={() => setShowCreate(false)}
+          priority={LOCAL_BACK_PRIORITY.executorsCreate}
+        >
+          {me ? (
+            <ExecutorCreatePanel
+              agents={agentsQuery.data ?? []}
+              currentUserId={me.user.id}
+              fixedProjectId={fixedProjectId}
+              onCreated={handleCreated}
+              organizationId={me.context.organizationId}
+              projects={projectsQuery.data ?? []}
+              users={usersQuery.data ?? []}
+            />
+          ) : null}
+        </NestedStage>
 
         {pairingCommand && created ? (
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
@@ -370,6 +370,7 @@ export const ExecutorsPage = () => {
             {pendingPairing.data ? <><code className="text-xs">{pendingPairing.data.fingerprint}</code><button className="admin-button admin-button-primary" disabled={confirmPairing.isPending} onClick={() => void confirmPairing.mutateAsync({ executorId: selected.id, fingerprint: pendingPairing.data!.fingerprint })} type="button">Confirm fingerprint</button></> : null}
           </section>
         ) : null}
+        </div>
       </div>
     </div>
   )

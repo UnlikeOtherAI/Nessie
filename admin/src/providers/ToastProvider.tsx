@@ -8,6 +8,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { CardViewport, type CardItem } from '../components/overlays/CardViewport'
 import './notifications.css'
 
 const TOAST_TTL_MS = 7_000
@@ -21,7 +22,9 @@ export type ToastInput = {
   onOpen?: () => void
 }
 
-type Toast = ToastInput & { id: string }
+// `leaving` is set when the toast is dismissed and cleared only by removal: the
+// card plays its close motion first and the row disappears on `onLeft`.
+type Toast = ToastInput & { id: string; leaving?: boolean }
 
 type ToastApi = {
   pushToast: (toast: ToastInput) => void
@@ -29,64 +32,28 @@ type ToastApi = {
 
 const ToastContext = createContext<ToastApi | null>(null)
 
-type ToastViewportProps = {
-  onDismiss: (toastId: string) => void
-  onOpen: (toast: Toast) => void
-  toasts: Toast[]
-}
-
-const ToastViewport = ({ onDismiss, onOpen, toasts }: ToastViewportProps) => {
-  if (toasts.length === 0) {
-    return null
-  }
-
-  return (
-    <div
-      aria-live="polite"
-      aria-relevant="additions text"
-      className="notification-toast-viewport"
-    >
-      {toasts.map((toast) => (
-        <div className="notification-toast" key={toast.id} role="status">
-          {toast.onOpen ? (
-            <button
-              className="notification-toast-content"
-              onClick={() => onOpen(toast)}
-              type="button"
-            >
-              <span className="notification-toast-title">{toast.title}</span>
-              <span className="notification-toast-body">{toast.body}</span>
-            </button>
-          ) : (
-            <span className="notification-toast-content">
-              <span className="notification-toast-title">{toast.title}</span>
-              <span className="notification-toast-body">{toast.body}</span>
-            </span>
-          )}
-          <button
-            aria-label="Dismiss notification"
-            className="notification-toast-dismiss"
-            onClick={() => onDismiss(toast.id)}
-            type="button"
-          >
-            x
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /**
- * The admin shell's single toast surface. It owns the stack, the auto-dismiss
- * timers, and the one viewport rendered in the corner; every producer (message
- * notifications, run continuation, …) pushes through `useToasts`.
+ * The admin shell's single toast surface. It owns the stack and the auto-dismiss
+ * timers; every producer (message notifications, run continuation, …) pushes
+ * through `useToasts`.
+ *
+ * The corner region, the layer and the motion belong to the one
+ * {@link CardViewport} — a toast is the Card kind of overlay
+ * (docs/navigation/overview.md §7), so it never owns Back, never traps focus, keeps its
+ * `role="status"`, and waits for a stack transition to settle before it slides
+ * in rather than running a second motion across a moving screen.
  */
 export const ToastProvider = ({ children }: PropsWithChildren) => {
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastTimersRef = useRef<number[]>([])
 
   const dismissToast = useCallback((toastId: string) => {
+    setToasts((current) =>
+      current.map((toast) => (toast.id === toastId ? { ...toast, leaving: true } : toast)),
+    )
+  }, [])
+
+  const removeToast = useCallback((toastId: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== toastId))
   }, [])
 
@@ -115,10 +82,42 @@ export const ToastProvider = ({ children }: PropsWithChildren) => {
 
   const api = useMemo<ToastApi>(() => ({ pushToast }), [pushToast])
 
+  const cards = useMemo<CardItem[]>(() => toasts.map((toast) => ({
+    children: (
+      <div className="notification-toast">
+        {toast.onOpen ? (
+          <button
+            className="notification-toast-content"
+            onClick={() => openToast(toast)}
+            type="button"
+          >
+            <span className="notification-toast-title">{toast.title}</span>
+            <span className="notification-toast-body">{toast.body}</span>
+          </button>
+        ) : (
+          <span className="notification-toast-content">
+            <span className="notification-toast-title">{toast.title}</span>
+            <span className="notification-toast-body">{toast.body}</span>
+          </span>
+        )}
+        <button
+          aria-label="Dismiss notification"
+          className="notification-toast-dismiss"
+          onClick={() => dismissToast(toast.id)}
+          type="button"
+        >
+          x
+        </button>
+      </div>
+    ),
+    id: toast.id,
+    leaving: toast.leaving,
+  })), [dismissToast, openToast, toasts])
+
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <ToastViewport onDismiss={dismissToast} onOpen={openToast} toasts={toasts} />
+      <CardViewport cards={cards} onLeft={removeToast} />
     </ToastContext.Provider>
   )
 }

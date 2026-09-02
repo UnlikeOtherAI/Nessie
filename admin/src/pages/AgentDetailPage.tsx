@@ -1,19 +1,13 @@
-import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate, useParams } from 'react-router-dom'
+import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
 import { AgentIdentityBlock } from '../components/features/agents/AgentIdentityBlock'
 import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents } from '../facades/agents/hooks'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import {
-  LOCAL_BACK_PRIORITY,
-  useLocalBack,
-} from '../layouts/admin-shell/local-back/LocalBackContext'
-import { usePhoneLayout } from '../lib/mobile-shell'
-import { QueryState } from '../components/shared/QueryState'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
@@ -33,35 +27,20 @@ export const AgentDetailPage = () => {
 
   const backToList = () => void navigate('/agents')
 
-  // On a phone the shell's single leading doorway (PhoneNavigationButton) owns
-  // Back — register the destination there so it returns to the agents list, and
-  // render this page's own Back button only on wider layouts. Otherwise the two
-  // stack up as a duplicate Back on mobile.
-  const phoneLayout = usePhoneLayout()
-  useLocalBack({
-    active: phoneLayout,
-    id: 'agent-detail',
-    label: 'Agents',
-    onBack: backToList,
-    priority: LOCAL_BACK_PRIORITY.columnBase,
-  })
+  // `/agents/:id` is a real depth-2 route whose parent is Agents (the surface
+  // registry, docs/navigation/overview.md §4.1), so the shared Back already returns to
+  // the list — this page registers no owner of its own, which used to outrank
+  // the Knowledge stages inside its Documents tab and leave the agent instead
+  // of unwinding the open document. Wider layouts keep their own Back button
+  // beside the title, which `ScreenHeader` renders from `onBack` because the
+  // registry says this screen has a parent.
 
   if (!agent) {
+    // The header is rendered here too: loading, failure and not-found are
+    // states of this screen, and a phone with no header has no Back at all.
     return (
       <div className="flex h-full flex-col">
-        <header className="flex items-center gap-3 px-6 pt-6 pb-4">
-          <PhoneNavigationButton />
-          {!phoneLayout ? (
-            <button
-              className="admin-button admin-button-secondary gap-1.5"
-              onClick={backToList}
-              type="button"
-            >
-              <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-              Agents
-            </button>
-          ) : null}
-        </header>
+        <ScreenHeader backLabel="Back to Agents" onBack={backToList} title="Agent" />
         <QueryState
           className="flex flex-1 items-center justify-center"
           emptyLabel="This agent could not be found."
@@ -80,32 +59,30 @@ export const AgentDetailPage = () => {
     <DesignerAssistantPanelProvider>
       <div className="flex h-full min-w-0 flex-col lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Hand-rolled: AdminPageHeader can express neither the avatar in
-              the leading lane (it hardcodes `leading` to PhoneNavigationButton
-              and takes no `onBack` for the desktop-only Back) nor the
-              three-line identity block — name + status dot + status Pill, role,
-              current tool/last activity — under one title. */}
-          <header className="flex items-start gap-3 px-6 pt-6 pb-4">
-            <PhoneNavigationButton />
-            {!phoneLayout ? (
-              <button
-                className="admin-button admin-button-secondary mt-1 gap-1.5"
-                onClick={backToList}
-                type="button"
+          {/* The identity block the hero used to carry — status dot, status
+              pill, role, home link, current tool — is the header's subtitle
+              slot, and the avatar its leading slot. It is the one
+              `AgentIdentityBlock` the drawer renders too, with its heading
+              withheld because `ScreenHeader` owns the screen's single `h1`. */}
+          <ScreenHeader
+            backLabel="Back to Agents"
+            leading={<AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />}
+            onBack={backToList}
+            subtitle={
+              <AgentIdentityBlock
+                agent={agent}
+                avatar={false}
+                canEditAvatar={isOwner}
+                headingLevel="none"
               >
-                <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-                Agents
-              </button>
-            ) : null}
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <AgentIdentityBlock agent={agent} canEditAvatar={isOwner} headingLevel="h1">
                 <PrivateAgentHomeLink
                   agent={agent}
                   className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
                 />
               </AgentIdentityBlock>
-            </div>
-          </header>
+            }
+            title={agent.name}
+          />
 
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
             <AgentDetailTabs

@@ -1,14 +1,14 @@
 import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ChannelRecord } from '../../lib/api-client'
 import {
   useArchiveChannel,
   useUpdateChannel,
 } from '../../facades/channels/hooks'
+import { ConfirmDialog } from './ConfirmDialog'
+import { Dialog } from './Dialog'
 import { fieldErrorAria, fieldErrorProps } from './FormFieldError'
-import { useModalA11y } from './useModalA11y'
-import { useOverlayDismiss } from './useOverlayDismiss'
 
 type ChannelSettingsDialogProps = {
   channel: ChannelRecord
@@ -20,8 +20,6 @@ export const ChannelSettingsDialog = (
   { channel, onClose, open }: ChannelSettingsDialogProps,
 ) => {
   const navigate = useNavigate()
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  useModalA11y(dialogRef, onClose)
   const updateChannel = useUpdateChannel()
   const archiveChannel = useArchiveChannel()
 
@@ -44,9 +42,6 @@ export const ChannelSettingsDialog = (
       setFormError(null)
     }
   }, [open, channel])
-
-  const overlayDismiss = useOverlayDismiss(onClose)
-  const confirmArchiveDismiss = useOverlayDismiss(() => setConfirmArchive(false))
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -71,6 +66,7 @@ export const ChannelSettingsDialog = (
       archived: !isArchived,
       channelId: channel.id,
     })
+    setConfirmArchive(false)
     onClose()
   }
 
@@ -84,68 +80,9 @@ export const ChannelSettingsDialog = (
     void navigate('/channels')
   }
 
-  if (!open) return null
-
   return (
-    // Not the shared `Dialog`: the archive-confirm overlay below renders as a
-    // sibling of the panel inside this scrim, and the shell has no slot for a
-    // second child outside its panel. It already composes `useModalA11y`.
-    <div
-      {...overlayDismiss}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--scrim-strong)',
-        backdropFilter: 'blur(4px)',
-      }}
-    >
-      <div
-        aria-labelledby="channel-settings-title"
-        aria-modal="true"
-        className="create-channel-panel"
-        ref={dialogRef}
-        role="dialog"
-        tabIndex={-1}
-      >
-        <div className="create-channel-header">
-          <div>
-            <h2
-              className="text-lg font-bold text-[color:var(--tx)]"
-              id="channel-settings-title"
-            >
-              Channel settings
-            </h2>
-            <div className="text-xs text-[color:var(--tx3)]">#{channel.label}</div>
-          </div>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center',
-              'rounded text-[color:var(--tx3)]',
-              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            onClick={onClose}
-            type="button"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 18L18 6M6 6l12 12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-
+    <>
+      <Dialog description={`#${channel.label}`} onClose={onClose} open={open} title="Channel settings">
         <form className="grid gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-1.5">
             <label
@@ -270,48 +207,20 @@ export const ChannelSettingsDialog = (
             </div>
           </div>
         </form>
-      </div>
+      </Dialog>
 
-      {confirmArchive ? (
-        <div
-          {...confirmArchiveDismiss}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--scrim-strong)',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div className="create-channel-panel" style={{ maxWidth: '24rem' }}>
-            <h2 className="text-lg font-bold text-[color:var(--tx)]">Archive channel?</h2>
-            <p className="mt-2 text-sm text-[color:var(--tx2)]">
-              Are you sure you want to archive #{channel.label}? It will be hidden from the
-              channel list. You can unarchive it later.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={() => setConfirmArchive(false)}
-                type="button"
-              >
-                Cancel
-              </button>
-              <button
-                className="admin-button admin-button-primary"
-                disabled={archiveChannel.isPending}
-                onClick={handleArchiveToggle}
-                type="button"
-              >
-                Archive
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+      {/* The sanctioned nesting (docs/navigation/overview.md §7): a confirm over the
+          already-open settings dialog above, in the blocking layer. */}
+      <ConfirmDialog
+        blocking
+        body={`Are you sure you want to archive #${channel.label}? It will be hidden from the channel list. You can unarchive it later.`}
+        confirmLabel="Archive"
+        onCancel={() => setConfirmArchive(false)}
+        onConfirm={() => void handleArchiveToggle()}
+        open={confirmArchive}
+        pending={archiveChannel.isPending}
+        title="Archive channel?"
+      />
+    </>
   )
 }

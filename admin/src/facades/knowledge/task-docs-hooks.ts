@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -11,6 +11,7 @@ export const useTaskPages = (taskId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: taskKeys.documents(taskId),
     queryFn: () => apiClient.get(`/api/knowledge-base/tasks/${taskId}/pages`),
     enabled: Boolean(taskId),

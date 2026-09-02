@@ -8,8 +8,6 @@ import {
   getNativePhoneHeaderHeight,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
-  isNativePhoneChannelsRootRoute,
-  isNativePhoneTabRootRoute,
   NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER,
   shouldShowNativePhoneHeader,
 } from './native-shell-layout'
@@ -72,16 +70,6 @@ test('every native phone tab root reserves the workspace header on iPhone and An
     showNativePhoneHeader: true,
     showTabBar: true,
   }), { top: 123, bottom: 0 })
-  assert.equal(isNativePhoneTabRootRoute('/channels'), true)
-  assert.equal(isNativePhoneTabRootRoute('/channels?source=tab'), true)
-  assert.equal(isNativePhoneTabRootRoute('/channels/'), true)
-  assert.equal(isNativePhoneTabRootRoute('/projects'), true)
-  assert.equal(isNativePhoneTabRootRoute('/knowledge-base'), true)
-  assert.equal(isNativePhoneTabRootRoute('/settings'), true)
-  assert.equal(isNativePhoneTabRootRoute('/search'), true)
-  assert.equal(isNativePhoneTabRootRoute('/channels/new'), false)
-  assert.equal(isNativePhoneChannelsRootRoute('/channels'), true)
-  assert.equal(isNativePhoneChannelsRootRoute('/projects'), false)
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 0,
     isIpad: false,
@@ -98,18 +86,27 @@ test('every native phone tab root reserves the workspace header on iPhone and An
 })
 
 test('an admitted phone keeps a shorter native header on every landscape page', () => {
+  // A detail screen in the admitted large-phone-landscape lane keeps the
+  // compact header regardless of whether it is a tab root.
   assert.equal(shouldShowNativePhoneHeader({
     isIpad: false,
+    isTabRoot: false,
     largePhoneLandscape: true,
-    path: '/channels/channel_1',
     showBar: true,
   }), true)
+  // Off that lane, only a tab root shows the header.
   assert.equal(shouldShowNativePhoneHeader({
     isIpad: false,
+    isTabRoot: false,
     largePhoneLandscape: false,
-    path: '/channels/channel_1',
     showBar: true,
   }), false)
+  assert.equal(shouldShowNativePhoneHeader({
+    isIpad: false,
+    isTabRoot: true,
+    largePhoneLandscape: false,
+    showBar: true,
+  }), true)
   assert.equal(getNativePhoneHeaderHeight(true) < getNativePhoneHeaderHeight(false), true)
   assert.equal(NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER, 32)
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -125,13 +122,16 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
 
 test('the native tab state keeps attention badges scoped to their owning tab', () => {
   const state = createNativeTabNavigationState(0, {
-    assignedWork: 2,
     channels: 3,
+    projects: 2,
     knowledge: 0,
   })
   assert.equal(state.routes.find((route) => route.key === 'channels')?.badge, '3')
   assert.equal(state.routes.find((route) => route.key === 'projects')?.badge, '2')
   assert.equal(state.routes.find((route) => route.key === 'knowledge')?.badge, undefined)
+  // A section the caller omits (admin, search here) defaults to no badge.
+  assert.equal(state.routes.find((route) => route.key === 'admin')?.badge, undefined)
+  assert.equal(state.routes.find((route) => route.key === 'search')?.badge, undefined)
   assert.equal(isAuthGateRoute('/login'), true)
   assert.equal(isAuthGateRoute('/channels'), false)
 })

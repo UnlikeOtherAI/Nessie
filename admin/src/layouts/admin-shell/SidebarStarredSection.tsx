@@ -3,6 +3,7 @@ import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
@@ -10,6 +11,7 @@ import {
   channelHashClassName,
   projectSelectionClassName,
   renderUnreadCount,
+  sidebarAriaCurrent,
 } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -47,6 +49,7 @@ export const SidebarStarredSection = ({
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   // One row height for every starred identity — agent, project, channel or
@@ -81,10 +84,12 @@ export const SidebarStarredSection = ({
             && personalAssistantChannelId === currentChannelId;
           return (
             <button
+              aria-current={sidebarAriaCurrent(isActivePersonalAssistant)}
               key={`starred-agent-${agent.id}`}
               className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
+              {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
             >
               <AgentAvatar agent={agent} size={avatarSize} token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
@@ -104,10 +109,12 @@ export const SidebarStarredSection = ({
           const { channel } = item;
           return (
             <button
+              aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
               key={`starred-ch-${channel.id}`}
               className={`admin-sb-item group ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
               onClick={() => onNavigateChannel(channel.id)}
               type="button"
+              {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
             >
               <span className={channelHashClassName}>#</span>
               <GroupDmSidebarLabel label={channel.label} />
@@ -133,6 +140,9 @@ export const SidebarStarredSection = ({
           return (
             <div key={`starred-prj-${project.id}`} className="mt-1">
               <button
+                aria-current={sidebarAriaCurrent(
+                  projectSelectionClassName(project.id, currentProjectId, currentChannelId) === 'active',
+                )}
                 className={[
                   'admin-sb-item sidebar-project-tile group',
                   unreadCount > 0 ? 'unread' : '',
@@ -140,6 +150,7 @@ export const SidebarStarredSection = ({
                 ].join(' ')}
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
+                {...prewarmRowHandlers(prewarm, `/projects/${project.id}`)}
               >
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
@@ -164,6 +175,7 @@ export const SidebarStarredSection = ({
 
               {starredProjectChannels.map((channel) => (
                 <button
+                  aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
                   key={`starred-prj-${project.id}-ch-${channel.id}`}
                   className={[
                     'admin-sb-item sidebar-child group',
@@ -172,6 +184,7 @@ export const SidebarStarredSection = ({
                   ].join(' ')}
                   onClick={() => onNavigateChannel(channel.id)}
                   type="button"
+                  {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                 >
                   <span className={channelHashClassName}>#</span>
                   <GroupDmSidebarLabel label={channel.label} />
@@ -197,10 +210,16 @@ export const SidebarStarredSection = ({
         const presence = getPresence(person.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(
+              Boolean(person.dmChannelId && activeDmChannelId === person.dmChannelId),
+            )}
             key={`starred-usr-${person.id}`}
             className={`admin-sb-item group ${personUnreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}
             type="button"
+            {...(person.dmChannelId
+              ? prewarmRowHandlers(prewarm, `/channels/${person.dmChannelId}`)
+              : {})}
           >
             <UserAvatar
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}

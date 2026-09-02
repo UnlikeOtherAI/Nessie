@@ -4,8 +4,11 @@ import test from 'node:test'
 // W14: drafts are keyed per template — editing template A then opening "new
 // workflow" must not hydrate A's nodes. A minimal localStorage stub keeps
 // this a pure unit test (no browser).
+// Every file in this package's suite shares one process, and the jsdom
+// harnesses install and remove their own `window` around each mount, so the
+// stub is installed per test rather than once at import time.
 const store = new Map<string, string>()
-;(globalThis as { window?: unknown }).window = {
+const stubWindow = {
   localStorage: {
     getItem: (key: string) => store.get(key) ?? null,
     removeItem: (key: string) => {
@@ -15,6 +18,16 @@ const store = new Map<string, string>()
       store.set(key, value)
     },
   },
+}
+const withStub = (run: () => void) => () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: stubWindow, writable: true })
+  try {
+    run()
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous)
+    else delete (globalThis as { window?: unknown }).window
+  }
 }
 
 const {
@@ -30,7 +43,7 @@ const draft = (workflowName: string) => ({
   workflowName,
 })
 
-test('drafts are scoped per template id', () => {
+test('drafts are scoped per template id', withStub(() => {
   store.clear()
 
   storeWorkflowDraft(draft('Template A'), 'template-a')
@@ -45,9 +58,9 @@ test('drafts are scoped per template id', () => {
   clearWorkflowDraft('template-a')
   assert.equal(loadWorkflowDraft('template-a'), null)
   assert.equal(loadWorkflowDraft(undefined)?.workflowName, 'New workflow draft')
-})
+}))
 
-test('the legacy global draft migrates into the new-workflow slot exactly once', () => {
+test('the legacy global draft migrates into the new-workflow slot exactly once', withStub(() => {
   store.clear()
   store.set(
     'nessie.admin.workflow-designer.draft',
@@ -58,4 +71,4 @@ test('the legacy global draft migrates into the new-workflow slot exactly once',
   assert.equal(loadWorkflowDraft(undefined)?.workflowName, 'Legacy draft')
   assert.equal(store.has('nessie.admin.workflow-designer.draft'), false)
   assert.ok(store.has(workflowDraftStorageKey(undefined)))
-})
+}))

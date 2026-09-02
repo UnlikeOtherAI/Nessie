@@ -4,7 +4,8 @@ import {
 } from './android-tablet-dock'
 import { getIpadContentTop } from './ipad-native-chrome'
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
-import { TABS } from './tabs'
+import { DEFAULT_TAB_KEY, TABS, type TabKey } from './tabs'
+import type { ScreenType } from './native-shell-message'
 
 export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
 export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
@@ -19,11 +20,9 @@ export type NativeSafeAreaInsets = {
   top: number
 }
 
-export type NativeAttentionBadges = {
-  assignedWork: number
-  channels: number
-  knowledge: number
-}
+// A badge count per section; a section the admin has not reported reads as 0
+// (see native-shell-presentation.ts `attentionBadges`).
+export type NativeAttentionBadges = Partial<Record<TabKey, number>>
 
 type NativeTabRoute = {
   badge?: string
@@ -37,38 +36,48 @@ export type NativeTabNavigationState = {
   routes: NativeTabRoute[]
 }
 
+// The shell's own picture of what the WebView is currently showing, built
+// entirely from the latest `nessie:screen` bridge message — never from
+// matching its `path` against a copy of the admin's routing table. `type`
+// here is the screen's own node type (root/detail/nested/tabHost/flow), as
+// opposed to the bridge message's `type` field, which is always the fixed
+// discriminant `'nessie:screen'`.
+export type LastKnownScreen = {
+  depth: number
+  hasBack: boolean
+  section: TabKey
+  title: string
+  type: ScreenType
+}
+
+// Before the first `nessie:screen` message of a cold start arrives: the
+// Channels tab, treated as a root with nothing to go back to.
+export const DEFAULT_LAST_KNOWN_SCREEN: LastKnownScreen = {
+  depth: 0,
+  hasBack: false,
+  section: DEFAULT_TAB_KEY,
+  title: '',
+  type: 'root',
+}
+
 export const isAuthGateRoute = (path: string): boolean =>
   path.startsWith('/login') || path.startsWith('/bootstrap')
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
-const nativePhoneTabRootPaths = new Set(TABS.map((tab) => tab.path))
-
-// The native bridge reports the SPA path together with its query string. A tab
-// root remains its first screen when it carries ordinary URL state, so normalize
-// that structural suffix before deciding whether to render native home chrome.
-const nativePhonePathname = (path: string | null): string | undefined =>
-  path?.split(/[?#]/, 1)[0]?.replace(/\/+$/, '')
-
-export const isNativePhoneTabRootRoute = (path: string | null): boolean => {
-  const pathname = nativePhonePathname(path)
-  return pathname != null && nativePhoneTabRootPaths.has(pathname)
-}
-
-export const isNativePhoneChannelsRootRoute = (path: string | null): boolean =>
-  nativePhonePathname(path) === '/channels'
-
 // Portrait only needs the workspace and account controls at a tab root. The
 // admitted large-phone landscape lane has room for its compact toolbar on any
 // page, so it retains the header while a detail is shown beside the menu.
+// `isTabRoot` comes from the last-known screen's `type === 'root'`, not from
+// matching a path.
 export const shouldShowNativePhoneHeader = (input: {
   isIpad: boolean
+  isTabRoot: boolean
   largePhoneLandscape: boolean
-  path: string | null
   showBar: boolean
 }): boolean => input.showBar
   && !input.isIpad
-  && (input.largePhoneLandscape || isNativePhoneTabRootRoute(input.path))
+  && (input.largePhoneLandscape || input.isTabRoot)
 
 export const getNativePhoneHeaderHeight = (landscape: boolean): number =>
   landscape ? NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT : NATIVE_PHONE_MENU_HEADER_HEIGHT
@@ -113,13 +122,7 @@ export const createNativeTabNavigationState = (
 ): NativeTabNavigationState => ({
   index,
   routes: TABS.map((tab) => {
-    const value = tab.key === 'channels'
-      ? badges.channels
-      : tab.key === 'projects'
-        ? badges.assignedWork
-        : tab.key === 'knowledge'
-          ? badges.knowledge
-          : 0
+    const value = badges[tab.key] ?? 0
     return {
       key: tab.key,
       title: tab.title,

@@ -41,9 +41,14 @@ const emptySubscribe = () => () => undefined
 // consume to hand Back ownership to the deepest in-page stack.
 export const useLocalBackSnapshot = (): LocalBackSnapshot | null => {
   const registry = useLocalBackRegistry()
+  const getSnapshot = registry ? registry.getSnapshot : () => null
+  // A server render has no registrations yet — nothing has mounted to make
+  // one — so the server snapshot is the same read. Without it a static
+  // render of any screen that composes the doorway throws.
   return useSyncExternalStore(
     registry?.subscribe ?? emptySubscribe,
-    registry ? registry.getSnapshot : () => null,
+    getSnapshot,
+    getSnapshot,
   )
 }
 
@@ -77,7 +82,8 @@ export const useLocalBack = (options: UseLocalBackOptions): void => {
 // Explicit numeric precedence for the shell doorway. The deepest in-page
 // stack registers the highest number; hidden-but-retained owners deactivate
 // rather than compete, so ties never decide ownership. Column-browser
-// columns derive their precedence from their depth via columnBackPriority.
+// columns derive their precedence from their depth via columnBackPriority —
+// a pushed column carries it onto the stage its viewport registers for it.
 export const LOCAL_BACK_PRIORITY = {
   knowledgeFolder: 11,
   knowledgeDocument: 12,
@@ -85,25 +91,39 @@ export const LOCAL_BACK_PRIORITY = {
   knowledgeEditor: 14,
   columnBase: 20,
   columnStep: 2,
+  executorsCreate: 30,
+  dashboardPanel: 30,
+  dashboardVersions: 31,
 } as const
 
 export const columnBackPriority = (columnIndex: number): number =>
   LOCAL_BACK_PRIORITY.columnBase + columnIndex * LOCAL_BACK_PRIORITY.columnStep
 
+export type ColumnStageReport = {
+  // The Back control's label while this column owns the doorway.
+  label: string
+  // Stable across the column's renders: the column holds its caller's fresh
+  // closure in a ref, so a report never changes identity for a re-render.
+  onBack: () => void
+}
+
 type ColumnBackContextValue = {
   // The index this column occupies in its ColumnBrowserViewport, or null when
   // the column renders outside a viewport (desktop drawers and dialogs).
   index: number | null
-  // True while this column is the one a phone viewport is actually showing.
-  // A phone keeps every column mounted (the slide transition needs the row),
-  // so a retained off-screen column must never hold the Back doorway — it
-  // keeps its registration but with active: false.
-  phoneVisible: boolean
+  // The one-way channel a column browser opens while it hosts its columns as
+  // navigation-stack layers: only a column knows its own title and unwind
+  // action, so it reports them up and the viewport owns the single
+  // registration (the nested stage's for a pushed column; its own local-back
+  // owner for column 0, which is the page rather than a layer). Null wherever
+  // the columns are a plain track — a split layout, or a column outside any
+  // viewport — where the column paints its own PhoneBackButton instead.
+  reportBack: ((index: number, report: ColumnStageReport | null) => void) | null
 }
 
 const ColumnBackContext = createContext<ColumnBackContextValue>({
   index: null,
-  phoneVisible: false,
+  reportBack: null,
 })
 
 export const ColumnBackProvider = ({

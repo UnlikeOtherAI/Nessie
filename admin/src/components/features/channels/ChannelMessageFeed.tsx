@@ -289,7 +289,7 @@ export const ChannelMessageFeed = ({
   )
 
   return (
-    <div className="admin-chat-feed">
+    <div className="admin-chat-feed" data-message-feed>
       {feedItems.length === 0 &&
       pendingMessages.length === 0 &&
       optimisticMessages.length === 0 ? (

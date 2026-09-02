@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   ProjectMemberRecord,
   ProjectRecord,
@@ -21,6 +21,7 @@ export const useProjectMembers = (projectId: string | null) => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectMemberRecord[]>({
+    placeholderData: keepPreviousData,
     enabled: Boolean(projectId),
     queryKey: projectKeys.members(projectId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/members`),

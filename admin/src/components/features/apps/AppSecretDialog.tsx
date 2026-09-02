@@ -21,6 +21,11 @@ const EMPTY_ERRORS: FormErrors = { fieldErrors: {}, formError: undefined }
 export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: AppSecretDialogProps) => {
   const setSecret = useSetAppConnectionSecret()
   const [secret, setSecretValue] = useState('')
+  // Deliberately NOT a `useTabParam` host (docs/navigation/overview.md §1, "Tab
+  // hosts"): this strip is a field of a form inside a modal, not a section of
+  // a screen. Its value is answered once and submitted, so putting it in the
+  // URL would outlive the dialog, survive its cancellation and collide with
+  // the tab of whatever page the dialog was opened from.
   const [credentialScope, setCredentialScope] = useState<'personal' | 'shared'>('personal')
   const [errors, setErrors] = useState<FormErrors>(EMPTY_ERRORS)
 

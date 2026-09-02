@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useViewport } from '../../hooks/useViewport';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
-import { resolveSectionNavTarget } from './section-route-memory';
+import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { RailTooltip } from './RailTooltip';
+import { sidebarAriaCurrent } from './SidebarRow';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
@@ -25,6 +26,7 @@ export const SidebarRail = ({
   onLogout,
   pathname,
 }: SidebarRailProps) => {
+  const navigation = usePhoneNavigation();
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
   const { capabilities } = useViewport();
   const focusButtonRef = useRef<HTMLButtonElement>(null);
@@ -69,11 +71,13 @@ export const SidebarRail = ({
           // root, so switching tabs and coming back restores the exact page and
           // its URL state. The active section's own button resolves to the
           // current location, which is a harmless no-op navigation.
+          const isActive = item.isActive(pathname);
           return (
             <Link
-              className={`admin-rail-btn ${item.isActive(pathname) ? 'active' : ''}`}
+              aria-current={sidebarAriaCurrent(isActive)}
+              className={`admin-rail-btn ${isActive ? 'active' : ''}`}
               key={item.id}
-              to={resolveSectionNavTarget(item.id, item.to)}
+              to={navigation?.sectionTarget(item.id, item.to) ?? item.to}
             >
               <span className="admin-rail-btn-icon">
                 <Icon />

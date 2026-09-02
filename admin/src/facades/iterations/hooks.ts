@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { iterationKeys, projectKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -50,6 +50,7 @@ export type ProjectInsights = {
 export const useProjectInsights = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ProjectInsights>({
+    placeholderData: keepPreviousData,
     queryKey: projectKeys.insights(projectId ?? ''),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/insights`),
     enabled: Boolean(projectId),
@@ -59,6 +60,7 @@ export const useProjectInsights = (projectId?: string) => {
 export const useIterations = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<Iteration[]>({
+    placeholderData: keepPreviousData,
     queryKey: iterationKeys.forProject(projectId ?? ''),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/iterations`),
     enabled: Boolean(projectId),

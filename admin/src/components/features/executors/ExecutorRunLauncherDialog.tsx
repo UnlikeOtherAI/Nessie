@@ -192,78 +192,78 @@ export const ExecutorRunLauncherDialog = ({
       title="Run on an executor"
     >
       <div className="grid gap-4">
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Agent</span>
-            <select
-              aria-label="Executor run agent"
-              className="admin-input"
-              onChange={(event) => setAgentId(event.target.value)}
-              value={agentId}
-            >
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>{agent.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Capability</span>
-            <select
-              aria-label="Executor capability"
-              className="admin-input"
-              onChange={(event) => setOperationValue(event.target.value)}
-              value={operationValue}
-            >
-              {operationOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <span className="text-xs leading-5 text-[var(--tx3)]">{selectedOperation?.description}</span>
-          </label>
-
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-semibold text-[var(--tx2)]">Available executor</legend>
-            {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
-            <FormError>{availabilityError}</FormError>
-            {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
-            {candidates.map((candidate, index) => (
-              <label
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
-                key={candidate.handle}
-              >
-                <input
-                  checked={selectedHandle === candidate.handle}
-                  name="executor-choice"
-                  onChange={() => setSelectedHandle(candidate.handle)}
-                  type="radio"
-                  value={candidate.handle}
-                />
-                <span>{scopeLabel(candidate.scopeKind)}{candidates.length > 1 ? ` ${index + 1}` : ''}</span>
-                <span className="ml-auto text-xs text-[var(--tx3)]">Ready for 5 minutes</span>
-              </label>
+        <label className="grid gap-1 text-sm">
+          <span className="font-semibold text-[var(--tx2)]">Agent</span>
+          <select
+            aria-label="Executor run agent"
+            className="admin-input"
+            onChange={(event) => setAgentId(event.target.value)}
+            value={agentId}
+          >
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
             ))}
-          </fieldset>
+          </select>
+        </label>
 
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold text-[var(--tx2)]">Instruction</span>
-            <textarea
-              aria-label="Executor run instruction"
-              className="admin-input min-h-28"
-              maxLength={CHAT_MESSAGE_MAX_CHARS}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Tell the selected agent what to inspect in the paired workspace."
-              value={content}
-            />
-          </label>
+        <label className="grid gap-1 text-sm">
+          <span className="font-semibold text-[var(--tx2)]">Capability</span>
+          <select
+            aria-label="Executor capability"
+            className="admin-input"
+            onChange={(event) => setOperationValue(event.target.value)}
+            value={operationValue}
+          >
+            {operationOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <span className="text-xs leading-5 text-[var(--tx3)]">{selectedOperation?.description}</span>
+        </label>
 
-          <FormError>{launch.error ? errorMessage(launch.error) : undefined}</FormError>
+        <fieldset className="grid gap-2">
+          <legend className="text-sm font-semibold text-[var(--tx2)]">Available executor</legend>
+          {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
+          <FormError>{availabilityError}</FormError>
+          {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
+          {candidates.map((candidate, index) => (
+            <label
+              className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
+              key={candidate.handle}
+            >
+              <input
+                checked={selectedHandle === candidate.handle}
+                name="executor-choice"
+                onChange={() => setSelectedHandle(candidate.handle)}
+                type="radio"
+                value={candidate.handle}
+              />
+              <span>{scopeLabel(candidate.scopeKind)}{candidates.length > 1 ? ` ${index + 1}` : ''}</span>
+              <span className="ml-auto text-xs text-[var(--tx3)]">Ready for 5 minutes</span>
+            </label>
+          ))}
+        </fieldset>
 
-          <div className="flex justify-end gap-2">
-            <button className="admin-button-secondary" onClick={close} type="button">Cancel</button>
-            <button className="admin-button-primary" disabled={!canLaunch} onClick={() => void submit()} type="button">
-              {launch.isPending ? 'Starting…' : 'Start executor run'}
-            </button>
-          </div>
+        <label className="grid gap-1 text-sm">
+          <span className="font-semibold text-[var(--tx2)]">Instruction</span>
+          <textarea
+            aria-label="Executor run instruction"
+            className="admin-input min-h-28"
+            maxLength={CHAT_MESSAGE_MAX_CHARS}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="Tell the selected agent what to inspect in the paired workspace."
+            value={content}
+          />
+        </label>
+
+        <FormError>{launch.error ? errorMessage(launch.error) : undefined}</FormError>
+
+        <div className="flex justify-end gap-2">
+          <button className="admin-button admin-button-secondary" onClick={close} type="button">Cancel</button>
+          <button className="admin-button admin-button-primary" disabled={!canLaunch} onClick={() => void submit()} type="button">
+            {launch.isPending ? 'Starting…' : 'Start executor run'}
+          </button>
+        </div>
       </div>
     </Dialog>
   )

@@ -119,3 +119,4 @@ export type {
   UpdatePageInput,
   UpdateSpaceInput,
 } from './types.js'
+export { KnowledgePageRevisionConflictError } from './types.js'

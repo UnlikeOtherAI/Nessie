@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pill, type PillTone } from '../components/primitives/Pill'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { QueryState } from '../components/shared/QueryState'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { StatGrid, StatTile } from '../components/shared/StatTile'
 import { opsHealthKeys } from '../lib/query-keys'
@@ -83,7 +83,7 @@ export const OpsHealthPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader actions={headerActions} title="System Health" />
+      <ScreenHeader actions={headerActions} title="System Health" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <p className="mb-4 text-xs text-[color:var(--tx3)]">

@@ -20,6 +20,7 @@ import { createThreadMessage } from '../services/message-create.js'
 import {
   findThreadForUser,
   mapMessageRecord,
+  mapMessageRecordWithAttachments,
 } from '../services/messages.js'
 import type { RouteDeps } from './types.js'
 
@@ -100,10 +101,21 @@ export const registerCreateThreadMessageRoute = (
       return reply
     }
 
+    // Idempotency key: the body field wins, the `Idempotency-Key` header is the
+    // transport-level spelling of the same thing. Either way it scopes to this
+    // thread, so one draft retried cannot become two messages.
+    const headerKey = request.headers['idempotency-key']
+    const clientMessageId =
+      body.clientMessageId
+      ?? (typeof headerKey === 'string' && headerKey.trim().length > 0
+        ? headerKey.trim().slice(0, 200)
+        : undefined)
+
     const result = await createThreadMessage(prisma, {
       content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
+      ...(clientMessageId ? { clientMessageId } : {}),
       rootMessageId: body.rootMessageId,
       alsoSendToChannel: body.alsoSendToChannel,
       agentMentions: body.agentMentions?.map((mention) => ({
@@ -125,6 +137,19 @@ export const registerCreateThreadMessageRoute = (
         'rootMessageId must reference a top-level message in this thread',
       )
       return reply
+    }
+    if (result.kind === 'replayed') {
+      // The first attempt already created this message, linked its attachments,
+      // alerted, pushed and dispatched. Replaying those would double every one
+      // of them, so the retry only gets the message back.
+      return reply.code(200).send(
+        createApiResponse({
+          message: ThreadMessageRecordSchema.parse(
+            await mapMessageRecordWithAttachments(prisma, result.message),
+          ),
+          pendingAgentInvites: [],
+        }),
+      )
     }
     if (result.kind === 'invalid_agent_mention') {
       sendApiError(

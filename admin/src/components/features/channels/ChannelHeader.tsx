@@ -8,11 +8,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
-import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
-import {
-  ResponsivePageHeader,
-  type PageHeaderAction,
-} from '../../shared/ResponsivePageHeader'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
 
 interface ChannelHeaderProps {
@@ -176,7 +173,7 @@ export const ChannelHeader = ({
   ]
 
   return (
-    <ResponsivePageHeader
+    <ScreenHeader
       actions={actions}
       eyebrow={
         isPersonalAssistantConversation
@@ -185,7 +182,6 @@ export const ChannelHeader = ({
             ? externalAgentIdentity?.description ?? undefined
             : undefined
       }
-      leading={<PhoneNavigationButton />}
       title={title}
     />
   )

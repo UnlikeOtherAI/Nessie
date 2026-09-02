@@ -180,7 +180,9 @@ test('admin: /settings depth0 and every admin page depth1 under it', () => {
   assert.equal(isPhoneTabRoot('/settings'), true)
   assert.equal(getPhoneNavigationScreen('/settings/members')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/tokens')?.depth, 1)
-  assert.equal(getPhoneNavigationScreen('/workflows/wf_a')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/audit')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/approvals')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/policy')?.depth, 1)
   assert.deepEqual(getPhoneNavigationBackTarget('/agents'), {
     label: 'Back to Admin',
     pathname: '/settings',
@@ -248,10 +250,10 @@ test('the provider-independent Back decision: pop a parent, replace otherwise', 
     resolvePhoneNavigationBackAction('/dashboards/dash_a', '/dashboards'),
     { mode: 'pop', to: '/dashboards' },
   )
-  // Foreign or missing predecessor → cold-deep-link replace.
+  // A predecessor in another section is where the push came from: pop.
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/channels/chan_a', '/projects'),
-    { mode: 'replace', to: '/channels' },
+    { mode: 'pop', to: '/projects' },
   )
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/dashboards/dash_a', '/knowledge-base'),
@@ -274,4 +276,205 @@ test('depth changes animate; cross-section switches do not', () => {
   assert.equal(getPhoneNavigationDirection('/channels/chan_a', '/knowledge-base/spaces/s1'), null)
   // Unknown routes have no screen and never animate.
   assert.equal(getPhoneNavigationDirection('/channels', '/totally/unknown'), null)
+})
+
+// Before the surface registry every route in ADMIN_ROUTE_PREFIXES collapsed
+// onto one `admin:detail` key at depth 1, so nothing inside the Agents family
+// animated, a sub-agent drill-in was invisible, and neither designer knew
+// what it was covering.
+test('the Agents family is a real stack: list depth1, agent depth2, designers as flows', () => {
+  assert.equal(getPhoneNavigationScreen('/agents')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/agents/agent_a')?.depth, 2)
+  assert.equal(getPhoneNavigationScreen('/agents/agent_a')?.section, 'admin')
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/agent_a'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/agents/agent_a', '/agents'), 'back')
+  assert.deepEqual(getPhoneNavigationBackTarget('/agents/agent_a'), {
+    label: 'Back to Agents',
+    pathname: '/agents',
+  })
+  // A sub-agent drill-in is the same screen identity: it swaps in place.
+  assert.equal(
+    getPhoneNavigationScreen('/agents/agent_a')?.key,
+    getPhoneNavigationScreen('/agents/agent_child')?.key,
+  )
+  assert.equal(getPhoneNavigationDirection('/agents/agent_a', '/agents/agent_child'), null)
+
+  // The four automation browsers stay beside the Agents list at depth 1.
+  for (const pathname of ['/agents/workflows', '/agents/triggers', '/agents/tools', '/agents/executors']) {
+    assert.equal(getPhoneNavigationScreen(pathname)?.depth, 1, pathname)
+    assert.deepEqual(getPhoneNavigationBackTarget(pathname), {
+      label: 'Back to Admin',
+      pathname: '/settings',
+    }, pathname)
+  }
+
+  // Both designers are Flows at depth 2 — pushed from the list they edit.
+  assert.equal(getPhoneNavigationScreen('/agents/designer')?.depth, 2)
+  assert.equal(getPhoneNavigationScreen('/agents/designer/agent_a')?.depth, 2)
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/designer'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/agents/designer/agent_a', '/agents'), 'back')
+  assert.deepEqual(getPhoneNavigationBackTarget('/agents/designer/agent_a'), {
+    label: 'Back to Agents',
+    pathname: '/agents',
+  })
+  assert.equal(getPhoneNavigationScreen('/agents/workflow-designer')?.depth, 2)
+  assert.equal(
+    getPhoneNavigationDirection('/agents/workflows', '/agents/workflow-designer/wt_a'),
+    'forward',
+  )
+  assert.deepEqual(getPhoneNavigationBackTarget('/agents/workflow-designer/wt_a'), {
+    label: 'Back to Workflows',
+    pathname: '/agents/workflows',
+  })
+  // An agent detail and its designer are different screens at the same depth:
+  // no transition, but not the same layer either.
+  assert.notEqual(
+    getPhoneNavigationScreen('/agents/agent_a')?.key,
+    getPhoneNavigationScreen('/agents/designer/agent_a')?.key,
+  )
+})
+
+test('the settings and ops nested details push instead of swapping in place', () => {
+  assert.equal(getPhoneNavigationScreen('/settings/statuses')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/settings/statuses/status_a')?.depth, 2)
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses', '/settings/statuses/status_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses/status_a', '/settings/statuses'),
+    'back',
+  )
+  assert.deepEqual(getPhoneNavigationBackTarget('/settings/statuses/status_a'), {
+    label: 'Back to Statuses',
+    pathname: '/settings/statuses',
+  })
+  // Status A → B is a sibling swap inside one screen.
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses/status_a', '/settings/statuses/status_b'),
+    null,
+  )
+
+  assert.equal(getPhoneNavigationScreen('/ops')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/ops/usage')?.depth, 2)
+  assert.equal(getPhoneNavigationDirection('/ops', '/ops/usage'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/ops/usage', '/ops'), 'back')
+  // Usage is owner-only and listed on Admin; /ops is super-admin-only, so a
+  // cold link falls back to Admin, and the ledger decides the real Back.
+  assert.deepEqual(getPhoneNavigationBackTarget('/ops/usage'), {
+    label: 'Back to Admin',
+    pathname: '/settings',
+  })
+  assert.deepEqual(resolvePhoneNavigationBackAction('/ops/usage', '/ops'), { mode: 'pop', to: '/ops' })
+})
+
+// /threads and /unread-messages resolved to no screen at all: they rendered
+// outside the phone stack, lost every retained screen beneath them, and their
+// Back read "Back to Channels" whatever section the reader came from.
+test('/threads and /unread-messages are Channels lists one step in from the root', () => {
+  for (const pathname of ['/threads', '/unread-messages']) {
+    const screen = getPhoneNavigationScreen(pathname)
+    assert.equal(screen?.section, 'channels', pathname)
+    assert.equal(screen?.depth, 1, pathname)
+    assert.equal(getPhoneTabRootPath(pathname), '/channels', pathname)
+    assert.equal(isPhoneTabRoot(pathname), false, pathname)
+    assert.deepEqual(getPhoneNavigationBackTarget(pathname), {
+      label: 'Back to Channels',
+      pathname: '/channels',
+    }, pathname)
+    assert.equal(getPhoneNavigationDirection('/channels', pathname), 'forward', pathname)
+    assert.equal(getPhoneNavigationDirection(pathname, '/channels'), 'back', pathname)
+  }
+})
+
+// Reached from the bell, the account menu and push notifications — from any
+// section — so Back returns to where the reader actually was, and only a cold
+// deep link falls back to Admin, where both are listed.
+test('/alerts and /feedback are Admin details whose parent is the origin', () => {
+  for (const pathname of ['/alerts', '/feedback']) {
+    const screen = getPhoneNavigationScreen(pathname)
+    assert.equal(screen?.section, 'admin', pathname)
+    assert.equal(screen?.depth, 1, pathname)
+    assert.equal(getPhoneTabRootPath(pathname), '/settings', pathname)
+    assert.deepEqual(getPhoneNavigationBackTarget(pathname), {
+      label: 'Back to Admin',
+      pathname: '/settings',
+    }, pathname)
+    assert.deepEqual(resolvePhoneNavigationBackAction(pathname, '/channels/chan_a?thread=t1'), {
+      mode: 'pop',
+      to: '/channels/chan_a',
+    }, pathname)
+    assert.deepEqual(resolvePhoneNavigationBackAction(pathname, null), {
+      mode: 'replace',
+      to: '/settings',
+    }, pathname)
+  }
+})
+
+test('compose is a Flow pushed over the Channels root, not a conversation', () => {
+  const compose = getPhoneNavigationScreen('/channels/new')
+  assert.equal(compose?.section, 'channels')
+  assert.equal(compose?.depth, 1)
+  assert.notEqual(compose?.key, getPhoneNavigationScreen('/channels/chan_a')?.key)
+  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/channels/new', '/channels'), 'back')
+  // Opening compose from a conversation is a same-depth swap, never a push.
+  assert.equal(getPhoneNavigationDirection('/channels/chan_a', '/channels/new'), null)
+  assert.deepEqual(getPhoneNavigationBackTarget('/channels/new'), {
+    label: 'Back to Channels',
+    pathname: '/channels',
+  })
+})
+
+// A redirect is listed in the registry so the totality gate passes and the tab
+// bar stays lit for the frame it exists — but it renders no stage, so it can
+// never be a transition endpoint or a Back destination.
+test('redirect-only routes classify no screen and never animate', () => {
+  const redirects = [
+    '/',
+    '/work',
+    '/chats',
+    '/workflows',
+    '/workflows/tools',
+    '/settings/tools',
+    '/settings/agents',
+    '/integrations',
+  ]
+  for (const pathname of redirects) {
+    assert.equal(getPhoneNavigationScreen(pathname), null, pathname)
+    assert.equal(getPhoneNavigationBackTarget(pathname), null, pathname)
+    assert.equal(phoneRouteHasBackDepth(pathname), false, pathname)
+    assert.equal(isPhoneTabRoot(pathname), false, pathname)
+    assert.equal(getPhoneNavigationDirection('/settings', pathname), null, pathname)
+    assert.equal(getPhoneNavigationDirection(pathname, '/settings'), null, pathname)
+  }
+  // They still name the tab that owns them.
+  assert.equal(getPhoneTabRootPath('/workflows'), '/settings')
+  assert.equal(getPhoneTabRootPath('/chats'), '/channels')
+  assert.equal(getPhoneTabRootPath('/work'), '/projects')
+})
+
+// The catch-all is gone: an unknown path is not an admin detail, and the
+// classifier says so rather than inventing a screen for it.
+test('an unknown path classifies as nothing at all', () => {
+  assert.equal(getPhoneNavigationScreen('/totally/unknown'), null)
+  assert.equal(getPhoneNavigationBackTarget('/totally/unknown'), null)
+  assert.equal(getPhoneNavigationScreen('/login'), null)
+  assert.equal(getPhoneTabRootPath('/totally/unknown'), '/channels')
+})
+
+test('a screen pushed from another section pops back to where it came from', () => {
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/projects/p1'),
+    { mode: 'pop', to: '/projects/p1' },
+  )
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/search'),
+    { mode: 'pop', to: '/search' },
+  )
+  // Within a section the declared parent still decides.
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/channels/c2'),
+    { mode: 'replace', to: '/channels' },
+  )
 })

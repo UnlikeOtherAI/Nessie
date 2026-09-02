@@ -63,6 +63,7 @@ const createdPage = (): KnowledgePageRecord => ({
   projectId: 'project-1',
   publishedVersion: null,
   publishedVersionId: null,
+  revision: 0,
   sensitivityTier: 'normal',
   spaceId: 'space-1',
   status: 'draft',

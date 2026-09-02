@@ -68,7 +68,14 @@ export const ProjectView = () => {
         checked: item.id === tab,
         id: item.id,
         label: item.label,
-        onSelect: () => void navigate(item.to),
+        // A project section is a tab, and a tab is never a history entry
+        // (docs/navigation/overview.md §1, "Tab hosts"). The seven sections stay real
+        // routes so each is linkable, but the header switches them with
+        // `replace` so Back leaves the project rather than walking the
+        // sections the reader passed through. The registry folds all seven
+        // into one tabHost identity, so ProjectView is reconciled in place —
+        // the switch never remounts the page or animates a layer.
+        onSelect: () => void navigate(item.to, { replace: true }),
       })),
       kind: 'menu',
       label: activeTab?.label ?? 'Section',
@@ -88,7 +95,7 @@ export const ProjectView = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ProjectPageHeader actions={headerActions} project={project} titleTone="page" />
+      <ProjectPageHeader actions={headerActions} project={project} />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (

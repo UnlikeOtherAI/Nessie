@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { EmptyState } from '../components/shared/EmptyState'
 import { PageBody } from '../components/shared/PageBody'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { Pill } from '../components/primitives/Pill'
 import { formatRelativeTime } from '../components/features/workflows/presentation'
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages'
@@ -36,7 +36,7 @@ export const UnreadMessagesPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Unread messages" />
+      <ScreenHeader title="Unread messages" />
       <PageBody width="regular">
         <QueryState
           errorLabel="Unread messages could not be loaded."

@@ -104,11 +104,14 @@ test('the Direct-messages Personal Assistant reuses the managed agent avatar rec
 test('the new-message surface excludes the sender and keeps recipients available after selection', () => {
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
 
-  assert.match(source, /aria-label="Close new message"/)
+  // Step 9: the flow's own 58px bar became the one `ScreenHeader`. Close is
+  // a measured action on the split layout; the phone gets the flow's Back.
+  assert.match(source, /label: 'Close new message'/)
+  assert.match(source, /flowOwnsBack/)
   assert.match(source, /setAddressFocused\(true\)/)
   assert.match(source, /document\.activeElement !== addressInputRef\.current/)
-  assert.match(source, /useModalA11y\(dialogRef, close, !phoneLayout, addressInputRef\)/)
-  assert.match(source, /fixed inset-0 z-\[90\] bg-\[color:var\(--main\)\]/)
+  assert.match(source, /open: !phoneLayout,/)
+  assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
   assert.match(source, /placeholder=\{recipients\.length === 0 \? 'Type a name or email address' : ''\}/)
   assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
   assert.match(source, /const hasSelectableOptions = options\.length > 0/)
