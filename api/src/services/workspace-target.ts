@@ -5,6 +5,7 @@ import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
 } from './identity-display.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 import {
   NO_UOA_ROLE_CLAIMS,
   resolveUoaRoleClaims,
@@ -21,10 +22,43 @@ export class WorkspaceExternalBindingConflictError extends Error {
   }
 }
 
-// A friendly-enough placeholder name; the UOA access token carries workspace ids
-// only, so owners rename via team settings (see the plan doc's follow-ups).
+// A birth-time placeholder name: the UOA access token carries workspace ids
+// only, so it is healed from UOA's verified workspace directory by
+// `syncExternalWorkspaceNames` (at login and token refresh), mirroring
+// org-name healing. `Team.name`/`Project.name` for a UOA-bound workspace are
+// non-authoritative mirrors of UOA's label.
 const workspaceDisplayName = (workspaceId: string): string =>
   `Workspace ${workspaceId.slice(0, 8)}`
+
+/**
+ * Mirror UOA's workspace labels onto the local Team rows and their owning
+ * Projects. `Team.name`/`Project.name` for a UOA-bound workspace are
+ * non-authoritative display data (the same doctrine as `Organization.name`),
+ * so this runs best-effort beside `syncExternalOrganizationNames` wherever
+ * the verified workspace directory arrives, and only rewrites rows whose
+ * stored name differs. An entry with a blank label never blanks a real name.
+ */
+export const syncExternalWorkspaceNames = async (
+  prisma: Pick<PrismaClient, 'team' | 'project'>,
+  directory: UoaWorkspaceDirectoryEntry[] | undefined,
+): Promise<void> => {
+  if (!directory) return
+  const labelByExternalWorkspaceId = new Map<string, string>()
+  for (const entry of directory) {
+    const label = entry.label?.trim()
+    if (label) labelByExternalWorkspaceId.set(entry.teamId, label)
+  }
+  for (const [externalWorkspaceId, label] of labelByExternalWorkspaceId) {
+    await prisma.team.updateMany({
+      where: { externalWorkspaceId, name: { not: label } },
+      data: { name: label },
+    })
+    await prisma.project.updateMany({
+      where: { teams: { some: { externalWorkspaceId } }, name: { not: label } },
+      data: { name: label },
+    })
+  }
+}
 
 // The environment a login resolves to: the project/team plus its #general
 // channel, the role the joining user should get in that team, and the verified
