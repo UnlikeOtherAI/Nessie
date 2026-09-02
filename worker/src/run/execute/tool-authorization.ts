@@ -248,7 +248,14 @@ export const authorizeToolExecution = async (
       reason: 'approval_required' as const,
     })
     if (consent.outcome === 'ask') return escalate()
-    if (consent.outcome === 'proceed') return rawPolicyDecision
+    if (consent.outcome === 'proceed') {
+      await postAllowedByRuleCard(prisma, context, toolActorContext, {
+        args,
+        rule: null,
+        toolName,
+      })
+      return rawPolicyDecision
+    }
 
     // A `judged` grant is consent to DECIDE, not consent to send. One bounded
     // utility call weighs the action against the owner's own written boundary,
@@ -266,7 +273,14 @@ export const authorizeToolExecution = async (
       consent.grantId,
       verdict.verdict === 'proceed' ? 'decided' : 'asked',
     ).catch(() => undefined)
-    if (verdict.verdict === 'proceed') return rawPolicyDecision
+    if (verdict.verdict === 'proceed') {
+      await postAllowedByRuleCard(prisma, context, toolActorContext, {
+        args,
+        rule: consent.boundary,
+        toolName,
+      })
+      return rawPolicyDecision
+    }
     // Shown on the approval card: the person should see why they were asked.
     boundaryReason = verdict.reason
     return escalate()
@@ -462,6 +476,96 @@ const recordAutoReview = async (
   })
 }
 
+/**
+ * What a person is being asked to allow, in their words.
+ *
+ * Counts, never addresses: this ends up on an `ApprovalRequest` row that the
+ * approvals surface can show to an org owner, and the guest list is exactly the
+ * part that should not travel with it. The audience line is the point of the
+ * whole card — it is the thing being approved.
+ */
+const describeGatedAction = (
+  toolName: string,
+  args: Record<string, unknown>,
+): { headline: string; audience: string } => {
+  const guests = Array.isArray(args.attendees) ? args.attendees.length : 0
+  const guestLine = guests > 0
+    ? `${guests} ${guests === 1 ? 'guest' : 'guests'} will be emailed`
+    : 'Nobody outside is contacted'
+  const title = typeof args.title === 'string' ? args.title : null
+
+  if (toolName === 'calendar_event_create') {
+    return {
+      headline: title ? `Create “${title}”` : 'Create a calendar event',
+      audience: guestLine,
+    }
+  }
+  if (toolName === 'calendar_event_update') {
+    return {
+      headline: title ? `Change “${title}”` : 'Change a calendar event',
+      audience: guests > 0 ? guestLine : 'Guests on the event will be told',
+    }
+  }
+  if (toolName === 'calendar_event_cancel') {
+    return {
+      headline: 'Cancel a calendar event',
+      audience: 'Guests on the event will be told it is cancelled',
+    }
+  }
+  if (toolName === 'gmail_draft_send') {
+    return { headline: 'Send an email as you', audience: 'The recipients will receive it' }
+  }
+  return { headline: `Run ${toolName}`, audience: 'This acts on your account' }
+}
+
+/**
+ * Say what a standing rule just allowed.
+ *
+ * A rule that silences a prompt must not silence the fact. Without this an
+ * action simply happens and the person never learns which rule of theirs let
+ * it through — which is the difference between delegating and losing track.
+ *
+ * Posted from the chokepoint because this is the only place that knows a rule
+ * was spent. Basis-stamped to the acting person for the same reason the
+ * suspension notice is: nothing has fed the disclosure sink yet, and an empty
+ * basis would publish it to the room.
+ */
+const postAllowedByRuleCard = async (
+  prisma: PrismaClient,
+  context: RunContext,
+  actorContext: AuthorizedActionContext,
+  input: { args: Record<string, unknown>; rule: string | null; toolName: string },
+): Promise<void> => {
+  const actingUserId = actorContext.actionContext.effectiveUserId
+  if (!actingUserId) return
+  const described = describeGatedAction(input.toolName, input.args)
+  try {
+    context.consumedSources?.add({ scopeType: 'user', scopeId: actingUserId })
+    await prisma.message.create({
+      data: {
+        content: described.headline,
+        role: 'assistant',
+        agentId: context.agent.id,
+        threadId: context.run.threadId,
+        metadata: {
+          card: {
+            kind: 'allowed_by_rule',
+            audience: described.audience,
+            details: summarizeToolInput(input.args),
+            headline: described.headline,
+            // The person's own words when they wrote a boundary; otherwise the
+            // plain fact that they turned confirmation off.
+            rule: input.rule,
+          },
+        } as Prisma.InputJsonValue,
+      },
+    })
+  } catch (error) {
+    // A missing receipt must never stop the action the person allowed.
+    console.error('[worker.allowed-by-rule] could not post receipt', error)
+  }
+}
+
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
 
 /**
@@ -520,6 +624,11 @@ const createToolApprovalRequest = async (
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
       boundaryReason: input.boundaryReason ?? null,
+      // A plain-language headline so the card can say what will happen rather
+      // than printing a tool id. Deliberately carries NO addresses: the
+      // suspension notice is restricted to the mailbox owner, but this row is
+      // also readable through the approvals surface by an org owner.
+      ...describeGatedAction(input.toolName, input.args),
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
     expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),

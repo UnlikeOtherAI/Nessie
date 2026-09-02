@@ -21,18 +21,29 @@ fi
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
-# Reclaim Docker build cache + dangling images BEFORE building. The shared host
-# disk filled to 100% repeatedly (frequent deploys accumulate build cache faster
-# than time-based eviction), crashing Postgres mid-deploy (PANIC: No space left
-# on device). Pruning all build cache (0 active, safe) + dangling images up front
-# guarantees the build has room. Image layer caching is separate and unaffected.
-echo "==> Reclaiming Docker build cache + dangling images (pre-build)"
-docker builder prune -af >/dev/null 2>&1 || true
+# Bound the Docker build cache BEFORE building. The shared host disk filled to
+# 100% repeatedly (build cache accumulates faster than time-based eviction),
+# crashing Postgres mid-deploy (PANIC: No space left on device) — but the
+# original fix, `builder prune -af`, wiped ALL cache and forced a full
+# from-scratch rebuild on every deploy, pinning the box's CPU/IO for ~15 min
+# per push and making the public site time out while it built. --keep-storage
+# keeps the newest cache under a fixed budget instead: the disk stays safe and
+# unchanged layers are reused, so routine rebuilds are shorter and lighter.
+echo "==> Bounding Docker build cache + pruning dangling images (pre-build)"
+docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 df -h / | tail -1
 
-echo "==> Building images (api + admin + web)"
-$COMPOSE build api admin web
+# Build the three images ONE AT A TIME. Compose builds them in parallel by
+# default, and each image runs a full monorepo install+compile — measured at
+# load average 340 on this 8-core box with 0% idle, which made the live site
+# (API and static admin alike) time out for everyone while a deploy built.
+# Each build is already internally parallel; serializing them caps peak load
+# at one build's worth without adding much wall clock.
+echo "==> Building images (api, then admin, then web)"
+$COMPOSE build api
+$COMPOSE build admin
+$COMPOSE build web
 
 # The migrate step runs with --no-deps, which bypasses the nessie-postgres
 # `depends_on: service_healthy` gate. A freshly (re)started Postgres can still be
@@ -214,12 +225,11 @@ for url in \
   fi
 done
 
-# Reclaim Docker build cache + dangling images. Each rebuild adds layers and
-# ~10GB of build cache; left unbounded it filled the shared host disk to 100%,
-# which crashed Postgres (PANIC: No space left on device, stuck in recovery).
-# Keep only cache used in the last 48h so incremental rebuilds stay fast.
-echo "==> Reclaiming Docker build cache + dangling images (post-deploy)"
-docker builder prune -af >/dev/null 2>&1 || true
+# Bound build cache + prune dangling images post-deploy too, same budget as
+# the pre-build step (full wipe here would force the next deploy to rebuild
+# from scratch — the CPU/IO saturation that made the site time out).
+echo "==> Bounding Docker build cache + pruning dangling images (post-deploy)"
+docker builder prune -f --keep-storage 40GB >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 
 echo "==> Status"

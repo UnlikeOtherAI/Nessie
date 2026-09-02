@@ -1,9 +1,15 @@
 # Call your Personal Assistant — Gemini Live voice + CallKit on iPhone
 
-**Status (2026-09-02): phase 1 built — the server contract and the browser
-call. Phase 0 (Ledger grants) is still an ops task, so no call can complete
-end to end yet; phase 1a (live tool bridge) and 1b (iPhone/CallKit) are not
-started.**
+**Status (2026-09-02): phase 1 built and merged — the server contract and the
+browser call. Phase 0 is done: the production Nessie Ledger key
+(`tk_98ffbd0b_95b4`) now carries the `gemini` scope with the live model, the
+`live-token` endpoint and a $50/day budget, so credentials mint. Phase 1a
+(live tool bridge) and 1b (iPhone/CallKit) are not started.**
+
+Setting that budget needed a Ledger change of its own: a service scope's
+daily budget was settable only at token issuance, so a capability requiring
+one could be granted to an existing token and refused forever. Ledger now has
+`manage_token_services` action `set_budget` (UnlikeOtherAI/ledger#14).
 
 Built and verified: `voice_installations` / `voice_sessions` + migration,
 `POST /api/voice/{installations,sessions,sessions/:id/rotate,usage,transcript,end}`,
@@ -12,14 +18,23 @@ seeding, the call-record writer, the browser client (AudioWorklet capture at
 16 kHz, WebAudio playback at 24 kHz, rotation, `pa_send`, persistent usage
 outbox), and the one call button on the Personal Assistant header.
 
-Two things verification settled that the plan had left open:
+Three things live verification settled that the plan had left open — the
+first two were wrong guesses that only the real service could disprove:
 
-- **The browser sends the credential as `?key=`.** A browser cannot set
-  WebSocket request headers, so Coder's `Authorization: Token …` does not
-  port. Google's ephemeral `auth_tokens/…` credential is designed to be used
-  in place of an API key, which is the documented browser path. **This is the
-  one thing still unproven against the live service** — it needs a real
-  credential, so it is the first assertion to make once phase 0 lands.
+- **The browser sends the credential as `?access_token=`, not `?key=`.**
+  A browser cannot set WebSocket request headers, so Coder's
+  `Authorization: Token …` does not port. The first draft guessed `?key=`, on
+  the reasoning that an ephemeral credential stands in for an API key. That
+  guess was wrong, and only the live service says so: Google closes a `?key=`
+  socket with 1007 *"Missing or malformed auth token in request. Obtain one
+  from CreateAuthToken and pass it in an `access_token` query param"*.
+  Verified end to end on 2026-09-02 — mint through Ledger, socket open,
+  `setupComplete` received.
+- **Ledger requires `deviceId` to be a UUID.** The relay originally sent a raw
+  HMAC hex digest, which Ledger rejects with a 400. The digest is now
+  truncated to 16 bytes and stamped as a version-8 UUID; a unit test asserts
+  the shape, because a hex digest looks perfectly fine locally and fails only
+  at the one place that matters.
 - **A local Ledger cannot be used in dev.** The relay goes through
   `safeFetch`, which refuses loopback and private addresses (correctly —
   `LEDGER_PUBLIC_URL` is operator-supplied). Point it at the hosted service.
