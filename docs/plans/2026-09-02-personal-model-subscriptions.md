@@ -100,8 +100,21 @@ interface SubscriptionProviderAdapter {
   parameterised to Zhipu's Anthropic-compatible endpoint, or
   `openai-compatible` against their OpenAI-shape endpoint — decided at
   implementation time by probing which endpoint the coding-plan key accepts.
-- **Grok** → `'api_key'`, transport = `openai-compatible` against
-  `https://api.x.ai/v1`.
+- **Grok** → `'oauth_loopback'`, tied to the consumer subscription
+  (SuperGrok Heavy, $300/mo, includes the Grok Bot beta and coding; launch
+  reporting also cites SuperGrok / X Premium+ tiers). xAI's open-source
+  terminal agent **Grok Build** (`xai-org/grok-build`) is the reference
+  client: standard OIDC discovery
+  (`{issuer}/.well-known/openid-configuration`), authorization-code + PKCE,
+  scopes `openid profile email offline_access api:access`, and — unlike
+  Codex — a **port-agnostic loopback redirect** (`http://127.0.0.1/callback`,
+  RFC 8252), so the desktop capture can bind an ephemeral port. Tokens live in
+  `~/.grok/auth.json` with silent refresh; subscription eligibility is
+  enforced at auth time, so an ineligible account simply fails the link. The
+  issuer, client_id, backend endpoint and protocol shape (expected
+  OpenAI-compatible; models `grok-4` family + `grok-code-fast`) are pinned at
+  implementation time from the Grok Build source, like Codex (§2.5). Same
+  `auth.json` import fallback applies.
 - **OpenAI Codex** → `'oauth_loopback'` + a **new `codex-subscription`
   connector** (§2.5). Ships in phase 2.
 
@@ -200,7 +213,7 @@ Ownership transfer of an agent whose model is `subscription/*` clears the
 model back to null (deployment default) in the same transaction — the new
 owner never inherits spend on the old owner's plan.
 
-### 2.5 The Codex adapter (phase 2)
+### 2.5 The OAuth-loopback adapters: Codex and Grok (phase 2)
 
 OpenAI's "Sign in with ChatGPT" is authorization-code + PKCE against
 `auth.openai.com` with a client registered for **one fixed redirect:
@@ -214,32 +227,45 @@ from memory: authorize + token endpoints on `auth.openai.com`, the Codex CLI
 shape, `store: false`, streaming, `chatgpt-account-id` + `OpenAI-Beta`
 headers, and the allowed model list — `gpt-5-codex` family).
 
-Two linking paths, desktop first:
+**Grok** shares the whole flow with better manners: the Grok Build reference
+client uses ordinary OIDC discovery + PKCE with a **port-agnostic** loopback
+(`http://127.0.0.1/callback`), so its capture binds an ephemeral port instead
+of fighting over a fixed one, and eligibility (SuperGrok Heavy / eligible
+tiers) is enforced by the provider at auth time. Its issuer, client_id, and
+backend contract are pinned from `xai-org/grok-build` the same way Codex's
+are pinned from the Codex CLI.
+
+Two linking paths, desktop first — one generic capture, parameterised per
+adapter (never a per-provider fork):
 
 1. **Desktop loopback (primary).** A new Tauri command
-   (`subscription_auth_capture`) binds `127.0.0.1:1455` for the duration of
-   the flow, guarded by the same `assert_approved_companion_caller` origin
-   check as the executor commands. Flow: admin calls
-   `POST /api/model-subscriptions/openai-codex/start` → server mints PKCE +
-   one-shot state (verifier stays server-side) and returns the authorize URL
-   → shell opens the system browser (`tauri-plugin-opener`) and starts the
-   listener → the listener answers the redirect with a constant "return to
-   Nessie" page (the MCP callback-page discipline: constant HTML, no
-   redirect) and hands `code`+`state` to the admin → admin posts them to
+   (`subscription_auth_capture`) binds the adapter-declared loopback —
+   `127.0.0.1:1455` for Codex, an ephemeral `127.0.0.1` port for Grok — for
+   the duration of the flow, guarded by the same
+   `assert_approved_companion_caller` origin check as the executor commands.
+   Flow: admin calls `POST /api/model-subscriptions/:provider/start` → server
+   mints PKCE + one-shot state (verifier stays server-side) and returns the
+   authorize URL → shell opens the system browser (`tauri-plugin-opener`) and
+   starts the listener → the listener answers the redirect with a constant
+   "return to Nessie" page (the MCP callback-page discipline: constant HTML,
+   no redirect) and hands `code`+`state` to the admin → admin posts them to
    `…/complete` → the **server** performs the token exchange, verifies the
    id_token, seals the bundle. Tokens are never parked in the browser.
-2. **Import fallback (web-only users).** The person runs `codex login` on
-   their Mac and pastes the resulting `auth.json` contents into a one-time
-   form; the server validates shape + probes, then seals it. Blunt but
-   universal, and honest about what it is.
+2. **Import fallback (web-only users).** The person runs the provider's own
+   login (`codex login` → `~/.codex/auth.json`; Grok Build → `~/.grok/auth.json`)
+   on their Mac and pastes the file's contents into a one-time form; the
+   server validates shape + probes, then seals it. Blunt but universal, and
+   honest about what it is.
 
-Refresh: `grant_type=refresh_token` at the same token endpoint, through the
-locked coordinator. The connector itself is a new
+Refresh: `grant_type=refresh_token` at the adapter's token endpoint, through
+the locked coordinator. Connector work: Codex needs a new
 `codex-subscription` runtime provider speaking the Responses API (streaming
 deltas mapped onto the existing `output_text.delta` / `tool_call.delta` event
 shape so the loop, thinking recorder, and document streaming see nothing
-new). Vision per the backend's actual support; `structuredOutputMode` and
-tool calling are native.
+new); Grok's backend is expected to be OpenAI-compatible and would ride the
+existing connector with bearer-token headers — confirmed against Grok Build's
+source before building. Vision per each backend's actual support;
+`structuredOutputMode` and tool calling are native for both.
 
 ### 2.6 Metering, budgets, ops
 
@@ -281,20 +307,25 @@ Each adapter carries a `termsNote` rendered verbatim at link time. For Codex:
 subscription auth is intended by OpenAI for Codex clients; using it from
 Nessie is the person's own choice against their own account, may violate
 OpenAI's terms, and can get the account rate-limited or actioned. Similar
-notes for Kimi/GLM/Grok coding-plan keys. The feature is per-user opt-in,
+notes for Kimi/GLM coding-plan keys and the Grok subscription login. The
+feature is per-user opt-in,
 default absent, and never provisioned by an admin on someone's behalf.
 Anthropic: excluded outright (§ top).
 
 ## 4. Phasing
 
-1. **Phase 1 — framework + API-key adapters (Kimi, GLM, Grok).** Schema +
+1. **Phase 1 — framework + API-key adapters (Kimi, GLM).** Schema +
    `@nessie/model-subscriptions` + coordinator, settings section, dropdown
    group + two-armed validation, `resolveStageProviderConfig` branch +
    ownership gate + failure classification, metering split. No new connector
-   code — `kimi` and `openai-compatible` carry all three transports.
-2. **Phase 2 — Codex.** `codex-subscription` Responses-API connector, server
-   OAuth start/complete/refresh, desktop loopback command + admin flow,
-   `auth.json` import fallback.
+   code — `kimi` and `openai-compatible` carry both transports.
+2. **Phase 2 — OAuth loopback: Codex + Grok.** Server OAuth
+   start/complete/refresh, the generic desktop loopback command + admin flow,
+   `auth.json` import fallback for both; the `codex-subscription`
+   Responses-API connector; Grok pinned from `xai-org/grok-build` (expected
+   to ride `openai-compatible`). Grok's ephemeral-port loopback is the
+   simpler of the two — build the capture against it first, then add Codex's
+   fixed-port case.
 3. **Phase 3 — polish.** Health probe sweep (mark dead links before a run
    trips on them), quota-window classification per provider, owner alert
    copy, `/ops/usage` split refinement.
@@ -304,10 +335,9 @@ Anthropic: excluded outright (§ top).
 1. **Shared-channel spend.** Plan says: owner pays for every run of their
    agent, stated clearly at selection time. Alternative: v1 restricts
    subscription models to `visibility: private` agents + the owner's PA.
-2. **Grok inclusion.** xAI's consumer Grok subscription has no sanctioned
-   API path; the adapter as planned rides an `api.x.ai` API key, which is
-   metered API billing, not the consumer subscription. Keep it in phase 1 as
-   a bring-your-own-key convenience, or drop it until xAI offers a
-   subscription-linked path?
-3. **Import fallback scope.** Ship the `auth.json` paste path at all, or
-   desktop-only linking for Codex?
+2. **Import fallback scope.** Ship the `auth.json` paste path at all, or
+   desktop-only linking for Codex/Grok?
+
+*(Resolved 2026-09-02: Grok is included as a first-class subscription
+adapter — SuperGrok Heavy's $300/mo plan covers Grok Bot + coding, and Grok
+Build proves a subscription-linked OAuth path exists.)*
