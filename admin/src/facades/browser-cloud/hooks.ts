@@ -89,6 +89,9 @@ export const useAgentBrowser = (agentId: string | null) => {
     queryKey: browserCloudKeys.agentBrowser(agentId ?? undefined),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/browser`),
     enabled: agentId !== null,
+    // Switching agents keeps the previous browser record painted rather than
+    // blanking the panel between answers.
+    placeholderData: keepPreviousData,
   })
 }
 

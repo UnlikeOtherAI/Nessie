@@ -30,6 +30,14 @@ export const loadEmailConversationContext = async (
   input: {
     conversationId: string
     mailboxId: string
+    /**
+     * The agent this run belongs to. The pair alone is not enough: `runReplyBasis`
+     * subtracts `email:{mailboxId}` whenever it matches the run's context, so a
+     * caller that wired a foreign mailbox would turn a privileged read into an
+     * unrestricted reply. Binding the mailbox to its agent here means the loader
+     * cannot be pointed at correspondence this run has no claim to.
+     */
+    agentId: string
     consumedSources: ConsumedSourceSink
   },
 ): Promise<EmailConversationContext | null> => {
@@ -39,7 +47,11 @@ export const loadEmailConversationContext = async (
       mailbox: { select: { address: true, displayName: true } },
       subject: true,
     },
-    where: { id: input.conversationId, mailboxId: input.mailboxId },
+    where: {
+      id: input.conversationId,
+      mailbox: { agentId: input.agentId, retiredAt: null },
+      mailboxId: input.mailboxId,
+    },
   })
   if (!conversation) return null
 

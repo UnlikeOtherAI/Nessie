@@ -1,4 +1,3 @@
-import type { PrismaClient } from '@prisma/client'
 import { normalizeAddress } from '@nessie/agent-mail'
 import { AGENT_EMAIL_SEND_TOPIC } from '@nessie/schemas'
 
@@ -177,16 +176,8 @@ export const runEmailSendTool = async (
   // The row is written `queued` with its own Message-ID before dispatch, so a
   // retry of a call that provably never reached SES reuses one identity rather
   // than minting a second.
-  const { queueOutboundEmail, assertRecipientsSendable, assertWithinSendRate } = await import(
-    '../../control/agent-email/outbound.js'
-  )
+  const { queueOutboundEmail } = await import('../../control/agent-email/outbound.js')
   const config = mailbox.config
-  await assertRecipientsSendable(context.prisma as PrismaClient, [
-    ...resolved.to,
-    ...resolved.cc,
-    ...resolved.bcc,
-  ])
-  await assertWithinSendRate(context.prisma as PrismaClient, mailbox.id, config.maxSendsPerHour)
 
   const queued = await queueOutboundEmail(
     { config, prisma: context.prisma, transport: mailbox.transport },
@@ -197,6 +188,10 @@ export const runEmailSendTool = async (
       mailboxId: mailbox.id,
       organizationId: context.channel.organizationId,
       runId: context.run.id,
+      // The tool call's own identity: a replayed run re-issues this same call,
+      // and the write is keyed on it so the replay adopts the queued row rather
+      // than minting a second message.
+      sendKey: `${context.run.id}:${context.toolCallId ?? 'no-tool-call'}`,
       subject: resolved.subject,
       text,
       to: resolved.to,

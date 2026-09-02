@@ -388,7 +388,16 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   stay implied by the mailbox's own thread or every reply deadlocks (four tests
   pin this). A send is `queued` → conditional `sending` → `sent`, with an
   ambiguous outcome parked at `delivery_unknown` and **never retried** — a retry
-  is a duplicate in someone's inbox. Deleting a mailbox retires its address
+  is a duplicate in someone's inbox, and a sweep resolves a claim whose worker
+  died so it cannot sit in `sending` forever. That claim stops one ROW being
+  sent twice; what stops two ROWS existing is `EmailMessage.sendKey`, the tool
+  call's own `{runId}:{toolCallId}`, because a replayed run re-issues the same
+  call. Suppression and the hourly cap are enforced **inside** the queueing
+  write rather than beside it — a check a caller must remember is a check a
+  caller can forget, and counting outside the transaction let two concurrent
+  runs both pass the last slot. An email attachment asks the same
+  agent-visibility question the mailbox reads ask, so the byte surface and the
+  conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.

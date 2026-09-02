@@ -104,3 +104,37 @@ export const sweepInboundRetention = async (
   }
   return deleted
 }
+
+/**
+ * A send that never came back.
+ *
+ * `sending` is a claim, held only for the moment between the conditional
+ * update and SES answering. A worker killed inside that window leaves the row
+ * claimed forever: the mailbox shows a message stuck mid-flight, and nothing
+ * tells a person whether it went. The catch path can only resolve outcomes it
+ * lived to see, so a sweep resolves the rest.
+ *
+ * It resolves to `delivery_unknown`, never back to `queued`: re-queuing would
+ * re-dispatch a message SES may already have delivered, which is the duplicate
+ * this whole state machine exists to prevent. Somebody reads the state and
+ * decides.
+ */
+export const SEND_CLAIM_TIMEOUT_MS = 10 * 60 * 1000
+
+export const sweepStuckSends = async (
+  prisma: PrismaClient,
+  now: Date = new Date(),
+): Promise<number> => {
+  const cutoff = new Date(now.getTime() - SEND_CLAIM_TIMEOUT_MS)
+  const stuck = await prisma.emailMessage.updateMany({
+    data: { deliveryState: 'delivery_unknown' },
+    where: {
+      deliveryState: 'sending',
+      direction: 'outbound',
+      // `occurredAt` is set when the row is queued, so this is "claimed long
+      // enough ago that no live dispatch can still be holding it".
+      occurredAt: { lt: cutoff },
+    },
+  })
+  return stuck.count
+}
