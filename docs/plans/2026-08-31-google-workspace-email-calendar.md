@@ -1,8 +1,22 @@
 # Google Workspace in chat — Gmail, Calendar, Meet, negotiated scopes
 
 Date: 2026-08-31 (v2 — rewritten after cross-model review)
-Status: **P0 built and merged; P1–P3 planned**
+Status: **built — P0–P3 shipped**
 
+> **P1–P3 shipped 2026-09-02.** Gmail read/search/thread tools; drafts with a
+> real Gmail draft behind them; the in-chat draft card with recipients, CC,
+> subject, body and Send/Discard/Undo; the in-chat permission-request card;
+> Calendar read, free/busy, and events with a Meet link; the structural send
+> gate; standing send consent with its own surface; and the undo-window sweep.
+>
+> Two things changed from the plan as written, both after finding the plan
+> wrong in the code:
+> - `gmail.send` cannot create or send a **draft** (`users.drafts.*` accept
+>   `gmail.compose`/`gmail.modify` only), so the draft flow requires
+>   `gmail.compose` and `gmail.send` backs a separate direct-send path.
+> - The free/busy `organization:` carve-out stayed withdrawn: a Nessie
+>   organisation is not proof of a shared Google Workspace domain.
+>
 > **P0 shipped 2026-08-31.** Capability catalog, capability-aware OAuth start,
 > incremental grant, bound OAuth state, all-of + local-block enforcement at the
 > credential chokepoint, and the Permissions section on `/settings/connections`.
@@ -443,9 +457,9 @@ send_authorization_grants new table                              (§8)
 | Phase | Ships |
 |---|---|
 | **P0** ✅ | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
-| **P1** | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
-| **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
-| **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType**; optional SMTP/IMAP transport |
+| **P1** ✅ | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
+| **P2** ✅ | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
+| **P3** ✅ | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType**; optional SMTP/IMAP transport |
 
 P0 is pure negotiation and correctness — it fixes three live fail-open defects
 and makes today's connection self-service before any new Google surface lands.

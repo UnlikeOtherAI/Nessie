@@ -1,7 +1,9 @@
-import { requestJson, encodeForm, type FetchLike } from '../http.js'
-
-/** Google Calendar. Fixed host, never derived from caller input. */
-const CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3'
+import {
+  requestJson,
+  encodeForm,
+  CALENDAR_API_BASE,
+  type FetchLike,
+} from '../http.js'
 
 const auth = (accessToken: string): Record<string, string> => ({
   authorization: `Bearer ${accessToken}`,

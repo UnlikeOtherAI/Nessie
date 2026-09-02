@@ -5,6 +5,7 @@ import {
   useGmailDraft,
   useSendGmailDraft,
   useUndoGmailSend,
+  type GmailDraftView,
 } from '../../../facades/gmail/hooks'
 
 /**
@@ -43,42 +44,25 @@ const AddressRow = ({ label, values }: { label: string; values: string[] }) =>
     </div>
   )
 
-export const GmailDraftCard = ({
-  metadata,
+/**
+ * The presentational half, kept pure so every state — draft, held, sent,
+ * discarded — is testable without a query client or a live mailbox.
+ */
+export const GmailDraftCardView = ({
+  data,
+  busy = false,
+  error = null,
+  onSend,
+  onUndo,
+  onDiscard,
 }: {
-  metadata: Record<string, unknown> | undefined
+  data: GmailDraftView
+  busy?: boolean
+  error?: string | null
+  onSend?: () => void
+  onUndo?: () => void
+  onDiscard?: () => void
 }) => {
-  const card = readGmailDraftCard(metadata)
-  const draft = useGmailDraft(card?.draftActionId ?? null)
-  const send = useSendGmailDraft()
-  const undo = useUndoGmailSend()
-  const discard = useDiscardGmailDraft()
-  const [error, setError] = useState<string | null>(null)
-
-  if (!card) return null
-
-  // A viewer who is not the mailbox owner gets a 404 by design. Show nothing
-  // rather than an empty shell that advertises a draft they cannot see.
-  if (draft.isError) return null
-  if (!draft.data) {
-    return (
-      <div className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 text-xs text-[color:var(--tx3)]">
-        Loading draft…
-      </div>
-    )
-  }
-
-  const data = draft.data
-  const busy = send.isPending || undo.isPending || discard.isPending
-  const act = async (run: () => Promise<unknown>, message: string) => {
-    setError(null)
-    try {
-      await run()
-    } catch {
-      setError(message)
-    }
-  }
-
   return (
     <div
       className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3"
@@ -140,31 +124,15 @@ export const GmailDraftCard = ({
               className="admin-button admin-button-primary"
               data-testid="gmail-draft-send"
               disabled={busy}
-              onClick={() =>
-                void act(
-                  () =>
-                    send.mutateAsync({
-                      id: card.draftActionId,
-                      // Send back exactly what this card rendered, so a draft
-                      // that changed since is refused rather than delivered.
-                      expectedFingerprint: data.contentFingerprint,
-                    }),
-                  'Could not send. The draft may have changed — reload and check it.',
-                )
-              }
+              onClick={onSend}
               type="button"
             >
-              {send.isPending ? 'Sending…' : 'Send'}
+              Send
             </button>
             <button
               className="admin-button admin-button-secondary admin-button-danger"
               disabled={busy}
-              onClick={() =>
-                void act(
-                  () => discard.mutateAsync(card.draftActionId),
-                  'Could not discard the draft.',
-                )
-              }
+              onClick={onDiscard}
               type="button"
             >
               Discard
@@ -177,12 +145,7 @@ export const GmailDraftCard = ({
             className="admin-button admin-button-secondary"
             data-testid="gmail-draft-undo"
             disabled={busy}
-            onClick={() =>
-              void act(
-                () => undo.mutateAsync(card.draftActionId),
-                'Too late to undo — the email has gone.',
-              )
-            }
+            onClick={onUndo}
             type="button"
           >
             Undo
@@ -190,5 +153,74 @@ export const GmailDraftCard = ({
         ) : null}
       </div>
     </div>
+  )
+}
+
+/** The data-wired card the message row renders. */
+export const GmailDraftCard = ({
+  metadata,
+}: {
+  metadata: Record<string, unknown> | undefined
+}) => {
+  const card = readGmailDraftCard(metadata)
+  const draft = useGmailDraft(card?.draftActionId ?? null)
+  const send = useSendGmailDraft()
+  const undo = useUndoGmailSend()
+  const discard = useDiscardGmailDraft()
+  const [error, setError] = useState<string | null>(null)
+
+  if (!card) return null
+
+  // A viewer who is not the mailbox owner gets a 404 by design. Render nothing
+  // rather than an empty shell advertising a draft they cannot see.
+  if (draft.isError) return null
+  if (!draft.data) {
+    return (
+      <div className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 text-xs text-[color:var(--tx3)]">
+        Loading draft…
+      </div>
+    )
+  }
+
+  const data = draft.data
+  const act = async (run: () => Promise<unknown>, message: string) => {
+    setError(null)
+    try {
+      await run()
+    } catch {
+      setError(message)
+    }
+  }
+
+  return (
+    <GmailDraftCardView
+      busy={send.isPending || undo.isPending || discard.isPending}
+      data={data}
+      error={error}
+      onDiscard={() =>
+        void act(
+          () => discard.mutateAsync(card.draftActionId),
+          'Could not discard the draft.',
+        )
+      }
+      onSend={() =>
+        void act(
+          () =>
+            send.mutateAsync({
+              id: card.draftActionId,
+              // Send back exactly what this card rendered, so a draft that
+              // changed since is refused rather than delivered.
+              expectedFingerprint: data.contentFingerprint,
+            }),
+          'Could not send. The draft may have changed — reload and check it.',
+        )
+      }
+      onUndo={() =>
+        void act(
+          () => undo.mutateAsync(card.draftActionId),
+          'Too late to undo — the email has gone.',
+        )
+      }
+    />
   )
 }
