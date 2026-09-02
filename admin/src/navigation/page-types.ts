@@ -71,6 +71,18 @@ export type Surface = {
   // screen, so the stack neither pushes nor animates; on `single` it is the
   // pushed screen it declares. Only meaningful on a `nested` row.
   splitInline?: true
+  // A surface that fills the viewport and owns its own inner scroller (the
+  // chat conversation: a fixed header/composer with a scrolling feed between
+  // them), rather than being page-height content the phone page shell scrolls.
+  // On `single`, the shell (`.phone-navigation-page`) is a block scroller, so
+  // a `flex-1`/`h-full` full-height child inside it has no bounded height to
+  // fill and collapses to content height — which floats the composer up under
+  // the last message with a gap below. This flag switches that one screen's
+  // shell to a non-scrolling flex column so the surface fills it and its
+  // composer stays pinned to the bottom. Only meaningful on `single`; `split`
+  // already bounds the detail column. See
+  // `docs/navigation/page-types-and-motion.md` §2.
+  fillsViewport?: true
   pattern: RegExp
   // The section's root path — the tab this route belongs to.
   root: string
