@@ -3,23 +3,23 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
+  WorkflowRunRecord,
   WorkflowTemplateRecord,
 } from '../lib/api-client'
-import {
-  useFailedWorkflowRuns,
-  useInstallWorkflowTemplate,
-  useWorkflowInstallations,
-  useWorkflowTemplates,
-} from '../facades/workflows/hooks'
+import { useInstallWorkflowTemplate } from '../facades/workflows/hooks'
 import {
   useDemonstrations,
 } from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { usePagedList } from '../facades/usePagedList'
 import { workflowKeys } from '../lib/query-keys'
 import { Pill } from '../components/primitives/Pill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
@@ -30,6 +30,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
   getInstallationTone,
+  getRunTone,
 } from '../components/features/workflows/presentation'
 
 /**
@@ -88,9 +89,32 @@ export const WorkflowsPage = () => {
   // W19: template authoring stays admin-gated; the member-facing read surface
   // is the installations list (entitlement-scoped server-side) plus the
   // failed-runs triage view.
-  const { data: templates = [] } = useWorkflowTemplates(isWorkflowAdmin)
-  const { data: installations = [] } = useWorkflowInstallations(true)
-  const { data: failedRuns = [] } = useFailedWorkflowRuns(true)
+  const templatesList = usePagedList<WorkflowTemplateRecord>({
+    enabled: isWorkflowAdmin,
+    path: '/api/workflows',
+    queryKey: workflowKeys.templates,
+  })
+  const templates = templatesList.items
+  // Cross-template rollup (installation counts + status badges on every
+  // template row) needs more than one template's worth of installations, and
+  // the list endpoint has no per-template filter to page against — so this
+  // reads the contract's maximum page instead of the default 25. Still a cap,
+  // not "all": an organization with more than 100 installations across all of
+  // its templates will under-count the oldest ones here. Closing that
+  // requires a `workflowTemplateId` filter on `GET /api/workflow-installations`,
+  // which is outside this slice's owned files.
+  const installationsList = usePagedList<WorkflowInstallationRecord>({
+    limit: 100,
+    path: '/api/workflow-installations',
+    queryKey: workflowKeys.installations,
+  })
+  const installations = installationsList.items
+  const failedRunsList = usePagedList<WorkflowRunRecord>({
+    params: { status: 'failed' },
+    path: '/api/workflow-runs',
+    queryKey: workflowKeys.failedRuns,
+  })
+  const failedRuns = failedRunsList.items
   const installWorkflowTemplate = useInstallWorkflowTemplate()
   const { data: demonstrations = [] } = useDemonstrations()
   const restoredSelection = useMemo(
@@ -210,42 +234,56 @@ export const WorkflowsPage = () => {
         key="failed-runs"
         onBack={() => setShowFailedRuns(false)}
         showBack
-        title={`Failed runs (${failedRuns.length})`}
+        title={`Failed runs (${failedRunsList.total ?? failedRuns.length})`}
       >
-        {failedRuns.length === 0 ? (
-          <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-            No failed runs — nothing broke.
-          </div>
-        ) : (
-          <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-            {failedRuns.map((run) => (
-              <button
-                className="w-full px-3 py-2.5 text-left hover:bg-[var(--overlay-weak)]"
-                data-testid="failed-run-row"
-                key={run.id}
-                onClick={() => {
-                  setSelectedRunId(run.id)
-                  setSelectedInstallationId(run.installationId)
-                  setShowFailedRuns(false)
-                }}
-                type="button"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-                    Run {run.id.slice(0, 8)}
-                  </span>
-                  <Pill tone="danger">{run.status}</Pill>
-                </div>
-                <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
-                  {run.errorMessage ?? run.summary ?? 'Failed'}
-                  {' · '}
-                  {formatRelativeTime(run.finishedAt ?? run.updatedAt) ??
-                    formatTimestamp(run.updatedAt)}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        <QueryState
+          emptyLabel="No failed runs — nothing broke."
+          errorLabel="Failed runs could not be loaded."
+          isEmpty={failedRuns.length === 0}
+          loadingLabel="Loading failed runs…"
+          query={failedRunsList.query}
+        >
+          {() => (
+            <>
+              <RowList label="Failed runs">
+                {failedRuns.map((run) => (
+                  <Row
+                    key={run.id}
+                    onClick={() => {
+                      setSelectedRunId(run.id)
+                      setSelectedInstallationId(run.installationId)
+                      setShowFailedRuns(false)
+                    }}
+                    subtitle={
+                      `${run.errorMessage ?? run.summary ?? 'Failed'} · `
+                      + `${formatRelativeTime(run.finishedAt ?? run.updatedAt)
+                        ?? formatTimestamp(run.updatedAt)}`
+                    }
+                    title={
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate">
+                          Run {run.id.slice(0, 8)}
+                        </span>
+                        <Pill height="control" tone={getRunTone(run.status)}>
+                          {run.status}
+                        </Pill>
+                      </span>
+                    }
+                  />
+                ))}
+              </RowList>
+              <PaginationFooter
+                canNext={failedRunsList.canNext}
+                canPrevious={failedRunsList.canPrevious}
+                className="mt-3"
+                hideWhenSinglePage
+                label={failedRunsList.label}
+                onPageChange={failedRunsList.onPageChange}
+                page={failedRunsList.page}
+              />
+            </>
+          )}
+        </QueryState>
       </ColumnBrowserColumn>,
     )
   }
@@ -288,7 +326,7 @@ export const WorkflowsPage = () => {
         ) : undefined
       }
       key="workflows"
-      title={`Workflows (${sortedTemplates.length})`}
+      title={`Workflows (${templatesList.total ?? sortedTemplates.length})`}
     >
       <button
         className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
@@ -332,55 +370,75 @@ export const WorkflowsPage = () => {
             }}
           />
         </div>
-        {filteredTemplates.length === 0 ? (
-          <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-            {sortedTemplates.length === 0
+        {/* Search narrows only the loaded page: `/api/workflows` has no
+            server-side text filter to page a search against, so paging past
+            the first screen and searching are two different ways to reach
+            more templates rather than one combined query. */}
+        <QueryState
+          emptyLabel={
+            sortedTemplates.length === 0
               ? 'No workflows yet. Build one in the designer.'
-              : 'No workflows match the search.'}
-          </div>
-        ) : (
-          <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-            {filteredTemplates.map((template) => {
-              const templateInstallations =
-                installationsByTemplateId.get(template.id) ?? []
-              const summary = summarizeInstallations(templateInstallations)
+              : 'No workflows match the search.'
+          }
+          errorLabel="Workflows could not be loaded."
+          isEmpty={filteredTemplates.length === 0}
+          loadingLabel="Loading workflows…"
+          query={templatesList.query}
+        >
+          {() => (
+            <>
+              <RowList label="Workflows">
+                {filteredTemplates.map((template) => {
+                  const templateInstallations =
+                    installationsByTemplateId.get(template.id) ?? []
+                  const summary = summarizeInstallations(templateInstallations)
 
-              return (
-                <button
-                  className={[
-                    'w-full border-l-2 px-3 py-2.5 text-left transition-colors',
-                    template.id === selectedTemplate?.id
-                      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-                      : 'border-transparent hover:bg-[var(--overlay-weak)]',
-                  ].join(' ')}
-                  key={template.id}
-                  onClick={() => selectTemplate(template)}
-                  type="button"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-                      {template.name}
-                    </span>
-                    <Pill tone={summary.tone}>{summary.label}</Pill>
-                    {template.source === 'demonstration' ? <Pill tone="accent">Learned</Pill> : null}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
-                    v{template.version} · {template.graph.steps.length} step
-                    {template.graph.steps.length === 1 ? '' : 's'}
-                    {templateInstallations.length > 0
-                      ? ` · ${templateInstallations.length} installation${
-                          templateInstallations.length === 1 ? '' : 's'
-                        }`
-                      : ''}
-                    {' · '}
-                    {formatRelativeTime(template.updatedAt) ??
-                      formatTimestamp(template.updatedAt)}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
+                  return (
+                    <Row
+                      key={template.id}
+                      onClick={() => selectTemplate(template)}
+                      selected={template.id === selectedTemplate?.id}
+                      subtitle={
+                        `v${template.version} · ${template.graph.steps.length} step`
+                        + `${template.graph.steps.length === 1 ? '' : 's'}`
+                        + (templateInstallations.length > 0
+                          ? ` · ${templateInstallations.length} installation${
+                              templateInstallations.length === 1 ? '' : 's'
+                            }`
+                          : '')
+                        + ' · '
+                        + (formatRelativeTime(template.updatedAt)
+                          ?? formatTimestamp(template.updatedAt))
+                      }
+                      title={
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate">
+                            {template.name}
+                          </span>
+                          <Pill height="control" tone={summary.tone}>
+                            {summary.label}
+                          </Pill>
+                          {template.source === 'demonstration' ? (
+                            <Pill height="control" tone="accent">Learned</Pill>
+                          ) : null}
+                        </span>
+                      }
+                    />
+                  )
+                })}
+              </RowList>
+              <PaginationFooter
+                canNext={templatesList.canNext}
+                canPrevious={templatesList.canPrevious}
+                className="mt-3"
+                hideWhenSinglePage
+                label={templatesList.label}
+                onPageChange={templatesList.onPageChange}
+                page={templatesList.page}
+              />
+            </>
+          )}
+        </QueryState>
       </div>
     </ColumnBrowserColumn>,
   )

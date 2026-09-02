@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   type ExecutorAvailabilityCandidate,
@@ -10,7 +10,8 @@ import {
   useExecutorAvailability,
   useLaunchExecutorRun,
 } from '../../../facades/executors/hooks'
-import { useModalA11y } from '../../shared/useModalA11y'
+import { Dialog } from '../../shared/Dialog'
+import { FormError } from '../../shared/FormActions'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -100,7 +101,6 @@ export const ExecutorRunLauncherDialog = ({
   projectId,
   threadId,
 }: ExecutorRunLauncherDialogProps) => {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
   const {
     isPending: isCheckingAvailability,
     mutateAsync: resolveAvailability,
@@ -113,8 +113,7 @@ export const ExecutorRunLauncherDialog = ({
   const [explanation, setExplanation] = useState<string | null>(null)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [selectedHandle, setSelectedHandle] = useState('')
-  const close = useCallback(() => onClose(), [onClose])
-  useModalA11y(dialogRef, close)
+  const close = onClose
 
   useEffect(() => {
     if (!open) return
@@ -183,46 +182,16 @@ export const ExecutorRunLauncherDialog = ({
     }
   }
 
-  if (!open) return null
-
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
-      role="presentation"
+    <Dialog
+      description="Choose a channel agent and a currently eligible executor capability. The executor is selected by scope only; its identity and other people’s access remain private."
+      dismissDisabled={launch.isPending}
+      onClose={close}
+      open={open}
+      size="lg"
+      title="Run on an executor"
     >
-      <div
-        aria-describedby="executor-run-launcher-description"
-        aria-labelledby="executor-run-launcher-title"
-        aria-modal="true"
-        className="w-full max-w-2xl rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl"
-        ref={dialogRef}
-        role="dialog"
-        tabIndex={-1}
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--sep)] px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-[var(--tx)]" id="executor-run-launcher-title">
-              Run on an executor
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-[var(--tx2)]" id="executor-run-launcher-description">
-              Choose a channel agent and a currently eligible executor capability. The executor is
-              selected by scope only; its identity and other people’s access remain private.
-            </p>
-          </div>
-          <button
-            aria-label="Close executor launcher"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]"
-            onClick={close}
-            type="button"
-          >
-            ×
-          </button>
-        </header>
-
-        <div className="grid gap-4 p-5">
+      <div className="grid gap-4">
           <label className="grid gap-1 text-sm">
             <span className="font-semibold text-[var(--tx2)]">Agent</span>
             <select
@@ -255,9 +224,9 @@ export const ExecutorRunLauncherDialog = ({
           <fieldset className="grid gap-2">
             <legend className="text-sm font-semibold text-[var(--tx2)]">Available executor</legend>
             {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
-            {availabilityError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{availabilityError}</p> : null}
+            <FormError>{availabilityError}</FormError>
             {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
-              {candidates.map((candidate, index) => (
+            {candidates.map((candidate, index) => (
               <label
                 className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
                 key={candidate.handle}
@@ -287,9 +256,7 @@ export const ExecutorRunLauncherDialog = ({
             />
           </label>
 
-          {launch.error ? (
-            <p className="text-sm text-[color:var(--danger-text)]" role="alert">{errorMessage(launch.error)}</p>
-          ) : null}
+          <FormError>{launch.error ? errorMessage(launch.error) : undefined}</FormError>
 
           <div className="flex justify-end gap-2">
             <button className="admin-button-secondary" onClick={close} type="button">Cancel</button>
@@ -297,8 +264,7 @@ export const ExecutorRunLauncherDialog = ({
               {launch.isPending ? 'Starting…' : 'Start executor run'}
             </button>
           </div>
-        </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

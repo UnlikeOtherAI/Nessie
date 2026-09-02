@@ -1,4 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import type {
@@ -8,6 +9,8 @@ import type {
 } from '../../../pages/triggers/useTriggersPageState'
 import { TabBar } from '../../primitives/TabBar'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
 import {
   TRIGGER_TYPE_ICONS,
   formatRelativeTime,
@@ -39,6 +42,7 @@ type TriggerListColumnProps = {
   statusCounts: TriggerStatusCounts
   statusFilter: TriggerStatusFilter
   totalCount: number
+  triggersQuery: UseQueryResult<AgentTriggerRecord[]>
   typeFilter: TriggerTypeFilter
 }
 
@@ -50,58 +54,6 @@ const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
   { label: 'Webhook', value: 'webhook' },
   { label: 'Event', value: 'event' },
 ]
-
-const TriggerRow = ({
-  isSelected,
-  onSelect,
-  registry,
-  trigger,
-}: {
-  isSelected: boolean
-  onSelect: (triggerId: string) => void
-  registry: TriggerRegistryMaps
-  trigger: AgentTriggerRecord
-}) => {
-  const nextRun = trigger.enabled ? formatRelativeTime(trigger.nextRunAt) : undefined
-
-  return (
-    <button
-      className={[
-        'w-full border-l-2 px-3 py-2.5 text-left transition-colors',
-        isSelected
-          ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-          : 'border-transparent hover:bg-[var(--overlay-weak)]',
-      ].join(' ')}
-      onClick={() => onSelect(trigger.id)}
-      type="button"
-    >
-      <div className="flex items-center gap-2">
-        <FontAwesomeIcon
-          className="h-3 w-3 flex-shrink-0 text-[color:var(--tx3)]"
-          icon={TRIGGER_TYPE_ICONS[trigger.type]}
-        />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-          {trigger.name ?? trigger.type}
-        </span>
-        {nextRun ? (
-          <span className="flex-shrink-0 text-[11px] tabular-nums text-[color:var(--tx3)]">
-            {nextRun}
-          </span>
-        ) : null}
-        <span
-          aria-label={`Status: ${trigger.status}`}
-          className="h-2 w-2 flex-shrink-0 rounded-full"
-          role="img"
-          style={{ background: getTriggerStatusColor(trigger.status) }}
-          title={trigger.status}
-        />
-      </div>
-      <div className="mt-0.5 truncate pl-5 text-xs text-[color:var(--tx3)]">
-        {getScheduleSummary(trigger)} · {formatTriggerTarget(trigger, registry)}
-      </div>
-    </button>
-  )
-}
 
 export const TriggerListColumn = ({
   effectiveTriggerId,
@@ -117,6 +69,7 @@ export const TriggerListColumn = ({
   statusCounts,
   statusFilter,
   totalCount,
+  triggersQuery,
   typeFilter,
 }: TriggerListColumnProps) => (
   <ColumnBrowserColumn
@@ -171,25 +124,56 @@ export const TriggerListColumn = ({
         ))}
       </select>
 
-      {filteredTriggers.length === 0 ? (
-        <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-          {totalCount === 0
+      <QueryState
+        emptyLabel={
+          totalCount === 0
             ? 'No triggers yet. Create one to wake an agent or workflow automatically.'
-            : 'No triggers match the current filters.'}
-        </div>
-      ) : (
-        <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-          {filteredTriggers.map((trigger) => (
-            <TriggerRow
-              isSelected={trigger.id === effectiveTriggerId}
-              key={trigger.id}
-              onSelect={onSelect}
-              registry={registry}
-              trigger={trigger}
-            />
-          ))}
-        </div>
-      )}
+            : 'No triggers match the current filters.'
+        }
+        errorLabel="Triggers could not be loaded."
+        isEmpty={filteredTriggers.length === 0}
+        loadingLabel="Loading triggers…"
+        query={triggersQuery}
+      >
+        {() => (
+          <RowList label="Triggers">
+            {filteredTriggers.map((trigger) => {
+              const nextRun = trigger.enabled ? formatRelativeTime(trigger.nextRunAt) : undefined
+              return (
+                <Row
+                  key={trigger.id}
+                  leading={
+                    <FontAwesomeIcon
+                      className="h-3 w-3 text-[color:var(--tx3)]"
+                      icon={TRIGGER_TYPE_ICONS[trigger.type]}
+                    />
+                  }
+                  onClick={() => onSelect(trigger.id)}
+                  selected={trigger.id === effectiveTriggerId}
+                  subtitle={`${getScheduleSummary(trigger)} · ${formatTriggerTarget(trigger, registry)}`}
+                  title={trigger.name ?? trigger.type}
+                  trailing={
+                    <>
+                      {nextRun ? (
+                        <span className="text-[11px] tabular-nums text-[color:var(--tx3)]">
+                          {nextRun}
+                        </span>
+                      ) : null}
+                      <span
+                        aria-label={`Status: ${trigger.status}`}
+                        className="h-2 w-2 rounded-full"
+                        role="img"
+                        style={{ background: getTriggerStatusColor(trigger.status) }}
+                        title={trigger.status}
+                      />
+                    </>
+                  }
+                />
+              )
+            })}
+          </RowList>
+        )}
+      </QueryState>
     </div>
   </ColumnBrowserColumn>
 )

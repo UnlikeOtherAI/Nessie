@@ -5,6 +5,9 @@ import {
   useDeleteToolGrant,
   type McpToolRegistryRecord,
 } from '../../../facades/tool-grants/hooks'
+import { EmptyState } from '../../shared/EmptyState'
+import { FormError } from '../../shared/FormActions'
+import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 
@@ -81,28 +84,25 @@ const AgentAccessRow = ({ agent, baseline, tool }: AgentAccessRowProps) => {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-medium text-[var(--tx)]">{agent.name}</span>
-        <span className="ml-2 text-xs text-[color:var(--tx3)]">{agent.role}</span>
-        {error ? (
-          <div className="mt-1 text-[11px] text-[var(--danger-text)]" role="alert">
-            {error}
+    <Row
+      subtitle={agent.role}
+      title={agent.name}
+      trailing={
+        baseline.denied ? (
+          <Pill height="control" tone="danger">denied</Pill>
+        ) : (
+          <div className={pending ? 'opacity-50' : ''}>
+            <Switch
+              checked={checked}
+              label={`${checked ? 'Revoke' : 'Grant'} ${tool.label} for ${agent.name}`}
+              onChange={toggle}
+            />
           </div>
-        ) : null}
-      </div>
-      {baseline.denied ? (
-        <Pill tone="danger">denied</Pill>
-      ) : (
-        <div className={pending ? 'opacity-50' : ''}>
-          <Switch
-            checked={checked}
-            label={`${checked ? 'Revoke' : 'Grant'} ${tool.label} for ${agent.name}`}
-            onChange={toggle}
-          />
-        </div>
-      )}
-    </div>
+        )
+      }
+    >
+      {error ? <FormError className="mt-1">{error}</FormError> : null}
+    </Row>
   )
 }
 
@@ -132,11 +132,7 @@ export const ToolAgentAccessPanel = ({ agents, tool }: ToolAgentAccessPanelProps
   )
 
   if (agents.length === 0) {
-    return (
-      <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
-        No agents yet — create one to grant this tool.
-      </div>
-    )
+    return <EmptyState>No agents yet — create one to grant this tool.</EmptyState>
   }
 
   return (
@@ -144,7 +140,7 @@ export const ToolAgentAccessPanel = ({ agents, tool }: ToolAgentAccessPanelProps
       <div className="text-xs text-[color:var(--tx3)]">
         {grantedCount} of {agents.length} agents granted
       </div>
-      <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+      <RowList label="Agent access">
         {agents.map((agent) => (
           <AgentAccessRow
             agent={agent}
@@ -153,7 +149,7 @@ export const ToolAgentAccessPanel = ({ agents, tool }: ToolAgentAccessPanelProps
             tool={tool}
           />
         ))}
-      </div>
+      </RowList>
     </div>
   )
 }

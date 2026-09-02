@@ -1,18 +1,24 @@
 import { useMemo, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { Link } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
+  WorkflowRunRecord,
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import {
   useStartWorkflowRun,
-  useWorkflowInstallationRuns,
   useWorkflowInstallationTriggers,
 } from '../../../facades/workflows/hooks'
+import { usePagedList } from '../../../facades/usePagedList'
+import { workflowKeys } from '../../../lib/query-keys'
+import { EmptyState } from '../../shared/EmptyState'
+import { KeyValueList } from '../../shared/KeyValueList'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 import { Pill } from '../../primitives/Pill'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TriggerEditorDialog } from '../triggers/TriggerEditorDialog'
 import {
@@ -43,13 +49,6 @@ type WorkflowInstallationDetailProps = {
   templates: WorkflowTemplateRecord[]
 }
 
-const FactRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
-    <dt className="flex-shrink-0 text-xs text-[color:var(--tx3)]">{label}</dt>
-    <dd className="min-w-0 text-right text-sm text-[var(--tx)]">{value}</dd>
-  </div>
-)
-
 export const WorkflowInstallationDetail = ({
   installation,
   onSelectRun,
@@ -57,7 +56,11 @@ export const WorkflowInstallationDetail = ({
   template,
   templates,
 }: WorkflowInstallationDetailProps) => {
-  const { data: runs = [] } = useWorkflowInstallationRuns(installation.id)
+  const runsList = usePagedList<WorkflowRunRecord>({
+    path: `/api/workflow-installations/${installation.id}/runs`,
+    queryKey: workflowKeys.installationRuns(installation.id),
+  })
+  const runs = runsList.items
   const { data: triggers = [] } = useWorkflowInstallationTriggers(installation.id)
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
@@ -69,14 +72,9 @@ export const WorkflowInstallationDetail = ({
       installation.channelId.slice(0, 8)
     : 'Not bound'
 
-  const sortedRuns = useMemo(
-    () =>
-      [...runs].sort(
-        (left, right) =>
-          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
-      ),
-    [runs],
-  )
+  // The server already orders runs newest-first (`orderBy: [createdAt desc]`);
+  // no client re-sort needed on top of a paged fetch.
+  const sortedRuns = runs
 
   const sortedTriggers = useMemo(
     () =>
@@ -125,12 +123,14 @@ export const WorkflowInstallationDetail = ({
         ) : null}
       </div>
 
-      <dl className="divide-y divide-[color:var(--sep)] rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-        <FactRow label="Channel" value={channelLabel} />
-        <FactRow label="Template version" value={`v${installation.workflowTemplateVersion}`} />
-        <FactRow label="Created" value={formatTimestamp(installation.createdAt)} />
-        <FactRow label="Updated" value={formatTimestamp(installation.updatedAt)} />
-      </dl>
+      <KeyValueList
+        items={[
+          { label: 'Channel', value: channelLabel },
+          { label: 'Template version', value: `v${installation.workflowTemplateVersion}` },
+          { label: 'Created', value: formatTimestamp(installation.createdAt) },
+          { label: 'Updated', value: formatTimestamp(installation.updatedAt) },
+        ]}
+      />
 
       <section>
         <div className="flex items-center justify-between gap-3">
@@ -144,107 +144,113 @@ export const WorkflowInstallationDetail = ({
           </button>
         </div>
         {sortedTriggers.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
+          <EmptyState className="mt-3">
             No triggers yet — add one so this workflow fires on a schedule,
             webhook or event.
-          </div>
+          </EmptyState>
         ) : (
-          <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+          <RowList className="mt-3" label="Triggers">
             {sortedTriggers.map((trigger) => (
-              <Link
-                className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--overlay-weak)]"
+              <Row
+                href={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
                 key={trigger.id}
-                to={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
-              >
-                <FontAwesomeIcon
-                  className="h-3 w-3 flex-shrink-0 text-[color:var(--tx3)]"
-                  icon={TRIGGER_TYPE_ICONS[trigger.type]}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-[var(--tx)]">
-                    {trigger.name ?? trigger.type}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
-                    {getScheduleSummary(trigger)}
-                  </div>
-                </div>
-                {trigger.nextRunAt ? (
-                  <span className="flex-shrink-0 text-[11px] tabular-nums text-[color:var(--tx3)]">
-                    {formatRelativeTime(trigger.nextRunAt)}
-                  </span>
-                ) : null}
-                <span
-                  className="h-2 w-2 flex-shrink-0 rounded-full"
-                  style={{ background: getTriggerStatusColor(trigger.status) }}
-                  title={trigger.status}
-                />
-              </Link>
+                leading={
+                  <FontAwesomeIcon
+                    className="h-3 w-3 text-[color:var(--tx3)]"
+                    icon={TRIGGER_TYPE_ICONS[trigger.type]}
+                  />
+                }
+                subtitle={getScheduleSummary(trigger)}
+                title={trigger.name ?? trigger.type}
+                trailing={
+                  <>
+                    {trigger.nextRunAt ? (
+                      <span className="text-[11px] tabular-nums text-[color:var(--tx3)]">
+                        {formatRelativeTime(trigger.nextRunAt)}
+                      </span>
+                    ) : null}
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: getTriggerStatusColor(trigger.status) }}
+                      title={trigger.status}
+                    />
+                  </>
+                }
+              />
             ))}
-          </div>
+          </RowList>
         )}
       </section>
 
       <section>
         <div className="flex items-baseline justify-between gap-3">
           <SectionLabel>Runs</SectionLabel>
-          <div className="text-xs text-[color:var(--tx3)]">{sortedRuns.length} total</div>
+          <div className="text-xs text-[color:var(--tx3)]">
+            {runsList.total ?? sortedRuns.length} total
+          </div>
         </div>
-        {sortedRuns.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
-            No runs yet. Use “Start run” to execute this workflow now.
-          </div>
-        ) : (
-          <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-            {sortedRuns.map((run) => {
-              const duration = formatDuration(run.startedAt ?? run.createdAt, run.finishedAt)
-              return (
-                <button
-                  className={[
-                    'flex w-full items-center gap-3 border-l-2 px-3 py-2.5 text-left transition-colors',
-                    run.id === selectedRunId
-                      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-                      : 'border-transparent hover:bg-[var(--overlay-weak)]',
-                  ].join(' ')}
-                  key={run.id}
-                  onClick={() => onSelectRun(run.id === selectedRunId ? undefined : run.id)}
-                  type="button"
-                >
-                  <span
-                    className="h-2 w-2 flex-shrink-0 rounded-full"
-                    style={{ background: getRunStatusColor(run.status) }}
-                    title={run.status}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-medium text-[var(--tx)]">
-                        {run.status}
-                      </span>
-                      <span className="text-xs text-[color:var(--tx3)]">
-                        {formatRelativeTime(run.startedAt ?? run.createdAt)}
-                        {duration ? ` · ${duration}` : ''}
-                      </span>
-                    </div>
-                    {run.summary || run.errorMessage ? (
-                      <div
-                        className={[
-                          'mt-0.5 truncate text-xs',
-                          run.errorMessage
-                            ? 'text-[var(--danger-text)]'
-                            : 'text-[color:var(--tx3)]',
-                        ].join(' ')}
-                      >
-                        {run.errorMessage ?? run.summary}
-                      </div>
-                    ) : null}
-                  </div>
-                  <span className="flex-shrink-0 text-xs text-[color:var(--tx3)]">
-                    {run.id.slice(0, 8)}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
+        <QueryState
+          className="mt-3 py-6"
+          emptyLabel="No runs yet. Use “Start run” to execute this workflow now."
+          errorLabel="Runs could not be loaded."
+          isEmpty={sortedRuns.length === 0}
+          loadingLabel="Loading runs…"
+          query={runsList.query}
+        >
+          {() => (
+            <>
+              <RowList label="Runs">
+                {sortedRuns.map((run) => {
+                  const duration = formatDuration(run.startedAt ?? run.createdAt, run.finishedAt)
+                  return (
+                    <Row
+                      key={run.id}
+                      leading={
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: getRunStatusColor(run.status) }}
+                          title={run.status}
+                        />
+                      }
+                      onClick={() => onSelectRun(run.id === selectedRunId ? undefined : run.id)}
+                      selected={run.id === selectedRunId}
+                      subtitle={run.errorMessage ? undefined : run.summary ?? undefined}
+                      title={
+                        <span className="flex items-baseline gap-2">
+                          <span>{run.status}</span>
+                          <span className="text-xs text-[color:var(--tx3)]">
+                            {formatRelativeTime(run.startedAt ?? run.createdAt)}
+                            {duration ? ` · ${duration}` : ''}
+                          </span>
+                        </span>
+                      }
+                      trailing={
+                        <span className="text-xs text-[color:var(--tx3)]">
+                          {run.id.slice(0, 8)}
+                        </span>
+                      }
+                    >
+                      {run.errorMessage ? (
+                        <span className="mt-0.5 block truncate text-xs text-[var(--danger-text)]">
+                          {run.errorMessage}
+                        </span>
+                      ) : null}
+                    </Row>
+                  )
+                })}
+              </RowList>
+              <PaginationFooter
+                canNext={runsList.canNext}
+                canPrevious={runsList.canPrevious}
+                className="mt-3"
+                hideWhenSinglePage
+                label={runsList.label}
+                onPageChange={runsList.onPageChange}
+                page={runsList.page}
+              />
+            </>
+          )}
+        </QueryState>
       </section>
 
       <TriggerEditorDialog

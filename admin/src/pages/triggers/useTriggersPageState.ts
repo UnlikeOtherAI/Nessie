@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import { useTriggers } from '../../facades/triggers/hooks'
 import { useAgents } from '../../facades/agents/hooks'
@@ -52,6 +53,7 @@ export type TriggersPageState = {
   statusCounts: TriggerStatusCounts
   statusFilter: TriggerStatusFilter
   totalCount: number
+  triggersQuery: UseQueryResult<AgentTriggerRecord[]>
   typeFilter: TriggerTypeFilter
   workflowInstallations: WorkflowInstallationRecord[]
   workflowTemplates: WorkflowTemplateRecord[]
@@ -62,7 +64,8 @@ export const useTriggersPageState = (): TriggersPageState => {
   // The three owner-only reads below stay gated on this flag; the page's
   // refusal is <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
-  const { data: triggers = [] } = useTriggers(isOwner)
+  const triggersQuery = useTriggers(isOwner)
+  const triggers = triggersQuery.data ?? []
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
   const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
@@ -215,6 +218,7 @@ export const useTriggersPageState = (): TriggersPageState => {
     statusCounts,
     statusFilter,
     totalCount: sortedTriggers.length,
+    triggersQuery,
     typeFilter,
     workflowInstallations,
     workflowTemplates,

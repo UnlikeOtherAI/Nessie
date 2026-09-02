@@ -5,6 +5,9 @@ import {
   useSetAgentToolPolicyEntry,
   type McpToolRegistryRecord,
 } from '../../../facades/tool-grants/hooks'
+import { EmptyState } from '../../shared/EmptyState'
+import { FormError } from '../../shared/FormActions'
+import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 
@@ -66,43 +69,35 @@ const ExplicitPolicyRow = ({
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-medium text-[var(--tx)]">
-          {target.name}
+    <Row
+      subtitle={target.role}
+      title={
+        <span className="flex items-center gap-2">
+          <span>{target.name}</span>
+          {target.agentKind === 'personal_assistant' ? (
+            <Pill height="control" tone="accent">Personal Assistant</Pill>
+          ) : null}
         </span>
-        <span className="ml-2 text-xs text-[color:var(--tx3)]">
-          {target.role}
-        </span>
-        {target.agentKind === 'personal_assistant' ? (
-          <span className="ml-2">
-            <Pill tone="accent">Personal Assistant</Pill>
-          </span>
-        ) : null}
-        {error ? (
-          <div
-            className="mt-1 text-[11px] text-[var(--danger-text)]"
-            role="alert"
-          >
-            {error}
-          </div>
-        ) : null}
-        {updaterManaged ? (
-          <div className="mt-1 text-[11px] text-[color:var(--tx3)]">
-            Managed by an active Deep Water grant. Revoke the dependent
-            research tools in Integrations first.
-          </div>
-        ) : null}
-      </div>
-      <div className={setPolicy.isPending ? 'opacity-50' : ''}>
-        <Switch
-          checked={checked}
-          disabled={updaterManaged}
-          label={`${checked ? 'Revoke' : 'Grant'} ${tool.label} for ${target.name}`}
-          onChange={toggle}
-        />
-      </div>
-    </div>
+      }
+      trailing={
+        <div className={setPolicy.isPending ? 'opacity-50' : ''}>
+          <Switch
+            checked={checked}
+            disabled={updaterManaged}
+            label={`${checked ? 'Revoke' : 'Grant'} ${tool.label} for ${target.name}`}
+            onChange={toggle}
+          />
+        </div>
+      }
+    >
+      {error ? <FormError className="mt-1">{error}</FormError> : null}
+      {updaterManaged ? (
+        <div className="mt-1 text-[11px] text-[color:var(--tx3)]">
+          Managed by an active Deep Water grant. Revoke the dependent
+          research tools in Integrations first.
+        </div>
+      ) : null}
+    </Row>
   )
 }
 
@@ -116,11 +111,7 @@ export const ExplicitToolAgentAccessPanel = ({
   ).length
 
   if (targets.length === 0) {
-    return (
-      <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
-        No editable agents yet.
-      </div>
-    )
+    return <EmptyState>No editable agents yet.</EmptyState>
   }
 
   return (
@@ -128,7 +119,7 @@ export const ExplicitToolAgentAccessPanel = ({
       <div className="text-xs text-[color:var(--tx3)]">
         {grantedCount} of {targets.length} agents explicitly granted
       </div>
-      <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+      <RowList label="Explicit agent access">
         {targets.map((target) => (
           <ExplicitPolicyRow
             deepWaterDependencyPolicyKeys={deepWaterDependencyPolicyKeys}
@@ -137,7 +128,7 @@ export const ExplicitToolAgentAccessPanel = ({
             tool={tool}
           />
         ))}
-      </div>
+      </RowList>
       <p className="text-xs leading-5 text-[color:var(--tx3)]">
         Explicit-grant tools stay off unless this exact policy entry is on.
         Install scope and tenancy checks still apply at runtime.

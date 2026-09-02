@@ -1,5 +1,6 @@
 import { useSetToolRegistryStatus } from '../../../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../../../facades/tool-grants/hooks'
+import { FormError } from '../../shared/FormActions'
 
 /**
  * Owner review verdict on one discovered MCP tool.
@@ -59,11 +60,9 @@ export const ToolReviewActions = ({ tool }: ToolReviewActionsProps) => {
           </button>
         </div>
       </div>
-      {setStatus.isError ? (
-        <p className="mt-2 text-xs text-[color:var(--danger-text)]">
-          Could not update this tool. Try again.
-        </p>
-      ) : null}
+      <FormError className="mt-2">
+        {setStatus.isError ? 'Could not update this tool. Try again.' : undefined}
+      </FormError>
     </section>
   )
 }

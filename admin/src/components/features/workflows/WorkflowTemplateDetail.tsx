@@ -11,6 +11,8 @@ import type {
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
+import { EmptyState } from '../../shared/EmptyState'
+import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import {
@@ -109,29 +111,32 @@ export const WorkflowTemplateDetail = ({
       <section>
         <SectionLabel>Steps</SectionLabel>
         {steps.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
+          <EmptyState className="mt-3">
             No steps defined yet — open the designer to build this workflow.
-          </div>
+          </EmptyState>
         ) : (
-          <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+          <RowList className="mt-3" label="Steps">
             {steps.map((step, index) => (
-              <div className="flex items-center gap-3 px-3 py-2.5" key={step.id}>
-                <span className="w-5 flex-shrink-0 text-right text-xs tabular-nums text-[color:var(--tx3)]">
-                  {index + 1}
-                </span>
-                <FontAwesomeIcon
-                  className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
-                  icon={STEP_TYPE_ICONS[step.type] ?? faGear}
-                />
-                <span className="min-w-0 flex-1 truncate text-sm text-[var(--tx)]">
-                  {step.title ?? step.type}
-                </span>
-                <span className="flex-shrink-0 text-xs text-[color:var(--tx3)]">
-                  {step.type}
-                </span>
-              </div>
+              <Row
+                key={step.id}
+                leading={
+                  <span className="flex items-center gap-2">
+                    <span className="w-5 text-right text-xs tabular-nums text-[color:var(--tx3)]">
+                      {index + 1}
+                    </span>
+                    <FontAwesomeIcon
+                      className="h-3.5 w-3.5 text-[color:var(--tx3)]"
+                      icon={STEP_TYPE_ICONS[step.type] ?? faGear}
+                    />
+                  </span>
+                }
+                title={step.title ?? step.type}
+                trailing={
+                  <span className="text-xs text-[color:var(--tx3)]">{step.type}</span>
+                }
+              />
             ))}
-          </div>
+          </RowList>
         )}
       </section>
 
@@ -143,39 +148,30 @@ export const WorkflowTemplateDetail = ({
           </div>
         </div>
         {installations.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
+          <EmptyState className="mt-3">
             Not installed yet. Install to attach triggers and start runs.
-          </div>
+          </EmptyState>
         ) : (
-          <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+          <RowList className="mt-3" label="Installations">
             {installations.map((installation) => (
-              <button
-                className={[
-                  'flex w-full items-center gap-3 border-l-2 px-3 py-2.5 text-left transition-colors',
-                  installation.id === selectedInstallationId
-                    ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-                    : 'border-transparent hover:bg-[var(--overlay-weak)]',
-                ].join(' ')}
+              <Row
                 key={installation.id}
                 onClick={() => onSelectInstallation(installation.id)}
-                type="button"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-[var(--tx)]">
-                    Installation {installation.id.slice(0, 8)}
-                  </div>
-                  <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
-                    v{installation.workflowTemplateVersion} · updated{' '}
-                    {formatRelativeTime(installation.updatedAt) ??
-                      formatTimestamp(installation.updatedAt)}
-                  </div>
-                </div>
-                <Pill tone={getInstallationTone(installation.status)}>
-                  {installation.status}
-                </Pill>
-              </button>
+                selected={installation.id === selectedInstallationId}
+                subtitle={
+                  `v${installation.workflowTemplateVersion} · updated `
+                  + `${formatRelativeTime(installation.updatedAt)
+                    ?? formatTimestamp(installation.updatedAt)}`
+                }
+                title={`Installation ${installation.id.slice(0, 8)}`}
+                trailing={
+                  <Pill height="control" tone={getInstallationTone(installation.status)}>
+                    {installation.status}
+                  </Pill>
+                }
+              />
             ))}
-          </div>
+          </RowList>
         )}
       </section>
     </div>

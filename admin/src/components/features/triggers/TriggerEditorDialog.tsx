@@ -28,7 +28,7 @@ import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
 import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
-import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
+import { Dialog } from '../../shared/Dialog'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -162,11 +162,6 @@ export const TriggerEditorDialog = ({
     onClose()
   }
 
-  const overlayDismiss = useOverlayDismiss(() => {
-    if (isSubmitting) return
-    handleClose()
-  })
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError(null)
@@ -242,10 +237,6 @@ export const TriggerEditorDialog = ({
     }
   }
 
-  if (!open) {
-    return null
-  }
-
   const currentTriggerLabel = getFormTriggerTypeLabel({
     type: form.triggerType,
     scheduleMode: form.scheduleMode,
@@ -257,64 +248,21 @@ export const TriggerEditorDialog = ({
   const webhookUrl = `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
-    // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
-    // renders a description at `text-xs`, and its panel is 680px wide, which is
-    // not one of the three geometries the shell ships.
-    <div
-      {...overlayDismiss}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--scrim-strong)',
-        backdropFilter: 'blur(4px)',
-      }}
+    // `size="lg"` (640px) rather than a new size token for this dialog's
+    // original 680px panel — close enough, per the kit.
+    <Dialog
+      description={
+        mode === 'edit'
+          ? `${currentTriggerLabel} configuration`
+          : 'Choose what wakes up an agent or workflow and how it should run.'
+      }
+      dismissDisabled={isSubmitting}
+      onClose={handleClose}
+      open={open}
+      size="lg"
+      title={mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
     >
-      <div
-        className="create-channel-panel"
-        style={{ maxWidth: 680 }}
-      >
-        <div className="create-channel-header">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--tx)]">
-              {mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
-            </h2>
-            <div className="mt-1 text-sm text-[color:var(--tx3)]">
-              {mode === 'edit'
-                ? `${currentTriggerLabel} configuration`
-                : 'Choose what wakes up an agent or workflow and how it should run.'}
-            </div>
-          </div>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center',
-              'rounded text-[color:var(--tx3)]',
-              'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
-            ].join(' ')}
-            disabled={isSubmitting}
-            onClick={handleClose}
-            type="button"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 18L18 6M6 6l12 12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <form className="grid max-h-[80vh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
+      <form className="grid max-h-[80vh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
           <TriggerMetaFields
             agentChannels={agentChannels}
             agents={agents}
@@ -410,8 +358,7 @@ export const TriggerEditorDialog = ({
               </button>
             </div>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   )
 }

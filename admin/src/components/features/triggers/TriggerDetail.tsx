@@ -10,6 +10,11 @@ import {
 } from '../../../facades/triggers/hooks'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import { getBaseUrl } from '../../../lib/api-client'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { CopyField } from '../../shared/CopyField'
+import { EmptyState } from '../../shared/EmptyState'
+import { KeyValueList } from '../../shared/KeyValueList'
+import { Row, RowList } from '../../shared/RowList'
 import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
@@ -18,6 +23,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
   formatTriggerTarget,
+  getDeliveryStatusColor,
   getScheduleSummary,
   getTriggerEventNames,
   getTriggerHealthMessage,
@@ -40,59 +46,13 @@ type TriggerDetailProps = {
   trigger: AgentTriggerRecord
 }
 
-const CopyField = ({ label, value }: { label: string; value: string }) => {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = window.setTimeout(() => setCopied(false), 1500)
-    return () => window.clearTimeout(timer)
-  }, [copied])
-
-  return (
-    <div className="grid gap-1">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-        {label}
-      </div>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-md border border-[color:var(--sep)] bg-[var(--scrim-strong)] px-2 py-1.5 text-xs text-[color:var(--tx2)]">
-          {value}
-        </code>
-        <button
-          className="admin-button admin-button-secondary flex-shrink-0"
-          onClick={() => {
-            void navigator.clipboard.writeText(value).then(() => setCopied(true))
-          }}
-          type="button"
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-const DELIVERY_DOT: Record<string, string> = {
-  delivered: 'var(--success-text)',
-  failed: 'var(--danger-text)',
-  pending: 'var(--warning-text)',
-  skipped: 'var(--tx3)',
-}
-
-const FactRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
-    <dt className="flex-shrink-0 text-xs text-[color:var(--tx3)]">{label}</dt>
-    <dd className="min-w-0 text-right text-sm text-[var(--tx)]">{value}</dd>
-  </div>
-)
-
 export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerDetailProps) => {
   const pauseTrigger = usePauseTrigger()
   const resumeTrigger = useResumeTrigger()
   const reauthorizeTrigger = useReauthorizeTrigger()
   const fireTrigger = useFireTrigger()
   const deleteTrigger = useDeleteTrigger()
-  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const { data: history = [] } = useTriggerHistory(trigger.id, 8)
   // Only while the schedule is actually stopped: a stale reason left over from a
@@ -111,7 +71,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
 
   // Reset transient state when switching triggers.
   useEffect(() => {
-    setConfirmingDelete(false)
+    setConfirmDeleteOpen(false)
     setActionError(null)
   }, [trigger.id])
 
@@ -144,16 +104,11 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
   }
 
   const handleDelete = () => {
-    if (!confirmingDelete) {
-      setConfirmingDelete(true)
-      return
-    }
-
     setActionError(null)
     deleteTrigger.mutate(trigger.id, {
       onSuccess: () => onDeleted(),
       onError: (error) => {
-        setConfirmingDelete(false)
+        setConfirmDeleteOpen(false)
         const message = error instanceof Error ? error.message : 'Failed to delete trigger.'
         setActionError(
           message.includes('TRIGGER_DELETE_BLOCKED') || message.includes('409')
@@ -281,24 +236,26 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
       </div>
 
       {/* Facts: one definition list, no repeated facts */}
-      <dl className="divide-y divide-[color:var(--sep)] rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-        <FactRow label="Target" value={formatTriggerTarget(trigger, registry)} />
-        <FactRow label="Schedule" value={getScheduleSummary(trigger)} />
-        {trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval' ? (
-          <FactRow
-            label="Next run"
-            value={
-              trigger.nextRunAt
-                ? `${formatTimestamp(trigger.nextRunAt)}${nextRunRelative ? ` · ${nextRunRelative}` : ''}`
-                : '—'
-            }
-          />
-        ) : null}
-        <FactRow label="Last fired" value={formatTimestamp(trigger.lastFiredAt)} />
-        {eventNames.length > 0 ? (
-          <FactRow label="Events" value={eventNames.join(', ')} />
-        ) : null}
-      </dl>
+      <KeyValueList
+        items={[
+          { label: 'Target', value: formatTriggerTarget(trigger, registry) },
+          { label: 'Schedule', value: getScheduleSummary(trigger) },
+          ...(trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval'
+            ? [
+                {
+                  label: 'Next run',
+                  value: trigger.nextRunAt
+                    ? `${formatTimestamp(trigger.nextRunAt)}${nextRunRelative ? ` · ${nextRunRelative}` : ''}`
+                    : '—',
+                },
+              ]
+            : []),
+          { label: 'Last fired', value: formatTimestamp(trigger.lastFiredAt) },
+          ...(eventNames.length > 0
+            ? [{ label: 'Events', value: eventNames.join(', ') }]
+            : []),
+        ]}
+      />
 
       {trigger.type === 'webhook' ? (
         <section>
@@ -323,66 +280,76 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
       <section>
         <SectionLabel>Recent deliveries</SectionLabel>
         {history.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
+          <EmptyState className="mt-3">
             No deliveries yet. Use “Run now” to test this trigger.
-          </div>
+          </EmptyState>
         ) : (
-          <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+          <RowList className="mt-3" label="Recent deliveries">
             {history.map((delivery) => (
-              <div className="px-3 py-2.5" key={delivery.id}>
-                <div className="flex items-center gap-2">
+              <Row
+                key={delivery.id}
+                leading={
                   <span
-                    className="h-2 w-2 flex-shrink-0 rounded-full"
-                    style={{ background: DELIVERY_DOT[delivery.status] ?? 'var(--tx3)' }}
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: getDeliveryStatusColor(delivery.status) }}
                   />
-                  <span className="text-sm text-[var(--tx)]">{delivery.status}</span>
-                  <span className="text-xs text-[color:var(--tx3)]">
-                    {delivery.source ?? 'manual'}
-                    {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
+                }
+                title={
+                  <span className="flex items-center gap-2">
+                    <span>{delivery.status}</span>
+                    <span className="font-normal text-xs text-[color:var(--tx3)]">
+                      {delivery.source ?? 'manual'}
+                      {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
+                    </span>
+                    {/* The delivery reached a worker; whether the run then
+                        succeeded is a different question, and the one the
+                        owner is actually asking when a schedule looks broken. */}
+                    {delivery.runStatus && delivery.runStatus !== 'completed' ? (
+                      <Pill radius="chip" size="sm" tone="danger" uppercase={false}>
+                        run {delivery.runStatus}
+                      </Pill>
+                    ) : null}
                   </span>
-                  {/* The delivery reached a worker; whether the run then
-                      succeeded is a different question, and the one the owner
-                      is actually asking when a schedule looks broken. */}
-                  {delivery.runStatus && delivery.runStatus !== 'completed' ? (
-                    <Pill className="flex-shrink-0" radius="chip" size="sm" tone="danger" uppercase={false}>
-                      run {delivery.runStatus}
-                    </Pill>
-                  ) : null}
-                  <span className="ml-auto flex-shrink-0 text-xs tabular-nums text-[color:var(--tx3)]">
+                }
+                trailing={
+                  <span className="text-xs tabular-nums text-[color:var(--tx3)]">
                     {formatTimestamp(delivery.createdAt)}
                   </span>
-                </div>
+                }
+              >
                 {delivery.errorMessage ? (
-                  <div className="mt-1 pl-4 text-xs text-[var(--danger-text)]">
+                  <div className="mt-1 text-xs text-[var(--danger-text)]">
                     {delivery.errorMessage}
                   </div>
                 ) : null}
-              </div>
+              </Row>
             ))}
-          </div>
+          </RowList>
         )}
       </section>
 
       {/* Destructive action, separated from routine controls */}
       <div className="flex justify-end border-t border-[color:var(--sep)] pt-4">
         <button
-          className={[
-            'admin-button',
-            confirmingDelete
-              ? 'border border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger-text)]'
-              : 'text-[color:var(--tx3)] hover:text-[var(--danger-text)]',
-          ].join(' ')}
+          className="admin-button text-[color:var(--tx3)] hover:text-[var(--danger-text)]"
           disabled={deleteTrigger.isPending}
-          onClick={handleDelete}
+          onClick={() => setConfirmDeleteOpen(true)}
           type="button"
         >
-          {deleteTrigger.isPending
-            ? 'Deleting…'
-            : confirmingDelete
-              ? 'Confirm delete'
-              : 'Delete trigger'}
+          {deleteTrigger.isPending ? 'Deleting…' : 'Delete trigger'}
         </button>
       </div>
+
+      <ConfirmDialog
+        body="Deleting a trigger cannot be undone. It refuses when the trigger has delivery history — pause it instead."
+        confirmLabel="Delete trigger"
+        destructive
+        onCancel={() => setConfirmDeleteOpen(false)}
+        onConfirm={handleDelete}
+        open={confirmDeleteOpen}
+        pending={deleteTrigger.isPending}
+        title="Delete this trigger?"
+      />
     </div>
   )
 }

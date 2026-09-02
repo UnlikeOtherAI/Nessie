@@ -1,4 +1,5 @@
 import type { ToolRegistrySource } from '@nessie/schemas'
+import { TOOL_SOURCE_TONE_CLASS } from './ToolBadge'
 
 /**
  * `ToolCategoryIcon` renders the leading glyph for a tool row. The glyph is
@@ -6,7 +7,11 @@ import type { ToolRegistrySource } from '@nessie/schemas'
  * the user reads the badge text — important when an org has dozens of MCP
  * servers installed.
  *
- * Per §8 of provider-system-and-frontend-architecture.md.
+ * Per §8 of provider-system-and-frontend-architecture.md. The colour ramp is
+ * `ToolBadge`'s `TOOL_SOURCE_TONE_CLASS` — this used to keep its own copy of
+ * the identical `Record<ToolRegistrySource, string>`, so the two could (and
+ * did) drift silently. It stays a 36px avatar square rather than a `Pill`:
+ * `Pill`'s two radii are a capsule and a 4px chip, neither is this shape.
  */
 type ToolCategoryIconProps = {
   source: ToolRegistrySource
@@ -20,20 +25,12 @@ const SOURCE_GLYPHS: Record<ToolRegistrySource, string> = {
   'interactive-session': 'I',
 }
 
-const SOURCE_TONE: Record<ToolRegistrySource, string> = {
-  'builtin': 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
-  'custom': 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
-  'executor': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
-  'mcp-remote': 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
-  'interactive-session': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
-}
-
 export const ToolCategoryIcon = ({ source }: ToolCategoryIconProps) => (
   <span
     className={[
       'inline-flex h-9 w-9 items-center justify-center rounded-2xl',
       'text-sm font-semibold',
-      SOURCE_TONE[source],
+      TOOL_SOURCE_TONE_CLASS[source],
     ].join(' ')}
   >
     {SOURCE_GLYPHS[source]}
