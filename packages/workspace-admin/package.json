@@ -16,10 +16,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/agent-mail": "workspace:*",
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
+    "@nessie/model-subscriptions": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",

@@ -50,7 +50,28 @@ const GrantSchema = z.object({
   connectionId: z.string().uuid(),
   agentId: z.string().uuid(),
   duration: z.enum(SEND_GRANT_DURATIONS),
-}).strict()
+  /**
+   * `always` sends whenever the owner asks. `judged` has the assistant weigh
+   * each action against `boundary` and ask when it is unsure — so a boundary
+   * is required with it, and a judged grant without one would have nothing to
+   * judge against.
+   */
+  mode: z.enum(['always', 'judged']).optional(),
+  boundary: z.string().max(4000).optional(),
+}).strict().refine(
+  (value) => value.mode !== 'judged' || (value.boundary ?? '').trim().length > 0,
+  { message: 'Deciding for you needs a note saying what you are happy with.' },
+)
+
+const FromApprovalSchema = z.object({
+  approvalId: z.string().uuid(),
+  duration: z.enum(SEND_GRANT_DURATIONS),
+  mode: z.enum(['always', 'judged']).optional(),
+  boundary: z.string().max(4000).optional(),
+}).strict().refine(
+  (value) => value.mode !== 'judged' || (value.boundary ?? '').trim().length > 0,
+  { message: 'Deciding for you needs a note saying what you are happy with.' },
+)
 
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
@@ -249,6 +270,8 @@ export const registerGmailDraftRoutes = (
       agentId: body.agentId,
       grantedByUserId: actorContext.actor.actorId,
       duration: body.duration,
+      ...(body.mode ? { mode: body.mode } : {}),
+      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
     await emitAuditEvent(prisma, {
       actorContext,
@@ -256,7 +279,94 @@ export const registerGmailDraftRoutes = (
       resourceType: 'send_authorization_grant',
       resourceId: grant.id,
       outcome: 'success',
-      metadata: { agentId: body.agentId, duration: body.duration },
+      // The boundary itself is the owner's private words and never enters an
+      // audit row; the mode is the decision worth recording.
+      metadata: {
+        agentId: body.agentId,
+        duration: body.duration,
+        mode: body.mode ?? 'always',
+      },
+    })
+    return createApiResponse({
+      id: grant.id,
+      expiresAt: grant.expiresAt?.toISOString() ?? null,
+    })
+  })
+
+  // ── POST /api/gmail/send-grants/from-approval ─────────────────────────────
+  // "Don't ask me again", from the approval card.
+  //
+  // The client knows the approval, not the mailbox — resolving the connection
+  // here keeps the caller from having to name one, and keeps a caller from
+  // naming somebody else's. The grant is only ever created for the person the
+  // approval is pinned to.
+  app.post('/api/gmail/send-grants/from-approval', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(FromApprovalSchema, request.body, reply)
+    if (!body) return reply
+
+    const approval = await prisma.approvalRequest.findFirst({
+      where: {
+        id: body.approvalId,
+        organizationId: actorContext.tenant.organizationId,
+        // Only the person the gate is pinned to may turn it off.
+        requiredApproverUserId: actorContext.actor.actorId,
+      },
+      select: { agentId: true },
+    })
+    if (!approval) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
+      return reply
+    }
+
+    // One active Google account is unambiguous; two are not, and a grant is per
+    // mailbox, so guessing would spend consent on the wrong one.
+    const connections = await prisma.commsConnection.findMany({
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
+        provider: 'google',
+        status: 'active',
+      },
+      select: { id: true },
+      take: 2,
+    })
+    const connectionId = connections.length === 1 ? connections[0]?.id : undefined
+    if (!connectionId) {
+      sendApiError(
+        reply,
+        409,
+        'AMBIGUOUS_ACCOUNT',
+        connections.length === 0
+          ? 'No connected Google account'
+          : 'You have more than one Google account connected — choose one in '
+            + 'Connected accounts.',
+      )
+      return reply
+    }
+
+    const grant = await grantSendAuthorization(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      connectionId,
+      agentId: approval.agentId,
+      grantedByUserId: actorContext.actor.actorId,
+      duration: body.duration,
+      mode: body.mode ?? 'always',
+      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
+    })
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'gmail.send_grant.created',
+      resourceType: 'send_authorization_grant',
+      resourceId: grant.id,
+      outcome: 'success',
+      metadata: {
+        agentId: approval.agentId,
+        duration: body.duration,
+        mode: body.mode ?? 'always',
+        fromApproval: body.approvalId,
+      },
     })
     return createApiResponse({
       id: grant.id,

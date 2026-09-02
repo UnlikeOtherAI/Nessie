@@ -49,6 +49,7 @@ type ToolPolicyEvaluation =
       allowed: true
       policyRuleId?: string
       policySource: string
+      reviewMode?: 'auto'
     }
   | {
       allowed: false
@@ -60,6 +61,7 @@ type ToolPolicyEvaluation =
 
 type ToolDeniedOutputReason =
   | ToolDenialReason
+  | 'auto_review_denied'
   | 'approval_required'
   | 'explicit_policy_deny'
 
@@ -163,6 +165,7 @@ export const evaluateToolInvokePolicy = async (
       allowed: true,
       policyRuleId: decision.policyRuleId,
       policySource: decision.policySource,
+      reviewMode: decision.reviewMode,
     }
   }
 

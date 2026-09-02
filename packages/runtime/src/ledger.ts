@@ -54,6 +54,21 @@ export type LedgerAttribution = {
   actorType?: LedgerActorType | null
   requestId?: string | null
   correlationId?: string | null
+  /**
+   * Set when this work spends a person's own linked subscription instead of the
+   * organization's Ledger credits.
+   *
+   * The exclusion from organization cost is STRUCTURAL, keyed on this field —
+   * never on the absence of a pricing profile. Two things would otherwise lie:
+   * connector invocations record the *runtime* provider (`openai-compatible`),
+   * not the subscription, and an owner-authored wildcard `ModelPricingProfile`
+   * would happily price spend the organization never incurred.
+   */
+  personalSubscription?: {
+    subscriptionId: string
+    /** Whose plan paid. Attribution follows the owner, not the poster. */
+    ownerUserId: string
+  } | null
   // Immutable external proof captured at the originating UOA login. Durable
   // work copies this tuple; callers must never replace it with a newer mutable
   // ProductAccountLink identity after the work/session was created.
@@ -309,14 +324,20 @@ export const recordInferenceUsage = async (
   const rows = await Promise.all(
     input.invocations.map(async (invocation) => {
       const pairKey = `${invocation.provider} ${invocation.model}`
-      const pricing = await cached(pricingByPair, pairKey, () =>
-        findPricingProfile(
-          prisma,
-          attribution.organizationId,
-          invocation.provider,
-          invocation.model,
-        ),
-      )
+      // A personal-subscription invocation is never priced. The organization
+      // did not pay for it, so an estimate here would flow straight into org
+      // cost budgets and owner-facing totals as money nobody spent — and an
+      // owner-authored wildcard pricing profile would produce exactly that.
+      const pricing = attribution.personalSubscription
+        ? null
+        : await cached(pricingByPair, pairKey, () =>
+          findPricingProfile(
+            prisma,
+            attribution.organizationId,
+            invocation.provider,
+            invocation.model,
+          ),
+        )
       const { modelId, providerId } = await cached(idsByPair, pairKey, () =>
         resolveProviderModelIds(
           prisma,
@@ -328,7 +349,14 @@ export const recordInferenceUsage = async (
       return {
         inferenceInvocationId: invocation.invocationId,
         organizationId: attribution.organizationId,
-        userId: attribution.userId ?? null,
+        billingSource: attribution.personalSubscription ? 'personal_subscription' as const : 'ledger' as const,
+        modelSubscriptionId: attribution.personalSubscription?.subscriptionId ?? null,
+        // Whose plan paid, not who happened to post: a colleague's question
+        // answered by someone else's agent still spends that owner's plan.
+        userId:
+          attribution.personalSubscription?.ownerUserId
+          ?? attribution.userId
+          ?? null,
         projectId: attribution.projectId ?? null,
         teamId: attribution.teamId ?? null,
         channelId: attribution.channelId ?? null,

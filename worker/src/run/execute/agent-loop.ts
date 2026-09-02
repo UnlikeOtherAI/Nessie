@@ -21,7 +21,9 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
+import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
 import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
@@ -185,7 +187,11 @@ export const runExecutionAgentLoop = async (
     toolName: string,
     args: Record<string, unknown>,
     toolCallId: string,
-    options: { consumeApprovalProof?: boolean; maySuspendForApproval?: boolean } = {},
+    options: {
+      consumeApprovalProof?: boolean
+      maySuspendForApproval?: boolean
+      skipAutoReview?: boolean
+    } = {},
   ) =>
     authorizeToolExecution(
       deps.prisma,
@@ -198,9 +204,27 @@ export const runExecutionAgentLoop = async (
         agentKind: context.agent.agentKind,
         allowedToolIds: input.allowedToolIds,
         consumeApprovalProof: options.consumeApprovalProof,
+        executorToolNames: input.executorToolset.handledNames,
+        mcpToolNames: mcpExposedNames,
+        skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
+        structuralGate: buildEmailSendApprovalHook(
+          deps.prisma,
+          context,
+          payload.interactive === true,
+        ),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
+        // The send-boundary judge. Inference the run paid for, so its
+        // invocations count in the run's totals like compaction's do.
+        runUtility: async (prompt: string) => {
+          const result = await input.inference.runUtility(
+            [{ content: prompt, role: 'user' }],
+            [],
+          )
+          input.invocationSink.push(...result.invocations)
+          return result.outputText
+        },
         parentAgentId: context.agent.parentAgentId,
         resumeState: {
           actorContext: payload.actorContext,
@@ -209,7 +233,14 @@ export const runExecutionAgentLoop = async (
         },
         toolPolicy: input.toolPolicy,
       },
-      { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
+      {
+        deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+        reviewProposedAction: async (reviewInput) => {
+          const reviewed = await reviewProposedToolAction(input.inference.runUtility, reviewInput)
+          input.invocationSink.push(...reviewed.invocations)
+          return reviewed
+        },
+      },
     )
 
   const executeAuthorizedTool = async (
@@ -326,6 +357,7 @@ export const runExecutionAgentLoop = async (
     output: 'Tool execution is waiting for human approval.',
     pendingApproval: {
       approvalId: authorization.approval.id,
+      notice: authorization.approval.notice,
       toolName: authorization.approval.toolName,
     },
     success: false,
@@ -347,6 +379,7 @@ export const runExecutionAgentLoop = async (
     // dispatch to claim the one-time proof only when this tool will run.
     const authorization = await authorizeMainTool(toolName, args, toolCallId, {
       maySuspendForApproval: false,
+      skipAutoReview: true,
     })
     if (authorization.decision === 'deny') {
       return authorization.result
@@ -365,6 +398,7 @@ export const runExecutionAgentLoop = async (
       return {
         approval: {
           approvalId: authorization.approval.id,
+          notice: authorization.approval.notice,
           toolName: authorization.approval.toolName,
         },
         kind: 'suspend' as const,

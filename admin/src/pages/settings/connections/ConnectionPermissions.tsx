@@ -58,14 +58,23 @@ const CapabilityRow = ({
 
   const grant = async () => {
     setError(null)
+    // Opened synchronously inside the click, then pointed when the mutation
+    // resolves: a `window.open` after an await is outside the gesture stack and
+    // Safari and popup-strict Chrome block it.
+    const popup = window.open('', '_blank', 'noopener,noreferrer')
     try {
       const result = await start.mutateAsync({
         provider: 'google',
         capabilities: [capability.id],
         connectionId: connection.id,
       })
-      window.open(result.authorizeUrl, '_blank', 'noopener,noreferrer')
+      if (popup) {
+        popup.location.href = result.authorizeUrl
+      } else {
+        window.open(result.authorizeUrl, '_blank', 'noopener,noreferrer')
+      }
     } catch {
+      popup?.close()
       setError('Could not start the permission request. Please try again.')
     }
   }

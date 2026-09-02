@@ -55,9 +55,23 @@ filter (`localStorage`) and the agents scope (the session ledger). Each reads
 its store **once per mount**: a fallback that moved after every write would
 chase the param-deletion rule.
 
+A data-driven strip passes its own values as the fallback and gets the same
+degradation for free: the agent's-screen viewer hands `useTabParam` the ids of
+the tabs its cloud browser currently has open, so when the agent closes the tab
+being watched the param no longer validates and the viewer snaps back to the
+first one instead of pointing at a dead frame.
+
+The exception is a strip that is a **form field** rather than a section of a
+screen — the app-connect and app-secret scope choosers, and the in-thread
+approval gate's Approve/Reject. Their answer is submitted and thrown away, and
+a feed renders one approval gate per pending approval, so a single param has
+nowhere to put N independent answers and would outlive the thing it decided.
+Those three keep `useState`, each saying so where it stands, and
+`admin/test/tab-param.test.ts` holds the list — which only ever shrinks.
+
 | host | param | values |
 | --- | --- | --- |
-| a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `automations` · `agents` |
+| a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `agent` · `to-dos` · `triggers` · `automations` · `agents` (as the conversation offers) |
 | an app (`AppDetailPage`) | `tab` | `overview` · `capabilities` · `accounts` · `agents` (as the app offers) |
 | an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
 | Appearance (`/settings/appearance`) | `tab` | `colours` · `type` |
@@ -69,6 +83,21 @@ chase the param-deletion rule.
 | full-page search (`SearchPage`) | `mode` | `text` · `semantic` (default: this device's last mode) |
 | a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
 | Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
+| an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
+
+A conversation offers a different half of that list depending on what it is.
+Messaging one agent is a conversation with a subject, so it carries that
+agent's own sections — **Agent** (identity, tools, the way in to edit),
+**To-dos** and **Triggers** — each rendered by the very component
+`/agents/:id` renders. A channel carries the room's sections instead —
+**Automations**, and an **Agents** roster whose rows open `/agents/:id`. The
+two sets are deliberately exclusive: an agent-shaped section on a channel has
+no single subject, and a roster of one on a DM is the shared-tab mistake that
+put a "create an agent" card in a private conversation. `useChannelTab`
+decides both from one `resolveConversationAgent`, and holds `?tab=` unchanged
+until the channel, agent and Personal-Assistant reads have landed — otherwise
+a deep link to a conversation's To-dos is rewritten to Messages before the
+facts that justify it arrive.
 
 A named param is used wherever `tab` would collide: `agentTab` because the
 agent strip also renders inside the quick-view sheet over a conversation that

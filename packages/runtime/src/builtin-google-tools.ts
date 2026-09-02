@@ -1,3 +1,4 @@
+import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 /**
@@ -27,6 +28,11 @@ export const CALENDAR_FREEBUSY_TOOL_ID = 'calendar_freebusy'
 export const CALENDAR_EVENT_CREATE_TOOL_ID = 'calendar_event_create'
 export const CALENDAR_EVENT_UPDATE_TOOL_ID = 'calendar_event_update'
 export const CALENDAR_EVENT_CANCEL_TOOL_ID = 'calendar_event_cancel'
+export const CALENDAR_EVENT_RESPOND_TOOL_ID = 'calendar_event_respond'
+export const GMAIL_LABELS_LIST_TOOL_ID = 'gmail_labels_list'
+export const GMAIL_ORGANISE_TOOL_ID = 'gmail_organise'
+export const GMAIL_ATTACHMENT_READ_TOOL_ID = 'gmail_attachment_read'
+export const CONTACTS_SEARCH_TOOL_ID = 'contacts_search'
 
 const addressArray = (description: string) => ({
   type: 'array' as const,
@@ -286,11 +292,110 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['eventId'],
     },
   },
+  {
+    id: CALENDAR_EVENT_RESPOND_TOOL_ID,
+    summary: 'Accept, decline or tentatively answer an invitation.',
+    label: 'Respond to Invite',
+    requiresExplicitGrant: true,
+    safe: false,
+    description:
+      'Answer an invitation on the requesting person’s behalf. The organiser is '
+      + 'notified, as they would be if the person clicked it themselves.',
+    parameters: {
+      type: 'object',
+      properties: {
+        calendarId: { type: 'string', description: 'Calendar id; defaults to primary.' },
+        eventId: { type: 'string', description: 'The event being answered.' },
+        response: {
+          type: 'string',
+          enum: ['accepted', 'declined', 'tentative'],
+          description: 'The answer to send.',
+        },
+        comment: { type: 'string', description: 'Optional note to the organiser.' },
+      },
+      required: ['eventId', 'response'],
+    },
+  },
+  {
+    id: GMAIL_LABELS_LIST_TOOL_ID,
+    summary: "List the mailbox's labels.",
+    label: 'List Labels',
+    requiresExplicitGrant: true,
+    safe: true,
+    description:
+      'List the labels in the mailbox, with their ids — needed before applying '
+      + 'or removing one.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    id: GMAIL_ORGANISE_TOOL_ID,
+    summary: 'Label, archive, mark read, or trash a thread.',
+    label: 'Organise Email',
+    requiresExplicitGrant: true,
+    safe: false,
+    description:
+      'Tidy a thread: apply or remove labels, archive it, mark it read or '
+      + 'unread, or move it to trash. Archiving and marking read are label '
+      + 'changes in Gmail, so they are all one action here. Trash is '
+      + 'recoverable in Gmail for 30 days.',
+    parameters: {
+      type: 'object',
+      properties: {
+        threadId: { type: 'string', description: 'The thread to change.' },
+        addLabelIds: addressArray('Label ids to apply (from gmail_labels_list).'),
+        removeLabelIds: addressArray('Label ids to remove.'),
+        archive: { type: 'boolean', description: 'Remove it from the inbox.' },
+        markRead: { type: 'boolean', description: 'Mark it read (false = unread).' },
+        trash: { type: 'boolean', description: 'Move the thread to trash.' },
+      },
+      required: ['threadId'],
+    },
+  },
+  {
+    id: GMAIL_ATTACHMENT_READ_TOOL_ID,
+    summary: 'Read the contents of an email attachment.',
+    label: 'Read Attachment',
+    requiresExplicitGrant: true,
+    safe: true,
+    description:
+      'Fetch an attachment from a message and store it, so its contents can be '
+      + 'read and referred to. Use the attachmentId from gmail_message_read.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: { type: 'string', description: 'The message holding the attachment.' },
+        attachmentId: { type: 'string', description: 'From gmail_message_read.' },
+      },
+      required: ['messageId', 'attachmentId'],
+    },
+  },
+  {
+    id: CONTACTS_SEARCH_TOOL_ID,
+    summary: 'Find an email address for a name.',
+    label: 'Find Contact',
+    requiresExplicitGrant: true,
+    safe: true,
+    description:
+      'Look up an email address by name, from the requesting person’s Google '
+      + 'contacts and their organisation directory. Use this before writing to '
+      + 'somebody you only know by name — never guess an address.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'A name or partial address.' },
+      },
+      required: ['query'],
+    },
+  },
 ]
 
 /** Tool ids whose approval requirement is declared in code, not in policy data. */
 export const STRUCTURALLY_APPROVAL_GATED_TOOL_IDS = new Set(
-  GOOGLE_TOOL_DEFINITIONS
+  // Every builtin family carrying the flag, not Google's alone: a hosted agent
+  // mailbox's `email_send` needs exactly the same treatment (a longer expiry, a
+  // pinned approver, no accidental ungating), and two sets would be two chances
+  // to forget one.
+  [...GOOGLE_TOOL_DEFINITIONS, ...EMAIL_TOOL_DEFINITIONS]
     .filter((tool) => tool.requiresApproval)
     .map((tool) => tool.id),
 )

@@ -26,6 +26,12 @@ import { revealDesignerControl } from './designer/reveal-control'
 
 type AgentAvailableToolsProps = {
   agent: AgentRecord
+  /**
+   * Whether the switches are offered. A system-managed agent (the Personal
+   * Assistant) is configured through its own surface, so listing its resolved
+   * tools is right and offering a Save that competes with that surface is not.
+   */
+  editable?: boolean
 }
 
 const sortedPolicy = (policy: Record<string, boolean>): string =>
@@ -35,7 +41,7 @@ const sortedPolicy = (policy: Record<string, boolean>): string =>
       .map((key) => [key, policy[key]]),
   )
 
-const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
+const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
   const toolCatalog = useDesignerToolCatalog(true)
   const { groups, options } = toolCatalog
   const [toolState, setToolState] = useState<Record<string, boolean>>(
@@ -122,7 +128,7 @@ const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
   )
 }
 
-const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
+const AgentToolsReadOnly = ({ agent }: { agent: AgentRecord }) => {
   const toolCatalog = useDesignerToolCatalog(false)
   const { groups } = toolCatalog
   const policy = agent.toolPolicy ?? {}
@@ -165,10 +171,10 @@ const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
   )
 }
 
-export const AgentAvailableTools = ({ agent }: AgentAvailableToolsProps) => {
+export const AgentAvailableTools = ({ agent, editable = true }: AgentAvailableToolsProps) => {
   const isOwner = useIsOwner()
 
-  return isOwner ? (
+  return isOwner && editable ? (
     <AgentToolsEditor agent={agent} />
   ) : (
     <AgentToolsReadOnly agent={agent} />

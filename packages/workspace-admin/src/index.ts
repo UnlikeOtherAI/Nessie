@@ -12,6 +12,8 @@ export * from './agent-bindings.js'
 export * from './agent-create.js'
 export * from './agent-list.js'
 export * from './agent-model-order.js'
+export * from './agent-model-options.js'
+export * from './agent-model-selection.js'
 export * from './agent-record.js'
 export * from './agent-card-presentation.js'
 export * from './agent-card-values.js'
@@ -58,6 +60,20 @@ export * from './sandboxed-jmespath.js'
 export * from './workflow-jmespath.js'
 export * from './workflow-template-validation.js'
 export * from "./workflow-concurrency.js"
+export {
+  AgentMailboxError,
+  assertMailboxEligible,
+  createAgentMailbox,
+  loadAgentMailbox,
+  resolveMailboxByAddress,
+  retireAgentMailbox,
+  updateAgentMailbox,
+  type CreateMailboxInput,
+  type MailboxAgent,
+  type MailboxRecord,
+  type MailboxRefusal,
+  type UpdateMailboxInput,
+} from './agent-mailbox.js'
 
 export {
   GmailDraftError,
@@ -84,6 +100,10 @@ export {
   revokeSendAuthorization,
   listSendAuthorizations,
   resolveStandingConsentForToolCall,
+  loadLiveSendGrant,
+  recordSendDecision,
+  type LiveSendGrant,
+  type StandingConsentDecision,
   type SendGrantDuration,
   type SendGrantRecord,
 } from './send-authorization.js'

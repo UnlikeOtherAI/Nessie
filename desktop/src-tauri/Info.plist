@@ -4,5 +4,12 @@
 <dict>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <!-- Calling the Personal Assistant captures audio inside the WebView and
+       streams it to Gemini Live. Without this string macOS refuses microphone
+       access outright, and WKWebView does not expose navigator.mediaDevices at
+       all — which surfaces as "undefined is not an object", not as a denied
+       permission prompt. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Nessie uses the microphone so you can talk to your Personal Assistant on a call.</string>
 </dict>
 </plist>

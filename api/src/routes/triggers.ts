@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import {
+  AgentTriggerActivityRecordSchema,
   AgentTriggerDeliveryRecordSchema,
   AgentTriggerRecordSchema,
   CreateAgentTriggerBodySchema,
@@ -14,6 +15,7 @@ import {
   deleteAgentTrigger,
   dispatchAgentTrigger,
   getAgentTrigger,
+  listAgentTriggerActivity,
   listAgentTriggerDeliveries,
   listAgentTriggers,
   listOrganizationTriggers,
@@ -60,6 +62,30 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const triggers = await listAgentTriggers(prisma, agentId)
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  // What those triggers are doing right now, read separately from the records
+  // themselves: configuration and run state have different lifetimes, and a
+  // client refetches this one on a live cadence without re-reading the config.
+  // Same gates as the list above, no weaker.
+  app.get('/api/agents/:agentId/triggers/activity', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const activity = await listAgentTriggerActivity(prisma, agentId)
+    return createApiResponse(AgentTriggerActivityRecordSchema.array().parse(activity))
   })
 
   app.post('/api/agents/:agentId/triggers', async (request, reply) => {

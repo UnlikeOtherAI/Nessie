@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
 import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
+import { HoverHint } from '../../primitives/HoverHint'
 import { Pill } from '../../primitives/Pill'
 import { AppConnectDialog } from './AppConnectDialog'
 import { AppIcon } from './AppIcon'
@@ -85,29 +86,25 @@ const STATUS_COUNT_TONE: Record<AppCardStatusTone, string> = {
  * ("CONNECTED", "2 ACCOUNTS") crowds out the app's own name and its action for
  * a fact the dot already carries.
  *
- * The words are not lost — they are the tooltip, and the detail hero renders
- * the same `label` in full. The focusable target gives keyboard users that
- * tooltip too, and the count renders as text so it survives at any zoom.
+ * The words are not lost — the dot is a `HoverHint`, the same explain-on-demand
+ * control as the attribute badges above it, so hover, focus and tap all open a
+ * titled panel saying what the state is and what to do about it. The detail
+ * hero renders the same `label` in full.
  */
 const AppCardStatusIndicator = ({
   count,
+  description,
   label,
   tone,
 }: Pick<
   Extract<ReturnType<typeof appCardStatus>, { kind: 'indicator' }>,
-  'count' | 'label' | 'tone'
+  'count' | 'description' | 'label' | 'tone'
 >) => (
-  <span
-    aria-label={label}
-    className={[
-      'relative z-10 inline-flex h-6 shrink-0 cursor-help items-center gap-1 rounded-full',
-      count === null ? 'w-6 justify-center' : 'px-1.5',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
-    ].join(' ')}
-    data-testid="app-card-status"
-    role="img"
-    tabIndex={0}
-    title={label}
+  <HoverHint
+    className={`h-6 gap-1 rounded-full ${count === null ? 'w-6' : 'px-1.5'}`}
+    description={description}
+    label={label}
+    testId="app-card-status"
   >
     <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${STATUS_INDICATOR_TONE[tone]}`} />
     {count === null ? null : (
@@ -115,7 +112,7 @@ const AppCardStatusIndicator = ({
         {count}
       </span>
     )}
-  </span>
+  </HoverHint>
 )
 
 const HighlightedText = ({ query, text }: { query: string; text: string }) => (
@@ -157,7 +154,14 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
     >
       <div className="flex items-start gap-3">
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="card" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {/* A tight stack: the title, then the category, then the badges, each
+            following the one above it. The title used to reserve two lines
+            (`min-h-10`) so that every card's description began at the same y,
+            which left a one-line title floating 20px above its own category —
+            the identity block read as three unrelated rows. Cards still end
+            level because the footer is `mt-auto`, so the reservation bought
+            alignment nothing else needed. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           {/* A stretched link: real anchor semantics and one tab stop for the
               whole tile, while the footer action stays its own control (an
               anchor inside an anchor would not be valid markup). Every state
@@ -165,7 +169,7 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
               person whose install has stalled or whose app is unavailable. */}
           <Link
             className={[
-              'line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5',
+              'line-clamp-2 text-[0.9375rem] font-semibold leading-5',
               'text-[color:var(--tx)]',
               'after:absolute after:inset-0 after:content-[""]',
               'focus-visible:outline-none focus-visible:after:ring-2',
@@ -178,8 +182,17 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
           >
             <HighlightedText query={query} text={app.displayName} />
           </Link>
-          <div className="flex min-w-0 items-center gap-1.5 text-[11px]">
-            <span className="truncate text-[color:var(--tx3)]">{appCategoryLabel(app)}</span>
+          {/* Two lines, not one: sharing a row with the badges left the
+              category truncated to "Project Manag…" on a grid tile, and a
+              category the eye cannot read is a filter nobody can use. On its
+              own line it has the card's full width. */}
+          <span className="truncate text-[11px] leading-4 text-[color:var(--tx3)]">
+            {appCategoryLabel(app)}
+          </span>
+          {/* `-mb-1` claws back the badge buttons' own optical padding: they
+              are 24px tall around a 12px glyph, so the row reads lower than it
+              measures and an even gap above it looks like a wider one. */}
+          <div className="-mb-1 flex min-w-0 items-center gap-1.5 text-[11px]">
             {kindPill && kindPill.label in KIND_BADGES ? (
               <AppIconBadge
                 {...KIND_BADGES[kindPill.label as keyof typeof KIND_BADGES]}
@@ -215,7 +228,12 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         <div className="min-w-0">
           {status.kind === 'indicator' ? (
-            <AppCardStatusIndicator count={status.count} label={status.label} tone={status.tone} />
+            <AppCardStatusIndicator
+              count={status.count}
+              description={status.description}
+              label={status.label}
+              tone={status.tone}
+            />
           ) : status.kind === 'quiet' ? (
             <span className="truncate text-xs text-[color:var(--tx3)]">{status.label}</span>
           ) : null}

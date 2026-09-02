@@ -12,6 +12,13 @@ import {
 } from './pa-tools/gmail-tools.js'
 import { runGmailDraftSendTool } from './pa-tools/gmail-send-tool.js'
 import {
+  runGmailLabelsListTool,
+  runGmailOrganiseTool,
+  runGmailAttachmentReadTool,
+  runContactsSearchTool,
+  runCalendarEventRespondTool,
+} from './pa-tools/gmail-organise-tools.js'
+import {
   runCalendarListTool,
   runCalendarEventsListTool,
   runCalendarFreeBusyTool,
@@ -56,6 +63,9 @@ import {
   runTodoTemplateProposeTool,
   runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
+  runEmailListTool,
+  runEmailReadTool,
+  runEmailSendTool,
 } from './pa-tools.js'
 import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
@@ -412,6 +422,12 @@ const executeBuiltinToolUncorrected = async (
       })
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
+    case 'email_list':
+      return wrapTool(inputSummary, () => runEmailListTool(context, args))
+    case 'email_read':
+      return wrapTool(inputSummary, () => runEmailReadTool(context, args))
+    case 'email_send':
+      return wrapTool(inputSummary, () => runEmailSendTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
     case 'meeting_link_create':
@@ -442,6 +458,16 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runCalendarEventUpdateTool(context, args))
     case 'calendar_event_cancel':
       return wrapTool(inputSummary, () => runCalendarEventCancelTool(context, args))
+    case 'calendar_event_respond':
+      return wrapTool(inputSummary, () => runCalendarEventRespondTool(context, args))
+    case 'gmail_labels_list':
+      return wrapTool(inputSummary, () => runGmailLabelsListTool(context, args))
+    case 'gmail_organise':
+      return wrapTool(inputSummary, () => runGmailOrganiseTool(context, args))
+    case 'gmail_attachment_read':
+      return wrapTool(inputSummary, () => runGmailAttachmentReadTool(context, args))
+    case 'contacts_search':
+      return wrapTool(inputSummary, () => runContactsSearchTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

@@ -2,6 +2,10 @@ import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelConfig, ModelProvider } from '@nessie/config'
 import { isLedgerEndpoint } from '@nessie/runtime'
+import {
+  resolveSubscriptionCredential,
+  type SubscriptionSecretStore,
+} from '@nessie/model-subscriptions'
 
 const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
   kimi: 'kimi-for-coding',
@@ -17,6 +21,27 @@ export type ResolvedProviderConfig = {
   connectorKind?: 'compiled' | 'openai-compatible'
   model: string
   providerKey: string
+  /**
+   * Set when this call spends a person's own subscription instead of the
+   * organization's Ledger credits. Carried through dispatch so the ledger event
+   * can record the purse structurally and a failure can be matched against the
+   * exact credential generation that failed.
+   */
+  subscription?: {
+    subscriptionId: string
+    epoch: number
+    providerKey: string
+  }
+}
+
+/**
+ * The run's pinned lane, resolved once at admission. Present only for a
+ * subscription-routed run.
+ */
+export type StageSubscriptionBinding = {
+  subscriptionId: string
+  ownerUserId: string
+  secretStore: SubscriptionSecretStore | null
 }
 
 export const resolveRuntimeProvider = (providerKey: string): RunnableProvider | null => {
@@ -104,8 +129,39 @@ export const resolveStageProviderConfig = async (
     providerKey: string
     requestedModel: string
     routeSource: 'direct' | 'routing-profile'
+    /** Pinned at run admission; absent for every ordinary Ledger run. */
+    subscription?: StageSubscriptionBinding | null
   },
 ): Promise<ResolvedProviderConfig> => {
+  // A pinned subscription short-circuits the whole deployment/organization
+  // chain: the credential, the destination and the connector all come from the
+  // adapter, and nothing about Ledger applies. Signing needs no special case —
+  // the effective base URL is not a Ledger origin, so the existing identity
+  // resolver already declines to attach Nessie/UOA assertions to it.
+  if (input.subscription) {
+    const resolved = await resolveSubscriptionCredential(
+      { prisma, secretStore: input.subscription.secretStore },
+      {
+        expectedOwnerUserId: input.subscription.ownerUserId,
+        organizationId: input.organizationId,
+        subscriptionId: input.subscription.subscriptionId,
+      },
+    )
+    return {
+      apiKey: resolved.accessToken,
+      baseUrl: resolved.baseUrl,
+      connectorKind:
+        resolved.runtimeProvider === 'openai-compatible' ? 'openai-compatible' : 'compiled',
+      model: input.requestedModel,
+      providerKey: resolved.runtimeProvider,
+      subscription: {
+        epoch: resolved.epoch,
+        providerKey: resolved.providerKey,
+        subscriptionId: resolved.subscriptionId,
+      },
+    }
+  }
+
   const runtimeProvider = resolveRuntimeProvider(input.providerKey)
   const providerRows = await prisma.$queryRaw<
     Array<{

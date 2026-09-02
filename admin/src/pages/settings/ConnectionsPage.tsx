@@ -9,6 +9,7 @@ import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/My
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
 const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
@@ -103,6 +104,9 @@ export const ConnectionsPage = () => {
           )}
         </QueryState>
 
+        <div className="h-px bg-[color:var(--bd1)]" />
+
+        <ModelSubscriptionSection />
         <CloudBrowserPanel scope="user" />
         <MyBrowserLoginsPanel />
       </div>

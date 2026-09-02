@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/agent-mail": "workspace:*",
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
     "@nessie/comms-providers": "workspace:*",
@@ -33,6 +34,7 @@
     "@nessie/browser-cloud": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
     "@nessie/memory": "workspace:*",
+    "@nessie/model-subscriptions": "workspace:*",
     "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",

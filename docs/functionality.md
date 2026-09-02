@@ -260,10 +260,18 @@ Root app layout:
   verified against its approval row, organization, direct run lineage, tool
   name, and argument hash, then consumed at dispatch. The token and the full
   resume state are server-only and never appear in approval responses.
+- A tool rule with `conditions.reviewMode: 'auto'` runs one `NESSIE_UTILITY_MODEL`
+  reviewer after deterministic authorization and before dispatch, only for unsafe
+  builtins, real remote MCP calls, and `executor.browser.act` / `executor.command.run`.
+  A deterministic denial still wins; an allow dispatches, a deny returns
+  `auto_review_denied`, and an escalation, timeout, or malformed response enters
+  this same human-approval pause. Each reviewer verdict is a `tool.auto_reviewed`
+  task event plus an audit-chain `policy.evaluated` record.
 - Rejecting, expiry, and cancellation terminalize the waiting run, update the
-  durable approval-gate notice, leave the checkpoint unconsumed for an
-  ordinary follow-up, and release the thread slot. Review-model triage remains
-  a later phase; this path is human approval only.
+  durable approval-gate notice, leave the checkpoint unconsumed for an ordinary
+  follow-up, and release the thread slot. The entitled `/approvals` surface is
+  reachable in context through its pending-count sidebar badge and its thread
+  approval card, which resolves through the same approval API and realtime events.
 
 ### 2.0e Channel scopes
 

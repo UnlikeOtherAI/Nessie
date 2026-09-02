@@ -8,6 +8,7 @@ import { RedirectRoute } from './navigation/RedirectRoute'
 import { SearchPage } from './pages/SearchPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
+import { AgentMailboxPage } from './pages/AgentMailboxPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ExecutorsPage } from './pages/ExecutorsPage'
@@ -242,6 +243,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/executors',
         element: <ExecutorsPage />,
+      },
+      {
+        path: '/agents/:agentId/mailbox',
+        element: <AgentMailboxPage />,
       },
       {
         // Dynamic agent id last: static siblings above outrank it in the

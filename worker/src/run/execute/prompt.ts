@@ -16,6 +16,10 @@ import {
   buildResearchRoutingBlock,
   type ResearchRoutingFacts,
 } from './research-routing.js'
+import {
+  buildMailboxRoutingBlock,
+  type MailboxRoutingFacts,
+} from './mailbox-routing.js'
 import { buildAgentCardsBlock } from './agent-cards-prompt.js'
 import {
   buildAgentDocumentsBlock,
@@ -88,8 +92,16 @@ export const buildModelPrompt = (
     checkpointNotes?: string | null
     /** Server-authored tool-gate fact for an approval continuation. */
     approvalInstruction?: string | null
+    /**
+     * The email conversation this run was woken by, already carrying its own
+     * untrusted framing. Mail lives outside `Message`, so this is the only path
+     * its content reaches the model.
+     */
+    emailConversation?: string | null
     /** Structural toolset facts driving the research routing block (§9). */
     routing?: ResearchRoutingFacts
+    /** Structural toolset facts driving the mailbox/calendar routing block. */
+    mailbox?: MailboxRoutingFacts
     /** Bounded, durable to-do facts, omitted unless execution tools resolve. */
     todoFacts?: AgentTodoPromptFacts | null
     /** Structural home-space and toolset facts driving the documents block. */
@@ -179,6 +191,7 @@ export const buildModelPrompt = (
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
+    options.mailbox ? buildMailboxRoutingBlock(options.mailbox) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({ hasCardTool: options.hasCardTool ?? false }) ?? '',
@@ -200,6 +213,11 @@ export const buildModelPrompt = (
   }
   if (options.approvalInstruction) {
     messages.push({ content: options.approvalInstruction, role: 'system' })
+  }
+  // Beside the checkpoint notes and for the same reason: server-authored
+  // context that carries its own untrusted framing.
+  if (options.emailConversation) {
+    messages.push({ content: options.emailConversation, role: 'system' })
   }
 
   // The clock is volatile by nature, so it rides behind the stable anchor and

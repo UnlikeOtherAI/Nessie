@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   AgentBrowserRecord,
@@ -63,6 +63,7 @@ export const useThreadBrowserSessions = (threadId: string | null) => {
       apiClient.get(`/api/threads/${threadId}/browser-sessions?active=1`),
     enabled: threadId !== null,
     refetchInterval: 5_000,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -78,6 +79,7 @@ export const useCloudBrowserSession = (sessionId: string | null) => {
     enabled: sessionId !== null,
     refetchInterval: 15_000,
     staleTime: 0,
+    placeholderData: keepPreviousData,
   })
 }
 

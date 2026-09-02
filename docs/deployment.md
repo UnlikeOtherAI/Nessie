@@ -70,6 +70,27 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
   `0`, so forwarded client IP headers are ignored.
 
+### Personal model subscriptions vault
+
+Personal model subscriptions (a person's own Kimi/GLM plan powering the agents
+they own) keep their token bundles in a **dedicated, separately-ACLed Infisical
+project** — never the shared `/nessie/<org>/personal/<user>` partition, which
+also holds a person's ordinary captured secrets and would hand any identity
+scoped to it every one of them.
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `NESSIE_SUBSCRIPTION_VAULT_API_URL` | yes | Infisical API origin (HTTPS only). |
+| `NESSIE_SUBSCRIPTION_VAULT_TOKEN` | yes | Machine-identity token scoped to the subscriptions project only. |
+| `NESSIE_SUBSCRIPTION_VAULT_PROJECT_ID` | yes | The dedicated project id. |
+| `NESSIE_SUBSCRIPTION_VAULT_ENVIRONMENT` | no | Defaults to `prod`. |
+
+Both the API and the **worker** need these: inference runs in the worker, so it
+holds its own machine identity for this project (the executor and agent
+sandboxes still receive nothing). With any of the three unset, the feature is
+simply unavailable — `/settings/connections` says so and linking is refused;
+there is deliberately no PostgreSQL fallback.
+
 ### Infisical vault
 
 Infisical owns secret values and runs with Redis plus a dedicated `infisical`
@@ -296,6 +317,37 @@ data live in named Docker volumes outside the synced tree.
 host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
 migrations, rolls the containers). Postgres and its volume are untouched.
 
+### Images are built on GitHub, never on the production host
+
+The Deploy workflow's `build` job builds `app`, `admin`, and `web` on GitHub
+runners and pushes them to GHCR tagged with the commit SHA
+(`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>`, cached per image with
+`type=gha`). The `deploy` job then logs the host into GHCR with the run's own
+short-lived `GITHUB_TOKEN`, and `redeploy.sh` **pulls** those images.
+
+This exists because building on the box was an outage. Each deploy ran a full
+monorepo install+compile for three images on a host shared with ~40 other
+apps: measured at load average 340 on 8 cores with 0% idle, during which
+`api.nessie.works` and `app.nessie.works` timed out through Caddy — the
+containers were healthy, the host simply had nothing left to answer with. SSH
+to the box hung too. Pulling a finished image costs the host a network
+transfer and nothing else.
+
+`redeploy.sh` decides by `NESSIE_IMAGE_TAG`: set (always, from the workflow) →
+pull; unset → build locally, which is the manual/first-deploy fallback only.
+The compose services keep their `build:` blocks for that path, with
+`image: ${NESSIE_APP_IMAGE:-nessie-app:latest}` (and `_ADMIN_`/`_WEB_`) so the
+same file serves both. Because every deploy pulls a distinct SHA tag and
+tagged images are never *dangling*, the post-deploy reclaim explicitly removes
+Nessie release images other than the one just deployed — otherwise the shared
+disk grows by a full image per deploy.
+
+To deploy a specific build by hand:
+
+```sh
+cd /srv/nessie && NESSIE_IMAGE_TAG=<sha> bash infrastructure/compose/redeploy.sh
+```
+
 ### Zero-downtime rollout (health-gated blue-green swap)
 
 `redeploy.sh` does **not** stop-then-start the public-facing services. For
@@ -448,9 +500,13 @@ filled the disk to 100% on 2026-06-10 and crashed `nessie-postgres`
 rejecting connections — which also blocks `prisma migrate deploy`). Mitigations
 now in place:
 
-- `redeploy.sh` waits for Postgres to accept connections (`pg_isready`) before
-  migrating, and after recreate prunes build cache older than 48h
-  (`docker builder prune -f --filter until=48h`) plus dangling images.
+- Routine deploys no longer build on this host at all (see "Images are built on
+  GitHub"), which removed both the build cache growth and the CPU/IO
+  saturation. `redeploy.sh` still waits for Postgres to accept connections
+  (`pg_isready`) before migrating, bounds the build cache used by the
+  local-build fallback (`docker builder prune -f --keep-storage 40GB`, never
+  `-af` — a full wipe forces that fallback to rebuild from scratch), prunes
+  dangling images, and removes superseded SHA-tagged Nessie release images.
 - If the disk fills anyway, the safe manual reclaim (does **not** touch named
   volumes / running images): `docker builder prune -af` (build cache, 0 active)
   then `docker image prune -f` (dangling only). Avoid `image prune -a` and
@@ -574,6 +630,7 @@ production settings:
 | Web Push public key | `NESSIE_WEBPUSH_PUBLIC_KEY` | optional; VAPID public key served to browsers. Enables browser web push when set with the two below. See [web-push.md](web-push.md) |
 | Web Push private key | `NESSIE_WEBPUSH_PRIVATE_KEY` | optional; VAPID private key that signs push JWTs (secret) |
 | Web Push subject | `NESSIE_WEBPUSH_SUBJECT` | optional; VAPID subject, a `mailto:`/`https:` operator-contact URI. Generate the trio with `node scripts/generate-vapid-keys.mjs` |
+| Agent email (SES) | `NESSIE_EMAIL_SES_REGION`, `NESSIE_EMAIL_DOMAIN`, `NESSIE_EMAIL_INBOUND_S3_BUCKET`, `NESSIE_EMAIL_SNS_TOPIC_ARN` (+ optional `NESSIE_EMAIL_SES_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY`, `NESSIE_EMAIL_INBOUND_S3_PREFIX`, `NESSIE_EMAIL_CONFIGURATION_SET`, `NESSIE_EMAIL_INBOUND_RETENTION_DAYS`, `NESSIE_EMAIL_CUSTOM_DOMAINS`, `NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR`, `NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES`) | Hosted agent mailboxes. All four required fields must be present or the feature stays off and names the missing ones; credentials omitted ⇒ the AWS SDK default chain (instance profile / IRSA). Full AWS setup, IAM and operating notes: "Agent email (Amazon SES)" below. |
 | Comms Slack client id | `NESSIE_COMMS_SLACK_CLIENT_ID` | optional; Slack app OAuth client id for the Individual Communications Connector. Also read by the API OAuth-start (`oauth-config.ts`) to build the authorize URL |
 | Comms Slack client secret | `NESSIE_COMMS_SLACK_CLIENT_SECRET` | optional (secret); Slack app OAuth client secret used for the code→token exchange |
 | Comms Slack signing secret | `NESSIE_COMMS_SLACK_SIGNING_SECRET` | optional (secret); Slack Events API request-signing secret (`v0` HMAC). Slack registers only when all three of the above are set |
@@ -694,6 +751,29 @@ blocks uploads (HTTP 507) when exceeded. The cap is set in the admin **Budgets**
 screen ("Storage cap (GB)") alongside spend caps, and current usage shows in the
 knowledge-base header. `MinIO` data lives in the `nessie_miniodata` volume — back
 it up alongside `nessie_pgdata`.
+
+### Agent email (Amazon SES)
+
+Hosted agent mailboxes give each agent its own address (`support@nessie.works`).
+Amazon SES is integrated **directly** — the deployment's own account sends and
+receives, so an address is unique per deployment and there is no intermediary
+service.
+
+The feature is **off unless configured**, and partial configuration is named
+rather than degraded: the claim flow refuses with `AGENT_MAIL_UNCONFIGURED`
+listing the missing variables, the agent's Email section shows an owner that
+same list, the inbound route answers `503`, and the worker logs
+`[worker.agent-email] disabled` at boot and registers no handlers. Required:
+`NESSIE_EMAIL_SES_REGION`, `NESSIE_EMAIL_DOMAIN`,
+`NESSIE_EMAIL_INBOUND_S3_BUCKET`, `NESSIE_EMAIL_SNS_TOPIC_ARN`. Credentials are
+optional — omit them to use the AWS SDK default chain (instance profile / IRSA).
+
+**Authoritative guide: [docs/agent-email.md](agent-email.md)** — the full AWS
+click-path and CLI (domain + DKIM, MX, the receipt rule into S3 + SNS, the
+configuration set, IAM, self-subscription), every environment variable,
+verification commands, and the operating rules that matter in production
+(deployment-wide suppression, why an ambiguous send is never retried, and why a
+deleted address is retired permanently).
 
 ### MCP OAuth secret store
 

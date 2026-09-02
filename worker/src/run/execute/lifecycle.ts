@@ -134,6 +134,7 @@ export const loadRunContext = async (
           executionMode: true,
           id: true,
           model: true,
+          modelSubscriptionId: true,
           name: true,
           parentAgentId: true,
           ownerUserId: true,
@@ -176,7 +177,7 @@ export const loadRunContext = async (
 
   // One indexed lookup, cached on the context. The live stream gate calls the
   // disclosure predicate for every delta and must never perform IO itself.
-  const [boundAgents, activeDemonstration] = await Promise.all([
+  const [boundAgents, activeDemonstration, emailConversation] = await Promise.all([
     prisma.agentBinding.findMany({
       where: { channelId: run.thread.channel.id },
       select: { agentId: true },
@@ -191,12 +192,22 @@ export const loadRunContext = async (
       },
       select: { id: true },
     }),
+    // Cached with the context for the same reason as the bindings: the live
+    // disclosure gate consults it per delta and must not perform IO. Non-null
+    // only when this thread IS an email conversation's operations room, which
+    // is what makes reading that correspondence unprivileged here.
+    prisma.emailConversation.findUnique({
+      where: { threadId: run.thread.id },
+      select: { id: true, mailboxId: true },
+    }),
   ])
 
   return {
     agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
     activeDemonstrationId: activeDemonstration?.id ?? null,
     boundAgentIds: boundAgents.map((binding) => binding.agentId),
+    emailConversationId: emailConversation?.id ?? null,
+    emailMailboxId: emailConversation?.mailboxId ?? null,
     channel: run.thread.channel,
     consumedSources: createConsumedSourceSink(),
     run: {

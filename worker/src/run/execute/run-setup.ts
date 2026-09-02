@@ -24,6 +24,7 @@ import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
+import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import { hasCardPromptTools } from './agent-cards-prompt.js'
@@ -256,6 +257,17 @@ export const prepareRunExecution = async (
     threadId: context.run.threadId,
     viewer,
   })
+  // Mail is not a Message row, so a run woken by email would otherwise see only
+  // the one-line reference. This is also where its disclosure scope is fed.
+  const emailContext =
+    context.emailConversationId && context.emailMailboxId
+      ? await loadEmailConversationContext(deps.prisma, {
+        consumedSources: context.consumedSources,
+        conversationId: context.emailConversationId,
+        mailboxId: context.emailMailboxId,
+      })
+      : null
+
   const memories = await retrieveRelevantMemories(deps, context, payload, input.prompt)
   const injectedRecallIds = memories.flatMap((memory) =>
     memory.recallId ? [memory.recallId] : [],
@@ -321,12 +333,20 @@ export const prepareRunExecution = async (
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       approvalInstruction,
+      emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         hasResearchTools: mcpToolset.hasManagedResearchTools,
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
+      },
+      mailbox: {
+        hasMailboxTools: resolvedToolIds.has('gmail_search')
+          || resolvedToolIds.has('gmail_draft_create'),
+        hasCalendarTools: resolvedToolIds.has('calendar_events_list')
+          || resolvedToolIds.has('calendar_event_create'),
+        hasDelegate: resolvedToolIds.has('delegate'),
       },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       todoFacts,

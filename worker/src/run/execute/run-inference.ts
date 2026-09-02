@@ -21,6 +21,7 @@ import { createProviderRequestHeadersResolver } from '../inference-identity.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { UtilityModel } from './utility-model.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
+import type { RunSubscriptionBinding } from './subscription-binding.js'
 import { runReplyIsRestricted } from './agent-message.js'
 
 const runtimeModelConfig = loadConfig().model
@@ -61,6 +62,13 @@ export const createRunInference = (
     // coalesced reasoning chunk and publishes the matching `stream.reasoning`
     // event with that chunk's id (one publish per flush, never per token).
     // Utility calls (sub-agents, compaction, checkpoint notes) stay silent.
+    /**
+     * The run's pinned personal-subscription lane, or null for the ordinary
+     * Ledger route. Every call this factory makes — main turn, delegates,
+     * compaction, checkpoint notes — carries the same binding, so a run never
+     * mixes a person's plan with the organization's credits.
+     */
+    subscription: RunSubscriptionBinding | null
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },
@@ -117,6 +125,13 @@ export const createRunInference = (
           ? resolveComposeOutputTokens(runtimeModelConfig.maxTokens)
           : undefined,
         modelConfig: runtimeModelConfig,
+        subscription: options.subscription
+          ? {
+            ownerUserId: options.subscription.ownerUserId,
+            secretStore: deps.subscriptionSecrets ?? null,
+            subscriptionId: options.subscription.subscriptionId,
+          }
+          : null,
         onInferenceAttempt: ({ invocationId }) => {
           documentStream?.beginInvocation(invocationId)
         },

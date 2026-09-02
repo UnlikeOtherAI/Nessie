@@ -1,17 +1,24 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
 import {
+  useAgentTriggerActivity,
   useAgentTriggers,
   useFireTrigger,
   usePauseTrigger,
   useResumeTrigger,
   useTriggerHistory,
 } from '../../../facades/triggers/hooks'
-import type { AgentRecord, AgentTriggerRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  AgentTriggerActivityRecord,
+  AgentTriggerRecord,
+} from '../../../lib/api-client'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
 import { useIsOwner } from '../../shared/OwnerGate'
+import { TriggerRunState } from '../triggers/TriggerRunState'
+import { findTriggerActivity, groupTriggers } from '../triggers/trigger-groups'
 import {
   TRIGGER_TYPE_ICONS,
   formatTimestamp,
@@ -21,14 +28,23 @@ import {
 
 type AgentTriggerPanelProps = {
   agent: AgentRecord
+  /**
+   * What this surface calls a trigger. The agent page says "Triggers" beside
+   * the rest of its configuration vocabulary; a conversation's Triggers tab
+   * says the same. One component, one label — the prop exists so a surface
+   * with different words does not fork the panel.
+   */
+  title?: string
 }
 
 const TriggerRow = ({
+  activity,
   onFire,
   onPause,
   onResume,
   trigger,
 }: {
+  activity: AgentTriggerActivityRecord | undefined
   onFire: (trigger: AgentTriggerRecord) => void
   onPause: (triggerId: string) => void
   onResume: (triggerId: string) => void
@@ -37,14 +53,14 @@ const TriggerRow = ({
   const { data: history = [] } = useTriggerHistory(trigger.id, 3)
 
   return (
-    <div className="admin-card p-4">
+    <div className="admin-card p-4" data-testid="agent-trigger-row">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--overlay-weak)] text-[color:var(--tx2)]">
             <FontAwesomeIcon className="h-3.5 w-3.5" icon={TRIGGER_TYPE_ICONS[trigger.type]} />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link
                 className="truncate font-semibold text-[var(--tx)] hover:underline"
                 to={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
@@ -52,6 +68,10 @@ const TriggerRow = ({
                 {trigger.name ?? trigger.type}
               </Link>
               <Pill tone={getTriggerTone(trigger.status)}>{trigger.status}</Pill>
+              {/* Configuration state and run state are two different answers —
+                  a paused trigger can still have a run finishing — so they are
+                  two chips, never one merged word. */}
+              <TriggerRunState activity={activity} />
             </div>
             <div className="mt-1 text-sm text-[color:var(--tx2)]">
               {trigger.description ?? getScheduleSummary(trigger)}
@@ -124,9 +144,10 @@ const TriggerRow = ({
   )
 }
 
-export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
+export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPanelProps) => {
   const isOwner = useIsOwner()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
+  const { data: activity = [] } = useAgentTriggerActivity(agent.id, isOwner)
   const pause = usePauseTrigger()
   const resume = useResumeTrigger()
   const fire = useFireTrigger()
@@ -134,17 +155,19 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
   if (!isOwner) {
     return (
       <section className="admin-card p-4">
-        <SectionLabel>Triggers</SectionLabel>
+        <SectionLabel>{title}</SectionLabel>
         <div className="mt-3 text-sm text-[color:var(--tx3)]">Owner access required.</div>
       </section>
     )
   }
 
+  const groups = groupTriggers(triggers)
+
   return (
-    <section className="admin-card p-4">
-      <div className="flex items-center justify-between gap-4">
+    <section className="grid gap-6" data-testid="agent-trigger-panel">
+      <div className="flex items-center justify-between gap-4 border-b border-[color:var(--sep)] pb-3">
         <div>
-          <SectionLabel>Triggers</SectionLabel>
+          <SectionLabel>{title}</SectionLabel>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">
             Automatic activation and manual fire controls for this agent.
           </div>
@@ -152,32 +175,39 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
         <div className="text-xs text-[color:var(--tx3)]">{triggers.length} configured</div>
       </div>
 
-      <div className="mt-4 grid gap-3">
-        {triggers.length === 0 ? (
-          <EmptyState>
-            No triggers configured for this agent yet. Create one on the{' '}
-            <Link className="underline" to="/agents/triggers">
-              Triggers page
-            </Link>
-            .
-          </EmptyState>
-        ) : (
-          triggers.map((trigger) => (
-            <TriggerRow
-              key={trigger.id}
-              onFire={(selectedTrigger) =>
-                fire.mutate({
-                  triggerId: selectedTrigger.id,
-                  prompt: `Run ${agent.name} from the trigger control panel.`,
-                  payload: { agentId: agent.id, triggerType: selectedTrigger.type },
-                })}
-              onPause={(triggerId) => pause.mutate(triggerId)}
-              onResume={(triggerId) => resume.mutate(triggerId)}
-              trigger={trigger}
-            />
-          ))
-        )}
-      </div>
+      {groups.length === 0 ? (
+        <EmptyState>
+          No triggers configured for this agent yet. Create one on the{' '}
+          <Link className="underline" to="/agents/triggers">
+            Triggers page
+          </Link>
+          .
+        </EmptyState>
+      ) : (
+        groups.map((group) => (
+          <div className="grid gap-3" data-testid={`trigger-group-${group.key}`} key={group.key}>
+            <div>
+              <SectionLabel>{group.title}</SectionLabel>
+              <p className="mt-1 text-xs text-[color:var(--tx3)]">{group.description}</p>
+            </div>
+            {group.triggers.map((trigger) => (
+              <TriggerRow
+                activity={findTriggerActivity(activity, trigger.id)}
+                key={trigger.id}
+                onFire={(selectedTrigger) =>
+                  fire.mutate({
+                    triggerId: selectedTrigger.id,
+                    prompt: `Run ${agent.name} from the trigger control panel.`,
+                    payload: { agentId: agent.id, triggerType: selectedTrigger.type },
+                  })}
+                onPause={(triggerId) => pause.mutate(triggerId)}
+                onResume={(triggerId) => resume.mutate(triggerId)}
+                trigger={trigger}
+              />
+            ))}
+          </div>
+        ))
+      )}
     </section>
   )
 }

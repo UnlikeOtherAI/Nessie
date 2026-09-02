@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useBrowserControl, useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 
@@ -18,8 +19,8 @@ type AgentScreenViewerProps = {
 
 /**
  * Dismissal is per (viewer, agent) and deliberately client-local: it is a
- * reminder, not a consent record, and the sentence returns undismissed in the
- * sign-in handoff where it is actually load-bearing.
+ * reminder, not a consent record, and the sentence returns undismissed while
+ * somebody is actually driving, where it is load-bearing.
  */
 const bannerStorageKey = (agentId: string): string =>
   `nessie.browserShareBanner.${agentId}`
@@ -38,14 +39,16 @@ const STATUS_LABEL: Record<string, string> = {
  * line. Mounted by the screen panel and by the full-screen takeover, so the
  * two can never drift into different browsers.
  *
- * Watch-only in phase 1 — `pointer-events: none` keeps a stray click out of
- * the agent's browser. That is a courtesy, not the security boundary: the
- * boundary is who may fetch the live-view URL at all, which the detail route
- * decides.
+ * Watch-only until somebody claims control — `pointer-events: none` keeps a
+ * stray click out of the agent's browser. That is a courtesy, not the security
+ * boundary: the boundary is who may fetch the live-view URL at all, which the
+ * detail route decides. The claim is what makes the *agent* stand down, since
+ * every browser verb is refused server-side while it is held.
  */
 export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
-  const [activeTab, setActiveTab] = useState<string | null>(null)
+  // Control is only offered full-screen: the panel is a glance, and handing
+  // somebody the keyboard in a 400px column is not the affordance.
   const control = useBrowserControl(variant === 'fullscreen' ? sessionId : null)
   const shared = agent !== undefined && agent.visibility !== 'private'
   const [bannerDismissed, setBannerDismissed] = useState(() => {
@@ -69,17 +72,11 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
 
-  // Follow the agent by default: when it opens or closes tabs, snap back to
-  // the first one rather than leaving the viewer pointed at a dead frame.
-  useEffect(() => {
-    if (tabs.length === 0) {
-      setActiveTab(null)
-      return
-    }
-    if (!activeTab || !tabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(tabs[0]?.id ?? null)
-    }
-  }, [tabs, activeTab])
+  // Follow the agent by default: the hook reads an id the session no longer
+  // has as its fallback, so when the agent closes the tab being watched the
+  // viewer snaps back to the first one rather than pointing at a dead frame.
+  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
+  const [activeTab, setActiveTab] = useTabParam('browserTab', tabIds, tabIds[0] ?? '')
 
   const frameUrl = useMemo(() => {
     if (!session.data) return null
@@ -125,13 +122,13 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
             }))}
             onChange={setActiveTab}
             size="sm"
-            value={activeTab ?? tabs[0]?.id ?? ''}
+            value={activeTab}
           />
         </div>
       ) : null}
 
       {shared && (control.controlling || !bannerDismissed) ? (
-        <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 rounded-[var(--radius-sm)] border border-[color:var(--warning-border,var(--sep))] bg-[color:var(--warning-soft,var(--bg2))] px-3 py-2">
+        <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 border border-[color:var(--sep)] bg-[color:var(--bg2)] px-3 py-2">
           <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
             Other people can use this agent’s browser. Anything you sign in to here is
             shared with everyone who has access to this agent.

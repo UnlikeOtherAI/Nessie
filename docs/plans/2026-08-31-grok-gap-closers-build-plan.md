@@ -1,14 +1,16 @@
 # Closing the Grok-Bot gaps — combined build plan
 
-> Status: in delivery. **Shipped to `main` 2026-08-31:** P0 honesty fix,
-> Gap 1 P1 (approval suspend/resume + hardened proof), Gap 3 P1 (demonstration
-> capture), Gap 3 P2 (generalise a demonstration into a draft Workflow), and
-> Gap 2 actuation code (`command.run` → `browser.act`, host-only microVM boot
-> outstanding) — each code-verified against a throwaway pgvector DB (typecheck,
-> lint, migrations, DB-backed + unit suites; the guest built/vetted/tested for
-> linux/arm64). Remaining: Gap 1 P2/P3 (auto-review + in-thread approval admin
-> doorways — in flight) and P6 (persistent/headless executor). Decisions
-> resolved on the best-experience lens (§7).
+> Status: in delivery. **Shipped to `main` 2026-08-31 → 09-02:** P0 honesty fix,
+> Gap 1 P1 (approval suspend/resume + hardened proof), Gap 1 P2/P3 (model-based
+> auto-review at the tool-authorization gate + in-thread approval admin
+> doorway), Gap 3 P1 (demonstration capture), Gap 3 P2 (generalise a
+> demonstration into a draft Workflow), and Gap 2 actuation code
+> (`command.run` → `browser.act`, host-only microVM boot outstanding) — each
+> code-verified against a throwaway pgvector DB (typecheck, lint, migrations,
+> DB-backed + unit suites; the guest built/vetted/tested for linux/arm64).
+> **Remaining: P6 only** — persistent per-user workspace + first-class
+> headless/cloud executor (§7.4); large, needs a real executor host, not
+> CI-verifiable here. Decisions resolved on the best-experience lens (§7).
 > Derived from the code-grounded audit
 > [2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md)
 > (the three dimensions where Nessie is genuinely behind).

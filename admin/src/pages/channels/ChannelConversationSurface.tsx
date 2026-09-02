@@ -53,10 +53,16 @@ interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
   activeChannel: ChannelRecord | null
   agentMap: Map<string, AgentRecord>
+  agentTabAvailable: boolean
   agentsTabAvailable: boolean
   boundAgents: AgentRecord[]
+  // The single agent a direct conversation is with, when there is one. Its
+  // To-dos and Triggers sections hang off it.
+  conversationAgent: AgentRecord | null
   callEligible: boolean
   callStarting: boolean
+  voiceCallActive: boolean
+  voiceCallSupported: boolean
   channelLiveness: ReturnType<typeof useAgentLivenessHint>
   channelUsers: UserRecord[]
   chatDrop: ReturnType<typeof useFileDrop>
@@ -93,6 +99,8 @@ interface ChannelConversationSurfaceProps {
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
+  triggersTabAvailable: boolean
+  todosTabAvailable: boolean
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   joinPending: boolean
   mentionEntities: ReturnType<typeof useChannelMentions>['mentionEntities']
@@ -116,12 +124,10 @@ interface ChannelConversationSurfaceProps {
   onOpenInfo: () => void
   onOpenMembers: () => void
   onOpenSettings: () => void
-  onSelectAgent: (agentId: string) => void
   onSelectMessageAgent: (agent: ChannelAgentParticipant) => void
   onSelectMessageUser: Dispatch<SetStateAction<MessageUserIdentity | null>>
   onToggleSearch: () => void
   pendingMessages: PendingStreamMessage[]
-  personalAssistantAgent: AgentRecord | null
   personalAssistantChannel: ChannelRecord | null
   personalAssistantState: ReturnType<typeof usePersonalAssistant>['data']
   renderContent: ReturnType<typeof useChannelMentions>['renderContent']
@@ -143,15 +149,19 @@ export const ChannelConversationSurface = ({
   activeCall,
   activeChannel,
   agentMap,
+  agentTabAvailable,
   agentsTabAvailable,
   boundAgents,
   callEligible,
   callStarting,
+  voiceCallActive,
+  voiceCallSupported,
   channelLiveness,
   channelUsers,
   chatDrop,
   composePlaceholder,
   composer,
+  conversationAgent,
   deepWaterLauncher,
   documentSessions,
   documentStore,
@@ -162,6 +172,8 @@ export const ChannelConversationSurface = ({
   isConversationSurface,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
+  triggersTabAvailable,
+  todosTabAvailable,
   personalAssistantPresences,
   joinPending,
   mentionEntities,
@@ -173,12 +185,10 @@ export const ChannelConversationSurface = ({
   onOpenInfo,
   onOpenMembers,
   onOpenSettings,
-  onSelectAgent,
   onSelectMessageAgent,
   onSelectMessageUser,
   onToggleSearch,
   pendingMessages,
-  personalAssistantAgent,
   personalAssistantChannel,
   personalAssistantState,
   renderContent,
@@ -238,6 +248,8 @@ export const ChannelConversationSurface = ({
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}
         callStarting={callStarting}
+        voiceCallActive={voiceCallActive}
+        voiceCallSupported={voiceCallSupported}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
@@ -281,8 +293,11 @@ export const ChannelConversationSurface = ({
       ) : null}
 
       <ChannelTabBar
+        showAgentTab={agentTabAvailable}
         showAgentsTab={agentsTabAvailable}
         showAutomationsTab={!isConversationSurface}
+        showTriggersTab={triggersTabAvailable}
+        showTodosTab={todosTabAvailable}
         visibleActiveTab={visibleActiveTab}
         onSelectTab={setActiveTab}
       />
@@ -349,16 +364,15 @@ export const ChannelConversationSurface = ({
           <ChannelTabPanels
             activeChannel={activeChannel}
             boundAgents={boundAgents}
+            conversationAgent={conversationAgent}
             isConversationSurface={isConversationSurface}
             isPersonalAssistantConversation={isPersonalAssistantConversation}
-            personalAssistantAgent={personalAssistantAgent}
             personalAssistantChannel={personalAssistantChannel}
             personalAssistantState={personalAssistantState}
             personalAssistantPresences={personalAssistantPresences}
             currentUserId={me.user.id}
             visibleActiveTab={visibleActiveTab}
             onCreateAgent={onCreateAgent}
-            onSelectAgent={onSelectAgent}
           />
         </div>
       </div>
