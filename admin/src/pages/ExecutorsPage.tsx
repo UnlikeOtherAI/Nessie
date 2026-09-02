@@ -29,6 +29,8 @@ import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { NestedStage } from '../navigation/NestedStage'
 
 const statusClass = (status: string): string => status === 'online'
   ? 'text-emerald-600'
@@ -240,17 +242,25 @@ export const ExecutorsPage = () => {
           </div>
         </header>
 
-        {showCreate && me ? (
-          <ExecutorCreatePanel
-            agents={agentsQuery.data ?? []}
-            currentUserId={me.user.id}
-            fixedProjectId={fixedProjectId}
-            onCreated={handleCreated}
-            organizationId={me.context.organizationId}
-            projects={projectsQuery.data ?? []}
-            users={usersQuery.data ?? []}
-          />
-        ) : null}
+        <NestedStage
+          active={showCreate && Boolean(me)}
+          id="executors:create"
+          label="Back to executors"
+          onBack={() => setShowCreate(false)}
+          priority={LOCAL_BACK_PRIORITY.executorsCreate}
+        >
+          {me ? (
+            <ExecutorCreatePanel
+              agents={agentsQuery.data ?? []}
+              currentUserId={me.user.id}
+              fixedProjectId={fixedProjectId}
+              onCreated={handleCreated}
+              organizationId={me.context.organizationId}
+              projects={projectsQuery.data ?? []}
+              users={usersQuery.data ?? []}
+            />
+          ) : null}
+        </NestedStage>
 
         {pairingCommand && created ? (
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">

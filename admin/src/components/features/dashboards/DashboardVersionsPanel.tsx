@@ -19,7 +19,7 @@ export const DashboardVersionsPanel = ({
 
   return (
     <aside
-      className="flex w-80 shrink-0 flex-col border-l"
+      className="flex h-full min-h-0 w-full flex-col border-l md:w-80 md:shrink-0"
       style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
       data-testid="dashboard-versions"
     >
