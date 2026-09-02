@@ -2,6 +2,10 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 
 import type { LedgerAttribution } from './ledger.js'
 
+/**
+ * Hand-maintained twin of the Prisma `ConnectorType` enum — nothing derives one
+ * from the other, so a new member is added to both in the same change.
+ */
 export type ConnectorType =
   | 'mcp'
   | 'http'
@@ -11,6 +15,7 @@ export type ConnectorType =
   | 'push'
   | 'github'
   | 'oauth'
+  | 'email'
   | 'other'
 
 export type ConnectorUsage = {

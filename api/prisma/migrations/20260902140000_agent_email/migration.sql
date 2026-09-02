@@ -163,6 +163,10 @@ ALTER TABLE "email_domains" ADD CONSTRAINT "email_domains_organization_id_fkey" 
 ALTER TABLE "agent_mailboxes" ADD CONSTRAINT "agent_mailboxes_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "agent_mailboxes" ADD CONSTRAINT "agent_mailboxes_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "agent_mailboxes" ADD CONSTRAINT "agent_mailboxes_domain_id_fkey" FOREIGN KEY ("domain_id") REFERENCES "email_domains"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- RESTRICT, not CASCADE: the backing channel is created with the mailbox and is
+-- not independently disposable — dropping it would take the correspondence with
+-- it. Mailbox deletion removes the pair in order.
+ALTER TABLE "agent_mailboxes" ADD CONSTRAINT "agent_mailboxes_channel_id_fkey" FOREIGN KEY ("channel_id") REFERENCES "channels"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "email_conversations" ADD CONSTRAINT "email_conversations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "email_conversations" ADD CONSTRAINT "email_conversations_mailbox_id_fkey" FOREIGN KEY ("mailbox_id") REFERENCES "agent_mailboxes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "email_conversations" ADD CONSTRAINT "email_conversations_thread_id_fkey" FOREIGN KEY ("thread_id") REFERENCES "threads"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -290,6 +290,20 @@ export const AuditActionSchema = z.enum([
   'comms.connection.disconnected',
   'comms.connection.data_deleted',
   'comms.connection.capabilities_changed',
+  // Hosted agent mailboxes. Every outbound send is audited (with the approval
+  // id when one gated it), as is every mailbox lifecycle change and every
+  // bounce/complaint the deployment's SES account reports back.
+  'email.mailbox.created',
+  'email.mailbox.updated',
+  'email.mailbox.deleted',
+  'email.sent',
+  'email.send_failed',
+  'email.received',
+  'email.bounced',
+  'email.complained',
+  'email.domain.created',
+  'email.domain.verified',
+  'email.domain.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

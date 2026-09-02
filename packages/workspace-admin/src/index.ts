@@ -58,3 +58,17 @@ export * from './sandboxed-jmespath.js'
 export * from './workflow-jmespath.js'
 export * from './workflow-template-validation.js'
 export * from "./workflow-concurrency.js"
+export {
+  AgentMailboxError,
+  assertMailboxEligible,
+  createAgentMailbox,
+  loadAgentMailbox,
+  resolveMailboxByAddress,
+  retireAgentMailbox,
+  updateAgentMailbox,
+  type CreateMailboxInput,
+  type MailboxAgent,
+  type MailboxRecord,
+  type MailboxRefusal,
+  type UpdateMailboxInput,
+} from './agent-mailbox.js'

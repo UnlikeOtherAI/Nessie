@@ -5,6 +5,7 @@ type AttachmentAccessRow = {
   organizationId: string
   messageId: string | null
   knowledgePageId: string | null
+  emailMessageId: string | null
   uploaderId: string | null
 }
 
@@ -62,6 +63,38 @@ export const canAccessMessageAttachment = async (
   return Boolean(message)
 }
 
+/**
+ * A hosted-mailbox email attachment is readable by whoever can read the
+ * mailbox, which is whoever can reach its backing channel — the same
+ * public-or-membership predicate a message attachment uses. Deliberately not
+ * the KB "deny on the generic endpoint" posture: an email attachment has no
+ * second, narrower route of its own, and the mailbox channel already carries
+ * the entitlement.
+ */
+export const canAccessEmailAttachment = async (
+  prisma: PrismaClient,
+  input: {
+    emailMessageId: string
+    organizationId: string
+    userId: string
+  },
+): Promise<boolean> => {
+  const email = await prisma.emailMessage.findFirst({
+    where: {
+      id: input.emailMessageId,
+      mailbox: {
+        channel: {
+          OR: [{ visibility: 'public' }, { members: { some: { userId: input.userId } } }],
+          organizationId: input.organizationId,
+        },
+      },
+      organizationId: input.organizationId,
+    },
+    select: { id: true },
+  })
+  return Boolean(email)
+}
+
 export const canAccessAttachment = async (
   prisma: PrismaClient,
   attachment: AttachmentAccessRow,
@@ -74,6 +107,13 @@ export const canAccessAttachment = async (
   if (attachment.messageId) {
     return canAccessMessageAttachment(prisma, {
       messageId: attachment.messageId,
+      organizationId: input.organizationId,
+      userId: input.userId,
+    })
+  }
+  if (attachment.emailMessageId) {
+    return canAccessEmailAttachment(prisma, {
+      emailMessageId: attachment.emailMessageId,
       organizationId: input.organizationId,
       userId: input.userId,
     })

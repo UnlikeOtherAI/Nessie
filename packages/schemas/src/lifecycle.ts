@@ -64,7 +64,13 @@ export const AgentDelegationModeSchema = z.enum([
 ])
 export type AgentDelegationMode = z.infer<typeof AgentDelegationModeSchema>
 
-export const SystemChannelTypeSchema = z.enum(['personal_assistant', 'external_agent'])
+export const SystemChannelTypeSchema = z.enum([
+  'personal_assistant',
+  'external_agent',
+  // Backing operations room for a hosted agent mailbox: one channel per
+  // AgentMailbox, one thread per email conversation.
+  'agent_email',
+])
 export type SystemChannelType = z.infer<typeof SystemChannelTypeSchema>
 
 export const AgentTriggerTypeSchema = z.enum([

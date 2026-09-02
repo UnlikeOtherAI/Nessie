@@ -734,6 +734,9 @@ importers:
 
   packages/workspace-admin:
     dependencies:
+      '@nessie/agent-mail':
+        specifier: workspace:*
+        version: link:../agent-mail
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../comms-connect

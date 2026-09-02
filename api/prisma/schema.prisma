@@ -1544,6 +1544,7 @@ model Channel {
   productIntegrationRuns ProductIntegrationRun[]
   pushSurfacePresences   UserPushSurfacePresence[]
   demonstrations         Demonstration[]
+  agentMailbox           AgentMailbox?
 
   agentCards AgentCard[]
 
@@ -5895,6 +5896,10 @@ model AgentMailbox {
   organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   agent         Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
   domain        EmailDomain?        @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  // Restrict, not Cascade: the backing channel is created with the mailbox and
+  // is not independently disposable — deleting it would take the whole
+  // correspondence with it. Mailbox deletion removes the pair in order.
+  channel       Channel             @relation(fields: [channelId], references: [id], onDelete: Restrict)
   conversations EmailConversation[]
   messages      EmailMessage[]
 

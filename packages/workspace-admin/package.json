@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/agent-mail": "workspace:*",
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
     "@nessie/config": "workspace:*",
