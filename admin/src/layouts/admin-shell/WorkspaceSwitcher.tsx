@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { UoaPendingWorkspaceInvite } from '@nessie/schemas'
+import { isAdminRole, type UoaPendingWorkspaceInvite } from '@nessie/schemas'
 import { useAuthProviders } from '../../facades/auth/hooks'
+import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { useAcceptWorkspaceInvitation } from '../../facades/workspace/invitations'
@@ -48,6 +49,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
     token,
   } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
+  const { data: organization } = useCurrentOrganization()
   const avatarRevision = useWorkspaceAvatarRevision()
   const { theme } = useTheme()
   const navigate = useNavigate()
@@ -75,6 +77,12 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   // spends. Any other session still takes the provider redirect, which is the
   // only way it can end up holding one.
   const isUoaSession = me?.auth.providerType === 'uoa'
+  // Adding a workspace writes into the current organisation, so UOA gates it on
+  // owner/admin and the route mirrors that. Offering the tab to a member would
+  // be offering a form that can only 403. Founding an organisation carries no
+  // such condition — it creates a separate tenancy — so the dialog itself is
+  // never withheld.
+  const canCreateWorkspace = isAdminRole(organization?.role)
 
   const toggleMenu = (): void => {
     if (busyTeamId !== null || busyInviteId !== null) return
@@ -317,7 +325,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
         workspaces={workspaces}
       />
       <CreateWorkspaceDialog
-        canCreateWorkspace={Boolean(active?.uoaWorkspace)}
+        canCreateWorkspace={canCreateWorkspace && Boolean(active?.uoaWorkspace)}
         onClose={() => setCreateOpen(false)}
         open={createOpen}
         organizationName={active?.orgName ?? null}
