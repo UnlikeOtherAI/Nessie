@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
@@ -324,6 +325,17 @@ test('navigation motion is scripted from static poses, never a CSS keyframe', ()
   assert.match(swipe, /runStackTransition\(/)
   assert.doesNotMatch(swipe, /\.animate\(/)
   assert.doesNotMatch(viewport, /onAnimationEnd/)
+})
+
+test('nothing but the stack animates a stage: kb-view-slide is gone from the admin', () => {
+  // Knowledge's panes are nested stages now, so their 220 ms fade-slide would
+  // be a second motion for the same push (docs/navigation.md §6).
+  const root = fileURLToPath(new URL('../src', import.meta.url))
+  const offenders = readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((path) => readFileSync(path, 'utf8').includes('kb-view-slide'))
+  assert.deepEqual(offenders, [])
 })
 
 test('a committed swipe is the one Back that gives a haptic', () => {

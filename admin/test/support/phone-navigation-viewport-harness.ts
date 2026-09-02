@@ -126,11 +126,35 @@ const { LocalBackProvider } = await import(
   '../../src/layouts/admin-shell/local-back/LocalBackContext'
 )
 
+const { usePhoneNavigation } = await import(
+  '../../src/layouts/admin-shell/PhoneNavigationProvider'
+)
+
+// The stages the detail screen renders. A page keeps every stage mounted and
+// toggles `active`; the default is one, and a caller that needs a ladder (a
+// Knowledge folder → document → history) passes its own with real priorities.
+export type HarnessStage = {
+  id: string
+  label: string
+  priority: number
+  swipeable?: boolean
+}
+
+const DEFAULT_STAGES: readonly HarnessStage[] = [
+  { id: 'inspector', label: 'Back from inspector', priority: 30 },
+]
+
 export type PhoneNavigationViewportHarness = {
   container: HTMLElement
-  // Opens or closes the detail screen's nested stage (a state-driven screen
-  // the page pushes over itself), the way a page toggles its own state.
-  setStage: (active: boolean) => Promise<void>
+  // Opens or closes one of the detail screen's nested stages (a state-driven
+  // screen the page pushes over itself), the way a page toggles its own
+  // state. Defaults to the first declared stage.
+  setStage: (active: boolean, id?: string) => Promise<void>
+  // Runs Back for the current location through the one resolver — what the
+  // shell doorway and hardware Back do.
+  pressBack: () => Promise<void>
+  // The Back the resolver would run right now: an owner's id, or a route.
+  backOwner: () => string | null
   currentPathname: () => HTMLElement | null
   flush: (ms?: number) => Promise<void>
   goTo: (pathname: string, paint?: boolean) => Promise<void>
@@ -155,7 +179,9 @@ export type PhoneNavigationViewportHarness = {
 // screen's prepare/paint/run lifecycle deterministic without a paint engine.
 export const mountPhoneNavigationViewport = async (
   initialPathname: string,
+  options: { stages?: readonly HarnessStage[] } = {},
 ): Promise<PhoneNavigationViewportHarness> => {
+  const stages = options.stages ?? DEFAULT_STAGES
   pendingFrames.clear()
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
   for (const [key, value] of Object.entries(domGlobals)) {
@@ -166,6 +192,9 @@ export const mountPhoneNavigationViewport = async (
   document.body.appendChild(container)
   let pathname = initialPathname
   let navigateTo: ((to: string | number) => void) | null = null
+  // The controller, captured from inside the provider so a test can run the
+  // one Back resolver rather than reaching for the router.
+  let navigation: ReturnType<typeof usePhoneNavigation> = null
   const mounts: Record<string, number> = {}
   const scrollTops: Record<string, number> = {}
 
@@ -190,16 +219,37 @@ export const mountPhoneNavigationViewport = async (
     }, [])
     return h(Screen, { label: '/channels' })
   }
-  // The detail's nested stage is toggled from outside React through a tiny
-  // store, so a test can open and close it like the page's own state.
+  // The detail's nested stages are toggled from outside React through a tiny
+  // store, so a test can open and close them like the page's own state.
   const stageListeners = new Set<() => void>()
-  let stageActive = false
-  const stageStore = {
-    subscribe: (listener: () => void) => {
-      stageListeners.add(listener)
-      return () => stageListeners.delete(listener)
-    },
-    getSnapshot: () => stageActive,
+  const activeStages = new Set<string>()
+  const publishStages = () => {
+    for (const listener of stageListeners) listener()
+  }
+  const subscribeStages = (listener: () => void) => {
+    stageListeners.add(listener)
+    return () => stageListeners.delete(listener)
+  }
+  const StageLayer = ({ stage }: { stage: HarnessStage }) => {
+    const active = React.useSyncExternalStore(
+      subscribeStages,
+      () => activeStages.has(stage.id),
+    )
+    return h(
+      NestedStage,
+      {
+        active,
+        id: stage.id,
+        label: stage.label,
+        onBack: () => {
+          activeStages.delete(stage.id)
+          publishStages()
+        },
+        priority: stage.priority,
+        swipeable: stage.swipeable,
+      },
+      h('div', { 'data-stage': stage.id }, `stage:${stage.id}`),
+    )
   }
   const ChannelsDetail = () => {
     React.useEffect(() => {
@@ -208,31 +258,18 @@ export const mountPhoneNavigationViewport = async (
         mounts['channels-detail'] = (mounts['channels-detail'] ?? 1) - 1
       }
     }, [])
-    const active = React.useSyncExternalStore(stageStore.subscribe, stageStore.getSnapshot)
     return h(
       React.Fragment,
       null,
       h(Screen, { label: '/channels/channel_a' }),
-      h(
-        NestedStage,
-        {
-          active,
-          id: 'inspector',
-          label: 'Back from inspector',
-          onBack: () => {
-            stageActive = false
-            for (const listener of stageListeners) listener()
-          },
-          priority: 30,
-        },
-        h('div', { 'data-stage': 'inspector' }, 'stage:inspector'),
-      ),
+      ...stages.map((stage) => h(StageLayer, { key: stage.id, stage })),
     )
   }
 
   const Host = () => {
     const location = useLocation()
     const navigate = useNavigate()
+    navigation = usePhoneNavigation()
     pathname = location.pathname
     navigateTo = (next: string | number) => {
       if (typeof next === 'number') navigate(next)
@@ -307,12 +344,21 @@ export const mountPhoneNavigationViewport = async (
 
   return {
     container,
-    setStage: async (active: boolean) => {
-      stageActive = active
-      await act(async () => {
-        for (const listener of stageListeners) listener()
-      })
+    setStage: async (active: boolean, id = stages[0]!.id) => {
+      if (active) activeStages.add(id)
+      else activeStages.delete(id)
+      await act(async () => publishStages())
       await flush()
+    },
+    pressBack: async () => {
+      assert.ok(navigation, 'controller ready')
+      await act(async () => navigation?.performBack())
+      await flush()
+    },
+    backOwner: () => {
+      const action = navigation?.resolveBackAction() ?? null
+      if (!action) return null
+      return action.kind === 'owner' ? action.id : `route:${action.to}`
     },
     currentPathname: () =>
       container.querySelector(

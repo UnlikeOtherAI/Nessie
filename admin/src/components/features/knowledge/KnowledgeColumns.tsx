@@ -254,7 +254,7 @@ export const KnowledgeColumns = ({
   }
 
   return (
-    <div className="animate-kb-view-slide h-full w-full">
+    <div className="h-full w-full">
       <div
         className="flex h-full items-stretch overflow-x-auto overflow-y-hidden px-3 pb-2 pt-3"
         ref={scrollRef}

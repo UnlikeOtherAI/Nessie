@@ -2685,22 +2685,6 @@ button.reaction-pill-active:focus-visible {
   margin-bottom: 20px;
 }
 
-@keyframes kb-view-slide {
-  from {
-    opacity: 0.72;
-    transform: translateX(18px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.animate-kb-view-slide {
-  animation: kb-view-slide 220ms ease-out;
-}
-
 /* Knowledge rich text — the TipTap editor and the read-only renderer share
    .kb-prose so edited and published content look identical. */
 .kb-prose {
