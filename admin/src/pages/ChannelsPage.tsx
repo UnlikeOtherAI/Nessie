@@ -107,7 +107,7 @@ export const ChannelsPage = () => {
     agentTabAvailable,
     agentsTabAvailable,
     conversationAgent,
-    routinesTabAvailable,
+    triggersTabAvailable,
     setActiveTab,
     todosTabAvailable,
     visibleActiveTab,
@@ -434,7 +434,7 @@ export const ChannelsPage = () => {
         feedScroll={feedScroll}
         isConversationSurface={isConversationSurface}
         isExternalAgentConversation={isExternalAgentActiveChannel}
-        routinesTabAvailable={routinesTabAvailable}
+        triggersTabAvailable={triggersTabAvailable}
         todosTabAvailable={todosTabAvailable}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinChannel.isPending}

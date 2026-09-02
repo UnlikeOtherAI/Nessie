@@ -19,14 +19,78 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Build & deploy to Hetzner
+  # Images are built HERE, on GitHub runners, never on the production host.
+  # Building on the box drove its 8-core CPU to load ~340 with 0% idle for the
+  # length of every deploy, and the live site timed out through Caddy while it
+  # compiled — the containers were healthy, the host simply had nothing left to
+  # answer with. The host now only pulls a finished image and swaps.
+  build:
+    name: Build ${{ matrix.name }} image
     runs-on: ubuntu-latest
-    # A deploy is ~15-20 min; without this a hung ssh holds the
-    # deploy-production concurrency slot for the 6h default and every deploy
-    # behind it stalls (happened 2026-09-02: the remote redeploy died, the
-    # runner's ssh never noticed, and the queue was blocked for the duration).
-    timeout-minutes: 45
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: app
+            dockerfile: infrastructure/docker/Dockerfile.app
+            build-args: ""
+          - name: admin
+            dockerfile: infrastructure/docker/Dockerfile.admin
+            # Baked in at build time: the admin runs on its own origin and
+            # talks to the API cross-origin. Must match the compose build arg
+            # this replaces.
+            build-args: VITE_API_BASE_URL=https://api.nessie.works
+          - name: web
+            dockerfile: infrastructure/docker/Dockerfile.web
+            build-args: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ghcr rejects uppercase repository paths and the owner is mixed-case.
+      - name: Resolve image repository
+        id: repo
+        run: echo "prefix=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/nessie" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: ${{ matrix.build-args }}
+          tags: ${{ steps.repo.outputs.prefix }}-${{ matrix.name }}:${{ github.sha }}
+          # Scoped per image so the three matrix legs don't evict each other.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    name: Deploy to Hetzner
+    needs: build
+    runs-on: ubuntu-latest
+    # Now that the host only pulls and swaps, a deploy is minutes. Without a
+    # timeout a hung ssh holds the deploy-production concurrency slot for the
+    # 6h default and every deploy behind it stalls (happened 2026-09-02: the
+    # remote redeploy died, the runner's ssh never noticed, and the queue was
+    # blocked for hours).
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -107,7 +171,19 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
 
-      - name: Rebuild & redeploy
+      - name: Deploy prebuilt images
+        env:
+          # Short-lived, repo-scoped, and valid only for this job: the host
+          # uses it to pull from ghcr and nothing else. No long-lived registry
+          # credential is stored on the box.
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
         run: |
+          IMAGE_REPO="ghcr.io/$(echo "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')/nessie"
+          printf '%s\n' "$REGISTRY_TOKEN" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              "docker login ghcr.io -u '$REGISTRY_USER' --password-stdin"
           ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
-            'cd /srv/nessie && bash infrastructure/compose/redeploy.sh'
+            "cd /srv/nessie && NESSIE_IMAGE_REPO='$IMAGE_REPO' NESSIE_IMAGE_TAG='$IMAGE_TAG' bash infrastructure/compose/redeploy.sh"
