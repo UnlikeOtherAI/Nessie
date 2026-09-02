@@ -66,6 +66,16 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
       },
     ),
 
+  /** Runs one tool the model asked for; everything executes server-side. */
+  runTool: (
+    voiceSessionId: string,
+    call: { providerCallId: string; name: string; args: Record<string, unknown> },
+  ): Promise<{ result: Record<string, unknown>; replayed: boolean }> =>
+    apiClient.post<{ result: Record<string, unknown>; replayed: boolean }>(
+      `/api/voice/sessions/${voiceSessionId}/tool-call`,
+      call,
+    ),
+
   submitTranscript: (
     voiceSessionId: string,
     lines: VoiceTranscriptLine[],

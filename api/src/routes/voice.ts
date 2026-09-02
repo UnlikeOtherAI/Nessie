@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
@@ -12,6 +13,8 @@ import {
   VoiceInstallationRecordSchema,
   VoiceSessionCredentialSchema,
   VoiceSessionRotationSchema,
+  VoiceToolCallRequestSchema,
+  VoiceToolCallResponseSchema,
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -25,6 +28,7 @@ import {
   buildVoiceSystemInstruction,
   loadVoiceSeedTurns,
   resolveVoiceName,
+  voiceToolNames,
 } from '../services/voice/voice-context.js'
 import {
   endVoiceSession,
@@ -40,6 +44,12 @@ import {
   assertTranscriptPlausible,
   writeVoiceCallRecord,
 } from '../services/voice/voice-transcript.js'
+import {
+  hashToolArguments,
+  isVoiceTool,
+  runVoiceTool,
+} from '../services/voice/voice-tools.js'
+
 import type { RouteDeps } from './types.js'
 
 /**
@@ -63,6 +73,7 @@ import type { RouteDeps } from './types.js'
  * | POST   | /api/voice/sessions                    | any active member         |
  * | POST   | /api/voice/sessions/:id/rotate         | the call's own user       |
  * | POST   | /api/voice/sessions/:id/usage          | the call's own user       |
+ * | POST   | /api/voice/sessions/:id/tool-call      | the call's own user       |
  * | POST   | /api/voice/sessions/:id/transcript     | the call's own user       |
  * | POST   | /api/voice/sessions/:id/end            | the call's own user       |
  *
@@ -209,6 +220,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
             systemInstruction: buildVoiceSystemInstruction({
               agentName: assistant.agent.name,
               agentSystemPrompt: assistant.agent.systemPrompt ?? null,
+              toolNames: voiceToolNames(),
               userDisplayName: user?.displayName ?? null,
             }),
             seedTurns,
@@ -307,6 +319,102 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
       }
 
       return createApiResponse(relayed)
+    } catch (error) {
+      return sendVoiceError(reply, error) ?? Promise.reject(error)
+    }
+  })
+
+  /**
+   * Runs one tool the model asked for.
+   *
+   * Everything executes here, with the caller's own authority — the model
+   * chooses, but never holds a credential and never reaches anything the
+   * person could not reach by typing. Gemini's own call id is the idempotency
+   * key, because it retries a call it did not see answered and the work must
+   * not run twice.
+   */
+  app.post('/api/voice/sessions/:sessionId/tool-call', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext || !requireUserActor(actorContext, reply)) return reply
+    const { sessionId } = request.params as { sessionId: string }
+
+    const body = parseInput(VoiceToolCallRequestSchema, request.body ?? {}, reply)
+    if (!body) return reply
+
+    try {
+      const session = await requireActiveSession(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        sessionId,
+        userId: actorContext.actor.actorId,
+      })
+      if (!isVoiceTool(body.name)) {
+        return sendApiError(reply, 400, 'VOICE_TOOL_UNKNOWN', `Unknown tool: ${body.name}`)
+      }
+
+      const argumentsHash = hashToolArguments(body.args)
+      const existing = await prisma.voiceToolCall.findUnique({
+        where: {
+          voiceSessionId_providerCallId: {
+            voiceSessionId: session.id,
+            providerCallId: body.providerCallId,
+          },
+        },
+      })
+      if (existing) {
+        // A retry replays its answer. Different arguments under the same id is
+        // a different action wearing a used name, and is refused.
+        if (existing.argumentsHash !== argumentsHash) {
+          return sendApiError(
+            reply,
+            409,
+            'VOICE_TOOL_CALL_MISMATCH',
+            'That call id was already used with different arguments.',
+          )
+        }
+        return createApiResponse(
+          VoiceToolCallResponseSchema.parse({
+            result: (existing.result ?? {}) as Record<string, unknown>,
+            replayed: true,
+          }),
+        )
+      }
+
+      // The per-call ceiling is real spend protection: each tool result is
+      // re-sent to Gemini on every later turn of the conversation.
+      if (session.toolCallCount >= session.maxToolCalls) {
+        return sendApiError(
+          reply,
+          429,
+          'VOICE_TOOL_LIMIT',
+          'This call has used all the tool calls it is allowed.',
+        )
+      }
+
+      const result = await runVoiceTool(body.name, body.args, {
+        actorContext,
+        ledgerIdentity,
+        prisma,
+        session,
+      })
+
+      await prisma.$transaction([
+        prisma.voiceToolCall.create({
+          data: {
+            voiceSessionId: session.id,
+            providerCallId: body.providerCallId,
+            toolName: body.name,
+            argumentsHash,
+            // Prisma's JSON input type does not accept a bare index signature.
+            result: result as Prisma.InputJsonValue,
+          },
+        }),
+        prisma.voiceSession.update({
+          where: { id: session.id },
+          data: { toolCallCount: { increment: 1 } },
+        }),
+      ])
+
+      return createApiResponse(VoiceToolCallResponseSchema.parse({ result, replayed: false }))
     } catch (error) {
       return sendVoiceError(reply, error) ?? Promise.reject(error)
     }
