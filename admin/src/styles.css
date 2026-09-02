@@ -1713,11 +1713,48 @@ a {
   outline-offset: -2px;
 }
 
+/* At rest the composer is exactly one line high — placeholder text centred
+   beside Send, and none of the toolbar glyphs. Focus (or anything staged)
+   opens it: the editor grows and the toolbar unfolds beneath it. Because the
+   composer is bottom-anchored in its column and Send is pinned to the bottom
+   line, all of that growth reads as the field expanding upward, with the
+   bottom line itself never moving. */
 .admin-compose {
+  --compose-line: 42px;
   position: relative;
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
+}
+
+.admin-compose-bar {
+  display: flex;
+  align-items: center;
+  height: var(--compose-line);
+  overflow: hidden;
+  border-top: 1px solid var(--border-strong);
+  padding: 0 12px;
+  transition:
+    height 160ms ease,
+    border-top-width 160ms ease,
+    opacity 120ms ease,
+    visibility 160ms;
+}
+
+.admin-compose[data-expanded='false'] .admin-compose-bar {
+  height: 0;
+  border-top-width: 0;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.admin-compose-send-slot {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  height: var(--compose-line);
 }
 
 /* The emoji button sits at the left of the toolbar, but its popover is
@@ -1778,13 +1815,34 @@ a {
     height: 34px;
     padding: 0;
   }
+
+  /* The bottom line grows with the taller touch targets, and the collapsed
+     editor follows it because both are measured from the same variable. */
+  .admin-compose {
+    --compose-line: 46px;
+  }
 }
 
 .mention-editor {
+  min-height: 82px;
+  max-height: 220px;
+  padding: 12px 16px;
   caret-color: var(--tx);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-y: auto;
+  transition:
+    min-height 160ms ease,
+    padding 160ms ease;
+}
+
+/* Collapsed: one line of text, optically centred in the composer's own bottom
+   line, with room kept clear on the right for the pinned Send button. */
+.admin-compose[data-expanded='false'] .mention-editor {
+  min-height: var(--compose-line);
+  max-height: var(--compose-line);
+  padding: calc((var(--compose-line) - 1.25rem) / 2) 60px
+    calc((var(--compose-line) - 1.25rem) / 2) 16px;
 }
 
 .mention-editor-code {
