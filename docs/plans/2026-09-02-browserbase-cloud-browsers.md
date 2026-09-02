@@ -1,22 +1,32 @@
 # Browserbase cloud browsers for agents
 
-**Date:** 2026-09-02 · **Status:** proposal (not yet built)
+**Date:** 2026-09-02 (rev 2) · **Status:** proposal (not yet built)
 
 Agents get their own browser that survives the run: a cloud Chromium session
 from [Browserbase](https://www.browserbase.com) that an agent can open,
 navigate, and act in — with the login state (cookies, localStorage) retained
 per person per service, so the agent can come back tomorrow still signed in.
 
-The decision that shapes everything else: **Nessie never holds a person's
-service credentials.** There is no server-side password vault. What persists
-is *sessions* (Browserbase Contexts, encrypted at rest on Browserbase's side,
-referenced from Nessie only by an opaque context id), and the way a session
-first gets authenticated is the person typing into the live browser view
-themselves — credentials go keyboard → Browserbase, never through Nessie's
-servers or the model. A later phase lets the desktop executor inject
-credentials the person stored in *their own* device keychain (iCloud Keychain
-on Apple platforms), so re-login can be automated without Nessie ever seeing a
-password.
+Two decisions shape everything else (decided 2026-09-02):
+
+1. **Nessie never holds a person's service credentials.** There is no
+   server-side password vault, and no automated credential injection either —
+   like every "here's a browser" product, signing in is the person's act.
+   What persists is the *session* (Browserbase Contexts: cookies,
+   localStorage — encrypted at rest on Browserbase's side, referenced from
+   Nessie only by an opaque context id). Because the browser itself is
+   cloud-side, that logged-in state is inherently portable: the person can
+   sign in from their Mac today and the agent reuses the same session from a
+   run kicked off on their phone tomorrow, with no browser process alive in
+   between. Device-keychain credential injection was considered and
+   deliberately dropped — re-login via the live view when a session expires
+   is acceptable, and it keeps our credential exposure at zero.
+2. **Two ways to connect, both bring-your-own Browserbase account.** An
+   organisation subscription (owner connects the company account; every
+   browser-granted agent can spin browsers for anyone) and a personal
+   connection (an individual connects their own account — the free tier is
+   enough to try it — powering only their own runs). No Ledger metering:
+   the Browserbase bill is between the account holder and Browserbase.
 
 ## 1. What exists today — and why this is a transport, not a new tool family
 
@@ -49,7 +59,7 @@ Browserbase cloud session is a server-side transport decision, exactly as
 |---|---|---|---|
 | Availability | device online | device online + Chrome | always (org connected) |
 | Login state | sandbox profile | the person's real sessions | per-user Browserbase Context |
-| Credentials | n/a | user's own password manager | human via Live View; later device-keychain injection |
+| Credentials | n/a | user's own password manager | human signs in via Live View — never stored, never injected |
 | Best for | local/dev work | acting as the person, attended | unattended + long-lived agent browsing |
 
 What Browserbase adds that neither existing transport can do: a browser that
@@ -70,10 +80,16 @@ Verified against docs.browserbase.com on 2026-09-02:
   human in the iframe can click and type in real time (interactive), or the
   iframe is styled `pointer-events: none` for watch-only. This is the login
   handoff mechanism.
-- **Pricing** (2026-09): Free 1 browser-hour / Developer $20 → 100 h,
-  $0.12/h over / Startup $99 → 500 h, $0.10/h over / Scale custom. Concurrency
-  caps per plan (3 / 25 / 100 / 250+). Browser-hours are the metered unit, so
-  sessions must be closed aggressively and their duration recorded.
+- **Pricing** (2026-09): Free 1 browser-hour (3 concurrent, ~15-min session
+  cap, 7-day data retention) / Developer $20 → 100 h, $0.12/h over /
+  Startup $99 → 500 h, $0.10/h over / Scale custom. Concurrency caps per plan
+  (3 / 25 / 100 / 250+). Browser-hours are the metered unit, so sessions must
+  be closed aggressively and their duration recorded. The free tier is the
+  intended personal on-ramp — try it, upgrade when it bites; the connect UI
+  copy should say so. One caveat to verify in phase 2: whether the lower
+  plans' data-retention window bounds how long an *inactive* context's login
+  state survives — if it does, durable profiles effectively want a paid plan
+  and the profile UI should say that plainly.
 
 ## 3. Design principles
 
@@ -99,22 +115,51 @@ Verified against docs.browserbase.com on 2026-09-02:
 
 ## 4. Architecture
 
-### 4.1 Connection (owner-only, org-scoped)
+### 4.1 Connection — two tiers, both bring-your-own account
 
 - New shared package `packages/browser-cloud/` (`@nessie/browser-cloud`):
   Browserbase REST client, session/context lifecycle, live-view URL minting.
   Shared by API routes and worker, the `@nessie/mcp-manage` /
   `@nessie/workspace-admin` pattern.
-- `CloudBrowserConnection` row per organization: `{ organizationId (unique),
-  projectId, apiKeyRef, status, health fields }`. The API key is submitted
-  once and stored through the existing encrypted secret store
-  (`createPgSecretStore`, a server-minted `secret_browserbase_` ref) — never
-  returned, never caller-chosen, exactly like MCP instance secrets
+- `CloudBrowserConnection` `{ id, organizationId, scope:
+  'organization'|'user', userId?, projectId, apiKeyRef, status, health
+  fields }`, with partial unique indexes: one org-scoped row per
+  organization, one user-scoped row per `(organizationId, userId)`, and a
+  CHECK tying `userId` to the scope. The API key is submitted once and
+  stored through the existing encrypted secret store (`createPgSecretStore`,
+  a server-minted `secret_browserbase_` ref) — never returned, never
+  caller-chosen, exactly like MCP instance secrets
   (`packages/mcp-manage/src/instance-secret.ts` discipline).
-- Enable is a probe-then-persist: create + immediately release a throwaway
-  session; failure refuses the toggle loudly (`BROWSERBASE_UNREACHABLE`,
-  `BROWSERBASE_AUTH_FAILED`) rather than persisting a dead connection — the
-  DeepWater enable precedent.
+- **Org connection** (owner-only): the company subscription. Every
+  browser-granted agent in the organisation can spin browsers, for any
+  requester, attended or not (within §4.5's profile rules).
+- **Personal connection** (any member): their own Browserbase account —
+  free tier to start, upgrade if they turn out to be a power user. It powers
+  **only runs that person requested**, the user-scoped MCP install
+  discipline (user-scope installs surface only in the installing user's
+  runs). Resolution at toolset assembly: the org connection when one is
+  healthy, else the requester's personal connection, else no cloud browser
+  toolset. One connection per run — never mixed mid-run.
+- Enable (either scope) is a probe-then-persist: create + immediately
+  release a throwaway session; failure refuses the connect loudly
+  (`BROWSERBASE_UNREACHABLE`, `BROWSERBASE_AUTH_FAILED`) rather than
+  persisting a dead connection — the DeepWater enable precedent.
+
+### 4.1a The `/apps` doorway — a first-party listing, the deep-water way
+
+Verified 2026-09-02: the repo has no Browserbase integration, and the
+official MCP registry carries Browserbase only as **Smithery-proxied**
+remotes (`server.smithery.ai/...`, authenticated by a *Smithery* bearer) —
+ingested rows are `community` trust by rule and route through the wrong
+vendor. So the store surface is a **first-party listing added to
+`api/src/db/seed-apps.ts`** beside `deep-water`/`deepsignal`
+(`trustLevel: 'nessie'`, integration-owned, immune to generic catalog
+mutation). Its Connect button routes to the cloud-browser connect flow of
+§4.1 — org scope for owners, personal scope for members, mirroring how the
+generic store already scopes installs — **not** to the generic
+`createInstance → probe → startOAuth` machinery, because the capability is a
+builtin transport, not projected MCP tools. The listing is the doorway; the
+homes stay `/settings/organization` and `/settings/connections` (§4.7).
 - **Egress**: all REST calls go through `@nessie/runtime` `safeFetch`. The
   CDP connect is a WebSocket to a Browserbase-issued `wss://` URL — `safeFetch`
   doesn't cover WS, so the connect URL is accepted only when its host matches
@@ -128,11 +173,17 @@ Verified against docs.browserbase.com on 2026-09-02:
 ### 4.2 Data model
 
 - `CloudBrowserConnection` — above.
-- `BrowserProfile` `{ id, organizationId, userId, browserbaseContextId,
-  label, serviceHint?, createdAt, lastUsedAt, status }` — one row per
-  persistent login identity. `serviceHint` is display metadata ("Google —
-  ondrej@…"), written from what the person confirms at login handoff, never
-  parsed out of page content.
+- `BrowserProfile` `{ id, organizationId, userId, connectionId,
+  browserbaseContextId, label, serviceHint?, createdAt, lastUsedAt,
+  status }` — one row per persistent login identity. `connectionId` is
+  load-bearing: a Browserbase context is scoped to the account that created
+  it, so a profile is usable only through its own connection. If an org
+  subscription arrives after people used personal connections, their
+  personal profiles cannot be transferred — the person signs in once more
+  under the org connection (the UI says so; it is one login, not a
+  migration). `serviceHint` is display metadata ("Google — ondrej@…"),
+  written from what the person confirms at login handoff, never parsed out
+  of page content.
 - `CloudBrowserSession` `{ id, organizationId, runId, profileId?,
   browserbaseSessionId, status (active|released|expired), startedAt, endedAt,
   releasedBy }` — the lifecycle row. A profile-backed session is claimed with
@@ -151,7 +202,8 @@ Verified against docs.browserbase.com on 2026-09-02:
 - `worker/src/run/browser-cloud-toolset.ts` `buildCloudBrowserToolset(...)`,
   the structural twin of `buildExecutorToolset`: emits the shared logical
   browser descriptors with `transportConfig = { transport: 'browserbase' }`
-  when (a) the org's connection is healthy, (b) the agent's policy explicitly
+  when (a) a connection resolves for this run per §4.1 (org, else the
+  requesting user's personal one), (b) the agent's policy explicitly
   grants the browser bundle, and (c) no live executor binding already claims
   the browser bundle for this run — an executor-bound run keeps the device
   transport, so the model still sees exactly one browser toolset.
@@ -219,60 +271,56 @@ dialog precedent).
   v1.** An interval sweep silently acting inside a person's Google account is
   a different consent than "help me now"; profile use on unattended runs
   arrives later as an explicit per-profile, per-trigger opt-in. Ephemeral
-  sessions are fine unattended.
+  sessions are fine unattended — **on the org connection only**: a personal
+  connection powers only runs its owner requested, and an unattended run has
+  no requester, so it never spends an individual's browser-hours.
 
-### 4.6 Credentials stay on the person's devices (phase 3)
+### 4.6 Credentials — decided: no injection, ever
 
-The end-state Ondrej wants: the executor pulls credentials from the user's own
-stuff, so Nessie never holds them. Platform reality, stated honestly:
+Decision (2026-09-02): **there is no credential storage or automated
+credential entry in this integration, in any phase.** The precedent is every
+"here's a browser" agent product — you get a browser; when a session expires
+you sign in again, in the browser, yourself. What matters is not avoiding
+the login, it's that once the person *is* logged in, the session outlives
+the browser process and follows them across devices — which Contexts give us
+for free, because the browser and its state are cloud-side and any of the
+person's devices can open the same live view and any run can attach the same
+context.
 
-- **No OS will hand us the user's existing Safari/Chrome passwords.** iCloud
-  Keychain website passwords are not readable by third-party apps by design;
-  same for Chrome's store. "Pull their Google password from iCloud" is not
-  buildable.
-- What **is** buildable: Nessie's **own keychain items** in the user's
-  keychain. The desktop app stores a service credential the person explicitly
-  saves, as a `kSecClass genericPassword` item with `kSecAttrSynchronizable`
-  — so it syncs across their Apple devices via **iCloud Keychain**, owned by
-  them, invisible to our servers. Equivalents: Secret Service/libsecret
-  (Linux), Credential Manager/DPAPI (Windows), Keystore-wrapped storage
-  (Android companion). Today `desktop/src-tauri` has **no keychain
-  integration at all** (state is a `0o600` JSON file) — this phase adds the
-  first one (Tauri keyring plugin / `security-framework` on macOS).
-- **Injection path**: when a cloud session hits a login wall for a service the
-  person has saved, the run parks exactly as in §4.4, but instead of (or
-  before) asking the human, the worker issues a new executor operation —
-  `browser.cloud.authenticate { sessionId, service }` — through the existing
-  encrypted `ExecutorCommand` channel. The **device** fetches the credential
-  from the local keychain and types it into the Browserbase session over its
-  own direct CDP connection. Plaintext flows device → Browserbase; the
-  command result carries only `{ outcome }`. If the device is offline, the
-  flow degrades to the §4.4 human handoff — stated in the card ("your Mac is
-  offline, sign in here instead").
-- The alternative that needs no new storage at all: advertise the existing
-  `browser.connected.*` operations (the person's real Chrome, real password
-  manager, real sessions) once their disclosure preconditions are done. That
-  work is upstream of this plan and complementary — connected Chrome covers
-  attended "act as me on my machine"; Browserbase covers unattended and
-  cloud-persistent.
+Recorded for the future so it isn't re-litigated: a device-keychain
+injection scheme (executor types a credential from the user's own
+iCloud-Keychain-synced item into the session over CDP) was designed and
+dropped. Also noted: no OS exposes the user's *existing* Safari/Chrome
+passwords to third-party apps, so "pull their Google password from iCloud"
+was never buildable — only Nessie-authored keychain items would have been.
 
-Recommendation inside this phase: sessions-first. With Contexts + one human
-login per service, stored passwords are rarely needed; keychain injection is
-for the "session expired while I'm away" case and should stay opt-in per
-service.
+The complementary track that does involve the person's real credentials —
+the existing, unadvertised `browser.connected.*` executor operations (their
+actual Chrome, their password manager, their live sessions) — proceeds on
+its own disclosure preconditions, independent of this plan. Connected Chrome
+covers attended "act as me on my machine"; Browserbase covers unattended and
+cloud-persistent.
 
 ### 4.7 Surfaces (Rule zero)
 
 - **Home — org**: `/settings/organization` → "Cloud browsers" (owner-only):
-  connect/replace key (write-only), health, plan/concurrency note, disable.
-- **Home — person**: `/settings/connections` gains a "Browser profiles"
-  section: each profile with label, service hint, last used, and **Sign out &
-  delete** (deletes the Browserbase context + row — the revocation story).
-- **Doorways**: the Agent Designer's existing explicit-grant switch surfaces
-  the browser bundle; the login card and live-view dialog live in chat where
-  the question arises; `/ops/usage` gains browser-hours per org/agent from
-  `CloudBrowserSession` durations (owner-only, no currency figures to
-  members, per the budget-copy rule).
+  connect/replace the company key (write-only), health, plan/concurrency
+  note, disable.
+- **Home — person**: `/settings/connections` gains a "Browser" section with
+  two things: the **personal connection** (connect your own Browserbase
+  account — free tier to start — replace key, disconnect) and **Browser
+  profiles**: each profile with label, service hint, last used, which
+  connection it lives on, and **Sign out & delete** (deletes the Browserbase
+  context + row — the revocation story).
+- **Doorways**: the first-party `/apps` listing (§4.1a) whose Connect routes
+  here by scope; the Agent Designer's existing explicit-grant switch
+  surfaces the browser bundle; the login card and live-view dialog live in
+  chat where the question arises; `/ops/usage` gains browser-hours per
+  org/agent/connection-scope from `CloudBrowserSession` durations
+  (owner-only, no currency figures to members, per the budget-copy rule).
+  A member on a personal connection sees their **own** hours in the
+  connections section — it is their bill, and that number names the
+  "should I upgrade" decision.
 
 ### 4.8 Budgets and limits
 
@@ -289,15 +337,20 @@ service.
 
 ## 5. Phasing
 
-**Phase 1 — connect + ephemeral cloud browsing.**
-`@nessie/browser-cloud`, `CloudBrowserConnection` + secret-store key, probe on
-enable, `CloudBrowserSession` lifecycle fused to run terminal + reaper sweep,
-`buildCloudBrowserToolset` behind `requiresExplicitGrant`, shared logical
-tools (`browser_open/goto/act/observe/screenshot/close`, ephemeral only),
-screenshots via FileService, watch-only Live View dialog with cancel,
-org settings surface, ops usage rows. *Done when:* a granted agent can be
-asked "check what this page says" and a person can watch it happen and see
-the hours on `/ops/usage`.
+**Phase 1 — connect (both tiers) + ephemeral cloud browsing.**
+`@nessie/browser-cloud`, `CloudBrowserConnection` at both scopes +
+secret-store keys, probe on connect, the first-party `/apps` listing in
+`seed-apps.ts` (§4.1a), org + personal settings surfaces,
+`CloudBrowserSession` lifecycle fused to run terminal + reaper sweep,
+`buildCloudBrowserToolset` behind `requiresExplicitGrant` with the §4.1
+resolution order, shared logical tools
+(`browser_open/goto/act/observe/screenshot/close`, ephemeral only),
+screenshots via FileService, watch-only Live View dialog with cancel, ops
+usage rows + the member's own-hours readout. *Done when:* a member on a free
+personal account can grant an agent the browser and ask "check what this
+page says", watch it happen, and see their hours — and an owner connecting
+the company account flips every browser-granted agent to it without anyone
+reconfiguring.
 
 **Phase 2 — profiles + login handoff.**
 `BrowserProfile` + context create/attach (`persist: true`), single-session
@@ -309,32 +362,20 @@ unattended-run refusal. *Done when:* a person signs into a service once in
 chat, and tomorrow's run reuses that login without asking — and deleting the
 profile provably signs the agent out.
 
-**Phase 3 — device-held credentials + connected Chrome.**
-Desktop keychain integration (synchronizable items → iCloud Keychain; Linux/
-Windows equivalents), `browser.cloud.authenticate` executor operation with
-device-side CDP injection, offline degradation to human handoff; separately,
-finish the disclosure preconditions and advertise `browser.connected.*`.
-*Done when:* a session re-login happens with no human present, and the
-password provably never appeared in any Nessie table, log, command payload,
-or model context.
-
-**Phase 4 — unattended profiles + polish.**
-Per-profile per-trigger opt-in for scheduled runs, proxy/geo options,
-Stagehand-style `browser_act` if observe/act proves too low-level.
+**Phase 3 — unattended profiles + polish.**
+Per-profile per-trigger opt-in for scheduled runs (org connection only),
+proxy/geo options, Stagehand-style `browser_act` if observe/act proves too
+low-level. Separately tracked, not this plan: the disclosure preconditions
+that let `browser.connected.*` be advertised.
 
 ## 6. Open questions
 
-1. **Ledger or bring-your-own key?** This plan assumes the org supplies its
-   own Browserbase key (self-hosted product, org's own bill). If Browserbase
-   should instead be metered through Ledger like DeepWater/Serper, the
-   connection layer swaps to a product-bound Ledger adapter and §4.1 changes;
-   everything from §4.2 down survives as-is.
-2. **Sensitive-action gating.** Should `browser_act` on a profile-backed
+1. **Sensitive-action gating.** Should `browser_act` on a profile-backed
    session require an approval for irreversible-looking actions (submitting
    orders, sending messages)? The approval machinery is there; the question
    is whether "irreversible-looking" can be decided structurally (it cannot
    be string-matched — it would have to be model-judged, or scoped by domain
    allowlists the person sets per profile).
-3. **Mobile companion.** The login handoff dialog should work from the mobile
+2. **Mobile companion.** The login handoff dialog should work from the mobile
    app's webview (it's an iframe + card press); worth verifying early, since
    "sign in from your phone" is the likely real-world moment.
