@@ -183,6 +183,16 @@ export const resolveApprovalRequest = async (
   // resolve it. Check the LIVE organization membership rather than the JWT `roles`
   // claim — tokens are long-lived (default 24h), so a user demoted after their
   // token was issued must not retain approval power on a stale claim.
+  // An exact required approver outranks every other visibility rule. Approval
+  // visibility otherwise reaches any member who can read a public channel, so
+  // without this a colleague could authorise an email sent in your name.
+  if (
+    approval.requiredApproverUserId
+    && approval.requiredApproverUserId !== actorContext.actor.actorId
+  ) {
+    return { error: 'APPROVER_REQUIRED' as const, approval: mapApproval(approval) }
+  }
+
   if (approval.requiredApproverRole) {
     const membership = await prisma.organizationMember.findUnique({
       where: {

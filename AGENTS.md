@@ -753,6 +753,25 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   because a callback that trusts whoever finished consent will silently
   re-point a different mailbox. Plan:
   `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
+- **An approval over provider content binds the content, not its handle, and
+  the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
+  nothing useful: the draft stays mutable through the chat card, through Gmail,
+  and through another run, so an approved send could deliver text nobody
+  approved. `GmailDraftAction.contentFingerprint` is re-read and compared on
+  every send path, and the same row carries the conditional
+  `draft → sending → sent` claim that makes a double send impossible. The
+  approval requirement itself is declared on the tool definition and enforced at
+  the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
+  and a seeded-`PolicyRule` gate is therefore absent in any organisation whose
+  seed never ran. Its only bypass is an exact-key standing grant
+  (`SendAuthorizationGrant`, `(connectionId, agentId)`, the
+  `ScopeDisclosureGrant` shape) that never covers an unattended run or a
+  non-owner, and `ApprovalRequest.requiredApproverUserId` keeps a send-as-you
+  gate resolvable only by the person it acts as — approval visibility otherwise
+  reaches every member who can read a public channel. One shared
+  `sendDraftForUser` serves the human button and the agent tool; api services
+  are unreachable from the worker, so a second copy forks the state claim and
+  the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
 
 ## Embeddings — routed separately, one pinned width
 

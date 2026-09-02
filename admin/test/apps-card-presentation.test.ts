@@ -74,7 +74,8 @@ test('a built-in was never connected to anything, so it says available instead o
   // reports that state like everything else.
   assert.deepEqual(appCardStatus(app({ distribution: 'builtin', state: 'error' })), {
     kind: 'indicator',
-    label: 'Connection error',
+    count: null,
+    label: 'connection error',
     tone: 'danger',
   })
 })
@@ -83,31 +84,30 @@ test('an available app shows no status at all — absence is the signal', () => 
   assert.deepEqual(appCardStatus(app()), { kind: 'none' })
 })
 
-test('transient connection states use compact indicators, while connected states retain their pills', () => {
+test('every connection state is a dot, and the words survive as its label', () => {
   assert.deepEqual(appCardStatus(app({ state: 'connecting' })), {
     kind: 'indicator',
+    count: null,
     label: 'Connecting',
     tone: 'accent',
   })
   assert.deepEqual(appCardStatus(app({ state: 'connected' })), {
-    kind: 'pill',
-    label: '● Connected',
-    tone: 'success',
-  })
-  assert.deepEqual(appCardStatus(app({ connectionCount: 3, state: 'multiple_accounts' })), {
-    kind: 'pill',
-    label: '● 3 accounts',
+    kind: 'indicator',
+    count: null,
+    label: 'Connected',
     tone: 'success',
   })
   assert.deepEqual(appCardStatus(app({ state: 'auth_expired' })), {
-    kind: 'pill',
-    label: '⚠ Reconnect',
+    kind: 'indicator',
+    count: null,
+    label: 'needs reconnecting',
     tone: 'warning',
   })
-  // Same dot vocabulary as "connected", hollow: the relationship exists, off.
+  // Same dot as "connected", hollow at the render: the relationship exists, off.
   assert.deepEqual(appCardStatus(app({ state: 'paused' })), {
-    kind: 'pill',
-    label: '○ Turned off',
+    kind: 'indicator',
+    count: null,
+    label: 'Turned off',
     tone: 'muted',
   })
   assert.deepEqual(appCardStatus(app({ state: 'disabled' })), {
@@ -118,6 +118,36 @@ test('transient connection states use compact indicators, while connected states
     kind: 'quiet',
     label: 'Not available right now',
   })
+})
+
+test('a count appears only where it says something, and health decides its tone', () => {
+  assert.deepEqual(appCardStatus(app({ connectionCount: 3, state: 'multiple_accounts' })), {
+    kind: 'indicator',
+    count: 3,
+    label: '3 accounts connected',
+    tone: 'success',
+  })
+  // Health beats arithmetic: two accounts of which one has expired reads as an
+  // amber dot carrying a 2, not a green one — the number says how many
+  // accounts, the colour says whether they are all working.
+  assert.deepEqual(appCardStatus(app({ connectionCount: 2, state: 'auth_expired' })), {
+    kind: 'indicator',
+    count: 2,
+    label: '2 accounts · needs reconnecting',
+    tone: 'warning',
+  })
+  assert.deepEqual(appCardStatus(app({ connectionCount: 2, state: 'error' })), {
+    kind: 'indicator',
+    count: 2,
+    label: '2 accounts · connection error',
+    tone: 'danger',
+  })
+  // One account is the ordinary case, and a lone `1` beside a dot reads as a
+  // rendering fault rather than as information.
+  for (const state of ['connected', 'auth_expired', 'error', 'paused'] as const) {
+    const status = appCardStatus(app({ connectionCount: 1, state }))
+    assert.equal(status.kind === 'indicator' ? status.count : 'not an indicator', null, state)
+  }
 })
 
 test('a built-in offers Open, not Connect — there is no account, only a surface', () => {

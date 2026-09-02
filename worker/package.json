@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@nessie/comms-connect": "workspace:*",
+    "@nessie/comms-google": "workspace:*",
     "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/dashboard": "workspace:*",

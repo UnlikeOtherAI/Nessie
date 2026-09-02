@@ -23,8 +23,10 @@ import {
   setWorkspaceMemberActivation,
   updateWorkspaceMemberRole,
   UoaInvitationAlreadyAcceptedError,
+  UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
+  withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
   type UoaRosterWorkspace,
 } from '../services/uoa-org-roster.js'
@@ -46,11 +48,12 @@ import type { RouteDeps } from './types.js'
  * bearer, and the user-id-keyed relay in `routes/users.ts` cannot name somebody
  * who has no local row.
  *
- * `/org/*` in backend mode carries no acting user, so UOA applies **no** role
- * check and records the mutation as `via: "domain_backend"`. The owner/admin
- * gate below is therefore load-bearing, exactly as on the workspace avatar
- * relay. `actor.roles` is re-resolved from the live `OrganizationMember` row on
- * every request (`lib/server-context.ts`), so it is safe to gate on.
+ * Every `/org/*` call carries a short-lived assertion of the signed-in UOA
+ * subject. UOA re-resolves that person's credential epoch and membership, then
+ * applies its own role/capability rules. The owner/admin gate below remains the
+ * local entitlement check before we send a mutation upstream; `actor.roles` is
+ * re-resolved from the live `OrganizationMember` row on every request
+ * (`lib/server-context.ts`).
  */
 
 const NOT_LINKED_MESSAGE =
@@ -138,6 +141,15 @@ const sendRelayError = (
     )
     return true
   }
+  if (error instanceof UoaRosterIdentityError) {
+    sendApiError(
+      reply,
+      403,
+      'UOA_SESSION_REQUIRED',
+      'Sign in with UnlikeOtherAI and select this workspace to view its members.',
+    )
+    return true
+  }
   if (error instanceof UoaRosterUnavailableError) {
     request.log.warn({ err: error }, 'uoa workspace roster relay failed')
     sendApiError(
@@ -178,6 +190,7 @@ export const registerWorkspaceMembersRoutes = (
       workspace: UoaRosterWorkspace,
       body: TBody,
       actorContext: AuthorizedActionContext,
+      subjectDeps: UoaRosterDeps,
     ) => Promise<TResult>,
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
@@ -191,7 +204,16 @@ export const registerWorkspaceMembersRoutes = (
     if (!workspace) return reply
 
     try {
-      return createApiResponse(await run(workspace, body as TBody, actorContext))
+      return createApiResponse(await run(
+        workspace,
+        body as TBody,
+        actorContext,
+        withUoaRosterSubjectAssertion(
+          workspace,
+          actorContext.actionContext.uoaIdentity,
+          rosterDeps,
+        ),
+      ))
     } catch (error) {
       if (sendRelayError(request, reply, error)) return reply
       throw error
@@ -205,8 +227,8 @@ export const registerWorkspaceMembersRoutes = (
    * steward, without Nessie storing any second copy of UOA's roster.
    */
   app.get('/api/workspace/members', async (request, reply) =>
-    relay(request, reply, { admin: false }, async (workspace, _body, actorContext) => {
-      const members = await listWorkspaceMembers(workspace, rosterDeps)
+    relay(request, reply, { admin: false }, async (workspace, _body, actorContext, subjectDeps) => {
+      const members = await listWorkspaceMembers(workspace, subjectDeps)
       const localIdBySub = await resolveLocalUserIdsByUoaSub(
         deps.prisma,
         actorContext.tenant.organizationId,
@@ -281,8 +303,8 @@ export const registerWorkspaceMembersRoutes = (
         request,
         reply,
         { admin: true, parse: () => parseInput(TeamRoleBodySchema, request.body, reply) },
-        async (workspace, body) => {
-          await updateWorkspaceMemberRole(workspace, request.params.uoaSub, body.role, rosterDeps)
+        async (workspace, body, _actorContext, subjectDeps) => {
+          await updateWorkspaceMemberRole(workspace, request.params.uoaSub, body.role, subjectDeps)
           return { ok: true }
         },
       ),
@@ -291,8 +313,8 @@ export const registerWorkspaceMembersRoutes = (
   app.delete<{ Params: { uoaSub: string } }>(
     '/api/workspace/members/:uoaSub',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (workspace) => {
-        await removeWorkspaceMember(workspace, request.params.uoaSub, rosterDeps)
+      relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => {
+        await removeWorkspaceMember(workspace, request.params.uoaSub, subjectDeps)
         return { ok: true }
       }),
   )
@@ -301,12 +323,12 @@ export const registerWorkspaceMembersRoutes = (
     app.post<{ Params: { uoaSub: string } }>(
       `/api/workspace/members/:uoaSub/${action}`,
       async (request, reply) =>
-        relay(request, reply, { admin: true }, async (workspace) => {
+        relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => {
           await setWorkspaceMemberActivation(
             workspace,
             request.params.uoaSub,
             action,
-            rosterDeps,
+            subjectDeps,
           )
           return { ok: true }
         }),
@@ -316,8 +338,8 @@ export const registerWorkspaceMembersRoutes = (
   // Invitation emails are PII; UOA gates its own invited list to owners/admins
   // and so does this route.
   app.get('/api/workspace/invitations', async (request, reply) =>
-    relay(request, reply, { admin: true }, async (workspace) => ({
-      invitations: await listWorkspaceInvitations(workspace, rosterDeps),
+    relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => ({
+      invitations: await listWorkspaceInvitations(workspace, subjectDeps),
     })))
 
   app.post('/api/workspace/invitations', async (request, reply) =>
@@ -325,16 +347,16 @@ export const registerWorkspaceMembersRoutes = (
       request,
       reply,
       { admin: true, parse: () => parseInput(CreateInvitationsBodySchema, request.body, reply) },
-      async (workspace, body) => ({
-        results: await createWorkspaceInvitations(workspace, body, rosterDeps),
+      async (workspace, body, _actorContext, subjectDeps) => ({
+        results: await createWorkspaceInvitations(workspace, body, subjectDeps),
       }),
     ))
 
   app.post<{ Params: { inviteId: string } }>(
     '/api/workspace/invitations/:inviteId/resend',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (workspace) => {
-        await resendWorkspaceInvitation(workspace, request.params.inviteId, rosterDeps)
+      relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => {
+        await resendWorkspaceInvitation(workspace, request.params.inviteId, subjectDeps)
         return { ok: true }
       }),
   )
@@ -348,8 +370,8 @@ export const registerWorkspaceMembersRoutes = (
   app.post<{ Params: { inviteId: string } }>(
     '/api/workspace/invitations/:inviteId/revoke',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (workspace) => {
-        await revokeTeamInvitation(workspace, request.params.inviteId, rosterDeps)
+      relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => {
+        await revokeTeamInvitation(workspace, request.params.inviteId, subjectDeps)
         return { ok: true }
       }),
   )
@@ -360,12 +382,12 @@ export const registerWorkspaceMembersRoutes = (
     app.post<{ Params: { inviteId: string } }>(
       `/api/workspace/invitations/:inviteId/${action}`,
       async (request, reply) =>
-        relay(request, reply, { admin: true }, async (workspace) => {
+        relay(request, reply, { admin: true }, async (workspace, _body, _actorContext, subjectDeps) => {
           await reviewWorkspaceInvitation(
             workspace,
             request.params.inviteId,
             action,
-            rosterDeps,
+            subjectDeps,
           )
           return { ok: true }
         }),

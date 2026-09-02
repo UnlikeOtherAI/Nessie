@@ -390,7 +390,11 @@ export const backfillProtectedMcpToolGrants = async (
   let grantCount = 0
 
   for (const candidate of candidates) {
-    if (Object.keys(normalizeToolPolicy(candidate.toolPolicy)).length === 0) continue
+    // Registry-entry keys only, for the reason stated at the read below — and
+    // so an agent carrying nothing but builtin policy never takes a lock.
+    const registryKeys = Object.keys(normalizeToolPolicy(candidate.toolPolicy))
+      .filter((key) => UUID_PATTERN.test(key))
+    if (registryKeys.length === 0) continue
     const materialized = await prisma.$transaction(async (tx) => {
       await acquireAgentToolPolicyLock(tx, candidate.id)
       const agent = await tx.agent.findUnique({
@@ -399,9 +403,15 @@ export const backfillProtectedMcpToolGrants = async (
       })
       if (!agent) return 0
 
+      // A tool policy is keyed by builtin tool *name* (`delegate`,
+      // `spawn_subtask`) as well as registry entry *id*. Only the second kind
+      // can be matched against `ToolRegistryEntry.id`, which is a uuid column:
+      // passing a name into that filter is a P2023 the caller cannot catch,
+      // and this runs at startup, so it took the whole API down rather than
+      // skipping one agent. Same guard `hasDeepWaterProjectionGrant` applies.
       const protectedPolicyEntries = Object.entries(
         normalizeToolPolicy(agent.toolPolicy),
-      )
+      ).filter(([key]) => UUID_PATTERN.test(key))
       if (protectedPolicyEntries.length === 0) return 0
       const legacyPolicyByRegistryEntryId = new Map(protectedPolicyEntries)
 

@@ -31,6 +31,12 @@ export class UoaRosterRejectedError extends Error {
 export type UoaRosterDeps = {
   fetchImpl?: PinnedFetch
   resolveHost?: ResolveHost
+  /**
+   * A short-lived product-signed assertion of the current UOA user. The
+   * credential is intentionally distinct from UOA's own access token: UOA
+   * verifies it against this product's JWKS and re-resolves live membership.
+   */
+  subjectAssertion?: string
 }
 
 /** The UOA org + team ids behind a Nessie team. Both are needed for `/org/*`. */
@@ -73,9 +79,9 @@ const fetchOptions = (deps: UoaRosterDeps) => ({
 })
 
 /**
- * One backend-mode `/org/*` call. No `X-UOA-Access-Token` header is present:
- * the domain-hash bearer selects backend mode. The caller narrows the parsed
- * response body instead of trusting its shape.
+ * One `/org/*` call. The domain hash authenticates Nessie; a caller that has a
+ * live UOA session also supplies its short-lived subject assertion so UOA can
+ * authorize that person rather than treating Nessie as a tenant-wide backend.
  */
 export const rosterRequest = async (
   settings: UoaSettings,
@@ -92,6 +98,9 @@ export const rosterRequest = async (
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${clientHash(settings)}`,
+          ...(deps.subjectAssertion
+            ? { 'X-UOA-Subject-Assertion': deps.subjectAssertion }
+            : {}),
           ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),

@@ -178,7 +178,13 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   provider (work + personal); we replicate that, deriving the account
   identity the way they do (id_token email, else a stable subject claim).
   The dropdown shows the account label only when a person holds more than
-  one link for a provider.
+  one link for a provider. Because accounts can multiply, the agent's
+  selection is an explicit **`Agent.modelSubscriptionId` FK**, not a parse
+  of the provider string — two linked OpenAI accounts must be
+  distinguishable at run resolution, and ambiguity is refused (the comms
+  coordinator's `AMBIGUOUS_ACCOUNT` discipline), never resolved by
+  recency. `Agent.provider`/`Agent.model` keep the `subscription/<key>`
+  namespacing for display and fail-closed routing.
 - **Token values live in the Nessie vault** — the deployment's own Infisical
   at `vault.unlikeotherai.com` (`docs/secret-management-spec.md`,
   `api/src/services/infisical-vault.ts`) — **never in PostgreSQL.** The
@@ -187,9 +193,12 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   tables are its named legacy-migration concern, so this feature does not
   extend that pattern. The bundle (access token, refresh token, expiry,
   account id — one self-describing JSON value, so the vault alone is
-  authoritative) is written under the personal scope partition
-  `/nessie/<organizationId>/personal/<userId>` with a server-minted opaque
-  name.
+  authoritative) is written to a **dedicated, separately-ACLed Infisical
+  project/namespace for model subscriptions** (paths partitioned
+  `/<organizationId>/<userId>/…`, server-minted opaque names) — deliberately
+  **not** the shared `/nessie/<orgId>/personal/<userId>` partition, because
+  that folder also holds the person's ordinary captured secrets and an
+  identity scoped to it could read them all (review finding, §6).
 - `ModelSubscriptionCredential` is therefore **metadata only**:
   `subscriptionId @unique`, `vaultReference @unique`, advisory `expiresAt`
   (cheap "refresh soon" queries; the vault bundle is the truth), timestamps.
@@ -213,12 +222,18 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   contract.** Today only the API container holds the Infisical
   machine-identity token, and the worker/executor/sandboxes deliberately do
   not. Inference runs in the worker, so the worker gets its **own dedicated
-  machine identity**, scoped to read+replace on the model-subscription paths
-  only (its own Docker secret in
+  machine identity scoped to the model-subscriptions vault project only**
+  (its own Docker secret in
   `infrastructure/compose/docker-compose.prod.yml`), used solely by the
-  subscription credential coordinator. The executor and agent sandboxes
-  still receive nothing. `docs/secret-management-spec.md` and
-  `docs/deployment.md` are updated in the same change that introduces it.
+  subscription credential coordinator — the project separation above is what
+  makes "subscription paths only" actually enforceable as an ACL rather than
+  a promise. A compromised worker therefore reaches subscription tokens
+  (unavoidable: it must dispatch with them) but no other personal secrets.
+  The executor and agent sandboxes still receive nothing, and the
+  credential-broker boundary the secret spec sketches under "Next phases"
+  remains the end-state: the coordinator is written as the single seam so
+  moving it behind a broker later is mechanical. `docs/secret-management-spec.md`
+  and `docs/deployment.md` are updated in the same change that introduces it.
   In local dev the worker runs embedded in the API process, so a compose'd
   local Infisical (or the API's identity) covers it; a deployment without
   the vault configured cannot link subscriptions — the settings surface says
@@ -226,11 +241,22 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
 - OAuth state reuses the `comms_oauth_states` shape (own table
   `model_subscription_oauth_states`, single-use atomic consume, 10-min TTL).
 
-Refresh follows the comms coordinator's shape: `FOR UPDATE` row lock on the
-metadata row, re-read the vault bundle inside the lock, refresh via the
-adapter, `replace` the vault bundle and update the advisory metadata inside
-the locked section; a provider-rejected credential flips
-`status = 'needs_reauthorization'` atomically. (Not the MCP resolver's
+Refresh is serialized, but **not** by holding a Postgres transaction open
+across the provider call (the comms coordinator does exactly that today and
+the review flagged it): the coordinator takes a short locked **claim** on
+the metadata row (bumping a `credentialEpoch`), releases the transaction,
+performs the network refresh outside any transaction, and finalizes with a
+compare-and-swap on that epoch — vault `replace` first, then metadata. An
+indeterminate outcome (response lost after the provider may have consumed
+the rotated token) is never retried; it parks the row for recovery or
+re-auth. Three more rules from the same review: **every** lifecycle
+mutation — relink, disconnect, health sweep, deactivation cleanup — goes
+through the same subscription-scoped lock + epoch CAS, never just refresh;
+a failure transition (`needs_reauthorization`) is applied **only if the
+failing credential epoch is still current**, so a delayed 401 from a
+pre-relink token cannot kill a fresh link; and an in-flight run that gets a
+401 mid-stream after a concurrent rotation gets exactly one retry that
+re-reads the fresh token through the coordinator. (Not the MCP resolver's
 lockless refresh — two concurrent runs on one subscription must not race a
 one-shot refresh token.)
 
@@ -283,10 +309,20 @@ locally (`token_ledger_events`, §2.6). Ledger remains the one chokepoint for
 every non-subscription run, byte-identical to today. The rejected
 alternative — proxying subscription traffic *through* Ledger — would put
 personal credentials on UOA infrastructure and invite commercial rating of
-spend that is not the org's; it is out. A run is entirely one lane or the
-other, decided once at provider resolution: its delegates, compaction, and
-utility calls follow the same lane, so no single run mixes Ledger-signed and
-personal traffic.
+spend that is not the org's; it is out. A run's **generative inference** is
+entirely one lane or the other — main turns, delegates, compaction, and
+utility calls all follow the run's lane, which is resolved and **pinned at
+run admission**: the resolved subscription id, provider account, and
+credential epoch are persisted on the `Run`, so a mid-run relink cannot
+switch accounts, and a continuation/restart whose binding is no longer valid
+fails closed instead of sliding to Ledger. Deliberately **not** on the run's
+lane, and always deployment-billed: the engagement decision (made on the
+boot-time model client before any run exists), embeddings and memory
+operations, avatar generation, and other non-run system inference
+(demonstration generalization calls `runInferenceGraph` directly) — §6
+requires enumerating every such caller, and §2.6 says this plainly on the
+ops surface so a "subscription-only" agent's residual Ledger events read as
+designed, not as a bug.
 
 **Who pays is who owns.** Any run of the agent — a shared channel answering a
 colleague, a trigger, a delegate — spends the owner's plan, because the agent
@@ -294,7 +330,19 @@ is the owner's virtual employee. That is stated plainly on the linking screen
 and in the Designer when a subscription model is selected on a
 workspace-visible agent. Delegate sub-agents and compaction/utility calls for
 that run stay on the same subscription (they are the same run's spend);
-`NESSIE_UTILITY_MODEL` resolution is skipped for subscription-routed runs.
+utility-model resolution **explicitly returns null** for subscription runs —
+not a lookup miss — and `runUtility` is pinned to the run's own resolved
+subscription model, because `NESSIE_UTILITY_MODEL` names a Ledger-catalogue
+model a subscription backend may not serve.
+
+**Org budgets gate org spend, so they do not gate this lane.** The
+`applyBudgetGate` verdict is skipped for subscription-pinned runs: a token
+cap set to protect Ledger spend must not block a run that costs the org
+nothing (with Ledger copy, no less), and `Budget.mode = degrade` must never
+rewrite the run onto the org's Ledger provider — a degrade override is
+ignored on this lane (the lane is pinned; there is nothing safe to degrade
+to). The per-run backstop envelope (`Agent.runLimits` /
+`NESSIE_RUN_BACKSTOP_*`) still applies in full.
 
 **No silent fallback.** If the subscription is missing, revoked,
 `needs_reauthorization`, or the owner's membership is deactivated, the run
@@ -308,9 +356,22 @@ would move spend to the org without consent:
   `needs_reauthorization` with a durable `UserAlert` to the **owner** (not
   org owners — it is their credential), exactly once per transition.
 
-Ownership transfer of an agent whose model is `subscription/*` clears the
-model back to null (deployment default) in the same transaction — the new
-owner never inherits spend on the old owner's plan.
+Ownership transfer of an agent whose model is `subscription/*` clears
+`provider`, `model`, and the subscription pointer in the same transaction —
+the new owner never inherits spend on the old owner's plan. Three
+implementation facts make this more than one UPDATE: the current update seam
+cannot null a model (`model: input.model ?? existing.model`,
+`api/src/services/agent-management.ts:139`), so explicit clear semantics are
+added; `spawn_subtask` children are separate rows copying the parent's
+provider/model outside write-time validation, so transfer/revocation sweeps
+must cover `parentAgentId` descendants; and clones and PA `agent_create`
+must validate through **one shared route-equivalent validator** in
+`@nessie/workspace-admin` (the PA tool currently hard-codes
+`assertLedgerAgentModelSelection`), with clones to a different owner
+stripping the subscription selection. The **run-time gate is the
+authoritative backstop** for any stale row all of that misses: it fails
+closed on owner/subscription mismatch, so write-time validation is UX, not
+security.
 
 ### 2.5 The OAuth adapters: Codex and Grok (phase 2) — our own grant, always
 
@@ -352,6 +413,31 @@ This removes the Tauri loopback command from the critical path entirely. A
 loopback browser flow (Codex's fixed `localhost:1455` redirect) can be added
 later as a desktop nicety; it is no longer load-bearing.
 
+**Device-flow hardening (both reviewers, §6):**
+
+- `start` and the poll are **per-user rate-limited** (the
+  `RATE_LIMIT_BUCKETS` machinery), and polling is one server-side lease per
+  state row with `nextPollAt` honouring the provider's `interval` and
+  `slow_down` — several tabs or replicas must not each hammer the shared
+  public client.
+- The classic device-flow confused deputy is addressed head-on: a
+  **relink** binds the expected `providerAccountId` and refuses a different
+  account at completion (the comms `expectedAccountId` discipline), and a
+  **first link** shows the verified provider identity (email/subject) for
+  explicit confirmation *before* the subscription activates — so a phished
+  code session cannot silently attach an attacker's account to a victim's
+  workspace, and the screen says "only enter codes you requested here."
+- "Verify the id_token" means a spec, not a vibe: exact issuer, audience =
+  the client id, `exp`, a present stable subject, nonce where the provider
+  supports it, and **granted scopes read from the token response, failing
+  closed on anything missing** — the `grantedScopes` lesson from the Google
+  capability catalog applies verbatim.
+- **403 is not "revoked".** Only adapter-defined authentication failure
+  codes transition a link to `needs_reauthorization`; entitlement, scope,
+  policy, quota, and content refusals classify separately (the Google
+  `insufficientPermissions` lesson), so a healthy grant is never disabled
+  with the wrong remedy.
+
 Adapter constants, to be re-pinned from the reference clients at
 implementation time:
 
@@ -361,10 +447,15 @@ implementation time:
   the backend `https://chatgpt.com/backend-api/codex/responses` contract
   (Responses API shape, `store: false`, streaming, `chatgpt-account-id` +
   `OpenAI-Beta` headers, `gpt-5-codex` family). OpenAI's flow accepts an
-  `originator` parameter — Nessie sends `originator=nessie`, identifying
-  itself honestly as a distinct client of the shared public app rather than
-  impersonating the CLI (OpenClaw's precedent; OpenAI documents subscription
-  OAuth as supported in external tools).
+  `originator` parameter — Nessie sends `originator=nessie` (OpenClaw's
+  precedent). Honest framing from the review: this is still the vendor's
+  shared public OAuth client, not a separately registered Nessie client —
+  `originator` identifies the integration, it does not change the client.
+  **Each OAuth adapter ships only once its vendor-sanctioned basis is
+  verified and recorded in this doc** (OpenAI's published policy on
+  subscription OAuth in external tools; xAI's equivalent), and a
+  provider-approved Nessie client registration is preferred wherever a
+  vendor offers one.
 - **Grok:** §2.1 — OIDC discovery on `auth.x.ai`, shared public client,
   device-code grant, `cli-chat-proxy.grok.com/v1` backend on the
   `openai-compatible` connector.
@@ -397,16 +488,37 @@ for both.
 
 ### 2.6 Metering, budgets, ops
 
-- Every invocation still writes `TokenLedgerEvent` rows (`provider =
-  'subscription/<key>'`, real token counts). No `ModelPricingProfile` rows are
-  seeded for subscription providers, so `estimatedCostAmount` stays `null`:
-  org **cost** budgets deliberately see zero (the org isn't paying), while
-  **token** budgets and the per-run backstop envelope meter unchanged.
-- Provider 401/403 → `needs_reauthorization` transition (§2.4). Provider
-  quota/rate-limit refusals (subscription plans have rolling windows) →
-  a classified budget-stop-style notice naming the plan's limit, never the
+- Every run invocation still writes `TokenLedgerEvent` rows with real token
+  counts — but the exclusion from org cost is **structural, not an absent
+  seed row**. The review showed the naive version lies twice: connector
+  invocations record the *runtime* provider (`'openai-compatible'`), not the
+  agent's `subscription/<key>`, and an owner-created wildcard
+  `ModelPricingProfile` would happily price the events. So the event carries
+  an explicit source (`billingSource = 'personal_subscription'` +
+  `modelSubscriptionId`, attribution to the **subscription owner**), pricing
+  resolution skips those events by that field, and org budget evaluation
+  excludes them entirely (matching §2.4's gate skip). Token counts remain
+  for the per-run backstop and ops visibility.
+- Failure classification per §2.5: only adapter-defined authentication codes
+  flip a link to `needs_reauthorization` (version-guarded, §2.2). Provider
+  quota/rate-limit refusals (subscription plans have rolling windows) → a
+  classified budget-stop-style notice naming the plan's limit, never the
   Ledger `CREDITS_EXHAUSTED` copy — the person must not be told to buy org
-  credits when their personal window is exhausted.
+  credits when their personal window is exhausted. The classification seam
+  lives in the adapter (it knows its provider's error shapes), surfaced
+  through the existing budget-stop/cancel-stop notice machinery.
+- `ModelSubscription` carries typed `healthReason`/`healthDetail`/
+  `healthRevision` (the trigger-health discipline), and the
+  exactly-once-per-transition alert goes to the **subscription owner** with
+  a deep link to `/settings/connections` — a surface the owner can actually
+  reach, unlike the owner-gated Triggers page. Every lifecycle transition
+  (link, relink, refresh failure, disconnect, deactivation cleanup) writes a
+  metadata-only audit event — never tokens, vault references, or raw
+  provider responses.
+- Runs are stamped with their lane (`Run` binding, §2.4) and the run
+  inspector / `run.timing` surfaces say "personal subscription (<owner>)",
+  so "whose plan paid for this reply" has an answer where the question
+  arises (Rule zero check 3).
 - `/ops/usage` (owner-only) gains a per-provider split so subscription-routed
   tokens are visible as such; `/tokens` (UOA customer billing) is untouched —
   personal subscriptions are not org commercial state and never render there.
@@ -445,24 +557,55 @@ Anthropic: excluded outright (§ top).
 
 1. **Phase 1 — framework + API-key adapters (Kimi, GLM).** Schema +
    `@nessie/model-subscriptions` + coordinator, settings section, dropdown
-   group + two-armed validation, `resolveStageProviderConfig` branch +
-   ownership gate + failure classification, metering split. No new connector
-   code — `kimi` and `openai-compatible` carry both transports.
+   group + the one shared validator, `resolveStageProviderConfig` branch +
+   run-admission pinning + ownership gate + failure classification, metering
+   split. GLM's endpoint/protocol is **pinned and documented before the
+   phase starts** (not probed mid-build); only then does "no new connector
+   code" hold — `kimi` and `openai-compatible` carry both transports.
 2. **Phase 2 — OAuth device-code: Codex + Grok.** Server-side device flow
-   (start/poll/complete/refresh with the §2.5 refresh discipline), settings
-   UI for the code+link step, the `codex-subscription` Responses-API
-   connector; Grok on `openai-compatible`. Entirely server-side — no desktop
-   work in the critical path.
+   (start/poll lease/complete/refresh with the §2.2/§2.5 discipline),
+   settings UI for the code+link+confirm-identity steps, the
+   `codex-subscription` Responses-API connector; Grok on `openai-compatible`.
+   Entirely server-side — no desktop work in the critical path. Gated on the
+   vendor-sanction verification in §2.5.
 3. **Phase 3 — polish.** Health probe sweep (mark dead links before a run
-   trips on them), quota-window classification per provider, owner alert
-   copy, `/ops/usage` split refinement, optional desktop loopback browser
-   flow for Codex as a convenience.
+   trips on them), per-subscription concurrency lease + owner-visible
+   limiter (several agents can otherwise drain one plan's window
+   concurrently — run slots are per `(agent, thread)` only), quota-window
+   classification per provider, owner alert copy, `/ops/usage` split
+   refinement, optional desktop loopback browser flow for Codex.
+
+**Testing (required, not phase 3):** mock-llm grows a Responses-API surface
+(`packages/mock-llm` speaks only chat/completions + embeddings today) so the
+Codex connector gets full-pipeline smoke coverage; DB suites cover the
+refresh claim/CAS races, relink-vs-stale-401, disconnect-vs-refresh,
+transfer/deactivation sweeps, continuation binding failure, budget-gate
+skip, and secret non-disclosure (no token in any response, event, or log).
+Prove the gates fail without the fix, per standing practice.
+
+**Rollout ordering:** schema first, then workers that understand
+`subscription/*` and the run binding, then the API writes behind a
+deployment capability flag, UI last — an API replica must never persist a
+subscription selection an old worker would misroute. Upgrade-path fixture
+covers the new tables; vault cleanup (disconnect, deactivation, org delete)
+ships with the schema as a durable tombstone/outbox with idempotent vault
+deletion, so no orphaned refresh tokens outlive their Postgres pointers, and
+the health sweep refuses to refresh a deactivated owner's credential.
 
 ## 5. Open decisions (for Ondrej)
 
-1. **Shared-channel spend.** Plan says: owner pays for every run of their
-   agent, stated clearly at selection time. Alternative: v1 restricts
-   subscription models to `visibility: private` agents + the owner's PA.
+1. **Shared-channel spend — now with a disclosure dimension.** Plan says:
+   owner pays for every run of their agent, stated clearly at selection
+   time. Alternative: v1 restricts subscription models to
+   `visibility: private` agents + the owner's PA. The review sharpened the
+   stakes: this is not only "whose money" but "whose processor" — a
+   workspace agent on a personal subscription sends workspace/project/KB
+   content in prompts to the *person's consumer account* at the provider,
+   which the disclosure sink (who may read the reply) does not govern. If
+   workspace use ships, it comes with an org-level policy switch (owner
+   setting: allow personal subscriptions on workspace-visible agents, or
+   private-only), so the organisation decides where its data may be
+   processed. This must be resolved before implementation starts.
 
 Resolved:
 
@@ -473,3 +616,81 @@ Resolved:
   dropped; every link is Nessie's own grant (§2.5), so linking never fights
   the vendor CLI's session. Device code makes this work for web-only users
   anyway.
+
+## 6. Adversarial review record (Kimix + Codex Sol, 2026-09-02)
+
+Both reviewers ran independently against the repo with the same brief:
+break this plan. Findings were adjudicated against the code (not averaged);
+everything accepted above is folded into §§2.2–2.6, §4, §5. This section
+records what remains and what was rejected, so the next reader doesn't
+re-litigate it.
+
+**Accepted, folded in above:** org-budget gate skip + degrade never rewrites
+the lane (both reviewers); run-admission pinning of subscription/account/
+credential epoch on the `Run`, continuation fails closed (Sol); the
+"one lane" claim scoped to generative inference, with engagement decisions,
+embeddings/memory, avatars, and demonstration-generalize named as
+deployment-billed (both); explicit-null utility resolution (Kimix);
+dedicated vault project + worker identity scoped to it, broker as end-state
+(both — Sol showed the shared personal folder made narrow scoping
+unenforceable); `Agent.modelSubscriptionId` FK + ambiguity refusal (Sol);
+claim/CAS refresh outside transactions, one lifecycle lock, epoch-guarded
+failure transitions, one mid-stream 401 retry (both); vault
+tombstone/outbox cleanup on disconnect/deactivation/org-delete, sweep
+refuses deactivated owners (both); device-flow rate limits, poll lease,
+expectedAccountId on relink, identity confirmation before first activation,
+id_token + granted-scopes fail-closed spec, 403 classification (both);
+structural `billingSource` on ledger events with owner attribution and
+pricing bypass (Sol — invocations record the runtime provider, and wildcard
+pricing profiles would otherwise price these); health
+reason/detail/revision + owner-directed alerts + metadata-only audit events
+(Sol); transfer clears provider+model+pointer with real null semantics,
+descendant sweep, one shared validator covering PA create and clones,
+run-time gate as authoritative backstop (both); run-level lane provenance
+in the inspector (Kimix); mock-llm Responses surface + race-test suite +
+rollout ordering + GLM pinned pre-phase-1 (both); shared-channel decision
+now carries the whose-processor dimension and an org policy switch (Sol).
+
+**Implementation-time obligations (tracked here, no doc section yet):**
+
+- **Transport hardening:** connectors reach the subscription backend
+  through a host-pinned, no-redirect fetch whose allowed origin comes from
+  the adapter constant, asserted at connector construction; the connector
+  receives an access-token-only auth object, never the decrypted bundle
+  (the refresh token has no business in the dispatch path). Today's
+  connectors use plain redirect-following `fetch` — the env-precedence
+  chokepoint this lane bypasses was the only guard.
+- **Enumerate every consumer of `Agent.provider`** (utility-model SQL
+  lookup, `/ops/usage` groupings, admin filters, avatar generation) and
+  give each an explicit `subscription/*` branch; the single
+  `resolveLedgerServiceBaseUrl` throw is one fail-closed site, not an
+  audit.
+- **Same account, two orgs:** two Nessie grants for one vendor account
+  (person in two organisations) may mutually invalidate under the shared
+  client — verify each provider's concurrent-grant behaviour and record
+  the answer here before GA.
+- **Catalogue isolation:** `GET /api/agents/models` must render
+  subscription options even when the Ledger catalogue errors, and creating
+  a subscription-backed agent must not implicitly charge Ledger for avatar
+  generation without saying so.
+- **AGENTS.md amendment:** shipping this lane amends the
+  "`NESSIE_MODEL_BASE_URL` is the deployment-wide inference chokepoint"
+  statement in `AGENTS.md`/`CLAUDE.md` in the same change, per the
+  docs-sync rule.
+
+**Rejected, with reasons:**
+
+- *"Live UOA membership must be re-resolved from the UOA API on every
+  subscription use"* (Sol). Overreach: the standing discipline for every
+  gate in the tree (`buildVisibleAgentWhere`, comms sync, trigger sweeps)
+  is the local live-membership row (`deactivatedAt: null`), reconciled from
+  UOA; this gate follows the same predicate. Making one gate call UOA
+  per-run would be a new pattern with its own availability failure mode.
+- *"PKCE/device state in Postgres violates the secret-management rule"*
+  (Sol). The rule bars durable secret *values*; one-shot flow state with a
+  10-minute TTL is the standing `comms_oauth_states`/`mcp_oauth_states`
+  pattern. The real defect in that finding — unserialized polling — is
+  accepted above as the poll lease.
+- *"Resolve shared-channel spend by fiat now"* (Sol). It is §5's explicit
+  owner decision; the plan now blocks implementation on it rather than
+  deciding it in a review pass.

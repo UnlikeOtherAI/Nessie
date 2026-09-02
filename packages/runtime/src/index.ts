@@ -33,3 +33,5 @@ export * from './fts.js'
 export * from './url-safety.js'
 export * from './disclosure-predicate.js'
 export * from './disclosure-access.js'
+
+export * from './builtin-google-tools.js'

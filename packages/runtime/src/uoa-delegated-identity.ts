@@ -48,6 +48,21 @@ export type UoaProductIdentity = {
   tokenVersion: number
 }
 
+/**
+ * A short-lived assertion of the UOA subject selected in a Nessie session.
+ *
+ * It is deliberately not an access token: UOA verifies it against the
+ * product's configured JWKS and re-resolves the named user, epoch, and active
+ * workspace before authorizing a request. This lets a product delegate one
+ * current session without retaining a UOA bearer credential.
+ */
+export type UoaSubjectAssertionIdentity = {
+  organizationId: string
+  subject: string
+  teamId: string
+  tokenVersion: number
+}
+
 export type UoaDelegatedIdentityService = {
   requestHeaders: (
     attribution: LedgerAttribution,
@@ -278,6 +293,27 @@ const buildSubjectAssertion = (
           },
         }
       : {}),
+    iat: nowSeconds,
+    exp: nowSeconds + ASSERTION_TTL_SECONDS,
+    jti: randomUUID(),
+  })
+
+export const createUoaSubjectAssertion = (
+  settings: UoaDelegatedIdentitySettings,
+  identity: UoaSubjectAssertionIdentity,
+  audience: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): string =>
+  signJwt(settings, {
+    iss: settings.sourceDomain,
+    aud: audience,
+    sub: identity.subject,
+    source_domain: settings.sourceDomain,
+    tv: identity.tokenVersion,
+    active: {
+      orgId: identity.organizationId,
+      teamId: identity.teamId,
+    },
     iat: nowSeconds,
     exp: nowSeconds + ASSERTION_TTL_SECONDS,
     jti: randomUUID(),

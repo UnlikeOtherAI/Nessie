@@ -8,6 +8,7 @@ import { CloudBrowserPanel } from '../../components/features/browser-cloud/Cloud
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
 const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
   { provider: 'slack', label: 'Connect Slack' },
@@ -90,6 +91,7 @@ export const ConnectionsPage = () => {
                 {rows.map((connection) => (
                   <ConnectionCard connection={connection} key={connection.id} />
                 ))}
+                <SendAuthorizationSection />
                 <ConnectButtons
                   onConnect={(provider) => void onConnect(provider)}
                   pending={start.isPending}
