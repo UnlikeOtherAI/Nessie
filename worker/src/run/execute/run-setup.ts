@@ -14,6 +14,10 @@ import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { loadAgentTodoPromptFacts } from '@nessie/workspace-admin'
 import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
+import {
+  resolveDelegatedRequesterUserId,
+  resolveIdentityDelegatedToolIds,
+} from '../delegated-identity.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   buildCheckpointInjection,
@@ -114,6 +118,13 @@ export type RunExecutionSetup = {
   allowedToolIds: Set<string>
   /** The checkpoint this run claimed, if any — its generation seeds the next. */
   checkpoint: LoadedRunCheckpoint | null
+  /**
+   * `personalAssistantOnly` tool ids this run's global-agent blueprint may
+   * exercise (D3). Empty for every ordinary run, including the PA's — it passes
+   * on its own `agentKind` arm. Carried on the setup so the per-call gate in
+   * `authorizeToolExecution` judges the exact set toolset assembly offered.
+   */
+  identityToolIds: ReadonlySet<string>
   executorToolset: ExecutorToolset
   initialMessages: ProviderMessage[]
   mcpToolset: McpToolset
@@ -158,6 +169,26 @@ export const prepareRunExecution = async (
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
+
+  // D3: the one place the identity-tool admission is decided. Both the schema
+  // array below and the per-call gate downstream consume this same set, so a
+  // stale schema cannot be exercised and a tool is never offered-then-denied.
+  const identityToolIds = resolveIdentityDelegatedToolIds(
+    {
+      agentKind: context.agent.agentKind,
+      dmKey: context.channel.dmKey,
+      organizationId: context.channel.organizationId,
+      systemChannelType: context.channel.systemChannelType,
+      systemSlug: context.agent.systemSlug,
+    },
+    resolveDelegatedRequesterUserId({
+      actorId: payload.actorContext.actor.actorId,
+      actorType: payload.actorContext.actor.actorType,
+      effectiveUserId: payload.actorContext.actionContext.effectiveUserId,
+      interactive: payload.interactive === true,
+    }),
+  )
+
   const {
     descriptors: toolDefs,
     allowedIds: resolvedToolIds,
@@ -172,6 +203,7 @@ export const prepareRunExecution = async (
       context.agent.parentAgentId,
       context.agent.agentKind,
       {
+        identityToolIds,
         isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
           agentKind: context.agent.agentKind,
           principalUserId: context.run.principalUserId,
@@ -331,6 +363,7 @@ export const prepareRunExecution = async (
   return {
     allowedToolIds,
     checkpoint,
+    identityToolIds,
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       approvalInstruction,

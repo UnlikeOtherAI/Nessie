@@ -17,6 +17,7 @@ import {
   createAgentRecord,
   createAgentTrigger,
   createChannelForUser,
+  generateAvatarForNewAgent,
   getChannelIfMember,
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
@@ -24,8 +25,10 @@ import {
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
 
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
+import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
 import { formatSection } from './tool-output.js'
 
 /**
@@ -40,6 +43,14 @@ import { formatSection } from './tool-output.js'
  * channel membership, refuse every system-managed conversation (the Personal
  * Assistant's DM, an external agent's, a global agent's home), and pass the
  * `agent`/`bind` policy check.
+ *
+ * Disclosure: `agent_list` is the only read here, and it stamps its scopes (see
+ * below). `channel_create`, `agent_create`, `agent_bind_channel` and
+ * `agent_trigger_create` are writes whose outputs echo back ids the caller
+ * already supplied plus the name of the row they just wrote — no scoped source
+ * enters the run's context through them, so there is deliberately no sink call
+ * on those four rather than a no-op one. The ids themselves had to come from a
+ * read that did stamp: `agent_list` here, or `channel_find`/`channel_list`.
  */
 
 // Whether this deployment signs Ledger calls is read once, exactly as
@@ -164,7 +175,30 @@ export const runAgentCreateTool = async (
     modelSubscriptionId = selection.modelSubscriptionId
   }
 
+  // The same generate-then-attach seam `POST /api/agents` runs. Without it an
+  // agent created in chat was the only faceless one in the workspace. A failed
+  // picture never fails the creation — the seam resolves to undefined and the
+  // agent is created without one.
+  const generatedAvatar = await generateAvatarForNewAgent({
+    actorContext: member.actorContext,
+    agent: {
+      name: args.name,
+      role: args.role ?? 'assistant',
+      systemPrompt: args.systemPrompt,
+    },
+    config: loadConfig().model,
+    fileService: fileServiceFor(context.prisma),
+    ledgerIdentity: context.ledgerIdentity,
+    modelClient: context.modelClient,
+  })
+
   const agent = await createAgentRecord(context.prisma, {
+    ...(generatedAvatar
+      ? {
+          avatarAttachmentId: generatedAvatar.avatarAttachmentId,
+          avatarBackgroundColor: generatedAvatar.avatarBackgroundColor,
+        }
+      : {}),
     effort: args.effort,
     model: args.model,
     modelSubscriptionId,
@@ -222,8 +256,11 @@ const resolveBoundChannelLabels = async (
       id: { in: [...new Set(channelIds)] },
       organizationId: context.channel.organizationId,
     },
-    select: { id: true, label: true },
+    select: { id: true, label: true, visibility: true },
   })
+  // The bindings were already filtered to channels this person can reach, so a
+  // non-public label here is material they see through their own membership.
+  recordChannelDirectoryRead(context, channels)
   return new Map(channels.map((channel) => [channel.id, channel.label]))
 }
 
@@ -252,6 +289,11 @@ export const runAgentListTool = async (
       agent.name.toLowerCase().includes(needle)
       || agent.role.toLowerCase().includes(needle))
     : agents
+
+  // Provenance for a delegated read (AGENTS.md: the obligation sits on the
+  // read, not on the reply). The rule and why workspace rows are excluded from
+  // it live on the helper.
+  recordVisibleAgentRead(context, matches)
 
   const labels = await resolveBoundChannelLabels(
     context,

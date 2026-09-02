@@ -1,7 +1,7 @@
 # The Agent Designer — the first global agent
 
-**Status:** phase 1 (Foundation) implemented 2026-09-02; phases 0 and 2–4
-remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
+**Status:** phase 1 (Foundation) and phase 2a (the identity-delegation
+backbone) implemented 2026-09-02; phases 0, 2b and 3–4 remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
 code-aware reviews (see "Cross-model review"); every adopted finding was
 re-verified against code first.
 **Date:** 2026-09-02
@@ -717,21 +717,129 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
    (`auth-login` ×2, `auth-core`) and user provisioning (`users.ts`), wrapped
    best-effort so a blueprint fault can never fail a login.
 
-   **Deferred out of phase 1, deliberately:** the Designer has no
-   identity-delegated tools and no generated capability catalogue (D3/D5,
-   phase 2) — its prompt says plainly that it advises rather than creates;
-   `identityToolIds` is declared and consumed by nothing; no avatar *image* is
+   **Deferred out of phase 1, deliberately** (the first two landed in phase 2a
+   below): the Designer had no identity-delegated tools and no generated
+   capability catalogue (D3/D5) — its prompt said plainly that it advises
+   rather than creates, and `identityToolIds` was declared and consumed by
+   nothing; no avatar *image* is
    generated at bootstrap (a billed call), only a stable
    `avatarBackgroundColor`, with image generation left to the PA's own lazy,
    owner-triggered pattern; the read-only global detail view stays phase 4.
-2. **The Designer at work.** D3 gate arm + surface/interactive plumbing +
-   the delegation-predicate re-key (each listed site); new tools
-   `agent_read`, `agent_update`, `agent_tool_catalog`,
-   `agent_avatar_update` (shared functions + re-exports; member-safe
-   catalogue projection; sink obligations on all delegated reads); shared
-   avatar-generation seam for `agent_create`; generated capability-catalogue
-   prompt block; persona; card-driven collection (no-wait default). Verify
-   end-to-end: describe → question → card → create → home DM link.
+2. **The Designer at work.**
+   **2a — identity-delegation backbone, implemented 2026-09-02.** One shared
+   predicate, `runDelegatesToRequestingPerson`
+   (`worker/src/run/delegated-identity.ts`): the PA inside its own DM, or a
+   `home: 'per_user_dm'` blueprint inside its own home DM, derived from agent
+   kind + `systemSlug` → blueprint + the destination's `systemChannelType` and
+   `dmKey`. Beside it, `agentActsAsRequestingPerson` (the identity half, no
+   surface condition), `isGlobalAgentHomeSurface` (the surface half, now shared
+   with `assertGlobalAgentRunPlacement`), `isDelegatedSystemDmChannelType` (the
+   channel-type-only half, mirroring the api helper, now backing
+   `isSingleAgentSystemDm` and `buildRealtimeScopesForChannel`),
+   `resolveDelegatedRequesterUserId` and `resolveIdentityDelegatedToolIds`.
+   The `personalAssistantOnly` gate takes exactly one new arm — blueprint
+   declares the id AND own home DM AND `payload.interactive === true` with a
+   live human requester equal to the stamped `effectiveUserId` — resolved once
+   at run setup and threaded into **both** `resolveAgentTools` (omit, never
+   offer-then-deny) and `authorizeToolCall`, never into a delegate sub-agent.
+   The interactive arm is the second of two locks with phase 1's
+   `createAgentTrigger` refusal: that one governs what can be created, this one
+   what may be exercised. Re-keyed sites: `execute/memory.ts` (containment
+   exemption + scope-resolution mode) and `execute/scopes.ts` (org/agent lanes
+   withheld from a `system_agent` DM, matching the orchestrator's already-general
+   `isSingleAgentSystemDm`). Deliberately still PA-keyed, each with a comment
+   saying why: `execute/completion.ts` (inside its own DM the reply stays
+   assistant-authored — a design conversation must render as the Designer's
+   words), `control/trigger-run.ts` and `schedule_task`'s
+   `isDelegatingPersonalAssistant` (both waive a *binding* check, and a global
+   agent is genuinely bound to exactly one channel), and
+   `resolveAccessibleChannelIds` (a global agent falls to `user_shared`, which
+   is narrower, never wider — widening belongs with the tools that need it).
+   `pa-tools/access.ts`'s `resolveEffectiveUserId` / `requireActingUserId` /
+   `resolveActingMember` were verified correct unchanged: they read
+   `effectiveUserId`, which the message-create route stamps for every delegated
+   system DM. Delegated reads now feed the sink —
+   `recordChannelDirectoryRead` on `channel_list` / `channel_find` and on
+   `agent_list`'s bound-channel labels, `recordVisibleAgentRead` for private
+   agents (workspace rows deliberately unstamped: `agent:<id>` is the shared
+   visibility predicate and an org owner's list exceeds it, so stamping would
+   withhold the Designer's answer from the only reader of the DM). The
+   blueprint declares its five identity tools in `identityToolIds` and states
+   them in `toolPolicy`, and its prompt no longer says it can only advise.
+   **2b — tools, catalogue and persona, implemented 2026-09-02.**
+
+   - **Four new builtins**, all `personalAssistantOnly` and listed in the
+     blueprint's `identityToolIds` + `toolPolicy`, so 2a's gate arm admits them
+     in the Designer's own home DM on an interactive turn (until it merges they
+     are simply denied — the blueprint declares them, nothing else changes):
+     `agent_read`, `agent_update`, `agent_tool_catalog`, `agent_avatar_update`
+     (`packages/runtime/src/builtin-agent-tools.ts`; handlers in
+     `worker/src/run/pa-tools/agent-config.ts`; dispatch in
+     `worker/src/run/tools.ts`).
+   - **`readAgentRecordForActor`** (`packages/workspace-admin/src/agent-read.ts`)
+     applies exactly the list entitlement — `buildAgentEntitlementWhere` was
+     factored OUT of `listAgentsForUser` so one composition serves both, never a
+     second `where` beside it — and returns the same `AgentRecord`. A
+     `systemManaged` target returns `record: null` plus the config-only
+     `AgentConfigProjection` (name, role, prompt, policy, model, effort, limits,
+     owner, visibility), which is what the phase-4 read-only detail view will
+     render. `agent_read` stamps `{scopeType:'agent'}` into the run's
+     `ConsumedSourceSink`.
+   - **`agent_update`** calls the shared `updateAgentRecord`, which MOVED to
+     `packages/workspace-admin/src/agent-update.ts` (with `updateAgentAvatar`)
+     because `api/src/services/*` is unreachable from the worker;
+     `api/src/services/agent-management.ts` and `agent-avatars.ts` re-export.
+     Phase 0's `canEditAgent` / `assertAgentFieldAuthority` therefore decide
+     every refusal for chat and form alike; the tool additionally explains a
+     `systemManaged` target in words before the service refuses it, and mirrors
+     the PUT route's `assertAgentModelSelection` on the resulting model pair.
+   - **`agent_tool_catalog`** reads
+     `loadAgentToolCatalog` (`packages/workspace-admin/src/agent-tool-catalog.ts`)
+     — a new **member-safe** projection; `GET /api/mcp/tools` stays owner-only.
+     Builtins deny-mode from `BUILTIN_TOOL_DEFINITIONS` (minus any the
+     organization disabled in its registry), the organization's live active
+     non-protected connector rows allow-mode keyed by registry uuid, to-do
+     gating flagged, and `personalAssistantOnly` / `requiresExplicitGrant` tools
+     NAMED in a `restricted` list with where they are granted. Entries are
+     assembled field-by-field from a narrow selection, so no credential,
+     endpoint, auth block, transport config or grant state can be emitted.
+   - **One avatar seam.** `generateAgentAvatar` moved to
+     `packages/workspace-admin/src/agent-avatar-generation.ts` and gained
+     `generateAvatarForNewAgent`, called by both `POST /api/agents` and the PA
+     `agent_create` tool, so a chat-created agent is no longer the only faceless
+     one. It never throws: a failed or unconfigured generation reports through
+     `onFailure` and the agent is created without a picture (the create route
+     used to 503 instead; `POST …/avatar/generate` keeps its loud error).
+   - **The generated capability catalogue (D5)** lives in
+     `worker/src/run/execute/global-agent-catalogue.ts` and renders from live
+     sources only: the contracts (`AgentVisibilitySchema`, `AgentEffortSchema`,
+     `AgentRunLimitsSchema.shape`, `AgentTriggerTypeSchema`), the tool catalogue
+     above, and `listLedgerAgentModels` (best-effort — an unreadable catalogue
+     says so rather than guessing). It is assembled only for a run whose agent
+     resolves a blueprint, and wired at ONE call site in
+     `worker/src/run/execute/run-job.ts` immediately after
+     `prepareRunExecution`, riding as its own `system` message after the
+     cache-stable anchor (the memory/checkpoint injection pattern) rather than
+     inside `buildModelPrompt`, whose only call site is `run-setup.ts`.
+   - **Persona (D6)** replaces the phase-1 placeholder: understand the work
+     first, ask the next real question rather than a questionnaire, propose a
+     complete draft early, say what was created and where it lives, cards
+     without `wait` by default with `wait` reserved for a must-answer step and
+     always with an expiry. No scripted flows and no example questions.
+   - Tests: `api/test/agent-designer-reads.test.ts` (DB — entitlement arms, the
+     config-only system projection, cross-org refusal, a newly inserted
+     registry row appearing, the leak-proof shape asserted on the projection's
+     field set, an org-disabled builtin leaving),
+     `worker/test/agent-config-tools.test.ts` (DB — the four handlers end to
+     end, every `canEditAgent` refusal inherited, the `agent:` sink stamp, a
+     deactivated member refused),
+     `worker/src/run/execute/global-agent-catalogue.test.ts` (the block renders
+     from live definitions), `packages/workspace-admin/test/agent-avatar-seam.test.ts`.
+
+   Still 2a's: the D3 gate arm, the interactive-turn condition, and the
+   delegation-predicate re-key. Deferred with phase 3/4: `agent_handoff`, the
+   sidebar unification, and the read-only global detail view that renders the
+   config-only projection.
 3. **Handoff.** `agent_handoff` builtin (requester-keyed, loop-bounded,
    slot-claimed, hidden-system brief, basis subtraction) + origin doorway
    message + routing prompt block for all non-designer agents.

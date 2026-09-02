@@ -21,6 +21,7 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { enqueueRunExecution } from '../queue.js'
+import { isDelegatedSystemDmChannelType } from './delegated-identity.js'
 import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
 import { claimThreadRunOrPend } from './thread-serialization.js'
@@ -51,8 +52,7 @@ export type OrchestrateDecideDeps = {
  */
 export const isSingleAgentSystemDm = (
   systemChannelType: string | null,
-): boolean =>
-  systemChannelType === 'personal_assistant' || systemChannelType === 'system_agent'
+): boolean => isDelegatedSystemDmChannelType(systemChannelType)
 
 // A single-agent system DM has exactly one server-managed agent binding. Its
 // replies are not an engagement judgement: every human turn is addressed to

@@ -55,6 +55,12 @@ export const runExecutionAgentLoop = async (
     checkBudgetBlocked: () => Promise<boolean>
     deepWaterHandoffGuard: DeepWaterHandoffGuard
     executorToolset: ExecutorToolset
+    /**
+     * D3 identity-tool admission, resolved once at run setup. Empty for every
+     * ordinary run; a non-empty set means a DM-homed global agent on its own
+     * home DM, on an interactive turn from a live human requester.
+     */
+    identityToolIds: ReadonlySet<string>
     initialMessages: ProviderMessage[]
     inference: RunInference
     /** DeepWater turns retain their own recovery matrix and never suspend. */
@@ -206,6 +212,7 @@ export const runExecutionAgentLoop = async (
         agentKind: context.agent.agentKind,
         allowedToolIds: input.allowedToolIds,
         consumeApprovalProof: options.consumeApprovalProof,
+        identityToolIds: input.identityToolIds,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,
@@ -285,6 +292,11 @@ export const runExecutionAgentLoop = async (
             {
               agentKind: context.agent.agentKind,
               allowedToolIds: input.allowedToolIds,
+              // `identityToolIds` is deliberately NOT passed to a sub-agent: a
+              // delegated turn is not the person's interactive turn, and the
+              // identity tools are the person's own authority. (The one global
+              // agent that has them denies `delegate` outright, so this arm is
+              // unreachable today — it stays correct if that ever changes.)
               resolvedBuiltinToolIds: input.resolvedToolIds,
               externalToolNames: new Set([
                 ...subAgentMcpView.handledNames,

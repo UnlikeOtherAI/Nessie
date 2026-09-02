@@ -61,3 +61,48 @@ export const recordMessageChannelRead = (
     sink.add({ scopeId: channel.id, scopeType: 'channel' })
   }
 }
+
+/**
+ * The same rule for a channel *directory* read (`channel_list`, `channel_find`).
+ *
+ * Not only message bodies are scoped material: a private channel's existence,
+ * label and topic are visible to its members alone, and a delegated run
+ * resolves them through the acting person's own `ChannelMember` rows
+ * (`buildVisibleChannelWhere`). An agent that lists them and then names one in a
+ * reply is disclosing them, so the read owes the sink its scopes — the
+ * AGENTS.md rule that the obligation sits on the read, not on the reply.
+ *
+ * Deliberately the same implementation rather than a second mapping beside it:
+ * the public-channel skip is identical and is the part most easily got wrong.
+ */
+export const recordChannelDirectoryRead = recordMessageChannelRead
+
+/**
+ * Provenance for an agent-directory read (`agent_list`).
+ *
+ * A PRIVATE agent is unambiguously privileged material, and `agent:<id>` names
+ * exactly its live owner — the person a delegated run is acting as — so the
+ * stamp restricts the reply to them and never silences the run against its own
+ * audience.
+ *
+ * Workspace-visible rows are deliberately NOT stamped. `agent:<id>` means
+ * "everybody who passes the shared live agent-visibility predicate", while
+ * `listAgentsForUser` hands an organisation OWNER a strictly wider list
+ * (unbound agents, and agents bound only into private channels they are not in).
+ * Stamping those would compute a basis the requesting owner does not satisfy
+ * and withhold the answer from the only reader of their own DM. What *is*
+ * expressible about them — the non-public channels their bindings named — is
+ * stamped by `recordChannelDirectoryRead` on the same read.
+ */
+export const recordVisibleAgentRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  agents: readonly { id: string; visibility: string }[],
+): void => {
+  const sink = context.consumedSources
+  if (!sink) return
+
+  for (const agent of agents) {
+    if (agent.visibility !== 'private') continue
+    sink.add({ scopeId: agent.id, scopeType: 'agent' })
+  }
+}

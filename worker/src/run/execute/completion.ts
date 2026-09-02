@@ -117,6 +117,16 @@ export const completeRunExecution = async (
   // shared channel is authored as that owner (mirroring the immediate
   // send_message tool), not as the assistant bot. Replies inside its own DM
   // stay assistant-authored so the DM still renders the assistant.
+  //
+  // DELIBERATELY STILL PA-KEYED. This site is not "does the run delegate" but
+  // "should the reply be re-authored as the person", and the answer for a
+  // DM-homed global agent is no on both halves of the condition. Its only
+  // destination is its own home DM, where the PA's own rule already says
+  // assistant-authored — and a design conversation the person is *having with*
+  // the Designer must render as the Designer's words, not as the person's own.
+  // The shared predicate would return false here anyway (it is true exactly on
+  // the home DM); spelling the kind out keeps the intent readable rather than
+  // leaving it to a double negative.
   const delegatedOwnerId =
     context.agent.agentKind === 'personal_assistant'
     && context.channel.systemChannelType !== 'personal_assistant'
