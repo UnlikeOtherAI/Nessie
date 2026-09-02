@@ -103,26 +103,11 @@ test('no new navigation-motion keyframes or transitions on a stack layer', () =>
 // `role="dialog"` is exactly the fifty-overlays-disagreeing defect the hook
 // replaced.
 const BESPOKE_DIALOG_ALLOWLIST = [
-  'admin/src/components/features/agents/AgentAvatarQuickEdit.tsx',
-  'admin/src/components/features/billing/UoaBillingCancellationDialog.tsx',
   'admin/src/components/features/billing/UoaBillingRecurringAddonsPanel.tsx',
   'admin/src/components/features/channels/ChannelMessageActions.tsx',
-  'admin/src/components/features/channels/ComposerEmojiButton.tsx',
-  'admin/src/components/features/channels/DocumentStreamDialog.tsx',
-  'admin/src/components/features/channels/DocumentStreamLeaveConfirm.tsx',
   'admin/src/components/features/channels/SecretCaptureDialog.tsx',
-  'admin/src/components/features/channels/ThoughtProcessDialog.tsx',
-  'admin/src/components/features/executors/ExecutorRunLauncherDialog.tsx',
-  'admin/src/components/features/integrations/DeepWaterResearchLauncherDialog.tsx',
   'admin/src/components/features/knowledge/comments/CommentActions.tsx',
-  'admin/src/components/shared/AttachmentViewer.tsx',
-  'admin/src/components/shared/ChannelSettingsDialog.tsx',
-  'admin/src/components/shared/CircleImageCropper.tsx',
-  'admin/src/components/shared/MemberManagementPopup.tsx',
-  'admin/src/components/shared/SessionDebugDialog.tsx',
   'admin/src/layouts/admin-shell/NativeSearchOverlay.tsx',
-  'admin/src/pages/ChannelConversationComposePage.tsx',
-  'admin/src/pages/settings/statuses/StatusEmojiPicker.tsx',
 ]
 
 const SANCTIONED_OVERLAY_USAGE = /<Dialog|<ConfirmDialog|<Sheet|<Popover|useOverlay\(/
