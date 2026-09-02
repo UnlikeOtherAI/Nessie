@@ -245,7 +245,7 @@ test('the account popover places Feedback and Debug between status and account a
   const status = popover.indexOf('<StatusSection onClose={onClose} />')
   const feedback = popover.indexOf('to="/feedback"')
   const debug = popover.indexOf('<DebugTokenButton variant="menu" />')
-  const accountSettings = popover.indexOf('to="/settings/profile"')
+  const accountSettings = popover.indexOf('to="/settings/account"')
 
   assert.ok(status < feedback)
   assert.ok(feedback < debug)

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -38,6 +38,10 @@ export const useScopedSettings = (
   if (teamId) query.set('teamId', teamId)
   return useQuery<{ settings: ResolvedSetting[] }>({
     enabled: keys.length > 0,
+    // Switching team keeps the previous answer on screen rather than blanking
+    // the control mid-read — see docs/navigation/overview.md, "Arriving with
+    // content".
+    placeholderData: keepPreviousData,
     queryKey: scopedSettingKeys.list(scope, teamId, keys),
     queryFn: () => apiClient.get(`/api/settings/scoped?${query.toString()}`),
   })
