@@ -43,6 +43,21 @@ user experiences — "the agent just has access; we can ask it questions and it
 can send emails if we want to" — is exactly that plan's tool surface plus the
 agent's system prompt; no new interface is required or wanted.
 
+**What is still missing on the Gmail lane** (verified against `main`,
+2026-09-02 — `packages/comms-google` has no send/draft calls and no `gmail_*`
+builtin exists): everything agent-facing, i.e. that plan's P1–P3 in full —
+Gmail read tools + disclosure sink wiring, `gmail_draft_create/update`,
+`GmailDraftAction`, `sendDraftForUser`, the draft card + owner-gated route +
+human Send, `ApprovalRequest.requiredApproverUserId`, the structural send
+gate, standing `SendAuthorizationGrant`s + the undo window, `gmail_send`
+direct, `gmail.modify` tools, and `email_received` as an `event` eventType.
+Four of those are **shared dependencies of this plan** and should be built
+once, in the Gmail lane, first: `requiredApproverUserId`, the
+content-fingerprint approval discipline, the standing-grant table, and the
+mailbox tool family that Model A's SMTP/IMAP joins. Conversely, the Gmail
+plan's former P3 item "optional SMTP/IMAP transport" is ceded to **this**
+plan (§2.2) so it is never built twice.
+
 ### 2.2 SMTP/IMAP — a core native connector, scoped per user or per team
 
 The same experience for any non-Google mailbox (or a Google one via app

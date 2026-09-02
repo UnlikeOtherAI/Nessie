@@ -445,7 +445,13 @@ send_authorization_grants new table                              (§8)
 | **P0** ✅ | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
 | **P1** | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
 | **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
-| **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType**; optional SMTP/IMAP transport |
+| **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType** |
+
+The "optional SMTP/IMAP transport" formerly listed in P3 is **ceded to
+[2026-09-02-agent-email.md](2026-09-02-agent-email.md) Model A** (a
+first-party native connector with user/team scopes). §11's analysis stands —
+same tool family, transport resolved at the credential chokepoint — but the
+build belongs to that plan, so the two are never implemented twice.
 
 P0 is pure negotiation and correctness — it fixes three live fail-open defects
 and makes today's connection self-service before any new Google surface lands.
