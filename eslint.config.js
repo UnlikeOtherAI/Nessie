@@ -1,6 +1,44 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
 
+// Shared with the navigation-gate blocks below (docs/navigation.md §4.18):
+// ESLint flat config replaces a rule's whole value — including every
+// selector — when two matching config objects both set 'no-restricted-syntax'
+// for the same file (last one wins, arrays are never concatenated). The
+// navigation gates below add their own admin/src-scoped 'no-restricted-syntax'
+// blocks, so every block that can match an admin/src/**/*.ts file must repeat
+// this pair rather than silently dropping it for that file.
+const FORWARDED_HEADER_RESTRICTED_SYNTAX = [
+  {
+    selector: "Literal[value='x-forwarded-proto']",
+    message:
+      "Read request.protocol via resolvePublicOrigin (api/src/lib/public-origin.ts) — "
+      + "raw 'x-forwarded-proto' bypasses Fastify's trusted-proxy scoping.",
+  },
+  {
+    selector: "Literal[value='x-forwarded-host']",
+    message:
+      "Read request.hostname via resolvePublicOrigin (api/src/lib/public-origin.ts) — "
+      + "raw 'x-forwarded-host' bypasses Fastify's trusted-proxy scoping.",
+  },
+]
+
+// Navigation stack containers are overflow: clip, never hidden — a
+// scrollIntoView() run while a screen is `useLayoutEffect`-mounted off to the
+// side (parked for a push) scrolls the clipped container itself, and the
+// transform animation then runs on a stale offset (docs/navigation.md §2, the
+// "bounce"). `useEffect` (post-paint) is fine; only the layout-effect timing
+// is the defect. Nested so a scrollIntoView() buried in a helper the effect
+// calls is still caught.
+const SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX = {
+  selector: "CallExpression[callee.name='useLayoutEffect'] "
+    + "CallExpression[callee.property.name='scrollIntoView']",
+  message:
+    "scrollIntoView() inside useLayoutEffect can run while the screen is parked "
+    + "off-screen mid-push and scroll the clipped stack container itself — see "
+    + 'docs/navigation.md §2. Move the call to useEffect, or drop the layout timing.',
+}
+
 export default [
   {
     ignores: [
@@ -67,21 +105,7 @@ export default [
       'api/src/index.ts',
     ],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "Literal[value='x-forwarded-proto']",
-          message:
-            "Read request.protocol via resolvePublicOrigin (api/src/lib/public-origin.ts) — "
-            + "raw 'x-forwarded-proto' bypasses Fastify's trusted-proxy scoping.",
-        },
-        {
-          selector: "Literal[value='x-forwarded-host']",
-          message:
-            "Read request.hostname via resolvePublicOrigin (api/src/lib/public-origin.ts) — "
-            + "raw 'x-forwarded-host' bypasses Fastify's trusted-proxy scoping.",
-        },
-      ],
+      'no-restricted-syntax': ['error', ...FORWARDED_HEADER_RESTRICTED_SYNTAX],
     },
   },
   {
@@ -163,6 +187,99 @@ export default [
           property: 'matchMedia',
           message:
             'Viewport classification belongs to the useViewport store; capability/preference queries are owned by useViewport or ThemeProvider.',
+        },
+      ],
+    },
+  },
+  {
+    // Navigation motion gate (docs/navigation.md §9 "Gates", plan §4.18, step
+    // 15): scrollIntoView() inside useLayoutEffect, everywhere in admin/src
+    // except pages/** and layouts/** — those two trees get the more specific
+    // block below (screen roots), which repeats this selector for the reason
+    // explained on FORWARDED_HEADER_RESTRICTED_SYNTAX above. No allowlist:
+    // nothing in admin/src does this today (admin/test/navigation-gates.test.ts
+    // has the source-regex half of this pin for the CSS/JS side).
+    files: ['admin/src/**/*.ts', 'admin/src/**/*.tsx'],
+    ignores: ['admin/src/pages/**', 'admin/src/layouts/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
+        SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX,
+      ],
+    },
+  },
+  {
+    // Screen-root focus gate (docs/navigation.md §9 "Gates", plan §4.18, step
+    // 15): a screen root (admin/src/pages/**, admin/src/layouts/** — the shell
+    // chrome and every page a route can land on) must not steal focus on
+    // mount in a way that scrolls the clipped stack container (§2's bounce):
+    // no bare `autoFocus` JSX attribute, and no `.focus()` call that omits
+    // `{ preventScroll: true }`. Allowlist shrinks to empty as the parallel
+    // conversion lands; a file leaves the list the moment its last real
+    // offense converts.
+    files: [
+      'admin/src/pages/**/*.ts',
+      'admin/src/pages/**/*.tsx',
+      'admin/src/layouts/**/*.ts',
+      'admin/src/layouts/**/*.tsx',
+    ],
+    ignores: [
+      'admin/src/pages/SearchPage.tsx',
+      'admin/src/pages/ChannelConversationComposePage.tsx',
+      'admin/src/layouts/admin-shell/NativeSearchOverlay.tsx',
+      'admin/src/layouts/admin-shell/TopBarSearch.tsx',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
+        SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX,
+        {
+          selector: "JSXAttribute[name.name='autoFocus']",
+          message:
+            'autoFocus on a screen root steals focus on mount and can scroll the '
+            + 'clipped stack container — see docs/navigation.md §2/§9.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='focus'][arguments.length=0]",
+          message:
+            'A screen-root .focus() call needs { preventScroll: true } — a plain '
+            + '.focus() can scroll the clipped stack container. See docs/navigation.md §2/§9.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='focus'] > "
+            + "ObjectExpression.arguments:not(:has(Property[key.name='preventScroll']))",
+          message:
+            'A screen-root .focus({...}) call needs preventScroll: true in its options '
+            + '— see docs/navigation.md §2/§9.',
+        },
+      ],
+    },
+  },
+  {
+    // navigate()/useNavigate() admission rule (docs/navigation.md §9 "Gates",
+    // plan §4.18) — OFF. The controller API this rule will hold call sites to
+    // (PhoneNavigationProvider's `push`) does not exist yet; enabled in step
+    // 13 once controller.push exists. Left declared, not deleted, so the
+    // shape (files, ignores, the two selectors) is ready to flip to 'error'
+    // in that step rather than being reinvented then.
+    files: ['admin/src/**/*.ts', 'admin/src/**/*.tsx'],
+    ignores: ['admin/src/navigation/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'off',
+        {
+          selector: "CallExpression[callee.name='navigate']",
+          message:
+            'navigate() belongs to admin/src/navigation/** — use the controller '
+            + '(push/back/redirect) once it exists. See docs/navigation.md §4.2.',
+        },
+        {
+          selector: "ImportSpecifier[imported.name='useNavigate']",
+          message:
+            'useNavigate() belongs to admin/src/navigation/** — use the controller '
+            + '(push/back/redirect) once it exists. See docs/navigation.md §4.2.',
         },
       ],
     },

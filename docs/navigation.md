@@ -425,10 +425,29 @@ re-render in place and releases the entries above only for a sibling swap;
 pin it. The JSDOM stack test had passed because it never replayed a route —
 the browser suite is what sees it.
 
+### Gates — **built** (step 15)
+
+The framework stays the only way because a second one cannot compile, lint or
+test green. Each gate below ships with an allowlist that only ever shrinks —
+seeded from real offenders at the time the gate landed, deleted line by line
+as the parallel conversion work lands elsewhere, never regrown, never a flag
+day.
+
+| gate | mechanism | allowlist lives in |
+| --- | --- | --- |
+| literal z-index (`z-[n]`, `z-N`, `zIndex:`, `z-index:`) outside `var(--layer-*)` / `OVERLAY_LAYER` | `scripts/lint-layers.mjs` (`pnpm lint:layers`, wired into root `pnpm lint`) | a `Set` of file paths at the top of the script |
+| `scrollIntoView(` inside a `useLayoutEffect` callback | ESLint `no-restricted-syntax`, `eslint.config.js` | none needed — zero uses today |
+| `autoFocus` / `.focus()` without `preventScroll` on a screen root (`admin/src/pages/**`, `admin/src/layouts/**`) | ESLint `no-restricted-syntax`, `eslint.config.js` | the block's own `ignores:` list |
+| `navigate(` / `useNavigate` outside `admin/src/navigation/**` | ESLint `no-restricted-syntax`, `eslint.config.js` — declared **off** until controller.push exists (step 13) | n/a while off |
+| `overflow: hidden` / `overflow-hidden` on a stack container | source-regex test, `admin/test/navigation-gates.test.ts` | none needed — the four containers are pinned clean |
+| a new `phone-navigation-*`/`kb-view-*` `@keyframes`, or a `transition:` inside a `.phone-navigation-*` rule | source-regex test, `admin/test/navigation-gates.test.ts` | an array in the test file |
+| every `router.tsx` path present in the surface registry | `scripts/lint-navigation-surfaces.mjs` (`pnpm lint:navigation-surfaces`), also `admin/test/navigation-surfaces-total.test.ts` | n/a — the registry is total by construction (§4.1) |
+| a `role="dialog"` surface without `Dialog`/`ConfirmDialog`/`Sheet`/`Popover`/`useOverlay(` | source-regex test, `admin/test/navigation-gates.test.ts` | an array in the test file, self-checked against `git ls-files` |
+
 ## 10. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,
-scroll, keyboard, haptics, pull-to-refresh, cold-start seeding, gates and the
+scroll, keyboard, haptics, pull-to-refresh, cold-start seeding, and the
 transition test suite: all specified in the plan and added here as each
 lands.
