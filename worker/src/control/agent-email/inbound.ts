@@ -104,6 +104,27 @@ export const processInboundReceipt = async (
   return outcomes
 }
 
+/**
+ * When the message says it was sent.
+ *
+ * The MIME `Date:` header is written by the sender, and it decides sort order
+ * in the mailbox — so unclamped it lets a stranger pin their mail to the top of
+ * somebody's inbox forever, or bury it below the fold. The SES receipt time is
+ * the one timestamp we observed ourselves, so the header is honoured only when
+ * it is plausible relative to it: a little ahead (clock drift) and not
+ * implausibly behind.
+ */
+const MAX_DATE_AHEAD_MS = 5 * 60 * 1000
+const MAX_DATE_BEHIND_MS = 30 * 24 * 60 * 60 * 1000
+
+const resolveOccurredAt = (claimed: Date | null, receivedAt: string): Date => {
+  const received = new Date(receivedAt)
+  if (!claimed || Number.isNaN(claimed.getTime())) return received
+  const skew = claimed.getTime() - received.getTime()
+  if (skew > MAX_DATE_AHEAD_MS || -skew > MAX_DATE_BEHIND_MS) return received
+  return claimed
+}
+
 const deliverToMailbox = async (
   deps: InboundEmailDeps,
   receipt: SesInboundReceipt,
@@ -115,6 +136,7 @@ const deliverToMailbox = async (
     verdicts: receipt.verdicts,
   })
 
+  const occurredAt = resolveOccurredAt(parsed.date, receipt.receivedAt)
   const conversationId = await resolveConversation(deps.prisma, mailbox, parsed, receipt)
 
   let created: { emailMessageId: string; threadId: string; runId: string | null } | null = null
@@ -138,7 +160,7 @@ const deliverToMailbox = async (
           htmlBody: parsed.htmlBody,
           inReplyTo: parsed.inReplyTo,
           mailboxId: mailbox.id,
-          occurredAt: parsed.date ?? new Date(receipt.receivedAt),
+          occurredAt,
           organizationId: mailbox.organizationId,
           receiptId: inboundClaimKey(receipt.sesMessageId, mailbox.id),
           referencesIds: parsed.references,
@@ -155,7 +177,7 @@ const deliverToMailbox = async (
 
       await tx.emailConversation.update({
         data: {
-          lastMessageAt: parsed.date ?? new Date(receipt.receivedAt),
+          lastMessageAt: occurredAt,
           messageCount: { increment: 1 },
         },
         where: { id: conversation.id },
@@ -285,7 +307,7 @@ const upsertConversation = async (
 
   return tx.emailConversation.create({
     data: {
-      lastMessageAt: parsed.date ?? new Date(receipt.receivedAt),
+      lastMessageAt: resolveOccurredAt(parsed.date, receipt.receivedAt),
       mailboxId: mailbox.id,
       messageCount: 0,
       organizationId: mailbox.organizationId,

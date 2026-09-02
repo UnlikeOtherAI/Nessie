@@ -4,7 +4,10 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { NativePhoneHeader, type NativePhoneHeaderProps } from './NativePhoneHeader'
 import { withOpacity } from '../lib/ipad-native-chrome'
-import { shouldDismissNativeCreationMenu } from '../lib/native-creation-menu'
+import {
+  NATIVE_CREATION_OPTIONS,
+  shouldDismissNativeCreationMenu,
+} from '../lib/native-creation-menu'
 import {
   getNativePhoneBottomChromeClearance,
   getNativePhoneComposeBottom,
@@ -224,42 +227,28 @@ export const NativePhoneConversationMenuChrome = ({
           ]}
         >
           <Animated.View style={[styles.createOptions, optionsAnimation]}>
-            <Pressable
-              accessibilityLabel="Create project"
-              accessibilityRole="button"
-              onPress={() => selectCreationAction('project')}
-              style={({ pressed }) => [
-                styles.createRow,
-                pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
-              ]}
-            >
-              <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
-                <MaterialIcons color={creationAccentColor} name="folder" size={18} />
-              </View>
-              <View style={styles.createCopy}>
-                <Text style={[styles.createTitle, { color: sheetText }]}>Project</Text>
-                <Text style={[styles.createDescription, { color: sheetMutedText }]}>
-                  Organise work in a shared folder
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Create channel"
-              accessibilityRole="button"
-              onPress={() => selectCreationAction('channel')}
-              style={({ pressed }) => [
-                styles.createRow,
-                pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
-              ]}
-            >
-              <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
-                <MaterialIcons color={creationAccentColor} name="tag" size={18} />
-              </View>
-              <View style={styles.createCopy}>
-                <Text style={[styles.createTitle, { color: sheetText }]}>Channel</Text>
-                <Text style={[styles.createDescription, { color: sheetMutedText }]}>Start a team conversation</Text>
-              </View>
-            </Pressable>
+            {NATIVE_CREATION_OPTIONS.map((option) => (
+              <Pressable
+                accessibilityLabel={option.accessibilityLabel}
+                accessibilityRole="button"
+                key={option.action}
+                onPress={() => selectCreationAction(option.action)}
+                style={({ pressed }) => [
+                  styles.createRow,
+                  pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
+                ]}
+              >
+                <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
+                  <MaterialIcons color={creationAccentColor} name={option.icon} size={18} />
+                </View>
+                <View style={styles.createCopy}>
+                  <Text style={[styles.createTitle, { color: sheetText }]}>{option.title}</Text>
+                  <Text style={[styles.createDescription, { color: sheetMutedText }]}>
+                    {option.description}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
           </Animated.View>
           <View style={styles.messageActionSlot} />
         </Animated.View>

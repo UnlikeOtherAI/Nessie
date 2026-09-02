@@ -167,7 +167,12 @@ afterwards. Spec:
   matching). A resolved card also renders a state note beside its message
   content in every later window (`message-cards.ts`, joined by
   `withMessageNotes` exactly where the attachment inventory line goes), so
-  nothing ever rewrites a message.
+  nothing ever rewrites a message. Nor may a person: `updateMessage` refuses a
+  message carrying `agentCardResponse` (`409
+  MESSAGE_IMMUTABLE_CARD_RESPONSE`) and the admin hides the pencil, both
+  through the one `isAgentCardResponseMessage` predicate — a "Deny" edited into
+  an "Allow" would lie beside the card that is the authority. Deleting stays
+  allowed; a tombstone changes nothing on the card.
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
@@ -362,81 +367,47 @@ width".
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
 - Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
-- Agentic loop — run budgets (2026-08-05 redesign,
-  `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md`):
-  `Agent.effort` maps **only** to provider `reasoning_effort`; it no longer
-  implies spend caps. Per-dimension budget = `Agent.runLimits` (optional
-  explicit caps, Agent Designer "Run limits") `??` the deployment backstop
-  (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
-  defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a user
-  budget; resolution in `worker/src/run/run-budget.ts`). At 80% of any cap an
-  interactive, non-handoff run is **wound down first**: a one-time injected
-  instruction tells the model to finish and hand over with what it has inside
-  the remaining slice (new delegate fan-out refused structurally); a delivered
-  handover completes with the model's words as the notice plus a quiet
-  `wound_down` checkpoint (spec §3a). Only when the model overruns that does
-  the loop stop at ~90% with reserved headroom, write a durable `RunCheckpoint`
-  (work-state note + verbatim sources, `run.checkpointed` `TaskEvent`), and
-  deliver partial text + a classified notice (`iteration_limit` /
-  `tool_call_limit` / `time_limit` / `token_limit` / `cost_limit` /
-  `repeated_tool_calls` / `org_budget_blocked`,
-  `worker/src/run/execute/budget-stop.ts`; member-visible copy carries **no
-  currency figures**). The token dimension meters **effective** tokens —
-  `input + output + round(weight × cacheRead)` per invocation, degrading to
-  `totalTokens` when a provider reports no split — because cache reads are
-  re-served context priced at a fraction of fresh input; metering them flat
-  killed a run at a claimed 504,738 tokens whose true spend was ~37% of that.
-  The weight is a price ratio resolved once per run from the org's
-  `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
-  [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (default 0.25); resolution is
-  best-effort and never fails a run. A **pre-flight gate** also refuses to
-  dispatch a call whose estimated context would carry the run past the full
-  (100%) token limit, so a run can no longer overshoot by a whole context.
-  `run.budget_exhausted` reports the effective `tokensUsed` plus
-  `rawTokensUsed` + `cacheReadTokens`. The org `Budget` verdict is re-checked mid-run between
-  iterations (≥30 s apart, same human-interactive exemption as the pre-run
-  gate). Any follow-up run in the same thread/reply-thread auto-loads and
-  claims the newest unconsumed checkpoint (set-once conditional update) and
-  injects it as explicitly untrusted working notes — so a plain "keep going"
-  reply resumes instead of re-doing the work; the stop notice's
-  `metadata.runStop = { runId, stopReason, checkpointId?, continuable }`
-  additionally drives a one-tap admin Continue. Non-interactive runs
-  (triggers/schedules/workflows; `payload.interactive !== true`) never ask:
-  the worker auto-continues up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2)
-  generations (`run.continued` `TaskEvent`, `Run.continuationOfRunId`
-  lineage), yielding to the per-(agent, thread) run slot when busy. Context is
-  managed per-model (`worker/src/run/context-window.ts`, conservative 100k
-  default): at ~80% of the window the elder transcript folds into a rolling
-  work-state note via real compaction (`worker/src/run/context-compaction.ts`,
-  verbatim-URL sources, closed tool groups only, cooldown + bounded attempts,
-  invocations counted in run totals); silent trimming is emergency-fallback
-  only. `delegate` sub-agents run a fixed small budget, are capped per run by
-  `NESSIE_MAX_DELEGATES_PER_RUN` (default 16), and — like compaction — use
-  `NESSIE_UTILITY_MODEL` when it resolves through the run's own org provider
-  (else the run's model). A structural research-routing prompt block (from
-  toolset facts only, never message content) steers granted agents to offer
-  DeepWater for deep research and ungranted agents to research via
-  `web_search` + delegate digests; DeepWater launch turns get no routing block
-  and no checkpoint injection. All tool results (builtin, MCP, `delegate`) are
-  truncated **middle-out** at the single loop chokepoint before entering
-  context (head ~70% / tail ~30%, joined by
-  `\n\n[... truncated N chars ...]\n\n`, idempotent so a per-tool cap applied
-  earlier passes through unchanged). Per-tool caps keep discovery tools within
-  one order of magnitude of each other: 4,000 chars for `web_search` /
-  `web_fetch` / `document_read`, 12,000 for raw `http_fetch` bodies, 32,000 as
-  the chokepoint ceiling (`worker/src/run/tool-util.ts`). MCP tool descriptors
-  are name-sorted and their exposed names allocated in a fixed order, so the
-  model's tool array is byte-identical across iterations and the provider's
-  prompt-cache prefix survives. Allowed builtin sets above
-  `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a fixed hot set inline,
-  expose curated stubs for the rest, and return exact schemas through the
-  non-mutating `tool_spec` meta tool; smaller sets remain fully inline. Every run
-  also records a wall-clock-only stage-latency breakdown at its terminal state
-  (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
-  runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
-  toolCount }`, no cost data (`worker/src/run/execute/run-timing.ts`) — so a
-  slow run is diagnosable; owners read recent summaries at
-  `GET /api/ledger/runs/timing`.
+- Agentic loop — run budgets (2026-08-05 redesign). The model and the failures
+  behind each rule are the spec's:
+  [docs/plans/2026-08-05-run-budgets-context-and-research-routing.md](docs/plans/2026-08-05-run-budgets-context-and-research-routing.md)
+  — effective-token metering and the cache-read weight (§2a), the 80%
+  wind-down and the ~90% reserved-headroom stop with its `RunCheckpoint`
+  (§3/§3a), mid-run org-`Budget` recheck (§4), checkpoint continuation and the
+  admin Continue (§5/§6), TaskEvents (§7), per-model context window and real
+  compaction (§8), research routing (§9). Facts not restated there:
+  - `Agent.effort` maps **only** to provider `reasoning_effort`; it never
+    implies a spend cap. Per-dimension budget = `Agent.runLimits` (Agent
+    Designer "Run limits") `??` the deployment backstop
+    (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
+    defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a
+    user budget; `worker/src/run/run-budget.ts`).
+  - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
+    `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
+    (`budget-stop.ts`); member-visible copy carries **no currency figures**.
+  - The cache-read weight resolves once per run from the org
+    `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
+    [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).
+  - Non-interactive runs (`payload.interactive !== true`) never ask and
+    auto-continue up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2), yielding to
+    the per-(agent, thread) slot when busy. `delegate` sub-agents take a fixed
+    small budget capped by `NESSIE_MAX_DELEGATES_PER_RUN` (16) and — like
+    compaction — use `NESSIE_UTILITY_MODEL` when it resolves through the run's
+    own org provider.
+  - Tool results (builtin, MCP, `delegate`) are truncated **middle-out** at the
+    single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
+    4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
+    `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+  - MCP tool descriptors are name-sorted with exposed names allocated in a
+    fixed order, so the tool array is byte-identical across iterations and the
+    prompt-cache prefix survives. Builtin sets above
+    `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a hot set inline and
+    serve the rest through the non-mutating `tool_spec` meta tool
+    ([docs/context-window-optimization-audit.md](docs/context-window-optimization-audit.md)).
+  - Every run records a wall-clock-only stage breakdown at its terminal state
+    (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
+    runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
+    toolCount }`, no cost data (`run-timing.ts`), written after the status flip
+    so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
 - **Budget threshold alerts + failed-run attribution** (local ops only, never
   UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
   (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an
@@ -445,29 +416,25 @@ width".
   ('threshold') or first blocks a run ('blocked'). Alerting runs AFTER the verdict
   is applied and swallows its own errors, so blocking behaviour is unchanged.
   Durable crash-safe dedupe = a `budget_alerts` marker row unique on
-  `(scopeType, scopeId, periodStart, kind)`; each alert also emits a
-  `budget.threshold_alert` `TaskEvent` (queryable) and enqueues
-  `budget.alert-dispatch`, which notifies org owners + the scope's managers
-  through the shared push pipeline (`worker/src/control/push-delivery-core.ts`,
-  reused by message push + budget alerts), respecting push preferences,
-  deep-linking `/ops/usage`. Every terminal run persists its inference spend:
-  completion and the budget-stop no-text path already did; the generic
-  failure/crash path now does too via a caller-owned invocation accumulator
+  `(scopeType, scopeId, periodStart, kind)`; each alert emits a
+  `budget.threshold_alert` `TaskEvent` and enqueues `budget.alert-dispatch`,
+  notifying org owners + the scope's managers through the shared push pipeline
+  (`worker/src/control/push-delivery-core.ts`), respecting preferences and
+  deep-linking `/ops/usage`. Every terminal run persists its inference spend —
+  the generic failure/crash path too, via a caller-owned invocation accumulator
   threaded through `runAgenticLoop`, so a failed run's tokens stay attributable
-  (buzz #1659, idempotent on `inferenceInvocationId`). Owners read spend split by
-  run outcome (completed/failed/cancelled/…) at `GET /api/ledger/tokens/by-outcome`.
+  (idempotent on `inferenceInvocationId`). Owners read spend by run outcome at
+  `GET /api/ledger/tokens/by-outcome`.
 - Active run lifecycle controls (`api/src/routes/runs.ts` +
-  `api/src/services/runs.ts`; buzz #2453/#1593, epic #141): org-scoped
-  `GET /api/runs/active` lists live runs (+ recently-ended restartable runs);
-  `POST /api/runs/:id/cancel` cancels — a queued/approval-suspended run flips
-  straight to `cancelled` (never executes; the worker's terminal guard skips
-  it), a running run gets a cooperative `cancelRequestedAt` flag the agentic
-  loop polls between iterations and tool-call batches, exiting via the
-  classified-stop machinery (`worker/src/run/execute/cancel-stop.ts`, mirroring
-  budget-stop: partial text delivered + a "cancelled" notice, run `cancelled`,
-  `run.cancelled` `TaskEvent`). `POST /api/runs/:id/restart` re-runs a terminal
-  `failed`/`cancelled` run, enqueuing a fresh run that replays the same trigger
-  message and thread and links back via `Run.restartOfRunId`.
+  `api/src/services/runs.ts`): org-scoped `GET /api/runs/active` lists live runs
+  (+ recently-ended restartable ones); `POST /api/runs/:id/cancel` cancels — a
+  queued/approval-suspended run flips straight to `cancelled` (never executes),
+  a running run gets a cooperative `cancelRequestedAt` flag the loop polls
+  between iterations and tool batches, exiting via the classified-stop
+  machinery (`worker/src/run/execute/cancel-stop.ts`, mirroring budget-stop:
+  partial text + a "cancelled" notice + `run.cancelled` `TaskEvent`).
+  `POST /api/runs/:id/restart` re-runs a terminal `failed`/`cancelled` run,
+  replaying the same trigger message and linking via `Run.restartOfRunId`.
   `POST /api/runs/:id/continue` (`api/src/services/run-continuation.ts`)
   resumes a terminal run from its unconsumed `RunCheckpoint`: same channel
   access that could have triggered the run, one transaction claiming the
@@ -681,10 +648,10 @@ The live API server (`api/`) exposes a **REST MCP connector-management surface**
 
 The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation — the sharing, scope, credential-ref, locking, and context-safe-toolset rules are in `AGENTS.md` (the MCP connector management bullet). On top of it:
 
-- **Library + discovery**: `GET /api/mcp/library` (curated well-known remote servers + live search of the official MCP registry, HTTP/SSE remotes only), `POST /api/mcp/discover` (probe a pasted link for an MCP endpoint + auth requirements), `POST /api/mcp/library/import`. The personal assistant uses these for guided setup; people add a custom app from `/apps`.
+- **Library + discovery**: `GET /api/mcp/library` (curated remotes + live registry search, HTTP/SSE only), `POST /api/mcp/discover`, `POST /api/mcp/library/import`; people add a custom app from `/apps`.
 - **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_authorize`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
 - **Dynamic OAuth** (MCP authorization spec): `{ method: "oauth2" }` with no static client triggers metadata discovery (RFC 9728/8414), Dynamic Client Registration (RFC 7591, one public client per org × issuer in `mcp_oauth_clients`), authorization-code + PKCE S256 + RFC 8707 `resource`, pg-backed one-shot state (`mcp_oauth_states`), per-user token placement, and automatic refresh at probe/dispatch. Notion/Linear/Sentry/Atlassian/Asana are curated OAuth entries — users just sign in. Set `NESSIE_API_PUBLIC_URL` in prod so the worker can mint callback URLs.
-- **Scoped sharing**: scope rules per `AGENTS.md`; members also see shared installs they can reach, and shared-scope installs keep the `pending_review` tool gate (user-scope installs auto-activate). See [docs/external-tool-integration.md](docs/external-tool-integration.md) §2.
+- **Scoped sharing**: scope rules per `AGENTS.md`; shared-scope installs keep the `pending_review` tool gate (user-scope auto-activate). See [docs/external-tool-integration.md](docs/external-tool-integration.md) §2.
 - **Admin locking**: `/lock`, `/unlock` on a catalog entry; 🔒 pill + disabled install in the UI, clear refusal from the PA. Install-time gate only — existing instances keep working.
 - **External-agent products** (e.g. DeepSignal): a first-party product surfaced as a per-user DM channel whose bound agent has `executionMode = external_mcp` — turns proxy straight to the product's MCP endpoint with **no Nessie inference**, reply + cards rendered verbatim. The identity/key/tenancy invariants (the `DEEPSIGNAL_MCP_APP_KEY` `dsk_` bearer pinned to the canonical catalog and `https://api.deepsignal.live`, delegation + signed `X-Nessie-Context` on every call, startup key-distinctness checks, team-mapping rechecks, managed-instance protections) are in `AGENTS.md`. Surface facts: the global catalog is integration-owned, absent from the generic library, and immutable through generic catalog controls; the private DM key is `extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`, so switching teams creates a distinct thread and legacy team-less channels fail closed. History hydration: `POST /api/channels/:id/external-sync` (idempotent on `metadata.external.turnId`). Insight webhook: `POST /api/integrations/deepsignal/events` (per-org HMAC secret via `PUT /api/integrations/products/:slug/webhook-secret`, stored encrypted) — **delivery-shaped, not one-card-per-event**: insights coalesce into a single rolling "You have N new signals" digest message per user, updated in place within `NESSIE_SIGNAL_DIGEST_WINDOW_MS` (default ~1h; per-insight ids retained for idempotency + counts-by-kind), and fresh proactive digests are budgeted per user per rolling window (`NESSIE_SIGNAL_BUDGET_MAX` default 6 / `NESSIE_SIGNAL_BUDGET_WINDOW_MS` default 24h — sane heuristics, not law); over budget an insight is still recorded on the digest but the channel interruption (realtime `message.new`) is suppressed. The **Signals** page (triaged Overview/Inbox): `GET /api/integrations/products/deepsignal/signals?include=active|all` + `POST …/signals/:insightId/act` (done|snooze|mute|reopen) over the user's user-scoped instance via the shared `resolveUserScopedProductTransport`/`callInstanceTool` seam, fail-closed to `{ status: 'needs_setup' }` when not linked. See [docs/plans/2026-07-09-deepsignal-integration.md](docs/plans/2026-07-09-deepsignal-integration.md), [docs/plans/2026-07-10-deep-integration-surface-registry.md](docs/plans/2026-07-10-deep-integration-surface-registry.md) + [docs/external-tool-integration.md](docs/external-tool-integration.md) §2.
 
@@ -694,10 +661,10 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   `research_status` / `research_report` / `research_list` / `research_cancel`
   as active `mcp_research_*` tools, **always routed through Ledger**:
   `LEDGER_DEEPWATER_MCP_URL` (hosted
-  `https://ledger.unlikeotherai.com/v1/mcp/deepwater`) with
-  `LEDGER_PROXY_TOKEN`, Nessie's one deployment-wide, product-bound app API
-  key — never a per-user credential, never a webhook signing secret. Enable
-  fails loudly (`LEDGER_DEEPWATER_MCP_URL_UNSET`,
+  `https://ledger.unlikeotherai.com/v1/mcp/deepwater`) with `LEDGER_PROXY_TOKEN`
+  — Nessie's one deployment-wide, product-bound app API key, never a per-user
+  credential or webhook secret. Enable fails loudly
+  (`LEDGER_DEEPWATER_MCP_URL_UNSET`,
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE`) rather than persisting a dead
   toggle. Everything else — default OFF with explicit per-agent
   `requiresExplicitGrant` grants, the exact six-entry launcher bundle and
@@ -814,89 +781,144 @@ acting member and call the same `@nessie/workspace-admin` functions as the
 routes; `call_start` resolves membership from its target channel's organisation
 and stamps `Call.createdViaAgentId`.
 
+## Global agents — one blueprint, one row per organisation
+
+App-provided agents (the **Agent Designer**, `agent-designer`, is the first) are
+blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
+one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
+through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
+`systemChannelType='system_agent'`, one member and one binding, both database
+facts). Invariants — the CHECKs, the ensure/policy-merge shape, the binding,
+trigger and run-placement refusals, the un-gated list arm, the delegation
+predicate with its one-arm identity-tool gate, and the handoff bounds:
+`AGENTS.md` → "A global agent is a blueprint in code". The mechanics beyond
+those — the Designer's toolset and its shared reads, the generated capability
+catalogue, `agent_handoff`'s delivery, and the sidebar's second face — are in
+[docs/global-agents.md](docs/global-agents.md). Spec:
+[docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
+
+Facts worth having on the map:
+
+- Bootstrap runs beside the PA's at login and user provisioning but
+  **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
+  lock anyone out. The model is blueprint pin → `NESSIE_DESIGNER_MODEL` →
+  organisation default on **both** faces (`resolveGlobalAgentModel`).
+- **Designing an agent is the Designer's alone.** `agent_create`, `agent_read`,
+  `agent_update`, `agent_tool_catalog` and `agent_avatar_update` carry
+  `identityDelegatedOnly`, which removes the Personal Assistant's own arm from
+  the `personalAssistantOnly` gate: the PA keeps the operational verbs on
+  existing agents and hands the conversation over with `agent_handoff`. The
+  tools are omitted from its schema array, never offered and denied.
+- **Two faces, one brain.** The Agent Designer page's sidebar keeps its own
+  transport — in-process SSE driving the open form, which the DM cannot do —
+  but renders the blueprint's persona and the same generated catalogue, reads
+  this organisation's tools server-side, searches through Ledger, and shows the
+  Designer's own name and portrait.
+- **A Nessie-managed agent has a read-only configuration view.**
+  `GET /api/agents/:agentId/config` (`readAgentConfigView`) answers name, role,
+  prompt, model, effort, limits and *resolved* tools under exactly the list
+  entitlement, and the admin renders `SystemAgentConfigPanel` in place of the
+  tabs. `isAgentAccessibleToActor` is deliberately NOT widened — status,
+  activity, messages and children stay closed, because a global agent's
+  activity spans every member's private DM.
+
+**Direct messages lists conversations, not a directory.** Every DM channel there
+is provisioned before anybody speaks — a person's DM, a private agent's home, a
+global agent's home the moment the account exists — so listing provisioned
+channels made the section a roster of the workspace, with the Agent Designer
+pinned in it from day one. A row appears once its channel carries a message,
+plus the channel the viewer is standing in, so opening a fresh conversation
+never pulls its own row out from under them
+(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
+it resolves through the full people directory, because starring somebody *is*
+adding them. The doorways stay named: **Create → Message** (and the section's
+`+`) reaches a person, **Create → Agent** reaches `/agents/designer` — the last
+row of the rail's create menu, and on the native phone sheet the last row
+*above* the Message button, which is the morphing compose button the sheet grows
+out of (`mobile/src/lib/native-creation-menu.ts`). Both call the one
+`navigateToAgentDesigner` through the `__nessieCreateFromPhoneMenu` bridge.
 ## Personal assistant — workspace provisioning
 
-Five PA-only builtins (`personalAssistantOnly: true`,
-`worker/src/run/pa-tools/provisioning.ts`), each mirroring one REST route's
-authorization — no weaker, no stronger — and calling the same service
-function the route calls. The pattern, the shared `@nessie/workspace-admin`
-package, visible-refusal for owner-gated tools, and the
-tool-ships-with-its-resolving-read rule are stated in `AGENTS.md` (the
-PA-tool bullet). Per-tool facts:
+Four `personalAssistantOnly` builtins reach the PA
+(`worker/src/run/pa-tools/provisioning.ts`), each mirroring one REST route's
+authorization — no weaker, no stronger — and calling the same service function
+the route calls. The pattern, visible-refusal for owner-gated tools, the
+tool-ships-with-its-resolving-read rule, and the one arm that also opens them to
+a global agent on its own home DM are in `AGENTS.md`. Per-tool facts:
 
-- `agent_list` → `listAgentsForUser` (`safe: true`, read-only). Any active
-  member, matching `GET /api/agents`, and scoped by the same entitlement the
-  Agents page uses: an owner reaches every workspace-visible non-system agent
-  including unbound ones plus private agents they own; everybody else reaches
-  a workspace-visible agent through a channel they can see it working in —
+- `agent_list` → `listAgentsForUser` (`safe: true`). Any active member, matching
+  `GET /api/agents` and scoped by the same entitlement the Agents page uses —
   never narrowed by the session's project/team. It exists because
-  `agent_bind_channel` and `agent_trigger_create` take an `agentId` and an
-  owner picks that from a list when clicking; without it the assistant could
-  only act on an agent created in the same conversation. Output is the acting
-  shape only — name, role, `agentId`, and the channels it is bound to — with an
-  optional `query` narrowing the already-authorized list by name or role.
-- `channel_create` → `createChannelForUser`. Any active member, matching
-  `POST /api/channels` (only `requireActorContext`). The team defaults from the
-  run context: explicit `teamId`, else the session tenant/action team, else the
-  team of the channel the conversation is in — never an invented default.
-- `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`. Any
-  active member, matching `POST /api/agents` (**not** owner-gated). Its schema
-  accepts optional `visibility` (`workspace` by default, or owner-only
-  `private`) and deliberately exposes no `agentKind`/`systemManaged`/
-  `surfacePolicy`/`delegationMode`/`parentAgentId`; private creation stamps the
-  live acting member as owner and atomically provisions its owner-only home DM,
-  returning that `homeChannelId`. Asking for somebody else's private agent is
-  refused in words. `assertGenericAgentToolPolicyInput` still refuses
-  every `requiresExplicitGrant` key and DeepWater provenance marker, so chat
-  cannot grant itself research.
+  `agent_bind_channel` and `agent_trigger_create` take an `agentId` an owner
+  would pick from a list. Output is name, role, `agentId` and bound channels;
+  the read stamps the sink (private agents, and non-public bound channels).
+- `channel_create` → `createChannelForUser`. Any active member, matching `POST
+  /api/channels`. The team defaults from the run context: explicit `teamId`,
+  else the session tenant/action team, else the team of the channel the
+  conversation is in — never an invented default.
+- `agent_create` is in this file but **not reachable from the PA** — it carries
+  `identityDelegatedOnly`, so only the Agent Designer calls it (above), and the
+  PA hands the conversation over with `agent_handoff`. It maps to
+  `assertLedgerAgentModelSelection` + `createAgentRecord`, is member-level like
+  `POST /api/agents`, accepts optional `visibility`, and exposes no
+  `agentKind`/`systemManaged`/`surfacePolicy`/`delegationMode`/`parentAgentId`;
+  private creation stamps the acting member as owner and atomically provisions
+  the owner-only home DM. `assertGenericAgentToolPolicyInput` refuses every
+  `requiresExplicitGrant` key and DeepWater marker, so chat cannot grant itself
+  research.
 - `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
   `POST /api/agents/:agentId/bindings`: channel membership
-  (`getChannelIfMember`), the `personal_assistant` system-channel refusal,
-  owner, and `checkPolicy(…, 'agent', 'bind', …)`.
+  (`getChannelIfMember`), the system-channel refusal (any non-null
+  `systemChannelType`), owner, and `checkPolicy(…, 'agent', 'bind', …)`.
 - `agent_trigger_create` → `createAgentTrigger`, parsing the route's own
   `CreateAgentTriggerBodySchema`; scheduled/interval triggers build
-  `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`,
-  and a signing deployment refuses a schedule without it — the same refusal
-  `api/src/routes/triggers.ts` makes (it would fail at every sweep forever).
+  `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`, and
+  a signing deployment refuses a schedule without it, as the route does.
 
 Owner-gated tools stay **visible** to non-owners and refuse in words (the
-`connector_*` precedent): the assistant says who can do it, instead of claiming
-it has no such capability. Role is re-read from the live `OrganizationMember`
-row at call time (`resolveActingMember`), because a run's `actorContext` is a
-snapshot from enqueue time while the API re-resolves the role per request; a
-deactivated membership is refused. Deliberately **not** included: agent update,
-agent delete, policy-target mutation, or anything touching the DeepWater bundle.
-`schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
-is the owner action on *another* agent.
+`connector_*` precedent). Role is re-read from the live `OrganizationMember` row
+at call time (`resolveActingMember`), because a run's `actorContext` is an
+enqueue-time snapshot while the API re-resolves per request; a deactivated
+membership is refused. Deliberately **not** included: agent creation or
+redesign (the Designer's, above), agent delete, policy-target mutation, or
+anything touching the DeepWater bundle. `schedule_task` remains the un-gated "schedule *me*"
+tool; `agent_trigger_create` is the owner action on *another* agent.
+
+Who may **edit** an agent is its ownership state, not the organisation owner
+role: private ⇒ the live owner alone, person-owned ⇒ the live owner plus org
+owners, team-owned (`ownerUserId` null) ⇒ anyone entitled plus org owners,
+`systemManaged` ⇒ nobody. Ownership transitions and `todosEnabled` keep their
+own narrower gates. Full rule: `AGENTS.md` → "Ownership decides who may edit";
+predicate: `@nessie/workspace-admin` `agent-edit-authority.ts`, mirrored for
+affordances by `admin/src/components/features/agents/agent-edit-authority.ts`.
 
 Private-agent transfer is deliberately unsupported: the owner-only home DM
 encodes the steward, so an `ownerUserId` change is refused with
 `AGENT_PRIVATE_TRANSFER_UNSUPPORTED` until the agent is published. When a
 private owner is deactivated, the owner-only Members surface receives only the
-aggregate paused-agent count from `GET /api/agents/paused-private-count`; it
-never receives private agent rows or names.
+aggregate count from `GET /api/agents/paused-private-count` — never rows or
+names.
 
 Private creation is one transaction: the agent, its
 `agent:{org}:{owner}:{agent}` private DM, the sole owner membership, default
 thread, and direct home binding either all commit or none do. Database
 constraints independently refuse a second home member, a malformed `agent:` DM,
-or a private-agent binding to any other channel. The worker re-checks the
-loaded destination before inference and permits only that home DM or the
-agent's own trigger thread. Owner deactivation disables only private-agent
-triggers in the membership transaction, records one aggregate audit transition
-with no widened recipient, and does not auto-resume on reactivation.
+or a private-agent binding to any other channel. The worker re-checks the loaded
+destination before inference and permits only that home DM or the agent's own
+trigger thread. Owner deactivation disables only private-agent triggers in the
+membership transaction, records one aggregate audit transition with no widened
+recipient, and does not auto-resume on reactivation.
 
 **Reuse, never fork.** `api/src/services/*` cannot be imported by the worker, so
 the shared functions live in **`@nessie/workspace-admin`** (mirroring how
 `@nessie/mcp-manage` is shared) and the api services re-export them, leaving the
 routes untouched: channel create/records/slugs, agent create/list/record/
 bindings and the tool-policy protected-key gate, trigger
-create/core/config-identity, the
-Ledger agent-model catalogue, `checkPolicy`, and the `getChannelIfMember` /
-`isAgentAccessibleToActor` predicates. The records those functions return
-(`ChannelRecord`, `AgentRecord`, `AgentTriggerRecord`, `CreateAgentTriggerBody`)
-moved to `@nessie/schemas` for the same reason; `api/src/contracts` re-exports
-them.
+create/core/config-identity, the Ledger agent-model catalogue, `checkPolicy`,
+and the `getChannelIfMember` / `isAgentAccessibleToActor` predicates. The
+records those functions return (`ChannelRecord`, `AgentRecord`,
+`AgentTriggerRecord`, `CreateAgentTriggerBody`) moved to `@nessie/schemas` for
+the same reason; `api/src/contracts` re-exports them.
 
 ## Agent email — an agent's own mailbox
 
@@ -909,9 +931,10 @@ store**, not `Message` rows; each mailbox owns one backing channel
 (`ChannelSystemType.agent_email`) with one `Thread` per `EmailConversation` —
 the *operations room* for run reports and approval gates, while
 `/agents/:agentId/mailbox` is the mail itself. Invariants: `AGENTS.md` → "An
-agent's mailbox is its own store"; plan and build detail (the `email:{mailboxId}`
-disclosure scope and its non-deadlock property, the `forceApproval` send gate,
-the rendered-draft approval route, attachment linking):
+agent's mailbox is its own store"; plan and build detail (the
+`email:{mailboxId}` disclosure scope and its non-deadlock property, the
+`forceApproval` send gate, the rendered-draft approval route, attachment
+linking):
 [docs/plans/2026-09-02-agent-email.md](docs/plans/2026-09-02-agent-email.md);
 operator guide: [docs/agent-email.md](docs/agent-email.md). Model A of that plan
 — an agent operating an *existing* mailbox over Gmail or SMTP/IMAP, with no

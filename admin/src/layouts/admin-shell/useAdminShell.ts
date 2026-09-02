@@ -43,6 +43,14 @@ export const useAdminShell = () => {
   const projects = projectsQuery.data ?? [];
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
+  // The read-only system tier, shared (same query key) with the identity
+  // directory. A global agent's home DM resolves through it; nothing else
+  // in the shell widens on it.
+  const { data: allScopeAgents = [] } = useAgents({ scope: 'all' });
+  const systemAgents = useMemo(
+    () => allScopeAgents.filter((agent) => agent.systemManaged === true),
+    [allScopeAgents],
+  );
   const { data: favorites = [] } = useFavorites();
   const setFavorite = useSetFavorite();
   const isAdmin = me?.user.roleIds.includes('admin') ?? false;
@@ -299,11 +307,19 @@ export const useAdminShell = () => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+  const {
+    peopleDirectory,
+    sidebarAgentDms,
+    sidebarGroupDms,
+    sidebarPeople,
+    sidebarProductAssistants,
+  } = useSidebarDms({
     agents,
     channels,
     chatAssistants: productSurfaces.chatAssistants,
+    currentChannelId,
     me,
+    systemAgents,
     users,
   });
 
@@ -311,7 +327,9 @@ export const useAdminShell = () => {
     agentById,
     channelById,
     projectById,
-    sidebarPeople,
+    // Starred resolution reads the whole directory: a person can be starred
+    // before any message exists, and Direct messages lists only conversations.
+    sidebarPeople: peopleDirectory,
     starred,
     starredProjectIds,
   });

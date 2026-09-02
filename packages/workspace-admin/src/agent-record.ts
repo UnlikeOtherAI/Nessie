@@ -154,6 +154,7 @@ export const mapAgentRecord = (agent: {
   effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
+  systemSlug?: string | null
   visibility: 'private' | 'workspace'
   homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
@@ -197,6 +198,7 @@ export const mapAgentRecord = (agent: {
     owner,
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
+    systemSlug: agent.systemSlug ?? null,
     visibility: agent.visibility,
     ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,

@@ -308,6 +308,10 @@ enum ChannelType {
 enum ChannelSystemType {
   personal_assistant
   external_agent
+  // The per-user private home DM of a global agent (the Agent Designer is the
+  // first). One member, one binding, key `gagent:{slug}:{orgId}:{userId}` —
+  // both enforced in the database. See docs/plans/2026-09-02-agent-designer-global-agent.md.
+  system_agent
   // Backing "operations room" for a hosted agent mailbox: one channel per
   // AgentMailbox, one Thread per EmailConversation. The mail itself lives in
   // email_messages — this channel carries run reports, approval gates, and the
@@ -1017,6 +1021,8 @@ model User {
 
   resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
 
+  agentHandoffRequests AgentHandoffRequest[]
+
   @@map("users")
 }
 
@@ -1171,6 +1177,7 @@ model Organization {
   productWebhookSecrets      ProductWebhookSecret[]
   secrets                    Secret[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
+  agentHandoffRequests       AgentHandoffRequest[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1235,12 +1242,14 @@ model Organization {
   emailConversations               EmailConversation[]
   emailMessages                    EmailMessage[]
 
-  agentCards AgentCard[]
+  agentCards              AgentCard[]
   gmailDraftActions       GmailDraftAction[]
   sendAuthorizationGrants SendAuthorizationGrant[]
 
   cloudBrowserConnections CloudBrowserConnection[]
   cloudBrowserSessions    CloudBrowserSession[]
+  agentBrowsers           AgentBrowser[]
+  agentBrowserLogins      AgentBrowserLogin[]
 
   voiceInstallations VoiceInstallation[]
   voiceSessions      VoiceSession[]
@@ -1387,6 +1396,7 @@ model OrganizationMember {
   modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
+  agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1559,6 +1569,7 @@ model Channel {
   pushSurfacePresences   UserPushSurfacePresence[]
   demonstrations         Demonstration[]
   agentMailbox           AgentMailbox?
+  agentHandoffRequests   AgentHandoffRequest[]
 
   agentCards AgentCard[]
 
@@ -1606,6 +1617,7 @@ model Thread {
   demonstrations             Demonstration[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
   emailConversation          EmailConversation?
+  agentHandoffRequests       AgentHandoffRequest[]
 
   agentCards AgentCard[]
 
@@ -1676,42 +1688,42 @@ enum UserAlertKind {
 // same alerts substrate. A muted channel still gets the row — mute suppresses
 // the push, never the durable alert.
 model UserAlert {
-  id              String         @id @default(uuid()) @db.Uuid
-  organizationId  String         @map("organization_id") @db.Uuid
-  userId          String         @map("user_id") @db.Uuid
-  kind            UserAlertKind
-  messageId       String?        @map("message_id") @db.Uuid
-  threadId        String?        @map("thread_id") @db.Uuid
-  channelId       String?        @map("channel_id") @db.Uuid
-  projectId       String?        @map("project_id") @db.Uuid
-  taskId          String?        @map("task_id") @db.Uuid
-  knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
-  triggerId       String?        @map("trigger_id") @db.Uuid
-  callId          String?        @map("call_id") @db.Uuid
-  approvalRequestId String?      @map("approval_request_id") @db.Uuid
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @map("organization_id") @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  kind              UserAlertKind
+  messageId         String?          @map("message_id") @db.Uuid
+  threadId          String?          @map("thread_id") @db.Uuid
+  channelId         String?          @map("channel_id") @db.Uuid
+  projectId         String?          @map("project_id") @db.Uuid
+  taskId            String?          @map("task_id") @db.Uuid
+  knowledgePageId   String?          @map("knowledge_page_id") @db.Uuid
+  triggerId         String?          @map("trigger_id") @db.Uuid
+  callId            String?          @map("call_id") @db.Uuid
+  approvalRequestId String?          @map("approval_request_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
-  eventKey        String?        @map("event_key")
+  eventKey          String?          @map("event_key")
   // Ephemeral UOA invitation display/acceptance payload. Reconciled from each
   // verified directory read and deleted as soon as the invite disappears.
-  metadata        Json?          @db.JsonB
-  actorUserId     String?        @map("actor_user_id") @db.Uuid
-  actorAgentId    String?        @map("actor_agent_id") @db.Uuid
-  readAt          DateTime?      @map("read_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message         Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  thread          Thread?        @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  channel         Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
-  task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
-  knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
-  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
-  call            Call?          @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
-  actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  actorAgent      Agent?         @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+  metadata          Json?            @db.JsonB
+  actorUserId       String?          @map("actor_user_id") @db.Uuid
+  actorAgentId      String?          @map("actor_agent_id") @db.Uuid
+  readAt            DateTime?        @map("read_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message           Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  thread            Thread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  channel           Channel?         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project           Project?         @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
+  task              Task?            @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
+  knowledgePage     KnowledgePage?   @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  trigger           AgentTrigger?    @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
+  call              Call?            @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
+  actorUser         User?            @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent        Agent?           @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventKey])
   @@index([userId, readAt, createdAt])
@@ -1928,6 +1940,7 @@ model Message {
   appConnectionRequestCards   AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestCardMessage")
   agentCards                  AgentCard[]                    @relation("AgentCardMessage")
   agentCardResponses          AgentCard[]                    @relation("AgentCardResponseMessage")
+  handoffBriefs               AgentHandoffRequest[]          @relation("AgentHandoffBriefMessage")
   originAppConnectionRequests AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestOriginTriggerMessage")
   triggeredRuns               Run[]                          @relation("RunTriggerMessage")
   workflowRunOrigins          WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
@@ -2095,6 +2108,14 @@ model Agent {
   status                         AgentStatus                     @default(idle)
   agentKind                      AgentKind                       @default(shared) @map("agent_kind")
   systemManaged                  Boolean                         @default(false) @map("system_managed")
+  /// The global-agent blueprint this row instantiates ('agent-designer', ...).
+  /// One row per organisation per slug, and a database CHECK requires
+  /// `systemManaged` + a non-null `organizationId` alongside it, so a cross-org
+  /// or user-authored row carrying a slug cannot exist. This is the
+  /// discriminator `ensureGlobalAgent` keys on — never the display name, which
+  /// is what made the Librarian's bootstrap fragile — and the structural way
+  /// the worker knows which blueprint a run belongs to.
+  systemSlug                     String?                         @map("system_slug")
   surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
   delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
   visibility                     AgentVisibility                 @default(workspace) @map("visibility")
@@ -2172,6 +2193,8 @@ model Agent {
   demonstrations                 Demonstration[]                 @relation("AgentDemonstrations")
   demonstrationSteps             DemonstrationStep[]             @relation("AgentDemonstrationSteps")
   appConnectionRequests          AgentAppConnectionRequest[]
+  handoffsMade                   AgentHandoffRequest[]           @relation("AgentHandoffFromAgent")
+  handoffsReceived               AgentHandoffRequest[]           @relation("AgentHandoffTargetAgent")
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
   // SET NULL blanks every referencing column, which would wipe the agent's
@@ -2186,9 +2209,12 @@ model Agent {
   agentCards AgentCard[]
   mailbox    AgentMailbox?
 
-  cloudBrowserSessions CloudBrowserSession[]
+  cloudBrowserSessions    CloudBrowserSession[]
+  agentBrowsers           AgentBrowser[]
+  sendAuthorizationGrants SendAuthorizationGrant[]
 
   @@unique([organizationId, id])
+  @@unique([organizationId, systemSlug])
   @@index([organizationId])
   @@index([organizationId, projectId])
   @@index([avatarAttachmentId])
@@ -2198,7 +2224,6 @@ model Agent {
   // agent read, and the tree's level-3 query.
   @@index([organizationId, ownerUserId])
   @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
-  sendAuthorizationGrants SendAuthorizationGrant[]
   @@map("agents")
 }
 
@@ -2403,6 +2428,7 @@ model Run {
   demonstrationSteps                  DemonstrationStep[]
   originAppConnectionRequests         AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
   continuationForAppConnectionRequest AgentAppConnectionRequest?      @relation("AgentAppConnectionRequestContinuationRun")
+  originAgentHandoffRequests          AgentHandoffRequest[]
 
   postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
   waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
@@ -2470,6 +2496,11 @@ model AgentCard {
   /// `{ [fieldKey]: { kind, instanceId, placement } }` — the fact that a secret
   /// was stored and where it landed. Never a reference, never a value.
   secretOutcomes    Json?           @map("secret_outcomes")
+  /// `{ agentBrowserId, service, sessionId? }` for a browser sign-in handoff.
+  /// The press writes the `AgentBrowserLogin` row from this and releases the
+  /// human-only session, so a person who signs in and presses Done is
+  /// recorded even if the resumed run then fails.
+  browserLogin      Json?           @map("browser_login")
   resumedByRunId    String?         @unique @map("resumed_by_run_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")
@@ -2542,6 +2573,51 @@ model AgentAppConnectionRequest {
   @@index([organizationId, status, expiresAt], map: "app_conn_req_organization_status_expires_idx")
   @@index([requestedByUserId, returnedAt], map: "app_conn_req_requester_returned_idx")
   @@map("agent_app_connection_requests")
+}
+
+/// One live handoff of a conversation to a global agent, per person per target.
+///
+/// The row is the loop bound `agent_handoff` needs: a repeated ask, a queue
+/// retry, or a continuation run (new `runId`, same request) finds this row
+/// inside its cooldown and converges on the briefing already waiting in the
+/// person's DM instead of stacking a second one. Queue idempotency
+/// (`handoff:{originRunId}:{slug}`) sits underneath it as the crash guard.
+///
+/// The convergence lookup is serialized by a `pg_advisory_xact_lock` on
+/// `(requestedByUserId, targetSlug)` — the `AgentAppConnectionRequest`
+/// precedent — so no unique constraint is needed and history is retained.
+model AgentHandoffRequest {
+  id                   String    @id @default(uuid()) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  requestedByUserId    String    @map("requested_by_user_id") @db.Uuid
+  /// The global-agent blueprint slug. Half of the convergence key.
+  targetSlug           String    @map("target_slug")
+  targetAgentId        String    @map("target_agent_id") @db.Uuid
+  fromAgentId          String    @map("from_agent_id") @db.Uuid
+  originRunId          String    @map("origin_run_id") @db.Uuid
+  destinationChannelId String    @map("destination_channel_id") @db.Uuid
+  destinationThreadId  String    @map("destination_thread_id") @db.Uuid
+  /// The hidden server-authored `system` brief that started the target's run.
+  briefMessageId       String    @unique @map("brief_message_id") @db.Uuid
+  /// Repeat asks inside this window converge instead of briefing again.
+  cooldownUntil        DateTime  @map("cooldown_until")
+  /// After this the row is no longer the live handoff for the pair.
+  expiresAt            DateTime  @map("expires_at")
+  supersededAt         DateTime? @map("superseded_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUser    User         @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  targetAgent        Agent        @relation("AgentHandoffTargetAgent", fields: [targetAgentId], references: [id], onDelete: Cascade)
+  fromAgent          Agent        @relation("AgentHandoffFromAgent", fields: [fromAgentId], references: [id], onDelete: Cascade)
+  originRun          Run          @relation(fields: [originRunId], references: [id], onDelete: Cascade)
+  destinationChannel Channel      @relation(fields: [destinationChannelId], references: [id], onDelete: Cascade)
+  destinationThread  Thread       @relation(fields: [destinationThreadId], references: [id], onDelete: Cascade)
+  briefMessage       Message      @relation("AgentHandoffBriefMessage", fields: [briefMessageId], references: [id], onDelete: Cascade)
+
+  @@index([requestedByUserId, targetSlug, createdAt(sort: Desc)], map: "agent_handoff_requester_target_created_idx")
+  @@index([organizationId, expiresAt], map: "agent_handoff_organization_expires_idx")
+  @@map("agent_handoff_requests")
 }
 
 // Durable work-state saved when a run stops at a policy ceiling (explicit run
@@ -4123,51 +4199,51 @@ model PolicyBinding {
 }
 
 model ApprovalRequest {
-  id                   String         @id @default(uuid()) @db.Uuid
-  organizationId       String         @map("organization_id") @db.Uuid
-  projectId            String?        @map("project_id") @db.Uuid
-  teamId               String?        @map("team_id") @db.Uuid
-  channelId            String?        @map("channel_id") @db.Uuid
-  taskId               String?        @map("task_id") @db.Uuid
-  runId                String?        @map("run_id") @db.Uuid
-  agentId              String         @map("agent_id") @db.Uuid
-  requesterId          String         @map("requester_id")
-  action               String
-  reason               String
-  context              Json?
-  status               ApprovalStatus @default(pending)
-  resolverId           String?        @map("resolver_id")
-  resolvedAt           DateTime?      @map("resolved_at")
-  resolution           String?
-  resolutionNote       String?        @map("resolution_note")
-  requiredApproverRole String?        @map("required_approver_role")
+  id                     String         @id @default(uuid()) @db.Uuid
+  organizationId         String         @map("organization_id") @db.Uuid
+  projectId              String?        @map("project_id") @db.Uuid
+  teamId                 String?        @map("team_id") @db.Uuid
+  channelId              String?        @map("channel_id") @db.Uuid
+  taskId                 String?        @map("task_id") @db.Uuid
+  runId                  String?        @map("run_id") @db.Uuid
+  agentId                String         @map("agent_id") @db.Uuid
+  requesterId            String         @map("requester_id")
+  action                 String
+  reason                 String
+  context                Json?
+  status                 ApprovalStatus @default(pending)
+  resolverId             String?        @map("resolver_id")
+  resolvedAt             DateTime?      @map("resolved_at")
+  resolution             String?
+  resolutionNote         String?        @map("resolution_note")
+  requiredApproverRole   String?        @map("required_approver_role")
   /// The exact person who must resolve this request. Set for a send-as-you
   /// gate: approval visibility otherwise reaches any member who can read a
   /// public channel, which would let a colleague authorise an email sent in
   /// somebody else's name. Falls back to `requiredApproverRole` when no such
   /// person resolves — an inbound-email run has no requesting user — so a
   /// request never becomes unanswerable.
-  requiredApproverUserId String?      @map("required_approver_user_id") @db.Uuid
-  continuationToken    String         @map("continuation_token")
+  requiredApproverUserId String?        @map("required_approver_user_id") @db.Uuid
+  continuationToken      String         @map("continuation_token")
   // Server-authored tool-gate identity. These values are deliberately absent
   // from approval presenters: a human sees the bounded `context` summary,
   // while the exact arguments and original run identity stay server-side.
-  toolCallId           String?        @map("tool_call_id")
-  toolName             String?        @map("tool_name")
-  argsHash             String?        @map("args_hash")
-  resumeState          Json?          @map("resume_state")
-  proofConsumedAt      DateTime?      @map("proof_consumed_at")
-  expiresAt            DateTime       @map("expires_at") @db.Timestamptz(6)
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
-  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team                 Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  channel              Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
-  task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  userAlerts           UserAlert[]
+  toolCallId             String?        @map("tool_call_id")
+  toolName               String?        @map("tool_name")
+  argsHash               String?        @map("args_hash")
+  resumeState            Json?          @map("resume_state")
+  proofConsumedAt        DateTime?      @map("proof_consumed_at")
+  expiresAt              DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                   Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel                Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  task                   Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  run                    Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                  Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userAlerts             UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -4219,48 +4295,48 @@ model AuditLog {
 /// organization_id. Ledger rows must survive organization deletion for billing /
 /// audit retention, so org deletes must not cascade them away. Do not add a FK.
 model TokenLedgerEvent {
-  id                    String             @id @default(uuid()) @db.Uuid
-  occurredAt            DateTime           @map("occurred_at") @db.Timestamptz(6)
+  id                    String                 @id @default(uuid()) @db.Uuid
+  occurredAt            DateTime               @map("occurred_at") @db.Timestamptz(6)
   /// Stable per-inference idempotency key. The write path
   /// (worker persistInvocationLedgerEvents) sets this from the inference
   /// invocation id; a unique constraint + skipDuplicates makes redelivery after
   /// a crash a no-op instead of double-counting cost. Nullable for legacy rows.
-  inferenceInvocationId String?            @unique @map("inference_invocation_id")
-  organizationId        String             @map("organization_id") @db.Uuid
-  userId                String?            @map("user_id") @db.Uuid
-  projectId             String?            @map("project_id") @db.Uuid
-  teamId                String?            @map("team_id") @db.Uuid
-  channelId             String?            @map("channel_id") @db.Uuid
-  threadId              String?            @map("thread_id") @db.Uuid
-  sessionId             String?            @map("session_id")
-  taskId                String?            @map("task_id") @db.Uuid
-  runId                 String?            @map("run_id") @db.Uuid
-  agentId               String?            @map("agent_id") @db.Uuid
-  actorId               String             @map("actor_id")
-  actorType             AuditActorType?    @map("actor_type")
-  requestId             String             @map("request_id")
-  correlationId         String?            @map("correlation_id")
+  inferenceInvocationId String?                @unique @map("inference_invocation_id")
+  organizationId        String                 @map("organization_id") @db.Uuid
+  userId                String?                @map("user_id") @db.Uuid
+  projectId             String?                @map("project_id") @db.Uuid
+  teamId                String?                @map("team_id") @db.Uuid
+  channelId             String?                @map("channel_id") @db.Uuid
+  threadId              String?                @map("thread_id") @db.Uuid
+  sessionId             String?                @map("session_id")
+  taskId                String?                @map("task_id") @db.Uuid
+  runId                 String?                @map("run_id") @db.Uuid
+  agentId               String?                @map("agent_id") @db.Uuid
+  actorId               String                 @map("actor_id")
+  actorType             AuditActorType?        @map("actor_type")
+  requestId             String                 @map("request_id")
+  correlationId         String?                @map("correlation_id")
   provider              String
   model                 String
-  providerId            String?            @map("provider_id") @db.Uuid
-  modelId               String?            @map("model_id") @db.Uuid
-  operationType         OperationType      @map("operation_type")
-  inputTokens           Int?               @map("input_tokens")
-  outputTokens          Int?               @map("output_tokens")
-  cachedInputTokens     Int?               @map("cached_input_tokens")
-  cachedOutputTokens    Int?               @map("cached_output_tokens")
-  cacheReadTokens       Int?               @map("cache_read_tokens")
-  cacheWriteTokens      Int?               @map("cache_write_tokens")
-  totalTokens           Int?               @map("total_tokens")
-  providerCostAmount    Decimal?           @map("provider_cost_amount") @db.Decimal(20, 8)
-  providerCostCurrency  String?            @map("provider_cost_currency")
-  pricingProfileId      String?            @map("pricing_profile_id") @db.Uuid
-  pricingSource         PricingSource?     @map("pricing_source")
-  pricingCurrency       String?            @map("pricing_currency")
-  pricingInputPerM      Decimal?           @map("pricing_input_per_m") @db.Decimal(20, 8)
-  pricingOutputPerM     Decimal?           @map("pricing_output_per_m") @db.Decimal(20, 8)
-  estimatedCostAmount   Decimal?           @map("estimated_cost_amount") @db.Decimal(20, 8)
-  estimatedCostCurrency String?            @map("estimated_cost_currency")
+  providerId            String?                @map("provider_id") @db.Uuid
+  modelId               String?                @map("model_id") @db.Uuid
+  operationType         OperationType          @map("operation_type")
+  inputTokens           Int?                   @map("input_tokens")
+  outputTokens          Int?                   @map("output_tokens")
+  cachedInputTokens     Int?                   @map("cached_input_tokens")
+  cachedOutputTokens    Int?                   @map("cached_output_tokens")
+  cacheReadTokens       Int?                   @map("cache_read_tokens")
+  cacheWriteTokens      Int?                   @map("cache_write_tokens")
+  totalTokens           Int?                   @map("total_tokens")
+  providerCostAmount    Decimal?               @map("provider_cost_amount") @db.Decimal(20, 8)
+  providerCostCurrency  String?                @map("provider_cost_currency")
+  pricingProfileId      String?                @map("pricing_profile_id") @db.Uuid
+  pricingSource         PricingSource?         @map("pricing_source")
+  pricingCurrency       String?                @map("pricing_currency")
+  pricingInputPerM      Decimal?               @map("pricing_input_per_m") @db.Decimal(20, 8)
+  pricingOutputPerM     Decimal?               @map("pricing_output_per_m") @db.Decimal(20, 8)
+  estimatedCostAmount   Decimal?               @map("estimated_cost_amount") @db.Decimal(20, 8)
+  estimatedCostCurrency String?                @map("estimated_cost_currency")
   /// Which purse paid. `personal_subscription` events are excluded from
   /// pricing resolution and from every organization budget sum by THIS field,
   /// never by the absence of a pricing profile — an owner-authored wildcard
@@ -4268,11 +4344,11 @@ model TokenLedgerEvent {
   billingSource         InferenceBillingSource @default(ledger) @map("billing_source")
   /// Which link paid, and therefore whose plan. Attribution for these rows is
   /// the subscription owner, not the person who happened to post.
-  modelSubscriptionId   String?            @map("model_subscription_id") @db.Uuid
+  modelSubscriptionId   String?                @map("model_subscription_id") @db.Uuid
   metadata              Json?
-  inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
-  inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
-  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inferenceProvider     InferenceProvider?     @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  inferenceModel        InferenceModel?        @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
@@ -5481,25 +5557,25 @@ enum SendAuthorizationMode {
 }
 
 model SendAuthorizationGrant {
-  id             String    @id @default(uuid()) @db.Uuid
-  mode           SendAuthorizationMode @default(always)
+  id              String                @id @default(uuid()) @db.Uuid
+  mode            SendAuthorizationMode @default(always)
   /// The owner's boundary, in their own words. Judged by a model on every
   /// action, never parsed: a rule builder with keyword fields could not honour
   /// a boundary written in Czech about mail written in Slovak. Owner-private —
   /// it is read through an owner-gated route and never leaves in metadata.
-  boundary       String?
+  boundary        String?
   /// Running shape, so the settings row can say "12 sent · 3 asked you".
-  decidedCount   Int       @default(0) @map("decided_count")
-  askedCount     Int       @default(0) @map("asked_count")
-  lastDecidedAt  DateTime? @map("last_decided_at")
-  organizationId String    @map("organization_id") @db.Uuid
-  connectionId   String    @map("connection_id") @db.Uuid
-  agentId        String    @map("agent_id") @db.Uuid
-  grantedByUserId String   @map("granted_by_user_id") @db.Uuid
-  expiresAt      DateTime? @map("expires_at")
-  revokedAt      DateTime? @map("revoked_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  decidedCount    Int                   @default(0) @map("decided_count")
+  askedCount      Int                   @default(0) @map("asked_count")
+  lastDecidedAt   DateTime?             @map("last_decided_at")
+  organizationId  String                @map("organization_id") @db.Uuid
+  connectionId    String                @map("connection_id") @db.Uuid
+  agentId         String                @map("agent_id") @db.Uuid
+  grantedByUserId String                @map("granted_by_user_id") @db.Uuid
+  expiresAt       DateTime?             @map("expires_at")
+  revokedAt       DateTime?             @map("revoked_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   connection   CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
@@ -6124,6 +6200,11 @@ model EmailMessage {
   // legitimately retry, so the claim-and-wake transaction turns on THIS, never
   // on the RFC Message-ID (which can be absent, duplicated or attacker-forged).
   receiptId          String?                    @unique @map("receipt_id")
+  // Outbound idempotency key: `{runId}:{toolCallId}`, the same identity the
+  // approval machinery uses. A replayed run re-issues the same tool call, and
+  // without this each replay inserted another queued row — two rows claim
+  // independently and the recipient gets two copies, which cannot be undone.
+  sendKey            String?                    @unique @map("send_key")
   // Raw MIME staging reference in the inbound bucket (transport staging only —
   // every durable byte goes through FileService).
   s3ObjectKey        String?                    @map("s3_object_key")
@@ -6365,11 +6446,11 @@ model ModelSubscription {
   credential   ModelSubscriptionCredential?
   agents       Agent[]
   runs         Run[]
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Tenancy at the storage boundary, exactly as `Agent.ownerUserId` does it:
   /// the owner must be a member of THIS organization. It does not prove the
   /// membership is live — every read re-derives `deactivatedAt: null`.
-  owner        OrganizationMember? @relation("ModelSubscriptionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+  owner        OrganizationMember?          @relation("ModelSubscriptionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([organizationId, userId, provider, providerAccountId])
   @@index([organizationId, userId])
@@ -6509,8 +6590,10 @@ model CloudBrowserConnection {
   /// It does not prove the membership is live — readers re-derive that.
   owner        OrganizationMember? @relation("CloudBrowserConnectionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
-  sessions CloudBrowserSession[]
+  sessions      CloudBrowserSession[]
+  agentBrowsers AgentBrowser[]
 
+  @@unique([organizationId, id])
   @@index([organizationId, scope])
   @@map("cloud_browser_connections")
 }
@@ -6519,14 +6602,17 @@ model CloudBrowserConnection {
 /// release is fused to every terminal writer and a reaper stops whatever a
 /// crashed worker left running.
 model CloudBrowserSession {
-  id             String @id @default(uuid()) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
   /// Mandatory: the reaper cannot stop a remote session without knowing which
   /// API key owns it, and `/ops/usage` attributes hours by connection scope.
-  connectionId   String @map("connection_id") @db.Uuid
-  runId          String @map("run_id") @db.Uuid
-  threadId       String @map("thread_id") @db.Uuid
-  agentId        String @map("agent_id") @db.Uuid
+  connectionId   String  @map("connection_id") @db.Uuid
+  runId          String  @map("run_id") @db.Uuid
+  threadId       String  @map("thread_id") @db.Uuid
+  agentId        String  @map("agent_id") @db.Uuid
+  /// Null for an ephemeral session. Set when this session rides the agent's
+  /// durable browser, which one live session at a time may do.
+  agentBrowserId String? @map("agent_browser_id") @db.Uuid
 
   /// NULL while `allocating`: a create that timed out may still have produced
   /// a remote session, which reconciliation resolves.
@@ -6566,9 +6652,87 @@ model CloudBrowserSession {
   run          Run                    @relation(fields: [runId], references: [id], onDelete: Cascade)
   thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentBrowser AgentBrowser?          @relation(fields: [agentBrowserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([threadId, status])
   @@index([connectionId, startedAt])
   @@map("cloud_browser_sessions")
+}
+
+/// A durable browser is either usable, or tombstoned and awaiting the queue
+/// job that deletes its Browserbase context. There is no third state: an
+/// external delete cannot join a database transaction, so the row is retired
+/// locally first and reconciled remotely after.
+enum AgentBrowserStatus {
+  active
+  tombstoned
+}
+
+/// One agent, one durable browser — its own machine. Created lazily on the
+/// agent's first persistent `browser_open`.
+///
+/// Two agents never share browser state, which is what makes clashes
+/// structurally impossible; the only contention left is one agent running in
+/// two threads at once, which the single-live-session index refuses.
+model AgentBrowser {
+  id                   String @id @default(uuid()) @db.Uuid
+  organizationId       String @map("organization_id") @db.Uuid
+  agentId              String @map("agent_id") @db.Uuid
+  /// Load-bearing: a Browserbase context belongs to the account that created
+  /// it, so a browser is only usable through its own connection. When an
+  /// organisation subscribes after personal connections were in use, the
+  /// agent starts a fresh browser rather than migrating — one login per
+  /// service again, which the UI says out loud.
+  connectionId         String @map("connection_id") @db.Uuid
+  /// The persistent Browserbase context holding cookies and localStorage.
+  /// Retained on a tombstoned row so the delete job still has its target.
+  browserbaseContextId String @map("browserbase_context_id")
+
+  status       AgentBrowserStatus @default(active)
+  createdAt    DateTime           @default(now()) @map("created_at")
+  lastUsedAt   DateTime?          @map("last_used_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  /// Set when the row was tombstoned, so the reconciler can order its work
+  /// and surface a context whose delete has been failing for too long.
+  tombstonedAt DateTime?          @map("tombstoned_at")
+  lastError    String?            @map("last_error")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Composite tenancy, the `Agent.ownerMembership` precedent: this browser's
+  /// agent must belong to THIS organization, so one tenant's context can
+  /// never ride another tenant's key.
+  agent        Agent                  @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
+  connection   CloudBrowserConnection @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
+
+  logins   AgentBrowserLogin[]
+  sessions CloudBrowserSession[]
+
+  @@index([organizationId, agentId])
+  @@index([connectionId])
+  @@map("agent_browsers")
+}
+
+/// Who signed this browser into what.
+///
+/// Audit and revocation, not the disclosure trigger: a person can also sign
+/// in during an ad-hoc control claim, so "is this browser authenticated" is a
+/// monotone fact on the session, never derived from these rows alone.
+model AgentBrowserLogin {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agentBrowserId String   @map("agent_browser_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  /// Display metadata the person confirmed at handoff ("Google — a@b.c"),
+  /// never parsed out of page content.
+  serviceHint    String   @map("service_hint")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentBrowser AgentBrowser       @relation(fields: [agentBrowserId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation("AgentBrowserLoginMember", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([agentBrowserId])
+  @@index([organizationId, userId])
+  @@map("agent_browser_logins")
 }

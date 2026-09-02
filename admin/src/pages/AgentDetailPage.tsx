@@ -1,29 +1,37 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
+import { SystemAgentConfigPanel } from '../components/features/agents/SystemAgentConfigPanel'
 import { AgentIdentityBlock } from '../components/features/agents/AgentIdentityBlock'
+import { AgentOwnershipState } from '../components/features/agents/AgentOwnershipState'
 import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents } from '../facades/agents/hooks'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useCanEditAgent } from '../components/features/agents/agent-edit-authority'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
-// The agent detail surface. Tapping an agents-list row lands here. For an owner
-// it opens on an inline **Edit** tab (the full Agent Designer, embedded), with
-// the Activity / Sub-Agents / Tools / Messages panels behind it; a non-owner,
-// who cannot edit, gets those read-only panels only. No floating drawer.
+// The agent detail surface. Tapping an agents-list row lands here. For someone
+// who may edit this agent it opens on an inline **Edit** tab (the full Agent
+// Designer, embedded), with the Activity / Sub-Agents / Tools / Messages panels
+// behind it; everybody else gets those read-only panels only. No floating
+// drawer.
+//
+// "May edit" is the agent's ownership state, not the organization owner role
+// this page used to ask for: the owner of a private or person-owned agent, any
+// entitled member of a team-owned one, plus organization owners on workspace
+// agents. See `agent-edit-authority.ts`.
 export const AgentDetailPage = () => {
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
-  const isOwner = useIsOwner()
   // `scope: 'all'` so a system/global agent (or a sub-agent) resolves too — the
   // same list the Agents page renders.
   const agentsQuery = useAgents({ scope: 'all' })
   const agents = agentsQuery.data ?? []
   const agent = agentId ? agents.find((candidate) => candidate.id === agentId) : undefined
+  const canEdit = useCanEditAgent(agent)
 
   const backToList = () => void navigate('/agents')
 
@@ -66,15 +74,16 @@ export const AgentDetailPage = () => {
               withheld because `ScreenHeader` owns the screen's single `h1`. */}
           <ScreenHeader
             backLabel="Back to Agents"
-            leading={<AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />}
+            leading={<AgentAvatarQuickEdit agent={agent} canEdit={canEdit} />}
             onBack={backToList}
             subtitle={
               <AgentIdentityBlock
                 agent={agent}
                 avatar={false}
-                canEditAvatar={isOwner}
+                canEditAvatar={canEdit}
                 headingLevel="none"
               >
+                <AgentOwnershipState agent={agent} />
                 <PrivateAgentHomeLink
                   agent={agent}
                   className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
@@ -84,20 +93,31 @@ export const AgentDetailPage = () => {
             title={agent.name}
           />
 
+          {/* A Nessie-managed agent (the Personal Assistant, the Agent
+              Designer) gets the read-only configuration view instead of the
+              tabs: `isAgentAccessibleToActor` hard-codes `systemManaged:
+              false`, so status, activity, messages and sub-agents all 404 on
+              one, and mounting them made "not editable" read as "broken". Its
+              activity genuinely stays closed — a global agent works in every
+              member's private DM. */}
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
+            {agent.systemManaged ? (
+              <SystemAgentConfigPanel agentId={agent.id} />
+            ) : (
             <AgentDetailTabs
               agent={agent}
               editSlot={
-                isOwner ? (
+                canEdit ? (
                   <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
                 ) : undefined
               }
               key={agent.id}
               onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
             />
+            )}
           </div>
         </div>
-        {isOwner ? <DesignerAssistantDrawer /> : null}
+        {canEdit ? <DesignerAssistantDrawer /> : null}
       </div>
     </DesignerAssistantPanelProvider>
   )

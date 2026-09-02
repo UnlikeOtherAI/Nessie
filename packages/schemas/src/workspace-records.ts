@@ -180,6 +180,15 @@ export const AgentRecordSchema = z.object({
   owner: AgentOwnerSchema.nullish(),
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
+  /**
+   * The global-agent blueprint this row instantiates, when it is one.
+   *
+   * Read-only and server-written — no create or update body accepts it. It is
+   * here so a client can say "this is the Agent Designer" structurally instead
+   * of matching a display name, which is what the sidebar's identity and its
+   * "Continue in chat" doorway need.
+   */
+  systemSlug: z.string().nullish(),
   visibility: AgentVisibilitySchema,
   /** Owner-only DM provisioned together with a private agent. */
   homeChannelId: ChannelIdSchema.optional(),

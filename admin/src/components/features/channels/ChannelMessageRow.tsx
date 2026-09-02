@@ -33,6 +33,7 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { DocumentRefChip } from './DocumentRefChip'
+import { AgentHandoffDoorway } from './AgentHandoffDoorway'
 import { RunStopContinue } from './RunStopContinue'
 import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
@@ -43,6 +44,7 @@ import {
   type ThreadParticipant,
 } from './thread-panel/thread-panel-helpers'
 import { readWatchStatusSummary } from '../../../facades/channels/watch-status'
+import { isAgentCardResponseMessage } from '@nessie/schemas'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -169,6 +171,11 @@ export const ChannelMessageRow = ({
     personalAssistantPresence?.displayName,
   )
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
+  // A card press is a record, not a remark. The server refuses the edit
+  // (`MESSAGE_IMMUTABLE_CARD_RESPONSE`); offering the pencil here would only
+  // walk the presser into that error. Delete stays — a tombstone changes
+  // nothing on the card, which remains the authority.
+  const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
@@ -430,6 +437,9 @@ export const ChannelMessageRow = ({
             <DocumentRefChip metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
+            <AgentHandoffDoorway metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
             <WorkflowRunCard metadata={message.metadata} />
           ) : null}
           {/* Mount only when the message actually has files. The count comes
@@ -468,7 +478,7 @@ export const ChannelMessageRow = ({
           {!isEditingMessage ? (
             <ChannelMessageActions
               canDelete={canManageOwnMessage}
-              canEdit={canManageOwnMessage}
+              canEdit={canEditOwnMessage}
               content={message.content}
               currentUserId={meUserId}
               messageId={message.id}

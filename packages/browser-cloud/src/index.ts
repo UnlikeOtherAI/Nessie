@@ -23,6 +23,7 @@ export { connectCdp, type CdpClient } from './cdp-client.js'
 
 export {
   actInBrowser,
+  currentPageUrl,
   observeBrowser,
   renderObservation,
   type BrowserActResult,
@@ -31,6 +32,10 @@ export {
 } from './browser-actions.js'
 
 export {
+  claimSessionControl,
+  CONTROL_CLAIM_TTL_MS,
+  expireStaleControlClaims,
+  releaseSessionControl,
   cloudBrowserSettings,
   findLiveSessionForRun,
   LIVE_SESSION_STATUSES,
@@ -58,3 +63,13 @@ export {
   type ConnectionScope,
   type ConnectionSummary,
 } from './connection-management.js'
+
+export {
+  describeAgentBrowser,
+  ensureAgentBrowser,
+  recordAgentBrowserLogin,
+  reconcileTombstonedAgentBrowsers,
+  resetAgentBrowser,
+  resolveDurableBrowserConnection,
+  type AgentBrowserRow,
+} from './agent-browser.js'

@@ -37,7 +37,7 @@ test('each person is listed with the agents they steward', () => {
     tree.people.map((person) => [person.member.uoaSub, person.agents.map((one) => one.id)]),
     [['sub-a', ['a1', 'a2']], ['sub-b', ['b1']]],
   )
-  assert.deepEqual(tree.unowned, [])
+  assert.deepEqual(tree.teamOwned, [])
   assert.deepEqual(tree.ownedOutsideWorkspace, [])
 })
 
@@ -63,7 +63,7 @@ test('spawned subtask children are excluded from every bucket', () => {
   )
 
   assert.deepEqual(tree.people[0]?.agents.map((one) => one.id), ['parent'])
-  assert.deepEqual(tree.unowned, [])
+  assert.deepEqual(tree.teamOwned, [])
   assert.deepEqual(tree.system, [])
 })
 
@@ -80,7 +80,7 @@ test('system agents are their own bucket, never a person\'s staff', () => {
   assert.deepEqual(tree.people[0]?.agents, [])
 })
 
-test('an owner absent from this team roster is separated from genuinely unowned', () => {
+test('an owner absent from this team roster is separated from genuinely team-owned', () => {
   // The roster is team-keyed, so "not in this roster" covers an active
   // colleague on another team as well as someone who left. Keeping the two
   // buckets apart is what stops the UI calling present colleagues departed.
@@ -95,7 +95,7 @@ test('an owner absent from this team roster is separated from genuinely unowned'
 
   assert.deepEqual(tree.people[0]?.agents.map((one) => one.id), ['mine'])
   assert.deepEqual(tree.ownedOutsideWorkspace.map((one) => one.id), ['elsewhere'])
-  assert.deepEqual(tree.unowned.map((one) => one.id), ['nobody'])
+  assert.deepEqual(tree.teamOwned.map((one) => one.id), ['nobody'])
 })
 
 test('the tree carries only an aggregate paused-private-agent count', () => {

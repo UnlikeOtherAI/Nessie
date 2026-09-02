@@ -28,6 +28,12 @@ export type OutboundDeps = {
 }
 
 export type QueueOutboundInput = {
+  /**
+   * `{runId}:{toolCallId}` — the tool call this send belongs to. A replayed run
+   * re-issues the same call, and without this each replay would insert another
+   * queued row: two rows claim independently and the recipient gets two copies.
+   */
+  sendKey: string
   mailboxId: string
   organizationId: string
   conversationId?: string | null
@@ -63,7 +69,7 @@ export class SendRateLimitedError extends Error {
  * organisation's deliverability.
  */
 export const assertRecipientsSendable = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   recipients: string[],
 ): Promise<void> => {
   const suppressed = await prisma.emailSuppression.findMany({
@@ -76,7 +82,7 @@ export const assertRecipientsSendable = async (
 }
 
 export const assertWithinSendRate = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   mailboxId: string,
   limit: number,
 ): Promise<void> => {
@@ -100,6 +106,14 @@ export const queueOutboundEmail = async (
   deps: OutboundDeps,
   input: QueueOutboundInput,
 ): Promise<{ id: string; conversationId: string; rfcMessageId: string }> => {
+  // An already-queued send for this exact tool call is the send, not a second
+  // one. Checked before the transaction so a replay costs one indexed read.
+  const existing = await deps.prisma.emailMessage.findUnique({
+    select: { conversationId: true, id: true, rfcMessageId: true },
+    where: { sendKey: input.sendKey },
+  })
+  if (existing) return existing
+
   const mailbox = await deps.prisma.agentMailbox.findFirst({
     select: { address: true, channelId: true, displayName: true, id: true },
     where: { id: input.mailboxId, organizationId: input.organizationId, retiredAt: null },
@@ -109,6 +123,13 @@ export const queueOutboundEmail = async (
   const rfcMessageId = `${randomUUID()}@${deps.config.domain}`
 
   return deps.prisma.$transaction(async (tx) => {
+    // The refusals live INSIDE the write, not beside it. Exported helpers that
+    // every caller must remember to call are helpers every caller can forget;
+    // and counting outside the transaction let two concurrent runs both read
+    // "29 sent" and both send.
+    await assertRecipientsSendable(tx, [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])])
+    await assertWithinSendRate(tx, mailbox.id, deps.config.maxSendsPerHour)
+
     const { conversationId, subject, inReplyTo, references } = await resolveOutboundThread(
       tx,
       input,
@@ -132,6 +153,7 @@ export const queueOutboundEmail = async (
         organizationId: input.organizationId,
         referencesIds: references,
         rfcMessageId,
+        sendKey: input.sendKey,
         sentByRunId: input.runId ?? null,
         snippet: input.text.replace(/\s+/g, ' ').trim().slice(0, 240),
         subject,
@@ -147,6 +169,17 @@ export const queueOutboundEmail = async (
     })
 
     return { conversationId, id: created.id, rfcMessageId }
+  }).catch(async (error) => {
+    // Two workers racing the same tool call: the unique index decides, and the
+    // loser adopts the winner's row rather than minting a second message.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const raced = await deps.prisma.emailMessage.findUnique({
+        select: { conversationId: true, id: true, rfcMessageId: true },
+        where: { sendKey: input.sendKey },
+      })
+      if (raced) return raced
+    }
+    throw error
   })
 }
 

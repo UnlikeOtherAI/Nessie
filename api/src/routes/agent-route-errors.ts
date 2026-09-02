@@ -3,6 +3,7 @@ import {
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,
 } from '../services/agents.js'
+import { AgentEditAuthorityError } from '../services/agent-management.js'
 import { LedgerAgentModelCatalogError } from '@nessie/workspace-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
@@ -16,6 +17,21 @@ export const sendAgentAvatarGenerationError = (
 ): boolean => {
   if (!(error instanceof AgentAvatarGenerationError)) return false
   sendApiError(reply, 503, 'AGENT_AVATAR_GENERATION_UNAVAILABLE', error.message)
+  return true
+}
+
+/**
+ * An edit refusal is a 403, not a 404: the caller has already been shown this
+ * agent by the entitlement check, so hiding it now would only be confusing. The
+ * refusal names the state — who owns it, or that nobody may edit a
+ * blueprint-managed agent — so the person knows what to ask for.
+ */
+export const sendAgentEditAuthorityError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (!(error instanceof AgentEditAuthorityError)) return false
+  sendApiError(reply, 403, error.code, error.message)
   return true
 }
 

@@ -63,6 +63,8 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
+import { loadGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
+import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import {
   AgentTodoScheduledConfigError,
@@ -132,11 +134,25 @@ export const executeRunJob = async (
 
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
-    select: { content: true, metadata: true, rootMessageId: true },
+    select: {
+      basisScopes: { select: { scopeType: true, scopeId: true } },
+      content: true,
+      metadata: true,
+      rootMessageId: true,
+    },
   })
   if (!message) {
     return
   }
+
+  // The trigger message becomes this run's prompt, so it is a read that enters
+  // the run's context and owes the sink its provenance. `loadConversation`
+  // already inherits the basis of every window turn, which covers the ordinary
+  // case twice over — but a `system`-role trigger message is excluded from that
+  // window by design, so a hidden server-authored brief (the `agent_handoff`
+  // one, a trigger kickoff) would otherwise carry its restriction into the run
+  // and out again through a reply computed from an empty basis.
+  context.consumedSources.addAll(message.basisScopes)
 
   let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
@@ -221,6 +237,7 @@ export const executeRunJob = async (
 
   try {
     assertPrivateAgentRunPlacement(context)
+    assertGlobalAgentRunPlacement(context)
     // External-agent turns bypass the inference loop entirely: the driver
     // proxies the message to the external product. Placement is still checked
     // first so a malformed private binding cannot reach any provider.
@@ -412,6 +429,26 @@ export const executeRunJob = async (
       prompt,
     })
 
+    // A global agent's authority is generated, never written: the design
+    // catalogue renders from the live tool definitions, this organisation's
+    // registry rows and the Ledger model list, so a new tool is in the Agent
+    // Designer's knowledge the deploy it ships. It rides as its own system
+    // message after the cache-stable anchor, exactly as the memory and
+    // checkpoint injections do, and is assembled only for a run whose agent has
+    // a blueprint — every other run pays nothing.
+    const catalogueBlock = await loadGlobalAgentCatalogueBlock(deps.prisma, context, {
+      actorContext: payload.actorContext,
+      ledgerIdentity: deps.ledgerIdentity ?? null,
+      resolvedToolIds: setup.resolvedToolIds,
+    })
+    const initialMessages = catalogueBlock
+      ? [
+        setup.initialMessages[0]!,
+        { content: catalogueBlock, role: 'system' as const },
+        ...setup.initialMessages.slice(1),
+      ]
+      : setup.initialMessages
+
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
       // Where this run's reply will land, so viewers can anchor the live
@@ -459,9 +496,10 @@ export const executeRunJob = async (
       checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload, {
         subscriptionPinned: subscriptionBinding !== null,
       }),
+      identityToolIds: setup.identityToolIds,
       inference,
       isHandoffTurn: handoffLocator !== null,
-      initialMessages: setup.initialMessages,
+      initialMessages,
       executorToolset: setup.executorToolset,
       invocationSink: invocations,
       deepWaterHandoffGuard,

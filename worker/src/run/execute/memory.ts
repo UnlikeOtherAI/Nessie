@@ -7,6 +7,11 @@ import {
   type SearchResult,
 } from '@nessie/memory'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  agentActsAsRequestingPerson,
+  runDelegatesToRequestingPerson,
+  type DelegatedRunFacts,
+} from '../delegated-identity.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 
 const MAX_MEMORY_RESULTS = 5
@@ -27,14 +32,23 @@ export const isContainmentEnabled = (
     (env['NESSIE_DISCLOSURE_CONTAINMENT'] ?? '').trim().toLowerCase(),
   )
 
-// PA identity decides whose accessible scopes are considered; the destination
-// decides whether those scopes must be contained. Only the server-managed PA
-// DM is owner-only, so a shared PA presence stays contained like any room.
+/**
+ * Delegate identity decides whose accessible scopes are considered; the
+ * DESTINATION decides whether those scopes must be contained.
+ *
+ * The exemption keys on the surface and never on the agent kind — the scopes
+ * doc is explicit about this, and a shared PA presence is exactly why: it
+ * carries the owner's identity into a room full of other people. The exempt
+ * surfaces are the single-member private homes: the PA's own DM and a DM-homed
+ * global agent's own home DM. Both hold exactly one human — enforced by the
+ * deferred `channel_members` trigger — so "the destination already implies this
+ * person's private estate" is true there and nowhere else.
+ */
 export const requiresMemoryDestinationContainment = (
-  systemChannelType: string | null,
+  facts: DelegatedRunFacts,
   containmentEnabled = isContainmentEnabled(),
 ): boolean =>
-  containmentEnabled && systemChannelType !== 'personal_assistant'
+  containmentEnabled && !runDelegatesToRequestingPerson(facts)
 
 const truncateForContext = (value: string, maxLength: number): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
@@ -139,19 +153,30 @@ export const retrieveRelevantMemories = async (
       ? payload.actorContext.actor.actorId
       : undefined)
 
-  const isPersonalAssistant =
-    context.channel.systemChannelType === 'personal_assistant'
-    || context.agent.agentKind === 'personal_assistant'
-  // Scope resolution follows PA identity everywhere it acts. The containment
-  // exemption is narrower: only the owner-only PA DM implies the owner's
-  // private estate. A PA presence is still a shared-room destination.
-  // The personal assistant acts as its owner, so it recalls everything that
-  // user can; without a user there is nothing to act as.
-  if (isPersonalAssistant && !effectiveUserId) {
+  const delegationFacts: DelegatedRunFacts = {
+    agentKind: context.agent.agentKind,
+    dmKey: context.channel.dmKey,
+    organizationId: context.channel.organizationId,
+    systemChannelType: context.channel.systemChannelType,
+    systemSlug: context.agent.systemSlug,
+  }
+
+  // Scope resolution follows delegate identity everywhere it acts — the PA, or
+  // a DM-homed global agent. The containment exemption below is narrower: only
+  // the delegate's own single-member home implies that person's private estate.
+  // A delegate acts as its person, so it recalls everything that person can;
+  // without a person there is nothing to act as.
+  const actsAsPerson =
+    agentActsAsRequestingPerson(delegationFacts)
+    // A delegated system DM is that person's surface whatever kind of agent is
+    // answering in it, which is the fact the destination arm has always
+    // carried; keep it so a home DM never silently drops to `autonomous`.
+    || runDelegatesToRequestingPerson(delegationFacts)
+  if (actsAsPerson && !effectiveUserId) {
     return []
   }
 
-  const mode: ScopeResolutionMode = isPersonalAssistant
+  const mode: ScopeResolutionMode = actsAsPerson
     ? 'personal_assistant'
     : effectiveUserId
       ? 'user_shared'
@@ -172,11 +197,11 @@ export const retrieveRelevantMemories = async (
     // destination room's own scope chain already implies, so cross-scope material
     // never enters the run — and therefore cannot reach the transcript, the
     // realtime wire, consolidated memory, or any artifact derived from the run.
-    // The personal assistant is exempt: it acts as its owner, in a DM whose only
-    // human is that owner, and its owner's private memories are the point.
+    // A delegate in its own home is exempt: it acts as that person, in a DM
+    // whose only human is that person, and their private memories are the point.
     // See docs/plans/2026-08-11-disclosure-boundaries-build.md.
     const scopes =
-      requiresMemoryDestinationContainment(context.channel.systemChannelType)
+      requiresMemoryDestinationContainment(delegationFacts)
         ? constrainScopesToDestination(reachableScopes, {
           channelId: context.channel.id,
           organizationId: context.channel.organizationId,

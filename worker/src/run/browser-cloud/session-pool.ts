@@ -1,5 +1,7 @@
 import { connectCdp, type CdpClient } from '@nessie/browser-cloud'
 
+import type { OriginGateState } from './origin-gate.js'
+
 /**
  * Live CDP connections, keyed by our own session row id.
  *
@@ -16,7 +18,16 @@ import { connectCdp, type CdpClient } from '@nessie/browser-cloud'
 type PooledSession = {
   connectUrl: string
   cdp: CdpClient | null
+  /** In-flight connect, so concurrent tool calls share one socket. */
+  connecting: Promise<CdpClient> | null
   lastUsedAt: number
+  /**
+   * Which origins this browser holds cookies for, and whether it has actually
+   * been to one. Read once at open from the browser itself, because the
+   * cross-origin write gate must key on a mechanical fact rather than on the
+   * display text somebody typed at sign-in.
+   */
+  originGate: OriginGateState
 }
 
 const pool = new Map<string, PooledSession>()
@@ -32,10 +43,30 @@ const evictIdle = (now: number): void => {
   }
 }
 
-export const registerSession = (sessionId: string, connectUrl: string): void => {
+export const registerSession = (
+  sessionId: string,
+  connectUrl: string,
+  originGate: OriginGateState = {
+    authenticatedOrigins: new Set(),
+    currentUrl: null,
+    touchedAuthenticated: false,
+  },
+): void => {
   evictIdle(Date.now())
-  pool.set(sessionId, { connectUrl, cdp: null, lastUsedAt: Date.now() })
+  // Replacing an entry must not strand its socket.
+  pool.get(sessionId)?.cdp?.close()
+  pool.set(sessionId, {
+    connectUrl,
+    cdp: null,
+    connecting: null,
+    lastUsedAt: Date.now(),
+    originGate,
+  })
 }
+
+/** Null when this worker has no record of the session. */
+export const originGateFor = (sessionId: string): OriginGateState | null =>
+  pool.get(sessionId)?.originGate ?? null
 
 /**
  * Returns null when this worker has no record of the session — a different
@@ -49,16 +80,27 @@ export const acquireCdp = async (sessionId: string): Promise<CdpClient | null> =
   if (!entry) return null
   entry.lastUsedAt = now
   if (entry.cdp) return entry.cdp
+  // Tool batches run concurrently, so two calls can reach this together. The
+  // second awaits the first's socket instead of opening a rival one — a
+  // second automation connection can itself end the session.
+  if (entry.connecting) return entry.connecting
 
-  const cdp = await connectCdp(entry.connectUrl)
-  await cdp.attachToPage()
-  // A socket that dies on its own must not be handed to the next call.
-  void cdp.closed.then(() => {
-    const current = pool.get(sessionId)
-    if (current?.cdp === cdp) current.cdp = null
-  })
-  entry.cdp = cdp
-  return cdp
+  entry.connecting = (async () => {
+    const cdp = await connectCdp(entry.connectUrl)
+    await cdp.attachToPage()
+    // A socket that dies on its own must not be handed to the next call.
+    void cdp.closed.then(() => {
+      const current = pool.get(sessionId)
+      if (current?.cdp === cdp) current.cdp = null
+    })
+    entry.cdp = cdp
+    return cdp
+  })()
+  try {
+    return await entry.connecting
+  } finally {
+    entry.connecting = null
+  }
 }
 
 export const releaseCdp = (sessionId: string): void => {

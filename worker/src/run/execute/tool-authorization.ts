@@ -67,6 +67,15 @@ export type ToolAuthorizationContext = {
    * skip it and still pass the policy/approval evaluation.
    */
   externalToolNames?: Set<string>
+  /**
+   * The `personalAssistantOnly` ids this run's global-agent blueprint may
+   * exercise (D3), resolved once at run setup. Absent ⇒ the empty set, which is
+   * every ordinary run: the PA passes on its own `agentKind` arm and everybody
+   * else is denied. Passed here as well as to toolset assembly so a stale
+   * schema — a deferred stub, a replayed call, a resumed approval — cannot be
+   * exercised after the conditions stopped holding.
+   */
+  identityToolIds?: ReadonlySet<string>
   /** The main loop's live view, including deferred MCP names loaded mid-run. */
   mcpToolNames?: ReadonlySet<string>
   /** The executor operations actually exposed for this run. */
@@ -208,6 +217,14 @@ export const authorizeToolExecution = async (
       auth.toolPolicy,
       auth.parentAgentId,
       auth.agentKind,
+      {
+        ...(auth.identityToolIds ? { identityToolIds: auth.identityToolIds } : {}),
+        // Read straight off the run context rather than threaded through every
+        // caller: the same row toolset assembly consulted, so a stale schema
+        // (a deferred stub, a replayed call, a resumed approval) cannot smuggle
+        // `agent_handoff` back into a global agent's run.
+        ...(context.agent.systemSlug ? { agentSystemSlug: context.agent.systemSlug } : {}),
+      },
     )
 
   if (

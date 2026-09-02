@@ -16,7 +16,7 @@ type Published = {
   projectAvatar?: boolean
   orgLogo?: boolean
   feedback?: boolean
-  /** The viewer can reach the mailbox channel this email attachment hangs off. */
+  /** The viewer can see the agent whose mailbox this email attachment belongs to. */
   emailReadable?: boolean
 }
 
@@ -31,11 +31,23 @@ const makePrisma = (published: Published = {}): PrismaClient =>
   ({
     knowledgePageVersion: { findFirst: async () => null },
     user: { count: async () => (published.userAvatar ? 1 : 0) },
-    agent: { count: async () => (published.agentAvatar ? 1 : 0) },
+    agent: {
+      count: async (args?: { where?: { id?: string } }) => {
+        // `isAgentVisibleToUser` counts by agent id; `isPublishedOrgAsset`
+        // counts by avatar reference. One delegate, two callers.
+        if (args?.where?.id) return published.emailReadable ? 1 : 0
+        return published.agentAvatar ? 1 : 0
+      },
+    },
     project: { count: async () => (published.projectAvatar ? 1 : 0) },
     organization: { count: async () => (published.orgLogo ? 1 : 0) },
     feedback: { count: async () => (published.feedback ? 1 : 0) },
-    emailMessage: { findFirst: async () => (published.emailReadable ? { id: 'email-1' } : null) },
+    // The email arm resolves the mailbox's AGENT and then asks the shared
+    // agent-visibility predicate, so both delegates are modelled: the message
+    // exists, and `agent.count` is what decides whether the viewer may read it.
+    emailMessage: {
+      findFirst: async () => ({ mailbox: { agentId: '00000000-0000-4000-8000-0000000000ee' } }),
+    },
   }) as unknown as PrismaClient
 
 const unlinked = {
@@ -126,7 +138,7 @@ test('a knowledge-base blob is still refused on this generic endpoint', async ()
   assert.equal(allowed, false)
 })
 
-test('an email attachment is readable by someone who can reach the mailbox channel', async () => {
+test('an email attachment is readable by someone who can see its agent', async () => {
   const allowed = await canAccessAttachment(
     makePrisma({ emailReadable: true }),
     { ...unlinked, emailMessageId: '00000000-0000-4000-8000-00000000000b', uploaderId: null },
@@ -135,10 +147,10 @@ test('an email attachment is readable by someone who can reach the mailbox chann
   assert.equal(allowed, true)
 })
 
-test('an email attachment is refused to someone outside the mailbox channel', async () => {
-  // Inbound MIME parts hang off the EmailMessage precisely so chat visibility
-  // never becomes their authority: the mailbox channel decides, and a member
-  // who cannot reach it gets nothing — not even as the (absent) uploader.
+test('an email attachment is refused to someone who cannot see its agent', async () => {
+  // The byte surface closes with the conversation surface: both ask agent
+  // visibility, so a mailbox that goes dark takes its attachments with it —
+  // and a published avatar elsewhere in the org does not open them.
   const allowed = await canAccessAttachment(
     makePrisma({ userAvatar: true }),
     { ...unlinked, emailMessageId: '00000000-0000-4000-8000-00000000000b', uploaderId: null },

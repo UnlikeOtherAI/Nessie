@@ -4,6 +4,7 @@ import {
   faHashtag,
   faPenToSquare,
   faPlus,
+  faRobot,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../components/overlays/Popover'
@@ -11,6 +12,7 @@ import { RailTooltip } from './RailTooltip'
 import { useTransientMenu } from './TransientMenuContext'
 
 type CreateMenuTriggerProps = {
+  onCreateAgent: () => void
   onCreateChannel: () => void
   onCreateMessage: () => void
   onCreateProject: () => void
@@ -36,6 +38,7 @@ const panelClassName = [
 const CreateMenuPopover = ({
   anchorRef,
   onClose,
+  onCreateAgent,
   onCreateChannel,
   onCreateMessage,
   onCreateProject,
@@ -84,6 +87,15 @@ const CreateMenuPopover = ({
           <span className="block text-xs text-[color:var(--tx3)]">Organise work in a shared space</span>
         </span>
       </button>
+      <button className={actionRowClassName} onClick={() => select(onCreateAgent)} type="button">
+        <span className="create-menu-icon create-menu-icon-agent" aria-hidden="true">
+          <FontAwesomeIcon icon={faRobot} />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-[color:var(--tx)]">Agent</span>
+          <span className="block text-xs text-[color:var(--tx3)]">Design a new agent</span>
+        </span>
+      </button>
     </Popover>
   )
 }
@@ -92,6 +104,7 @@ const CreateMenuPopover = ({
 // creation handlers. The presentation changes by device; the action boundary
 // and authorization do not.
 export const CreateMenuTrigger = ({
+  onCreateAgent,
   onCreateChannel,
   onCreateMessage,
   onCreateProject,
@@ -133,6 +146,7 @@ export const CreateMenuTrigger = ({
       <CreateMenuPopover
         anchorRef={buttonRef}
         onClose={close}
+        onCreateAgent={onCreateAgent}
         onCreateChannel={onCreateChannel}
         onCreateMessage={onCreateMessage}
         onCreateProject={onCreateProject}
@@ -140,7 +154,7 @@ export const CreateMenuTrigger = ({
       />
       <RailTooltip
         anchorRef={buttonRef}
-        description="Start a message, channel, or project."
+        description="Start a message, channel, project, or agent."
         id="create-menu-tooltip"
         open={tooltipOpen}
         title="Create new"

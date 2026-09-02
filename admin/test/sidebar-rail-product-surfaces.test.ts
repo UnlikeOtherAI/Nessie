@@ -22,6 +22,20 @@ test('the left rail exposes the shared create actions immediately above the acco
   assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
 })
 
+test('Create ends with Agent, routing to the Agent Designer', () => {
+  const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+
+  assert.match(createMenu, />Agent</)
+  assert.match(createMenu, />Design a new agent</)
+  // Agent is the last row of the menu.
+  assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
+  // Both the desktop menu and the native phone sheet reach the one designer
+  // handler, so the doorway is the same action on every device.
+  assert.match(shell, /onCreateAgent=\{shell\.navigateToAgentDesigner\}/)
+  assert.equal(shell.split('onCreateAgent={shell.navigateToAgentDesigner}').length - 1, 2)
+})
+
 test('the Create control uses the same desktop rail tooltip as Focus', () => {
   const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
   const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')

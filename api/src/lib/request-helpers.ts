@@ -35,12 +35,25 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     value: string | null | undefined,
   ): value is 'personal_assistant' => value === 'personal_assistant'
 
+  /**
+   * The single-member private DMs whose one bound agent acts as the person it
+   * is talking to: the Personal Assistant's, and a global agent's home DM.
+   * Both hold exactly one member — enforced by the deferred `channel_members`
+   * trigger for the `gagent:` shape — which is what makes stamping
+   * `effectiveUserId = poster` safe, and what makes the organization-wide
+   * realtime scope wrong for them.
+   */
+  const isDelegatedSystemDmChannelType = (
+    value: string | null | undefined,
+  ): value is 'personal_assistant' | 'system_agent' =>
+    value === 'personal_assistant' || value === 'system_agent'
+
   const buildChannelRealtimeScopes = (input: {
     channelId: string
     organizationId: string
     systemChannelType?: string | null
   }): WsScope[] =>
-    isPersonalAssistantChannelType(input.systemChannelType)
+    isDelegatedSystemDmChannelType(input.systemChannelType)
       ? [{ kind: 'channel', channelId: parseChannelId(input.channelId) }]
       : [
           {
@@ -485,6 +498,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
 
   return {
     isPersonalAssistantChannelType,
+    isDelegatedSystemDmChannelType,
     buildChannelRealtimeScopes,
     loadPersonalAssistantState,
     isAgentAccessibleToActor,

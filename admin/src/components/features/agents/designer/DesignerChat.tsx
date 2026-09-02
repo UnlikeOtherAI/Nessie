@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../../../../facades/designer/hooks'
+import { useAgentDesignerAgent } from '../../../../facades/designer/agent-designer-identity'
+import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { Notice } from '../../../primitives/Notice'
 import type { DesignerPageContext } from './DesignerAssistantPanelContext'
 
 type DesignerChatProps = {
   error: string | null
   messages: ChatMessage[]
+  /**
+   * Moves this conversation into the person's own Agent Designer DM, carrying
+   * the current draft. Absent where the page cannot navigate away.
+   */
+  onContinueInChat?: () => void
+  continuingInChat?: boolean
   onSend: (message: string) => void
   onClose?: () => void
   onStop: () => void
@@ -14,6 +23,9 @@ type DesignerChatProps = {
   thinking: boolean
   pageContext?: DesignerPageContext
 }
+
+/** The panel and the DM are one specialist, so the panel says whose voice it is. */
+const DEFAULT_DESIGNER_NAME = 'Agent Designer'
 
 const ThinkingIndicator = ({ status }: { status: string | null }) => (
   <div
@@ -36,8 +48,10 @@ const ThinkingIndicator = ({ status }: { status: string | null }) => (
 )
 
 export const DesignerChat = ({
+  continuingInChat,
   error,
   messages,
+  onContinueInChat,
   onSend,
   onClose,
   onStop,
@@ -46,6 +60,9 @@ export const DesignerChat = ({
   thinking,
   pageContext,
 }: DesignerChatProps) => {
+  const { token } = useAuthSession()
+  const designer = useAgentDesignerAgent()
+  const designerName = designer?.name ?? DEFAULT_DESIGNER_NAME
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -78,33 +95,40 @@ export const DesignerChat = ({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
+      {/* Header — the agent's own name and picture, resolved from the identity
+          directory: this panel and the Agent Designer DM are one specialist. */}
       <div className="flex items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
-        <svg
-          className="h-4 w-4 text-[color:var(--accent)]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="text-sm font-semibold text-[var(--tx)]">Design Assistant</span>
+        <AgentAvatar
+          agent={designer}
+          agentId={designer?.id ?? null}
+          size="xs"
+          token={token}
+        />
+        <span className="text-sm font-semibold text-[var(--tx)]">{designerName}</span>
         {streaming && <span className="streaming-dot" />}
-        {onClose ? (
-          <button
-            aria-label="Close Design Assistant"
-            className="ml-auto -mr-1 rounded p-1 text-[color:var(--tx3)] hover:bg-[color:var(--overlay-weak)] hover:text-[color:var(--tx)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-            onClick={onClose}
-            type="button"
-          >
-            ×
-          </button>
-        ) : null}
+        <div className="ml-auto flex items-center gap-1">
+          {onContinueInChat ? (
+            <button
+              className="admin-button admin-button-secondary admin-button-compact"
+              disabled={continuingInChat || streaming}
+              onClick={onContinueInChat}
+              title={`Move this into your own conversation with the ${designerName}, carrying the current draft`}
+              type="button"
+            >
+              {continuingInChat ? 'Opening…' : 'Continue in chat'}
+            </button>
+          ) : null}
+          {onClose ? (
+            <button
+              aria-label={`Close ${designerName}`}
+              className="-mr-1 rounded p-1 text-[color:var(--tx3)] hover:bg-[color:var(--overlay-weak)] hover:text-[color:var(--tx)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+              onClick={onClose}
+              type="button"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Messages */}
@@ -131,9 +155,11 @@ export const DesignerChat = ({
                       : 'I can explain what you’re seeing here.',
                   ].join('\n\n')
                 : [
-                    'Hi! I can fill in this form for you — name, role, model,'
+                    'I can fill in this form for you — name, role, model,'
                     + ' system prompt and tools.',
-                    "Tell me what you want to build and I'll configure the agent for you.",
+                    'Tell me what you want the agent to do and I’ll set it up.'
+                    + ' “Continue in chat” moves us into your own conversation'
+                    + ' with me, carrying the draft over.',
                   ].join('\n\n')}
             </div>
           </div>

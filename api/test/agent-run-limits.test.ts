@@ -54,7 +54,12 @@ test('stored run limits that no longer satisfy the contract read as no limits', 
   assert.deepEqual(readAgentRunLimits({ maxToolCalls: 40 }), { maxToolCalls: 40 })
 })
 
-type Seed = { organizationId: string; projectId: string; teamId: string }
+type Seed = {
+  editor: { organizationId: string; userId: string }
+  organizationId: string
+  projectId: string
+  teamId: string
+}
 
 const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `run-limits ${randomUUID()}` } })
@@ -62,11 +67,26 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
     data: { name: 'p', organizationId: org.id },
   })
   const team = await prisma.team.create({ data: { name: 't', projectId: project.id } })
-  return { organizationId: org.id, projectId: project.id, teamId: team.id }
+  // Editing is authorized against a LIVE membership row now, so the suite needs
+  // a real person to do the editing rather than a bare organization id.
+  const editor = await prisma.user.create({
+    data: { displayName: 'Editor', email: `run-limits-${randomUUID()}@test.local` },
+  })
+  await prisma.organizationMember.create({
+    data: { organizationId: org.id, role: 'owner', userId: editor.id },
+  })
+  return {
+    editor: { organizationId: org.id, userId: editor.id },
+    organizationId: org.id,
+    projectId: project.id,
+    teamId: team.id,
+  }
 }
 
 const cleanup = async (prisma: PrismaClient, seed: Seed) => {
   await prisma.agent.deleteMany({ where: { organizationId: seed.organizationId } })
+  await prisma.organizationMember.deleteMany({ where: { userId: seed.editor.userId } })
+  await prisma.user.deleteMany({ where: { id: seed.editor.userId } })
   await prisma.team.deleteMany({ where: { id: seed.teamId } })
   await prisma.project.deleteMany({ where: { id: seed.projectId } })
   await prisma.organization.deleteMany({ where: { id: seed.organizationId } })
@@ -91,20 +111,20 @@ runDatabaseTest('agent runLimits round-trip: set, preserve on unrelated edits, c
   assert.deepEqual(created.runLimits, { maxIterations: 40, maxTokens: 250000 })
 
   // An edit that does not mention runLimits leaves the stored caps alone.
-  const renamed = await updateAgentRecord(prisma, created.id, {
+  const renamed = await updateAgentRecord(prisma, created.id, seed.editor, {
     name: 'Researcher II',
     organizationId: seed.organizationId,
   })
   assert.deepEqual(renamed?.runLimits, { maxIterations: 40, maxTokens: 250000 })
 
-  const replaced = await updateAgentRecord(prisma, created.id, {
+  const replaced = await updateAgentRecord(prisma, created.id, seed.editor, {
     organizationId: seed.organizationId,
     runLimits: { maxCostCents: 500 },
   })
   assert.deepEqual(replaced?.runLimits, { maxCostCents: 500 })
 
   // An explicit null clears every explicit limit (back to the backstop only).
-  const cleared = await updateAgentRecord(prisma, created.id, {
+  const cleared = await updateAgentRecord(prisma, created.id, seed.editor, {
     organizationId: seed.organizationId,
     runLimits: null,
   })

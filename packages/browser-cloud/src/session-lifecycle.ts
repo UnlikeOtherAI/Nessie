@@ -135,6 +135,19 @@ export type OpenSessionInput = {
   threadId: string
   agentId: string
   requestedByUserId: string | null
+  /**
+   * Ride the agent's durable browser instead of a throwaway session. The
+   * caller resolves it (connection rules live in `agent-browser.ts`); this
+   * module only enforces one live session per browser and marks the session
+   * authenticated when the browser already carries human logins.
+   */
+  agentBrowser?: {
+    id: string
+    connectionId: string
+    browserbaseContextId: string
+    /** Any recorded login makes every read through it that person's material. */
+    hasLogins: boolean
+  }
   /** Optional starting URL, navigated after attach. */
   url?: string
 }
@@ -162,14 +175,34 @@ export const openCloudBrowserSession = async (
   const now = deps.now?.() ?? new Date()
   const expiresAt = new Date(now.getTime() + settings.ttlMs)
 
-  const connection = await resolveConnectionForRun(deps.prisma, {
-    organizationId: input.organizationId,
-    requestedByUserId: input.requestedByUserId,
-  })
+  // A durable browser dictates its own connection: its context belongs to
+  // the account that created it and cannot be opened with another key.
+  const connection = input.agentBrowser
+    ? await deps.prisma.cloudBrowserConnection.findFirst({
+      where: {
+        id: input.agentBrowser.connectionId,
+        organizationId: input.organizationId,
+        status: 'active',
+        // An unattended run has no requester, so it may only ever ride the
+        // organisation subscription — a schedule must not bill somebody's
+        // personal account, however its agent's browser came to live there.
+        ...(input.requestedByUserId
+          ? {}
+          : { scope: 'organization' as const }),
+      },
+      select: { id: true, scope: true, projectId: true, apiKeyRef: true },
+    })
+    : await resolveConnectionForRun(deps.prisma, {
+      organizationId: input.organizationId,
+      requestedByUserId: input.requestedByUserId,
+    })
   if (!connection) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
-      'No Browserbase account is connected for this workspace.',
+      input.agentBrowser
+        ? 'This agent’s browser lives on an account this run may not use — a '
+          + 'scheduled run can only use the organisation’s account.'
+        : 'No Browserbase account is connected for this workspace.',
     )
   }
 
@@ -192,6 +225,20 @@ export const openCloudBrowserSession = async (
           `This workspace already has ${live} cloud browsers open. Close one and retry.`,
         )
       }
+      if (input.agentBrowser) {
+        // Inside the same transaction as the claim: a reset between the
+        // caller's `ensureAgentBrowser` read and this insert would otherwise
+        // let the reconciler delete the context under a live session.
+        const stillActive = await tx.agentBrowser.count({
+          where: { id: input.agentBrowser.id, status: 'active' },
+        })
+        if (stillActive !== 1) {
+          throw new CloudBrowserError(
+            CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+            'This agent’s browser was reset. Open it again to get a fresh one.',
+          )
+        }
+      }
       const created = await tx.cloudBrowserSession.create({
         data: {
           organizationId: input.organizationId,
@@ -200,6 +247,11 @@ export const openCloudBrowserSession = async (
           threadId: input.threadId,
           agentId: input.agentId,
           requestedByUserId: input.requestedByUserId,
+          agentBrowserId: input.agentBrowser?.id ?? null,
+          // Monotone from the first moment: a browser carrying somebody's
+          // login makes everything read through it their material, and this
+          // must be true before any page is fetched, not after.
+          authenticated: input.agentBrowser?.hasLogins ?? false,
           status: 'allocating',
           expiresAt,
         },
@@ -213,9 +265,15 @@ export const openCloudBrowserSession = async (
       error instanceof Prisma.PrismaClientKnownRequestError
       && error.code === 'P2002'
     ) {
+      // Two different collisions, and the difference matters to the model:
+      // its own run already holds one, or another run of the same agent is
+      // using the shared durable browser and it should wait or go ephemeral.
+      const target = String((error.meta as { target?: unknown } | undefined)?.target ?? '')
       throw new CloudBrowserError(
         CLOUD_BROWSER_ERROR_CODES.SESSION_ALREADY_OPEN,
-        'This run already has a cloud browser open. Close it before opening another.',
+        target.includes('agent_browser')
+          ? 'This agent’s browser is already open in another run. Wait for it to finish, or open a throwaway browser instead.'
+          : 'This run already has a cloud browser open. Close it before opening another.',
       )
     }
     throw error
@@ -225,7 +283,16 @@ export const openCloudBrowserSession = async (
     const client = await loadClient(deps, connection)
     const session = await client.createSession({
       timeoutSeconds: Math.ceil(settings.ttlMs / 1000),
+      ...(input.agentBrowser
+        // `persist` is what makes tomorrow's run find the login still there.
+        ? { contextId: input.agentBrowser.browserbaseContextId, persistContext: true }
+        : {}),
     })
+    if (input.agentBrowser) {
+      await deps.prisma.agentBrowser
+        .update({ where: { id: input.agentBrowser.id }, data: { lastUsedAt: new Date() } })
+        .catch(() => undefined)
+    }
     await deps.prisma.cloudBrowserSession.updateMany({
       where: { id: rowId, status: 'allocating' },
       data: { status: 'active', browserbaseSessionId: session.id },
@@ -299,8 +366,12 @@ export const releaseCloudBrowserSession = async (
   deps: CloudBrowserDeps,
   input: { sessionId: string; releasedBy: string },
 ): Promise<boolean> => {
+  // `releasing` is deliberately NOT claimable: three writers can race here
+  // (the tool, the terminal transition, the reaper) and including it let two
+  // of them both call Browserbase, with the loser's failure path then
+  // overwriting the winner's `released` row.
   const claimed = await deps.prisma.cloudBrowserSession.updateMany({
-    where: { id: input.sessionId, status: { in: [...LIVE_SESSION_STATUSES] } },
+    where: { id: input.sessionId, status: { in: ['allocating', 'active', 'unknown'] } },
     data: { status: 'releasing' },
   })
   if (claimed.count !== 1) return false
@@ -388,7 +459,10 @@ export const reapExpiredCloudBrowserSessions = async (
   const now = deps.now?.() ?? new Date()
   const rows = await deps.prisma.cloudBrowserSession.findMany({
     where: {
-      status: { in: [...LIVE_SESSION_STATUSES] },
+      // `unknown` is included on purpose: it is the state a failed remote stop
+      // leaves behind, and it is exactly the row most likely to still be
+      // costing money.
+      status: { in: [...LIVE_SESSION_STATUSES, 'unknown'] },
       expiresAt: { lte: now },
     },
     select: { id: true },
@@ -420,4 +494,104 @@ export const markSessionAuthenticated = async (
     where: { id: sessionId, authenticated: false },
     data: { authenticated: true },
   })
+}
+
+
+/**
+ * How long a control claim survives without a heartbeat. A closed laptop lid
+ * must not hold a team's browser hostage, and the claimant's viewer renews
+ * this while it is open.
+ */
+export const CONTROL_CLAIM_TTL_MS = 90_000
+
+/**
+ * Take the controls.
+ *
+ * One winner by conditional UPDATE, the claim-once discipline: a session can
+ * render to many entitled viewers at once, so two people pressing together
+ * must not both believe they are driving. An expired claim is reclaimable,
+ * which is what stops a dropped connection stranding the browser.
+ */
+export const claimSessionControl = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  input: { sessionId: string; userId: string; now?: Date },
+): Promise<boolean> => {
+  const now = input.now ?? new Date()
+  const staleBefore = new Date(now.getTime() - CONTROL_CLAIM_TTL_MS)
+  const claimed = await prisma.cloudBrowserSession.updateMany({
+    where: {
+      id: input.sessionId,
+      status: { in: [...LIVE_SESSION_STATUSES] },
+      OR: [
+        { controlledByUserId: null },
+        // Renewing your own claim, or taking over one nobody has refreshed.
+        { controlledByUserId: input.userId },
+        { controlClaimedAt: { lt: staleBefore } },
+      ],
+    },
+    data: { controlledByUserId: input.userId, controlClaimedAt: now },
+  })
+  return claimed.count === 1
+}
+
+/**
+ * Hand the browser back. Only the holder can, so a bystander cannot yank the
+ * controls out from under somebody mid-sign-in.
+ */
+export const releaseSessionControl = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession' | 'agentBrowserLogin'>,
+  input: { sessionId: string; userId: string },
+): Promise<boolean> => {
+  const session = await prisma.cloudBrowserSession.findFirst({
+    where: { id: input.sessionId, controlledByUserId: input.userId },
+    select: { agentBrowserId: true, organizationId: true },
+  })
+  const released = await prisma.cloudBrowserSession.updateMany({
+    where: { id: input.sessionId, controlledByUserId: input.userId },
+    data: {
+      controlledByUserId: null,
+      controlClaimedAt: null,
+      // A person at the controls may have signed in — that is much of why
+      // anybody takes them — and the agent resumes into whatever they left
+      // behind. Marking the session authenticated on hand-back is the only
+      // way the run's disclosure basis can be right afterwards; it is
+      // monotone, so an unnecessary mark only ever over-restricts.
+      authenticated: true,
+    },
+  })
+  if (released.count !== 1) return false
+
+  // The durable browser keeps whatever they left behind, so the record has to
+  // outlive the session: without it, tomorrow's run reads `loginCount === 0`
+  // and publishes what it reads to everyone. The service is unnamed because
+  // nobody asked — a person can rename it from the agent's Browser panel.
+  if (session?.agentBrowserId) {
+    await prisma.agentBrowserLogin.create({
+      data: {
+        agentBrowserId: session.agentBrowserId,
+        organizationId: session.organizationId,
+        serviceHint: 'Signed in while at the controls',
+        userId: input.userId,
+      },
+    }).catch(() => undefined)
+  }
+  return true
+}
+
+/**
+ * Drop claims nobody has refreshed, so the agent can resume on its own rather
+ * than waiting for a person who has gone.
+ */
+export const expireStaleControlClaims = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  now: Date = new Date(),
+): Promise<number> => {
+  const expired = await prisma.cloudBrowserSession.updateMany({
+    where: {
+      controlledByUserId: { not: null },
+      controlClaimedAt: { lt: new Date(now.getTime() - CONTROL_CLAIM_TTL_MS) },
+    },
+    data: { controlledByUserId: null, controlClaimedAt: null },
+  })
+  return expired.count
 }

@@ -11,6 +11,7 @@ import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { PaginationFooter } from '../../shared/PaginationFooter'
+import { AgentBrowserPanel } from '../browser-cloud/AgentBrowserPanel'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentDocumentsTab } from './AgentDocumentsTab'
 import { AgentMessagePreview } from './AgentMessagePreview'
@@ -211,7 +212,12 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
           />
         )}
 
-        {activeTab === 'tools' && <AgentAvailableTools agent={agent} />}
+        {activeTab === 'tools' && (
+          <div className="grid gap-6">
+            <AgentAvailableTools agent={agent} />
+            <AgentBrowserPanel agent={agent} />
+          </div>
+        )}
 
         {activeTab === 'to-dos' && <AgentTodosTab agent={agent} />}
 

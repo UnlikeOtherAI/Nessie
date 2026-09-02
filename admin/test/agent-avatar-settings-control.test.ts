@@ -6,15 +6,16 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('agent details put the avatar editor at the agent detail surface for owners only', () => {
+test('agent details put the avatar editor at the agent detail surface for its editors only', () => {
   const drawer = readSource('../src/components/features/agents/AgentDetailDrawer.tsx')
   const identityBlock = readSource('../src/components/features/agents/AgentIdentityBlock.tsx')
 
-  // The owner derivation itself now lives in one place (components/shared/OwnerGate).
-  assert.match(drawer, /const isOwner = useIsOwner\(\)/)
+  // Who may edit is the agent's ownership state, not the organization owner
+  // role, and that derivation lives in one place beside the server's.
+  assert.match(drawer, /const canEdit = useCanEditAgent\(agent\)/)
   // The avatar editor lives once, in the shared identity block both the
   // detail page header and this drawer compose.
-  assert.match(drawer, /<AgentIdentityBlock agent=\{agent\} canEditAvatar=\{isOwner\} \/>/)
+  assert.match(drawer, /<AgentIdentityBlock agent=\{agent\} canEditAvatar=\{canEdit\} \/>/)
   assert.match(identityBlock, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{canEditAvatar\} size=\{avatarSize\} \/>/)
 })
 

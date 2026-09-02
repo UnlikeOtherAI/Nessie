@@ -57,7 +57,10 @@ export const handleRunExecutionFailure = async (
   // to deliver. The failure is not hidden — the run is `failed`, the Triggers
   // page delivery row now shows that outcome, and the error is logged — it
   // simply stops being announced to a room that did not ask.
-  const announceFailure = isInteractiveRun(payload) && failureReason !== 'private_agent_placement'
+  const announceFailure =
+    isInteractiveRun(payload)
+    && failureReason !== 'private_agent_placement'
+    && failureReason !== 'global_agent_placement'
 
   try {
     if (!announceFailure) throw new SkipTerminalMessage()

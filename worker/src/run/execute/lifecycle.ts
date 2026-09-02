@@ -143,6 +143,7 @@ export const loadRunContext = async (
           // deployment backstop (see run-budget.ts).
           runLimits: true,
           systemPrompt: true,
+          systemSlug: true,
           visibility: true,
         },
       },

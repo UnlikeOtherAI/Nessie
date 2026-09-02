@@ -9,6 +9,14 @@ import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
 const EXPLICIT_GRANT_TOOL_IDS = new Set(
   SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.requiresExplicitGrant).map((tool) => tool.id),
 )
+
+// The tool's own declared category, read from the definitions rather than
+// stored on the registry row: it is a property of the tool's code, so a
+// re-categorised tool must not need a migration to move. Resolved here, beside
+// the explicit-grant set, for exactly the same reason.
+const BUILTIN_TOOL_CATEGORIES = new Map(
+  SYSTEM_TOOL_DEFINITIONS.map((tool) => [tool.id, tool.category]),
+)
 import type {
   ToolDescriptor,
   ToolRegistryEntry,
@@ -62,6 +70,7 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
   enabled: entry.enabled,
   handlerKind: entry.handlerKind,
   requiresExplicitGrant: EXPLICIT_GRANT_TOOL_IDS.has(entry.toolId) || undefined,
+  category: BUILTIN_TOOL_CATEGORIES.get(entry.toolId),
 })
 
 export const ensureBuiltinToolsRegistered = async (

@@ -159,33 +159,109 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `docs/brief.md` → "Current SSO identity invariant".
 - **A personal-assistant tool that does what a person does by clicking calls
   the same function that person's button calls, and mirrors that route's
-  authorization exactly — no weaker, no stronger.** The five provisioning
-  builtins (`agent_list`, `channel_create`, `agent_create`,
-  `agent_bind_channel`, `agent_trigger_create`, in
-  `worker/src/run/pa-tools/provisioning.ts`) are the
-  pattern: `agent_list`/`channel_create`/`agent_create` are member-level because
-  their routes carry only `requireActorContext`; binding reproduces all four
-  gates of
-  `POST /api/agents/:agentId/bindings` (channel membership, the
-  `personal_assistant` refusal, owner, `checkPolicy('agent','bind')`); trigger
-  creation parses the route's own `CreateAgentTriggerBodySchema` and refuses a
-  schedule with no UOA identity on a signing deployment. Because
-  `api/src/services/*` is unreachable from the worker, the shared functions live
-  in **`@nessie/workspace-admin`** and the api services re-export them — never a
-  second copy in `pa-tools`. `pa-tools/channels.ts` carried a "mirrored from
-  api/src/services" comment over a duplicated `canManageChannel` for exactly
-  that reason; on 2026-08-29 the predicate and the writes it gates moved to
-  `@nessie/workspace-admin` `channel-manage.ts`, which the api service
-  re-exports and the PA tool imports. An owner-gated
-  tool stays visible to non-owners and refuses in words, following
-  `pa-tools/connectors.ts`. Role comes from the live `OrganizationMember` row at
-  call time, not from the run's enqueue-time `actorContext`. **A tool that takes
-  an id ships with the read that resolves it**: in the UI the owner picks the
-  agent from a list, so `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s
-  own entitlement scoping) is what makes `agent_bind_channel` /
-  `agent_trigger_create` usable on an agent the user merely named, rather than
-  only on one created in the same conversation. Details:
-  `CLAUDE.md` → "Personal assistant — workspace provisioning".
+  authorization exactly — no weaker, no stronger.** The provisioning builtins in
+  `worker/src/run/pa-tools/provisioning.ts` are the pattern: `agent_list` and
+  `channel_create` are member-level because their routes carry only
+  `requireActorContext`; binding reproduces all four gates of
+  `POST /api/agents/:agentId/bindings` (channel membership, the system-channel
+  refusal, owner, `checkPolicy('agent','bind')`); trigger creation parses the
+  route's own `CreateAgentTriggerBodySchema` and refuses a schedule with no UOA
+  identity on a signing deployment. Because `api/src/services/*` is unreachable
+  from the worker, the shared functions live in **`@nessie/workspace-admin`**
+  and the api services re-export them — never a second copy in `pa-tools`.
+  `pa-tools/channels.ts` carried a "mirrored from api/src/services" comment over
+  a duplicated `canManageChannel` for exactly that reason; on 2026-08-29 the
+  predicate and the writes it gates moved to `channel-manage.ts`, which the api
+  service re-exports and the PA tool imports. An owner-gated tool stays visible
+  to non-owners and refuses in words, following `pa-tools/connectors.ts`. Role
+  comes from the live `OrganizationMember` row at call time, not from the run's
+  enqueue-time `actorContext`. **A tool that takes an id ships with the read
+  that resolves it**: in the UI the owner picks the agent from a list, so
+  `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s own entitlement
+  scoping) is what makes `agent_bind_channel` / `agent_trigger_create` usable on
+  an agent the user merely named. Details: `CLAUDE.md` → "Personal assistant —
+  workspace provisioning".
+- **A global agent is a blueprint in code, one row per organisation, and a
+  single-agent DM.** App-provided agents (the Agent Designer is the first) live
+  in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
+  each as one `systemManaged` row per organisation, keyed by `Agent.systemSlug` —
+  unique on `(organizationId, systemSlug)` with a CHECK requiring `systemManaged`
+  AND a non-null `organizationId`, so a cross-org vendor row is a database
+  impossibility and a display name is never again the discriminator. The ensure function is
+  `ensurePersonalAssistantAgent` verbatim in shape, with tool policy merged
+  under `acquireAgentToolPolicyLock` *after re-reading the row* so a targeted
+  grant committed in between survives, and the blueprint's own policy passes
+  `assertGenericAgentToolPolicyInput` like user input: vendor config is not
+  authority. Its home is a per-user private DM keyed
+  `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
+  its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
+  and held to exactly its encoded member (owner at **segment 4**) by the deferred
+  home-membership trigger. Sole membership is what makes `effectiveUserId =
+  poster` and the single-candidate fast path safe, so it must hold at rest. Three
+  refusals keep it true: no agent binds into ANY system channel
+  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
+  refuses rename, archive and re-membering), `createAgentTrigger` refuses a
+  `systemSlug` target (a scheduled run re-arms its creator's identity), and
+  `assertGlobalAgentRunPlacement` admits only the home DM before any inference. Reachability is the point of the tier: `listAgentsForUser`'s
+  `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
+  longer channel-gated: an app-provided agent nobody can find is the
+  unreachable-capability defect Rule zero names. Finding one has to lead
+  somewhere, so a `systemManaged` agent answers a **narrow configuration read**
+  (`GET /api/agents/:agentId/config`) under exactly that list entitlement while
+  `isAgentAccessibleToActor` stays untouched — status, activity, messages and
+  children still 404, a global agent's activity spanning every member's private
+  DM. `docs/global-agents.md`; spec:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md`.
+- **A capability can be moved to a specialist without being deleted.**
+  `BuiltinToolDefinition.identityDelegatedOnly` narrows `personalAssistantOnly`
+  to the identity-delegated arm alone — `agent_create`, `agent_read`,
+  `agent_update`, `agent_tool_catalog`, `agent_avatar_update` are reachable only
+  by a blueprint that declares them, in its own home DM, on an interactive human
+  turn. Not even a Personal Assistant: it keeps the operational verbs on existing
+  agents and hands over with `agent_handoff`, the design catalogue being large
+  and belonging in one agent's context. A flag that removes an arm — the tool
+  *omitted* from the PA's schema, not offered and denied — is the honest
+  mechanism; deleting it would take it from the specialist too.
+- **"This run delegates to its requesting person" is ONE predicate, and the
+  identity-tool gate widens by exactly one arm.** The worker keyed delegation on
+  `agentKind === 'personal_assistant'` in five places — memory scopes, realtime
+  narrowing, reply attribution, the trigger binding waiver, the acting-member
+  helpers — because the PA was the only delegate. A global agent is
+  `agentKind: 'shared'` and delegates as completely, so all five would have
+  treated it as ordinary with no failing check anywhere.
+  `runDelegatesToRequestingPerson` (`worker/src/run/delegated-identity.ts`) is
+  the one answer: the PA in its own DM, or a `home: 'per_user_dm'` blueprint in
+  its own home DM, derived from agent kind + `systemSlug` → blueprint + the
+  destination's `systemChannelType`/`dmKey`, never content. Both arms are
+  surface-keyed — a PA presence in a shared room still carries its owner's
+  identity, so the exemptions key on the surface, never the kind. Memory
+  containment and realtime narrowing moved onto it; reply re-attribution and both
+  *binding* waivers stay PA-only. `personalAssistantOnly` gains one arm
+  beside the PA's: the blueprint's `identityToolIds` lists that id, the run is on
+  the agent's own home DM, and `payload.interactive === true` with a live human
+  requester whose id equals the stamped `effectiveUserId` — resolved **once** at
+  run setup and passed to BOTH `resolveAgentTools` (the schema omits them, never
+  offer-then-deny) and `authorizeToolCall` (a stale schema cannot be exercised),
+  never to a delegate sub-agent. That interactive arm is the second of two locks
+  with the `createAgentTrigger` refusal: remove either and an unattended run
+  reconstructing an absent creator's `effectiveUserId` creates agents and
+  channels as that person. Delegated reads it opens feed the disclosure sink.
+- **`agent_handoff` passes the person, and its bounds are structural.** Any
+  agent may hand a conversation to a global agent: a hidden server-authored
+  `system` brief — the trigger-kickoff mechanism, never the integration
+  handoff's `role:'user'` message rendering model text as the person's own
+  editable words — into the *requesting person's* home DM, plus one doorway
+  message in the origin room. The requester is the **actor**, never
+  `effectiveUserId` (a PA presence carries its owner's while another member
+  asks); with `interactive === true` and a live membership re-read, that also
+  refuses every unattended, trigger, subtask and agent-authored run. Bounds are
+  **withheld, not asserted**: the tool is omitted from any `systemSlug` agent's
+  schema and from `spawn_subtask` children in `authorizeToolCall`, and one
+  cooldown row per `(requester, slug)` converges retries and continuations onto
+  the one briefing. The brief's basis subtracts **every scope the requester
+  satisfies**, or the DM's only member cannot read its own specialist. Delivery
+  is the one shared `deliverGlobalAgentBrief`, which claims the slot with
+  `claimThreadRunOrPend`. `docs/global-agents.md`.
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and
@@ -272,6 +348,38 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
   organisation a principal id for a stranger. Spec:
   `docs/plans/2026-08-29-people-and-their-agents.md`.
+- **Ownership decides who may edit, and "edit" is field-sensitive.** Every
+  agent-mutation route gated on the ORGANISATION owner role, so no ordinary
+  member could edit any agent — not even the private one they own. It never
+  surfaced because the people editing were org owners. `canEditAgent` /
+  `assertAgentFieldAuthority` (`@nessie/workspace-admin`
+  `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
+  both avatar routes, and are the one rule chat tools consume too, so routes and
+  the Agent Designer cannot disagree. A **private** agent is its live owner's
+  alone (an org owner cannot see it, so cannot edit it); a **person-owned**
+  workspace agent takes its live owner plus org owners (without that override a
+  deactivated steward leaves an agent with no editor); a **team-owned** agent —
+  `ownerUserId` null — takes anyone entitled to it, plus org owners; a
+  `systemManaged` agent takes nobody, refused **in the service**
+  (`SYSTEM_AGENT_IMMUTABLE`) rather than only hidden by route invisibility.
+  Owner-ness is re-derived from the live `OrganizationMember` row on every call,
+  never the session claim or an enqueue-time snapshot. A null owner is a
+  **deliberate state**, not missing history: "team-owned" means any member who
+  can see the agent may rewrite its prompt, model, tools and limits, while
+  *placement* (`agent_bind_channel`) keeps its stricter four gates — editing
+  improves the shared agent in place, binding changes who is exposed to it. One
+  predicate over the whole PUT body would be wrong, because that body also
+  carries `ownerUserId` and `todosEnabled`: ownership transitions belong to the
+  current owner or an org owner (so *claiming* a team-owned agent is
+  org-owner-only by construction) and `todosEnabled` keeps its own org-owner
+  gate — both firing only on an actual change, so a form echoing the stored
+  value back stays an ordinary edit. Unchanged by all of it:
+  protected/explicit-grant policy keys (`assertGenericAgentToolPolicyInput` is
+  the law for every editor), immutable `visibility`,
+  `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the `agent.owner_changed` audit on
+  both transfer and release. Details:
+  `docs/plans/2026-08-29-people-and-their-agents.md`; decision:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
 - **An interactive card is one system, and its press is claimed once.** Every
   agent that can talk can post a card (`card_post`, default-on) whose buttons a
   person presses; `AgentCard` is the authority and the message carries only its
@@ -342,6 +450,30 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   gate must ask exactly what dispatch asks: checking a strict subset let
   triggers pass, create runs, and die at the first inference invisibly. Details:
   `CLAUDE.md` → "A schedule that stops says so".
+- **A tool declares where it belongs; no surface guesses.**
+  `BuiltinToolDefinition.category` is **required** and its vocabulary is
+  `TOOL_CATEGORIES` in `@nessie/schemas` — one ordered list of
+  `{id, label, description}` that every surface listing tools renders in order.
+  The admin used to infer a category from the tool's id prefix (`file_`,
+  `web_`, `kb_`…) and sweep everything unmatched into one "Agent & workspace"
+  bucket; that bucket had grown to hold **75 of 116** builtins, because a new
+  tool joined it by default and the only way out was to invent another prefix
+  rule. Making the field required means adding a tool without choosing a home
+  does not compile, and `packages/runtime/test/builtin-tool-categories.test.ts`
+  additionally refuses any category holding more than a quarter of the
+  catalogue — crossing that means the category has stopped describing anything
+  and needs splitting, not that the ceiling needs raising. A category is a
+  place a person would go looking ("where do I turn off email?"), never an
+  implementation detail. The category is resolved onto `ToolDescriptor` from
+  the definitions at the API boundary, beside `requiresExplicitGrant` and for
+  the same reason — it is a property of the tool's code, so re-categorising one
+  must never need a migration. The picker renders **every section closed**: 116
+  tools across sixteen categories is an index, not a page of switches, and
+  searching expands only the sections that still match without disturbing the
+  ones a person opened. One component draws that list in both modes
+  (`ToolPicker`, `readOnly` for a viewer who cannot change a tool); the
+  separate read-only renderer that used to exist had drifted to its own
+  grouping, its own cards and no search at all.
 - **An agent's mailbox is its own store, and everything about it is
   structural.** Hosted agent email (`support@nessie.works`, Amazon SES
   integrated directly, off unless four `NESSIE_EMAIL_*` variables are set) keeps
@@ -364,7 +496,16 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   stay implied by the mailbox's own thread or every reply deadlocks (four tests
   pin this). A send is `queued` → conditional `sending` → `sent`, with an
   ambiguous outcome parked at `delivery_unknown` and **never retried** — a retry
-  is a duplicate in someone's inbox. Deleting a mailbox retires its address
+  is a duplicate in someone's inbox, and a sweep resolves a claim whose worker
+  died so it cannot sit in `sending` forever. That claim stops one ROW being
+  sent twice; what stops two ROWS existing is `EmailMessage.sendKey`, the tool
+  call's own `{runId}:{toolCallId}`, because a replayed run re-issues the same
+  call. Suppression and the hourly cap are enforced **inside** the queueing
+  write rather than beside it — a check a caller must remember is a check a
+  caller can forget, and counting outside the transaction let two concurrent
+  runs both pass the last slot. An email attachment asks the same
+  agent-visibility question the mailbox reads ask, so the byte surface and the
+  conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
@@ -438,41 +579,28 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) to protect agent context.
   External-agent products (e.g. DeepSignal) run as a per-user DM channel with
   `Agent.executionMode = external_mcp` — turns proxy straight to the product's
-  MCP endpoint with **no Nessie inference**. DeepSignal uses a system-managed,
-  user-scoped instance pinned to the single deployment reference
-  `DEEPSIGNAL_MCP_APP_KEY`; the resolved value is a DeepSignal-issued,
-  Nessie-only `dsk_` bearer. Resolution is limited to the canonical public
-  catalog linked from the `deepsignal` integrated-product row, and signing is
-  pinned to `https://api.deepsignal.live`; a same-name catalog or changed
-  origin cannot receive the key. Every chat (initial and follow-up), history,
-  digest, and action request also carries an exact `ai.invoke`
-  `X-UOA-Delegation` for
-  the linked user/active UOA org/team plus a fresh RS256 `X-Nessie-Context`
-  containing non-null user/org/team/agent/run/request/tool-call provenance.
-  The app key, delegated user, and signed provenance are independent proofs:
-  no per-user OAuth or generic credential fallback is accepted. Generic OAuth
-  remains available for ordinary connectors. DeepSignal's app key is distinct
-  from every configured secret-bearing environment credential and every
-  encrypted per-org webhook signing secret; API/worker startup verifies both.
-  Pre-existing identity headers are rejected case-insensitively before fresh
-  identity is attached. The signed session org/team must exactly match the
-  selected team's external UOA mapping; the one per-user/product account link
-  proves only stable subject/status/credential epoch, while its active org/team
-  fields are non-authoritative last-seen UI metadata. Team enablement derives
-  its external tuple from the mapped Team row and is rechecked for every call,
-  and DM keys include the UOA team so conversations cannot cross a team switch.
-  Legacy team-less channels fail closed. Managed instances reject generic
-  lifecycle and secret writes, and their global product-linked catalog entries
-  reject every generic catalog mutation. The worker driver + API
-  history hydration share the `@nessie/mcp-manage`
-  `resolveInstanceMcpTransport`/`callInstanceTool` seam, and a per-org
-  HMAC-verified webhook (`/api/integrations/deepsignal/events`) delivers
-  proactive insights as a **coalesced, budgeted rolling digest** (one "N new
-  signals" message per user, updated in place; fresh digests capped per user per
-  window — env-tunable heuristics, not law) rather than one card per event; the
-  Signals page renders them as a triaged Overview/Inbox. See
-  `docs/external-tool-integration.md` §2 + §5 and
-  `docs/plans/2026-07-09-deepsignal-integration.md`.
+  MCP endpoint with **no Nessie inference**. Load-bearing invariants: the
+  system-managed, user-scoped instance resolves `DEEPSIGNAL_MCP_APP_KEY` only
+  from the canonical public catalog linked from the `deepsignal`
+  integrated-product row, with signing pinned to `https://api.deepsignal.live`,
+  so a same-name catalog or changed origin cannot receive the key; the app key,
+  the `ai.invoke` `X-UOA-Delegation`, and the fresh RS256 `X-Nessie-Context`
+  are **independent** proofs carried on every call with no per-user OAuth or
+  generic credential fallback; that key is distinct from every other
+  secret-bearing environment credential and per-org webhook secret, verified at
+  API/worker startup; pre-existing identity headers are rejected
+  case-insensitively before fresh identity is attached; the signed session
+  org/team must exactly match the selected team's UOA mapping (the account link
+  proves only subject/status/epoch — its active org/team are non-authoritative
+  last-seen metadata), DM keys include the UOA team, and legacy team-less
+  channels fail closed; managed instances and their product-linked catalog
+  entries reject every generic lifecycle, secret and catalog mutation.
+  Generic OAuth remains available for ordinary connectors. Everything else —
+  the shared `resolveInstanceMcpTransport`/`callInstanceTool` seam, the per-org
+  HMAC webhook and its coalesced, budgeted rolling digest, the Signals page —
+  is in [docs/external-tool-integration.md](docs/external-tool-integration.md)
+  §2 + §5 and
+  [docs/plans/2026-07-09-deepsignal-integration.md](docs/plans/2026-07-09-deepsignal-integration.md).
 - DeepWater is usable as a tool by any permitted agent, but **default OFF with an
   explicit per-agent grant required** and **always routed through Ledger**:
   enabling DeepWater for a team (owner-only team-enablement toggle) provisions
@@ -814,87 +942,51 @@ not drift:
 
 - **A link is Nessie's own grant.** Never read, import, or accept a vendor
   CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
-  items). Providers rotate refresh tokens and invalidate the previous one, so
-  two apps sharing one grant log each other out — OpenClaw hit this and removed
-  its import path for exactly this reason. One grant, one refresh owner.
-- **Token values live in the vault, never in PostgreSQL.**
-  `docs/secret-management-spec.md` bars new secret-capture flows from putting
-  values in the database. The bundle goes to a **dedicated, separately-ACLed**
-  vault project (`NESSIE_SUBSCRIPTION_VAULT_*`), not the shared personal
-  partition — that folder also holds a person's ordinary captured secrets, and
-  an identity scoped to it could read them all. `model_subscription_credentials`
-  holds only the pointer. A deployment with no vault refuses linking in words;
-  it never falls back to a column.
+  items): providers rotate refresh tokens and invalidate the previous one, so
+  two apps sharing one grant log each other out. One grant, one refresh owner.
+- **Token values live in the vault, never in PostgreSQL**, in a **dedicated,
+  separately-ACLed** vault project (`NESSIE_SUBSCRIPTION_VAULT_*`) rather than
+  the shared personal partition, which also holds a person's ordinary captured
+  secrets. `model_subscription_credentials` holds only the pointer, and a
+  deployment with no vault refuses linking in words — never a column fallback.
+  Deleting a pointer tombstones the vault secret in the same transaction, or a
+  cascade strands a live refresh token nothing can address.
 - **The lane is pinned at run admission and never falls back.**
-  `resolveRunSubscriptionBinding` re-derives entitlement from live rows (agent
-  owner, that owner's live membership, subscription status) and persists the
-  subscription plus its credential epoch on the `Run`, so a mid-run relink
-  cannot switch accounts and a continuation whose binding died fails closed. A
-  selection that merely *looks* like a subscription — unknown adapter, dangling
-  pointer — is `unavailable`, never Ledger: falling back would move a person's
-  spend onto the organization without anyone agreeing to it.
+  `resolveRunSubscriptionBinding` re-derives entitlement from live rows and
+  persists the subscription plus its credential epoch on the `Run`, so a
+  mid-run relink cannot switch accounts and a continuation whose binding died
+  fails closed. Anything that merely *looks* like a subscription — unknown
+  adapter, dangling pointer — is `unavailable`, never Ledger: falling back
+  would move a person's spend onto the organization with nobody agreeing to it.
 - **Organization budgets gate organization spend, so they do not gate this
   lane.** `applyBudgetGate` and its mid-run probe skip a pinned run: blocking
-  would refuse a run the organization is not paying for (with "buy credits" copy
-  naming the wrong purse), and a `degrade` verdict would rewrite it onto the
-  organization's Ledger provider — moving the very spend it was capping. The
-  per-run backstop envelope still applies in full.
-- **Exclusion from cost is structural.** `TokenLedgerEvent.billingSource` +
-  `modelSubscriptionId` decide it, never the absence of a pricing profile:
-  connector invocations record the *runtime* provider (`openai-compatible`), and
-  an owner-authored wildcard `ModelPricingProfile` would otherwise price spend
-  the organization never incurred. Attribution follows the subscription **owner**,
-  not whoever posted. The writer reads the run's own pin so no terminal path can
-  forget to stamp it.
+  would refuse a run the organization is not paying for, and a `degrade`
+  verdict would rewrite it onto the organization's Ledger provider — moving the
+  very spend it was capping. The per-run backstop envelope still applies.
+- **Exclusion from cost is structural**: `TokenLedgerEvent.billingSource` +
+  `modelSubscriptionId` decide it, never the absence of a pricing profile.
+  Attribution follows the subscription **owner**, not whoever posted, and the
+  writer reads the run's own pin so no terminal path can forget to stamp it.
 - **One validator, every write path.** `assertAgentModelSelection`
-  (`@nessie/workspace-admin`) is the single gate for create, update, clone and
-  the PA `agent_create` tool: a Ledger pair goes to the catalogue, a
-  `subscription/<key>` pair must belong to the acting person, and a Ledger
-  selection clears any stale pointer. Ownership transfer and clone strip the
-  selection, because a subscription is not transferable. Write-time validation
-  is UX; the run-time gate is the security boundary.
-- **Refresh discipline** (OpenClaw's field lessons): a short locked claim, the
-  network call outside any transaction, compare-and-swap on the epoch, never a
-  transport-failure retry of a refresh grant (the provider may already have
-  rotated it), a 5-minute proactive margin, and failure transitions applied only
-  when the failing epoch is still current — so a delayed 401 cannot kill a fresh
-  link. Only adapter-defined authentication codes reach
-  `needs_reauthorization`; 403 is also entitlement, policy and quota, and a
-  relink button cannot fix those.
-- **Deleting a pointer tombstones the vault secret** in the same transaction, or
-  a cascade strands a live refresh token nothing can address.
+  (`@nessie/workspace-admin`) gates create, update, clone and the PA
+  `agent_create` tool; ownership transfer and clone strip the selection,
+  because a subscription is not transferable. Write-time validation is UX; the
+  run-time gate is the security boundary.
+- **Refresh discipline:** a short locked claim, the network call outside any
+  transaction, compare-and-swap on the epoch, never a transport-failure retry
+  of a refresh grant, a 5-minute proactive margin, and failure transitions
+  applied only while the failing epoch is still current. Only adapter-defined
+  authentication codes reach `needs_reauthorization` — 403 is also entitlement,
+  policy and quota, which a relink button cannot fix.
 
-Spec and phasing: `docs/plans/2026-09-02-personal-model-subscriptions.md`.
+Rationale, field lessons and phasing:
+[docs/plans/2026-09-02-personal-model-subscriptions.md](docs/plans/2026-09-02-personal-model-subscriptions.md).
 
 ## Embeddings — routed separately, one pinned width
 
-- Embeddings are configured independently of chat via `NESSIE_EMBEDDING_*`
-  (`PROVIDER`, `MODEL`, `SERVICE_ID`, `BASE_URL`, `API_KEY`); every unset field
-  inherits the chat provider, so an unconfigured deployment is byte-identical to
-  before. The chat provider may serve no embeddings endpoint at all — Ledger's
-  DeepSeek adapter answers `403 embeddings is not allowed for deepseek` — so
-  production embeds through `/v1/jina` while chat stays on `/v1/deepseek`.
-  Resolution lives in `packages/runtime/src/inference/embedding-provider.ts` and
-  is applied once in `createModelClient`; do not fetch embeddings through any
-  other path. Signed `X-Nessie-Context` / `X-UOA-Delegation` identity travels
-  with the embedding leg only while it stays on the chat host, so a third-party
-  embedding endpoint an operator names never receives a delegation assertion.
-- **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single
-  source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s
-  native width). Never write the number anywhere else — not in a producer, a
-  validator, a test fixture, or the mock-LLM harness. The three pgvector columns
-  (`thoughts.embedding`, `thought_recalls.query_embedding`,
-  `knowledge_page_chunks.embedding`) are declared at that width, and every embed
-  request sends `dimensions` so a provider answering differently fails loudly.
-  Changing the embedding model to another width = edit the constant + one Prisma
-  migration re-typing the columns + re-embedding; vectors of different widths are
-  not convertible, so the migration nulls them rather than truncating (a
-  truncated vector is neither model's output and poisons later comparisons).
-- The model that produced a vector is `ModelClient.embeddingModel`, resolved from
-  deployment config — not a constant. It is what gets written to
-  `embedding_model` and what keys the query-embedding cache, so the two sides of
-  a similarity comparison agree by construction rather than by two constants
-  happening to match.
+- Embeddings are configured independently of chat via `NESSIE_EMBEDDING_*` (`PROVIDER`, `MODEL`, `SERVICE_ID`, `BASE_URL`, `API_KEY`); every unset field inherits the chat provider, so an unconfigured deployment is byte-identical to before. The chat provider may serve no embeddings endpoint at all — Ledger's DeepSeek adapter answers `403 embeddings is not allowed for deepseek` — so production embeds through `/v1/jina` while chat stays on `/v1/deepseek`. Resolution lives in `packages/runtime/src/inference/embedding-provider.ts` and is applied once in `createModelClient`; do not fetch embeddings through any other path. Signed `X-Nessie-Context` / `X-UOA-Delegation` identity travels with the embedding leg only while it stays on the chat host, so a third-party embedding endpoint an operator names never receives a delegation assertion.
+- **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s native width). Never write the number anywhere else — not in a producer, a validator, a test fixture, or the mock-LLM harness. The three pgvector columns (`thoughts.embedding`, `thought_recalls.query_embedding`, `knowledge_page_chunks.embedding`) are declared at that width, and every embed request sends `dimensions` so a provider answering differently fails loudly. Changing the embedding model to another width = edit the constant + one Prisma migration re-typing the columns + re-embedding; vectors of different widths are not convertible, so the migration nulls them rather than truncating (a truncated vector is neither model's output and poisons later comparisons).
+- The model that produced a vector is `ModelClient.embeddingModel`, resolved from deployment config — not a constant. It is what gets written to `embedding_model` and what keys the query-embedding cache, so the two sides of a similarity comparison agree by construction rather than by two constants happening to match.
 - Spec: `docs/deployment.md` "Embedding model and vector width".
 
 ## File storage & accounting — single chokepoint
