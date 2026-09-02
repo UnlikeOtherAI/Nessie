@@ -596,10 +596,9 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   **no** raw hex or Tailwind named-color utilities; they reference tokens via
   `var(--x)` / `bg-[var(--x)]`.
 - Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
-  (`/settings/appearance`); choice persists locally in
-  `localStorage["nessie.theme"]` for logged-out screens and is also saved to
-  `User.preferences.theme` for signed-in users so web, desktop, and mobile use
-  the same account theme.
+  (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
+  for logged-out screens and on `User.preferences.theme` for signed-in users, so
+  web, desktop, and mobile use the same account theme.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
@@ -610,8 +609,8 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   shells outside `Dialog`). The inventory, the proposed kit, the scale and the
   phased migration are in
   [docs/plans/2026-09-01-content-design-system/overview.md](docs/plans/2026-09-01-content-design-system/overview.md);
-  navigation, page headers, buttons and chat are deliberately outside it.
-  One rule from it applies now, ahead of the kit: **no nesting** — a card
+  navigation, page headers, buttons and chat are deliberately outside it. One
+  rule from it applies now, ahead of the kit: **no nesting** — a card
   never contains a card, a table never contains a table, a bordered box never
   sits inside a bordered box. Depth is dividers and spacing, not a second
   frame. A second rule is decided ahead of the kit too: **big elements are
@@ -632,26 +631,16 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
   parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
   `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
-- **One identity picture, one shape, one source.** Every avatar in the admin —
-  person, agent, project, workspace, app, search hit — is
+- **One identity picture, one shape, one source.** Every avatar in the admin is
   `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
-  for its kind (`UserAvatar`, `AgentAvatar`, `ProjectAvatar`, `WorkspaceAvatar`,
-  `AppIcon`, `SearchResultMarker`). The tile owns the shape, the broken-image
-  reset and the fallback; the wrapper owns only *which* source wins; a call site
-  describes what it depicts and never assembles a tile. The radius is
-  proportional — `identityTileRadius(size) = max(3, round(size × 0.28))`
-  (`primitives/identity-shape.ts`), `identityRingRadius` for rings — because the
-  `--radius-*` tokens are re-declared on `:root`, so `rounded-md` was a flat
-  10px at every size: a 96px portrait read as a square, an 18px tile a circle. An agent's picture resolves from its **id** through
-  `providers/AgentIdentityProvider.tsx`, which merges the agents list with the
-  Personal Assistant — `GET /api/agents` omits `systemManaged` agents, which is
-  why the PA was a portrait in the sidebar and a `⚡` in the thread panel. It is
-  identity-only: pickers and policy surfaces still read `useAgents()`.
-  `AGENT_AVATAR_BACKGROUND_COLORS` has one importer; `lib/avatar.ts` keeps only
-  `getInitials`. The native chrome duplicates the contract in
-  `mobile/src/lib/identity-shape.ts`; `identity-avatar-consistency.test.ts`
-  asserts they match, that the radius never reaches a circle, and that no
-  gradient tile returns (2026-09-02: 17 tiles across 12 radii collapsed here).
+  for its kind; a call site says what it depicts and never assembles a tile. Its
+  radius is proportional (`identityTileRadius`) because the `--radius-*` tokens
+  are re-declared on `:root`, so `rounded-md` was a flat 10px at every size — a
+  96px portrait read as a square, an 18px tile a circle. An agent's picture
+  resolves from its **id** through `providers/AgentIdentityProvider.tsx`, since
+  `GET /api/agents` omits `systemManaged` agents — which is why the Personal
+  Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
+  [identity avatars](docs/plans/2026-09-02-identity-avatars.md).
 - **One composer, and at rest it is one line.** Every message composer in the
   admin is `components/features/channels/ChannelComposer.tsx` (channel feed,
   thread reply panel, both info drawers, the Threads inbox card). At rest it is
