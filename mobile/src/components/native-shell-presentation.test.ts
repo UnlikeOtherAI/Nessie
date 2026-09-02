@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
@@ -75,4 +76,9 @@ test('only presentation messages enter the native presentation reducer', () => {
     reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, { type: 'nessie:route' }),
     DEFAULT_NATIVE_SHELL_PRESENTATION,
   )
+})
+
+test('the WebView leaves pull-to-refresh to the admin page', () => {
+  const source = readFileSync(new URL('./MobileAdminWebView.tsx', import.meta.url), 'utf8')
+  assert.match(source, /pullToRefreshEnabled=\{false\}/)
 })
