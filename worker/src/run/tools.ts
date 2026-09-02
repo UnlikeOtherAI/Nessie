@@ -33,10 +33,14 @@ import {
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
+  runAgentAvatarUpdateTool,
   runAgentBindChannelTool,
   runAgentCreateTool,
   runAgentListTool,
+  runAgentReadTool,
+  runAgentToolCatalogTool,
   runAgentTriggerCreateTool,
+  runAgentUpdateTool,
   runAuthoredMessageSearchTool,
   runCallStartTool,
   runChannelArchiveTool,
@@ -271,6 +275,17 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
     case 'agent_list':
       return wrapTool(inputSummary, () => runAgentListTool(context, args))
+    // Agent configuration: read one agent's record, rewrite it, list the tools
+    // this workspace can actually give it, set its portrait. Authority lives in
+    // the shared `canEditAgent` predicate the PUT route uses.
+    case 'agent_read':
+      return wrapTool(inputSummary, () => runAgentReadTool(context, args))
+    case 'agent_update':
+      return wrapTool(inputSummary, () => runAgentUpdateTool(context, args))
+    case 'agent_tool_catalog':
+      return wrapTool(inputSummary, () => runAgentToolCatalogTool(context, args))
+    case 'agent_avatar_update':
+      return wrapTool(inputSummary, () => runAgentAvatarUpdateTool(context, args))
     case 'agent_bind_channel':
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':

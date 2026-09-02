@@ -821,26 +821,50 @@ and stamps `Call.createdViaAgentId`.
 
 ## Global agents — one blueprint, one row per organisation
 
-App-provided agents (the **Agent Designer**, `agent-designer`, is the first)
-are blueprints in `@nessie/workspace-admin`, instantiated by
-`ensureGlobalAgent` as one `systemManaged` row per organisation keyed by
-`Agent.systemSlug`, reachable through a per-user private home DM
-(`gagent:{slug}:{orgId}:{userId}`, `systemChannelType='system_agent'`, one
-member and one binding, both database facts). The invariants — slug CHECK,
-ensure/policy-merge shape, sole-membership trigger arm, the
-no-agent-binds-into-any-system-channel refusal, no self-triggers, the home-only
-run-start assertion, the un-gated `{ systemManaged: true }` list arm — are in
-`AGENTS.md` → "A global agent is a blueprint in code". Spec:
-[docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
+App-provided agents (the **Agent Designer**, `agent-designer`, is the first) are
+blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
+one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
+through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
+`systemChannelType='system_agent'`, one member and one binding, both database
+facts). Invariants: `AGENTS.md` → "A global agent is a blueprint in code".
+Spec: [docs/plans/2026-09-02-agent-designer-global-agent.md](docs/plans/2026-09-02-agent-designer-global-agent.md).
 
 Facts not restated there: bootstrap runs beside the PA's at login and user
-provisioning but **best-effort** (`attemptGlobalAgentsBootstrap`) — the PA may
-fail a login, a global agent must never lock anyone out; the model is blueprint
-pin → `NESSIE_DESIGNER_MODEL` → organisation default, one rule for both Designer
-faces; the sidebar finds the DM via `isGlobalAgentChannel`, and
-`AgentIdentityProvider` reads `scope=all` so the picture resolves from an id
-anywhere. Phase 1 makes the Designer exist, be reachable and reply; identity
-tools, the catalogue, `agent_handoff` and the unified sidebar are phases 2–4.
+provisioning but **best-effort** — a global agent must never lock anyone out;
+the model is blueprint pin → `NESSIE_DESIGNER_MODEL` → organisation default, one
+rule for both Designer faces; the sidebar finds the DM via
+`isGlobalAgentChannel`, and `AgentIdentityProvider` reads `scope=all`.
+
+- **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
+  provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog` and
+  `agent_avatar_update` — `personalAssistantOnly` builtins handled in
+  `worker/src/run/pa-tools/agent-config.ts` over shared `@nessie/workspace-admin`
+  functions (api services re-exporting). `readAgentRecordForActor` applies
+  exactly the list entitlement (`buildAgentEntitlementWhere`, factored out of
+  `listAgentsForUser` so list and detail cannot disagree), answers a
+  `systemManaged` target with a **config-only** projection and no record, and
+  stamps the `agent:` scope into the disclosure sink. `updateAgentRecord` /
+  `updateAgentAvatar` moved to `agent-update.ts` in that package because the
+  worker cannot import `api/src/services/*`, so chat inherits the one
+  `canEditAgent` / `assertAgentFieldAuthority` the PUT route uses.
+  `loadAgentToolCatalog` is a **member-safe** projection (`GET /api/mcp/tools`
+  stays owner-only) assembled field-by-field from a narrow selection, so no
+  credential, endpoint, auth or transport config has a shape to travel in;
+  ungrantable tools are named with where they come from.
+- **One avatar seam**, `generateAvatarForNewAgent`, is run by `POST /api/agents`
+  and the PA `agent_create` tool, so a chat-created agent is no longer the only
+  faceless one; it never throws, because a billed image call is not worth
+  failing a creation for.
+- **The capability catalogue is generated, never written**
+  (`worker/src/run/execute/global-agent-catalogue.ts`): every parameter from the
+  contract that validates it, every tool from `BUILTIN_TOOL_DEFINITIONS` plus
+  the organisation's live registry rows, models from `listLedgerAgentModels`.
+  Hand-written prose about parameters or tool lists is forbidden — a new tool is
+  in the Designer's knowledge the deploy it ships. Assembled only for a
+  blueprint run, injected at one call site in `run-job.ts` as its own `system`
+  message after the cache-stable anchor.
+
+`agent_handoff` and the unified sidebar are phases 3–4.
 
 ## Personal assistant — workspace provisioning
 

@@ -148,6 +148,30 @@ test('agent_create refuses a tool policy that grants an explicit-grant tool', as
   assert.equal(createCalls, 0)
 })
 
+test('agent_create runs the shared avatar seam and survives it failing', async () => {
+  const created: Array<Record<string, unknown>> = []
+  // No model client on this run: the seam reports and resolves to no avatar,
+  // because a picture is never worth failing a creation for.
+  const context = buildContext('member', {
+    agent: {
+      create: async (input: { data: Record<string, unknown> }) => {
+        created.push(input.data)
+        return {
+          ...buildAgentRow({ channelIds: [], id: AGENT_ID, name: 'Researcher', role: 'assistant' }),
+          ...input.data,
+        }
+      },
+    },
+    toolRegistryEntry: { findMany: async () => [] },
+  })
+
+  const result = await runAgentCreateTool(context, { name: 'Researcher' })
+
+  assert.match(result.outputPreview, /Created agent "Researcher"/)
+  assert.equal(created.length, 1)
+  assert.equal(created[0]?.['avatarAttachmentId'], undefined)
+})
+
 const SECOND_AGENT_ID = '4f7d1c00-0e64-4d10-a517-0d0b69c1d012'
 
 // The columns `mapAgentRecord` reads, so the tool sees the same record the

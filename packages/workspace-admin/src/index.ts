@@ -8,6 +8,7 @@
  * functions live here and `api/src/services/*` re-exports them.
  */
 export * from './access-checks.js'
+export * from './agent-avatar-generation.js'
 export * from './agent-bindings.js'
 export * from './agent-create.js'
 export * from './agent-edit-authority.js'
@@ -15,7 +16,10 @@ export * from './agent-list.js'
 export * from './agent-model-order.js'
 export * from './agent-model-options.js'
 export * from './agent-model-selection.js'
+export * from './agent-read.js'
 export * from './agent-record.js'
+export * from './agent-tool-catalog.js'
+export * from './agent-update.js'
 export * from './agent-card-presentation.js'
 export * from './agent-card-values.js'
 export * from './agent-todo-errors.js'

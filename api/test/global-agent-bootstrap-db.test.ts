@@ -134,7 +134,22 @@ dbTest('bootstrap is idempotent and writes the sanctioned system tuple', async (
     assert.equal(agent.delegationMode, 'act_as_requesting_user')
     assert.equal(agent.systemSlug, 'agent-designer')
     assert.equal(agent.name, 'Agent Designer')
-    assert.deepEqual(agent.toolPolicy, { delegate: false, spawn_subtask: false })
+    // The blueprint's policy, byte for byte: the deny-mode narrowing plus the
+    // Designer's own configuration verbs, which are declared here as well as in
+    // `identityToolIds` so the row states what this agent is for.
+    assert.deepEqual(agent.toolPolicy, AGENT_DESIGNER_BLUEPRINT.toolPolicy)
+    assert.equal(
+      (agent.toolPolicy as Record<string, boolean>)['delegate'],
+      false,
+      'a design conversation still fans out to nothing',
+    )
+    for (const toolId of AGENT_DESIGNER_BLUEPRINT.identityToolIds) {
+      assert.equal(
+        (agent.toolPolicy as Record<string, boolean>)[toolId],
+        true,
+        `${toolId} is declared on the stored row`,
+      )
+    }
 
     const channel = await prisma.channel.findUniqueOrThrow({
       where: { id: first.channelId },
@@ -235,9 +250,8 @@ dbTest('re-applying the blueprint never clobbers a targeted grant', async () => 
       select: { toolPolicy: true },
     })
     assert.deepEqual(agent.toolPolicy, {
-      delegate: false,
+      ...AGENT_DESIGNER_BLUEPRINT.toolPolicy,
       deep_water_run_update: true,
-      spawn_subtask: false,
     })
   } finally {
     await teardown(context)

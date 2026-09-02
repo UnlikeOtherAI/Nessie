@@ -14,8 +14,8 @@ import { parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
-  AgentAvatarGenerationError,
   generateAgentAvatar,
+  generateAvatarForNewAgent,
 } from '../services/agent-avatar-generation.js'
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -231,24 +231,29 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }
-      let generatedAvatar
-      if (!body.avatarAttachmentId) {
-        if (!deps.sharedModelClient) {
-          throw new AgentAvatarGenerationError('The model service is not configured.')
-        }
-        generatedAvatar = await generateAgentAvatar({
-          actorContext,
-          agent: {
-            name: body.name,
-            role: body.role ?? 'assistant',
-            systemPrompt: body.systemPrompt,
-          },
-          config: deps.config.model,
-          fileService: deps.fileService,
-          ledgerIdentity: deps.ledgerIdentity,
-          modelClient: deps.sharedModelClient,
-        })
-      }
+      // The one shared generate-then-attach seam, so a chat-created agent gets
+      // the same face this route gives. A failed picture never fails the
+      // creation — the agent works without one, and the person can generate one
+      // from the detail page.
+      const generatedAvatar = await generateAvatarForNewAgent({
+        actorContext,
+        agent: {
+          name: body.name,
+          role: body.role ?? 'assistant',
+          systemPrompt: body.systemPrompt,
+        },
+        config: deps.config.model,
+        existingAvatarAttachmentId: body.avatarAttachmentId,
+        fileService: deps.fileService,
+        ledgerIdentity: deps.ledgerIdentity,
+        modelClient: deps.sharedModelClient,
+        onFailure: (error) => {
+          request.log.warn(
+            { err: error },
+            'agent avatar generation failed; creating the agent without one',
+          )
+        },
+      })
       agent = await createAgentRecord(prisma, {
         modelSubscriptionId,
         avatarAttachmentId: body.avatarAttachmentId ?? generatedAvatar?.avatarAttachmentId,

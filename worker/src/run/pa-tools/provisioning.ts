@@ -17,6 +17,7 @@ import {
   createAgentRecord,
   createAgentTrigger,
   createChannelForUser,
+  generateAvatarForNewAgent,
   getChannelIfMember,
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
@@ -24,6 +25,7 @@ import {
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
 
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
@@ -164,7 +166,30 @@ export const runAgentCreateTool = async (
     modelSubscriptionId = selection.modelSubscriptionId
   }
 
+  // The same generate-then-attach seam `POST /api/agents` runs. Without it an
+  // agent created in chat was the only faceless one in the workspace. A failed
+  // picture never fails the creation — the seam resolves to undefined and the
+  // agent is created without one.
+  const generatedAvatar = await generateAvatarForNewAgent({
+    actorContext: member.actorContext,
+    agent: {
+      name: args.name,
+      role: args.role ?? 'assistant',
+      systemPrompt: args.systemPrompt,
+    },
+    config: loadConfig().model,
+    fileService: fileServiceFor(context.prisma),
+    ledgerIdentity: context.ledgerIdentity,
+    modelClient: context.modelClient,
+  })
+
   const agent = await createAgentRecord(context.prisma, {
+    ...(generatedAvatar
+      ? {
+          avatarAttachmentId: generatedAvatar.avatarAttachmentId,
+          avatarBackgroundColor: generatedAvatar.avatarBackgroundColor,
+        }
+      : {}),
     effort: args.effort,
     model: args.model,
     modelSubscriptionId,
