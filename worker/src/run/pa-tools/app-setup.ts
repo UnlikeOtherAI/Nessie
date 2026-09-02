@@ -41,18 +41,6 @@ type LiveMember = {
   userId: string
 }
 
-const requireConversationalSetup = async (
-  context: BuiltinToolRuntimeContext,
-): Promise<void> => {
-  const organization = await context.prisma.organization.findUnique({
-    where: { id: context.channel.organizationId },
-    select: { conversationalSetupEnabled: true },
-  })
-  if (organization?.conversationalSetupEnabled !== true) {
-    throw new Error('Conversational app setup is not enabled for this organisation.')
-  }
-}
-
 const toSafePresentation = (
   app: Pick<
     AppSummaryRecord,
@@ -102,11 +90,7 @@ const resolveLiveOfferContext = async (
   context: BuiltinToolRuntimeContext,
   userId: string,
 ): Promise<LiveMember> => {
-  const [organization, membership, channel, agent] = await Promise.all([
-    tx.organization.findUnique({
-      where: { id: context.channel.organizationId },
-      select: { conversationalSetupEnabled: true },
-    }),
+  const [membership, channel, agent] = await Promise.all([
     tx.organizationMember.findUnique({
       where: {
         organizationId_userId: {
@@ -138,9 +122,6 @@ const resolveLiveOfferContext = async (
     }),
   ])
 
-  if (organization?.conversationalSetupEnabled !== true) {
-    throw new Error('Conversational app setup is not enabled for this organisation.')
-  }
   if (!membership || membership.deactivatedAt) {
     throw new Error('Your access to this organisation is not active, so I cannot offer an app connection.')
   }
@@ -194,7 +175,6 @@ export const runAppSearchTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = AppSearchToolInputSchema.parse(input)
-  await requireConversationalSetup(context)
   const member = await resolveActingMember(context)
   const result = await listStoreApps(context.prisma, member.actorContext, { query: args.query })
   const output = AppSearchToolOutputSchema.parse({
@@ -218,7 +198,6 @@ export const runAppConnectRequestTool = async (
   if (!runContext) {
     throw new Error('Unable to resolve the current conversation.')
   }
-  await requireConversationalSetup(context)
   await resolveActingMember(context)
 
   const requestId = randomUUID()

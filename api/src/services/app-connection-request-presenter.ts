@@ -113,7 +113,6 @@ export const getAppConnectionRequestPresenter = async (
           },
         },
       },
-      organization: { select: { conversationalSetupEnabled: true } },
       requestedByUser: {
         select: {
           organizationMembers: {
@@ -139,7 +138,7 @@ export const getAppConnectionRequestPresenter = async (
     },
   })
 
-  if (!request || request.organization.conversationalSetupEnabled !== true) return null
+  if (!request) return null
   if (request.requestedByUser.organizationMembers.length !== 1) return null
 
   const snapshot = AppConnectionRequestConsentSnapshotSchema.safeParse(request.consentSnapshot)

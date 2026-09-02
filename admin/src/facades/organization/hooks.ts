@@ -41,20 +41,3 @@ export const useUpdateOrganization = () => {
     },
   })
 }
-
-// Conversational setup is an early-access product gate with its own active
-// owner-only API route. Keep it out of the owner-or-admin profile PATCH.
-export const useUpdateConversationalSetup = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (conversationalSetupEnabled: boolean) =>
-      apiClient.put<OrganizationSummary>('/api/organizations/current/features/conversational-setup', {
-        conversationalSetupEnabled,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: organizationKeys.current })
-    },
-  })
-}

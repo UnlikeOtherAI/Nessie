@@ -250,21 +250,8 @@ export const OrganizationSummarySchema = z.object({
   role: z.string(),
   logoAttachmentId: z.string().uuid().nullable(),
   stripImageMetadata: z.boolean(),
-  conversationalSetupEnabled: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
-
-// This is intentionally separate from UpdateOrganizationRequestSchema. The
-// early-access gate has a narrower, live-owner-only route than ordinary
-// organization profile settings, and accepts no unrelated configuration.
-export const SetConversationalSetupEnabledRequestSchema = z
-  .object({
-    conversationalSetupEnabled: z.boolean(),
-  })
-  .strict()
-export type SetConversationalSetupEnabledRequest = z.infer<
-  typeof SetConversationalSetupEnabledRequestSchema
->
 
 // Owners/admins set or clear the org's round logo. `null` clears it.
 export const UpdateOrganizationLogoRequestSchema = z.object({

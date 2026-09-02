@@ -35,15 +35,12 @@ import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
 import { ProjectView } from './pages/project/ProjectView'
-import { AppearancePage } from './pages/settings/AppearancePage'
 import { ConnectionsPage } from './pages/settings/ConnectionsPage'
-import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
-import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage'
 import { SecretsPage } from './pages/settings/SecretsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
-import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
+import { UserSettingsPage } from './pages/settings/UserSettingsPage'
 import { StatusesPage } from './pages/settings/StatusesPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
@@ -112,6 +109,24 @@ export const router = createBrowserRouter([
     // /settings/agents folded into the Agents browser (/agents) + designer.
     path: '/settings/agents',
     element: <RedirectRoute to="/agents" />,
+  },
+  {
+    // Profile, Security, Notifications and Appearance are now tabs of one
+    // account settings screen; these keep existing bookmarks working.
+    path: '/settings/profile',
+    element: <RedirectRoute to="/settings/account?tab=profile" />,
+  },
+  {
+    path: '/settings/security',
+    element: <RedirectRoute to="/settings/account?tab=security" />,
+  },
+  {
+    path: '/settings/notifications',
+    element: <RedirectRoute to="/settings/account?tab=notifications" />,
+  },
+  {
+    path: '/settings/appearance',
+    element: <RedirectRoute to="/settings/account?tab=appearance" />,
   },
   {
     path: '/integrations',
@@ -268,12 +283,8 @@ export const router = createBrowserRouter([
         element: <SettingsRootRoute />,
       },
       {
-        path: '/settings/profile',
-        element: <SettingsProfilePage />,
-      },
-      {
-        path: '/settings/security',
-        element: <SecuritySettingsPage />,
+        path: '/settings/account',
+        element: <UserSettingsPage />,
       },
       {
         path: '/settings/secrets',
@@ -292,20 +303,12 @@ export const router = createBrowserRouter([
         element: <StatusesPage />,
       },
       {
-        path: '/settings/notifications',
-        element: <NotificationsPage />,
-      },
-      {
         path: '/settings/connections',
         element: <ConnectionsPage />,
       },
       {
         path: '/settings/integrations',
         element: <IntegrationsPage />,
-      },
-      {
-        path: '/settings/appearance',
-        element: <AppearancePage />,
       },
       {
         path: '/settings/members',

@@ -4,7 +4,6 @@ import { recordStorageTransferUsage } from '@nessie/runtime'
 import {
   isAdminRole,
   OrganizationSummarySchema,
-  SetConversationalSetupEnabledRequestSchema,
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -45,7 +44,6 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         role: membership?.role ?? 'member',
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
-        conversationalSetupEnabled: organization.conversationalSetupEnabled,
       }),
     )
   })
@@ -122,55 +120,6 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         role: membership.role,
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
-        conversationalSetupEnabled: organization.conversationalSetupEnabled,
-      }),
-    )
-  })
-
-  // This setting deliberately does not share the generic organization PATCH:
-  // ordinary profile changes permit owners and admins, while this early-access
-  // gate is mutable only by a presently active owner.
-  app.put('/api/organizations/current/features/conversational-setup', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireUserActor(actorContext, reply)) return reply
-
-    const body = parseInput(SetConversationalSetupEnabledRequestSchema, request.body, reply)
-    if (!body) return reply
-
-    const organizationId = actorContext.tenant.organizationId
-    const userId = actorContext.actor.actorId
-    const membership = await prisma.organizationMember.findFirst({
-      where: {
-        organizationId,
-        userId,
-        role: 'owner',
-        deactivatedAt: null,
-      },
-    })
-    if (!membership) {
-      sendApiError(
-        reply,
-        403,
-        'FORBIDDEN',
-        'Only active organisation owners can change conversational agent setup early access',
-      )
-      return reply
-    }
-
-    const organization = await prisma.organization.update({
-      where: { id: organizationId },
-      data: { conversationalSetupEnabled: body.conversationalSetupEnabled },
-    })
-
-    return createApiResponse(
-      OrganizationSummarySchema.parse({
-        id: organization.id,
-        name: organization.name,
-        role: membership.role,
-        logoAttachmentId: organization.logoAttachmentId ?? null,
-        stripImageMetadata: organization.stripImageMetadata,
-        conversationalSetupEnabled: organization.conversationalSetupEnabled,
       }),
     )
   })
