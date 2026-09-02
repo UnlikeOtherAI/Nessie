@@ -1,13 +1,16 @@
-import { useEffect, type RefObject } from 'react'
-import { isReactNativeWebView, requestNativeFullRefresh } from '../lib/mobile-shell'
+import { useEffect, useRef, type RefObject } from 'react'
+import { isReactNativeWebView } from '../lib/mobile-shell'
 
 // Pull-to-refresh, owned by the web (docs/navigation/overview.md §13): the native
 // WebView's own gesture was iOS-only, forced bounces, reloaded the whole
 // document from any screen and told the web nothing, and Android had none.
 // The web owns the gesture at the top of a Root or Detail page scroller that
-// contains no message feed, and asks the shell for the one full refresh it
-// already offers (`nessie:full-refresh`). Boards, editors and any surface
-// embedding a feed never offer it.
+// contains no message feed. Past the threshold it does a *content-only*
+// refresh — it re-fetches the visible page's data through the caller's
+// `onRefresh`, leaving the shell, nav and route/scroll untouched. The full app
+// refresh stays a deliberate act: the tablet "Full refresh" nav button and
+// Cmd/Ctrl-R (`requestNativeFullRefresh` / `installReloadShortcut`). Boards,
+// editors and any surface embedding a feed never offer the pull.
 
 export const PULL_THRESHOLD_PX = 72
 // Rubber-band: the indicator travels this fraction of the finger.
@@ -60,13 +63,29 @@ export type UsePullToRefreshOptions = {
   enabled: boolean
   indicatorRef: RefObject<HTMLElement | null>
   scrollerRef: RefObject<HTMLElement | null>
+  // Re-fetch the visible page's data. Resolves when the refetch settles, so the
+  // spinner spins for the duration and then retracts. A content-only refresh:
+  // the app shell, nav and route/scroll state are left untouched.
+  onRefresh: () => Promise<unknown>
 }
 
-export const usePullToRefresh = ({ enabled, indicatorRef, scrollerRef }: UsePullToRefreshOptions): void => {
+export const usePullToRefresh = ({
+  enabled,
+  indicatorRef,
+  scrollerRef,
+  onRefresh,
+}: UsePullToRefreshOptions): void => {
+  // Held in a ref so a fresh `onRefresh` closure each render never re-subscribes
+  // the touch listeners; the effect keys only on the structural inputs.
+  const onRefreshRef = useRef(onRefresh)
+  onRefreshRef.current = onRefresh
   useEffect(() => {
     const scroller = scrollerRef.current
     if (!enabled || !scroller || !isReactNativeWebView()) return undefined
     const gesture = createPullGesture()
+    // While a content refresh is in flight the gesture is inert and the spinner
+    // is pinned, spinning, until the refetch settles.
+    let refreshing = false
     const paint = (travel: number | null) => {
       const indicator = indicatorRef.current
       if (!indicator) return
@@ -75,20 +94,42 @@ export const usePullToRefresh = ({ enabled, indicatorRef, scrollerRef }: UsePull
       indicator.style.transform = `translate3d(0, ${Math.min(travel ?? 0, PULL_THRESHOLD_PX * 1.25)}px, 0)`
       indicator.dataset.armed = travel !== null && travel >= PULL_THRESHOLD_PX ? 'true' : 'false'
     }
+    const setRefreshing = (active: boolean) => {
+      const indicator = indicatorRef.current
+      if (indicator) {
+        indicator.dataset.armed = 'false'
+        indicator.dataset.refreshing = active ? 'true' : 'false'
+        if (active) indicator.style.opacity = '1'
+      }
+      if (!active) paint(null)
+    }
     const onStart = (event: TouchEvent) => {
+      if (refreshing) return
       const touch = event.touches[0]
       if (!touch || event.touches.length !== 1 || !scrollerCanRefresh(scroller)) return
       gesture.start(touch.clientY, scroller.scrollTop)
     }
     const onMove = (event: TouchEvent) => {
+      if (refreshing) return
       const touch = event.touches[0]
       if (!touch) return
       paint(gesture.move(touch.clientY))
     }
     const onEnd = () => {
+      if (refreshing) return
       const outcome = gesture.end()
-      paint(null)
-      if (outcome === 'refresh') requestNativeFullRefresh()
+      if (outcome !== 'refresh') {
+        paint(null)
+        return
+      }
+      refreshing = true
+      setRefreshing(true)
+      void Promise.resolve(onRefreshRef.current())
+        .catch(() => undefined)
+        .finally(() => {
+          refreshing = false
+          setRefreshing(false)
+        })
     }
     scroller.addEventListener('touchstart', onStart, { passive: true })
     scroller.addEventListener('touchmove', onMove, { passive: true })

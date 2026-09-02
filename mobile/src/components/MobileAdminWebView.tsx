@@ -97,7 +97,9 @@ export const MobileAdminWebView = ({
       // Pull-to-refresh is the web's (docs/navigation/overview.md §13): the WebView's
       // own gesture was iOS-only, forced bounces, reloaded the document from
       // any screen and told the page nothing. The admin owns the pull at the
-      // top of a root or detail scroller and posts nessie:full-refresh.
+      // top of a root or detail scroller and does a content-only refetch of the
+      // visible page; the full WebView remount stays the "Full refresh" nav
+      // button (nessie:full-refresh).
       pullToRefreshEnabled={false}
       ref={webRef}
       sharedCookiesEnabled

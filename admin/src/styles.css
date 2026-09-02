@@ -577,6 +577,23 @@ a {
   }
 }
 
+/* Pinned while the content-only refresh runs: the gesture is released, the data
+   is re-fetching, and the spinner holds at the pull offset and spins in place
+   until the refetch settles. */
+.phone-navigation-refresh[data-refreshing='true'] {
+  opacity: 1;
+  animation: phone-refresh-active 800ms linear infinite;
+}
+
+@keyframes phone-refresh-active {
+  from {
+    transform: translate3d(0, 48px, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 48px, 0) rotate(360deg);
+  }
+}
+
 /* The scrim over a revealed lower layer. Each screen carries one; it shows
    only while another screen rests over this one, and runStackTransition (or
    the finger, during a swipe) lifts it in step with the slide. */
