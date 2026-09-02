@@ -1,14 +1,5 @@
-.notification-toast-viewport {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 60;
-  display: grid;
-  width: min(360px, calc(100vw - 32px));
-  gap: 8px;
-  pointer-events: none;
-}
-
+/* The toast's own presentation. Where the stack sits, what layer it is in and
+   how a toast arrives belong to the one CardViewport (components/overlays). */
 .notification-toast {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
@@ -17,7 +8,6 @@
   border-radius: 8px;
   background: var(--panel);
   box-shadow: 0 18px 48px var(--scrim, var(--line));
-  pointer-events: auto;
 }
 
 .notification-toast-content {
@@ -66,13 +56,4 @@
 .notification-toast-dismiss:hover {
   background: var(--overlay-weak, var(--panel-soft));
   color: var(--tx);
-}
-
-@media (max-width: 639.98px) {
-  .notification-toast-viewport {
-    top: auto;
-    right: 12px;
-    bottom: 12px;
-    width: calc(100vw - 24px);
-  }
 }

@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { useModalA11y } from '../../shared/useModalA11y'
+import { Dialog } from '../../shared/Dialog'
 
 type LeaveMode = 'close' | 'navigate'
 
@@ -21,6 +20,12 @@ type DocumentStreamLeaveConfirmProps = {
  * keeps being written server-side and comes back on the chip. Only Stop
  * cancels, and cancelling saves nothing (§4.7). Offering "leave" and "discard"
  * as if they were the same thing would make one of the two a lie.
+ *
+ * Renders on `<Dialog blocking>` rather than `ConfirmDialog`: this is the
+ * sanctioned nesting (docs/navigation/overview.md §7) — a confirm over the already-open
+ * document popup — but its three actions (Cancel / Stop and discard / the
+ * mode's own "keep writing" verb) don't fit `ConfirmDialog`'s two-button
+ * cancel/confirm shape.
  */
 const COPY: Record<
   LeaveMode,
@@ -48,71 +53,39 @@ export const DocumentStreamLeaveConfirm = ({
   stopPending = false,
   title,
 }: DocumentStreamLeaveConfirmProps) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  useModalA11y(panelRef, onCancel)
   const copy = COPY[mode]
 
   return (
-    <div
-      className="fixed inset-0 z-[96] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.stopPropagation()
-        }
-      }}
-      role="presentation"
-    >
-      <div
-        aria-labelledby="document-leave-title"
-        aria-modal="true"
-        className={[
-          'w-full max-w-md rounded-xl border border-[color:var(--sep)]',
-          'bg-[var(--panel)] p-5 shadow-2xl',
-        ].join(' ')}
-        data-testid="document-stream-leave-confirm"
-        ref={panelRef}
-        role="dialog"
-        tabIndex={-1}
-      >
-        <h2
-          className="text-base font-semibold text-[var(--tx)]"
-          id="document-leave-title"
-        >
-          {copy.heading}
-        </h2>
-        {title ? (
-          <p className="mt-1 truncate text-sm text-[color:var(--tx2)]">{title}</p>
-        ) : null}
-        <p className="mt-2 text-sm text-[color:var(--tx3)]">{copy.body}</p>
+    <Dialog blocking description={title ?? undefined} onClose={onCancel} open title={copy.heading}>
+      <p className="text-sm text-[color:var(--tx3)]">{copy.body}</p>
 
-        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            data-testid="document-stream-leave-cancel"
-            onClick={onCancel}
-            type="button"
-          >
-            {copy.cancel}
-          </button>
-          <button
-            className="admin-button admin-button-danger admin-button-compact"
-            data-testid="document-stream-leave-stop"
-            disabled={stopPending}
-            onClick={onStop}
-            type="button"
-          >
-            Stop and discard
-          </button>
-          <button
-            className="admin-button admin-button-primary admin-button-compact"
-            data-testid="document-stream-leave-proceed"
-            onClick={onProceed}
-            type="button"
-          >
-            {copy.proceed}
-          </button>
-        </div>
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+        <button
+          className="admin-button admin-button-secondary admin-button-compact"
+          data-testid="document-stream-leave-cancel"
+          onClick={onCancel}
+          type="button"
+        >
+          {copy.cancel}
+        </button>
+        <button
+          className="admin-button admin-button-danger admin-button-compact"
+          data-testid="document-stream-leave-stop"
+          disabled={stopPending}
+          onClick={onStop}
+          type="button"
+        >
+          Stop and discard
+        </button>
+        <button
+          className="admin-button admin-button-primary admin-button-compact"
+          data-testid="document-stream-leave-proceed"
+          onClick={onProceed}
+          type="button"
+        >
+          {copy.proceed}
+        </button>
       </div>
-    </div>
+    </Dialog>
   )
 }

@@ -77,9 +77,8 @@ test('uses one channel, project, and knowledge total for every native badge', ()
     [{ unreadCount: 2 }, { unreadCount: 3 }],
     { assignedWork: { total: 4 }, knowledge: { total: 5 } },
   ), {
-    assignedWork: 4,
-    channels: 5,
-    knowledge: 5,
+    // Keyed by surface-registry section, the vocabulary `nessie:screen` uses.
+    badges: { channels: 5, knowledge: 5, projects: 4 },
     total: 14,
   })
 })

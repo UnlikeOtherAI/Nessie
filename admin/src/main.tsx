@@ -20,6 +20,11 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// The navigation stack owns scroll: retained layers keep their position and
+// a fresh push starts at 0 (docs/navigation/overview.md §12). The browser's own
+// restoration would fight that on every history step.
+if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AppProvider />

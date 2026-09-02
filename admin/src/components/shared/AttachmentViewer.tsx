@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   attachmentPath,
   downloadAuthedPath,
   useAuthedObjectUrlFromPath,
   type AttachmentRecord,
 } from '../../lib/uploads'
-import { useModalA11y } from './useModalA11y'
-import { useOverlayDismiss } from './useOverlayDismiss'
+import { useOverlay } from '../overlays/useOverlay'
 
 /**
  * Full-size view of one attachment: the ORIGINAL bytes, not the feed's
@@ -41,10 +40,14 @@ const AttachmentViewerDialog = ({
   onClose: () => void
   token: string | null
 }) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => onClose(), [onClose])
-  useModalA11y(panelRef, close)
-  const overlayDismiss = useOverlayDismiss(close)
+  const overlay = useOverlay({
+    id: 'attachment-viewer',
+    kind: 'modal',
+    label: `Close ${attachment.filename} preview`,
+    onClose: close,
+    open: true,
+  })
   const [downloading, setDownloading] = useState(false)
 
   const pdf = isViewablePdf(attachment)
@@ -72,12 +75,16 @@ const AttachmentViewerDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: it locks page scroll behind the backdrop, which
+    // the shell does not do. `useOverlay` still gives it the Back registration,
+    // focus trap, drag-safe scrim and layer every other overlay gets
+    // (docs/navigation/overview.md §7).
     <div
       className={[
-        'fixed inset-0 z-[110] flex items-center justify-center p-4',
+        'fixed inset-0 flex items-center justify-center p-4',
         'bg-[var(--scrim-strong)] backdrop-blur-sm',
       ].join(' ')}
-      {...overlayDismiss}
+      {...overlay.scrimProps}
       onKeyDown={(event) => {
         // Openable from inside the reply panel, which closes itself on a
         // window-level Escape. One keypress must not dismiss both.
@@ -85,16 +92,17 @@ const AttachmentViewerDialog = ({
           event.stopPropagation()
         }
       }}
+      style={overlay.layerStyle}
     >
       <div
         aria-labelledby="attachment-viewer-title"
         aria-modal="true"
         className={[
-          'flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
+          'flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
           'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
         ].join(' ')}
         data-testid="attachment-viewer"
-        ref={panelRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={-1}
       >
@@ -136,14 +144,14 @@ const AttachmentViewerDialog = ({
             <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
           ) : pdf ? (
             <iframe
-              className="h-[calc(100vh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
+              className="h-[calc(100dvh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
               src={url}
               title={attachment.filename}
             />
           ) : (
             <img
               alt={attachment.filename}
-              className="max-h-[calc(100vh-9rem)] max-w-full object-contain"
+              className="max-h-[calc(100dvh-9rem)] max-w-full object-contain"
               src={url}
             />
           )}

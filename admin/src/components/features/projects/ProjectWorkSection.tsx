@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useProjectBoard } from '../../../facades/board/hooks'
 import { useIterations } from '../../../facades/iterations/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import {
   DashboardSectionCard,
   SectionNotice,
@@ -104,10 +105,7 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
       {isPending ? (
         <div className="flex gap-2 p-2">
           {[0, 1, 2].map((index) => (
-            <span
-              className="h-6 w-20 animate-pulse rounded-full bg-[color:var(--overlay)]"
-              key={index}
-            />
+            <SkeletonBlock className="h-6 w-20 rounded-full" key={index} />
           ))}
         </div>
       ) : null}

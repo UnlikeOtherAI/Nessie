@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -45,6 +45,7 @@ export type KnowledgeAnnotationRecord = {
 export const useKnowledgeAnnotations = (pageId?: string, kind?: AnnotationKind) => {
   const apiClient = useApiClient()
   return useQuery<KnowledgeAnnotationRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: knowledgeKeys.annotationsByKind(pageId, kind),
     queryFn: () =>
       apiClient.get(

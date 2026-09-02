@@ -18,16 +18,16 @@ test('maps only exact push-targetable destinations to a structured surface', () 
     { kind: 'project_board', projectId: '00000000-0000-4000-8000-000000000004' },
   )
   assert.deepEqual(
-    resolvePushSurface(
-      '/projects/00000000-0000-4000-8000-000000000004/docs',
-      '?spaceId=00000000-0000-4000-8000-000000000005',
-    ),
+    resolvePushSurface('/knowledge-base/spaces/00000000-0000-4000-8000-000000000005'),
     { kind: 'knowledge_space', spaceId: '00000000-0000-4000-8000-000000000005' },
   )
-  assert.deepEqual(
-    resolvePushSurface('/knowledge-base', '?spaceId=00000000-0000-4000-8000-000000000005'),
-    { kind: 'knowledge_space', spaceId: '00000000-0000-4000-8000-000000000005' },
+  // `?spaceId=` is the document deep link's consumed intent, stripped the
+  // moment the page opens it; it never says where the person is standing.
+  assert.equal(
+    resolvePushSurface('/knowledge-base?spaceId=00000000-0000-4000-8000-000000000005'),
+    null,
   )
+  assert.equal(resolvePushSurface('/knowledge-base/spaces/not-a-space'), null)
   assert.deepEqual(
     resolvePushSurface(
       '/channels/00000000-0000-4000-8000-000000000001/threads/00000000-0000-4000-8000-000000000002/replies/00000000-0000-4000-8000-000000000003',

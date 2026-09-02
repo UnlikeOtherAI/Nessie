@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Pill } from '../components/primitives/Pill'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { ListToolbar } from '../components/shared/ListToolbar'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { auditLogKeys } from '../lib/query-keys'
 import { usePagedList } from '../facades/usePagedList'
@@ -42,10 +42,11 @@ export const AuditLogPage = () => {
   })
 
   return (
-    <OwnerGate>
-      <section className="flex h-full min-h-0 flex-col">
-        <AdminPageHeader title="Audit Log" />
-
+    <section className="flex h-full min-h-0 flex-col">
+      {/* The header is always rendered: a refusal is a state of this screen,
+          not a screen of its own, so Back never disappears with it. */}
+      <ScreenHeader title="Audit Log" />
+      <OwnerGate>
         <PageBody width="regular">
           <Section title="Events">
             <ListToolbar
@@ -107,7 +108,7 @@ export const AuditLogPage = () => {
             </QueryState>
           </Section>
         </PageBody>
-      </section>
-    </OwnerGate>
+      </OwnerGate>
+    </section>
   )
 }

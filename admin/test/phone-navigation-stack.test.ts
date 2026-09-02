@@ -6,6 +6,10 @@ import {
   createPhoneNavigationStack,
   currentPhoneNavigationEntry,
   dropPhoneNavigationEntriesAboveCurrent,
+  hasPhoneNavigationStage,
+  popPhoneNavigationStage,
+  pushPhoneNavigationStage,
+  refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from '../src/layouts/admin-shell/phone-navigation-stack'
 
@@ -201,10 +205,120 @@ test('Back from a cold deep link never fabricates an unseen predecessor', () => 
   assert.equal(parent.entries[0]?.payload, 'payload:members')
 })
 
-test('unclassified full-screen routes are rejected outside the viewport seam', () => {
+// The registry is total, so compose is a screen like any other: it swaps in
+// place beside a conversation (same depth) rather than being refused. Only a
+// path with no row at all — which the totality lint makes impossible for a
+// real route — still throws.
+test('compose swaps in place beside a conversation; an unclassified path is still refused', () => {
   const detail = stackAt('/channels', '/channels/channel_a')
+  const compose = advancePhoneNavigationStack(detail, '/channels/new', 'payload:compose')
+  assert.equal(compose.currentIndex, 1)
+  assert.equal(compose.entries.length, 2)
+  assert.equal(compose.entries[1]?.payload, 'payload:compose')
+  assert.equal(compose.entries[0]?.pathname, '/channels')
+
   assert.throws(
-    () => advancePhoneNavigationStack(detail, '/channels/new', 'payload:compose'),
+    () => advancePhoneNavigationStack(detail, '/totally/unknown', 'payload:unknown'),
     /cannot classify/,
   )
+})
+
+test('a re-render of the returning screen during a Back keeps the outgoing screen mounted', () => {
+  // Back from the conversation to the list: the conversation stays retained
+  // above the (now current) list until the animation releases it.
+  const back = stackAt('/channels', '/channels/channel_a', '/channels')
+  assert.equal(back.currentIndex, 0)
+  assert.equal(back.entries.length, 2)
+  // The list's own data settling re-renders the same route mid-transition.
+  const settled = advancePhoneNavigationStack(back, '/channels', 'payload:/channels#2')
+  assert.equal(settled.currentIndex, 0)
+  assert.deepEqual(layers(settled), layers(back), 'the outgoing conversation is still retained')
+  assert.equal(settled.entries[0]?.payload, 'payload:/channels#2')
+  assert.equal(settled.entries[1], back.entries[1])
+  // A sibling swap at the same depth still releases what was above it.
+  const swapped = advancePhoneNavigationStack(
+    stackAt('/channels', '/channels/channel_a', '/channels/channel_a/info', '/channels/channel_a'),
+    '/channels/channel_b',
+    'payload:/channels/channel_b',
+  )
+  assert.deepEqual(keys(swapped), ['root:channels:/channels', 'channels:channel'])
+  assert.equal(swapped.entries.length, 2)
+})
+
+test('a nested stage is an entry one depth above its route, keyed by id, and pops beneath itself', () => {
+  const detail = stackAt('/channels', '/channels/channel_a')
+  const withStage = pushPhoneNavigationStage(detail, 'document', 'payload:document')
+  assert.deepEqual(keys(withStage), ['root:channels:/channels', 'channels:channel', 'stage:document'])
+  assert.equal(withStage.currentIndex, 2)
+  assert.equal(currentPhoneNavigationEntry(withStage).depth, 2)
+  assert.equal(currentPhoneNavigationEntry(withStage).pathname, '/channels/channel_a')
+  assert.equal(currentPhoneNavigationEntry(withStage).layerKey, 'channels:2:stage:document')
+  assert.equal(hasPhoneNavigationStage(withStage, 'document'), true)
+  // Re-asserting an open stage changes nothing.
+  assert.equal(pushPhoneNavigationStage(withStage, 'document', 'again'), withStage)
+  // The committed route is still the route beneath.
+  assert.equal(committedPhoneNavigationRoute(withStage).pathname, '/channels/channel_a')
+
+  const popped = popPhoneNavigationStage(withStage, 'document')
+  assert.equal(popped.currentIndex, 1)
+  assert.equal(popped.entries.length, 3, 'the stage stays retained until the animation releases it')
+  assert.equal(dropPhoneNavigationEntriesAboveCurrent(popped).entries.length, 2)
+  assert.equal(popPhoneNavigationStage(popped, 'document'), popped)
+})
+
+test('a same-route re-render refreshes the route beneath its stages and keeps them', () => {
+  const stack = pushPhoneNavigationStage(
+    pushPhoneNavigationStage(stackAt('/channels', '/channels/channel_a'), 'folder', 'p:folder'),
+    'document',
+    'p:document',
+  )
+  const refreshed = refreshPhoneNavigationRoute(stack, 'payload:/channels/channel_a#2')
+  assert.equal(refreshed.currentIndex, 3)
+  assert.deepEqual(keys(refreshed), keys(stack))
+  assert.equal(refreshed.entries[1]?.payload, 'payload:/channels/channel_a#2')
+  assert.equal(refreshed.entries[2], stack.entries[2])
+  assert.equal(refreshed.entries[3], stack.entries[3])
+})
+
+test('a route pushed over open stages returns to the topmost stage on Back', () => {
+  const stack = pushPhoneNavigationStage(stackAt('/channels', '/channels/channel_a'), 'document', 'p:document')
+  const deeper = advancePhoneNavigationStack(stack, '/channels/channel_a/info', 'p:info')
+  assert.deepEqual(keys(deeper), ['root:channels:/channels', 'channels:channel', 'stage:document', 'channels:channel'])
+  assert.equal(deeper.currentIndex, 3)
+  const back = advancePhoneNavigationStack(deeper, '/channels/channel_a', 'p:channel_a#2')
+  assert.equal(back.currentIndex, 2, 'Back lands on the document stage, not the list beneath it')
+  assert.equal(back.entries[1]?.payload, 'p:channel_a#2')
+  assert.equal(back.entries.length, 4, 'the outgoing info screen is retained for its slide')
+})
+
+test('with a seed, a fresh stack carries the parent chain as render-only entries beneath the route', () => {
+  const seed = (pathname: string) => `seed:${pathname}`
+  const cold = createPhoneNavigationStack('/channels/channel_a/info', 'payload:info', 'single', seed)
+  assert.deepEqual(cold.entries.map((entry) => entry.pathname), ['/channels', '/channels/channel_a', '/channels/channel_a/info'])
+  assert.deepEqual(cold.entries.map((entry) => entry.payload), ['seed:/channels', 'seed:/channels/channel_a', 'payload:info'])
+  assert.equal(cold.currentIndex, 2)
+  // Back replaces to the parent: the retained seeded layer is found by
+  // identity and refreshed with the route's own children.
+  const back = advancePhoneNavigationStack(cold, '/channels/channel_a', 'payload:channel_a', 'single', seed)
+  assert.equal(back.currentIndex, 1)
+  assert.equal(back.entries[1]?.payload, 'payload:channel_a')
+  assert.equal(back.entries.length, 3, 'the outgoing info screen is retained for its slide')
+  // A section change seeds again.
+  // A section change seeds the origin the person came from beneath the route.
+  const elsewhere = advancePhoneNavigationStack(cold, '/agents/a1', 'payload:agent', 'single', seed)
+  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/channels/channel_a/info', '/agents/a1'])
+  // Without a seed a cold start is a single entry, as before.
+  assert.equal(createPhoneNavigationStack('/channels/channel_a/info', 'p').entries.length, 1)
+})
+
+test('a push that crosses sections seeds its origin beneath the route, where Back pops to', () => {
+  const seed = (pathname: string) => `seed:${pathname}`
+  const project = createPhoneNavigationStack('/projects/p1', 'payload:project', 'single', seed)
+  const channel = advancePhoneNavigationStack(project, '/channels/c1', 'payload:channel', 'single', seed)
+  assert.deepEqual(channel.entries.map((entry) => entry.pathname), ['/projects/p1', '/channels/c1'])
+  assert.equal(channel.entries[0]?.payload, 'seed:/projects/p1')
+  assert.equal(channel.currentIndex, 1)
+  // A real cold start into the same route seeds the registry chain instead.
+  const cold = createPhoneNavigationStack('/channels/c1', 'payload:channel', 'single', seed)
+  assert.deepEqual(cold.entries.map((entry) => entry.pathname), ['/channels', '/channels/c1'])
 })

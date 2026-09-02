@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
 import { Notice } from '../../components/primitives/Notice'
-import {
-  AdminPageHeader,
-} from '../../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 
 /**
@@ -52,7 +50,7 @@ interface SettingsPanelProps {
  */
 export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPanelProps) => (
   <section className="flex h-full min-h-0 flex-col">
-    <AdminPageHeader actions={actions} eyebrow={eyebrow} title={title} titleTone="page" />
+    <ScreenHeader actions={actions} eyebrow={eyebrow} title={title} />
     <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
   </section>
 )

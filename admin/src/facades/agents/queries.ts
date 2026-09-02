@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type {
   AgentModelOption,
   AgentActivityResponse,
@@ -8,7 +8,7 @@ import type {
   AgentStatusResponse,
   ToolCallEntry,
 } from '@nessie/schemas'
-import type { AgentRecord } from '../../lib/api-client'
+import type { AgentRecord, ApiClient } from '../../lib/api-client'
 import { agentKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -56,12 +56,19 @@ export const useAgentModelOptions = () => {
   })
 }
 
+/** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
+export const fetchAgentStatus = (
+  apiClient: ApiClient,
+  agentId: string,
+): Promise<AgentStatusResponse> => apiClient.get(`/api/agents/${agentId}/status`)
+
 export const useAgentStatus = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentStatusResponse>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.status(agentId),
-    queryFn: () => apiClient.get(`/api/agents/${agentId}/status`),
+    queryFn: () => fetchAgentStatus(apiClient, agentId ?? ''),
     enabled: Boolean(agentId),
   })
 }
@@ -70,6 +77,7 @@ export const useAgentActivity = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentActivityResponse>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.activity(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/activity`),
     enabled: Boolean(agentId),
@@ -80,6 +88,7 @@ export const useAgentMessages = (agentId?: string, limit = 5, offset = 0) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentMessage[]>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.messagePage(agentId, limit, offset),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/messages?limit=${limit}&offset=${offset}`),
     enabled: Boolean(agentId),
@@ -90,6 +99,7 @@ export const useAgentChildren = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentChild[]>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.children(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/children`),
     enabled: Boolean(agentId),
@@ -100,6 +110,7 @@ export const useAgentDocuments = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentDocumentsResponse>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.documents(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/docs`),
     enabled: Boolean(agentId),
@@ -110,6 +121,7 @@ export const useRunToolCalls = (agentId?: string, runId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ToolCallEntry[]>({
+    placeholderData: keepPreviousData,
     queryKey: agentKeys.runTools(agentId, runId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/runs/${runId}/tools`),
     enabled: Boolean(agentId && runId),

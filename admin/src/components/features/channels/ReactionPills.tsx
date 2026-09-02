@@ -1,7 +1,6 @@
 import {
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,6 +9,8 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useViewport } from '../../../hooks/useViewport'
+import { Popover } from '../../overlays/Popover'
 import type { MessageReaction } from '../../../lib/api-client'
 
 // Resolves the human-readable name of one reaction's author (user or agent).
@@ -67,17 +68,18 @@ type ReactionPillProps = {
 
 // One emoji pill with its "who reacted" popover: shown on hover (fine
 // pointers), keyboard focus, and long-press (touch); dismissed on leave,
-// blur, Escape, or an outside tap. Flips to right-anchored when it would
-// overflow the viewport.
+// blur, Escape, or an outside press. Placement — above the pill, flipped
+// below when the pill sits near the top of the window, clamped horizontally
+// — belongs to the Popover primitive.
 const ReactionPill = ({ summary, onToggle }: ReactionPillProps) => {
   const { count, emoji, names, reactedByMe } = summary
   const popoverId = useId()
-  const wrapRef = useRef<HTMLSpanElement>(null)
-  const popoverRef = useRef<HTMLSpanElement>(null)
+  const pillRef = useRef<HTMLButtonElement>(null)
   const pressTimer = useRef<number | null>(null)
   const suppressClick = useRef(false)
   const [open, setOpen] = useState(false)
-  const [align, setAlign] = useState<'left' | 'right'>('left')
+  // Hover is a pointer capability, not a width: the viewport store owns it.
+  const canHover = useViewport().capabilities.hover
 
   const toggleLabel = reactedByMe
     ? `Remove ${emoji} reaction`
@@ -90,44 +92,10 @@ const ReactionPill = ({ summary, onToggle }: ReactionPillProps) => {
     }
   }
 
-  // Long-press-opened popovers have no hover-out to dismiss them: close on the
-  // next pointer interaction anywhere outside the pill.
-  useEffect(() => {
-    if (!open) {
-      return undefined
-    }
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [open])
-
-  // Keep the popover inside the viewport: measure once visible and anchor it
-  // to the pill's right edge when the default left anchor would overflow.
-  useLayoutEffect(() => {
-    if (!open) {
-      setAlign('left')
-      return
-    }
-    const wrap = wrapRef.current
-    const popover = popoverRef.current
-    if (!wrap || !popover) {
-      return
-    }
-    const overflows =
-      wrap.getBoundingClientRect().left + popover.offsetWidth > window.innerWidth - 12
-    setAlign(overflows ? 'right' : 'left')
-  }, [open])
-
   useEffect(() => clearPressTimer, [])
 
   const openFromHover = () => {
-    if (window.matchMedia('(hover: hover)').matches) {
-      setOpen(true)
-    }
+    if (canHover) setOpen(true)
   }
 
   const startLongPress = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -177,7 +145,6 @@ const ReactionPill = ({ summary, onToggle }: ReactionPillProps) => {
   return (
     <span
       className="reaction-pill-wrap"
-      ref={wrapRef}
       onMouseEnter={openFromHover}
       onMouseLeave={() => setOpen(false)}
     >
@@ -196,29 +163,31 @@ const ReactionPill = ({ summary, onToggle }: ReactionPillProps) => {
         onPointerDown={startLongPress}
         onPointerLeave={clearPressTimer}
         onPointerUp={clearPressTimer}
+        ref={pillRef}
       >
         {emoji}
         {count > 1 ? ` ${count}` : ''}
       </button>
-      {open ? (
-        <span
-          className="reaction-pill-popover"
-          data-align={align}
-          id={popoverId}
-          ref={popoverRef}
-          role="tooltip"
-        >
-          <span className="reaction-pill-popover-emoji">{emoji}</span>
-          <span>
-            <span className="font-semibold text-[color:var(--tx)]">
-              {formatReactorNames(names)}
-            </span>
-            <span className="text-[color:var(--tx3)]">
-              {` reacted with ${emoji}`}
-            </span>
+      <Popover
+        anchorRef={pillRef}
+        className="reaction-pill-popover"
+        id={popoverId}
+        label={`${formatReactorNames(names)} reacted with ${emoji}`}
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="top-start"
+        role="tooltip"
+      >
+        <span className="reaction-pill-popover-emoji">{emoji}</span>
+        <span>
+          <span className="font-semibold text-[color:var(--tx)]">
+            {formatReactorNames(names)}
+          </span>
+          <span className="text-[color:var(--tx3)]">
+            {` reacted with ${emoji}`}
           </span>
         </span>
-      ) : null}
+      </Popover>
     </span>
   )
 }

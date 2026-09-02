@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   faChevronDown,
   faChevronRight,
@@ -174,6 +174,13 @@ export const NewFolderRow = ({
 }) => {
   const [name, setName] = useState('')
   const doneRef = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Not `autoFocus`: the browser's own initial focus scrolls whatever box it
+  // lands in, which is the sideways bounce docs/navigation/overview.md §2 names.
+  useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true })
+  }, [])
 
   const finish = (action: () => void) => {
     if (doneRef.current) return
@@ -194,7 +201,6 @@ export const NewFolderRow = ({
       />
       <Input
         aria-label="Folder name"
-        autoFocus
         className="min-w-0 flex-1"
         disabled={pending}
         onBlur={submit}
@@ -209,6 +215,7 @@ export const NewFolderRow = ({
           }
         }}
         placeholder="Folder name"
+        ref={inputRef}
         size="compact"
         value={name}
       />

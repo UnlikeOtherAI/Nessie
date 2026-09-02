@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
@@ -8,7 +8,7 @@ import {
   useNativeLargePhoneLandscapeApp,
   useNativeIPadApp,
   useNativePhoneApp,
-  usePhoneLayout,
+  useNavigationLayout,
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
@@ -26,8 +26,10 @@ import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
+import { useKeyboardInset } from '../navigation/keyboard';
+import { SeededRoute, useShellRoutes } from '../navigation/SeededRoute';
+import { SHELL_MAIN_ID, SkipToContentLink } from '../navigation/SkipToContentLink';
 import {
-  getPhoneNavigationScreen,
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
 } from './admin-shell/phone-navigation';
@@ -42,7 +44,7 @@ import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
 import { TransientMenuProvider } from './admin-shell/TransientMenuContext';
-import { useRecordRecentChannelVisits, useRecordSectionRoute } from './admin-shell/topbar-navigation';
+import { useRecordRecentChannelVisits } from './admin-shell/topbar-navigation';
 import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
@@ -51,6 +53,8 @@ import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/a
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
+import { ShellActionsProvider } from './admin-shell/ShellActionsContext';
+import type { AdminShellOutletContext } from './admin-shell/types';
 export type { AdminShellOutletContext } from './admin-shell/types';
 
 // A phone has room for one primary decision at a time. Its tab root therefore
@@ -102,7 +106,9 @@ const AuthenticatedAdminShellLayout = () => {
   const { focusModeEnabled } = useFocusMode();
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
-  useRecordSectionRoute();
+  // One listener for the whole shell — every composer reads --keyboard-inset
+  // rather than each mounting its own visualViewport watcher.
+  useKeyboardInset();
   const attention = useAttentionSummary();
   const threadActivity = useThreadActivity();
   const unreadDirectMessages = useUnreadDirectMessages();
@@ -117,7 +123,9 @@ const AuthenticatedAdminShellLayout = () => {
   const mobileLayout = useMobileLayout();
   // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
   // pinned even though they are "mobile" (their native tab bar replaces the rail).
-  const phoneLayout = usePhoneLayout();
+  const navigationLayout = useNavigationLayout();
+  const shellRoutes = useShellRoutes(AdminShellLayout);
+  const phoneLayout = navigationLayout === 'single';
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
@@ -143,17 +151,13 @@ const AuthenticatedAdminShellLayout = () => {
   // keeps that element mounted while it leaves; retaining a live <Outlet>
   // would resolve both layers against the new route and duplicate the incoming
   // page instead of preserving the outgoing one.
-  const outlet = useOutlet({
+  const outlet = useOutlet();
+  // The shell's actions reach every page — routed or seeded — as one context.
+  const shellActions: AdminShellOutletContext = {
     onCreateAgent: shell.navigateToAgentDesigner,
     onCreateChannel: shell.openCreateChannel,
     onSelectAgent: shell.selectAgent,
-  });
-
-  const mainContent = (
-    <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-      {outlet}
-    </main>
-  );
+  };
 
   const sidebarNavElement = (
     <SidebarNav
@@ -231,20 +235,58 @@ const AuthenticatedAdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
-  // Root content is the section's contextual list when one exists; /search
-  // and /dashboards are full outlet pages with no secondary sidebar, so their
-  // root page is the outlet itself rather than the channels fallback.
-  const rootHasContextualList = phoneTabRootHasContextualList(shell.pathname);
-  const phonePageContent = showPhoneTabRoot && rootHasContextualList ? (
+  // The section's contextual list as a phone page: the root screen, and
+  // what a cold start seeds beneath a section's details.
+  const rootListElement = (
     <div
       className={[
-        'flex h-full min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+        'flex h-full min-w-0 flex-1 overflow-clip bg-[color:var(--main)]',
         '[&>aside]:w-full [&>aside]:border-r-0',
       ].join(' ')}
     >
       {drawerNavElement}
     </div>
-  ) : mainContent;
+  );
+
+  // A cold start seeds the screens beneath the landed route
+  // (docs/navigation/overview.md §8): a root's page on a phone is the section's list;
+  // anything else is the route table's page for that pathname.
+  const seedScreen = (pathname: string): ReactNode =>
+    isPhoneTabRoot(pathname) && phoneTabRootHasContextualList(pathname)
+      ? rootListElement
+      : <SeededRoute pathname={pathname} routes={shellRoutes} />;
+
+  // On `split` the pinned list column is the section's root, and the detail
+  // column is its own navigation stack: a detail → nested push slides inside
+  // this column with the detail retained beneath, exactly as on a phone.
+  const mainContent = phoneLayout ? (
+    <main
+      className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]"
+      id={SHELL_MAIN_ID}
+      tabIndex={-1}
+    >
+      {outlet}
+    </main>
+  ) : (
+    <main
+      className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]"
+      id={SHELL_MAIN_ID}
+      tabIndex={-1}
+    >
+      <PhoneNavigationViewport layout="split" pathname={shell.pathname} seed={seedScreen}>
+        {outlet}
+      </PhoneNavigationViewport>
+    </main>
+  );
+
+
+  // Root content is the section's contextual list when one exists; /search
+  // and /dashboards are full outlet pages with no secondary sidebar, so their
+  // root page is the outlet itself rather than the channels fallback.
+  const rootHasContextualList = phoneTabRootHasContextualList(shell.pathname);
+  const phonePageContent = showPhoneTabRoot && rootHasContextualList
+    ? rootListElement
+    : mainContent;
 
   const contentRegion = phoneLayout ? (
     <>
@@ -253,11 +295,17 @@ const AuthenticatedAdminShellLayout = () => {
           {drawerNavElement}
         </MobileNavDrawer>
       ) : null}
-      {getPhoneNavigationScreen(shell.pathname) ? (
-        <PhoneNavigationViewport pathname={shell.pathname}>
-          {phonePageContent}
-        </PhoneNavigationViewport>
-      ) : phonePageContent}
+      {/*
+        The surface registry is total, so every route a phone can stand on
+        classifies and the viewport is mounted unconditionally. It used to be
+        conditional because unclassified routes (/threads, /alerts, /feedback,
+        /channels/new) would have made the stack throw; those now have rows,
+        and rendering them outside the stack was itself the defect — they lost
+        every retained screen beneath them.
+      */}
+      <PhoneNavigationViewport pathname={shell.pathname} seed={seedScreen}>
+        {phonePageContent}
+      </PhoneNavigationViewport>
     </>
   ) : (
     <>
@@ -279,85 +327,88 @@ const AuthenticatedAdminShellLayout = () => {
 
   return (
     <AgentIdentityProvider>
-      <PresenceProvider>
-        <AttentionDisplayManager />
-        <PushSurfacePresenceHeartbeat />
-        <ToastProvider>
-          <NotificationsProvider>
-            <TransientMenuProvider>
-              <AccountMenuProvider
-                onLogout={shell.logoutAndRedirect}
-                showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
-              >
-                <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-                  <div className={frameClassName}>
-                    {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
-                    {hideTopBar ? null : (
-                      <TopBar
-                        hideSearch={nativeIPadApp}
+    <PresenceProvider>
+      <AttentionDisplayManager />
+      <PushSurfacePresenceHeartbeat />
+      <ToastProvider>
+        <NotificationsProvider>
+          <TransientMenuProvider>
+            <AccountMenuProvider
+              onLogout={shell.logoutAndRedirect}
+              showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
+            >
+              <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+                <SkipToContentLink />
+                <div className={frameClassName} data-navigation={navigationLayout}>
+                  {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
+                  {hideTopBar ? null : (
+                    <TopBar
+                      hideSearch={nativeIPadApp}
+                      onLogout={shell.logoutAndRedirect}
+                      showAccountMenu={mobileLayout}
+                    />
+                  )}
+
+                  <ShellActionsProvider value={shellActions}>
+                  <div className="admin-shell">
+                    {!mobileLayout && (
+                      <SidebarRail
+                        onCreateChannel={() => shell.openCreateChannel()}
+                        onCreateMessage={shell.navigateToNewConversation}
+                        onCreateProject={shell.openCreateProject}
                         onLogout={shell.logoutAndRedirect}
-                        showAccountMenu={mobileLayout}
+                        pathname={shell.pathname}
                       />
                     )}
 
-                    <div className="admin-shell">
-                      {!mobileLayout && (
-                        <SidebarRail
-                          onCreateChannel={() => shell.openCreateChannel()}
-                          onCreateMessage={shell.navigateToNewConversation}
-                          onCreateProject={shell.openCreateProject}
-                          onLogout={shell.logoutAndRedirect}
-                          pathname={shell.pathname}
-                        />
-                      )}
-
-                      {shell.isKnowledgeRoute ? (
-                        <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
-                      ) : (
-                        contentRegion
-                      )}
-                    </div>
+                    {shell.isKnowledgeRoute ? (
+                      <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
+                    ) : (
+                      contentRegion
+                    )}
                   </div>
+                  </ShellActionsProvider>
+                </div>
 
-                  {showWebTabBar && <MobileTabBar />}
-                  {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
-                  {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
-                  {(nativeIPadApp || nativePhoneApp) ? (
-                    <UserMenuTrigger
-                      nativeShellBridge
-                      onLogout={shell.logoutAndRedirect}
-                      placement="topbar"
-                    />
-                  ) : null}
-                  {nativePhoneApp ? (
-                    <NativePhoneCreationBridge
-                      onCreateChannel={shell.openCreateChannel}
-                      onCreateMessage={shell.navigateToNewConversation}
-                      onCreateProject={shell.openCreateProject}
-                    />
-                  ) : null}
-                  {nativeIPadApp && <NativeSearchOverlay />}
-
-                  <SidebarDialogs
-                    createChannelTarget={shell.createChannelTarget}
-                    createProjectOpen={shell.createProjectOpen}
-                    onCloseCreateChannel={shell.closeCreateChannel}
-                    onCloseCreateProject={shell.closeCreateProject}
-                    editProjectTarget={shell.editProjectTarget}
-                    onCloseEditProject={shell.closeEditProject}
+                {showWebTabBar && <MobileTabBar />}
+                {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
+                {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
+                {(nativeIPadApp || nativePhoneApp) ? (
+                  <UserMenuTrigger
+                    nativeShellBridge
+                    onLogout={shell.logoutAndRedirect}
+                    placement="topbar"
                   />
-
-                  <AgentDetailDrawer
-                    agent={shell.selectedAgent}
-                    onClose={shell.closeAgentDrawer}
-                    onSelectAgent={shell.selectAgent}
+                ) : null}
+                {nativePhoneApp ? (
+                  <NativePhoneCreationBridge
+                    onCreateChannel={shell.openCreateChannel}
+                    onCreateMessage={shell.navigateToNewConversation}
+                    onCreateProject={shell.openCreateProject}
                   />
-                </MobileNavProvider>
-              </AccountMenuProvider>
-            </TransientMenuProvider>
-          </NotificationsProvider>
-        </ToastProvider>
-      </PresenceProvider>
+                ) : null}
+                {nativeIPadApp && <NativeSearchOverlay />}
+
+                <SidebarDialogs
+                  createChannelTarget={shell.createChannelTarget}
+                  createProjectOpen={shell.createProjectOpen}
+                  onCloseCreateChannel={shell.closeCreateChannel}
+                  onCloseCreateProject={shell.closeCreateProject}
+                  editProjectTarget={shell.editProjectTarget}
+                  onCloseEditProject={shell.closeEditProject}
+                />
+
+                <AgentDetailDrawer
+                  agent={shell.selectedAgent}
+                  onClose={shell.closeAgentDrawer}
+                  onSelectAgent={shell.selectAgent}
+                />
+              </MobileNavProvider>
+            </AccountMenuProvider>
+          </TransientMenuProvider>
+        </NotificationsProvider>
+      </ToastProvider>
+    </PresenceProvider>
     </AgentIdentityProvider>
   );
 };

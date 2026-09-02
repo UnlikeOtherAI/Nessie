@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { SectionLabel } from '../primitives/SectionLabel'
-import { Skeleton } from '../primitives/Skeleton'
+import { SkeletonBlock } from '../primitives/Skeleton'
 import { ExpandableTable } from './ExpandableTable'
 
 /**
@@ -143,7 +143,7 @@ export const DataTable = <T,>({
                     .join(' ')}
                   key={column.key}
                 >
-                  <Skeleton />
+                  <SkeletonBlock className="h-4 w-full" />
                 </td>
               ))}
             </tr>

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   BuildMeProjectHandoffRequest,
@@ -64,6 +64,7 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<IntegrationPluginManifest>({
+    placeholderData: keepPreviousData,
     queryKey: integrationManifestKey(productSlug),
     queryFn: () => apiClient.get(`/api/integrations/products/${productSlug}/manifest`),
     enabled: Boolean(productSlug),

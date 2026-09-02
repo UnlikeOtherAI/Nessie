@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { ApiResponse } from '@nessie/schemas'
 import { getBaseUrl } from './api-client'
+import {
+  blobCacheKey,
+  peekBlobUrl,
+  releaseBlobUrl,
+  retainBlobUrl,
+  storeBlobUrl,
+} from './blob-cache'
 
 export type AttachmentRecord = {
   id: string
@@ -107,48 +114,75 @@ export const attachmentThumbnailPath = (id: string): string =>
 // Fetch a download path with the bearer token and expose it as an object URL so
 // authenticated previews work (a bare <img>/<iframe> src cannot send an auth
 // header). Returns null while loading, on error, or when `path` is null.
+//
+// Bytes come from the shared blob cache (`lib/blob-cache.ts`), so a face that
+// was on screen a second ago — a retained layer coming back, the same avatar in
+// a second place — paints on the first frame instead of re-fetching. A cache
+// hit is read synchronously during the initial render, never in an effect,
+// which is what makes it show immediately rather than one paint late.
 export const useAuthedObjectUrlFromPath = (
   path: string | null,
   token: string | null,
   mimeOverride?: string,
 ): string | null => {
-  const [url, setUrl] = useState<string | null>(null)
+  const cacheKey = path ? blobCacheKey(path, mimeOverride) : null
+  // The resolved URL carries the key it belongs to, so a key change reads as a
+  // miss on the very render it happens rather than one effect later — that gap
+  // is how an <img> ends up showing the previous path's bytes.
+  const [resolved, setResolved] = useState<{ key: string; url: string } | null>(null)
   useEffect(() => {
-    if (!path) {
-      setUrl(null)
+    if (!cacheKey || !path) {
+      setResolved(null)
       return
     }
-    let revoked = false
-    let objectUrl: string | null = null
+    const setUrl = (next: string | null) =>
+      setResolved(next === null ? null : { key: cacheKey, url: next })
+    const cached = retainBlobUrl(cacheKey)
+    if (cached) {
+      setUrl(cached)
+      return () => releaseBlobUrl(cacheKey)
+    }
+    let cancelled = false
+    let held = false
     const headers = new Headers()
     if (token) headers.set('authorization', `Bearer ${token}`)
     fetch(`${getBaseUrl()}${path}`, { headers })
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
-        if (revoked) return
         // A blob: URL inherits the admin origin, so the blob's MIME type drives
         // how an <iframe> renders it. The server echoes the upload's (attacker-
         // controllable) content-type, so trusting it here would let an uploaded
         // text/html file named "x.pdf" execute scripts in this session. When the
         // caller knows the safe type, pin it (zero-copy re-type via slice).
         const typed = mimeOverride ? blob.slice(0, blob.size, mimeOverride) : blob
-        objectUrl = URL.createObjectURL(typed)
-        setUrl(objectUrl)
+        // Store even when this hook has been torn down: the bytes are paid for,
+        // and the store's own reference is released immediately below so the
+        // entry is evictable.
+        const shared = storeBlobUrl(cacheKey, URL.createObjectURL(typed))
+        if (cancelled) {
+          releaseBlobUrl(cacheKey)
+          return
+        }
+        held = true
+        setUrl(shared)
       })
-      .catch(() => setUrl(null))
+      .catch(() => {
+        if (!cancelled) setUrl(null)
+      })
     return () => {
-      revoked = true
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl)
-        // Clear the state with the URL it points at. Without this, a dep
-        // change (most often the 30-minute token rotation) leaves every
-        // <img>/<iframe> pointing at a just-revoked blob until the refetch
-        // lands, which renders as a broken image.
-        setUrl(null)
-      }
+      cancelled = true
+      // The URL is not revoked here — the cache owns its lifetime and revokes
+      // on eviction. Clearing the state matters all the same: a dep change
+      // must not leave an <img> pointing at the previous path's bytes.
+      if (held) releaseBlobUrl(cacheKey)
+      setResolved(null)
     }
-  }, [path, token, mimeOverride])
-  return url
+  }, [cacheKey, path, token, mimeOverride])
+  if (!cacheKey) return null
+  if (resolved?.key === cacheKey) return resolved.url
+  // A hit is available before the effect runs, so the first paint already has
+  // it; the effect then takes the reference that keeps it alive.
+  return peekBlobUrl(cacheKey)
 }
 
 export type AuthedTextState = {

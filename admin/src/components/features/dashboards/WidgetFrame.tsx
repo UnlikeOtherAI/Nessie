@@ -8,11 +8,12 @@
  */
 
 import type { ReactNode } from 'react'
+
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import type {
   DashboardWidgetProjection,
   WidgetPresentation,
 } from '@nessie/schemas'
-import { Skeleton } from '../../primitives/Skeleton'
 import { formatRelative, formatTemporal as formatMoment } from './widget-format'
 
 type WidgetFrameProps = {
@@ -193,4 +194,6 @@ export const WidgetPlaceholder = ({
 )
 
 /** First-load shimmer: keeps the frame's height so the grid does not jump. */
-export const WidgetSkeleton = () => <Skeleton className="min-h-[64px]" height="h-full" />
+export const WidgetSkeleton = () => (
+  <SkeletonBlock className="h-full min-h-[64px] w-full" />
+)

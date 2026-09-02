@@ -7,6 +7,7 @@ import {
   IPAD_NATIVE_CHROME_HEIGHT,
   type IpadNativeChromeTheme,
 } from '../lib/ipad-native-chrome'
+import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS, type TabDef } from '../lib/tabs'
 
 const PRIMARY_TABS = TABS.filter((tab) => tab.key !== 'search')
@@ -14,7 +15,7 @@ const SEARCH_TAB = TABS.find((tab) => tab.key === 'search')
 
 type IpadNativeTabBarProps = {
   activeIndex: number
-  badgeCounts: { assignedWork: number; channels: number; knowledge: number }
+  badgeCounts: NativeAttentionBadges
   iconOnly: boolean
   onIndexChange: (index: number) => void
   showSearch: boolean
@@ -41,13 +42,7 @@ const IpadNativeTabButton = ({
   const index = TABS.indexOf(tab)
   const active = index === activeIndex
   const color = active ? theme.activeTintColor : theme.inactiveTintColor
-  const badge = tab.key === 'channels'
-    ? badgeCounts.channels
-    : tab.key === 'projects'
-      ? badgeCounts.assignedWork
-      : tab.key === 'knowledge'
-        ? badgeCounts.knowledge
-        : 0
+  const badge = badgeCounts[tab.key] ?? 0
 
   return (
     <Pressable

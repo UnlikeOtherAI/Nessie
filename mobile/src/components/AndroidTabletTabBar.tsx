@@ -4,11 +4,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import {
   ANDROID_TABLET_TAB_BAR_HEIGHT,
 } from '../lib/android-tablet-dock'
+import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS } from '../lib/tabs'
 
 type AndroidTabletTabBarProps = {
   activeIndex: number
-  badgeCounts: { assignedWork: number; channels: number; knowledge: number }
+  badgeCounts: NativeAttentionBadges
   activeIndicatorColor: string
   activeTintColor: string
   bottom: number
@@ -34,13 +35,7 @@ export const AndroidTabletTabBar = ({
       {TABS.map((tab, index) => {
         const active = index === activeIndex
         const color = active ? activeTintColor : inactiveTintColor
-        const badge = tab.key === 'channels'
-          ? badgeCounts.channels
-          : tab.key === 'projects'
-            ? badgeCounts.assignedWork
-            : tab.key === 'knowledge'
-              ? badgeCounts.knowledge
-              : 0
+        const badge = badgeCounts[tab.key] ?? 0
 
         return (
           <Pressable

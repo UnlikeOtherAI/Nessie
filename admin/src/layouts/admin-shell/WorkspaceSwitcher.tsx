@@ -56,8 +56,6 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
-  const [menuMounted, setMenuMounted] = useState(open)
-  const [menuVisible, setMenuVisible] = useState(open)
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
   const invitations = me?.uoaPendingInvites ?? []
@@ -181,18 +179,6 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   }
 
   useEffect(() => {
-    if (open) {
-      setMenuMounted(true)
-      const frame = window.requestAnimationFrame(() => setMenuVisible(true))
-      return () => window.cancelAnimationFrame(frame)
-    }
-
-    setMenuVisible(false)
-    const timeout = window.setTimeout(() => setMenuMounted(false), 150)
-    return () => window.clearTimeout(timeout)
-  }, [open])
-
-  useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
     const target = window as NativeWorkspaceWindow
     target.__nessieToggleWorkspaceMenu = (left?: unknown) => {
@@ -296,25 +282,23 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           style={{ left: nativeAnchorLeft }}
         />
       )}
-      {menuMounted ? (
-        <WorkspaceMenu
-          activeTeamId={activeTeamId}
-          anchorRef={anchorRef}
-          avatarRevision={avatarRevision}
-          busyInviteId={busyInviteId}
-          busyTeamId={busyTeamId}
-          error={switchError}
-          invitations={invitations}
-          onAcceptInvitation={(invite) => void handleAcceptInvitation(invite)}
-          onAddWorkspace={handleAddWorkspace}
-          onClose={closeMenu}
-          onSelect={handleSelect}
-          ssoProviderId={ssoProviderId}
-          token={token}
-          visible={menuVisible}
-          workspaces={workspaces}
-        />
-      ) : null}
+      <WorkspaceMenu
+        activeTeamId={activeTeamId}
+        anchorRef={anchorRef}
+        avatarRevision={avatarRevision}
+        busyInviteId={busyInviteId}
+        busyTeamId={busyTeamId}
+        error={switchError}
+        invitations={invitations}
+        onAcceptInvitation={(invite) => void handleAcceptInvitation(invite)}
+        onAddWorkspace={handleAddWorkspace}
+        onClose={closeMenu}
+        onSelect={handleSelect}
+        open={open}
+        ssoProviderId={ssoProviderId}
+        token={token}
+        workspaces={workspaces}
+      />
     </>
   )
 }

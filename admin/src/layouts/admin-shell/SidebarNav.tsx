@@ -1,11 +1,12 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { useLocation } from 'react-router-dom';
+import { useScrollMemory } from '../../hooks/useScrollMemory';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
-import { renderUnreadCount } from './SidebarRow';
+import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
@@ -121,6 +122,11 @@ export const SidebarNav = (props: SidebarNavProps) => {
     unreadDirectMessageCount,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
+  // This one channel-list scroller is shared across every route in the
+  // section (channel A -> B never remounts it), so its remembered position
+  // only needs to survive it swapping out for another section's sidebar and
+  // back — a constant key, not a per-route one (docs/navigation/overview.md §4.13).
+  const channelListScroll = useScrollMemory('sidebar:channel-list');
 
   return (
     <aside
@@ -130,8 +136,13 @@ export const SidebarNav = (props: SidebarNavProps) => {
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto py-1"
+        onScroll={channelListScroll.onScroll}
+        ref={channelListScroll.ref}
+      >
         <button
+          aria-current={sidebarAriaCurrent(pathname === '/threads')}
           className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
           onClick={onNavigateThreads}
           type="button"
@@ -140,6 +151,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           {renderUnreadCount(threadsUnreadCount)}
         </button>
         <button
+          aria-current={sidebarAriaCurrent(pathname === '/unread-messages')}
           className={[
             'admin-sb-item sidebar-threads sidebar-unread-messages group',
             pathname === '/unread-messages' ? 'active' : '',

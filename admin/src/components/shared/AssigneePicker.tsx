@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faChevronDown, faRobot, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Popover } from '../overlays/Popover'
 
 export type AssigneeKind = 'user' | 'agent'
 export type AssigneeOption = { id: string; name: string; kind: AssigneeKind }
@@ -22,7 +23,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const selected = value ? options.find((option) => sameValue(value, option)) ?? null : null
@@ -39,14 +40,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
     setQuery('')
     setHighlight(0)
     const focus = window.setTimeout(() => inputRef.current?.focus(), 0)
-    const onClickAway = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickAway)
-    return () => {
-      window.clearTimeout(focus)
-      document.removeEventListener('mousedown', onClickAway)
-    }
+    return () => window.clearTimeout(focus)
   }, [open])
 
   const pick = (option: AssigneeOption) => {
@@ -74,11 +68,14 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
   }
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative">
       <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className="admin-input flex items-center justify-between gap-2 text-left"
         id={id}
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
         type="button"
       >
         <span className={selected ? 'truncate text-[color:var(--tx)]' : 'truncate text-[color:var(--tx3)]'}>
@@ -87,57 +84,64 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
         <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
       </button>
 
-      {open ? (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg">
-          <div className="border-b border-[color:var(--sep)] p-2">
-            <input
-              ref={inputRef}
-              className="admin-input"
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setHighlight(0)
-              }}
-              onKeyDown={onKeyDown}
-              placeholder="Search people or agents…"
-              value={query}
-            />
-          </div>
-          <ul className="max-h-56 overflow-y-auto py-1">
-            {filtered.map((option, index) => {
-              const isSelected = option.id
-                ? sameValue(value, option)
-                : value === null
-              return (
-                <li key={`${option.kind}:${option.id || 'none'}`}>
-                  <button
-                    className={[
-                      'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm',
-                      index === highlight ? 'bg-[color:var(--overlay)]' : '',
-                      isSelected ? 'text-[color:var(--tx)]' : 'text-[color:var(--tx2)]',
-                    ].join(' ')}
-                    onClick={() => pick(option)}
-                    onMouseEnter={() => setHighlight(index)}
-                    type="button"
-                  >
-                    {option.id ? (
-                      <FontAwesomeIcon
-                        className="w-3 shrink-0 text-[10px] text-[color:var(--tx3)]"
-                        icon={option.kind === 'agent' ? faRobot : faUser}
-                      />
-                    ) : (
-                      <span className="w-3 shrink-0" />
-                    )}
-                    <span className="truncate">{option.name}</span>
-                  </button>
-                </li>
-              )
-            })}
-            {filtered.length === 1 ? (
-              <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">No matches</li>
-            ) : null}
-          </ul>
+      <Popover
+        anchorRef={triggerRef}
+        className="overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg"
+        label={placeholder ?? 'Assignee'}
+        matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="bottom-start"
+        role="listbox"
+      >
+        <div className="border-b border-[color:var(--sep)] p-2">
+          <input
+            ref={inputRef}
+            className="admin-input"
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setHighlight(0)
+            }}
+            onKeyDown={onKeyDown}
+            placeholder="Search people or agents…"
+            value={query}
+          />
         </div>
-      ) : null}
+        <ul className="max-h-56 overflow-y-auto py-1">
+          {filtered.map((option, index) => {
+            const isSelected = option.id
+              ? sameValue(value, option)
+              : value === null
+            return (
+              <li key={`${option.kind}:${option.id || 'none'}`}>
+                <button
+                  className={[
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm',
+                    index === highlight ? 'bg-[color:var(--overlay)]' : '',
+                    isSelected ? 'text-[color:var(--tx)]' : 'text-[color:var(--tx2)]',
+                  ].join(' ')}
+                  onClick={() => pick(option)}
+                  onMouseEnter={() => setHighlight(index)}
+                  type="button"
+                >
+                  {option.id ? (
+                    <FontAwesomeIcon
+                      className="w-3 shrink-0 text-[10px] text-[color:var(--tx3)]"
+                      icon={option.kind === 'agent' ? faRobot : faUser}
+                    />
+                  ) : (
+                    <span className="w-3 shrink-0" />
+                  )}
+                  <span className="truncate">{option.name}</span>
+                </button>
+              </li>
+            )
+          })}
+          {filtered.length === 1 ? (
+            <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">No matches</li>
+          ) : null}
+        </ul>
+      </Popover>
     </div>
   )
 }
