@@ -601,6 +601,14 @@ bridge, `nessie:screen` and `nessie:attention`, and pull-to-refresh handed to
 the web. The haptic call sites beyond the swipe commit (a sheet snap, a tab
 change) stay **planned**.
 
+- **The native back/forward swipe is off on every form factor** (plan §7,
+  thrown only once `ScreenHeader` put a Back in every screen's leading
+  lane). It is a WebView-wide switch that cannot be scoped to a column, and
+  two owners of one edge gesture is the failure phones already fixed. Phones
+  keep the admin's edge swipe; iPad and large-phone landscape use the header
+  Back and the toolbar's history controls on the one ledger
+  (`mobile/src/lib/webview-back-gesture.ts`).
+
 - **`nessie:screen` — what screen the person is on.** Posted by
   `NativePhoneNavigationBridge` beside the unchanged `nessie:route` and
   `nessie:back-state`, so the shell stops re-deriving the tab from a

@@ -28,7 +28,6 @@ import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
 import { shouldInstallNativeBackHandler } from './src/lib/native-phone-navigation'
 import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
-import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
@@ -168,10 +167,6 @@ const Shell = (): React.JSX.Element => {
     runScript(nativePhoneTabBarClearanceScript(insets.bottom))
   }, [insets.bottom, runScript])
 
-  const nativeBackForwardGestures = largePhoneLandscape || allowsNativeBackForwardGestures({
-    heightDp: windowHeight,
-    widthDp: windowWidth,
-  })
   const bootRecovery = useNativeBootRecovery(currentPathRef)
   const phoneBack = useNativePhoneBack(
     shouldInstallNativeBackHandler(IS_ANDROID),
@@ -441,7 +436,6 @@ const Shell = (): React.JSX.Element => {
           formFactor={nativeFormFactor}
           initialPushPathResolved={initialPushPathResolved}
           nativeAppForeground={nativeAppForeground}
-          nativeBackForwardGestures={nativeBackForwardGestures}
           onError={bootRecovery.recoverBlankWebView}
           onHttpError={bootRecovery.recoverBlankWebView}
           onLoadEnd={() => { flushExternalAuthDelivery(); bootRecovery.noteLoadEnd() }}
