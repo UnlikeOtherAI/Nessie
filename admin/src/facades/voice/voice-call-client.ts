@@ -245,6 +245,14 @@ export const createVoiceCall = (deps: {
       // difference shows.
       const url = `${websocketUrl}?access_token=${encodeURIComponent(accessToken)}`
       const next = new WebSocket(url)
+      // Gemini Live answers in BINARY frames, so `message.data` would arrive
+      // as a Blob and every frame would die in the parser's catch — the socket
+      // opens, setup is sent, `setupComplete` comes back, and the client
+      // ignores all of it with no error anywhere. Node's `ws` hides this
+      // because a Buffer stringifies, which is why probes passed while the
+      // browser could never work. ArrayBuffer decodes synchronously; a Blob
+      // would need an await inside the frame handler.
+      next.binaryType = 'arraybuffer'
       socket = next
       let settled = false
 
@@ -262,8 +270,12 @@ export const createVoiceCall = (deps: {
         settled = true
         resolve()
       }
-      next.onmessage = (message: MessageEvent<string>) => {
-        for (const event of parseServerFrame(message.data)) handleEvent(event)
+      next.onmessage = (message: MessageEvent<ArrayBuffer | string>) => {
+        const raw =
+          typeof message.data === 'string'
+            ? message.data
+            : new TextDecoder().decode(message.data)
+        for (const event of parseServerFrame(raw)) handleEvent(event)
       }
       next.onerror = () => {
         if (!settled) {
@@ -279,8 +291,15 @@ export const createVoiceCall = (deps: {
           return
         }
         // A close during a live call is recoverable only while the credential
-        // is still valid and Gemini gave us a handle to resume with.
-        if (state.phase === 'live') void reconnect()
+        // is still valid and Gemini gave us a handle to resume with. A close
+        // while still connecting is not recoverable and must say so — leaving
+        // the dialog on "Connecting…" forever is how the binary-frame bug
+        // presented, and an honest failure would have named it immediately.
+        if (state.phase === 'live') {
+          void reconnect()
+        } else if (state.phase === 'connecting') {
+          failCall('The voice service closed the connection during setup.')
+        }
       }
     })
 
