@@ -9,25 +9,30 @@ first.
 
 **Shipped.** The Agent Designer is a real global agent: one `systemManaged` row
 per organisation keyed by `Agent.systemSlug`, a per-user `gagent:` home DM
-bootstrapped at login, the identity-delegated tool gate, the design tools
-(`agent_read` / `agent_update` / `agent_tool_catalog` / `agent_avatar_update`
-plus the reused provisioning five), a generated capability catalogue,
-`agent_handoff` with its routing block and origin-thread doorway, the
-field-sensitive edit-authority model underneath all of it, a read-only
-configuration view for any Nessie-managed agent, and one persona shared by the
-DM and the Agent Designer page's sidebar. Creating and redesigning an agent is
-now the Designer's work alone: those tools are `identityDelegatedOnly`, so the
-Personal Assistant hands off instead of holding the design catalogue.
+bootstrapped at login, the identity-delegated tool gate, the design tools, a
+generated capability catalogue, `agent_handoff` with its routing block and
+origin-thread doorway, the field-sensitive edit-authority model underneath all
+of it, a read-only configuration view for any Nessie-managed agent, and one
+persona shared by the DM and the Agent Designer page's sidebar. Creating and
+redesigning an agent is now the Designer's alone: those tools are
+`identityDelegatedOnly`, so the Personal Assistant hands off instead of carrying
+the design catalogue.
 
-**Deferred, deliberately.** No avatar *image* is generated for the Designer at
-bootstrap (a billed call) — only a stable tile colour, with generation left to
-the Personal Assistant's lazy owner-triggered path. Binding a global agent into
-ordinary shared channels stays with the scopes doc's later phase; v1 global
-agents are DM-homed and own no triggers. The sidebar keeps its ephemeral
-in-process transport rather than becoming thread-backed (D9's named end state),
-and its model shortlist is the catalogue's first 20 like the DM face's. There is
-no `agent_delete` for anyone, and no policy-target or explicit-grant mutation
-from either face.
+**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only
+a stable tile colour, with generation left to the PA's lazy owner-triggered
+path. Binding a global agent into ordinary shared channels stays with the scopes
+doc's later phase; v1 global agents are DM-homed and own no triggers. The sidebar
+keeps its ephemeral in-process transport rather than becoming thread-backed
+(D9's named end state). There is no `agent_delete` for anyone, and no
+policy-target or explicit-grant mutation from either face.
+
+**Owed: a Playwright pass.** Both mandatory dev ports (`:5454`, `:5455`) were
+held by another session's live stack throughout phase 4, and neither killing
+them nor moving these services elsewhere is allowed. Four screens still need a
+browser: the Agents page Global tab listing the Designer, its read-only detail
+view, the Designer's DM opening from the sidebar, and the handoff doorway in an
+origin channel. Verified without one: the whole lint gate, the api/worker/admin
+suites, `tsc --noEmit` for all three, a clean production admin bundle.
 **Date:** 2026-09-02
 **Related:**
 [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
@@ -851,62 +856,57 @@ exist.
      `BuiltinToolDefinition.identityDelegatedOnly` narrows
      `personalAssistantOnly` to the identity-delegated arm alone: the tool stays
      in the registry (the Designer needs it) but the PA's `agentKind` arm no
-     longer admits it, so it is *omitted* from the PA's schema array rather
-     than offered and denied. It carries `agent_create`, `agent_read`,
+     longer admits it, so it is *omitted* from the PA's schema array rather than
+     offered and denied. It carries `agent_create`, `agent_read`,
      `agent_update`, `agent_tool_catalog` and `agent_avatar_update` — creation
      **and redesign**, per D8 — while `agent_list`, `agent_bind_channel`,
-     `agent_trigger_create` and `channel_create` stay with the PA as the
-     operational verbs on agents that already exist. The PA's prompt needed no
-     rewrite: the phase-3 routing block already tells every agent that agent
-     design belongs to the Designer and that `agent_handoff` is how it gets
-     there. `loadAgentToolCatalog` gained a third restriction reason
-     (`built_in_specialist_only`) so the Designer never tells a person that a
-     tool it alone holds is "Personal Assistant only".
+     `agent_trigger_create` and `channel_create` stay with the PA. Its prompt
+     needed no rewrite: the phase-3 routing block already says agent design
+     belongs to the Designer and `agent_handoff` is how one gets there.
+     `loadAgentToolCatalog` gained a third restriction reason
+     (`built_in_specialist_only`) so the Designer never calls a tool it alone
+     holds "Personal Assistant only".
    - **One brain, two doorways.** `buildGlobalAgentCatalogueBlock` moved to
-     `@nessie/workspace-admin` (`global-agent-catalogue.ts`) and the API's
-     `buildDesignerSystemPrompt` now renders the blueprint's own persona plus
-     that generated block; the hand-written "expert AI agent designer"
-     principles are gone. The api face got its first live registry read
-     (`loadAgentToolCatalog`, server-side) and `availableTools` was **removed
-     from `DesignerChatBodySchema`** — the browser no longer tells the server
-     what this workspace has. The block's closing instruction is a
-     `writeSurface` (`agent_tools` | `designer_form` | `read_only`), because
-     the sidebar drives an unsaved form and must never claim it created an
-     agent. Model resolution is `resolveGlobalAgentModel` on both faces.
-   - **Ledger search, no scraping.** `runWebSearch` moved to
-     `@nessie/runtime`; `api/src/services/designer.ts` calls it with the
-     signed identity headers and `LEDGER_PROXY_TOKEN`, and the DuckDuckGo HTML
-     scrape is deleted. An unconfigured deployment says so in the prompt and
-     returns no results — never a fallback.
-   - **Identity and "Continue in chat".** `AgentRecord.systemSlug` is now on
-     the wire (read-only, server-written), so the sidebar resolves the Designer
-     structurally and renders its name and portrait through `AgentAvatar` /
-     the identity directory. `POST /api/designer/continue-in-chat` hands the
-     open draft to the person's own Designer DM through the **shared**
-     `deliverGlobalAgentBrief` — the hidden server-authored `system` message,
-     `claimThreadRunOrPend`, `replyPlacement: 'channel'` and the idempotency
-     key that `agent_handoff` was refactored onto in the same change, so there
-     is one mechanism rather than two. It takes the queue functions as
-     parameters (`AgentTodoRunQueue`'s precedent) because this package is
-     loaded from `dist` by processes that resolve `@nessie/db` differently.
-   - **The read-only detail view (D7).** `readAgentConfigView`
-     (`packages/workspace-admin/src/agent-config-view.ts`) composes
+     `@nessie/workspace-admin` and the API's `buildDesignerSystemPrompt` now
+     renders the blueprint's own persona plus that generated block; the
+     hand-written "expert AI agent designer" principles are gone. The api face
+     got its first live registry read (`loadAgentToolCatalog`, server-side) and
+     `availableTools` was **removed from `DesignerChatBodySchema`** — the browser
+     no longer tells the server what this workspace has. The block's closing
+     instruction is a `writeSurface` (`agent_tools` | `designer_form` |
+     `read_only`), because the sidebar drives an unsaved form and must never
+     claim it created an agent. Model resolution is `resolveGlobalAgentModel`.
+   - **Ledger search, no scraping.** `runWebSearch` moved to `@nessie/runtime`;
+     `api/src/services/designer.ts` calls it with the signed identity headers
+     and `LEDGER_PROXY_TOKEN`, and the DuckDuckGo HTML scrape is deleted. An
+     unconfigured deployment says so in the prompt and returns nothing.
+   - **Identity and "Continue in chat".** `AgentRecord.systemSlug` is now on the
+     wire (read-only, server-written), so the sidebar resolves the Designer
+     structurally and renders its name and portrait through the identity
+     directory. `POST /api/designer/continue-in-chat` hands the open draft to the
+     person's own Designer DM through the **shared** `deliverGlobalAgentBrief` —
+     the hidden `system` message, `claimThreadRunOrPend`,
+     `replyPlacement: 'channel'` and the idempotency key that `agent_handoff`
+     was refactored onto in the same change, so there is one mechanism rather
+     than two. It takes the queue functions as parameters
+     (`AgentTodoRunQueue`'s precedent) because this package is loaded from
+     `dist` by processes that resolve `@nessie/db` differently.
+   - **The read-only detail view (D7).** `readAgentConfigView` composes
      `readAgentRecordForActor` with `loadAgentToolCatalog`, resolving the sparse
      policy map into the tools the agent actually has (`default` / `policy` /
      `reserved` — the last being blueprint identity tools no policy can grant).
      Served at `GET /api/agents/:agentId/config` under exactly the list
      entitlement; `isAgentAccessibleToActor` is untouched, so status, activity,
      messages and children still 404 on a system agent. The admin's
-     `SystemAgentConfigPanel` replaces the tabs for any `systemManaged` agent
-     and carries no edit affordance at all.
+     `SystemAgentConfigPanel` replaces the tabs for any `systemManaged` agent,
+     with no edit affordance at all.
    - Tests: `api/test/designer-continue-in-chat.test.ts` (DB — the hidden
      `system` brief, one run, the `gagent:` DM shape, convergence on a second
      click, deactivated-member and unknown-slug refusals), config-view cases in
      `api/test/agent-designer-reads.test.ts`, the retirement and the Designer's
      continued access in `worker/test/identity-delegation.test.ts`, and the
-     rewritten `api/test/designer-prompt.test.ts` /
-     `api/test/designer-service.test.ts` (the catalogue reaches the prompt from
-     the database, not the browser).
+     rewritten designer prompt/service suites (the catalogue reaches the prompt
+     from the database, not the browser).
 
 Every phase landed with its admin surface (Rule zero), its docs, and DB-backed
 tests: bootstrap idempotency and policy merge, the CHECK arms (agents, channels,
