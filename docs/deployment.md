@@ -89,7 +89,42 @@ Both the API and the **worker** need these: inference runs in the worker, so it
 holds its own machine identity for this project (the executor and agent
 sandboxes still receive nothing). With any of the three unset, the feature is
 simply unavailable — `/settings/connections` says so and linking is refused;
-there is deliberately no PostgreSQL fallback.
+there is deliberately no PostgreSQL fallback. Because both services need them,
+these four live in the Compose `.env` (which `api` and `worker` both read via
+`env_file`), not in the API-only Docker secret that carries the Nessie Secrets
+token. `.env` is rsync-excluded by the Deploy workflow, so the values persist
+across every deploy.
+
+#### Provisioning the subscriptions project
+
+Production is provisioned (2026-09-02). To reproduce it on another instance,
+create a **second project** and an identity scoped to it alone — never reuse
+the Nessie Secrets project or its token. Using the instance admin identity
+stored at `/srv/nessie-secrets/infisical-bootstrap.json`:
+
+1. `POST /api/v2/workspace` — `{"projectName":"Nessie Subscriptions",
+   "slug":"nessie-subscriptions","type":"secret-manager"}`. New projects come
+   with `dev`/`staging`/`prod` environments; `prod` is what the default
+   `NESSIE_SUBSCRIPTION_VAULT_ENVIRONMENT` expects.
+2. `POST /api/v1/identities` with organisation role **`no-access`**, so the
+   identity has no standing on anything else in the org.
+3. `POST /api/v1/auth/token-auth/identities/{id}` with
+   `accessTokenTTL: 0` / `accessTokenMaxTTL: 0` — the vault client holds a
+   static bearer and has no refresh path, so an expiring token would silently
+   break every subscription-routed run once it lapsed.
+4. `POST /api/v2/workspace/{projectId}/identity-memberships/{identityId}` with
+   role `admin` — project-scoped, so it grants nothing outside this project.
+5. `POST /api/v1/auth/token-auth/identities/{id}/tokens` mints the bearer.
+   Production keeps it at `/srv/nessie-secrets/infisical-subscriptions-token`
+   (mode `0600`) and copies it into `NESSIE_SUBSCRIPTION_VAULT_TOKEN`.
+
+Verify isolation before trusting it: the new token must round-trip a secret in
+its own project **and** be refused (403) against `INFISICAL_PROJECT_ID`. That
+refusal is the whole point of the separate project — it is what stops a
+subscription-scoped identity from reading everyone's captured secrets.
+
+Rotating is steps 3–5 again against the same identity, then updating `.env` and
+recreating `api` + `worker`.
 
 ### Infisical vault
 
