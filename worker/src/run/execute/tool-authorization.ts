@@ -255,6 +255,23 @@ export const authorizeToolExecution = async (
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
 
 /**
+ * A mailbox action waits far longer than a routine tool gate.
+ *
+ * Thirty minutes is a sensible window for something a person is watching
+ * happen. It is the wrong window for "your assistant wants to send this email"
+ * raised at 06:00 by a schedule: the request would be dead before anyone woke
+ * up, and the plan called that failure out explicitly. Twenty-four hours is
+ * long enough to survive a night and short enough that a forgotten request
+ * does not linger indefinitely.
+ */
+const MAILBOX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000
+
+const approvalExpiryFor = (toolName: string): number =>
+  STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+    ? MAILBOX_APPROVAL_EXPIRY_MS
+    : DEFAULT_APPROVAL_EXPIRY_MS
+
+/**
  * The partial `(run_id, tool_call_id)` unique index is the crash-redelivery
  * boundary. Prisma cannot name a partial unique selector, so look up first and
  * re-read after a unique-conflict race.
@@ -291,7 +308,7 @@ const createToolApprovalRequest = async (
       toolName: input.toolName,
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
-    expiresAt: new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_MS),
+    expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),
     organizationId: input.context.channel.organizationId,
     projectId: input.context.channel.projectId,
     reason: `Tool ${input.toolName} requires approval before it can run.`,

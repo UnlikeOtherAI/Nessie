@@ -325,3 +325,67 @@ export const deleteEvent = async (
     { method: 'DELETE', headers: auth(accessToken), notFoundOk: true },
   )
 }
+
+/**
+ * Respond to an invitation on somebody else's event.
+ *
+ * Distinct from `patchEvent`: you are changing only your own attendee row, and
+ * Calendar rejects a patch that tries to edit an event you do not own. Most of
+ * what lands in a calendar is an invitation, so without this the tools can
+ * manage your own events and do nothing about everyone else's.
+ */
+export const respondToEvent = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  input: {
+    calendarId?: string
+    eventId: string
+    response: 'accepted' | 'declined' | 'tentative'
+    selfEmail: string
+    comment?: string
+  },
+): Promise<CalendarEvent> => {
+  const calendarId = input.calendarId ?? 'primary'
+  const path = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}`
+    + `/events/${encodeURIComponent(input.eventId)}`
+  const { body: current } = await requestJson(
+    fetchImpl,
+    'events.get',
+    path,
+    { headers: auth(accessToken) },
+  )
+  const existing = (current as RawEvent).attendees ?? []
+  const self = existing.find(
+    (attendee) =>
+      typeof attendee?.email === 'string'
+      && attendee.email.toLowerCase() === input.selfEmail.toLowerCase(),
+  )
+  if (!self) {
+    throw new Error('[comms-google] you are not an attendee of that event')
+  }
+  // Send back the whole attendee list with only our row changed: Calendar
+  // replaces the array wholesale, so patching with just ourselves would drop
+  // everybody else's responses.
+  const attendees = existing.map((attendee) =>
+    attendee === self
+      ? {
+          email: input.selfEmail,
+          responseStatus: input.response,
+          ...(input.comment ? { comment: input.comment } : {}),
+        }
+      : attendee,
+  )
+  const { body } = await requestJson(
+    fetchImpl,
+    'events.patch',
+    `${path}?${encodeForm({ sendUpdates: 'all' })}`,
+    {
+      method: 'PATCH',
+      headers: authJson(accessToken),
+      body: JSON.stringify({ attendees }),
+    },
+  )
+  const [event] = toEvent(body)
+  if (!event) throw new Error('[comms-google] Calendar returned no event')
+  return event
+}

@@ -19,6 +19,7 @@ import {
   recordGoogleRead,
   resolveGoogleActingUserId,
 } from './google-access.js'
+import { serializeMailboxResult } from './mailbox-overflow.js'
 
 const calendarFetch = async (
   url: string,
@@ -133,7 +134,12 @@ export const runCalendarEventsListTool = async (
   )
   return {
     inputSummary: `${args.timeMin ?? 'now'}..${args.timeMax ?? ''}`,
-    outputPreview: JSON.stringify(events),
+    outputPreview: serializeMailboxResult(events, {
+      what: 'calendar range',
+      delegateTask: 'List the calendar events between '
+        + `${args.timeMin ?? 'now'} and ${args.timeMax ?? 'the end of the range'} `
+        + 'with calendar_events_list and report what the days actually look like.',
+    }),
     toolName: 'calendar_events_list',
   }
 }
@@ -165,7 +171,11 @@ export const runCalendarFreeBusyTool = async (
   )
   return {
     inputSummary: `${args.timeMin}..${args.timeMax}`,
-    outputPreview: JSON.stringify(blocks),
+    outputPreview: serializeMailboxResult(blocks, {
+      what: 'availability range',
+      delegateTask: `Check availability between ${args.timeMin} and `
+        + `${args.timeMax} with calendar_freebusy and report the free slots.`,
+    }),
     toolName: 'calendar_freebusy',
   }
 }

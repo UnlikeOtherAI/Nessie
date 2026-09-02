@@ -189,6 +189,22 @@ export const resolveStandingConsentForToolCall = async (
   },
 ): Promise<boolean> => {
   if (!input.requestingUserId) return false
+
+  // A calendar write is gated because it MAILS PEOPLE. With no guests to
+  // notify, nobody is contacted and there is nothing for a person to approve —
+  // putting lunch in your own diary should not stop a run. The tool definition
+  // said this; only the chokepoint makes it true.
+  if (
+    input.toolName === 'calendar_event_create'
+    || input.toolName === 'calendar_event_update'
+  ) {
+    const attendees = input.args.attendees
+    return !Array.isArray(attendees) || attendees.length === 0
+  }
+  // Cancelling always notifies whoever was invited, so it is only ungated when
+  // the event has no guests — which the caller cannot assert, so it always asks.
+  if (input.toolName === 'calendar_event_cancel') return false
+
   if (input.toolName !== 'gmail_draft_send') return false
 
   const draftId = input.args.draftId

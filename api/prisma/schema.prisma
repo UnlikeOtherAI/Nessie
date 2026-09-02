@@ -1638,6 +1638,10 @@ enum UserAlertKind {
   trigger_health
   call_missed
   workspace_invitation
+  // An agent is waiting on this person to approve an action it cannot take
+  // alone. Durable rather than push-only for the same reason as
+  // trigger_health: a push at 06:00 is missable and the request expires.
+  approval_requested
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1659,6 +1663,7 @@ model UserAlert {
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
   triggerId       String?        @map("trigger_id") @db.Uuid
   callId          String?        @map("call_id") @db.Uuid
+  approvalRequestId String?      @map("approval_request_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1677,6 +1682,7 @@ model UserAlert {
   project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
   trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   call            Call?          @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -4110,6 +4116,7 @@ model ApprovalRequest {
   task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
   agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userAlerts           UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
