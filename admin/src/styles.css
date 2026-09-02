@@ -2290,6 +2290,14 @@ button.reaction-pill-active:focus-visible {
   color: var(--danger-text);
 }
 
+/* A header action whose mark turns red under the pointer: the channel's
+   routine-recording control, where red is what a record button means. Only
+   the icon is tinted — the box keeps the neutral header treatment every
+   other action in the row shares. */
+.page-header-action-danger:hover:not(:disabled) svg {
+  color: var(--danger);
+}
+
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
    `font: inherit` reset claims font-family for every control. */
 .admin-input.admin-input-mono {
