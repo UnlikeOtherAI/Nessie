@@ -526,6 +526,27 @@ a {
   overscroll-behavior-y: contain;
 }
 
+/* A full-height surface (the chat conversation, `Surface.fillsViewport`) owns
+   its own inner scroller, so the shell must be a non-scrolling flex column it
+   can fill — not the block scroller above, in which a `flex-1`/`h-full` child
+   has no bounded height and collapses to content height, floating the composer
+   up under the last message. This bounds the surface so its feed scrolls and
+   its composer stays pinned to the bottom, matching the split/desktop layout. */
+.phone-navigation-page--fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The surface host (`main#shell-main`) is a main-axis flex child here, not the
+   cross-axis-stretched child it is on `split`, so its default `min-height:auto`
+   would let a long feed grow the column past the viewport and push the composer
+   off-screen. Zero it so the surface's own `overflow-y:auto` feed does the
+   scrolling and the composer stays pinned. */
+.phone-navigation-page--fill > * {
+  min-height: 0;
+}
+
 /* The pull-to-refresh indicator a Root or Detail page scroller shows in the
    native shell (docs/navigation/overview.md §13). Driven inline by the gesture; at
    rest it is invisible and out of the way. */

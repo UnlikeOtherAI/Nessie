@@ -82,6 +82,16 @@ const offersRefresh = (pathname: string): boolean => {
   return type === 'root' || type === 'detail'
 }
 
+// A full-height surface (the chat conversation) owns its own inner scroller, so
+// its page shell must be a non-scrolling flex column it can fill rather than the
+// default block scroller — otherwise its `flex-1` column collapses to content
+// height and the composer floats up under the last message. Declared on the
+// surface registry (`Surface.fillsViewport`), never inferred from a breakpoint.
+const pageClassName = (pathname: string): string =>
+  matchSurface(pathname)?.surface.fillsViewport
+    ? 'phone-navigation-page phone-navigation-page--fill'
+    : 'phone-navigation-page'
+
 const RoutedScreen = ({ payload, pathname }: { payload: ScreenPayload; pathname: string }) => {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const indicatorRef = useRef<HTMLDivElement | null>(null)
@@ -89,7 +99,7 @@ const RoutedScreen = ({ payload, pathname }: { payload: ScreenPayload; pathname:
   return (
     <UNSAFE_LocationContext.Provider value={payload.locationContext}>
       <div aria-hidden className="phone-navigation-refresh" data-phone-navigation-refresh ref={indicatorRef} />
-      <div className="phone-navigation-page" data-phone-navigation-page ref={scrollerRef}>
+      <div className={pageClassName(pathname)} data-phone-navigation-page ref={scrollerRef}>
         {payload.screen}
       </div>
     </UNSAFE_LocationContext.Provider>
@@ -101,7 +111,7 @@ const NavigationScreen = ({ payload, pathname }: { payload: LayerPayload; pathna
   if (payload.kind === 'screen') return <RoutedScreen pathname={pathname} payload={payload} />
   return (
     <UNSAFE_LocationContext.Provider value={seededLocationContext(payload.pathname)}>
-      <div className="phone-navigation-page" data-phone-navigation-page>
+      <div className={pageClassName(payload.pathname)} data-phone-navigation-page>
         {payload.screen}
       </div>
     </UNSAFE_LocationContext.Provider>
