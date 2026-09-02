@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { approvalKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -37,6 +37,7 @@ export const useApprovalRequest = (approvalId: string | undefined) => {
     enabled: Boolean(approvalId),
     queryKey: approvalKeys.detail(approvalId),
     queryFn: () => apiClient.get(`/api/approvals/${approvalId}`),
+    placeholderData: keepPreviousData,
   })
 }
 

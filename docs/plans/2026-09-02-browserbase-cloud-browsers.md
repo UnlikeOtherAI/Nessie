@@ -693,6 +693,16 @@ above, kept here rather than silently rewriting the spec.
   polls `sessions.debug().pages` through the session detail endpoint. The
   worker-published SSE lane is worth building when the tab list needs to
   update between polls; it is not needed to render the strip.
+- **The display joins the shared surfaces rather than re-implementing
+  them** (corrected 2026-09-02, after the admin's architecture-lint suite
+  caught all three). The tab strip resolves through `useTabParam` as
+  `?browserTab=`, which also replaces a `useState` + reset effect: an id the
+  session no longer has fails the hook's own validation and degrades to the
+  first tab. The full-screen takeover composes `useOverlay` instead of
+  hand-rolling an Escape listener, so it gets Back registration, the focus
+  trap and the modal layer with it. And the session and thread-session reads
+  carry `placeholderData: keepPreviousData`, so switching sessions keeps the
+  previous browser on screen rather than flashing empty.
 - **Deferred out of phase 1**, none of them load-bearing for the slice:
   the first-party `/apps` listing, `/ops/usage` rows, the thinking-bubble
   chip, and the info-drawer *thumbnail* (a live disclosure row shipped

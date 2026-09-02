@@ -41,7 +41,9 @@ export const HoverHint = ({
       aria-describedby={open ? tooltipId : undefined}
       aria-label={`${label}. ${description}`}
       className={[
-        'relative z-10 inline-flex shrink-0 items-center justify-center',
+        // A stacking context so the hint below escapes its siblings, named
+        // from the layer scale rather than a literal (docs/navigation §7).
+        'relative z-[var(--layer-stack)] inline-flex shrink-0 items-center justify-center',
         'transition-colors duration-[var(--duration-fast)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
         className,
@@ -64,7 +66,8 @@ export const HoverHint = ({
       {children}
       <span
         className={[
-          'pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-64',
+          'pointer-events-none absolute bottom-full left-1/2 mb-2 w-max max-w-64',
+          'z-[var(--layer-popover)]',
           '-translate-x-1/2 rounded-md border border-[color:var(--sep)]',
           'bg-[color:var(--panel)] p-2 text-left text-xs font-normal normal-case leading-4',
           'tracking-normal text-[color:var(--tx)] shadow-lg',

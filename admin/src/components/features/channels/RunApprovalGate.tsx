@@ -68,6 +68,11 @@ export const RunApprovalGate = ({
   const resolve = useResolveApproval()
   const { pushToast } = useToasts()
   const grant = useGrantFromApproval()
+  // Deliberately NOT a `useTabParam` host (docs/navigation/overview.md §1, "Tab
+  // hosts"): this strip is a field of the card's form, not a section of a
+  // screen. A feed renders one gate per pending approval, so a single URL param
+  // could not hold the answers apart; and the answer is submitted and thrown
+  // away, so putting it in the URL would outlive the approval it decided.
   const [resolution, setResolution] = useState<Resolution>('approved')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [duration, setDuration] = useState<ApprovalDuration>('30d')

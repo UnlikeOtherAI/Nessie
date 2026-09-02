@@ -89,6 +89,31 @@ export type ToolAuthorizationContext = {
     interactive: boolean
     messageId: string
   }
+  /**
+   * A structurally gated tool family whose escalation decision is its own.
+   *
+   * Standing consent below is the *send-as-you* answer: a person granting an
+   * agent leave to mail from their account. A hosted agent mailbox is not that
+   * — nobody's account is being borrowed — and its reasons to stop are
+   * different (an unattended run opening new correspondence, the hourly cap, or
+   * a privileged source the run read that its recipient cannot reach). A family
+   * that returns a decision here is authoritative for its own tools; everything
+   * else falls through to standing consent unchanged.
+   */
+  structuralGate?: (input: {
+    toolName: string
+    args: Record<string, unknown>
+  }) => Promise<{
+    escalate: boolean
+    /** Shown on the approval card: why the person was asked. */
+    reason?: string
+    requiredApproverUserId?: string | null
+    /**
+     * Address-free server-authored facts for the approval row, which an org
+     * owner can read through the approvals surface.
+     */
+    contextExtra?: Record<string, unknown>
+  } | null>
   toolPolicy: Record<string, boolean> | null
 }
 
@@ -222,6 +247,8 @@ export const authorizeToolExecution = async (
   // this exact agent, resolved here so the decision lives at the chokepoint
   // every tool execution passes through rather than in each handler.
   let boundaryReason: string | null = null
+  let structuralApprover: string | null = null
+  let structuralContext: Record<string, unknown> | null = null
   const policyDecision = await (async () => {
     if (
       !rawPolicyDecision.allowed
@@ -230,6 +257,25 @@ export const authorizeToolExecution = async (
     ) {
       return rawPolicyDecision
     }
+    // A family that owns its own escalation answers first and is final for its
+    // tools; standing consent is the send-as-you path and does not apply there.
+    const familyDecision = auth.structuralGate
+      ? await auth.structuralGate({ args, toolName })
+      : null
+    if (familyDecision) {
+      if (!familyDecision.escalate) return rawPolicyDecision
+      boundaryReason = familyDecision.reason ?? null
+      structuralApprover = familyDecision.requiredApproverUserId ?? null
+      structuralContext = familyDecision.contextExtra ?? null
+      return {
+        ...rawPolicyDecision,
+        allowed: false as const,
+        approvalActionType: undefined as string | undefined,
+        policyRuleId: undefined as string | undefined,
+        reason: 'approval_required' as const,
+      }
+    }
+
     const consent = await resolveStandingConsentForToolCall(prisma, {
       toolName,
       args,
@@ -305,6 +351,8 @@ export const authorizeToolExecution = async (
         interactive: auth.resumeState.interactive,
         messageId: auth.resumeState.messageId,
         ...(boundaryReason ? { boundaryReason } : {}),
+        ...(structuralContext ? { contextExtra: structuralContext } : {}),
+        ...(structuralApprover ? { requiredApproverUserId: structuralApprover } : {}),
       })
       return {
         decision: 'suspend',
@@ -597,10 +645,14 @@ const createToolApprovalRequest = async (
     approvalActionType?: string
     args: Record<string, unknown>
     context: RunContext
+    contextExtra?: Record<string, unknown>
+    expiryMs?: number
     interactive: boolean
     messageId: string
     policyRuleId?: string
     reason?: string
+    /** Set when a structurally gated family names its own accountable person. */
+    requiredApproverUserId?: string | null
     toolCallId: string
     toolName: string
     /** Why the assistant escalated instead of deciding, when it judged. */
@@ -629,6 +681,10 @@ const createToolApprovalRequest = async (
       // suspension notice is restricted to the mailbox owner, but this row is
       // also readable through the approvals surface by an org owner.
       ...describeGatedAction(input.toolName, input.args),
+      // Same rule: a gated family may add only address-free facts here. The
+      // hosted-mailbox gate adds the scopes that forced the ask; the recipients
+      // themselves are resolved by the owner-gated draft route at read time.
+      ...(input.contextExtra ?? {}),
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
     expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),
@@ -636,13 +692,17 @@ const createToolApprovalRequest = async (
     projectId: input.context.channel.projectId,
     reason: input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
-    // A send-as-you gate is resolvable ONLY by the person whose account it
-    // acts as. Approval visibility otherwise reaches any member who can read a
-    // public channel, so without this a colleague could authorise an email
-    // sent in somebody else's name.
+    // A send gate is resolvable ONLY by the person accountable for it.
+    // Approval visibility otherwise reaches any member who can read a public
+    // channel, so without this a colleague could authorise an email sent in
+    // somebody else's name. Send-as-you pins the requesting person; a hosted
+    // agent mailbox has no requesting user on an inbound run, so its own gate
+    // supplies the agent's live steward instead.
     requiredApproverUserId:
       STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
-        ? input.actorContext.actionContext.effectiveUserId ?? null
+        ? input.requiredApproverUserId
+          ?? input.actorContext.actionContext.effectiveUserId
+          ?? null
         : null,
     resumeState: {
       actorContext: input.actorContext,

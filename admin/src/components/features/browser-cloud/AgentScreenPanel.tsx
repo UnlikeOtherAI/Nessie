@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
 import { AgentScreenViewer } from './AgentScreenViewer'
 
@@ -27,28 +28,36 @@ export const AgentScreenPanel = ({ sessionId, onClose }: AgentScreenPanelProps) 
   const phoneLayout = usePhoneLayout()
   const [fullscreen, setFullscreen] = useState(false)
 
-  useEffect(() => {
-    if (!fullscreen) return undefined
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFullscreen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [fullscreen])
+  // The takeover is full-bleed rather than a centred card, so it is not the
+  // shared `Dialog` — but it owes the same shared work every overlay does
+  // once: Back registration, Escape, the focus trap, the modal layer and its
+  // motion (docs/navigation/overview.md §7).
+  const exitFullscreen = useCallback(() => setFullscreen(false), [])
+  const overlay = useOverlay({
+    id: 'agent-screen-fullscreen',
+    kind: 'modal',
+    label: 'Exit full screen',
+    onClose: exitFullscreen,
+    open: fullscreen,
+  })
 
-  if (fullscreen) {
+  if (overlay.mounted) {
     return (
       <div
         aria-label="Agent's screen"
-        className="fixed inset-0 z-[var(--layer-modal)] flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
+        aria-modal="true"
+        className="fixed inset-0 flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
+        ref={overlay.panelRef}
         role="dialog"
+        style={overlay.layerStyle}
+        tabIndex={-1}
       >
         <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
           <h2 className="text-sm font-semibold text-[color:var(--tx)]">Agent’s screen</h2>
           <div className="flex items-center gap-2">
             <button
               className="admin-button admin-button-secondary admin-button-compact"
-              onClick={() => setFullscreen(false)}
+              onClick={overlay.requestClose}
               type="button"
             >
               Exit full screen

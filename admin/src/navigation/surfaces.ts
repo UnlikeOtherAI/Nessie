@@ -364,6 +364,23 @@ export const SURFACES: Surface[] = [
     type: 'detail',
   },
   {
+    // The agent's mailbox. Depth 3 under the agent: Back lands on the agent
+    // whose correspondence this is, and the open conversation rides in the
+    // query so a link into one message survives a reload.
+    depth: 3,
+    identityOf: (match) => `agent-mailbox:${match[1]}`,
+    intent: { state: ['conversation', 'mailboxFilter'] },
+    keyScope: () => 'agent-mailbox',
+    parentOf: (match) => ({
+      label: 'Back to agent',
+      pathname: `/agents/${match[1]}`,
+    }),
+    pattern: /^\/agents\/([^/]+)\/mailbox$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    type: 'nested',
+  },
+  {
     // Dynamic agent id last, mirroring the router's own ranking. A sub-agent
     // drill-in is the same screen identity, so it swaps in place; Back
     // returns to the Agents list.

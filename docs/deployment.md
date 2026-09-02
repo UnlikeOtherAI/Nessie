@@ -630,6 +630,7 @@ production settings:
 | Web Push public key | `NESSIE_WEBPUSH_PUBLIC_KEY` | optional; VAPID public key served to browsers. Enables browser web push when set with the two below. See [web-push.md](web-push.md) |
 | Web Push private key | `NESSIE_WEBPUSH_PRIVATE_KEY` | optional; VAPID private key that signs push JWTs (secret) |
 | Web Push subject | `NESSIE_WEBPUSH_SUBJECT` | optional; VAPID subject, a `mailto:`/`https:` operator-contact URI. Generate the trio with `node scripts/generate-vapid-keys.mjs` |
+| Agent email (SES) | `NESSIE_EMAIL_SES_REGION`, `NESSIE_EMAIL_DOMAIN`, `NESSIE_EMAIL_INBOUND_S3_BUCKET`, `NESSIE_EMAIL_SNS_TOPIC_ARN` (+ optional `NESSIE_EMAIL_SES_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY`, `NESSIE_EMAIL_INBOUND_S3_PREFIX`, `NESSIE_EMAIL_CONFIGURATION_SET`, `NESSIE_EMAIL_INBOUND_RETENTION_DAYS`, `NESSIE_EMAIL_CUSTOM_DOMAINS`, `NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR`, `NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES`) | Hosted agent mailboxes. All four required fields must be present or the feature stays off and names the missing ones; credentials omitted ⇒ the AWS SDK default chain (instance profile / IRSA). Full AWS setup, IAM and operating notes: "Agent email (Amazon SES)" below. |
 | Comms Slack client id | `NESSIE_COMMS_SLACK_CLIENT_ID` | optional; Slack app OAuth client id for the Individual Communications Connector. Also read by the API OAuth-start (`oauth-config.ts`) to build the authorize URL |
 | Comms Slack client secret | `NESSIE_COMMS_SLACK_CLIENT_SECRET` | optional (secret); Slack app OAuth client secret used for the code→token exchange |
 | Comms Slack signing secret | `NESSIE_COMMS_SLACK_SIGNING_SECRET` | optional (secret); Slack Events API request-signing secret (`v0` HMAC). Slack registers only when all three of the above are set |
@@ -750,6 +751,29 @@ blocks uploads (HTTP 507) when exceeded. The cap is set in the admin **Budgets**
 screen ("Storage cap (GB)") alongside spend caps, and current usage shows in the
 knowledge-base header. `MinIO` data lives in the `nessie_miniodata` volume — back
 it up alongside `nessie_pgdata`.
+
+### Agent email (Amazon SES)
+
+Hosted agent mailboxes give each agent its own address (`support@nessie.works`).
+Amazon SES is integrated **directly** — the deployment's own account sends and
+receives, so an address is unique per deployment and there is no intermediary
+service.
+
+The feature is **off unless configured**, and partial configuration is named
+rather than degraded: the claim flow refuses with `AGENT_MAIL_UNCONFIGURED`
+listing the missing variables, the agent's Email section shows an owner that
+same list, the inbound route answers `503`, and the worker logs
+`[worker.agent-email] disabled` at boot and registers no handlers. Required:
+`NESSIE_EMAIL_SES_REGION`, `NESSIE_EMAIL_DOMAIN`,
+`NESSIE_EMAIL_INBOUND_S3_BUCKET`, `NESSIE_EMAIL_SNS_TOPIC_ARN`. Credentials are
+optional — omit them to use the AWS SDK default chain (instance profile / IRSA).
+
+**Authoritative guide: [docs/agent-email.md](agent-email.md)** — the full AWS
+click-path and CLI (domain + DKIM, MX, the receipt rule into S3 + SNS, the
+configuration set, IAM, self-subscription), every environment variable,
+verification commands, and the operating rules that matter in production
+(deployment-wide suppression, why an ambiguous send is never retried, and why a
+deleted address is retired permanently).
 
 ### MCP OAuth secret store
 

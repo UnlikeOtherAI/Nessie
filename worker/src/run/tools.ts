@@ -63,6 +63,9 @@ import {
   runTodoTemplateProposeTool,
   runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
+  runEmailListTool,
+  runEmailReadTool,
+  runEmailSendTool,
 } from './pa-tools.js'
 import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
@@ -419,6 +422,12 @@ const executeBuiltinToolUncorrected = async (
       })
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
+    case 'email_list':
+      return wrapTool(inputSummary, () => runEmailListTool(context, args))
+    case 'email_read':
+      return wrapTool(inputSummary, () => runEmailReadTool(context, args))
+    case 'email_send':
+      return wrapTool(inputSummary, () => runEmailSendTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
     case 'meeting_link_create':
