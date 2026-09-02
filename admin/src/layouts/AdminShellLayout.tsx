@@ -353,6 +353,7 @@ const AuthenticatedAdminShellLayout = () => {
                   <div className="admin-shell">
                     {!mobileLayout && (
                       <SidebarRail
+                        onCreateAgent={shell.navigateToAgentDesigner}
                         onCreateChannel={() => shell.openCreateChannel()}
                         onCreateMessage={shell.navigateToNewConversation}
                         onCreateProject={shell.openCreateProject}
@@ -382,6 +383,7 @@ const AuthenticatedAdminShellLayout = () => {
                 ) : null}
                 {nativePhoneApp ? (
                   <NativePhoneCreationBridge
+                    onCreateAgent={shell.navigateToAgentDesigner}
                     onCreateChannel={shell.openCreateChannel}
                     onCreateMessage={shell.navigateToNewConversation}
                     onCreateProject={shell.openCreateProject}

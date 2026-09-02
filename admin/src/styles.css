@@ -1652,6 +1652,11 @@ a {
   color: #a96400;
 }
 
+.create-menu-icon-agent {
+  background: color-mix(in srgb, #7a5af8 18%, transparent);
+  color: #5b3ed6;
+}
+
 /* The one single-select strip in the admin (components/primitives/TabBar).
    The selected item is a single sliding pill rather than a per-item background,
    so a tab change reads as one object moving to what was tapped. Every colour

@@ -307,10 +307,17 @@ export const useAdminShell = () => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+  const {
+    peopleDirectory,
+    sidebarAgentDms,
+    sidebarGroupDms,
+    sidebarPeople,
+    sidebarProductAssistants,
+  } = useSidebarDms({
     agents,
     channels,
     chatAssistants: productSurfaces.chatAssistants,
+    currentChannelId,
     me,
     systemAgents,
     users,
@@ -320,7 +327,9 @@ export const useAdminShell = () => {
     agentById,
     channelById,
     projectById,
-    sidebarPeople,
+    // Starred resolution reads the whole directory: a person can be starred
+    // before any message exists, and Direct messages lists only conversations.
+    sidebarPeople: peopleDirectory,
     starred,
     starredProjectIds,
   });

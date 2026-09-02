@@ -808,6 +808,21 @@ the model is blueprint pin → `NESSIE_DESIGNER_MODEL` → organisation default,
 rule for both Designer faces; the sidebar finds the DM via
 `isGlobalAgentChannel`, and `AgentIdentityProvider` reads `scope=all`.
 
+**Direct messages lists conversations, not a directory.** Every DM channel in
+that section is provisioned before anybody speaks — a person's DM, a private
+agent's home DM, a global agent's home DM the moment the account exists — so
+listing provisioned channels made the section a roster of the workspace instead
+of who the viewer talks to, with the Agent Designer pinned in it from day one.
+A row appears once its channel carries a message, plus the channel the viewer is
+standing in, so opening a fresh conversation never pulls its own row out from
+under them (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`; the hook is the
+memo wrapper). Starring is unaffected — it resolves through the full people
+directory, because starring somebody *is* adding them. The doorways stay named:
+**Create → Message** (and the section's `+`) reaches a person, and **Create →
+Agent** — the fourth and last row of the rail's create menu — reaches
+`/agents/designer`, the same `navigateToAgentDesigner` the native phone sheet
+calls.
+
 - **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
   provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog`,
   `agent_avatar_update` — `personalAssistantOnly` builtins in
