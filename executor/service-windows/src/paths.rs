@@ -22,12 +22,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nessie_windows_common::is_sid_string;
+use nessie_windows_common::{
+    is_sid_string, CONTROL_CLIENTS_DIRECTORY, LOGS_DIRECTORY, SERVICE_DIRECTORY_NAME,
+};
 
 use crate::protocol::valid_identifier;
-
-/// The service's own directory name under `%ProgramData%`.
-pub const SERVICE_DIRECTORY_NAME: &str = "Nessie Executor";
 
 pub const EXECUTOR_STATE_FILE: &str = "executor-state.json";
 
@@ -53,11 +52,11 @@ pub fn pending_root(root: &Path) -> PathBuf {
 }
 
 pub fn control_clients_root(root: &Path) -> PathBuf {
-    root.join("control-clients")
+    root.join(CONTROL_CLIENTS_DIRECTORY)
 }
 
 pub fn logs_root(root: &Path) -> PathBuf {
-    root.join("logs")
+    root.join(LOGS_DIRECTORY)
 }
 
 /// The state directory for one paired executor. The id is validated because it

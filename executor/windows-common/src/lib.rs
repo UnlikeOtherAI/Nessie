@@ -1,10 +1,11 @@
 //! What the Nessie Executor service and its tray both have to agree on.
 //!
-//! Two facts, and both are the kind that break silently when they are stated
+//! Three facts, and all are the kind that break silently when they are stated
 //! twice: the account Windows derives from the service name — pick the two
-//! separately and the grant names an account that never exists — and the string
-//! form of a SID, which the tray writes as a file name and the service reads
-//! back and hands to Win32.
+//! separately and the grant names an account that never exists — the layout
+//! under `%ProgramData%` that the tray writes into and the service reads out
+//! of, and the string form of a SID, which the tray writes as a file name and
+//! the service reads back and hands to Win32.
 //!
 //! The names and the validation are portable, so they are tested on any host.
 //! The one Win32 call lives behind `cfg(windows)` in [`sid`].
@@ -23,6 +24,19 @@ pub const SERVICE_NAME: &str = "NessieExecutor";
 /// password. The workspace ACL grant and the Hyper-V group membership name it.
 pub const SERVICE_ACCOUNT: &str = r"NT SERVICE\NessieExecutor";
 
+/// The service's own directory name under `%ProgramData%`. Pairing material
+/// and machine keys belong to the service account, not to a person's profile,
+/// so everything the service keeps lives under it.
+pub const SERVICE_DIRECTORY_NAME: &str = "Nessie Executor";
+
+/// The directory under the service root where an elevated grant records the
+/// accounts the control pipe admits, one marker file per SID.
+pub const CONTROL_CLIENTS_DIRECTORY: &str = "control-clients";
+
+/// The directory under the service root the service writes its log into and
+/// the tray's **Open logs folder** opens.
+pub const LOGS_DIRECTORY: &str = "logs";
+
 /// A SID in its string form, checked before it is ever handed to Win32 or used
 /// as a file name: `S-1-` followed by dash-separated decimal parts.
 pub fn is_sid_string(value: &str) -> bool {
@@ -38,7 +52,10 @@ pub fn is_sid_string(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_sid_string, SERVICE_ACCOUNT, SERVICE_NAME};
+    use super::{
+        is_sid_string, CONTROL_CLIENTS_DIRECTORY, LOGS_DIRECTORY, SERVICE_ACCOUNT,
+        SERVICE_DIRECTORY_NAME, SERVICE_NAME,
+    };
 
     /// Windows derives the virtual account from the service name; choosing them
     /// separately would produce an account that never exists.
@@ -46,6 +63,20 @@ mod tests {
     fn the_service_account_is_this_services_virtual_account() {
         assert_eq!(SERVICE_ACCOUNT, format!(r"NT SERVICE\{SERVICE_NAME}"));
         assert!(!SERVICE_NAME.contains(' '));
+    }
+
+    /// The tray records a grant and opens the logs where the service reads and
+    /// writes them; the installer authors the same root. One spelling each, and
+    /// each a single path segment — a separator would put the marker somewhere
+    /// the service never lists.
+    #[test]
+    fn the_program_data_layout_is_the_one_the_service_and_tray_share() {
+        assert_eq!(SERVICE_DIRECTORY_NAME, "Nessie Executor");
+        assert_eq!(CONTROL_CLIENTS_DIRECTORY, "control-clients");
+        assert_eq!(LOGS_DIRECTORY, "logs");
+        for name in [SERVICE_DIRECTORY_NAME, CONTROL_CLIENTS_DIRECTORY, LOGS_DIRECTORY] {
+            assert!(!name.is_empty() && !name.contains(['\\', '/']), "{name:?} must be one segment");
+        }
     }
 
     #[test]

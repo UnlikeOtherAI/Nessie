@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use nessie_windows_common::SERVICE_ACCOUNT;
+use nessie_windows_common::{LOGS_DIRECTORY, SERVICE_ACCOUNT};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_opener::OpenerExt;
@@ -20,7 +20,7 @@ use crate::{
     grant::request_workspace_grant,
     invitation::parse_invitation,
     pipe_client::call,
-    service_identity::{EXECUTORS_URL, LOGS_DIRECTORY, SERVICE_DIRECTORY_NAME},
+    service_identity::{service_root, EXECUTORS_URL},
     state::ServiceView,
 };
 
@@ -153,9 +153,7 @@ pub fn open_nessie<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 }
 
 pub fn open_logs<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let program_data = std::env::var_os("ProgramData")
-        .ok_or_else(|| "Windows reported no ProgramData directory.".to_owned())?;
-    let logs = PathBuf::from(program_data).join(SERVICE_DIRECTORY_NAME).join(LOGS_DIRECTORY);
+    let logs = service_root()?.join(LOGS_DIRECTORY);
     // The service creates the folder when it first writes to it; opening a path
     // that is not there yet would show a shell error instead of an explanation.
     if !logs.is_dir() {
