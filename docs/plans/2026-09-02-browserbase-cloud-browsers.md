@@ -2,10 +2,11 @@
 
 **Date:** 2026-09-02 (rev 2) · **Status:** proposal (not yet built)
 
-Agents get their own browser that survives the run: a cloud Chromium session
-from [Browserbase](https://www.browserbase.com) that an agent can open,
-navigate, and act in — with the login state (cookies, localStorage) retained
-per person per service, so the agent can come back tomorrow still signed in.
+Each agent gets **its own browser** that survives the run: a cloud Chromium
+"machine" from [Browserbase](https://www.browserbase.com) the agent can open,
+navigate, and act in — one durable browser per agent, so agents never clash
+over shared state, and the login state (cookies, localStorage) is retained
+per agent, so it can come back tomorrow still signed in.
 
 Two decisions shape everything else (decided 2026-09-02):
 
@@ -27,6 +28,13 @@ Two decisions shape everything else (decided 2026-09-02):
    connection (an individual connects their own account — the free tier is
    enough to try it — powering only their own runs). No Ledger metering:
    the Browserbase bill is between the account holder and Browserbase.
+3. **The browser belongs to the agent; the logins in it belong to people**
+   (decided 2026-09-02, the Grok-bot model). Each agent has one durable
+   browser — its own machine — which is what makes clashes structurally
+   impossible: no two agents ever share browser state. Because Nessie is
+   multi-user where Grok is not, every human sign-in performed in an
+   agent's browser is recorded against the person who did it, and that
+   record drives the disclosure basis of everything read through it (§4.5).
 
 ## 1. What exists today — and why this is a transport, not a new tool family
 
@@ -58,7 +66,7 @@ Browserbase cloud session is a server-side transport decision, exactly as
 | | Device executor (exists) | Connected Chrome (exists, gated) | Browserbase cloud (this plan) |
 |---|---|---|---|
 | Availability | device online | device online + Chrome | always (org connected) |
-| Login state | sandbox profile | the person's real sessions | per-user Browserbase Context |
+| Login state | sandbox profile | the person's real sessions | the agent's own persistent Context |
 | Credentials | n/a | user's own password manager | human signs in via Live View — never stored, never injected |
 | Best for | local/dev work | acting as the person, attended | unattended + long-lived agent browsing |
 
@@ -89,7 +97,7 @@ Verified against docs.browserbase.com on 2026-09-02:
   copy should say so. Verified 2026-09-02: **contexts are exempt from the
   retention windows** — the docs state contexts "live indefinitely" until
   explicitly deleted (retention covers session artifacts like recordings and
-  logs), so a free account's login profiles do not expire on Browserbase's
+  logs), so a free account's agent-browser logins do not expire on Browserbase's
   side; re-login cadence is set by each website's own session policy. The
   free plan's real bound is hours (1 h total, ~15-min sessions), which is
   the number the personal connections panel surfaces as the upgrade nudge.
@@ -106,11 +114,13 @@ Verified against docs.browserbase.com on 2026-09-02:
    challenge) is the person typing into the interactive Live View. The agent
    parks, the person acts, the agent resumes. We never automate CAPTCHA
    solving or type credentials on the model's behalf from server state.
-4. **A profile belongs to a person.** A Browserbase Context maps to one
-   `(organization, user)` — the requesting user's own login state. An agent
-   uses it only for that person's runs, under an explicit per-agent grant.
-5. **Reads feed the disclosure sink.** A page read through a person's
-   authenticated profile is that person's private material; it enters the run
+4. **A browser belongs to an agent; its logins belong to people.** A
+   Browserbase Context maps to one agent — its durable machine, one live
+   session at a time, so runs never fight over shared state. Every human
+   sign-in performed in it is recorded against that person, and those
+   records are what the disclosure machinery reads (§4.5).
+5. **Reads feed the disclosure sink.** A page read through a browser a
+   person authenticated is that person's private material; it enters the run
    context with a `user:<id>` basis (`ConsumedSourceSink`), same obligation as
    every other read path.
 6. **Default OFF.** Browser tools are `requiresExplicitGrant` per agent, the
@@ -135,7 +145,7 @@ Verified against docs.browserbase.com on 2026-09-02:
   (`packages/mcp-manage/src/instance-secret.ts` discipline).
 - **Org connection** (owner-only): the company subscription. Every
   browser-granted agent in the organisation can spin browsers, for any
-  requester, attended or not (within §4.5's profile rules).
+  requester, attended or not (within §4.5's authenticated-browsing rules).
 - **Personal connection** (any member): their own Browserbase account —
   free tier to start, upgrade if they turn out to be a power user. It powers
   **only runs that person requested**, the user-scoped MCP install
@@ -176,23 +186,42 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
 ### 4.2 Data model
 
 - `CloudBrowserConnection` — above.
-- `BrowserProfile` `{ id, organizationId, userId, connectionId,
-  browserbaseContextId, label, serviceHint?, createdAt, lastUsedAt,
-  status }` — one row per persistent login identity. `connectionId` is
-  load-bearing: a Browserbase context is scoped to the account that created
-  it, so a profile is usable only through its own connection. If an org
-  subscription arrives after people used personal connections, their
-  personal profiles cannot be transferred — the person signs in once more
-  under the org connection (the UI says so; it is one login, not a
-  migration). `serviceHint` is display metadata ("Google — ondrej@…"),
-  written from what the person confirms at login handoff, never parsed out
-  of page content.
-- `CloudBrowserSession` `{ id, organizationId, runId, profileId?,
+- `AgentBrowser` `{ id, organizationId, agentId, connectionId,
+  browserbaseContextId, status, createdAt, lastUsedAt }` — **one durable
+  browser per agent per connection**, created lazily on the agent's first
+  persistent `browser_open`. `connectionId` is load-bearing: a Browserbase
+  context is scoped to the account that created it, so a browser is usable
+  only through its own connection. If an org subscription arrives after
+  personal connections were in use, personal-connection browsers cannot be
+  transferred — the agent starts a fresh browser under the org connection
+  and any logins are performed once more (the UI says so; it is one login
+  per service, not a migration). Deleting the agent deletes its browser
+  (context included) in the same transaction.
+- **Which connection may hold an agent's durable browser** follows from who
+  can reach the agent: a **workspace agent's** browser lives on the org
+  connection only — on a personal connection its state would be reachable
+  through runs the connection owner never requested. A **private agent**
+  (owner-only home DM, owner-only runs by construction) may keep its
+  durable browser on its owner's personal connection — which is exactly the
+  free-tier on-ramp: your own private agent, your own Browserbase account.
+  Ephemeral sessions work on either connection per §4.1's resolution.
+- `AgentBrowserLogin` `{ id, agentBrowserId, userId, serviceHint,
+  createdAt }` — one row per completed login handoff (§4.4), recording
+  **who** signed the browser into **what**. `serviceHint` is display
+  metadata ("Google — ondrej@…") confirmed by the person at handoff, never
+  parsed out of page content. These rows drive the disclosure basis (§4.5)
+  and the sign-out surface (§4.7); "Sign out & reset" deletes the context,
+  recreates the browser empty, and clears the login rows.
+- `CloudBrowserSession` `{ id, organizationId, runId, agentBrowserId?,
   browserbaseSessionId, status (active|released|expired), startedAt, endedAt,
-  releasedBy }` — the lifecycle row. A profile-backed session is claimed with
-  a conditional UPDATE (`status = 'active'` unique partial index per
-  `profileId`), so two runs cannot ride one context concurrently; the loser
-  gets a clear "profile is in use by another run" tool error.
+  releasedBy }` — the lifecycle row. **One live session per agent browser**:
+  a persistent open is claimed with a conditional UPDATE (`status = 'active'`
+  unique partial index per `agentBrowserId`), because one agent can run
+  concurrently in different threads and Browserbase warns against two
+  sessions on one context. The loser gets a clear "this agent's browser is
+  in use by another run" tool error and can proceed ephemeral or retry.
+  Different agents never contend at all — that is the point of
+  browser-per-agent.
 - **Release is fused to the run's terminal transition**, the working-marker
   precedent (`lifecycle.ts` `updateRunStatus`): completion, failure, budget
   stop, and cancellation all release the Browserbase session without anyone
@@ -216,15 +245,18 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   existing images-in-context path (`worker/src/run/message-attachments.ts`),
   never a second byte path.
 - Model-facing tools (shared schemas, both transports):
-  - `browser_open` `{ profileId? }` — ephemeral session when no profile;
-    profile-backed (context attached, `persist: true`) when given. The
-    structural prompt block lists the person's own profiles by id + label when
-    the toolset is granted, so the model never invents a profile id (the
-    agent-docs `spaceId` precedent).
+  - `browser_open` `{ mode: 'mine' | 'ephemeral' }` — `'mine'` opens **the
+    agent's own browser** (its `AgentBrowser` context attached,
+    `persist: true`, created lazily on first use, subject to the §4.2
+    single-session claim and connection rules); `'ephemeral'` opens a
+    throwaway session with no context. No id to pass, so nothing to invent:
+    the structural prompt block states whether the agent's browser exists,
+    which services are signed in (`serviceHint`s), and whether it is
+    currently in use — toolset facts only, never message content.
   - `browser_goto`, `browser_act`, `browser_observe`, `browser_screenshot`,
     `browser_close`.
-  - `browser_login_request` `{ profileId | newProfile: {label}, reason }` —
-    the handoff (§4.4). Cloud transport only.
+  - `browser_login_request` `{ service, reason }` — the handoff (§4.4) into
+    the agent's own browser. Cloud transport only.
 - If `browser_act` gains a natural-language action layer (Stagehand-style),
   its judging model routes through Nessie's own inference chokepoint
   (`NESSIE_UTILITY_MODEL` via the org provider), never a second LLM key baked
@@ -232,7 +264,8 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
 
 ### 4.4 Login handoff — the person types, the agent waits
 
-When the agent hits a login wall (or wants to establish a new profile):
+When the agent hits a login wall in its own browser (or needs a service
+signed in for the first time):
 
 1. `browser_login_request` posts an **agent card** (`card_post` machinery, one
    card system) addressed to the requesting user only, with the reason and a
@@ -249,9 +282,12 @@ When the agent hits a login wall (or wants to establish a new profile):
    **While the dialog is open in interactive mode, `browser_observe` /
    `browser_screenshot` for that session are refused** ("a person is at the
    controls"), so the model cannot watch credentials being entered.
-4. The person presses *Done* on the card. The press is the ordinary
-   `agentCardResponse` user turn; the run resumes; cookies are now in the
-   context (`persist: true`), and the `BrowserProfile` row is created/touched.
+4. The person presses *Done* on the card, confirming the service label. The
+   press is the ordinary `agentCardResponse` user turn; the run resumes;
+   cookies are now in the agent's context (`persist: true`), and an
+   `AgentBrowserLogin` row is written in the press transaction recording
+   **this user** signed **this service** into **this agent's browser** —
+   the fact §4.5's disclosure basis reads.
 5. Card expiry (agent-set, swept with the approval sweep) releases the parked
    session so an abandoned login doesn't burn browser-hours.
 
@@ -261,21 +297,32 @@ document-stream dialog precedent).
 
 ### 4.5 Disclosure and unattended use
 
-- Opening a session with `profileId` registers a `user:<ownerId>` scope in
-  `ConsumedSourceSink` for the run — one registration at open, because
-  everything read through an authenticated profile is that person's material.
-  Ephemeral no-profile sessions browse the public web like `web_fetch` and
-  add no basis.
+- Opening the agent's own browser registers a `user:<id>` scope in
+  `ConsumedSourceSink` for **every user with an `AgentBrowserLogin` on that
+  browser** — one registration at open, because everything read through a
+  human-authenticated browser is those people's material, and the sink
+  fails closed when audiences mix (a reply built on it is withheld from
+  anyone who doesn't satisfy the basis). An agent browser with no recorded
+  logins, and every ephemeral session, browses the public web like
+  `web_fetch` and adds no basis. Practical consequence, surfaced in the
+  handoff card's copy: **sign personal accounts into your private agent's
+  browser** (owner-only by construction, so the basis never bites); a
+  workspace agent's browser is the place for shared/team service accounts,
+  and a second person adding their login to it narrows every subsequent
+  reply to people who satisfy both — safe, but usually not what anyone
+  wanted.
 - Web pages are untrusted content; nothing on a page is an instruction. The
   existing prompt-side framing for fetched content applies to `browser_observe`
   output verbatim.
-- **Unattended runs (triggers/schedules) get no profile-backed browsing in
-  v1.** An interval sweep silently acting inside a person's Google account is
-  a different consent than "help me now"; profile use on unattended runs
-  arrives later as an explicit per-profile, per-trigger opt-in. Ephemeral
-  sessions are fine unattended — **on the org connection only**: a personal
-  connection powers only runs its owner requested, and an unattended run has
-  no requester, so it never spends an individual's browser-hours.
+- **Unattended runs (triggers/schedules) get no human-authenticated
+  browsing in v1**: an agent browser carrying any `AgentBrowserLogin` is
+  refused on unattended runs. An interval sweep silently acting inside a
+  person's Google account is a different consent than "help me now"; that
+  use arrives later as an explicit per-login, per-trigger opt-in. An agent
+  browser with no recorded logins, and ephemeral sessions, are fine
+  unattended — **on the org connection only**: a personal connection powers
+  only runs its owner requested, and an unattended run has no requester, so
+  it never spends an individual's browser-hours.
 
 ### 4.6 Credentials — decided: no injection, ever
 
@@ -318,12 +365,18 @@ cloud-persistent.
 - **Home — org**: `/settings/organization` → "Cloud browsers" (owner-only):
   connect/replace the company key (write-only), health, plan/concurrency
   note, disable.
+- **Home — agent**: the agent's detail surface (Agent Designer) gains a
+  **Browser** panel — whether its browser exists, which connection it lives
+  on, the signed-in services with who signed each in
+  (`AgentBrowserLogin`), last used, and **Sign out & reset** (deletes the
+  context, recreates the browser empty, clears the login rows).
 - **Home — person**: `/settings/connections` gains a "Browser" section with
-  two things: the **personal connection** (connect your own Browserbase
-  account — free tier to start — replace key, disconnect) and **Browser
-  profiles**: each profile with label, service hint, last used, which
-  connection it lives on, and **Sign out & delete** (deletes the Browserbase
-  context + row — the revocation story).
+  the **personal connection** (connect your own Browserbase account — free
+  tier to start — replace key, disconnect) and **Your browser logins**: every
+  `AgentBrowserLogin` this person performed, across agents, each with the
+  agent, service, and a per-login path to the agent's reset — so revoking
+  "I signed that agent into my Google" never requires hunting through
+  agents.
 - **Doorways**: the first-party `/apps` listing (§4.1a) whose Connect routes
   here by scope; the Agent Designer's existing explicit-grant switch
   surfaces the browser bundle; the login card and the §4.9 screen panel live
@@ -403,8 +456,9 @@ surfaces belong to the executor's own UI, not this panel.)
   session (§4.4), and shows a persistent "Hand back" bar; handing back lifts
   the suppression and the agent resumes. The login handoff card opens
   straight into this state.
-- **Who may watch is the session's disclosure basis, reused.** A
-  profile-backed session renders only for its requester; an ephemeral
+- **Who may watch is the session's disclosure basis, reused.** A session on
+  a human-authenticated agent browser renders only for viewers who satisfy
+  every recorded login's `user:` scope; an unauthenticated or ephemeral
   session renders for anyone who can see the thread — the same predicate the
   reply messages answer to, and an unauthorized session is shaped exactly
   like an absent one (the indistinguishable-404 discipline).
@@ -432,31 +486,35 @@ page says", watch it happen, and see their hours — and an owner connecting
 the company account flips every browser-granted agent to it without anyone
 reconfiguring.
 
-**Phase 2 — profiles + login handoff.**
-`BrowserProfile` + context create/attach (`persist: true`), single-session
-claim per profile, `browser_login_request` card + `waiting_input` park +
-the §4.9 viewer's control mode (Take control / Hand back,
-observe-suppression during takeover), structural
-prompt block listing the person's profiles, `user:<id>` disclosure basis on
-profile-backed opens, `/settings/connections` profile management with delete,
-unattended-run refusal. *Done when:* a person signs into a service once in
-chat, and tomorrow's run reuses that login without asking — and deleting the
-profile provably signs the agent out.
+**Phase 2 — agent browsers + login handoff.**
+`AgentBrowser` + `AgentBrowserLogin`, context create/attach
+(`persist: true`), single-session claim per agent browser + the connection
+rules (workspace agents on org connection only; private agents may use their
+owner's personal one), `browser_open` `mode: 'mine'`, `browser_login_request`
+card + `waiting_input` park + the §4.9 viewer's control mode (Take control /
+Hand back, observe-suppression during takeover), structural prompt block
+stating browser existence + signed-in services, login-derived `user:`
+disclosure basis, the Agent Designer Browser panel + the person's
+browser-logins list, unattended-run refusal for authenticated browsers.
+*Done when:* a person signs a service into an agent's browser once in chat,
+tomorrow's run reuses that login without asking, a concurrent run of the
+same agent gets a clean "browser busy" instead of a corrupted session — and
+Sign out & reset provably signs the agent out.
 
-**Phase 3 — unattended profiles + polish.**
-Per-profile per-trigger opt-in for scheduled runs (org connection only),
+**Phase 3 — unattended logins + polish.**
+Per-login per-trigger opt-in for scheduled runs (org connection only),
 proxy/geo options, Stagehand-style `browser_act` if observe/act proves too
 low-level. Separately tracked, not this plan: the disclosure preconditions
 that let `browser.connected.*` be advertised.
 
 ## 6. Open questions
 
-1. **Sensitive-action gating.** Should `browser_act` on a profile-backed
+1. **Sensitive-action gating.** Should `browser_act` in a human-authenticated
    session require an approval for irreversible-looking actions (submitting
    orders, sending messages)? The approval machinery is there; the question
    is whether "irreversible-looking" can be decided structurally (it cannot
    be string-matched — it would have to be model-judged, or scoped by domain
-   allowlists the person sets per profile).
+   allowlists the person sets per login).
 2. **Mobile companion.** The login handoff dialog should work from the mobile
    app's webview (it's an iframe + card press); worth verifying early, since
    "sign in from your phone" is the likely real-world moment.
