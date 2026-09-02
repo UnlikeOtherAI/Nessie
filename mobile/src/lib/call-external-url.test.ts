@@ -61,3 +61,33 @@ test('contains a synchronous allowlisted call URL launcher failure', () => {
 
   assert.equal(result, true)
 })
+
+test('a page-created document never replaces the app', () => {
+  // blob: and data: inherit the creating page's origin, so an origin check
+  // waves them through — following one swapped the whole SPA for the raw file
+  // and lost the navigation state, which read as a crash.
+  const navigationConfig = { ...config, adminUrl: 'https://app.nessie.example' }
+  for (const url of [
+    'blob:https://app.nessie.example/6f0a1f6c-0f2e-4a1b-9c1d-2f3a4b5c6d7e',
+    'data:text/markdown;base64,IyBWb2ljZSBjYWxs',
+    'filesystem:https://app.nessie.example/temporary/transcript.md',
+  ]) {
+    assert.equal(
+      webViewNavigationDisposition({ isTopFrame: true, url }, navigationConfig),
+      'block',
+      url,
+    )
+  }
+})
+
+test('an embedded frame is still left alone', () => {
+  // The guard governs top-level navigation only; blocking sub-frames would
+  // break ordinary embedded content.
+  assert.equal(
+    webViewNavigationDisposition(
+      { isTopFrame: false, url: 'blob:https://app.nessie.example/inner' },
+      { ...config, adminUrl: 'https://app.nessie.example' },
+    ),
+    'allow',
+  )
+})
