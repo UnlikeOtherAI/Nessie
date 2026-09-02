@@ -641,24 +641,15 @@ Screens, overlays, Back, and the motion between them are one framework:
   `GET /api/agents` omits `systemManaged` agents — which is why the Personal
   Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
   [identity avatars](docs/plans/2026-09-02-identity-avatars.md).
-- **One composer, and at rest it is one line.** Every message composer in the
-  admin is `components/features/channels/ChannelComposer.tsx` (channel feed,
-  thread reply panel, both info drawers, the Threads inbox card). At rest it is
-  a single line: placeholder text vertically centred beside Send, and none of
-  the `@` / `#` / research / emoji / attachment glyphs. It opens while focus is
-  anywhere inside it, or while anything is staged (text, an attachment, an
-  upload error), so nothing a person has written is folded away. Send is pinned
-  to the composer's bottom line rather than living in the toolbar, and the
-  toolbar unfolds *below* the editor — so the bottom line never moves and the
-  whole gesture reads as the field expanding upward into the conversation. The
-  two heights, the toolbar's collapse, and the transitions between them live in
-  `admin/src/styles.css` off `.admin-compose[data-expanded]` and a single
-  `--compose-line` variable (the coarse-pointer block raises it once, and the
-  collapsed editor follows because both are measured from it); the editor's own
-  sizing moved out of `MentionInput`'s Tailwind classes for the same reason —
-  only a stylesheet can transition between the two states. Focus is tracked on
-  the `<form>`, not on the editor, because clicking a toolbar button blurs the
-  editor and a naive collapse would pull the button out from under the click.
+- **One composer, and at rest it is one line.** Every message composer is
+  `components/features/channels/ChannelComposer.tsx` (six call sites): at rest a
+  single line — placeholder centred beside Send, no toolbar glyphs — opening
+  while focus is inside it or anything is staged. Send is pinned to the bottom
+  line and the toolbar unfolds *below* the editor, so that line never moves and
+  the growth reads as expanding upward. Both states hang off
+  `.admin-compose[data-expanded]` and one `--compose-line` in `styles.css`.
+  Focus is tracked on the `<form>` — a toolbar button blurs the editor, and
+  collapsing then would pull it out from under the click.
 - **One dialog shell.** Every centred modal is `components/shared/Dialog.tsx`
   on `useOverlay` (`ConfirmDialog` builds on it); drawers are `Sheet`, menus
   and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,
