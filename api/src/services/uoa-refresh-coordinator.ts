@@ -5,6 +5,7 @@ import { UoaRefreshBindingError } from './refresh-token-uoa.js'
 import { syncExternalOrganizationNames } from './external-organization.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
+import { syncExternalWorkspaceNames } from './workspace-target.js'
 import { advanceUoaLocalSessionBindingInTransaction } from './uoa-session-context.js'
 import { syncUoaDirectoryAfterSessionCommit } from './uoa-session-context.js'
 import {
@@ -114,6 +115,7 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     // directory arrives — never allowed to break session renewal.
     try {
       await syncExternalOrganizationNames(prisma, refreshed.workspaceDirectory?.entries)
+      await syncExternalWorkspaceNames(prisma, refreshed.workspaceDirectory?.entries)
     } catch {
       // Intentionally ignored — see above.
     }
