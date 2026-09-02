@@ -234,10 +234,13 @@ test("the project header's section switch is written with replace", () => {
 
 /**
  * Files that render a `<TabBar` but keep its value in `useState`. It only ever
- * shrinks. Both entries are form fields inside a modal rather than sections of
- * a screen: the answer is submitted and thrown away, so a URL param would
- * outlive the dialog, survive its cancellation, and collide with the tab of the
- * page it was opened over. Each says so where it stands.
+ * shrinks. Every entry is a form field rather than a section of a screen: the
+ * answer is submitted and thrown away, so a URL param would outlive the control
+ * that asked, survive its cancellation, and collide with the tab of the page it
+ * sits on. The two dialogs cannot use one because the param would outlast the
+ * dialog; the approval gate cannot because a feed renders one gate per pending
+ * approval, and a single param has no way to hold N independent answers. Each
+ * says so where it stands.
  */
 /** Every `<TabBar …/>` element in a file, as its own attribute text. */
 const tabBarElements = (content: string): string[] => {
@@ -254,6 +257,7 @@ const tabBarElements = (content: string): string[] => {
 const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppConnectDialog.tsx',
   'admin/src/components/features/apps/AppSecretDialog.tsx',
+  'admin/src/components/features/channels/RunApprovalGate.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {
@@ -307,6 +311,7 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/triggers/useTriggersPageState.ts', 'status'],
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],
+    ['../src/components/features/browser-cloud/AgentScreenViewer.tsx', 'browserTab'],
     ['../src/components/features/executors/ExecutorDetailPanels.tsx', 'tab'],
     ['../src/components/features/integrations/DeepWaterResearchPanel.tsx', 'research'],
     ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],

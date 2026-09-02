@@ -38,45 +38,52 @@ test('the large-phone landscape sidebar is fixed and exposes no resize control',
   assert.match(source, /\{!fixed \? \(/)
 })
 
+// The right-hand panels do not each own a divider: `SidePanelShell` is the one
+// frame they share (the reply thread and the agent's screen), so the pill and
+// its reveal live there once. Asserting the shell — and that every panel
+// composes it — is what keeps "one divider" true, rather than checking one
+// panel that could stop using the shell without failing anything.
+const SIDE_PANEL_HOSTS = [
+  '../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx',
+  '../src/components/features/browser-cloud/AgentScreenPanel.tsx',
+]
+
+const readSource = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+
 test('the sidebar and reply-thread dividers use one shared resize pill', () => {
-  const sidebar = readFileSync(
-    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
-    'utf8',
+  const sidebar = readSource('../src/layouts/admin-shell/ResizableSidebar.tsx')
+  const sidePanelShell = readSource(
+    '../src/components/features/channels/side-panel/SidePanelShell.tsx',
   )
-  const threadPanel = readFileSync(
-    fileURLToPath(new URL('../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx', import.meta.url)),
-    'utf8',
-  )
-  const resizeHandle = readFileSync(
-    fileURLToPath(new URL('../src/components/primitives/ColumnResizeHandle.tsx', import.meta.url)),
-    'utf8',
-  )
+  const resizeHandle = readSource('../src/components/primitives/ColumnResizeHandle.tsx')
 
   assert.match(sidebar, /<ColumnResizeHandle \/>/)
-  assert.match(threadPanel, /<ColumnResizeHandle \/>/)
-  assert.match(threadPanel, /thread-panel-resize-control/)
+  assert.match(sidePanelShell, /<ColumnResizeHandle \/>/)
+  assert.match(sidePanelShell, /thread-panel-resize-control/)
   assert.match(resizeHandle, /className="column-resize-handle"/)
+
+  for (const host of SIDE_PANEL_HOSTS) {
+    assert.match(
+      readSource(host),
+      /<SidePanelShell/,
+      `${host} must take its divider from the one side-panel shell`,
+    )
+  }
 })
 
 test('coarse-pointer resize pills automatically hide after four seconds', () => {
-  const sidebar = readFileSync(
-    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
-    'utf8',
+  const sidebar = readSource('../src/layouts/admin-shell/ResizableSidebar.tsx')
+  const sidePanelShell = readSource(
+    '../src/components/features/channels/side-panel/SidePanelShell.tsx',
   )
-  const threadPanel = readFileSync(
-    fileURLToPath(new URL('../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx', import.meta.url)),
-    'utf8',
-  )
-  const styles = readFileSync(
-    fileURLToPath(new URL('../src/styles.css', import.meta.url)),
-    'utf8',
-  )
+  const styles = readSource('../src/styles.css')
 
   assert.equal(RESIZE_HANDLE_AUTO_HIDE_MS, 4_000)
   assert.match(sidebar, /useResizeHandleReveal\(coarsePointer\)/)
   assert.match(sidebar, /scheduleHandleHide\(\)/)
-  assert.match(threadPanel, /useResizeHandleReveal\(coarsePointer\)/)
-  assert.match(threadPanel, /scheduleHandleHide\(\)/)
+  assert.match(sidePanelShell, /useResizeHandleReveal\(coarsePointer\)/)
+  assert.match(sidePanelShell, /scheduleHandleHide\(\)/)
   assert.match(
     styles,
     /@media \(pointer: fine\) \{[\s\S]*?\.column-resize-control:hover \.column-resize-handle/,

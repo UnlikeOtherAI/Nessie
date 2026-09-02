@@ -53,7 +53,9 @@ split two ways, each pinned by `admin/test/dialog-adopters.test.ts`:
   scroll), `AgentAvatarQuickEdit` (an avatar-centred card with no title-bar
   header), `DocumentStreamDialog` (branches its scrim on phone layout),
   `ThoughtProcessDialog` (a fixed-header / scrolling-log / fixed-footer
-  split), `UoaBillingCancellationDialog` and
+  split), `AgentScreenPanel`'s full-screen takeover (full-bleed rather than a
+  centred card — it is the whole viewport, so it has no scrim to dismiss),
+  `UoaBillingCancellationDialog` and
   `DeepWaterResearchLauncherDialog` (each its own `admin-card` panel family,
   the second with a sticky in-scroll header), and `TriggerEditorDialog` (a
   680px panel with a `text-sm` subtitle, neither of which is one of the
