@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   useAgentTriggerActivity,
   useAgentTriggers,
@@ -145,6 +145,7 @@ const TriggerRow = ({
 }
 
 export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPanelProps) => {
+  const navigate = useNavigate()
   const isOwner = useIsOwner()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const { data: activity = [] } = useAgentTriggerActivity(agent.id, isOwner)
@@ -165,23 +166,36 @@ export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPan
 
   return (
     <section className="grid gap-6" data-testid="agent-trigger-panel">
-      <div className="flex items-center justify-between gap-4 border-b border-[color:var(--sep)] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--sep)] pb-3">
         <div>
           <SectionLabel>{title}</SectionLabel>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">
             Automatic activation and manual fire controls for this agent.
           </div>
         </div>
-        <div className="text-xs text-[color:var(--tx3)]">{triggers.length} configured</div>
+        {/* The doorway, present whether or not this agent already has
+            triggers: "add another" is as ordinary an intent as "add the
+            first", and a control that appears only in an empty state is one a
+            person has to empty the list to find again. It carries the agent,
+            so the Triggers page opens its create form already pointed here
+            rather than at a list to hunt through. */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[color:var(--tx3)]">{triggers.length} configured</span>
+          <button
+            className="admin-button admin-button-primary"
+            data-testid="agent-trigger-create"
+            onClick={() =>
+              void navigate(`/agents/triggers?create=${encodeURIComponent(agent.id)}`)}
+            type="button"
+          >
+            New trigger
+          </button>
+        </div>
       </div>
 
       {groups.length === 0 ? (
         <EmptyState>
-          No triggers configured for this agent yet. Create one on the{' '}
-          <Link className="underline" to="/agents/triggers">
-            Triggers page
-          </Link>
-          .
+          Nothing runs automatically for {agent.name} yet.
         </EmptyState>
       ) : (
         groups.map((group) => (

@@ -1,3 +1,4 @@
+import type { ToolCategoryId } from '@nessie/schemas'
 import type { ZodTypeAny } from 'zod'
 
 export type BuiltinToolDefinition = {
@@ -5,6 +6,13 @@ export type BuiltinToolDefinition = {
   summary: string
   description: string
   label: string
+  /**
+   * Where this tool belongs in every surface that lists tools. Required, and
+   * deliberately so: the admin used to guess a category from the id prefix and
+   * sweep the remainder into one bucket that grew to hold 75 of 116 builtins.
+   * A new tool now has to say where it lives, or it does not compile.
+   */
+  category: ToolCategoryId
   parameters: {
     type: 'object'
     properties: Record<string, unknown>
