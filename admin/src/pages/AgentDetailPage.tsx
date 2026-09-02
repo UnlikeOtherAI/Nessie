@@ -9,10 +9,6 @@ import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents, useAgentStatus } from '../facades/agents/hooks'
 import type { AgentRecord } from '../lib/api-client'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import {
-  LOCAL_BACK_PRIORITY,
-  useLocalBack,
-} from '../layouts/admin-shell/local-back/LocalBackContext'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { Pill } from '../components/primitives/Pill'
 import { useIsOwner } from '../components/shared/OwnerGate'
@@ -42,18 +38,13 @@ export const AgentDetailPage = () => {
 
   const backToList = () => void navigate('/agents')
 
-  // On a phone the shell's single leading doorway (PhoneNavigationButton) owns
-  // Back — register the destination there so it returns to the agents list, and
-  // render this page's own Back button only on wider layouts. Otherwise the two
-  // stack up as a duplicate Back on mobile.
+  // `/agents/:id` is a real depth-2 route whose parent is Agents (the surface
+  // registry, docs/navigation.md §4.1), so the shared Back already returns to
+  // the list — this page registers no owner of its own, which used to outrank
+  // the Knowledge stages inside its Documents tab and leave the agent instead
+  // of unwinding the open document. Wider layouts keep their own Back button
+  // beside the title.
   const phoneLayout = usePhoneLayout()
-  useLocalBack({
-    active: phoneLayout,
-    id: 'agent-detail',
-    label: 'Agents',
-    onBack: backToList,
-    priority: LOCAL_BACK_PRIORITY.columnBase,
-  })
 
   if (!agent) {
     return (

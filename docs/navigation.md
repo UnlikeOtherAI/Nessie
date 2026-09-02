@@ -268,7 +268,7 @@ editor, a dashboard's add-widget panel. It is **one component**,
 - Pinned by `admin/test/nested-stage-viewport.test.ts` (push, Back, swipe,
   retention under a route) and `admin/test/phone-navigation-stack.test.ts`.
 
-Adopters (this step, in progress): `ColumnBrowserViewport` is **built** — on
+Adopters, all **built**: `ColumnBrowserViewport` — on
 `single` column 0 renders inline (it *is* the page) and every column beyond it
 is a `stage:column:<k>` layer at `columnBackPriority(k)`, with a `stageScope`
 prefixing the ids where one page could mount two browsers; only a column knows
@@ -279,14 +279,35 @@ registration (the stage's, or its own local-back owner for a Back-owning column
 `useLocalBack` and `PhoneNavigationButton` no longer reads the column context,
 because a retained column is no longer rendered at all; on `split` it keeps its
 multi-column track, now moved with `var(--nav-duration)`/`var(--nav-easing)`
-rather than a `transition-transform duration-300` utility. Knowledge's folder /
-document / history / editor become stages and `animate-kb-view-slide` is
-deleted; `ExecutorsPage`'s `ExecutorCreatePanel` (`executors:create`) and
+rather than a `transition-transform duration-300` utility. `ExecutorsPage`'s `ExecutorCreatePanel` (`executors:create`) and
 `DashboardDetailPage`'s `AddWidgetPanel` / `DashboardVersionsPanel`
 (`dashboard:add-widget`, `dashboard:versions`) are `NestedStage`s — a phone
-full screen, today's fixed-width side panel unchanged on `split`;
-`AgentDetailPage` drops its own Back registration now that `/agents/:id` is
-a real depth-2 route.
+full screen, today's fixed-width side panel unchanged on `split`.
+
+**Knowledge is built.** `KnowledgeWorkspace` registers no Back of its own;
+its four inner screens are stages — `knowledge:folder` (11, a folder browsed
+beyond the space root), `knowledge:document` (12, the open document or file),
+`knowledge:history` (13) and `knowledge:editor` (14, `swipeable={false}` for
+as long as it is open, because `PageEditor` holds its draft in its own state
+and publishes no dirty signal). Each keeps the label and the one-level unwind
+the single registration used to carry, and the priorities stay
+`LOCAL_BACK_PRIORITY`. `animate-kb-view-slide` and its keyframes are deleted:
+the stack owns the motion, and `phone-navigation-transition.test.ts` pins the
+name out of `admin/src` entirely. Which stages are open is derived from the
+provider's own state, and the composition follows the host rather than a
+breakpoint (`useNestedStageHosted`): a stack shows every open stage as its own
+layer, with the space's root listing kept in the route layer beneath an open
+folder — the screen it was pushed over — while an inline host renders only the
+deepest pane, exactly the desktop columns, full-width document, history and
+editor of before. Pinned by `knowledge-local-back.test.ts` and the
+three-layer unwind case in `nested-stage-viewport.test.ts`.
+
+**`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
+real depth-2 route whose parent is Agents, so the shared route Back returns
+there. Its old `columnBase` registration outranked every Knowledge stage
+inside the agent's Documents tab, so Back left the agent instead of unwinding
+the open document. Wider layouts keep the page's own Back button beside the
+title.
 
 ## 7. Overlays — **built** (step 8, the layer scale and the hook; the primitives follow)
 

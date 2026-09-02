@@ -37,6 +37,13 @@ export type NestedStageHost = {
 
 export const NestedStageHostContext = createContext<NestedStageHost | null>(null)
 
+// Whether a stack hosts stages here. A page that must compose differently in
+// the two cases asks the host, never a breakpoint: Knowledge keeps the space's
+// root listing rendered beneath an open folder stage on a single-column
+// layout, and composes one pane at a time where the stages render inline.
+export const useNestedStageHosted = (): boolean =>
+  useContext(NestedStageHostContext) !== null
+
 export type NestedStageProps = {
   active: boolean
   children: ReactNode

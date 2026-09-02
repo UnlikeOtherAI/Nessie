@@ -107,3 +107,58 @@ test('a route pushed over an open stage retains it, and Back returns to the stag
   assert.equal(harness.layer('current')?.textContent, 'stage:inspector')
   await harness.unmount()
 })
+
+// Knowledge's ladder is the case with more than one stage open at a time: a
+// folder browsed beyond the space root, the document opened from it, and that
+// document's version history are three layers, and Back unwinds exactly one
+// per press — the highest-priority owner first (docs/navigation.md §6).
+const KNOWLEDGE_STAGES = [
+  { id: 'knowledge:folder', label: 'Back to parent folder', priority: 11 },
+  { id: 'knowledge:document', label: 'Back to space', priority: 12 },
+  { id: 'knowledge:history', label: 'Back from version history', priority: 13 },
+] as const
+
+test('a knowledge folder, document and history stack as three layers Back unwinds one at a time', async () => {
+  const harness = await mountPhoneNavigationViewport('/channels', { stages: KNOWLEDGE_STAGES })
+  await harness.goTo('/channels/channel_a')
+  await harness.paintFrame()
+  await harness.paintFrame()
+  await harness.flush(450)
+
+  for (const stage of KNOWLEDGE_STAGES) {
+    await harness.setStage(true, stage.id)
+    await harness.paintFrame()
+    await harness.paintFrame()
+    await harness.flush(450)
+    assert.equal(
+      harness.layer('current')?.getAttribute('data-phone-navigation-route'),
+      `stage:${stage.id}`,
+      `${stage.id} is the top layer once opened`,
+    )
+  }
+  assert.equal(
+    harness.layer('underlay')?.getAttribute('data-phone-navigation-route'),
+    'stage:knowledge:document',
+    'the document is retained under the history',
+  )
+
+  // Unwind: the deepest registered owner answers Back each time, and the route
+  // is never touched until every stage is closed.
+  const unwound = ['stage:knowledge:document', 'stage:knowledge:folder', 'channels:channel']
+  for (const [index, expected] of unwound.entries()) {
+    const owner = KNOWLEDGE_STAGES[KNOWLEDGE_STAGES.length - 1 - index]!.id
+    assert.equal(harness.backTarget(), `stage:${owner}`)
+    await harness.pressBack()
+    await harness.flush(450)
+    assert.equal(harness.layer('current')?.getAttribute('data-phone-navigation-route'), expected)
+    assert.equal(harness.locationLabel(), '/channels/channel_a', 'no stage press changes the route')
+  }
+
+  assert.equal(harness.container.querySelector('[data-stage="knowledge:folder"]'), null)
+  assert.equal(
+    harness.backTarget(),
+    'route:/channels',
+    'with the stages closed Back is the route parent',
+  )
+  await harness.unmount()
+})
