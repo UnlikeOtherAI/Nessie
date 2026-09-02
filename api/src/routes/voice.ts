@@ -8,13 +8,18 @@ import {
   ReportVoiceUsageRequestSchema,
   StartVoiceSessionRequestSchema,
   SubmitVoiceTranscriptRequestSchema,
+  VoiceCapabilitySchema,
   VoiceInstallationRecordSchema,
   VoiceSessionCredentialSchema,
   VoiceSessionRotationSchema,
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { LedgerVoiceError, relayVoiceUsage } from '../services/voice/ledger-gemini-live.js'
+import {
+  isVoiceConfigured,
+  LedgerVoiceError,
+  relayVoiceUsage,
+} from '../services/voice/ledger-gemini-live.js'
 import {
   buildVoiceFunctionDeclarations,
   buildVoiceSystemInstruction,
@@ -51,6 +56,7 @@ import type { RouteDeps } from './types.js'
  *
  * | Method | Path                                   | Who                       |
  * |--------|----------------------------------------|---------------------------|
+ * | GET    | /api/voice/capability                  | any active member         |
  * | POST   | /api/voice/installations               | any active member         |
  * | DELETE | /api/voice/installations/:id           | its owner                 |
  * | POST   | /api/voice/sessions                    | any active member         |
@@ -79,6 +85,14 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
     return null
   }
+
+  // Asked before the call button is offered, so a deployment with no Ledger
+  // shows no control instead of one that always fails.
+  app.get('/api/voice/capability', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    return createApiResponse(VoiceCapabilitySchema.parse({ available: isVoiceConfigured() }))
+  })
 
   app.post('/api/voice/installations', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

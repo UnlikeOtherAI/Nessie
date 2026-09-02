@@ -9,6 +9,24 @@ import { z } from 'zod'
  * server. Spec: `docs/plans/2026-09-02-gemini-voice-calling.md`.
  */
 
+/**
+ * Whether this deployment can place voice calls at all.
+ *
+ * Voice needs Ledger configured to broker Google's ephemeral credential, and
+ * a self-hosted instance without it has no way to make a call. The client asks
+ * before offering the control, so an unconfigured deployment shows no call
+ * button rather than one that always fails.
+ *
+ * Deliberately only reports *configuration*, not entitlement: whether the
+ * deployment's Ledger key carries the right grants is knowable only by asking
+ * Ledger, and that is a fixable ops state which deserves a visible, explained
+ * failure rather than a silently hidden button.
+ */
+export const VoiceCapabilitySchema = z.object({
+  available: z.boolean(),
+})
+export type VoiceCapability = z.infer<typeof VoiceCapabilitySchema>
+
 export const VoiceInstallationPlatformSchema = z.enum(['web', 'ios', 'android'])
 export type VoiceInstallationPlatform = z.infer<typeof VoiceInstallationPlatformSchema>
 

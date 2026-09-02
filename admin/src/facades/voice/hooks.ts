@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
+import type { VoiceCapability } from '@nessie/schemas'
+
+import { voiceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { createVoiceApi } from './voice-api'
 import { createVoiceCall, type VoiceCall, type VoiceCallState } from './voice-call-client'
@@ -22,6 +26,23 @@ const IDLE: VoiceCallState = {
   assistantSpeaking: false,
   startedAt: null,
   agentName: null,
+}
+
+/**
+ * Whether this deployment can place voice calls at all.
+ *
+ * Gates the call control so an instance with no Ledger shows nothing rather
+ * than a button that always fails. It answers from deployment configuration,
+ * so it is stable for the session and cached accordingly.
+ */
+export const useVoiceCapability = () => {
+  const apiClient = useApiClient()
+  return useQuery<VoiceCapability>({
+    queryKey: voiceKeys.capability,
+    queryFn: () => apiClient.get<VoiceCapability>('/api/voice/capability'),
+    staleTime: Infinity,
+    retry: false,
+  })
 }
 
 export const useVoiceCall = () => {

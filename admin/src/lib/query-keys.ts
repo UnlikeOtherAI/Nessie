@@ -358,6 +358,11 @@ export const personalAssistantKeys = {
   all: ['personal-assistant'] as const,
 }
 
+export const voiceKeys = {
+  all: ['voice'] as const,
+  capability: ['voice', 'capability'] as const,
+}
+
 export const platformPushKeys = {
   status: ['platform-push', 'status'] as const,
 }

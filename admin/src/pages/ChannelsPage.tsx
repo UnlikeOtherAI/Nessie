@@ -10,7 +10,7 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
-import { useVoiceCall } from '../facades/voice/hooks'
+import { useVoiceCall, useVoiceCapability } from '../facades/voice/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
@@ -134,9 +134,14 @@ export const ChannelsPage = () => {
   // call instead of a provider-linked meeting. The branch is structural — it
   // follows from the channel being that DM — never a reading of its content.
   const voiceCall = useVoiceCall()
+  const voiceCapability = useVoiceCapability()
+  // Both must hold: the conversation takes voice calls (structural — it is
+  // the assistant's DM) and this deployment is wired to place them.
+  const voiceCallSupported =
+    isPersonalAssistantConversation && voiceCapability.data?.available === true
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false)
   const onCallButton = () => {
-    if (!isPersonalAssistantConversation) {
+    if (!voiceCallSupported) {
       onProviderCallButton()
       return
     }
@@ -363,7 +368,7 @@ export const ChannelsPage = () => {
         callEligible={callEligible}
         callStarting={callStarting}
         voiceCallActive={voiceCall.isActive}
-        voiceCallSupported={isPersonalAssistantConversation}
+        voiceCallSupported={voiceCallSupported}
         channelLiveness={channelLiveness}
         channelUsers={channelUsers}
         personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}

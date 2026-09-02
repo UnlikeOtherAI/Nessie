@@ -24,6 +24,16 @@ const LEDGER_TIMEOUT_MS = 15_000
 /** Only these identity headers may reach Ledger; anything else is a defect. */
 const ALLOWED_IDENTITY_HEADERS = new Set(['x-nessie-context', 'x-uoa-delegation'])
 
+/**
+ * Whether this deployment is wired to Ledger at all.
+ *
+ * Configuration only — it says nothing about whether the key carries the
+ * Gemini Live grants, which only Ledger can answer. A deployment with no
+ * Ledger at all cannot call, and should not offer the control.
+ */
+export const isVoiceConfigured = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  Boolean(env['LEDGER_PUBLIC_URL']?.trim() && env['LEDGER_PROXY_TOKEN']?.trim())
+
 export class LedgerVoiceError extends Error {
   readonly code: string
   readonly status: number
