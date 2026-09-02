@@ -69,7 +69,10 @@ export const AgentCardMessage = ({
   const card = query.data
   if (!card) return null
 
-  const effectiveValues = values ?? seedValues(card)
+  // A settled card shows what the server recorded, never leftover local form
+  // state — the two are different facts and only one of them is the answer.
+  const effectiveValues =
+    card.status === 'open' ? values ?? seedValues(card) : card.resolution?.values ?? {}
   const canRespond = card.action === 'respond'
 
   const press = (actionKey: string, submits: boolean) => {
@@ -127,6 +130,8 @@ export const AgentCardMessage = ({
         <AgentCardBlocks
           blocks={card.blocks}
           disabled={!canRespond || respond.isPending}
+          providedSecretKeys={Object.keys(card.resolution?.secrets ?? {})}
+          settled={card.status !== 'open'}
           onSecretChange={(key, value) =>
             setSecrets((current) => ({ ...current, [key]: value }))
           }
@@ -164,18 +169,16 @@ export const AgentCardMessage = ({
             </span>
           )
         ) : card.resolution ? (
+          // Who and when. The submitted values render in the body above, so
+          // repeating them here would say everything twice.
           <span className="text-xs text-[color:var(--tx2)]">
             {card.resolution.byName
               ? `${card.resolution.actionLabel} by ${card.resolution.byName}`
               : card.resolution.actionLabel}
-            {Object.entries(card.resolution.values).length > 0
-              ? ` · ${Object.entries(card.resolution.values)
-                  .map(([key, value]) => `${key}: ${String(value)}`)
-                  .join(' · ')}`
-              : ''}
-            {Object.keys(card.resolution.secrets).length > 0
-              ? ` · ${Object.keys(card.resolution.secrets).join(', ')}: provided`
-              : ''}
+            {` · ${new Date(card.resolution.at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}`}
           </span>
         ) : (
           <span className="text-xs text-[color:var(--tx2)]">

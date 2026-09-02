@@ -51,11 +51,36 @@ const CardImage = ({ alt, attachmentId, caption }: {
 
 export type AgentCardFieldValue = string | number | boolean
 
+/**
+ * A settled card is a record of what was decided, not a form nobody can use.
+ * Rendering its inputs as empty disabled controls says "nothing was chosen",
+ * which is the opposite of what happened, so the answered values are shown
+ * as plain label/value rows instead — and a secret as `provided`, never a value.
+ */
+const settledValueText = (
+  block: Extract<PresentedAgentCardBlock, { type: 'input' | 'secret' }>,
+  values: Record<string, AgentCardFieldValue>,
+  providedSecretKeys: string[],
+): string => {
+  if (block.type === 'secret') {
+    return providedSecretKeys.includes(block.key) ? 'provided' : 'not provided'
+  }
+  const value = values[block.key]
+  if (value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'yes' : 'no'
+  if (block.input === 'select') {
+    return block.options?.find((option) => option.value === String(value))?.label ?? String(value)
+  }
+  return String(value)
+}
+
 export const AgentCardBlocks = ({
   blocks,
   disabled,
   onValueChange,
+  providedSecretKeys,
   secrets,
+  settled,
   onSecretChange,
   values,
 }: {
@@ -63,7 +88,11 @@ export const AgentCardBlocks = ({
   disabled: boolean
   onSecretChange: (key: string, value: string) => void
   onValueChange: (key: string, value: AgentCardFieldValue) => void
+  /** Keys of secrets that were supplied, for a settled card. */
+  providedSecretKeys: string[]
   secrets: Record<string, string>
+  /** The card reached a terminal state: show what was answered, not controls. */
+  settled: boolean
   values: Record<string, AgentCardFieldValue>
 }) => (
   <div className="flex flex-col gap-3">
@@ -114,6 +143,16 @@ export const AgentCardBlocks = ({
           >
             {block.label}
           </a>
+        )
+      }
+      if (settled && (block.type === 'input' || block.type === 'secret')) {
+        return (
+          <div className="flex flex-col gap-0.5 text-sm" key={block.key}>
+            <span className="text-xs text-[color:var(--tx2)]">{block.label}</span>
+            <span className="text-[color:var(--tx1)]">
+              {settledValueText(block, values, providedSecretKeys)}
+            </span>
+          </div>
         )
       }
       if (block.type === 'secret') {
