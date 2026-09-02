@@ -109,20 +109,31 @@ a small hourly cap per user), so a single scripted client cannot drain the
 shared bucket and a 429 from UOA should be a genuine surprise rather than the
 normal backpressure mechanism.
 
-### (e) Honouring `allow_user_create_org` locally
+### (e) `allow_user_create_org` is Nessie's own flag, and cannot be the gate
 
-In backend mode UOA does not apply `org_features.allow_user_create_org`. The
-question is whether Nessie should. **Yes.** That flag is the tenant config's
-statement of intent — "people may create their own organisations" — and
-routing around it because the credential mode no longer enforces it is exactly
-the "must not route around a policy UOA's tenant config expresses" rule. The
-mechanism is the one Nessie already has: the config JWT Nessie itself signs in
-`buildConfigJwt` (`api/src/services/uoa-auth.ts`) is where the flag is set,
-and Nessie's gate reads the same resolved value. If the flag is ever turned
-off for this deployment, the creation route refuses with the same refusal a
-user-mode call would have produced, and the admin surface hides the doorway.
-The flag moving from "enforced by UOA" to "enforced by Nessie" is a change in
-who checks it, not in whether it is checked.
+In backend mode UOA does not apply `org_features.allow_user_create_org`, which
+raises the question of whether Nessie should apply it instead. The honest
+answer is that it **cannot meaningfully be the gate**, and it is worth being
+precise about why, because the tempting framing — "honour the tenant's policy"
+— is wrong here.
+
+That flag is not an external tenant administrator's policy. It is set by
+Nessie, in Nessie's own signed config JWT, hardcoded `true` in `buildConfigJwt`
+(`api/src/services/uoa-auth.ts`). Its actual job is to tell UOA's chooser UI
+whether to offer a create option during an interactive login. A gate in which
+Nessie checks a constant Nessie itself authored is a tautology dressed as an
+authorization check, and writing it as though it defended something would
+mislead the next reader into thinking creation was policy-controlled when the
+only real control is §1(a).
+
+So: the flag is **not** consulted as an authorization gate. The gate is §1(a)'s
+live `owner` role, full stop. The flag keeps its real job — it stays `true` so
+the SSO chooser continues to offer creation for the first-organisation case
+that still legitimately goes through UOA's UI (a person with no organisation at
+all, who has no Nessie session to gate). If a future deployment wants creation
+genuinely disabled, that is a deployment-level setting governing §1(a)'s route,
+and it should be introduced as one rather than smuggled in through a config
+field that also drives an unrelated UOA screen.
 
 ## 2. Closing the default-team gap: an additive field on the create response
 
@@ -157,13 +168,22 @@ The change is small because the data already exists at the moment the response
 is serialised — the transaction that inserts the Organisation also inserts
 that Team row. Concretely, in the UnlikeOtherAuthenticator repo:
 
-- `ORGANISATION_SELECT` and `toOrganisationRecord` in
-  `API/src/services/organisation.service.organisation.ts` /
-  `organisation.service.base.ts` gain the default-team selection and the
-  serialised field. Because the create path is the one place the default team
-  is guaranteed present, the field is populated from the row the transaction
-  just inserted; for reads of pre-existing organisations it resolves the
-  `isDefault` team (exactly one exists by construction).
+- The field is added to the **create route's response only**, NOT to the
+  shared `toOrganisationRecord` serialiser. That distinction is load-bearing:
+  `toOrganisationRecord` (`API/src/services/organisation.service.base.ts`) is
+  shared by the create path, the single-org read, AND the domain-wide list, so
+  teaching it about the default team would add a team lookup to every row of
+  every list page to serve one caller that already has the id in hand.
+  `createOrganisation` in
+  `API/src/services/organisation.service.organisation.ts` already holds
+  `defaultTeam.id` in scope inside its transaction — it selects only `{ id }`
+  today, so it widens that select and returns
+  `{ ...toOrganisationRecord(createdOrg), defaultTeam }` while every other
+  caller of the serialiser is untouched.
+- Per that repo's own standing rule, adding or changing an endpoint's contract
+  means updating BOTH `API/src/routes/root/index.ts` (the endpoint schema) and
+  the `/llm` config docs — they are the machine-readable API contract, and a
+  change that skips them is incomplete there.
 - The served `/api` and `/llm` contract docs gain the field in the create
   response schema.
 - The contract tests gain a case asserting `defaultTeam.id` is present, that
@@ -363,12 +383,19 @@ What replaces the redirect: `handleAddWorkspace` stops calling
 `startExternalSignIn` and opens a **centred `components/shared/Dialog.tsx`**
 — no eleventh bespoke modal shell. The dialog contains no nested cards: a
 title, the optional `TabBar` strip choosing between the two flows (§5), and a
-plain labelled form. The form asks only what UOA takes: **name** (required),
-and for the organisation flow, collapsed-by-default optional fields for
-`member_invites` (a comma/newline list of email addresses, passed through as
-UOA's `member_invites`) and `icon_url`. Nothing else — no slug field (UOA
-derives it), no local-only decoration, because every element must name the
-decision it drives and none of the omitted ones drive one.
+plain labelled form. The form asks **name** (required) and nothing else.
+
+The two other fields UOA's create accepts are deliberately omitted.
+`member_invites` is **not** an invite list — it is the organisation's
+member-invite POLICY, the enum `allowed | admin_approval | disabled`, and
+UOA's own default (`allowed`) is the right one for a brand-new organisation;
+asking a person to choose an invite-approval policy before they have a single
+colleague is a decision with no information behind it. `icon_url` has an
+established home already — the workspace avatar surface — and duplicating it
+here would be a second doorway to the same setting. Both remain editable
+through `PUT /org/organisations/:orgId` afterwards. There is no slug field
+either: UOA derives the slug. Every element must name the decision it drives,
+and at creation time only the name does.
 
 States, all rendered inside the dialog (the rail menu closes when the dialog
 opens, so there is exactly one surface showing progress):
@@ -457,6 +484,40 @@ Observable, testable:
 9. The audit row names the creating user, the UOA org id and the idempotency
    key for every successful creation.
 
+## Verified against source (2026-09-02)
+
+The claims this design leans on were checked against
+`UnlikeOtherAuthenticator` `origin/main` and this repo, not inferred:
+
+- **The switch grant succeeds for a brand-new organisation** — the one
+  assumption that would have invalidated §3 step 4 outright. The switch path
+  runs `confirmUoaWorkspaceSwitchAccess` →
+  `confirmUoaDirectServiceAccess` → UOA's `POST
+  /billing/v1/service-access/confirm`, whose service
+  (`confirmAuthenticatedDirectBillingServiceAccess`) requires an `OrgMember`
+  row with `status = ACTIVE` **and** an active `TeamMember` on a team in that
+  org, else `403 BILLING_SUBJECT_NOT_ENTITLED`. UOA's `createOrganisation`
+  writes both rows in its creation transaction without naming a status, and
+  both columns are `MembershipStatus @default(ACTIVE)` in UOA's schema. The
+  founder is therefore entitled the instant the org exists, with no
+  subscription, tariff or billing setup in between.
+- **The create response really does omit the default team** —
+  `ORGANISATION_SELECT` in `organisation.service.organisation.ts` selects
+  `id, domain, name, slug, ownerId, memberInvites, iconUrl, createdAt,
+  updatedAt`, and `toOrganisationRecord` serialises exactly those. §2 is a real
+  gap, not a defensive one.
+- **The assertion binding is what forces backend mode for the resolve step** —
+  UOA's `org-role-guard.ts` compares `active.orgId`/`active.teamId` against the
+  route params and additionally requires `org.teams.includes(active.teamId)`,
+  throwing `403 INSUFFICIENT_ORG_ROLE` otherwise. A user-mode assertion
+  provably cannot address the new organisation before its team id is known.
+- **Both credential modes are open today** — Nessie's `buildConfigJwt` already
+  advertises `org_features.enabled`, `allow_user_create_org`,
+  `allow_user_create_team` and `backend_org_management`, all `true`. No UOA
+  configuration change is required; only the additive response field of §2.
+- **`member_invites` is the enum `allowed | admin_approval | disabled`**
+  (`CreateOrgBodySchema`/`OrgBodySchema`), not an invite list — see §6.
+
 ## Open questions for the owner
 
 Genuinely undecidable from here — the upstream UOA change is approved and is
@@ -467,11 +528,14 @@ not listed:
    wants any member to be able to found a new organisation (UOA's user mode
    would have allowed it under `allow_user_create_org`), that is a product
    decision that changes §1(a) and the dialog's visibility rules.
-2. **Does `member_invites` belong in the creation dialog at all?** It is the
-   only field beyond `name` that UOA's create accepts and that has an obvious
-   person-facing use (founding an org with colleagues already invited), but it
-   adds a second concept to a one-question form. The alternative is creating
-   bare and inviting from the member directory after the switch.
+2. **Should the new organisation's first colleagues be invited from the same
+   dialog?** Not via `member_invites` — that field is the invite-approval
+   policy, not a list of people (§6). The real question is whether creation
+   should chain into the existing team-invitation flow
+   (`POST /org/organisations/:orgId/teams/:teamId/invitations`, already wired
+   into the Members surface) once the switch has landed, or whether founding
+   bare and inviting from the member directory afterwards is enough. The latter
+   is assumed here.
 3. **Naming of the new route and the ledger's home.** `POST /api/org/create`
    and a dedicated ledger table are working choices; if the roster routes have
    an established naming convention this should follow it, and if there is an
