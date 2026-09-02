@@ -9,6 +9,7 @@ import type { SubscriptionSecretStore } from './secret-store.js'
 import {
   ModelSubscriptionError,
   SUBSCRIPTION_ERROR_CODES,
+  type SubscriptionAccountIdentity,
   type SubscriptionCredentialBundle,
   type SubscriptionFailureKind,
   type SubscriptionProviderAdapter,
@@ -40,6 +41,8 @@ export const REFRESH_CLAIM_LEASE_MS = 120 * 1000
 
 export type ResolvedSubscriptionCredential = {
   accessToken: string
+  /** Adapter-declared transport headers; never caller- or model-supplied. */
+  extraHeaders?: Record<string, string>
   /** The generation this token belongs to. Carried into dispatch so a delayed
    *  failure can be matched against the credential that actually failed. */
   epoch: number
@@ -267,10 +270,12 @@ export const resolveSubscriptionCredential = async (
     }
   }
 
+  const extraHeaders = adapter.transportHeaders?.(bundle)
   return {
     accessToken: bundle.accessToken,
     baseUrl: adapter.transport.baseUrl,
     epoch,
+    ...(extraHeaders && Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
     providerKey: adapter.key,
     runtimeProvider: adapter.transport.runtimeProvider,
     subscriptionId: subscription.id,
@@ -352,13 +357,19 @@ export const linkSubscription = async (
     userId: string
     providerKey: string
     bundle: SubscriptionCredentialBundle
+    /**
+     * Identity already proven by the device flow's id_token. Supplied so an
+     * OAuth link does not spend a second round trip re-deriving what the token
+     * exchange just established.
+     */
+    identity?: SubscriptionAccountIdentity
     /** Set when re-linking a known row; refuses a different account. */
     subscriptionId?: string
   },
 ): Promise<{ subscription: ModelSubscription; created: boolean }> => {
   const store = requireStore(deps)
   const adapter = requireSubscriptionAdapter(input.providerKey)
-  const identity = await adapter.verify(input.bundle)
+  const identity = input.identity ?? (await adapter.verify(input.bundle))
 
   const existing = input.subscriptionId
     ? await deps.prisma.modelSubscription.findFirst({

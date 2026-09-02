@@ -13,6 +13,13 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import {
+  cancelDeviceAuthorization,
+  confirmDeviceAuthorization,
+  pollDeviceAuthorization,
+  startDeviceAuthorization,
+} from '../services/model-subscription-device.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -32,6 +39,16 @@ const LinkSubscriptionBodySchema = z.object({
   apiKey: z.string().min(8).max(4096),
   /** Set to re-link an existing row; refuses a different provider account. */
   subscriptionId: z.string().uuid().optional(),
+})
+
+const DeviceStartBodySchema = z.object({
+  provider: z.string().min(1),
+  /** Set to re-link an existing row; the flow then binds to its account. */
+  subscriptionId: z.string().uuid().optional(),
+})
+
+const DeviceStateBodySchema = z.object({
+  stateToken: z.string().min(16).max(512),
 })
 
 const HTTP_STATUS_BY_CODE: Record<string, number> = {
@@ -164,6 +181,115 @@ export const registerModelSubscriptionRoutes = (
       if (sendSubscriptionError(reply, error)) return reply
       throw error
     }
+  })
+
+  // ─── Device-code sign-in (Codex, Grok) ────────────────────────────────
+  // Rate-limited on both IP and account: `start` mints a code at a shared
+  // public client and `poll` reaches the provider from the server's own IP, so
+  // one member left unbounded could get that client throttled for everyone.
+  const guardDevice = async (
+    request: Parameters<typeof guardAuthRequest>[2],
+    reply: Parameters<typeof guardAuthRequest>[3],
+    actorId: string,
+  ): Promise<boolean> =>
+    guardAuthRequest(
+      deps.rateLimiter,
+      {
+        bucket: RATE_LIMIT_BUCKETS.subscriptionDeviceIp,
+        rule: deps.config.api.rateLimit.subscriptionDeviceIp,
+      },
+      request,
+      reply,
+      {
+        account: {
+          bucket: RATE_LIMIT_BUCKETS.subscriptionDeviceAccount,
+          rule: deps.config.api.rateLimit.subscriptionDeviceAccount,
+        },
+        accountIdentity: actorId,
+      },
+    )
+
+  app.post('/api/model-subscriptions/device/start', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(DeviceStartBodySchema, request.body, reply)
+    if (!body) return reply
+    if (!(await guardDevice(request, reply, actorContext.actor.actorId))) return reply
+
+    try {
+      const started = await startDeviceAuthorization(coordinator(), {
+        organizationId: actorContext.tenant.organizationId,
+        providerKey: body.provider,
+        ...(body.subscriptionId ? { subscriptionId: body.subscriptionId } : {}),
+        userId: actorContext.actor.actorId,
+      })
+      return createApiResponse(started)
+    } catch (error) {
+      if (sendSubscriptionError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/model-subscriptions/device/poll', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(DeviceStateBodySchema, request.body, reply)
+    if (!body) return reply
+    if (!(await guardDevice(request, reply, actorContext.actor.actorId))) return reply
+
+    try {
+      const result = await pollDeviceAuthorization(coordinator(), {
+        organizationId: actorContext.tenant.organizationId,
+        stateToken: body.stateToken,
+        userId: actorContext.actor.actorId,
+      })
+      return createApiResponse(result)
+    } catch (error) {
+      if (sendSubscriptionError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  // The person has seen WHICH account signed in and says it is theirs. Until
+  // this call the credential is parked and cannot be spent — which is what
+  // stops a phished code attaching somebody else's account to this workspace.
+  app.post('/api/model-subscriptions/device/confirm', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(DeviceStateBodySchema, request.body, reply)
+    if (!body) return reply
+
+    try {
+      const { created, subscriptionId } = await confirmDeviceAuthorization(coordinator(), {
+        organizationId: actorContext.tenant.organizationId,
+        stateToken: body.stateToken,
+        userId: actorContext.actor.actorId,
+      })
+      await emitAuditEvent(prisma, {
+        action: created ? 'model_subscription.linked' : 'model_subscription.relinked',
+        actorContext,
+        outcome: 'success',
+        resourceId: subscriptionId,
+        resourceType: 'model_subscription',
+      })
+      return createApiResponse({ subscriptionId })
+    } catch (error) {
+      if (sendSubscriptionError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/model-subscriptions/device/cancel', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(DeviceStateBodySchema, request.body, reply)
+    if (!body) return reply
+    await cancelDeviceAuthorization(coordinator(), {
+      organizationId: actorContext.tenant.organizationId,
+      stateToken: body.stateToken,
+      userId: actorContext.actor.actorId,
+    })
+    return reply.code(204).send()
   })
 
   app.delete('/api/model-subscriptions/:id', async (request, reply) => {

@@ -1,11 +1,21 @@
 export {
   classifyOpenAiShapedFailure,
+  deviceFlowForAdapter,
   findSubscriptionAdapter,
   fingerprintApiKey,
   listSubscriptionAdapters,
   maskApiKey,
   requireSubscriptionAdapter,
 } from './adapters.js'
+export {
+  createCodexDeviceFlow,
+  createGrokDeviceFlow,
+  generateDeviceStateToken,
+  readIdTokenIdentity,
+  type DeviceAuthorizationFlow,
+  type DeviceAuthorizationPoll,
+  type DeviceAuthorizationStart,
+} from './device-auth.js'
 export {
   disconnectSubscription,
   linkSubscription,

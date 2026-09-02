@@ -944,6 +944,17 @@ not drift:
   CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
   items): providers rotate refresh tokens and invalidate the previous one, so
   two apps sharing one grant log each other out. One grant, one refresh owner.
+- **Device-code linking is server-side and confirmed.** The token exchange
+  happens on the server, so no credential passes through the browser; polling
+  holds one lease per state row and honours the provider's interval and
+  `slow_down`, so several tabs or replicas cannot hammer a shared public
+  client; and a first link parks its credential in the vault until the person
+  confirms WHICH account signed in. That confirmation is the defence against
+  the device-flow confused deputy — somebody else entering your code — and a
+  relink binds the expected `providerAccountId` and refuses a different one.
+  An id_token is accepted only on exact issuer, audience, expiry and a stable
+  subject; a grant returning no refresh token is refused at link time rather
+  than dying silently at the first expiry.
 - **Token values live in the vault, never in PostgreSQL**, in a **dedicated,
   separately-ACLed** vault project (`NESSIE_SUBSCRIPTION_VAULT_*`) rather than
   the shared personal partition, which also holds a person's ordinary captured

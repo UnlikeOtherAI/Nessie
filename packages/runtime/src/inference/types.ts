@@ -1,6 +1,16 @@
 import type { AuthorizedActionContext, ProviderReasoningEffort } from '@nessie/schemas'
 
-export type ModelProviderName = 'openai' | 'kimi' | 'deepseek' | 'openai-compatible'
+export type ModelProviderName =
+  | 'openai'
+  | 'kimi'
+  | 'deepseek'
+  | 'openai-compatible'
+  /**
+   * ChatGPT's Codex backend, reached with a person's own subscription grant.
+   * It speaks the Responses API rather than chat/completions, which is why it
+   * is a provider of its own instead of another `openai-compatible` base URL.
+   */
+  | 'codex-subscription'
 
 export type ModelProviderConfig = {
   apiKey?: string
@@ -9,6 +19,13 @@ export type ModelProviderConfig = {
   provider: ModelProviderName
   /** Ledger adapter id; defaults to provider for built-in connectors. */
   serviceId?: string
+  /**
+   * Extra request headers a provider adapter requires beyond bearer auth (xAI's
+   * `X-XAI-Token-Auth`, ChatGPT's account id). Supplied only by code-declared
+   * adapters — never by a caller, a model, or a stored record — so this can
+   * never become a way to steer a request somewhere else.
+   */
+  extraHeaders?: Record<string, string>
 }
 
 export type ProviderHealthStatus =

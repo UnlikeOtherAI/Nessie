@@ -306,9 +306,12 @@ op, streaming, EXIF strip, thumbnails, images in agent context):
 ## Personal model subscriptions — run your own agents on your own plan
 
 A person links a plan they already pay for and the agents **they own** run on
-it instead of the organisation's Ledger credits. Phase 1 ships Kimi and GLM
-(pasted subscription keys); OpenAI Codex and xAI Grok arrive with the
-device-code OAuth phase. Anthropic is deliberately excluded — subscription
+it instead of the organisation's Ledger credits. Kimi and GLM link with a
+pasted subscription key; **OpenAI Codex and xAI Grok link with Nessie's own
+device-code sign-in** (`/api/model-subscriptions/device/{start,poll,confirm,cancel}`
+— server-side exchange, leased polling, and an explicit "this is my account"
+confirmation before the credential can be spent). Anthropic is deliberately
+excluded — subscription
 credentials are not licensed for third-party agent platforms, and Nessie
 already serves Claude through Ledger. The invariants (own grant never a CLI
 import, vault-only token storage in a dedicated project, run-admission pinning
@@ -333,7 +336,15 @@ Facts not restated there:
 - **Utility model is explicitly null** for a subscription run, not a lookup
   miss: `NESSIE_UTILITY_MODEL` names a Ledger-catalogue model a subscription
   backend may not serve.
-- Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
+- **Codex speaks the Responses API**, not chat/completions, through its own
+  `codex-subscription` runtime connector (`store: false`; deltas mapped onto
+  the existing `output_text.delta` / `tool_call.delta` / `reasoning_text.delta`
+  vocabulary so the loop, thinking recorder and document streaming are
+  unchanged). Grok rides `openai-compatible` at `cli-chat-proxy.grok.com/v1`.
+  Both attach adapter-declared headers via `ModelProviderConfig.extraHeaders`,
+  which only code populates — never a caller, a stored record, or a model.
+- Package `@nessie/model-subscriptions` (adapters, device-auth flows, vault
+  store, coordinator);
   routes `/api/model-subscriptions*`; surfaces are the "Personal model
   subscriptions" section on `/settings/connections` and the **Your
   subscriptions** group in the Agent Designer model picker, which also carries
