@@ -13,6 +13,7 @@ import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-cl
 import type { AvatarSources } from '../../primitives/UserAvatar'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { OversizePasteDialog } from '../../shared/OversizePasteDialog'
+import { Sheet } from '../../overlays/Sheet'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
@@ -166,124 +167,119 @@ export const ChannelUserInfoDrawer = ({
 
   return (
     <>
-      <button
-        aria-label="Close user info"
-        className="fixed inset-0 z-40 bg-[var(--scrim-strong)]"
-        onClick={onClose}
-        type="button"
-      />
-      <aside
-        aria-label={`${user.displayName} info`}
-        className={[
-          'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
-          'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
-          'shadow-[0_32px_80px_var(--scrim-strong)]',
-        ].join(' ')}
-      >
-        <header className="flex-shrink-0 border-b border-[color:var(--sep)] px-5 pb-4 pt-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <UserAvatar
-                {...toAvatarSources(user)}
-                displayName={user.displayName}
-                ringColor="var(--main)"
-                showPresence
-                showStatus
-                size={46}
-                token={token}
-              />
-              <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
-                  {user.displayName}
-                </h2>
-                {user.email ? (
-                  <div className="truncate text-xs text-[color:var(--tx3)]">
-                    {user.email}
-                  </div>
-                ) : null}
-                {activeStatus ? (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-[color:var(--tx2)]">
-                    {activeStatus.emoji ? <span>{activeStatus.emoji}</span> : null}
-                    <span className="truncate">{activeStatus.label}</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <button
-              className="admin-button admin-button-secondary h-9"
-              onClick={onClose}
-              type="button"
-            >
-              Close
-            </button>
-          </div>
-        </header>
-
+      <Sheet onClose={onClose} open side="right" size="md" title={`${user.displayName} info`}>
         <div
-          className="min-h-0 flex-1 overflow-y-auto py-2"
-          data-testid="user-info-drawer-messages"
-          ref={scrollRef}
+          className={[
+            'admin-chat-surface flex h-full w-full min-h-0 flex-col',
+            'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
+            'shadow-[0_32px_80px_var(--scrim-strong)]',
+          ].join(' ')}
         >
-          {openError ? (
-            <div className="px-5 py-4 text-sm text-[color:var(--danger-text)]">
-              {openError}
+          <header className="flex-shrink-0 border-b border-[color:var(--sep)] px-5 pb-4 pt-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <UserAvatar
+                  {...toAvatarSources(user)}
+                  displayName={user.displayName}
+                  ringColor="var(--main)"
+                  showPresence
+                  showStatus
+                  size={46}
+                  token={token}
+                />
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
+                    {user.displayName}
+                  </h2>
+                  {user.email ? (
+                    <div className="truncate text-xs text-[color:var(--tx3)]">
+                      {user.email}
+                    </div>
+                  ) : null}
+                  {activeStatus ? (
+                    <div className="mt-1 flex items-center gap-1 text-xs text-[color:var(--tx2)]">
+                      {activeStatus.emoji ? <span>{activeStatus.emoji}</span> : null}
+                      <span className="truncate">{activeStatus.label}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                className="admin-button admin-button-secondary h-9"
+                onClick={onClose}
+                type="button"
+              >
+                Close
+              </button>
             </div>
-          ) : null}
-          {!dmChannel && !openError ? (
-            <div className="px-5 py-4 text-sm text-[color:var(--tx3)]">
-              Opening conversation...
-            </div>
-          ) : null}
+          </header>
+
+          <div
+            className="min-h-0 flex-1 overflow-y-auto py-2"
+            data-testid="user-info-drawer-messages"
+            ref={scrollRef}
+          >
+            {openError ? (
+              <div className="px-5 py-4 text-sm text-[color:var(--danger-text)]">
+                {openError}
+              </div>
+            ) : null}
+            {!dmChannel && !openError ? (
+              <div className="px-5 py-4 text-sm text-[color:var(--tx3)]">
+                Opening conversation...
+              </div>
+            ) : null}
+            {dmChannel ? (
+              <ChannelMessageFeed
+                agentById={agentMap}
+                agentMap={agentMap}
+                editingContent={editingContent}
+                editingMessageId={editingMessageId}
+                feedItems={feedItems}
+                isPersonalAssistantConversation={false}
+                meAvatar={meAvatar}
+                meDisplayName={meDisplayName}
+                meUserId={meUserId}
+                optimisticMessages={optimisticMessages}
+                pendingMessages={pendingMessages}
+                renderContent={renderContent}
+                token={token}
+                updatePending={updatePending}
+                onAddReaction={addReaction}
+                onCancelEdit={cancelEdit}
+                onChangeEditingContent={changeEditingContent}
+                onConfirmDelete={confirmDelete}
+                onStartEdit={startEdit}
+                onSubmitEdit={(messageId) => void submitEdit(messageId)}
+              />
+            ) : null}
+          </div>
+
           {dmChannel ? (
-            <ChannelMessageFeed
-              agentById={agentMap}
-              agentMap={agentMap}
-              editingContent={editingContent}
-              editingMessageId={editingMessageId}
-              feedItems={feedItems}
-              isPersonalAssistantConversation={false}
-              meAvatar={meAvatar}
-              meDisplayName={meDisplayName}
-              meUserId={meUserId}
-              optimisticMessages={optimisticMessages}
-              pendingMessages={pendingMessages}
-              renderContent={renderContent}
-              token={token}
-              updatePending={updatePending}
-              onAddReaction={addReaction}
-              onCancelEdit={cancelEdit}
-              onChangeEditingContent={changeEditingContent}
-              onConfirmDelete={confirmDelete}
-              onStartEdit={startEdit}
-              onSubmitEdit={(messageId) => void submitEdit(messageId)}
+            <ChannelComposer
+              attachments={attachments}
+              isSendPending={isSendPending}
+              sendError={sendError}
+              mentionEntities={emptyMentions}
+              mentionRef={mentionRef}
+              message={message}
+              placeholder={`Message ${user.displayName}`}
+              onChangeMessage={setMessage}
+              onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+              onInsertEmoji={insertEmoji}
+              onInsertHashSign={() => mentionRef.current?.insertHashSign()}
+              onOversizePaste={(paste) => setOversizePaste(paste)}
+              onSubmitForm={(event) => void sendMessageSubmit(event)}
+              onSubmitText={(text, agentMentions) => void sendText(text, agentMentions)}
+              pendingAgentInvites={pendingAgentInvites}
+              invitingAgentId={invitingAgentId}
+              inviteErrors={inviteErrors}
+              onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
+              onDismissPendingAgent={dismissPendingAgent}
             />
           ) : null}
         </div>
-
-        {dmChannel ? (
-          <ChannelComposer
-            attachments={attachments}
-            isSendPending={isSendPending}
-            sendError={sendError}
-            mentionEntities={emptyMentions}
-            mentionRef={mentionRef}
-            message={message}
-            placeholder={`Message ${user.displayName}`}
-            onChangeMessage={setMessage}
-            onInsertAtSign={() => mentionRef.current?.insertAtSign()}
-            onInsertEmoji={insertEmoji}
-            onInsertHashSign={() => mentionRef.current?.insertHashSign()}
-            onOversizePaste={(paste) => setOversizePaste(paste)}
-            onSubmitForm={(event) => void sendMessageSubmit(event)}
-            onSubmitText={(text, agentMentions) => void sendText(text, agentMentions)}
-            pendingAgentInvites={pendingAgentInvites}
-            invitingAgentId={invitingAgentId}
-            inviteErrors={inviteErrors}
-            onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
-            onDismissPendingAgent={dismissPendingAgent}
-          />
-        ) : null}
-      </aside>
+      </Sheet>
 
       {deleteConfirm}
 
