@@ -51,7 +51,6 @@ const makeRow = () => ({
   failureCode: null,
   id: requestId,
   mcpInstance: null,
-  organization: { conversationalSetupEnabled: true },
   requestedByUser: { organizationMembers: [{ id: 'membership' }] },
   selectedCatalogEntryId: null as string | null,
   status: 'offered' as 'offered' | 'connecting',

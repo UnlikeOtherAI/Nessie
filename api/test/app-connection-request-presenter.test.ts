@@ -51,7 +51,6 @@ const requestRow = {
   failureCode: null,
   id: requestId,
   mcpInstance: null,
-  organization: { conversationalSetupEnabled: true },
   requestedByUser: { organizationMembers: [{ id: 'membership' }] },
   selectedCatalogEntryId: null,
   status: 'offered',

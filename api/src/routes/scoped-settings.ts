@@ -2,7 +2,10 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
   isLockedAbove,
+  lockExplanation,
+  resolveScopedSetting,
   resolveScopedSettings,
+  SCOPED_SETTING_ERROR_CODES,
   ScopedSettingError,
   writeScopedSetting,
   type SettingScope,
@@ -36,6 +39,34 @@ const isTeamInOrganization = async (
     select: { id: true },
   })
   return team !== null
+}
+
+/**
+ * The team level of a personal cascade, verified.
+ *
+ * A person's own setting still sits under whatever their team locked, so the
+ * team must be part of resolving it. The id is never taken on the caller's
+ * word: an unverified one would let any member ask whether an arbitrary team
+ * has locked a key. Only a team the caller actually belongs to is used, and
+ * anything else is dropped rather than refused — the personal answer is still
+ * a real answer without it.
+ */
+const memberTeamId = async (
+  prisma: RouteDeps['prisma'],
+  organizationId: string,
+  userId: string,
+  teamId: string | undefined,
+): Promise<string | null> => {
+  if (!teamId) return null
+  const team = await prisma.team.findFirst({
+    where: {
+      id: teamId,
+      members: { some: { userId } },
+      project: { organizationId },
+    },
+    select: { id: true },
+  })
+  return team?.id ?? null
 }
 
 export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -112,8 +143,10 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
 
     const resolved = await resolveScopedSettings(prisma, {
       organizationId,
-      teamId: query.teamId ?? null,
-      userId,
+      teamId: scope === 'user'
+        ? await memberTeamId(prisma, organizationId, userId, query.teamId)
+        : query.teamId ?? null,
+      userId: scope === 'user' ? userId : null,
     }, keys)
 
     return createApiResponse(
@@ -152,6 +185,20 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
       ...role, organizationId, scope: body.scope, teamId: body.teamId, userId,
     }))) {
       return reply
+    }
+
+    // A personal write sits under the caller's own team as well as the
+    // organisation, and `writeScopedSetting` cannot know which team that is —
+    // a person may be in several. Check it here, where the team is verified.
+    if (body.scope === 'user') {
+      const teamId = await memberTeamId(prisma, organizationId, userId, body.teamId)
+      const current = await resolveScopedSetting(prisma, { organizationId, teamId, userId }, key)
+      if (isLockedAbove(current, 'user')) {
+        sendApiError(reply, 409, SCOPED_SETTING_ERROR_CODES.LOCKED_ABOVE, lockExplanation(
+          current.lockedAtScope as 'organization' | 'team',
+        ))
+        return reply
+      }
     }
 
     try {
