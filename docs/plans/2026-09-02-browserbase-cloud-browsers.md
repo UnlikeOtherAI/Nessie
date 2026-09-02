@@ -625,13 +625,11 @@ that let `browser.connected.*` be advertised.
 
 ## 7. Open questions
 
-1. **Same-origin sensitive actions.** Cross-origin writes are now gated
-   (§6.1); what remains open is the *same-origin* irreversible action — the
-   agent submitting an order or sending a message on the very service it is
-   signed into. Is the person's ask the consent, or does that need its own
-   gate? "Irreversible-looking" cannot be string-matched — it would have to
-   be model-judged, or left to the requester who is, after all, one tap
-   from watching the screen.
+1. **Same-origin sensitive actions — decided 2026-09-02: no gate.** If a
+   person asks the agent to submit an order on a site, it submits the
+   order; the ask is the consent, and the requester is one tap from
+   watching the screen live. Cross-origin writes keep their §6.1 gate —
+   that one exists for the page's instructions, not the person's.
 2. **Mobile companion.** The login handoff dialog should work from the mobile
    app's webview (it's an iframe + card press); worth verifying early, since
    "sign in from your phone" is the likely real-world moment.
