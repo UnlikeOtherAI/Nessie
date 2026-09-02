@@ -813,9 +813,13 @@ under them (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`; the hook is the
 memo wrapper). Starring is unaffected — it resolves through the full people
 directory, because starring somebody *is* adding them. The doorways stay named:
 **Create → Message** (and the section's `+`) reaches a person, and **Create →
-Agent** — the fourth and last row of the rail's create menu — reaches
-`/agents/designer`, the same `navigateToAgentDesigner` the native phone sheet
-calls.
+Agent** reaches `/agents/designer`. It is the fourth and last row of the rail's
+create menu, and on the native phone sheet the last row *above* the Message
+button — Message there is the morphing compose button the sheet grows out of,
+not a row (`mobile/src/lib/native-creation-menu.ts`
+`NATIVE_CREATION_OPTIONS`). Both call the one `navigateToAgentDesigner`
+through the existing `__nessieCreateFromPhoneMenu` bridge, so the doorway is
+the same action on every device.
 
 - **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
   provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog`,
