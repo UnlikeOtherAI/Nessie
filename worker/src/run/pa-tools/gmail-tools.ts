@@ -21,6 +21,7 @@ import {
   recordGoogleRead,
   resolveGoogleActingUserId,
 } from './google-access.js'
+import { serializeMailboxResult } from './mailbox-overflow.js'
 
 /**
  * Gmail tools. Reads go live to Gmail rather than the `CommsEvent` store: the
@@ -113,7 +114,12 @@ export const runGmailSearchTool = async (
   )
   return {
     inputSummary: `query=${args.query ?? '(recent)'}`,
-    outputPreview: JSON.stringify(threads),
+    outputPreview: serializeMailboxResult(threads, {
+      what: 'search result',
+      delegateTask: `Search the mailbox for ${args.query ?? 'recent mail'} and `
+        + 'report back what matters: who, what they want, and anything needing '
+        + 'a reply. Do not quote messages in full.',
+    }),
     toolName: 'gmail_search',
   }
 }
@@ -133,7 +139,12 @@ export const runGmailThreadReadTool = async (
   )
   return {
     inputSummary: `threadId=${args.threadId}`,
-    outputPreview: JSON.stringify(messages),
+    outputPreview: serializeMailboxResult(messages, {
+      what: 'thread',
+      delegateTask: `Read Gmail thread ${args.threadId} with gmail_thread_read `
+        + 'and summarise the exchange: who said what, what was decided, and what '
+        + 'is still open.',
+    }),
     toolName: 'gmail_thread_read',
   }
 }
@@ -153,7 +164,11 @@ export const runGmailMessageReadTool = async (
   )
   return {
     inputSummary: `messageId=${args.messageId}`,
-    outputPreview: JSON.stringify(message),
+    outputPreview: serializeMailboxResult(message, {
+      what: 'message',
+      delegateTask: `Read Gmail message ${args.messageId} with `
+        + 'gmail_message_read and summarise what it says and what it asks for.',
+    }),
     toolName: 'gmail_message_read',
   }
 }

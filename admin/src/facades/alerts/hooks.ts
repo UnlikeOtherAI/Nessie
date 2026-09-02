@@ -8,7 +8,14 @@ import { useEventStream } from '../realtime/event-stream'
 
 export type UserAlertRecord = {
   id: string
-  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health' | 'call_missed' | 'workspace_invitation'
+  kind:
+    | 'mention'
+    | 'task_assigned'
+    | 'knowledge_published'
+    | 'trigger_health'
+    | 'call_missed'
+    | 'workspace_invitation'
+    | 'approval_requested'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null

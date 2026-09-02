@@ -69,6 +69,12 @@ export type PersistEventsResult = {
   inserted: number
   versioned: number
   skipped: number
+  /**
+   * The events that were genuinely new — not a new version of something already
+   * stored, and not a duplicate. Arrival triggers fan out from this, so a
+   * re-synced page cannot re-announce mail the person already saw.
+   */
+  insertedEvents: NormalizedEvent[]
 }
 
 /**
@@ -83,7 +89,12 @@ export const persistNormalizedEvents = async (
   params: { connectionId: string; organizationId: string },
   events: readonly NormalizedEvent[],
 ): Promise<PersistEventsResult> => {
-  const result: PersistEventsResult = { inserted: 0, versioned: 0, skipped: 0 }
+  const result: PersistEventsResult = {
+    inserted: 0,
+    versioned: 0,
+    skipped: 0,
+    insertedEvents: [],
+  }
   for (const event of events) {
     const latest = await prisma.commsEvent.findFirst({
       where: {
@@ -123,6 +134,7 @@ export const persistNormalizedEvents = async (
       })
       if (decision.action === 'insert-new') {
         result.inserted += 1
+        result.insertedEvents.push(event)
       } else {
         result.versioned += 1
       }
