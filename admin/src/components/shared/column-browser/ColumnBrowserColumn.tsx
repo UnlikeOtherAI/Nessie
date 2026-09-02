@@ -1,13 +1,8 @@
-import type { ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
-import {
-  columnBackPriority,
-  useColumnBackContext,
-  useLocalBack,
-} from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { useColumnBackContext } from '../../../layouts/admin-shell/local-back/LocalBackContext'
 
 type ColumnBrowserColumnProps = {
   children: ReactNode
@@ -15,12 +10,11 @@ type ColumnBrowserColumnProps = {
   leading?: ReactNode
   onBack?: () => void
   // True when this column owns a Back action at all — independent of layout.
-  // Wider layouts paint the shared circular Back beside the title; on a phone
-  // the column instead registers its unwind action with the shell's local-back
-  // registry, and only the viewport-visible column's registration is active
-  // (retained off-screen columns stay mounted for the slide transition but
-  // must never hold the doorway). Deeper columns outrank shallower ones via
-  // their viewport index, so Back always unwinds exactly one level.
+  // A column browser that hosts its columns as navigation-stack layers takes
+  // that action over the one-way report channel below and registers it once,
+  // on the stage; this column then draws the shell's shared leading doorway.
+  // Everywhere else (the split layout's multi-column track) the column paints
+  // the shared circular Back beside its own title.
   showBack?: boolean
   title: string
   // When set, the column's scroll position is remembered under this key and
@@ -38,27 +32,34 @@ export const ColumnBrowserColumn = ({
   title,
   scrollKey,
 }: ColumnBrowserColumnProps) => {
-  const phoneLayout = usePhoneLayout()
   const scroll = useScrollMemory(scrollKey)
-  const { index, phoneVisible } = useColumnBackContext()
+  const { index, reportBack } = useColumnBackContext()
+  const stacked = reportBack !== null && index !== null
   const backLabel = `Back from ${title}`
-  useLocalBack({
-    active: phoneLayout && phoneVisible && Boolean(showBack && onBack),
-    id: `column:${index ?? 'standalone'}:${title}`,
-    label: backLabel,
-    onBack: onBack ?? (() => undefined),
-    priority: columnBackPriority(index ?? 0),
-  })
+
+  // The report is one-way and stable: the caller's fresh closure lands in a
+  // ref, so the effect's dependencies never change with a re-render and the
+  // viewport's state cannot loop.
+  const backRef = useRef(onBack)
+  backRef.current = onBack
+  const runBack = useCallback(() => {
+    backRef.current?.()
+  }, [])
+  const hasBack = Boolean(showBack && onBack)
+
+  useLayoutEffect(() => {
+    if (!reportBack || index === null || !hasBack) return undefined
+    reportBack(index, { label: backLabel, onBack: runBack })
+    return () => reportBack(index, null)
+  }, [backLabel, hasBack, index, reportBack, runBack])
 
   return (
     <div className="flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
       <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
         {leading}
         {showBack && onBack
-          ? phoneLayout
-            ? phoneVisible
-              ? <PhoneNavigationButton />
-              : null
+          ? stacked
+            ? <PhoneNavigationButton />
             : <PhoneBackButton label={backLabel} onBack={onBack} />
           : null}
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">

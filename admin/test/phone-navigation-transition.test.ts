@@ -326,6 +326,24 @@ test('navigation motion is scripted from static poses, never a CSS keyframe', ()
   assert.doesNotMatch(viewport, /onAnimationEnd/)
 })
 
+test('the column browser stacks on single and moves its track on the shared tokens', () => {
+  // docs/navigation.md §6: on `single` a deeper column is a stack layer, so
+  // nothing in that path may translate or transition a screen of its own; the
+  // split track keeps its slide but reads the one motion spec's tokens.
+  const columnBrowser = readSource(
+    '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',
+  )
+  assert.match(columnBrowser, /<NestedStage/)
+  assert.doesNotMatch(columnBrowser, /transition-transform|duration-300|ease-out/)
+  assert.match(
+    columnBrowser,
+    /transition: 'transform var\(--nav-duration\) var\(--nav-easing\)'/,
+  )
+  // The one translated track is the non-stacked branch's, and it is the only
+  // transform this component writes.
+  assert.equal((columnBrowser.match(/translateX\(/g) ?? []).length, 1)
+})
+
 test('a committed swipe is the one Back that gives a haptic', () => {
   const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
   const commit = viewport.slice(
@@ -360,6 +378,11 @@ test('stack containers clip rather than hide, so no descendant can scroll them',
     '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',
   )
   assert.match(columnBrowser, /<div className="h-full w-full overflow-clip">/)
+  assert.equal(
+    (columnBrowser.match(/<div className="h-full w-full overflow-clip">/g) ?? []).length,
+    2,
+    'both the stacked and the track branch clip',
+  )
 
   const tabBar = readSource('../src/components/primitives/TabBar.tsx')
   assert.doesNotMatch(tabBar, /\.scrollIntoView\(/)
