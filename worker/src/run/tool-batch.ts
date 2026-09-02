@@ -5,6 +5,7 @@ import { summarizeToolInput } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
   approvalId: string
+  notice: string
   toolName: string
 }
 
