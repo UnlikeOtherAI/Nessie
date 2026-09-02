@@ -53,6 +53,14 @@ export type WorkflowTemplateRecord = {
   bindingSchema: unknown
   requiredEnvironmentTemplateIds: string[]
   source: 'authored' | 'demonstration'
+  /**
+   * Server-counted installation totals, present on the list read only.
+   * `undefined` means the endpoint did not report them — never "zero".
+   */
+  installationSummary?: {
+    active: number
+    total: number
+  }
   demonstrationId?: string | null
   adoptedAt?: string | null
   createdByActorType: string

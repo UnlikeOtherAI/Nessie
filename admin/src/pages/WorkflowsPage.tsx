@@ -29,7 +29,6 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
 import {
   formatRelativeTime,
   formatTimestamp,
-  getInstallationTone,
   getRunTone,
 } from '../components/features/workflows/presentation'
 
@@ -67,15 +66,27 @@ const readWorkflowsPageLocationState = (
   }
 }
 
+/**
+ * The badge beside a workflow on the list.
+ *
+ * It reads the server's aggregate rather than counting a page of rows the
+ * browser happens to hold — which is what it did before, and which stopped
+ * being true the moment list endpoints started returning 25 rows instead of
+ * every row. An absent summary means the endpoint did not report one, which
+ * is not the same as zero, so the badge says nothing rather than "draft".
+ */
 const summarizeInstallations = (
-  installations: WorkflowInstallationRecord[],
-): { label: string; tone: 'accent' | 'danger' | 'muted' | 'success' | 'warning' } => {
-  const latest = installations[0]
-  if (!latest) return { label: 'draft', tone: 'muted' }
-  if (installations.some((entry) => entry.status === 'active')) {
-    return { label: 'active', tone: 'success' }
+  summary: WorkflowTemplateRecord['installationSummary'],
+): { label: string; tone: 'accent' | 'danger' | 'muted' | 'success' | 'warning' } | null => {
+  if (!summary) return null
+  if (summary.total === 0) return { label: 'draft', tone: 'muted' }
+  if (summary.active > 0) {
+    return {
+      label: summary.active === summary.total ? 'active' : `${summary.active} of ${summary.total} active`,
+      tone: 'success',
+    }
   }
-  return { label: latest.status, tone: getInstallationTone(latest.status) }
+  return { label: `${summary.total} inactive`, tone: 'muted' }
 }
 
 export const WorkflowsPage = () => {
@@ -95,20 +106,6 @@ export const WorkflowsPage = () => {
     queryKey: workflowKeys.templates,
   })
   const templates = templatesList.items
-  // Cross-template rollup (installation counts + status badges on every
-  // template row) needs more than one template's worth of installations, and
-  // the list endpoint has no per-template filter to page against — so this
-  // reads the contract's maximum page instead of the default 25. Still a cap,
-  // not "all": an organization with more than 100 installations across all of
-  // its templates will under-count the oldest ones here. Closing that
-  // requires a `workflowTemplateId` filter on `GET /api/workflow-installations`,
-  // which is outside this slice's owned files.
-  const installationsList = usePagedList<WorkflowInstallationRecord>({
-    limit: 100,
-    path: '/api/workflow-installations',
-    queryKey: workflowKeys.installations,
-  })
-  const installations = installationsList.items
   const failedRunsList = usePagedList<WorkflowRunRecord>({
     params: { status: 'failed' },
     path: '/api/workflow-runs',
@@ -131,6 +128,20 @@ export const WorkflowsPage = () => {
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>(
     () => restoredSelection.selectedRunId,
   )
+
+  // Installations are read for the selected template only, through the
+  // endpoint's `workflowTemplateId` filter. The page used to fetch the
+  // organisation's whole installation set and group it in the browser to
+  // serve both this pane and the per-row counts; the counts now come from the
+  // template record's server-side aggregate, so nothing needs the cross-
+  // template set and this asks a question the size of the answer.
+  const installationsList = usePagedList<WorkflowInstallationRecord>({
+    enabled: Boolean(selectedTemplateId),
+    params: { workflowTemplateId: selectedTemplateId },
+    path: '/api/workflow-installations',
+    queryKey: workflowKeys.installations,
+  })
+  const installations = installationsList.items
   // W29: the triage surface — one cross-installation answer to "what broke
   // last night". Opens straight onto the failed run's detail.
   const [showFailedRuns, setShowFailedRuns] = useState(false)
@@ -154,18 +165,16 @@ export const WorkflowsPage = () => {
     [templates],
   )
 
-  const installationsByTemplateId = useMemo(() => {
-    const map = new Map<string, WorkflowInstallationRecord[]>()
-    for (const installation of [...installations].sort(
-      (left, right) =>
-        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-    )) {
-      const bucket = map.get(installation.workflowTemplateId) ?? []
-      bucket.push(installation)
-      map.set(installation.workflowTemplateId, bucket)
-    }
-    return map
-  }, [installations])
+  // Newest first, as the detail pane renders them. No grouping by template
+  // any more — the query is already scoped to one.
+  const selectedTemplateInstallations = useMemo(
+    () =>
+      [...installations].sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+      ),
+    [installations],
+  )
 
   const filteredTemplates = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -389,9 +398,7 @@ export const WorkflowsPage = () => {
             <>
               <RowList label="Workflows">
                 {filteredTemplates.map((template) => {
-                  const templateInstallations =
-                    installationsByTemplateId.get(template.id) ?? []
-                  const summary = summarizeInstallations(templateInstallations)
+                  const summary = summarizeInstallations(template.installationSummary)
 
                   return (
                     <Row
@@ -401,9 +408,9 @@ export const WorkflowsPage = () => {
                       subtitle={
                         `v${template.version} · ${template.graph.steps.length} step`
                         + `${template.graph.steps.length === 1 ? '' : 's'}`
-                        + (templateInstallations.length > 0
-                          ? ` · ${templateInstallations.length} installation${
-                              templateInstallations.length === 1 ? '' : 's'
+                        + (template.installationSummary?.total
+                          ? ` · ${template.installationSummary.total} installation${
+                              template.installationSummary.total === 1 ? '' : 's'
                             }`
                           : '')
                         + ' · '
@@ -415,9 +422,11 @@ export const WorkflowsPage = () => {
                           <span className="min-w-0 flex-1 truncate">
                             {template.name}
                           </span>
-                          <Pill height="control" tone={summary.tone}>
-                            {summary.label}
-                          </Pill>
+                          {summary ? (
+                            <Pill height="control" tone={summary.tone}>
+                              {summary.label}
+                            </Pill>
+                          ) : null}
                           {template.source === 'demonstration' ? (
                             <Pill height="control" tone="accent">Learned</Pill>
                           ) : null}
@@ -452,7 +461,7 @@ export const WorkflowsPage = () => {
         title={selectedTemplate.name}
       >
         <WorkflowTemplateDetail
-          installations={installationsByTemplateId.get(selectedTemplate.id) ?? []}
+          installations={selectedTemplateInstallations}
           isInstalling={installWorkflowTemplate.isPending}
           onInstall={() =>
             installWorkflowTemplate.mutate(

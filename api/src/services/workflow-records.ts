@@ -119,9 +119,16 @@ const parseUuidArray = (value: unknown): string[] =>
     ? value.filter((entry): entry is string => typeof entry === 'string')
     : []
 
+export type WorkflowInstallationSummary = {
+  active: number
+  total: number
+}
+
 export const mapWorkflowTemplate = (
   template: WorkflowTemplateWithGraph,
+  installationSummary?: WorkflowInstallationSummary,
 ): WorkflowTemplateRecord => ({
+  ...(installationSummary ? { installationSummary } : {}),
   id: template.id,
   organizationId: parseOrganizationId(template.organizationId),
   name: template.name,

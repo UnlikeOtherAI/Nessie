@@ -75,7 +75,33 @@ export const listWorkflowTemplates = async (
   })
 
   const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: templates, total })
-  return { data: page.data.map(mapWorkflowTemplate), meta: page.meta }
+
+  // One grouped aggregate for exactly the templates on this page, rather than
+  // a second unbounded list the client would have to group itself. Bounded by
+  // the page size, and counted in the database so the numbers describe the
+  // template rather than whatever rows the browser happens to hold.
+  const templateIds = page.data.map((template) => template.id)
+  const installationCounts = templateIds.length === 0
+    ? []
+    : await prisma.workflowInstallation.groupBy({
+      by: ['workflowTemplateId', 'status'],
+      where: { organizationId, workflowTemplateId: { in: templateIds } },
+      _count: { _all: true },
+    })
+
+  const summaries = new Map<string, { active: number; total: number }>()
+  for (const row of installationCounts) {
+    const summary = summaries.get(row.workflowTemplateId) ?? { active: 0, total: 0 }
+    summary.total += row._count._all
+    if (row.status === 'active') summary.active += row._count._all
+    summaries.set(row.workflowTemplateId, summary)
+  }
+
+  return {
+    data: page.data.map((template) =>
+      mapWorkflowTemplate(template, summaries.get(template.id) ?? { active: 0, total: 0 })),
+    meta: page.meta,
+  }
 }
 
 export const createWorkflowTemplate = async (
@@ -440,12 +466,14 @@ export const listWorkflowInstallations = async (
     // W19: entitlement fragment from workflow-entitlement.ts; undefined means
     // "no additional filter" (owners/admins).
     entitlementWhere?: Prisma.WorkflowInstallationWhereInput
+    workflowTemplateId?: string
   } = {},
 ): Promise<WorkflowListPage<WorkflowInstallationRecord>> => {
   const limit = resolvePageLimit(input.limit)
   const where: Prisma.WorkflowInstallationWhereInput = {
     organizationId,
     ...(input.channelId ? { channelId: input.channelId } : {}),
+    ...(input.workflowTemplateId ? { workflowTemplateId: input.workflowTemplateId } : {}),
     ...(input.entitlementWhere ?? {}),
   }
   // Counted against the same filters (including the W19 entitlement
