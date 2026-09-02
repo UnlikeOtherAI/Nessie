@@ -227,6 +227,21 @@ export const registerAgentCardRoutes = (app: FastifyInstance, deps: RouteDeps): 
         })
         if (claimed.count !== 1) throw new ResumeRollback('run_not_waiting')
 
+        // A sign-in handoff records who signed this browser into what, in
+        // the same claim that resolves the card — so a person who signs in and
+        // presses Done is recorded even if the run they unblock then fails.
+        const handoff = readBrowserLoginHandoff(card.browserLogin)
+        if (handoff) {
+          await tx.agentBrowserLogin.create({
+            data: {
+              agentBrowserId: handoff.agentBrowserId,
+              organizationId,
+              serviceHint: handoff.service,
+              userId,
+            },
+          })
+        }
+
         const secretOutcomes: Record<string, unknown> = {}
         for (const placement of secretPlacements) {
           if (!placement.instance) continue
@@ -392,4 +407,21 @@ export const registerAgentCardRoutes = (app: FastifyInstance, deps: RouteDeps): 
       status: 'resolved' as const,
     })
   })
+}
+
+/**
+ * A sign-in handoff's marker, written by `browser_login_request` at post time.
+ *
+ * Read defensively rather than trusted: the column is JSON, and a malformed
+ * value must skip the login record rather than fail a press that a person has
+ * already completed in the browser.
+ */
+export const readBrowserLoginHandoff = (
+  value: unknown,
+): { agentBrowserId: string; service: string } | null => {
+  if (!value || typeof value !== 'object') return null
+  const row = value as { agentBrowserId?: unknown; service?: unknown }
+  if (typeof row.agentBrowserId !== 'string' || typeof row.service !== 'string') return null
+  if (row.agentBrowserId.length === 0 || row.service.length === 0) return null
+  return { agentBrowserId: row.agentBrowserId, service: row.service.slice(0, 200) }
 }

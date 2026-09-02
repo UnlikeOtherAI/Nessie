@@ -2,26 +2,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import {
   buildToolPolicy,
-  isToolEnabled,
   useDesignerToolCatalog,
 } from '../../../facades/designer/tool-catalog'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
-import { Card } from '../../shared/Card'
-import { Pill } from '../../primitives/Pill'
-import { SectionLabel } from '../../primitives/SectionLabel'
-import { QueryState } from '../../shared/QueryState'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useCanEditAgent } from './agent-edit-authority'
 import { ToolPicker } from './designer/ToolPicker'
 import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
 import { revealDesignerControl } from './designer/reveal-control'
 
 /**
  * The agent's Tools tab: the single place an agent's tool access is managed.
- * Owners get the enable/disable switches (the same ToolPicker the create-agent
- * designer uses) plus an inline Save; everyone else sees the resolved read-only
- * list — the same resolution the worker applies at run time. Protected
- * explicit-grant tools are never listed here; the server preserves them across
- * a save.
+ * Whoever may edit this agent gets the enable/disable switches (the same
+ * ToolPicker the create-agent designer uses) plus an inline Save; everyone else
+ * sees the resolved read-only list — the same resolution the worker applies at
+ * run time. Protected explicit-grant tools are never listed here; the server
+ * preserves them across a save.
+ *
+ * "May edit" is `canEditAgent`, not the organization owner role: the steward of
+ * a private or person-owned agent, and any entitled member of a team-owned one,
+ * may change its tools too.
  */
 
 type AgentAvailableToolsProps = {
@@ -128,53 +127,30 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
   )
 }
 
+/**
+ * The same list, without the switches. It is `ToolPicker` in read-only mode
+ * rather than a second renderer: the previous copy had drifted into its own
+ * grouping, its own cards and no search at all, so a non-owner saw a different
+ * catalogue from the one the owner was editing.
+ */
 const AgentToolsReadOnly = ({ agent }: { agent: AgentRecord }) => {
   const toolCatalog = useDesignerToolCatalog(false)
-  const { groups } = toolCatalog
-  const policy = agent.toolPolicy ?? {}
 
   return (
-    <QueryState
-      className="py-6"
-      emptyLabel="No tools configured."
-      errorLabel="Tools could not be loaded."
-      isEmpty={groups.length === 0}
-      loadingLabel="Loading tools…"
+    <ToolPicker
+      groups={toolCatalog.groups}
+      onToggle={() => undefined}
       query={toolCatalog}
-    >
-      {() => (
-        <div className="grid gap-6">
-          {groups.map((group) => (
-            <section className="grid gap-2" key={group.name}>
-              <SectionLabel>{group.name}</SectionLabel>
-              <div className="grid gap-2">
-                {group.tools.map((tool) => {
-                  const enabled = isToolEnabled(tool, policy)
-                  return (
-                    <Card className={enabled ? '' : 'opacity-60'} key={tool.key}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-sm text-[var(--thinking)]">{tool.label}</div>
-                        <Pill tone={enabled ? 'success' : 'muted'}>
-                          {enabled ? 'enabled' : 'off'}
-                        </Pill>
-                      </div>
-                      <div className="mt-1 text-xs text-[color:var(--tx3)]">{tool.description}</div>
-                    </Card>
-                  )
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-    </QueryState>
+      readOnly
+      toolState={agent.toolPolicy ?? {}}
+    />
   )
 }
 
 export const AgentAvailableTools = ({ agent, editable = true }: AgentAvailableToolsProps) => {
-  const isOwner = useIsOwner()
+  const canEdit = useCanEditAgent(agent)
 
-  return isOwner && editable ? (
+  return canEdit && editable ? (
     <AgentToolsEditor agent={agent} />
   ) : (
     <AgentToolsReadOnly agent={agent} />

@@ -1,8 +1,9 @@
 # The Agent Designer — the first global agent
 
-**Status:** plan; no implementation claimed. Revised 2026-09-02 after
-independent Kimix and Codex Sol code-aware reviews (see "Cross-model
-review"); every adopted finding was re-verified against code first.
+**Status:** phase 1 (Foundation) implemented 2026-09-02; phases 0 and 2–4
+remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
+code-aware reviews (see "Cross-model review"); every adopted finding was
+re-verified against code first.
 **Date:** 2026-09-02
 **Related:**
 [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
@@ -491,6 +492,9 @@ form-filling UX for architectural purity the product doesn't need yet.
 
 ## Edit authority — person-owned vs team-owned (decided 2026-09-02)
 
+**Status: implemented 2026-09-02** (phase 0). The prose below is the decision as
+made; the built shape and its test coverage are listed under Phases → 0.
+
 Verified: every agent-mutation route (`PUT /api/agents/:id`, both avatar
 routes, bindings) gates on `requireOwner` = the **organization owner role**
 (`api/src/lib/server-context.ts:267`). A non-owner member cannot edit any
@@ -650,25 +654,76 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
 
 ## Phases
 
-0. **Edit authority (independent, ships first).** `canEditAgent` +
-   `assertAgentFieldAuthority` in `@nessie/workspace-admin`; PUT + avatar
-   routes migrate off `requireOwner` with the actor threaded into the
-   service; explicit service-level `systemManaged` refusal in
-   `updateAgentRecord` + avatar service; release-to-team on the transfer
-   path; admin ownership state + control; "Unowned" bucket renamed;
-   people-and-their-agents amended. DB-backed tests: private-owner edit
-   allowed, foreign-private denied even for org owners, person-owned denies
-   other members, team-owned allows any entitled member, transfer/claim/
-   todos refused for mere editors, org-owner override, system-managed
-   refusal, protected-key refusal unchanged for every editor.
-1. **Foundation.** `Agent.systemSlug` (+ CHECK incl. org-not-null),
-   `gagent:` channel CHECK arm + home-membership trigger arm, system-channel
-   binding + lifecycle refusals, blueprint registry + `ensureGlobalAgent`,
-   the Designer blueprint, per-user DM provisioning + `system_agent` channel
-   type, orchestrator fast-path + `effectiveUserId` stamp, run-start surface
-   assertion, `createAgentTrigger` systemSlug refusal, and the enumerated
-   admin work (sidebar branch, DM predicates, participants, Global-tab
-   list branch, identity directory).
+0. **Edit authority — IMPLEMENTED 2026-09-02.** `canEditAgent` /
+   `resolveAgentEditAuthority` / `assertAgentEditAuthority` /
+   `assertAgentFieldAuthority` live in
+   `packages/workspace-admin/src/agent-edit-authority.ts` (re-exported by
+   `api/src/services/agent-management.ts`). `PUT /api/agents/:agentId`,
+   `PATCH …/avatar` and `POST …/avatar/generate` no longer call `requireOwner`;
+   the acting person is threaded into `updateAgentRecord` and
+   `updateAgentAvatar`, so the field-sensitive refusals are expressed in the
+   services rather than only at the routes, and the refusal is also asked at the
+   PUT route *before* the billed Ledger model-catalogue call. `systemManaged` is
+   refused explicitly in both services (`SYSTEM_AGENT_IMMUTABLE`) instead of
+   relying on route invisibility. Release-to-team rides the existing
+   `ownerUserId` transfer path and keeps emitting `agent.owner_changed`; private
+   agents keep `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`. Refusals carry distinct
+   codes (`AGENT_EDIT_PRIVATE_OWNER_ONLY`, `AGENT_EDIT_OWNER_ONLY`,
+   `AGENT_EDIT_NOT_ENTITLED`, `AGENT_EDIT_MEMBERSHIP_INACTIVE`,
+   `AGENT_OWNERSHIP_CHANGE_FORBIDDEN`, `AGENT_TODOS_OWNER_REQUIRED`,
+   `SYSTEM_AGENT_IMMUTABLE`) as 403s. The admin mirrors the rule in one place
+   (`admin/src/components/features/agents/agent-edit-authority.ts`): the detail
+   page, its tabs, the Tools editor, the avatar controls, the detail drawer and
+   the channel agent panel all gate on `useCanEditAgent`; the header carries an
+   `AgentOwnershipState` line ("Owned by <person>" / "Team-owned") with a
+   confirmed Release-to-team / Take-ownership control for whoever may use it;
+   and the people-tree bucket is renamed `teamOwned` / "Team-owned agents".
+   Tests: `api/test/agent-edit-authority.test.ts` (DB-backed — private-owner
+   edit allowed, foreign private denied to org owners, person-owned denies
+   another member, team-owned allows any entitled member and refuses a
+   deactivated or unreachable one, transfer/claim/`todosEnabled` refused for a
+   mere editor, org-owner override, system-managed refusal in both services,
+   protected-key refusal unchanged for every editor) plus route cases in
+   `api/test/agent-policy-routes.test.ts` and the mirrored client predicate in
+   `admin/test/agent-edit-authority.test.ts`. `AGENTS.md` and
+   `docs/plans/2026-08-29-people-and-their-agents.md` carry the rule.
+1. **Foundation — implemented 2026-09-02.** Migrations
+   `20260902190000_global_agent_channel_type` (the `system_agent` enum value,
+   alone in its own file because PostgreSQL forbids using a new enum value in
+   the transaction that adds it) and `20260902190100_global_agent_foundation`
+   (`Agent.systemSlug` + `@@unique([organizationId, systemSlug])` + the
+   org-not-null CHECK; the `gagent:` arm on
+   `channels_personal_assistant_surface_chk`, restating all four pre-existing
+   arms; the `gagent:` arm on `assert_private_agent_home_members`, owner at
+   segment 4). Blueprint registry + `ensureGlobalAgent` /
+   `ensureGlobalAgentChannel` / `ensureGlobalAgentsForUser` in
+   `@nessie/workspace-admin` (`global-agent-blueprints.ts`,
+   `global-agent-bootstrap.ts`), re-exported by
+   `api/src/services/global-agents.ts`; the Agent Designer blueprint with a
+   short persona and a deny-mode `{delegate,spawn_subtask}` narrowing;
+   per-user home DM in a hidden `Global Agent System` team with the binding
+   written directly; system-channel binding refusal widened to any non-null
+   `systemChannelType` (chokepoint, both routes, the PA tool) and
+   `canManageChannel` refusing system channels; `createAgentTrigger` refusing a
+   `systemSlug` target; `effectiveUserId = poster` and the channel-only
+   realtime scope extended to `system_agent` DMs via
+   `isDelegatedSystemDmChannelType`; the orchestrator fast-path generalised to
+   `resolveSystemDmDecisions` / `isSingleAgentSystemDm`;
+   `assertGlobalAgentRunPlacement` at run start with its own classified
+   failure reason; `listAgentsForUser`'s system arm no longer channel-gated;
+   admin `isGlobalAgentChannel`, the `useSidebarDms` branch, the
+   `AgentIdentityProvider` reading `scope=all`, and the ChannelsPage
+   responding-agent predicate. Bootstrap runs beside the PA's at login
+   (`auth-login` ×2, `auth-core`) and user provisioning (`users.ts`), wrapped
+   best-effort so a blueprint fault can never fail a login.
+
+   **Deferred out of phase 1, deliberately:** the Designer has no
+   identity-delegated tools and no generated capability catalogue (D3/D5,
+   phase 2) — its prompt says plainly that it advises rather than creates;
+   `identityToolIds` is declared and consumed by nothing; no avatar *image* is
+   generated at bootstrap (a billed call), only a stable
+   `avatarBackgroundColor`, with image generation left to the PA's own lazy,
+   owner-triggered pattern; the read-only global detail view stays phase 4.
 2. **The Designer at work.** D3 gate arm + surface/interactive plumbing +
    the delegation-predicate re-key (each listed site); new tools
    `agent_read`, `agent_update`, `agent_tool_catalog`,
@@ -787,6 +842,15 @@ model resolution is decided in D1/D9 — blueprint pin, else org default,
   the parameter map above, no client sends it, `UpdateAgentBodySchema` never
   accepted it, and the run path passes a hardcoded `null` instead of reading
   the column.
+- The `pa:%` arm of `channels_personal_assistant_surface_chk` carries no
+  `system_channel_type` condition (it predates the type-keyed arms), so a row
+  claiming `system_channel_type = 'system_agent'` with a `pa:` key is still
+  admitted by the constraint. Noticed while proving the phase-1 arms against a
+  clean database; the arm was preserved verbatim as specified, and nothing can
+  reach that shape today (bootstrap only ever writes `gagent:` keys and
+  `assertGlobalAgentRunPlacement` requires the `gagent:` prefix). Tightening the
+  legacy arm to `system_channel_type = 'personal_assistant'` wants its own
+  migration plus a survey of existing rows.
 - `updateMessage` (`api/src/services/messages.ts`) does not refuse editing a
   message stamped `agentCardResponse`, though the cards spec says a card
   response is immutable — a resolved card's decision text can be edited into

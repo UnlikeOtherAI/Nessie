@@ -267,17 +267,17 @@ export const SettingsMembersPage = () => {
               )
             )}
           </QueryState>
-          {localTree.tree.pausedPrivateAgentCount > 0 || localTree.tree.unowned.length > 0 ? (
+          {localTree.tree.pausedPrivateAgentCount > 0 || localTree.tree.teamOwned.length > 0 ? (
             <div
               className="border-t border-[color:var(--sep)] pt-4"
               data-testid="local-unassigned-agents"
             >
               <PausedPrivateAgentsBucket count={localTree.tree.pausedPrivateAgentCount} />
-              {localTree.tree.unowned.length > 0 ? (
+              {localTree.tree.teamOwned.length > 0 ? (
                 <UnassignedAgents
-                  agents={localTree.tree.unowned}
+                  agents={localTree.tree.teamOwned}
                   emptyLabel="None"
-                  title="Unowned agents"
+                  title="Team-owned agents"
                   token={token}
                 />
               ) : null}

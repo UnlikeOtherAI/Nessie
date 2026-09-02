@@ -6,11 +6,15 @@ import type {
 import {
   acquireAgentToolPolicyLock,
   acquireAgentTodoAgentLock,
+  AGENT_EDIT_AUTHORITY_ERROR_CODES,
   AGENT_MANAGEMENT_ERROR_CODES,
   AGENT_OWNER_MEMBERSHIP_SELECT,
+  AgentEditAuthorityError,
   AgentManagementError,
   agentRecordInclude,
+  assertAgentFieldAuthority,
   assertAgentOwnerIsActiveMember,
+  canEditAgent,
   createAgentRecord,
   isSystemManagedAgent,
   listAgentsForUser,
@@ -18,31 +22,51 @@ import {
   mergeGenericAgentToolPolicy,
   randomAgentAvatarBackgroundColor,
   readAgentRunLimits,
+  resolveAgentEditAuthority,
   runLimitsWriteValue,
   stripProtectedAgentToolPolicy,
   validateAgentCreateInput,
+  type AgentEditActor,
 } from '@nessie/workspace-admin'
 
 import type { AgentRecord } from '../contracts.js'
 
 // Agent creation and the entitlement-scoped agent list are shared with the
 // worker (the assistant's `agent_create` and `agent_list` tools); the route
-// keeps importing them from here.
+// keeps importing them from here. Edit authority is shared for the same reason:
+// the routes and the Designer's future `agent_update` must not be able to
+// disagree about who may rewrite an agent.
 export {
+  AGENT_EDIT_AUTHORITY_ERROR_CODES,
   AGENT_MANAGEMENT_ERROR_CODES,
+  AgentEditAuthorityError,
   AgentManagementError,
+  assertAgentFieldAuthority,
+  canEditAgent,
   createAgentRecord,
   listAgentsForUser,
+  resolveAgentEditAuthority,
   validateAgentCreateInput,
 }
+export type { AgentEditActor }
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
 
+/**
+ * Rewrite an agent, under the acting person's live authority.
+ *
+ * The actor is threaded in rather than checked only at the route because the
+ * body carries fields with *different* authorities — `ownerUserId` and
+ * `todosEnabled` are narrower than the rest — and an actor-less service cannot
+ * express that. It is also what lets the route and the Agent Designer's
+ * `agent_update` share one rule instead of two that drift.
+ */
 export const updateAgentRecord = async (
   prisma: PrismaClient,
   agentId: string,
+  actor: AgentEditActor,
   input: {
     agentKind?: 'personal_assistant' | 'shared'
     effort?: AgentEffort
@@ -77,6 +101,25 @@ export const updateAgentRecord = async (
       },
     })
     if (!existing) return null
+
+    // A blueprint-managed agent is refused HERE, not merely hidden by the
+    // routes. Until now the only protection was route invisibility, while this
+    // service happily rewrote a system row's prompt, policy and model if
+    // anything ever reached it — and the Agent Designer plan deliberately widens
+    // the read paths that kept it unreachable.
+    if (existing.systemManaged) {
+      throw new AgentEditAuthorityError(
+        AGENT_EDIT_AUTHORITY_ERROR_CODES.SYSTEM_IMMUTABLE,
+        'This agent is managed by Nessie itself and cannot be edited.',
+      )
+    }
+
+    // Edit authority plus the two narrower field gates, over the row actually
+    // being written and the live membership row — never the session claim.
+    await assertAgentFieldAuthority(tx, actor, existing, {
+      ...(input.ownerUserId === undefined ? {} : { ownerUserId: input.ownerUserId }),
+      ...(input.todosEnabled === undefined ? {} : { todosEnabled: input.todosEnabled }),
+    })
 
     // A transfer is any change of steward to a different person (or to the
     // unowned pool) on an agent currently running on a personal subscription.

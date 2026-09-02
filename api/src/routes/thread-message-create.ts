@@ -33,7 +33,7 @@ export const registerCreateThreadMessageRoute = (
     realtimeHub,
     requireActorContext,
     buildChannelRealtimeScopes,
-    isPersonalAssistantChannelType,
+    isDelegatedSystemDmChannelType,
     messageMemoryCaptureConfig,
   } = deps
 
@@ -348,7 +348,12 @@ export const registerCreateThreadMessageRoute = (
     }
 
     if (result.channelAgents.length > 0) {
-      const orchestrationActorContext = isPersonalAssistantChannelType(
+      // A single-member system DM — the Personal Assistant's, or a global
+      // agent's home — is the one place an agent may act as the person it is
+      // talking to. `effectiveUserId = poster` is safe there precisely because
+      // the DM has exactly one member, which the database now enforces for the
+      // `gagent:` shape as well as reducing it at bootstrap.
+      const orchestrationActorContext = isDelegatedSystemDmChannelType(
         thread.channel.systemChannelType,
       )
         ? withActionContext(actorContext, {

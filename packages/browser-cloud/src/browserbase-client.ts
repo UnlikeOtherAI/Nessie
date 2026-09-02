@@ -66,10 +66,12 @@ export type BrowserbaseCredentials = {
 export type CreateSessionInput = {
   /** Seconds. Mirrored from the Nessie session TTL. */
   timeoutSeconds: number
-  /** Attach a persistent context (phase 2). Absent = ephemeral. */
+  /** Attach a persistent context. Absent = ephemeral. */
   contextId?: string
   persistContext?: boolean
 }
+
+export type BrowserbaseContext = { id: string }
 
 export type BrowserbaseSession = {
   id: string
@@ -92,6 +94,9 @@ export type BrowserbaseClient = {
   createSession: (input: CreateSessionInput) => Promise<BrowserbaseSession>
   endSession: (sessionId: string) => Promise<void>
   liveView: (sessionId: string) => Promise<BrowserbaseLiveView>
+  /** Persistent browser state — cookies, localStorage — encrypted at rest. */
+  createContext: () => Promise<BrowserbaseContext>
+  deleteContext: (contextId: string) => Promise<void>
 }
 
 type FetchLike = typeof safeFetch
@@ -218,6 +223,30 @@ export const createBrowserbaseClient = (
           body: { projectId: credentials.projectId, status: 'REQUEST_RELEASE' },
         },
         'releasing a browser session',
+      )
+    },
+
+    createContext: async () => {
+      const response = await request(
+        '/v1/contexts',
+        { method: 'POST', body: { projectId: credentials.projectId } },
+        'creating a browser profile',
+      )
+      const body = (await response.json()) as { id?: unknown }
+      if (typeof body.id !== 'string') {
+        throw new CloudBrowserError(
+          CLOUD_BROWSER_ERROR_CODES.UNREACHABLE,
+          'Browserbase returned a profile without an id.',
+        )
+      }
+      return { id: body.id }
+    },
+
+    deleteContext: async (contextId) => {
+      await request(
+        `/v1/contexts/${encodeURIComponent(contextId)}`,
+        { method: 'DELETE' },
+        'deleting a browser profile',
       )
     },
 

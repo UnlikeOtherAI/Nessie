@@ -13,6 +13,7 @@ export const CALL_START_TOOL_ID = 'call_start'
  */
 export const COMMS_CONNECT_CARD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: COMMS_CONNECT_CARD_TOOL_ID,
+  category: 'email-calendar',
   summary: 'Show a card for connecting communication accounts.',
   label: 'Communications Connect Card',
   personalAssistantOnly: true,
@@ -44,6 +45,7 @@ export const COMMS_CONNECT_CARD_TOOL_DEFINITION: BuiltinToolDefinition = {
  */
 export const MEETING_LINK_CREATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: MEETING_LINK_CREATE_TOOL_ID,
+  category: 'calls',
   summary: "Create a meeting link using the user's connected provider.",
   label: 'Create Meeting Link',
   personalAssistantOnly: true,
@@ -72,6 +74,7 @@ export const MEETING_LINK_CREATE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CALL_START_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: CALL_START_TOOL_ID,
+  category: 'calls',
   summary: "Create a meeting link and ring a channel's active members.",
   label: 'Start Channel Call',
   personalAssistantOnly: true,

@@ -16,6 +16,7 @@ export const CARD_POST_TOOL_ID = 'card_post'
  */
 export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: CARD_POST_TOOL_ID,
+  category: 'conversation',
   summary: 'Post an interactive card with buttons into this conversation.',
   label: 'Post card',
   description:

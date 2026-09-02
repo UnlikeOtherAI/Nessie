@@ -20,6 +20,7 @@ const definition = (
   required: string[] = ['value'],
 ): BuiltinToolDefinition => ({
   id,
+  category: 'workspace',
   description: `Full description for ${id}`,
   label: id,
   parameters: {

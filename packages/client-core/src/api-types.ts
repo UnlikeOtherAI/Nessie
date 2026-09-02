@@ -393,6 +393,13 @@ export type PersonalAssistantBootstrapResponse = {
 
 export type ToolDescriptor = {
   builtin?: boolean
+  /**
+   * Where the tool belongs in every surface that lists tools, declared by the
+   * tool itself (`ToolCategoryId` in `@nessie/schemas`). Optional on the wire
+   * only because an organization-local registry entry is not a builtin and has
+   * none; every builtin carries one.
+   */
+  category?: string
   description: string
   enabled?: boolean
   handlerKind?: string
@@ -460,4 +467,29 @@ export type CloudBrowserSessionDetail = CloudBrowserSessionSummary & {
   /** Minted per read, never persisted: whoever holds it can drive the browser. */
   liveViewUrl: string | null
   tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }>
+}
+
+export type AgentBrowserLoginRecord = {
+  id: string
+  serviceHint: string
+  createdAt: string
+  signedInByUserId: string
+  signedInByName: string | null
+}
+
+export type AgentBrowserRecord = {
+  id: string
+  connectionScope: CloudBrowserScope
+  createdAt: string
+  lastUsedAt: string | null
+  inUse: boolean
+  logins: AgentBrowserLoginRecord[]
+}
+
+export type MyBrowserLoginRecord = {
+  id: string
+  agentId: string
+  agentName: string
+  serviceHint: string
+  createdAt: string
 }

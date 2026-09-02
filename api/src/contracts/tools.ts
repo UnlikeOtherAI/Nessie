@@ -1,4 +1,10 @@
-import { AgentIdSchema, OrganizationIdSchema, RunIdSchema, ThreadIdSchema } from '@nessie/schemas'
+import {
+  AgentIdSchema,
+  OrganizationIdSchema,
+  RunIdSchema,
+  ThreadIdSchema,
+  ToolCategoryIdSchema,
+} from '@nessie/schemas'
 import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
@@ -15,6 +21,12 @@ export const ToolDescriptorSchema = z.object({
   // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
   // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
   requiresExplicitGrant: z.boolean().optional(),
+  // Where the tool belongs in every surface that lists tools, declared by the
+  // tool itself. Optional on the wire only because an organization-local
+  // registry entry (a custom or executor-projected tool) is not a
+  // `BuiltinToolDefinition` and has none; every builtin carries one, enforced
+  // by the required field on that type.
+  category: ToolCategoryIdSchema.optional(),
 })
 export type ToolDescriptor = z.infer<typeof ToolDescriptorSchema>
 

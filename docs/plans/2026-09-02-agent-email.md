@@ -580,6 +580,53 @@ messages (replaced by the stored mailbox + surface), the second interposed a
 vendor-operated "Nessie Mail relay" between Nessie and SES (replaced by
 direct, env-configured SES integration).
 
+## 6a. Post-build review (Kimix, 2026-09-02)
+
+Three scoped Kimix passes over the built code. What was accepted and fixed:
+
+- **Duplicate sends were possible.** The `queued → sending` claim stops one row
+  being dispatched twice; nothing stopped a replayed run inserting a *second*
+  row. `EmailMessage.sendKey` (`{runId}:{toolCallId}`) makes the write itself
+  idempotent, with the unique index deciding a race.
+- **Suppression and the hourly cap moved inside the queueing transaction.**
+  They were exported helpers the caller had to remember, and the cap counted
+  outside the write, so two concurrent runs could both take the last slot.
+- **A crashed send now resolves.** `sweepStuckSends` ages a `sending` claim into
+  `delivery_unknown` — never back to `queued`, which would re-dispatch a message
+  SES may already have delivered.
+- **The email attachment ACL now asks agent visibility**, the same question the
+  mailbox reads ask, and honours `retiredAt`. It had used the backing channel's
+  membership predicate, so the two could disagree and leave blobs reachable
+  after the mail around them went dark.
+- **The sender-written `Date:` header is clamped** against the SES receipt time;
+  unclamped it set mailbox sort order and biased threading.
+- **Smaller:** the SNS certificate cache is bounded, the future-skew window is
+  five minutes rather than an hour, `/api/agent-email/config` no longer hands
+  operator configuration to members, and the conversation context loader binds
+  the mailbox to the run's own agent.
+
+Rejected, with reasons:
+
+- *"The regex sanitizer fails open on obfuscated XSS."* Probed with the
+  reviewer's own cases (`<scr<script>ipt>`, comment-terminated attributes,
+  `svg/onload`, entity-encoded `javascript:`): all clean, because the allowlist
+  pass runs **after** stripping, so anything reconstituted is then dropped as an
+  unknown tag.
+- *"Unbalanced closing tags let mail break out of its container."* Stray closers
+  are parsed as an `innerHTML` fragment in the context of their own element; the
+  HTML parser drops them rather than closing an ancestor.
+- *"Dispatch does not verify the approval."* The gate is at tool authorization,
+  before the handler runs — the same shape every gated tool has. Re-checking at
+  dispatch would be a second gate, and content is already bound by `argsHash`.
+- *"Threading trusts `In-Reply-To`."* By design and tested: candidates are
+  scoped to the mailbox, and an unrecognised reference starts a new
+  conversation. Every mail client threads this way.
+
+One finding is **real but out of scope**: agent-to-agent mailbox delivery and
+workflow step messages do not propagate a disclosure basis (`agent-message.ts`
+names this in its own docstring). That predates this work and belongs to the
+disclosure build.
+
 ## 6. Review adjudication (2026-09-02)
 
 Two independent reviews (Codex Sol, Kimix) ran against the previous

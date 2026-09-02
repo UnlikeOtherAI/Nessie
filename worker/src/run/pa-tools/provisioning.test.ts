@@ -365,7 +365,7 @@ test('agent_bind_channel refuses the Personal Assistant DM even for an owner', a
     }),
   )
 
-  assert.match(message, /cannot be bound to a Personal Assistant DM/)
+  assert.match(message, /cannot be bound to a system-managed conversation/)
   assert.equal(upserts, 0)
 })
 
@@ -448,6 +448,8 @@ test('agent_trigger_create stamps launchOrigin with the creator and their UOA wo
           id: AGENT_ID,
           agentKind: 'shared',
           organizationId: ORG_ID,
+          // `createAgentTrigger` selects this to refuse a global-agent target.
+          systemSlug: null,
         }),
       },
       team: { findFirst: async () => ({ id: TEAM_ID }) },
@@ -510,6 +512,7 @@ test('agent_trigger_create keeps a caller-supplied launchOrigin out of the store
         id: AGENT_ID,
         agentKind: 'shared',
         organizationId: ORG_ID,
+        systemSlug: null,
       }),
     },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },

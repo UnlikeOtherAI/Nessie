@@ -186,6 +186,39 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **A global agent is a blueprint in code, one row per organisation, and a
+  single-agent DM.** App-provided agents (the Agent Designer is the first) live
+  in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
+  each as one `systemManaged` row per organisation, keyed by the new
+  **`Agent.systemSlug`** — unique on `(organizationId, systemSlug)` with a CHECK
+  requiring `systemManaged` AND a non-null `organizationId`, so a cross-org
+  vendor row is a database impossibility rather than a convention, and so a
+  display name is never again the discriminator (the Librarian's fragility).
+  The ensure function is `ensurePersonalAssistantAgent` verbatim in shape —
+  advisory lock, find-by-discriminator, create-or-update-in-place, tool policy
+  merged under `acquireAgentToolPolicyLock` *after re-reading the row*, so a
+  targeted grant committed in between survives — and the blueprint's own policy
+  passes `assertGenericAgentToolPolicyInput` like user input, because vendor
+  config is not authority. Its home is a per-user private DM keyed
+  `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
+  its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
+  and held to exactly its encoded member by the deferred home-membership
+  trigger, whose `gagent:` arm reads the owner at **segment 4** where an
+  `agent:` key carries it at segment 3. Sole membership is not decoration: it is
+  what makes `effectiveUserId = poster` and the orchestrator's single-candidate
+  fast path safe, so it must hold at rest. Three refusals keep that true — no
+  agent binds into ANY system channel (`bindAgentToChannel`, both routes, the PA
+  tool; `canManageChannel` likewise refuses to rename, archive or re-member
+  one), `createAgentTrigger` refuses a `systemSlug` target because a scheduled
+  run re-arms its creator's identity, and the worker's
+  `assertGlobalAgentRunPlacement` admits only the agent's own home DM before any
+  inference (trigger threads deliberately excluded, unlike the private-agent
+  rule). Reachability is the point of the tier: `listAgentsForUser`'s
+  `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
+  longer channel-gated, because an app-provided agent nobody can find is the
+  unreachable-capability defect Rule zero names. Details: `CLAUDE.md` → "Global
+  agents"; spec:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md`.
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and
@@ -272,6 +305,39 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
   organisation a principal id for a stranger. Spec:
   `docs/plans/2026-08-29-people-and-their-agents.md`.
+- **Ownership decides who may edit, and "edit" is field-sensitive.** Every
+  agent-mutation route gated on the ORGANISATION owner role, so no ordinary
+  member could edit any agent — not even the private one they own. It never
+  surfaced because the people editing were org owners. `canEditAgent` /
+  `assertAgentFieldAuthority` (`@nessie/workspace-admin`
+  `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
+  both avatar routes, and are the one rule chat tools consume too, so routes and
+  the Agent Designer cannot disagree. A **private** agent is its live owner's
+  alone (an org owner cannot see it, so cannot edit it); a **person-owned**
+  workspace agent takes its live owner plus org owners (without that override a
+  deactivated steward leaves an agent with no editor); a **team-owned** agent —
+  `ownerUserId` null — takes anyone entitled to it, plus org owners; a
+  `systemManaged` agent takes nobody, refused **in the service**
+  (`SYSTEM_AGENT_IMMUTABLE` in `updateAgentRecord` and the avatar service) rather
+  than only hidden by route invisibility. Owner-ness is re-derived from the live
+  `OrganizationMember` row on every call, never the session claim or a run's
+  enqueue-time snapshot. A null owner is therefore a **deliberate state**, not
+  missing history: "team-owned" means any member who can see the agent may
+  rewrite its prompt, model, tools and limits, while *placement*
+  (`agent_bind_channel`) keeps its stricter four gates — editing improves the
+  shared agent in place, binding changes who is exposed to it. One predicate over
+  the whole PUT body would be wrong, because that body also carries `ownerUserId`
+  and `todosEnabled`: ownership transitions belong to the current owner or an org
+  owner (so *claiming* a team-owned agent is org-owner-only by construction) and
+  `todosEnabled` keeps its own org-owner gate — both firing only on an actual
+  change, so a form echoing the stored value back stays an ordinary edit.
+  Unchanged by all of it: protected/explicit-grant policy keys
+  (`assertGenericAgentToolPolicyInput` is the law for every editor), immutable
+  `visibility`, `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the
+  `agent.owner_changed` audit on both transfer and release. Details:
+  `docs/plans/2026-08-29-people-and-their-agents.md` → "Ownership carries edit
+  authority"; decision:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
 - **An interactive card is one system, and its press is claimed once.** Every
   agent that can talk can post a card (`card_post`, default-on) whose buttons a
   person presses; `AgentCard` is the authority and the message carries only its
@@ -342,6 +408,30 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   gate must ask exactly what dispatch asks: checking a strict subset let
   triggers pass, create runs, and die at the first inference invisibly. Details:
   `CLAUDE.md` → "A schedule that stops says so".
+- **A tool declares where it belongs; no surface guesses.**
+  `BuiltinToolDefinition.category` is **required** and its vocabulary is
+  `TOOL_CATEGORIES` in `@nessie/schemas` — one ordered list of
+  `{id, label, description}` that every surface listing tools renders in order.
+  The admin used to infer a category from the tool's id prefix (`file_`,
+  `web_`, `kb_`…) and sweep everything unmatched into one "Agent & workspace"
+  bucket; that bucket had grown to hold **75 of 116** builtins, because a new
+  tool joined it by default and the only way out was to invent another prefix
+  rule. Making the field required means adding a tool without choosing a home
+  does not compile, and `packages/runtime/test/builtin-tool-categories.test.ts`
+  additionally refuses any category holding more than a quarter of the
+  catalogue — crossing that means the category has stopped describing anything
+  and needs splitting, not that the ceiling needs raising. A category is a
+  place a person would go looking ("where do I turn off email?"), never an
+  implementation detail. The category is resolved onto `ToolDescriptor` from
+  the definitions at the API boundary, beside `requiresExplicitGrant` and for
+  the same reason — it is a property of the tool's code, so re-categorising one
+  must never need a migration. The picker renders **every section closed**: 116
+  tools across sixteen categories is an index, not a page of switches, and
+  searching expands only the sections that still match without disturbing the
+  ones a person opened. One component draws that list in both modes
+  (`ToolPicker`, `readOnly` for a viewer who cannot change a tool); the
+  separate read-only renderer that used to exist had drifted to its own
+  grouping, its own cards and no search at all.
 - **An agent's mailbox is its own store, and everything about it is
   structural.** Hosted agent email (`support@nessie.works`, Amazon SES
   integrated directly, off unless four `NESSIE_EMAIL_*` variables are set) keeps
@@ -364,7 +454,16 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   stay implied by the mailbox's own thread or every reply deadlocks (four tests
   pin this). A send is `queued` → conditional `sending` → `sent`, with an
   ambiguous outcome parked at `delivery_unknown` and **never retried** — a retry
-  is a duplicate in someone's inbox. Deleting a mailbox retires its address
+  is a duplicate in someone's inbox, and a sweep resolves a claim whose worker
+  died so it cannot sit in `sending` forever. That claim stops one ROW being
+  sent twice; what stops two ROWS existing is `EmailMessage.sendKey`, the tool
+  call's own `{runId}:{toolCallId}`, because a replayed run re-issues the same
+  call. Suppression and the hourly cap are enforced **inside** the queueing
+  write rather than beside it — a check a caller must remember is a check a
+  caller can forget, and counting outside the transaction let two concurrent
+  runs both pass the last slot. An email attachment asks the same
+  agent-visibility question the mailbox reads ask, so the byte surface and the
+  conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
