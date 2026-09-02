@@ -632,6 +632,25 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
   parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
   `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
+- **One composer, and at rest it is one line.** Every message composer in the
+  admin is `components/features/channels/ChannelComposer.tsx` (channel feed,
+  thread reply panel, both info drawers, the Threads inbox card). At rest it is
+  a single line: placeholder text vertically centred beside Send, and none of
+  the `@` / `#` / research / emoji / attachment glyphs. It opens while focus is
+  anywhere inside it, or while anything is staged (text, an attachment, an
+  upload error), so nothing a person has written is folded away. Send is pinned
+  to the composer's bottom line rather than living in the toolbar, and the
+  toolbar unfolds *below* the editor — so the bottom line never moves and the
+  whole gesture reads as the field expanding upward into the conversation. The
+  two heights, the toolbar's collapse, and the transitions between them live in
+  `admin/src/styles.css` off `.admin-compose[data-expanded]` and a single
+  `--compose-line` variable (the coarse-pointer block raises it once, and the
+  collapsed editor follows because both are measured from it); the editor's own
+  sizing moved out of `MentionInput`'s Tailwind classes for the same reason —
+  only a stylesheet can transition between the two states. Focus is tracked on
+  the `<form>`, not on the editor, because clicking a toolbar button blurs the
+  editor and a naive collapse would pull the button out from under the click.
+
 - **One dialog shell.** Every centred modal is
   `components/shared/Dialog.tsx`, which *always* composes `useModalA11y` (focus
   in, Tab trap, Escape, focus restore) and `useOverlayDismiss` (the drag-safe
