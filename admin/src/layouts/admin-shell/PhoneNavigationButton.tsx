@@ -1,9 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
-import {
-  useColumnBackContext,
-  useLocalBackSnapshot,
-} from './local-back/LocalBackContext';
+import { useLocalBackSnapshot } from './local-back/LocalBackContext';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
@@ -22,18 +19,9 @@ export const PhoneNavigationButton = () => {
   // Subscribing to the registry snapshot re-renders this doorway when an
   // owner registers or leaves; the resolver reads the same snapshot.
   useLocalBackSnapshot();
-  const column = useColumnBackContext();
   const action = navigation?.resolveBackAction(location.pathname) ?? null;
 
   if (!phoneLayout || !nav) {
-    return null;
-  }
-
-  // Column browsers retain every column so their track can slide, but only
-  // the column at the viewport origin owns interactive chrome. Without this
-  // guard the off-screen list's route/menu button would re-render as the
-  // active detail's local Back, leaving two Back controls in the DOM.
-  if (column.index !== null && !column.phoneVisible) {
     return null;
   }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { JSDOM } from 'jsdom'
+import type { ReactNode } from 'react'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost/channels',
@@ -122,11 +123,15 @@ const { NestedStage } = await import('../../src/navigation/NestedStage')
 const { PhoneNavigationProvider } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationProvider'
 )
-const { LocalBackProvider } = await import(
+const { LocalBackProvider, useLocalBackSnapshot } = await import(
   '../../src/layouts/admin-shell/local-back/LocalBackContext'
 )
+type BackOwner = { id: string; label: string; onBack: () => void } | null
 
 export type PhoneNavigationViewportHarness = {
+  // The registry's current Back owner — the deepest registered stage or
+  // overlay — or null when the route's own parent owns the doorway.
+  backOwner: () => BackOwner
   container: HTMLElement
   // Opens or closes the detail screen's nested stage (a state-driven screen
   // the page pushes over itself), the way a page toggles its own state.
@@ -139,6 +144,8 @@ export type PhoneNavigationViewportHarness = {
   locationLabel: () => string
   mounts: () => Record<string, number>
   paintFrame: () => Promise<void>
+  // Runs `mutate` inside act(), for a test driving the page's own state.
+  render: (mutate: () => void) => Promise<void>
   scrollTops: () => Record<string, number>
   touch: (
     type: string,
@@ -150,12 +157,22 @@ export type PhoneNavigationViewportHarness = {
   unmount: () => Promise<void>
 }
 
+export type PhoneNavigationViewportOptions = {
+  // Replaces the detail route's default nested-stage fixture. An adopter that
+  // mounts its own stages (the column browser) renders itself here and drives
+  // them with `render`, while `setStage` keeps serving the default fixture.
+  renderDetail?: () => ReactNode
+  // Seeds the registry's parent chain beneath a cold start's landing route
+  // with a labelled placeholder per seeded pathname (docs/navigation.md §8).
+  seed?: boolean
+}
+
 // One component type renders every route, so mount counts prove which exact
 // instances survive navigation. The controlled frame queue makes the forward
 // screen's prepare/paint/run lifecycle deterministic without a paint engine.
 export const mountPhoneNavigationViewport = async (
   initialPathname: string,
-  options: { seed?: boolean } = {},
+  options: PhoneNavigationViewportOptions = {},
 ): Promise<PhoneNavigationViewportHarness> => {
   pendingFrames.clear()
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
@@ -210,6 +227,7 @@ export const mountPhoneNavigationViewport = async (
       }
     }, [])
     const active = React.useSyncExternalStore(stageStore.subscribe, stageStore.getSnapshot)
+    if (options.renderDetail) return options.renderDetail()
     return h(
       React.Fragment,
       null,
@@ -229,6 +247,14 @@ export const mountPhoneNavigationViewport = async (
         h('div', { 'data-stage': 'inspector' }, 'stage:inspector'),
       ),
     )
+  }
+
+  // Reads the one Back registry the shell doorway reads, so a test can assert
+  // which owner holds Back and invoke exactly the action a tap would.
+  let backOwner: BackOwner = null
+  const BackProbe = () => {
+    backOwner = useLocalBackSnapshot()?.active ?? null
+    return null
   }
 
   const Host = () => {
@@ -274,7 +300,11 @@ export const mountPhoneNavigationViewport = async (
       h(
         MemoryRouter,
         { initialEntries: ['/outside', initialPathname], initialIndex: 1 },
-        h(LocalBackProvider, null, h(PhoneNavigationProvider, null, h(Host))),
+        h(
+          LocalBackProvider,
+          null,
+          h(PhoneNavigationProvider, null, h(BackProbe), h(Host)),
+        ),
       ),
     )
   })
@@ -312,7 +342,12 @@ export const mountPhoneNavigationViewport = async (
   }
 
   return {
+    backOwner: () => backOwner,
     container,
+    render: async (mutate: () => void) => {
+      await act(async () => mutate())
+      await flush()
+    },
     setStage: async (active: boolean) => {
       stageActive = active
       await act(async () => {

@@ -268,8 +268,18 @@ editor, a dashboard's add-widget panel. It is **one component**,
 - Pinned by `admin/test/nested-stage-viewport.test.ts` (push, Back, swipe,
   retention under a route) and `admin/test/phone-navigation-stack.test.ts`.
 
-Adopters (this step, in progress): `ColumnBrowserViewport` on `single`
-mounts each column beyond the first as a stage; Knowledge's folder /
+Adopters (this step, in progress): `ColumnBrowserViewport` is **built** — on
+`single` column 0 renders inline (it *is* the page) and every column beyond it
+is a `stage:column:<k>` layer at `columnBackPriority(k)`, with a `stageScope`
+prefixing the ids where one page could mount two browsers; only a column knows
+its own title and unwind action, so it reports `{ label, onBack }` up through
+the column context in a layout effect and the viewport owns the single
+registration (the stage's, or its own local-back owner for a Back-owning column
+0, as Workflows' failed-runs column is) — `ColumnBrowserColumn` no longer calls
+`useLocalBack` and `PhoneNavigationButton` no longer reads the column context,
+because a retained column is no longer rendered at all; on `split` it keeps its
+multi-column track, now moved with `var(--nav-duration)`/`var(--nav-easing)`
+rather than a `transition-transform duration-300` utility. Knowledge's folder /
 document / history / editor become stages and `animate-kb-view-slide` is
 deleted; `ExecutorsPage`'s `ExecutorCreatePanel` (`executors:create`) and
 `DashboardDetailPage`'s `AddWidgetPanel` / `DashboardVersionsPanel`
