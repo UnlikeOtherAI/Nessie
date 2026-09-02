@@ -1,9 +1,15 @@
-# Call your Personal Assistant — Gemini Live voice + CallKit on iPhone
+# Call your Personal Assistant — Gemini Live voice on web, iPhone and Android
 
-**Status (2026-09-02): phase 1 built — the server contract and the browser
-call. Phase 0 (Ledger grants) is still an ops task, so no call can complete
-end to end yet; phase 1a (live tool bridge) and 1b (iPhone/CallKit) are not
-started.**
+**Status (2026-09-02): phase 1 built and merged — the server contract and the
+browser call. Phase 0 is done: the production Nessie Ledger key
+(`tk_98ffbd0b_95b4`) now carries the `gemini` scope with the live model, the
+`live-token` endpoint and a $50/day budget, so credentials mint. Phase 1a
+(live tool bridge) and 1b (iPhone/CallKit) are not started.**
+
+Setting that budget needed a Ledger change of its own: a service scope's
+daily budget was settable only at token issuance, so a capability requiring
+one could be granted to an existing token and refused forever. Ledger now has
+`manage_token_services` action `set_budget` (UnlikeOtherAI/ledger#14).
 
 Built and verified: `voice_installations` / `voice_sessions` + migration,
 `POST /api/voice/{installations,sessions,sessions/:id/rotate,usage,transcript,end}`,
@@ -12,14 +18,23 @@ seeding, the call-record writer, the browser client (AudioWorklet capture at
 16 kHz, WebAudio playback at 24 kHz, rotation, `pa_send`, persistent usage
 outbox), and the one call button on the Personal Assistant header.
 
-Two things verification settled that the plan had left open:
+Three things live verification settled that the plan had left open — the
+first two were wrong guesses that only the real service could disprove:
 
-- **The browser sends the credential as `?key=`.** A browser cannot set
-  WebSocket request headers, so Coder's `Authorization: Token …` does not
-  port. Google's ephemeral `auth_tokens/…` credential is designed to be used
-  in place of an API key, which is the documented browser path. **This is the
-  one thing still unproven against the live service** — it needs a real
-  credential, so it is the first assertion to make once phase 0 lands.
+- **The browser sends the credential as `?access_token=`, not `?key=`.**
+  A browser cannot set WebSocket request headers, so Coder's
+  `Authorization: Token …` does not port. The first draft guessed `?key=`, on
+  the reasoning that an ephemeral credential stands in for an API key. That
+  guess was wrong, and only the live service says so: Google closes a `?key=`
+  socket with 1007 *"Missing or malformed auth token in request. Obtain one
+  from CreateAuthToken and pass it in an `access_token` query param"*.
+  Verified end to end on 2026-09-02 — mint through Ledger, socket open,
+  `setupComplete` received.
+- **Ledger requires `deviceId` to be a UUID.** The relay originally sent a raw
+  HMAC hex digest, which Ledger rejects with a 400. The digest is now
+  truncated to 16 bytes and stamped as a version-8 UUID; a unit test asserts
+  the shape, because a hex digest looks perfectly fine locally and fails only
+  at the one place that matters.
 - **A local Ledger cannot be used in dev.** The relay goes through
   `safeFetch`, which refuses loopback and private addresses (correctly —
   `LEDGER_PUBLIC_URL` is operator-supplied). Point it at the hosted service.
@@ -492,7 +507,7 @@ server work in the plan and is what turns the call from a relay into
 "actually doing stuff while you talk" — sequenced right after the basic
 call loop proves out so the plumbing lands on a working audio path.
 
-**Phase 1b — the iPhone call**
+**Phase 1b — the iPhone call (CallKit)**
 Mobile: local Expo module with the ported `GeminiLiveClient` +
 `AgentCallCoordinator` + `AgentCallSession` seam; credential source swapped
 to the Nessie routes; the same header call button in the mobile WebView
@@ -500,19 +515,94 @@ hands off to native via the shell bridge so the call becomes a CallKit
 call. Verify on a physical iPhone: place call, lock screen, AirPods, mute
 from lock screen, end from lock screen.
 
-**Phase 2 — Siri, CarPlay, polish**
-App Intent + Shortcuts phrases; verify initiation and in-call UI in CarPlay
-(real car or CarPlay simulator head unit). The call-record message (below)
-posted into the PA DM. Reconnect polish (Coder's resumption + rotation
+**Phase 1c — the Android call (Telecom)**
+The same local Expo module, second platform. Android's equivalent of CallKit
+is a **self-managed `ConnectionService`**: register a `PhoneAccount` with
+`CAPABILITY_SELF_MANAGED`, and the system gives the call its own in-call UI,
+audio focus, Bluetooth/car routing and Android Auto placement — the same
+things CallKit buys, through a different door. The `AgentCallSession` seam
+(connect must not start I/O; audio starts when the platform says the call is
+active) ports unchanged, because it was written against the *lifecycle*, not
+against CallKit. The Gemini protocol client, the credential relay, rotation,
+the usage outbox and the transcript submission are all shared — only the
+audio plumbing (`AudioRecord`/`AudioTrack` at 16 kHz in, 24 kHz out) and the
+call framework differ. `MODIFY_AUDIO_SETTINGS` + `RECORD_AUDIO` +
+`MANAGE_OWN_CALLS` are the permissions.
+
+**Phase 2 — "call my assistant" on both platforms, in-car, polish**
+
+Two mechanisms, because they answer different sentences and only one of them
+gives the phrasing Ondrej actually asked for.
+
+*App Shortcuts (cheap, ships with the native app).* Coder's
+`StartPersonalAssistantCallIntent` + `AppShortcutsProvider` ports directly.
+**Apple requires an App Shortcut phrase to contain the app name**, so this
+buys "Call my assistant with Nessie" — not a bare "call my personal
+assistant". It works from the lock screen, the Shortcuts app, and CarPlay's
+Siri with no setup after install.
+
+The Android equivalent of App Shortcuts is **App Actions**: a
+`shortcuts.xml` capability for `actions.intent.CREATE_CALL`, which buys
+"Hey Google, call my assistant on Nessie" — and carries the same app-name
+constraint, for the same reason.
+
+*Calling domain + Contacts (the real thing, both platforms).* To say "Hey
+Siri, call Ada" with no app name, the agent has to look like a person you
+can call — which is exactly how WhatsApp and Skype work, and it is a
+supported path rather than a trick:
+
+- The app adopts the **SiriKit calling domain**: an Intents extension
+  handling `INStartCallIntent` (resolve → confirm → handle), declared in
+  `Info.plist` via `IntentsSupported` + `NSUserActivityTypes`. CallKit is a
+  prerequisite, so this sits strictly after phase 1b.
+- Nessie writes the caller's agents into a **dedicated `CNContactGroup`**
+  ("Nessie Agents") through `CNContactStore`, one contact per agent carrying
+  an app-specific handle, behind an explicit opt-in on the mobile settings
+  screen and the system Contacts permission. The group is the unit of
+  cleanup: revoking the toggle deletes the group and nothing else the person
+  owns.
+- The set is **synced, not seeded once** — agents are created, renamed and
+  deleted in Nessie, so a stale "Ada" that no longer exists must disappear.
+  Reconciliation runs on app foreground against the same `agent_list`
+  entitlement the Agents screen uses, so a person never gets a contact for
+  an agent they cannot reach.
+- Each completed call **donates an `INStartCallIntent` interaction**, which
+  is what teaches Siri the association and puts the agent in the call
+  suggestions a person actually sees.
+- The PA gets the additional plain alias people will reach for ("Personal
+  Assistant"), so "call my personal assistant" resolves without naming
+  Nessie.
+- **Android does the same thing with its own primitives**, and slightly more
+  cleanly: a sync adapter owning a custom `ACCOUNT_TYPE` writes agents into
+  `ContactsContract` under an account the app owns outright, and a custom
+  `Data` MIME type puts a "Call with Nessie" row on each contact — the
+  mechanism behind WhatsApp's and Signal's contact rows. Because the
+  contacts live under the app's own account, removal is deleting that
+  account rather than editing the person's address book, so the cleanup
+  story is stronger than on iOS. `RECORD_AUDIO` aside, this needs
+  `READ_CONTACTS`/`WRITE_CONTACTS` and is opt-in on the same settings
+  screen.
+
+Privacy note worth stating up front: this writes rows into the person's
+address book. It is opt-in, scoped to one group, removable in one action,
+and never touches existing contacts.
+
+Also in phase 2: verify initiation and the in-call surface in **CarPlay and
+Android Auto** (a real head unit or each simulator), the call-record message
+posted into the PA DM, and reconnect polish (Coder's resumption + rotation
 paths exercised under airplane-mode blips).
 
-**Phase 3 — the PA calls you, and Android**
-VoIP PushKit + `reportNewIncomingCall` (iOS requires reporting a call for
-every VoIP push — the worker must never send a speculative ring). A
+**Phase 3 — the PA calls you**
+The assistant places the call. On iOS that is VoIP PushKit +
+`reportNewIncomingCall`, and the hard constraint is that iOS requires a call
+to be reported for *every* VoIP push — so the worker must never send a
+speculative ring. Android has no PushKit: an FCM high-priority data message
+wakes the app, which calls `ConnectionService.addNewIncomingCall`, and the
+equivalent constraint is the foreground-service and background-start policy
+rather than a per-push obligation. Both are driven by one
 `voice_call_start`-shaped PA builtin following the route-mirroring pattern
-(`meeting_link_create`/`call_start` precedent), so "call me when the deploy
-finishes" works. Android `ConnectionService` parity. Each of these is its
-own spec when we get there.
+(`meeting_link_create` / `call_start` precedent), so "call me when the
+deploy finishes" works. Each of these is its own spec when we get there.
 
 ## The call record — one folded message, full transcript inside
 

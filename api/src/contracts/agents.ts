@@ -23,13 +23,21 @@ export { AgentRecordSchema }
 // `runLimits` is an ordinary agent-edit field (existing authorization, not a
 // protected tool-policy key): omit it to leave the stored value untouched, send
 // an object to replace it, send `null` to clear every explicit limit.
+//
+// `routingProfileId` is deliberately absent. `Agent.routingProfileId` is a
+// server/bootstrap-only column (docs/plans/2026-09-02-agent-designer-global-agent.md
+// → the parameter map): no client sends it, `UpdateAgentBodySchema` does not
+// accept it, `createAgentRecord` has no such input, and the run path passes a
+// hardcoded `null` rather than reading the column. Accepting it here promised a
+// persistence the route never performed. Attaching a routing profile to an
+// agent is a control-plane capability that does not exist yet; when it ships it
+// arrives with its own authorized write path, not as a silently dropped field.
 export const CreateAgentBodySchema = z.object({
   avatarAttachmentId: z.string().uuid().optional(),
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
   parentAgentId: z.string().optional(),
-  routingProfileId: z.string().uuid().optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),

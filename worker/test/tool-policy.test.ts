@@ -2,11 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BUILTIN_TOOL_DEFINITIONS,
+  BUILTIN_TOOL_IDS,
   CALL_START_TOOL_ID,
   MEETING_LINK_CREATE_TOOL_ID,
   type BuiltinToolDefinition,
 } from '@nessie/runtime'
-import { authorizeToolCall, resolveAgentTools } from '../src/run/tool-policy.js'
+import {
+  authorizeToolCall,
+  PA_PRESENCE_PRIVATE_READ_TOOL_IDS,
+  resolveAgentTools,
+} from '../src/run/tool-policy.js'
 
 const definitions = [
   {
@@ -151,6 +156,15 @@ test('authorizeToolCall denies act-as-user tools to a shared agent but allows th
     authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'personal_assistant'),
     { allowed: true },
   )
+})
+
+test('every PA_PRESENCE_PRIVATE_READ_TOOL_IDS entry names a real builtin tool', () => {
+  for (const toolId of PA_PRESENCE_PRIVATE_READ_TOOL_IDS) {
+    assert.ok(
+      BUILTIN_TOOL_IDS.has(toolId),
+      `${toolId} in PA_PRESENCE_PRIVATE_READ_TOOL_IDS does not match any BUILTIN_TOOL_IDS entry`,
+    )
+  }
 })
 
 test('meeting link and call start tools are PA-only without an explicit grant', () => {
