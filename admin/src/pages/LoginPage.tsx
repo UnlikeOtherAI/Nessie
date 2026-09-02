@@ -41,7 +41,12 @@ export const LoginPage = () => {
   const redirect = useRedirect()
   const { devLogin, login, sessionState } = useAuthSession()
   const { setTheme, theme, themes } = useTheme()
-  const { data: providers = [] } = useAuthProviders()
+  const {
+    data: providers = [],
+    error: providersError,
+    isPending: providersPending,
+    refetch: refetchProviders,
+  } = useAuthProviders()
   // Pre-filled dev credentials for convenience (local mode only).
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
@@ -241,9 +246,23 @@ export const LoginPage = () => {
                   {isSubmitting ? 'Signing in...' : provider.label}
                 </button>
               ))
+            ) : providersError ? (
+              <div className="grid gap-3" role="alert">
+                <p className={errorBoxClass}>
+                  Couldn&apos;t load sign-in options. Check your connection and try again.
+                </p>
+                <button
+                  className={primaryButtonClass}
+                  disabled={isSubmitting}
+                  onClick={() => void refetchProviders()}
+                  type="button"
+                >
+                  Retry loading sign-in options
+                </button>
+              </div>
             ) : (
               <div className="text-sm text-[var(--muted)]">
-                {providers.length === 0
+                {providersPending
                   ? 'Loading providers...'
                   : 'No sign-in providers are configured.'}
               </div>

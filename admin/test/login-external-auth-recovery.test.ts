@@ -381,3 +381,85 @@ test('a back/forward restore retries a suspended session check instead of leavin
     restoreDom()
   }
 })
+
+test('a failed provider discovery explains the failure and lets the person retry', async () => {
+  const restoreDom = installDom()
+  const previousFetch = globalThis.fetch
+  let providerRequests = 0
+
+  const React = await import('react')
+  const { act, createElement: h } = React
+  const { createRoot } = await import('react-dom/client')
+  const { MemoryRouter } = await import('react-router-dom')
+  const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
+  const { AuthSessionProvider } = await import('../src/providers/AuthSessionProvider.js')
+  const { ApiClientProvider } = await import('../src/providers/ApiClientProvider.js')
+  const { ThemeProvider } = await import('../src/providers/ThemeProvider.js')
+  const { LoginPage } = await import('../src/pages/LoginPage.js')
+
+  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+  globalThis.fetch = async (input) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, dom.window.location.origin)
+    if (url.pathname === '/api/auth/me' || url.pathname === '/api/auth/refresh') {
+      return new Response(null, { status: 401 })
+    }
+    if (url.pathname === '/api/auth/providers') {
+      providerRequests += 1
+      if (providerRequests === 1) throw new Error('Network request failed')
+      return jsonResponse([{
+        autoRedirect: false,
+        enabled: true,
+        label: 'Sign in with SSO',
+        providerId: 'uoa',
+        type: 'uoa',
+      }])
+    }
+    return new Response('unexpected request', { status: 500 })
+  }
+
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => {
+      root.render(
+        h(
+          QueryClientProvider,
+          { client: queryClient },
+          h(
+            AuthSessionProvider,
+            null,
+            h(
+              ApiClientProvider,
+              null,
+              h(ThemeProvider, null, h(MemoryRouter, null, h(LoginPage))),
+            ),
+          ),
+        ),
+      )
+    })
+    await settle(act)
+
+    assert.match(container.textContent ?? '', /Couldn't load sign-in options/)
+    assert.doesNotMatch(container.textContent ?? '', /Loading providers/)
+    const retry = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent === 'Retry loading sign-in options',
+    )
+    assert.ok(retry)
+
+    await act(async () => {
+      retry.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+    await settle(act)
+
+    assert.equal(providerRequests, 2)
+    assert.match(container.textContent ?? '', /Sign in with SSO/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    restoreDom()
+  }
+})
