@@ -73,34 +73,29 @@ export const AgentDesignerForm = ({
         </FormField>
       )}
 
-      {/* Name and Role keep their own fixed ids (`agent-name`, `agent-role`) —
-          the Design Assistant's reveal-and-focus animation
-          (`designer/reveal-control.ts`) looks them up by exactly these ids, so
-          they use `FieldLabel` directly rather than `FormField`'s
-          auto-generated one. */}
-      <div className="grid gap-1.5">
-        <FieldLabel htmlFor="agent-name">Name</FieldLabel>
+      {/* Name and Role pin their ids (`agent-name`, `agent-role`): the Design
+          Assistant's reveal-and-focus animation
+          (`designer/reveal-control.ts`) resolves them with
+          `document.getElementById`, so a generated id would break it. */}
+      <FormField id="agent-name" label="Name">
         <Input
           autoComplete="off"
           className={highlightClass('name')}
-          id="agent-name"
           onChange={(e) => actions.setName(e.target.value)}
           placeholder="e.g. Code Reviewer"
           value={state.name}
         />
-      </div>
+      </FormField>
 
-      <div className="grid gap-1.5">
-        <FieldLabel htmlFor="agent-role">Role</FieldLabel>
+      <FormField id="agent-role" label="Role">
         <Input
           autoComplete="off"
           className={highlightClass('role')}
-          id="agent-role"
           onChange={(e) => actions.setRole(e.target.value)}
           placeholder="e.g. assistant, reviewer, analyst"
           value={state.role}
         />
-      </div>
+      </FormField>
 
       <Card className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -137,9 +132,12 @@ export const AgentDesignerForm = ({
         ) : null}
       </Card>
 
-      {/* Model keeps its own fixed id (`agent-model`) for the same reveal
-          reason as Name/Role above; `ModelCombobox` is a bespoke combobox
-          (its own listbox/keyboard handling), not an `Input`. */}
+      {/* Model stays outside `FormField`, and the reason is not its pinned id
+          — `FormField` takes one now. `ModelCombobox` is a bespoke combobox
+          with its own listbox and keyboard handling, and it does not consume
+          the field context, so wrapping it would render a label and an error
+          region that were not actually wired to the control it describes:
+          the appearance of the contract without the contract. */}
       <div className="grid gap-1.5">
         <FieldLabel htmlFor="agent-model">Model</FieldLabel>
         <ModelCombobox
@@ -210,14 +208,10 @@ export const AgentDesignerForm = ({
         />
       </Card>
 
-      {/* System prompt keeps its own fixed id (`agent-system-prompt`), for the
-          same reveal reason as Name/Role/Model above. */}
-      <div className="grid gap-1.5">
-        <FieldLabel htmlFor="agent-system-prompt">System prompt</FieldLabel>
+      <FormField id="agent-system-prompt" label="System prompt">
         <Textarea
           autoComplete="off"
           className={['resize-none', highlightClass('systemPrompt')].filter(Boolean).join(' ')}
-          id="agent-system-prompt"
           mono
           onChange={(e) => actions.setSystemPrompt(e.target.value)}
           placeholder="Instructions for the agent..."
@@ -225,7 +219,7 @@ export const AgentDesignerForm = ({
           size="compact"
           value={state.systemPrompt}
         />
-      </div>
+      </FormField>
 
       {/* Tools — only while creating. An existing agent's tools are managed on
           the detail page's Tools tab. */}

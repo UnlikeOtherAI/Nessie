@@ -1,8 +1,4 @@
-import type {
-  InputHTMLAttributes,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
-} from 'react'
+import type { ComponentPropsWithRef } from 'react'
 import { useFormFieldControl } from './FormField'
 
 /**
@@ -46,7 +42,14 @@ type SharedProps = {
   size?: ControlSize
 }
 
-type InputProps = SharedProps & Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
+/**
+ * `ComponentPropsWithRef` rather than `*HTMLAttributes` so `ref` passes
+ * through. React 19 hands a function component `ref` as an ordinary prop, but
+ * the attribute types do not carry it — and without it `Dialog`'s
+ * `initialFocusRef` cannot target a field, so a converted form opened focused
+ * on whatever happened to come first.
+ */
+type InputProps = SharedProps & Omit<ComponentPropsWithRef<'input'>, 'size'>
 
 
 export const Input = ({ className, mono = false, size = 'default', ...rest }: InputProps) => {
@@ -66,7 +69,7 @@ export const Input = ({ className, mono = false, size = 'default', ...rest }: In
 // `size` is omitted from the native attributes on both `input` and `select`
 // because each declares its own numeric `size`, and intersecting that with the
 // density union would resolve to `never`.
-type SelectProps = SharedProps & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'>
+type SelectProps = SharedProps & Omit<ComponentPropsWithRef<'select'>, 'size'>
 
 export const Select = ({ className, mono = false, size = 'default', ...rest }: SelectProps) => {
   const field = useFormFieldControl()
@@ -82,7 +85,7 @@ export const Select = ({ className, mono = false, size = 'default', ...rest }: S
   )
 }
 
-type TextareaProps = SharedProps & TextareaHTMLAttributes<HTMLTextAreaElement>
+type TextareaProps = SharedProps & ComponentPropsWithRef<'textarea'>
 
 export const Textarea = ({
   className,

@@ -42,6 +42,17 @@ type FormFieldProps = {
    * needing it.
    */
   help?: ReactNode
+  /**
+   * Pins the control's DOM id instead of generating one.
+   *
+   * For the rare case where something outside React resolves the control by
+   * id — the Agent Designer's assistant reveals a field with
+   * `document.getElementById('agent-name')` as it writes into it. Without this
+   * those four fields had to drop out of `FormField` entirely and hand-wire a
+   * `FieldLabel`, which cost them the error wiring this component exists to
+   * guarantee. A generated id is right everywhere else and stays the default.
+   */
+  id?: string
   label: ReactNode
   required?: boolean
 }
@@ -51,10 +62,12 @@ export const FormField = ({
   className,
   error,
   help,
+  id: pinnedId,
   label,
   required = false,
 }: FormFieldProps) => {
-  const id = useId()
+  const generatedId = useId()
+  const id = pinnedId ?? generatedId
   const helpId = `${id}-help`
   const describedBy = [help ? helpId : null, error ? fieldErrorId(id) : null]
     .filter(Boolean)
