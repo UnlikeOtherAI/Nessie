@@ -94,8 +94,10 @@ const targetWhere = (target: ScopedSettingTarget): Prisma.ScopedSettingWhereInpu
   return clauses
 }
 
+type ScopedSettingReader = Pick<PrismaClient, 'scopedSetting'> | Prisma.TransactionClient
+
 export const resolveScopedSettings = async <T = unknown>(
-  prisma: PrismaClient | Prisma.TransactionClient,
+  prisma: ScopedSettingReader,
   target: ScopedSettingTarget,
   keys: readonly string[],
 ): Promise<Map<string, ResolvedSetting<T>>> => {
@@ -123,7 +125,7 @@ export const resolveScopedSettings = async <T = unknown>(
 }
 
 export const resolveScopedSetting = async <T = unknown>(
-  prisma: PrismaClient | Prisma.TransactionClient,
+  prisma: ScopedSettingReader,
   target: ScopedSettingTarget,
   key: string,
 ): Promise<ResolvedSetting<T>> => {

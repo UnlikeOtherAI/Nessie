@@ -13,7 +13,7 @@ import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } fro
  * personal-vs-company signal.
  */
 
-export type ConnectionScope = 'organization' | 'user'
+export type ConnectionScope = 'organization' | 'team' | 'user'
 
 export type ConnectionSummary = {
   id: string
