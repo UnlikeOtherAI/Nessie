@@ -608,7 +608,19 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   lint follow with the header work.
 - Pinned by `admin/test/navigation-settle.test.ts`.
 
-## 12. Everything else — **planned**
+## 12. Interruption and visibility — **built** (step 14, the stack's part)
+
+- **A navigation arriving mid-slide settles the running slide first**: its
+  end pose commits, its released entries drop and its settle runs, then the
+  new transition starts from a clean stack. Nothing preempts a half-finished
+  pose, and no stale entry survives an interrupted Back.
+- **A hidden document never holds a half-finished pose**: a slide that
+  starts while the tab is hidden commits at once (0 ms through the same
+  path), and hiding the tab mid-slide finishes it, so a tab that comes back
+  is already settled. `redirect()` (§4) already waits for the stack.
+- Pinned by `admin/test/navigation-interruption.test.ts`.
+
+## 13. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

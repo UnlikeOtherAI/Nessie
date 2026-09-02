@@ -187,8 +187,15 @@ export const PhoneNavigationViewport = ({
       return
     }
 
+    // A navigation arriving mid-slide settles the running transition first
+    // (its end pose commits, its released entries drop, its settle runs), so
+    // the new one starts from a clean stack instead of preempting a half-
+    // finished pose (docs/navigation.md §12).
+    const running = transitionRef.current
+    if (running) finishTransition(running.id)
+    const base = stackRef.current
     const direction = getPhoneNavigationDirection(committed.pathname, pathname, layout)
-    let next = advancePhoneNavigationStack(current, pathname, payload, layout, seedEntries)
+    let next = advancePhoneNavigationStack(base, pathname, payload, layout, seedEntries)
     const suppressed = suppressNextRouteAnimation.current === pathname
     suppressNextRouteAnimation.current = null
 
@@ -202,7 +209,7 @@ export const PhoneNavigationViewport = ({
       return
     }
 
-    const fromLayerKey = currentPhoneNavigationEntry(current).layerKey
+    const fromLayerKey = currentPhoneNavigationEntry(base).layerKey
     const toLayerKey = currentPhoneNavigationEntry(next).layerKey
     const hasBothLayers = next.entries.some((entry) => entry.layerKey === fromLayerKey)
       && next.entries.some((entry) => entry.layerKey === toLayerKey)
@@ -216,6 +223,7 @@ export const PhoneNavigationViewport = ({
     children,
     commitStack,
     commitTransition,
+    finishTransition,
     layout,
     locationContext,
     pathname,
@@ -313,13 +321,20 @@ export const PhoneNavigationViewport = ({
     const layer = (name: string): Element | null =>
       viewport?.querySelector(`[data-phone-navigation-layer="${name}"]`) ?? null
     const forward = transition.direction === 'forward'
+    // A hidden document paints nothing: the slide commits at once, so a
+    // tab that comes back is already settled rather than mid-animation.
+    const hidden = document.visibilityState === 'hidden'
     const run: StackTransitionRun = runStackTransition({
       top: layer(forward ? 'incoming' : 'outgoing'),
       bottom: layer(forward ? 'outgoing' : 'incoming'),
       direction: transition.direction,
-      reducedMotion,
+      reducedMotion: reducedMotion || hidden,
     })
     const id = transition.id
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') finishTransition(id)
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     // Anything that must not run mid-slide (a data-arrival redirect, focus
     // after settle) waits on this signal; it ends with the transition.
     const endTransition = beginStackTransition()
@@ -333,6 +348,7 @@ export const PhoneNavigationViewport = ({
     )
     return () => {
       closed = true
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       window.clearTimeout(timer)
       run.cancel()
       endTransition()
