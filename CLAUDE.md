@@ -832,22 +832,11 @@ never pulls its own row out from under them
 (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
 it resolves through the full people directory, because starring somebody *is*
 adding them. The doorways stay named: **Create → Message** (and the section's
-`+`) reaches a person, **Create → Agent** opens the Agent Designer's **chat** —
-the last row of the rail's create menu, and on the native phone sheet the last
-row *above* the Message button, which is the morphing compose button the sheet
-grows out of (`mobile/src/lib/native-creation-menu.ts`). Describing the
-colleague you want is the doorway; `/agents/designer` stays where somebody
-chooses to edit fields (Agents → New agent). Every client runs this one admin
-SPA — web, the Tauri shells on macOS/Windows/Linux, and the iOS/Android WebView
-shells through `__nessieCreateFromPhoneMenu` — so `openAgentDesignerChat` is
-the single handler behind all of them and no surface can drift to a different
-destination. It resolves the chat through `POST /api/global-agents/:slug/home`,
-which **ensures** the home DM rather than assuming it: bootstrap at login is
-best-effort, so a doorway that only looked the channel up would fail silently
-for exactly the people whose bootstrap did not run, and the client would have
-had to guess which system-agent DM belongs to which blueprint. A failure there
-falls back to the form rather than dead-ending.
-
+`+`) reaches a person, **Create → Agent** opens the Designer's **chat**, the
+form staying for field edits — the create menu's last row, and on the phone
+sheet the last row *above* its morphing Message button
+(`mobile/src/lib/native-creation-menu.ts`). One `openAgentDesignerChat` serves
+every client via `POST /api/global-agents/:slug/home`, which *ensures* that DM.
 ## Personal assistant — workspace provisioning
 
 Four `personalAssistantOnly` builtins reach the PA
