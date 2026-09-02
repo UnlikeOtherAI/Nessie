@@ -1,185 +1,230 @@
 # UOA as a service: unifying organisation, workspace, team and project
 
-Status: proposal, 2026-09-02. Not implemented.
+Status: proposal v2, 2026-09-02. Not implemented. v1 was reviewed by two
+independent adversarial reviewers who converged on six findings; every one is
+accepted and folded in below, and the section that was wrong is marked.
 
 The owner's instruction: **treat UOA as a service.** Store no duplicated data
-locally; when we need to know something UOA owns, ask its API. This document
-maps what we actually have, then proposes the smallest set of changes that gets
-there without pretending the network is free.
+locally; ask its API. And, as of this revision: **UOA may be extended** — if the
+model needs webhooks, bulk reads or delta endpoints, add them there.
+
+That last permission is what makes the plan honest. v1 kept local access-control
+state and called it a "projection with a revocation path", which both reviewers
+correctly called a loophole: with no event stream, nothing could *drive* that
+revocation, so the values authorising every request were an authority whatever
+they were labelled. The fix is not better wording. It is to build the missing
+mechanism upstream.
 
 ## 1. The shape of the problem
 
 UOA has **two** levels: Organisation → Team. Nessie has **four**: Organization →
-Project → Team → Channel, and the admin calls a Team a "workspace". So three
-local levels mirror two upstream ones, and the extra level has no owner.
+Project → Team → Channel, and the admin calls a Team a "workspace".
 
-`Project` exists only because `Team.projectId` is a non-nullable foreign key
-(`api/prisma/schema.prisma`). Every UOA workspace materialises a Project *and* a
-Team (`api/src/services/workspace-target.ts` `createWorkspaceEnvironment`), and
-the UOA team's single name is then mirrored onto **both** rows and healed on both
-(`syncExternalWorkspaceNames`). One upstream fact, two local copies, two heal
-paths.
+`Project` is not the harmless plumbing v1 claimed. Verified in the schema:
 
-It leaks to users. `admin/src/components/shared/CreateProjectDialog.tsx` asks for
-one name — "project" — and then silently creates a Team called
-`"{ProjectName} Team"`. `EditProjectDialog` renames only the Project, so the Team
-keeps the stale name forever; and because `workspacesFromMe` labels each switcher
-row `team.teamName ?? project.projectName`, the **stale auto-generated name is
-what the "Workspaces" menu shows**. A user who never typed the word "team" ends
-up navigating by it.
+- **`Team.projectId` has no unique constraint.** A Project may hold zero, one or
+  many Teams. The 1:1 shape exists only by convention in the UOA materialisation
+  path (`createWorkspaceEnvironment`); `POST /api/teams` can add more.
+- Project owns real product and authorization semantics: `ProjectMember` (with
+  its own `role`), board style and columns, tasks, plans, approvals, knowledge
+  objects, executors, alerts, and avatars. `listAccessibleProjectIds` gates
+  visibility through it.
+- `Channel` independently stores `organizationId`, `projectId` and `teamId`,
+  with no constraint proving the team belongs to the project.
 
-## 2. What is genuinely duplicated today
+So hiding Project would leave invisible RBAC and content scopes that users
+cannot see or reach — a half-migration. v1 was wrong here.
 
-Verified against the schema and the call sites, worst first.
+It already leaks. `CreateProjectDialog` asks for one name and silently creates a
+Team called `"{Name} Team"`; `EditProjectDialog` renames only the Project, so the
+Team keeps the stale name; and `workspacesFromMe` labels switcher rows
+`team.teamName ?? project.projectName`, so **the stale auto-generated name is
+what the Workspaces menu shows**.
 
-1. **A local rename of an SSO-owned name is accepted and persisted.**
-   `PATCH /api/organizations/current` and `PATCH /api/projects/:projectId` both
-   write `name` with **no check** that the row is UOA-bound. The design rule says
-   this "is not a supported operation"; in practice the value sticks until the
-   next login/refresh sync silently reverts it. `Team.name` has no local write
-   path and is clean — proving the intended shape already exists.
-2. **`User.email`, `displayName`, `avatarUrl`** are mirrors of UOA profile data.
-   `displayName`/`avatarUrl` are re-synced every login/refresh and are honestly
-   labelled non-authoritative; `email` is worse, because it is still a login
-   match key and the CLI super-admin key.
-3. **Two answers to "who is in this org."** `GET /api/users` reads local rows;
-   `api/src/routes/workspace-members.ts` reads UOA live. They can disagree.
-4. **`OrganizationMember.deactivatedAt`** is a local access kill-switch that
-   nothing propagates to from a UOA-side removal.
-5. **`Organization.name` / `Team.name` / `Project.name`** as stored values at all
-   — three rows carrying two upstream names.
+## 2. What is actually duplicated
 
-Deliberately **not** duplication, and staying: `externalOrgId`,
-`Team.externalWorkspaceId`, `User.uoaSub` (binding keys — they are what make API
-calls possible), audit rows, and Nessie-only config (logo, brand, budgets).
+v1 listed five items and missed the most important ones. Corrected, worst first.
 
-## 3. What UOA can and cannot answer
+1. **Three local membership tables mirror UOA's two.**
+   `OrganizationMember.role`, `TeamMember.role` and `ProjectMember.role` are all
+   durable local access state. UOA has `OrgMember.role` and `TeamMember.teamRole`
+   and no project concept at all. `resolveDefaultTarget` picks an enterable
+   workspace from the local `TeamMember` table — so local membership can select,
+   grant or deny differently from UOA, indefinitely.
+2. **A local rename of an SSO-owned name is accepted and persisted.**
+   `PATCH /api/organizations/current` (`organizations.ts:110`) and
+   `PATCH /api/projects/:projectId` (`projects.ts:235`) write `name` with no
+   check that the row is UOA-bound. It sticks until a later sync silently
+   reverts it. `Team.name` has no local write path and is clean — the intended
+   shape already exists.
+3. **`User.email`, `displayName`, `avatarUrl`** mirror UOA profile data; `email`
+   is still a login match key and the CLI super-admin key.
+4. **Two answers to "who is in this org"** — `GET /api/users` from local rows,
+   `workspace-members.ts` live from UOA.
+5. **`Team.externalOrgId`** is redundant: the owning org is reachable through
+   `Team → Project → Organization.externalOrgId`. A redundant copy can drift, and
+   drift here surfaces as a binding-conflict failure.
+6. **Workspace identity** — UOA supplies `avatarImageUrl` per team while Project
+   keeps locally writable avatar fields, so icons can disagree between surfaces.
 
-It can serve the whole hierarchy: org CRUD, members, teams, team members,
-invitations, invite links, and `GET /org/me` (workspaces + pending invites + the
-caller's org context, roles included).
+Staying, and not duplication: `externalOrgId`, `Team.externalWorkspaceId`,
+`User.uoaSub` (binding keys), audit rows, Nessie-only config (logo, brand,
+budgets, board style).
 
-Four gaps decide the design:
+## 3. What UOA cannot answer today — and what we add
 
-- **No webhooks or event stream.** Everything is pull. Nothing can tell Nessie
-  "this person was removed" — so any local access decision derived from UOA state
-  is stale until something asks again.
-- **No bulk/aggregate read.** "Every team and its members for this org" is
-  `1 + N` calls. There is no `?include=teams` on the member list.
-- **No delta/sync endpoint, no ETags, no cache-control.** A consumer that wants
-  to avoid refetching must diff `updatedAt` itself.
-- **Avatars are separate authenticated fetches**, one per identity rendered.
+Gaps: no webhooks or event stream; no bulk aggregate read (a full roster is
+`1 + N` calls); no delta endpoint, ETags or cache-control; avatars are separate
+authenticated fetches.
 
-These are why "ask the API for everything, every time" cannot be taken literally
-for per-request authorization: a chat product renders dozens of identities per
-screen and authorises every request. The honest reading of the instruction is
-**UOA is the only authority and the only writer; Nessie keeps no second
-authority — only bounded, revalidated caches that may be thrown away at any
-time.**
+v1 treated these as fixed constraints and bent the design around them. They are
+not fixed. **Three additions to UOA**, which is a parallel project we own:
+
+- **`POST` webhook delivery of org/team/membership events.** Signed per-domain
+  (the HMAC pattern already used for product webhooks), at-least-once, carrying
+  `{event, orgId, teamId?, userId?, occurredAt, revision}` for member added /
+  removed / deactivated / reactivated / role-changed, team created / renamed /
+  deleted, and org renamed / deleted. This is the mechanism v1 lacked, and it is
+  what makes revocation real rather than aspirational.
+- **A bulk org snapshot** — `GET /org/organisations/:orgId/snapshot` returning
+  every team with its members and roles in one response, so a reconciliation
+  sweep is one call rather than `1 + N`.
+- **A delta read** — `?changedSince=` on that snapshot, so the periodic
+  safety-net sweep is cheap and a missed webhook self-heals.
+
+Webhooks are the primary path, the sweep is the backstop, and neither is trusted
+alone: at-least-once delivery plus a periodic delta is the standard shape and it
+degrades correctly when one half fails.
 
 ## 4. Proposal
 
-### 4.1 Collapse the extra level: a workspace is a Team, and Project is plumbing
+### 4.1 Make the 1:1 real instead of pretending
 
-Keep `Project` as a schema-internal parent (ripping out a non-nullable FK across
-Channel/ProjectMember/BoardColumn is a large migration for no user-visible gain),
-but stop treating it as a concept:
+Do not hide Project; **constrain it**, so the hierarchy Nessie enforces is the
+hierarchy UOA has:
 
-- **Nothing user-facing names a Project.** Remove "Create a project" as a
-  doorway; the thing a person creates is a **workspace**, and it provisions the
-  Project + Team pair as one unit under one name — which is exactly what
-  `createWorkspaceEnvironment` already does for UOA workspaces. The local
-  (no-IdP) path adopts the same call instead of `CreateProjectDialog`'s two-step.
-- **One name, one row.** The workspace's display name lives on `Team` only.
-  `Project.name` becomes a derived, non-user-visible label, or is dropped from
-  every read path. That deletes one of the two heal targets in
-  `syncExternalWorkspaceNames`.
-- This kills the `"{ProjectName} Team"` artefact and the rename-drift, and makes
-  the switcher's label a single fact rather than a `??` chain.
+- Add a **unique constraint on `Team.projectId`**, making Project↔Team genuinely
+  1:1, after a migration that resolves any existing zero- or multi-Team Project.
+- **Forbid standalone Team creation** (`POST /api/teams`) and standalone Project
+  creation for UOA-bound organisations. The only way to get the pair is
+  `createWorkspaceEnvironment`, which already creates them together.
+- The pair **is** the workspace. Project's semantics (boards, tasks, knowledge,
+  approvals) become the workspace's semantics — no hidden second scope, because
+  there is exactly one Team per Project.
+- **One name, on `Team`.** `Project.name` stops being read anywhere and stops
+  being a heal target.
+- **Two carve-outs, named explicitly**, because they are Teams/Projects that are
+  not user workspaces and the vocabulary must not claim them: the `channelRoot`
+  Project that holds organisation-wide channels, and `systemManaged` Teams (the
+  Personal Assistant and external-agent surfaces).
 
-### 4.2 One word per concept
+This kills the `"{Name} Team"` artefact, the rename drift, and the ambiguity
+about which Team a project-scoped rename would even target.
 
-| Concept | UOA term | The word we use, everywhere |
+### 4.2 One word per concept — with the honest exceptions
+
+| Concept | UOA term | Our word |
 |---|---|---|
 | UOA Organisation ⇒ local `Organization` | Organisation | **organisation** |
-| UOA Team ⇒ local `Team` (+ its Project) | Team | **workspace** |
+| UOA Team ⇒ local `Team` + its Project | Team | **workspace** |
 | A room inside a workspace | — | **channel** |
 
-Consequences, each a concrete edit: the Budgets scope picker stops offering
-"Team"; the Integrations panel stops saying "Team access" beside "UOA workspace"
-for the same id; the UOA billing panels say "workspace credits"/"workspace
-members"; `Settings → Organization → Members` is retitled **Workspace members**,
-because in UOA mode it *is* the team roster; and the pre-login screens stop
-calling the whole deployment a "workspace" (they mean Nessie).
+Concrete edits: Budgets stops offering "Team" as a scope; Integrations stops
+saying "Team access" beside "UOA workspace" for the same id; billing panels say
+workspace; the pre-login screens stop calling the whole deployment a "workspace".
+`Project` leaves the vocabulary and the sidebar.
 
-`Project` disappears from the vocabulary entirely, along with the sidebar
-"Projects" section as a user-facing hierarchy level.
+**Where the table does not hold, per both reviewers.** UOA has organisation
+members *and* team members, and an organisation with several workspaces has
+different rosters at the two levels. So `Settings → Organization → Members`
+cannot simply be retitled: it must **split** into an organisation roster and a
+workspace roster, because an admin has to know whether an invitation, a role
+change or a removal applies to the whole organisation or only this workspace.
+That is a new surface, not a rename — and it is the honest reading of Rule zero,
+since organisation-wide membership currently has no surface at all.
 
 ### 4.3 Stop being a second authority
 
-- **Refuse local writes to UOA-owned fields.** `PATCH /api/organizations/current`
-  and `PATCH /api/projects/:projectId` reject a `name` change when the row is
-  UOA-bound (`externalOrgId` / `externalWorkspaceId` non-null), with a message
-  pointing at where UOA owns it. This is a refusal, not a silent drop.
-- **Renaming an organisation or workspace goes to UOA** via
-  `PUT /org/organisations/:orgId` and `PUT .../teams/:teamId`, exactly as
-  creation now goes to `POST /org/organisations`. Same pattern, same seam.
-- **One roster.** `GET /api/users` is retired in UOA mode in favour of the UOA
-  roster the Members page already uses; nothing answers a membership question
-  from local rows.
-- **Profile mirror retires** (the outstanding Phase 3 step 2): `displayName` /
-  `avatarUrl` move behind a request-scoped identity directory fed from UOA, and
-  `email` stops being a login match key.
+- **Refuse local writes to UOA-owned fields.** Both PATCH routes reject a `name`
+  change on a UOA-bound row, in words, and renames go to
+  `PUT /org/organisations/:orgId` and `PUT .../teams/:teamId` — the same seam
+  creation already uses.
+- **One roster.** `GET /api/users` retires in UOA mode.
+- **Profile mirror retires**: `displayName`/`avatarUrl` move behind a
+  request-scoped identity directory; `email` stops being a login match key.
+- **`Team.externalOrgId` is dropped** in favour of the derivable path.
 
-### 4.4 One read model, with an explicit freshness contract
+### 4.4 Membership becomes a cache with a real invalidator
 
-Because UOA offers no events, generalise the existing
-`api/src/services/uoa-directory-cache.ts` into a single UOA read seam that every
-surface uses, with the contract stated once: bounded, per-process, TTL'd,
-never durable, never an authority, revalidated on every session event
-(login, refresh, switch), and dropped on any UOA refusal. Nothing else may hold
-UOA-derived data.
+This replaces v1's loophole. For a UOA-bound organisation:
 
-**The one deliberate exception, stated plainly:** `OrganizationMember.role` and
-`deactivatedAt` stay local, because every API request authorises against them
-and a per-request UOA round trip would put UOA in the latency and availability
-path of every action in the product. They are a **projection with a revocation
-path**, not an authority: re-derived from verified claims on every session
-event, and — the missing piece — a UOA-side removal must drive `deactivatedAt`,
-which nothing does today.
+- Local membership rows are a **cache**, written only from UOA responses and
+  webhook events, never from a Nessie mutation. No local route may grant a role
+  or a membership.
+- **Webhook events apply immediately** — a removal or downgrade lands without
+  waiting for the affected person to do anything, which is precisely what v1
+  could not promise.
+- **Every row carries the `revision` it was written from and a checked-at
+  stamp.** Past a bounded staleness horizon with no webhook and no successful
+  sweep, authorization **fails closed** for that organisation rather than
+  trusting an old row. Fail-closed is what makes it a cache rather than an
+  authority.
+- **A Nessie-only suspension stays available as a deny-only overlay.** It may
+  refuse access; it may never grant membership or a role.
 
-### 4.5 Two upstream bugs this depends on
+The cost is stated rather than hidden: UOA joins the availability path for
+authorization at the horizon boundary. That is the price of one authority, and
+the webhook plus sweep is what keeps the horizon from being hit in normal
+operation.
 
-Found while building in-app creation, verified in UOA source:
+### 4.5 The upstream bugs, and the third piece
 
-1. **The founder is not the owner of their own first team.** `createOrganisation`
-   writes the owner's `TeamMember` with no role, and `teamRole` defaults to
-   `member`. They are org `owner` but team `member`.
-2. **`createTeam` never adds the creator to the team.** It writes the Team row
-   and nothing else — while the workspace switch calls
-   `service-access/confirm`, which requires an **active `TeamMember`**. So
-   "create a workspace" creates it upstream and then cannot enter it. UOA's own
-   hosted chooser works around this by calling `addTeamMember` afterwards, which
-   the `/org/*` API cannot do atomically.
+Two bugs, verified in UOA source, block workspace creation outright:
 
-Both are fixed in UOA: set the founder's default-team role to `owner`, and give
-`POST /org/organisations/:orgId/teams` an opt-in that adds the acting user as an
-ACTIVE owner in the same transaction.
+1. **The founder is not the owner of their own first team.**
+   `createOrganisation` writes the owner's `TeamMember` with no role and
+   `teamRole` defaults to `member`.
+2. **`createTeam` never adds the creator.** It writes the Team row and nothing
+   else, while the workspace switch calls `service-access/confirm`, which
+   requires an **active `TeamMember`**.
+
+Both reviewers flagged that fixing these is necessary but not sufficient, and
+they were right about the third piece, though one worry can be retired:
+
+- **Settled:** `confirm` re-reads live `OrgMember`/`TeamMember` rows inside a
+  RepeatableRead transaction rather than trusting session claims, so an atomic
+  membership insert *is* enough for the confirm step. No claims re-issue needed.
+- **Still missing, and Nessie-side:** creating a workspace must invalidate the
+  caller's UOA directory cache entry. Otherwise the thing they just made is
+  invisible until TTL expiry. Creation must join login/refresh/switch as a
+  revalidation event.
+- **Still missing, and upstream:** the `createTeam` membership add must be an
+  **upsert**, not a plain insert. UOA's own hosted chooser already calls
+  `addTeamMember` after `createTeam`; a non-idempotent add turns that existing
+  workaround into a 409 the moment the chooser adopts the flag.
 
 ## 5. Order of work
 
-1. UOA: the two fixes in §4.5 (unblocks workspace creation, which is otherwise
-   broken on every attempt).
-2. Nessie: refuse local writes to UOA-owned names; route renames to UOA (§4.3).
-3. Nessie: collapse the Project doorway; one name on `Team` (§4.1).
-4. Nessie: vocabulary pass (§4.2) — mechanical, wide, low risk.
-5. Nessie: retire `GET /api/users` and the profile mirror behind the read seam
-   (§4.3, §4.4).
-6. Nessie: propagate UOA removal to `deactivatedAt` (§4.4).
+Revocation moves to the front: both reviewers noted it is foundational, not
+cleanup, and v1 scheduled it last.
+
+1. **UOA**: the two creation bugs (§4.5), with the membership add as an upsert.
+   Unblocks workspace creation, which is otherwise broken on every attempt.
+2. **UOA**: webhooks, bulk snapshot, delta read (§3).
+3. **Nessie**: consume them — membership becomes a fail-closed cache (§4.4).
+4. **Nessie**: the Project↔Team migration and its constraint (§4.1). This must
+   land *before* any rename work, because until it does a project-scoped rename
+   has no single team to target.
+5. **Nessie**: refuse local name writes; route renames to UOA (§4.3).
+6. **Nessie**: retire `GET /api/users`, the profile mirror, `Team.externalOrgId`.
+7. **Nessie**: vocabulary pass, and split the members surface (§4.2).
+
+Steps 4 and 5 were ordered the other way in v1; both reviewers caught that a
+rename cannot be routed while a Project may still hold several Teams.
 
 ## 6. Open questions
 
-- Does any deployment rely on Projects as a *user-visible* grouping today? §4.1
-  assumes not.
-- Should renaming a workspace be offered at all in Nessie, or should it link out
-  to UOA? Routing it through `PUT /org/*` keeps one authority either way.
+- Do any deployments have multi-Team Projects today? Step 4's migration needs an
+  answer; a query against production settles it.
+- Should a Nessie-only suspension exist at all, or is UOA deactivation the only
+  way to remove access?
