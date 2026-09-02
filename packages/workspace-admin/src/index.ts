@@ -75,3 +75,15 @@ export {
   type GmailDraftErrorCode,
   type SendDraftResult,
 } from './gmail-drafts.js'
+
+export {
+  SEND_GRANT_DURATIONS,
+  expiryForSendGrant,
+  hasStandingSendAuthorization,
+  grantSendAuthorization,
+  revokeSendAuthorization,
+  listSendAuthorizations,
+  resolveStandingConsentForToolCall,
+  type SendGrantDuration,
+  type SendGrantRecord,
+} from './send-authorization.js'

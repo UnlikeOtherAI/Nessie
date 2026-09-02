@@ -758,6 +758,9 @@ importers:
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../packages/comms-connect
+      '@nessie/comms-google':
+        specifier: workspace:*
+        version: link:../packages/comms-google
       '@nessie/comms-providers':
         specifier: workspace:*
         version: link:../packages/comms-providers

@@ -61,3 +61,16 @@ export {
   type GmailThreadSummary,
   type GmailMessageDetail,
 } from './gmail/read.js'
+
+export {
+  listCalendars,
+  listEvents,
+  queryFreeBusy,
+  createEvent,
+  patchEvent,
+  deleteEvent,
+  type CalendarSummary,
+  type CalendarEvent,
+  type BusyBlock,
+  type CreateEventInput,
+} from './calendar/client.js'
