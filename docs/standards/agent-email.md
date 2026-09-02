@@ -54,7 +54,7 @@ store**, not `Message` rows; each mailbox owns one backing channel
 (`ChannelSystemType.agent_email`) with one `Thread` per `EmailConversation` —
 the *operations room* for run reports and approval gates, while
 `/agents/:agentId/mailbox` is the mail itself. Invariants:
-[docs/standards/agent-email.md](agent-email.md); plan and build detail (the
+above; plan and build detail (the
 `email:{mailboxId}` disclosure scope and its non-deadlock property, the
 `forceApproval` send gate, the rendered-draft approval route, attachment
 linking):

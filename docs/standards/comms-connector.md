@@ -30,8 +30,7 @@ Core rules (adapter registry wired only via `@nessie/comms-providers`
 `registerCommsConnectorsFromEnv` from `NESSIE_COMMS_*` env at API + worker
 startup, encrypted token bundles in a separate table, resumable checkpointed
 sync through the worker queue, owner-deactivation revocation gate, no
-reasoning logic in the connector layer):
-[docs/standards/comms-connector.md](comms-connector.md).
+reasoning logic in the connector layer): stated above.
 Additional facts:
 
 - Adapter packages: `@nessie/comms-slack`, `@nessie/comms-google` (Slack +

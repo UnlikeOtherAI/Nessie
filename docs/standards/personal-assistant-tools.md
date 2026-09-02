@@ -52,8 +52,7 @@ Four `personalAssistantOnly` builtins reach the PA
 authorization — no weaker, no stronger — and calling the same service function
 the route calls. The pattern, visible-refusal for owner-gated tools, the
 tool-ships-with-its-resolving-read rule, and the one arm that also opens them to
-a global agent on its own home DM are in
-[docs/standards/personal-assistant-tools.md](personal-assistant-tools.md).
+a global agent on its own home DM are in the invariants above.
 Per-tool facts:
 
 - `agent_list` → `listAgentsForUser` (`safe: true`). Any active member, matching

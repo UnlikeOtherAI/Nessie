@@ -102,11 +102,10 @@ facts). Bootstrap runs beside the PA's at login and user provisioning but
 lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
 binding, trigger and run-placement refusals, the un-gated list arm, the
 delegation predicate with its one-arm identity-tool gate, and the handoff
-bounds: [docs/standards/global-agents.md](global-agents.md).
-The mechanics —
+bounds: stated above. The mechanics —
 the Designer's toolset and shared reads, the generated capability catalogue,
-`agent_handoff`'s delivery, the sidebar's second face, and the disabled detail
-surface: [docs/global-agents.md](../global-agents.md). Spec:
+`agent_handoff`'s delivery, the sidebar's second face, the address book and
+the disabled detail surface: [docs/global-agents.md](../global-agents.md). Spec:
 [docs/plans/2026-09-02-agent-designer-global-agent.md](../plans/2026-09-02-agent-designer-global-agent.md).
 
 **Direct messages lists conversations, not a directory.** Every DM channel there

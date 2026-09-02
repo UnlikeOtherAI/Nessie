@@ -157,3 +157,40 @@ DM and must stay closed. Those tabs are not rendered and their reads are not
 issued. The Tools tab is `AgentAvailableTools`, which already resolves to its
 read-only `ToolPicker` for an agent the viewer cannot edit — the same catalogue,
 the same search, the switches disabled.
+
+## Addressable, not bound — the "New message" address book
+
+The Direct-messages list shows *conversations*: a row appears once its channel
+carries a message. The address book behind **New message** answers the opposite
+question — everything you can start a conversation with — so every agent a
+person may talk to belongs in it, the Agent Designer and the Personal Assistant
+included, whether or not they have written to it yet.
+
+A DM-homed system agent is never *bound* into a new conversation:
+`bindAgentToChannel` refuses every `systemManaged` agent and every system
+channel, and a system DM holds exactly one member by database constraint. It
+already owns one home DM per person, so addressing it **resolves** to that
+channel.
+
+- **One predicate, both sides.** `isDmAddressableSystemAgent`
+  (`@nessie/workspace-admin`) is true for the Personal Assistant and for any
+  global agent whose blueprint homes it `per_user_dm`. `mapAgentRecord` emits it
+  as `AgentRecord.dmAddressable` — present only when true — and the picker
+  (`admin/src/lib/channel-compose-recipients.ts`) offers exactly the rows
+  carrying it, so no client hand-names a slug and the picker cannot offer an
+  option the route would refuse. It reads `GET /api/agents?scope=all`: the
+  default list excludes every `systemManaged` row, which is why no global agent
+  and no Personal Assistant could ever appear in that address book.
+- **The server branch is structural and member-level.**
+  `POST /api/channels/conversations` calls `resolveSystemAgentConversation`,
+  which ensures the home through the one provisioning path each agent already
+  owns (`openGlobalAgentHome` → `ensureGlobalAgentBootstrap`, or
+  `ensurePersonalAssistantBootstrap` — never a second provisioner) and returns
+  that channel with its `defaultThreadId`. No owner gate: that gate exists
+  because binding an arbitrary agent into a new conversation is *placement*, and
+  opening your own pre-provisioned home DM is not placement at all. It stands
+  unchanged for every other agent recipient, which still reaches
+  `requireOwner` + `findOrCreatePrivateConversationChannel`.
+- **Combining one with anybody else is refused in words**
+  (`SYSTEM_AGENT_CONVERSATION_EXCLUSIVE`), never half-honoured: there is no
+  shape of channel that could hold it.

@@ -37,8 +37,7 @@ Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Live document streamin
 argument and saves it as a real **`.md` file node**; the person watches the
 tokens arrive in a centered popup that renders markdown progressively. Core
 invariants (two lanes, synchronous recorder, session identity, partial-JSON
-scanner, byte-match save, interruption saves nothing, edits are deltas):
-[docs/standards/live-document-streaming.md](live-document-streaming.md).
+scanner, byte-match save, interruption saves nothing, edits are deltas): stated above.
 The mechanics beyond those —
 restriction barrier, connector enrichment, lane details, cancellation, SSE
 events and REST surface — are in

@@ -44,8 +44,7 @@ Provenance, not redaction: every read that enters a run's context feeds the
 `ConsumedSourceSink` in the same change. The rule and its corollaries (empty
 basis fails open, shared `scopeForVisibility`, channel scopes only for
 non-public channels, search fails closed, every read path asks one predicate,
-live lanes cut by `runReplyIsRestricted`, containment = memory recall only):
-[docs/standards/disclosure-boundaries.md](disclosure-boundaries.md).
+live lanes cut by `runReplyIsRestricted`, containment = memory recall only): stated above.
 Facts not restated there:
 
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +

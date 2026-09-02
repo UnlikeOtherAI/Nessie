@@ -66,8 +66,7 @@ credentials are not licensed for third-party agent platforms, and Nessie
 already serves Claude through Ledger. The invariants (own grant never a CLI
 import, vault-only token storage in a dedicated project, run-admission pinning
 with no Ledger fallback, budget gates skipped, structural `billingSource`, one
-shared validator, the refresh/epoch discipline):
-[docs/standards/personal-model-subscriptions.md](personal-model-subscriptions.md).
+shared validator, the refresh/epoch discipline): stated above.
 Spec:
 [docs/plans/2026-09-02-personal-model-subscriptions.md](../plans/2026-09-02-personal-model-subscriptions.md).
 

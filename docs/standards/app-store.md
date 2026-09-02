@@ -59,8 +59,7 @@ store reads a decision (never re-derives from `status`), Postgres-owned
 ranking with no client re-sorting, connect orchestrates the existing
 `createInstance` → probe → `startOAuth` machinery (PKCE on both legs, constant
 callback page, `noopener` popup), installing-is-not-granting via
-`requiresExplicitToolGrant`, and the leak-proof presenter — live in
-[docs/standards/app-store.md](app-store.md). Spec:
+`requiresExplicitToolGrant`, and the leak-proof presenter — are the invariants above. Spec:
 [docs/plans/2026-08-29-apps-catalogue/overview.md](../plans/2026-08-29-apps-catalogue/overview.md).
 Facts not restated there:
 

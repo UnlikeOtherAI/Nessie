@@ -191,6 +191,14 @@ export const AgentRecordSchema = z.object({
    * "Continue in chat" doorway need.
    */
   systemSlug: z.string().nullish(),
+  /**
+   * Server-decided: this system agent is reached through the caller's own
+   * pre-provisioned home DM, so addressing it opens that conversation instead
+   * of binding it into a new one. Present only when true. It is what puts the
+   * Personal Assistant and a global agent such as the Agent Designer in the
+   * "New message" address book without any client naming a slug.
+   */
+  dmAddressable: z.boolean().optional(),
   visibility: AgentVisibilitySchema,
   /** Owner-only DM provisioned together with a private agent. */
   homeChannelId: ChannelIdSchema.optional(),

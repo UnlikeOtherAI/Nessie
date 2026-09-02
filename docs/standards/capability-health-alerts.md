@@ -37,8 +37,7 @@ Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "A schedule that stops 
 
 The transition owns the alert — failure classification into a remedy-naming
 state, exactly-once alerting per transition, explicit recovery (never
-auto-heal at login), epoch-only re-stamp, re-arm from now:
-[docs/standards/capability-health-alerts.md](capability-health-alerts.md).
+auto-heal at login), epoch-only re-stamp, re-arm from now: stated above.
 Facts not
 restated there:
 
