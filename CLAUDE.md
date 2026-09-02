@@ -220,60 +220,23 @@ block injects that home id and title so the model never invents a `spaceId`.
 ## Cloud browsers — a second transport, not a second browser surface
 
 Agents can drive a real Chromium in the cloud (Browserbase) as well as the
-one the executor runs on a person's machine. Phase 1 shipped 2026-09-02
-(ephemeral sessions only); spec and the as-built deltas:
-[docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md)
-§5a.
+one the executor runs on a person's machine. Phase 1 shipped 2026-09-02;
+invariants, rationale and as-built deltas (§5a) live in
+[docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md). Three bind new work:
 
-- **One grammar, two transports.** `browser_open` / `browser_observe` /
-  `browser_act` / `browser_close` (`packages/runtime/src/builtin-browser-tools.ts`)
-  reuse the executor's own `ExecutorBrowser*ArgumentsSchema` verbatim —
-  navigate/click/type/press/scroll addressed **only** by an accessibility
-  node id from a prior observe. No selectors, scripts or pixel coordinates
-  from the model, on either transport. Implementation mirrors
-  `executor/guest/browser_cdp.go` including its 200-node / 256-byte caps.
-- **The grant is its own key.** They are `requiresExplicitGrant`, and
-  deliberately *not* the executor's browser policy key: an agent trusted
-  with an isolated sandbox on somebody's laptop has not thereby been
-  trusted with a third-party cloud browser that can hold a logged-in
-  session. Connecting an account never converts an existing grant.
-- **Two connection scopes, one flow** (`packages/browser-cloud`): an
-  owner-connected organisation subscription and a member's own account
-  (free tier as the on-ramp), decided by *which surface accepted the key* —
-  Browserbase authenticates by API key alone and nothing about a key says
-  whose it is. Resolution per run: organisation, else the requester's
-  personal one; an unattended run has no requester, so it can never spend
-  an individual's hours. Connect is probe-then-persist: a key that cannot
-  open a browser is refused loudly and stored nowhere.
-- **Every session is created with `recordSession`, `logSession` and
-  `solveCaptchas` off.** A login handoff is a person typing a password into
-  that session; a recording would be replayable from the Browserbase
-  dashboard, outside Nessie's disclosure predicate. Asserted in tests.
-- **Browser-hours are money, so release is fused to the transition.**
-  `updateRunStatus` calls `releaseRunCloudBrowsers` via a module-level hook
-  (`worker/src/run/browser-cloud/release-hook.ts`) rather than a parameter,
-  so none of its eight terminal call sites participates; a 30 s reaper
-  stops sessions a crashed run left behind. Reaping means *calling
-  Browserbase* — a row flipped locally while the browser keeps billing is
-  the one lie this table must not tell. Session status is a real
-  remote-resource state machine (`allocating|active|releasing|released|
-  failed|unknown`), never a boolean.
-- **An ambiguous outcome is never a failure.** A click can place an order
-  and then lose its response, so `CloudBrowserUnknownOutcomeError` carries
-  the `fatalToolExecution` marker and aborts the batch — the executor's
-  discipline. This is why the tools bypass `wrapTool`, which converts every
-  throw into `success: false`.
-- **Egress**: REST through `safeFetch`; the CDP connection is a WebSocket,
-  so `packages/browser-cloud/src/pinned-websocket.ts` builds RFC 6455 on
-  `pinnedConnect` + TLS (MCP SSE rides HTTP and is no precedent). Every
-  URL Browserbase returns is re-checked against its own origin.
-- **Watching**: `SidePanelShell` + `useSidePanelGeometry` were extracted
-  from `ThreadReplyPanel` so the reply panel and the agent-screen panel
-  share one frame; `AgentScreenViewer` is one component in two containers
-  (panel, full-screen). Watch-only — `pointer-events` is a courtesy, the
-  boundary is who may fetch the live-view URL, which is minted per read and
-  never persisted, logged, or put in a message.
-
+- **One grammar, two transports.** `browser_open`/`observe`/`act`/`close`
+  reuse the executor's `ExecutorBrowser*ArgumentsSchema` verbatim — acting
+  only on an accessibility node id from a prior observe — under their own
+  `requiresExplicitGrant` key, so connecting an account never converts a
+  local-sandbox grant into cloud browsing.
+- **Scope follows the surface that accepted the key** (owner-only org
+  settings vs a member's own page), since Browserbase authenticates by API
+  key alone; an unattended run has no requester and never spends an
+  individual's hours. Connect probes before it persists.
+- **Browser-hours are money.** Release is fused to `updateRunStatus` via a
+  hook so no terminal call site participates, and the reaper stops strays
+  by *calling Browserbase*. An ambiguous CDP outcome throws (a click may
+  have placed an order), so these tools bypass `wrapTool`.
 ## Agent chat cards — one card system, not an eighth look-alike
 
 Every agent that can talk can post an **interactive card** into a conversation
