@@ -753,6 +753,19 @@ glyph. Spec and phasing:
   summary with the full transcript as a `.md` attachment through the one
   `FileService` chokepoint. The `active → ended` conditional update is the
   claim, so a retry or two tabs racing a hang-up produce exactly one record.
+- **Two artefacts: a compaction the agent carries, a transcript that is the
+  truth.** The message content is generated
+  (`api/src/services/voice/voice-compaction.ts`) — what was discussed and
+  decided, every substantive detail kept, the filler dropped — because raw
+  turns re-enter the assistant's context window on every later run in the DM.
+  It **fails open** to the verbatim summary on any failure (no model client,
+  provider error, unusable answer): a call is unreproducible, so summarisation
+  may never cost the record. The transcript reaches the summariser as
+  delimited, untrusted data in the user turn, never as instructions.
+  `metadata.voiceCall.compacted` says which shape the content is, and the
+  admin card renders each as what it is plus a **Full transcript** control
+  that opens the attachment in the shared `Dialog` — never a navigating link,
+  which is how a `blob:` URL destroyed the mobile shell's navigation state.
 - **`pa_send` adds no authority.** The one declared function posts an ordinary
   user message through the normal message route, so the run is
   indistinguishable from a typed one and every existing gate applies. It acks
