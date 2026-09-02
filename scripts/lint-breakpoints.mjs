@@ -20,8 +20,11 @@ const SCAN_ROOT = 'admin/src'
 
 // file path (repo-relative) → allowed arbitrary viewport variant prefixes.
 const ALLOWLIST = new Map([
+  // The right-hand panel frame moved out of ThreadReplyPanel so the reply
+  // panel and the agent-screen panel share one implementation; the 900px
+  // family moved with it.
   [
-    'admin/src/components/features/channels/thread-panel/ThreadReplyPanel.tsx',
+    'admin/src/components/features/channels/side-panel/SidePanelShell.tsx',
     ['min-[900px]', 'max-[900px]'],
   ],
 ])

@@ -8,6 +8,7 @@ import { registerAppRoutes } from './routes/apps.js'
 import { registerAppConnectionRequestRoutes } from './routes/app-connection-requests.js'
 import { registerAppsConnectRoutes } from './routes/apps-connect.js'
 import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
+import { registerBrowserCloudRoutes } from './routes/browser-cloud.js'
 import { registerAgentCardRoutes } from './routes/agent-cards.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
@@ -18,6 +19,8 @@ import { registerCallRoutes } from './routes/calls.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
 import { registerCommsConnectionRoutes } from './routes/comms-connections.js'
+import { registerModelSubscriptionRoutes } from './routes/model-subscriptions.js'
+import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
 import { registerDashboardRoutes } from './routes/dashboards.js'
 import { registerDesignerRoutes } from './routes/designer.js'
@@ -98,6 +101,8 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerDeviceRoutes(app, deps)
   registerWebPushRoutes(app, deps)
   registerCommsConnectionRoutes(app, deps)
+  registerModelSubscriptionRoutes(app, deps)
+  registerGmailDraftRoutes(app, deps)
   registerCommsWebhookRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
@@ -143,6 +148,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
   registerAgentCardRoutes(app, deps)
+  registerBrowserCloudRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)

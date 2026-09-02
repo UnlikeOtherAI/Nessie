@@ -7,10 +7,13 @@ import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigat
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
 import { UserAvatar } from '../../primitives/UserAvatar'
+import { AgentScreenDisclosure } from '../browser-cloud/AgentScreenDisclosure'
 import { IdentityTile } from '../../primitives/IdentityTile'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
+  /** The open thread, so the drawer can offer any live agent browser in it. */
+  activeThreadId: string | null
   allUsers: UserRecord[]
   canAddPeople: boolean
   channelUsers: UserRecord[]
@@ -69,8 +72,10 @@ const ConversationOverview = ({
   canAddPeople,
   onOpenMembers,
   onOpenAddPeople,
+  onOpenAgentScreen,
   onOpenFiles,
   onOpenMessages,
+  threadId,
 }: {
   activeChannel: ChannelRecord
   channelUsers: UserRecord[]
@@ -78,8 +83,10 @@ const ConversationOverview = ({
   canAddPeople: boolean
   onOpenMembers: () => void
   onOpenAddPeople: () => void
+  onOpenAgentScreen: (sessionId: string) => void
   onOpenFiles: () => void
   onOpenMessages: () => void
+  threadId: string | null
 }) => {
   const setMute = useSetChannelMute()
   const isGroup = Boolean(activeChannel.isGroupDm || memberCount > 2)
@@ -121,6 +128,7 @@ const ConversationOverview = ({
       </div>
 
       <div className="mt-3 border-y border-[color:var(--sep)]">
+        <AgentScreenDisclosure onOpen={onOpenAgentScreen} threadId={threadId} />
         <Disclosure label="Messages" onClick={onOpenMessages} />
         <Disclosure label="Files and links" onClick={onOpenFiles} />
       </div>
@@ -269,6 +277,7 @@ const GroupConversationMark = () => (
 
 export const ConversationInfoFlow = ({
   activeChannel,
+  activeThreadId,
   allUsers,
   canAddPeople,
   channelUsers,
@@ -319,7 +328,11 @@ export const ConversationInfoFlow = ({
           onOpenAddPeople={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
           onOpenFiles={() => void navigate(`/channels/${activeChannel.id}?tab=files`)}
           onOpenMembers={() => void navigate(`/channels/${activeChannel.id}/info/members`)}
+          onOpenAgentScreen={(sessionId) => void navigate(
+            `/channels/${activeChannel.id}/threads/${activeThreadId}/browser/${sessionId}`,
+          )}
           onOpenMessages={() => void navigate(`/channels/${activeChannel.id}`)}
+          threadId={activeThreadId}
         />
       ) : null}
 

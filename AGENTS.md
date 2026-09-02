@@ -500,10 +500,17 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   owns job isolation, budget enforcement, audit, and raw usage metering for
   both PA and shared-agent calls; UOA alone rates that usage commercially.
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` is the
-  deployment-wide inference chokepoint; runtime routing rewrites it to Ledger's
+  deployment-wide inference chokepoint for every run the ORGANIZATION pays for;
+  runtime routing rewrites it to Ledger's
   `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi, or custom
   provider, including designer/orchestrator calls; embeddings resolve their own
-  `/v1/:serviceId` segment (see "Embeddings" below). If the
+  `/v1/:serviceId` segment (see "Embeddings" below). The one sanctioned
+  exception is a **personal model subscription** (see "Personal model
+  subscriptions" below): a run pinned to an agent owner's own linked plan
+  bypasses this chokepoint entirely — no Ledger connection, no signed
+  attribution, no Ledger metering — because the organization is not paying for
+  it and its credentials are the person's, not the deployment's. That lane is
+  structural, decided once at run admission, and never a fallback. If the
   deployment-wide URL is absent, signing is decided after the effective
   organization provider-record URL resolves, so a Ledger route an organization
   provider record introduced still receives complete attribution. **Inference
@@ -753,6 +760,86 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   because a callback that trusts whoever finished consent will silently
   re-point a different mailbox. Plan:
   `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
+- **An approval over provider content binds the content, not its handle, and
+  the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
+  nothing useful: the draft stays mutable through the chat card, through Gmail,
+  and through another run, so an approved send could deliver text nobody
+  approved. `GmailDraftAction.contentFingerprint` is re-read and compared on
+  every send path, and the same row carries the conditional
+  `draft → sending → sent` claim that makes a double send impossible. The
+  approval requirement itself is declared on the tool definition and enforced at
+  the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
+  and a seeded-`PolicyRule` gate is therefore absent in any organisation whose
+  seed never ran. Its only bypass is an exact-key standing grant
+  (`SendAuthorizationGrant`, `(connectionId, agentId)`, the
+  `ScopeDisclosureGrant` shape) that never covers an unattended run or a
+  non-owner, and `ApprovalRequest.requiredApproverUserId` keeps a send-as-you
+  gate resolvable only by the person it acts as — approval visibility otherwise
+  reaches every member who can read a public channel. One shared
+  `sendDraftForUser` serves the human button and the agent tool; api services
+  are unreachable from the worker, so a second copy forks the state claim and
+  the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
+
+## Personal model subscriptions — the owner's plan, the owner's grant
+
+A person links a consumer AI plan they already pay for (Kimi and GLM today;
+OpenAI Codex and xAI Grok when the OAuth phase lands) and the agents **they
+own** run on it instead of the organization's Ledger credits. Rules that must
+not drift:
+
+- **A link is Nessie's own grant.** Never read, import, or accept a vendor
+  CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
+  items). Providers rotate refresh tokens and invalidate the previous one, so
+  two apps sharing one grant log each other out — OpenClaw hit this and removed
+  its import path for exactly this reason. One grant, one refresh owner.
+- **Token values live in the vault, never in PostgreSQL.**
+  `docs/secret-management-spec.md` bars new secret-capture flows from putting
+  values in the database. The bundle goes to a **dedicated, separately-ACLed**
+  vault project (`NESSIE_SUBSCRIPTION_VAULT_*`), not the shared personal
+  partition — that folder also holds a person's ordinary captured secrets, and
+  an identity scoped to it could read them all. `model_subscription_credentials`
+  holds only the pointer. A deployment with no vault refuses linking in words;
+  it never falls back to a column.
+- **The lane is pinned at run admission and never falls back.**
+  `resolveRunSubscriptionBinding` re-derives entitlement from live rows (agent
+  owner, that owner's live membership, subscription status) and persists the
+  subscription plus its credential epoch on the `Run`, so a mid-run relink
+  cannot switch accounts and a continuation whose binding died fails closed. A
+  selection that merely *looks* like a subscription — unknown adapter, dangling
+  pointer — is `unavailable`, never Ledger: falling back would move a person's
+  spend onto the organization without anyone agreeing to it.
+- **Organization budgets gate organization spend, so they do not gate this
+  lane.** `applyBudgetGate` and its mid-run probe skip a pinned run: blocking
+  would refuse a run the organization is not paying for (with "buy credits" copy
+  naming the wrong purse), and a `degrade` verdict would rewrite it onto the
+  organization's Ledger provider — moving the very spend it was capping. The
+  per-run backstop envelope still applies in full.
+- **Exclusion from cost is structural.** `TokenLedgerEvent.billingSource` +
+  `modelSubscriptionId` decide it, never the absence of a pricing profile:
+  connector invocations record the *runtime* provider (`openai-compatible`), and
+  an owner-authored wildcard `ModelPricingProfile` would otherwise price spend
+  the organization never incurred. Attribution follows the subscription **owner**,
+  not whoever posted. The writer reads the run's own pin so no terminal path can
+  forget to stamp it.
+- **One validator, every write path.** `assertAgentModelSelection`
+  (`@nessie/workspace-admin`) is the single gate for create, update, clone and
+  the PA `agent_create` tool: a Ledger pair goes to the catalogue, a
+  `subscription/<key>` pair must belong to the acting person, and a Ledger
+  selection clears any stale pointer. Ownership transfer and clone strip the
+  selection, because a subscription is not transferable. Write-time validation
+  is UX; the run-time gate is the security boundary.
+- **Refresh discipline** (OpenClaw's field lessons): a short locked claim, the
+  network call outside any transaction, compare-and-swap on the epoch, never a
+  transport-failure retry of a refresh grant (the provider may already have
+  rotated it), a 5-minute proactive margin, and failure transitions applied only
+  when the failing epoch is still current — so a delayed 401 cannot kill a fresh
+  link. Only adapter-defined authentication codes reach
+  `needs_reauthorization`; 403 is also entitlement, policy and quota, and a
+  relink button cannot fix those.
+- **Deleting a pointer tombstones the vault secret** in the same transaction, or
+  a cascade strands a live refresh token nothing can address.
+
+Spec and phasing: `docs/plans/2026-09-02-personal-model-subscriptions.md`.
 
 ## Embeddings — routed separately, one pinned width
 

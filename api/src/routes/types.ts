@@ -1,3 +1,4 @@
+import type { SubscriptionSecretStore } from '@nessie/model-subscriptions'
 import type { PrismaClient } from '@prisma/client'
 import type {
   DeepSignalMcpIdentityService,
@@ -33,6 +34,13 @@ export type RouteDeps = ServerContext & {
   deepSignalMcpIdentity: DeepSignalMcpIdentityService | null
   // Single chokepoint for all blob file work (store/stream/delete + accounting).
   fileService: FileService
+  /**
+   * Vault access for personal model subscriptions. Null when the deployment has
+   * not configured the dedicated subscription vault project, which makes the
+   * settings surface say so plainly rather than offer a link button that cannot
+   * store anything.
+   */
+  subscriptionSecrets?: SubscriptionSecretStore | null
   /**
    * Encrypted store for user-provided connector credentials, minting
    * `secret_mcp_` refs. Shared with the instance-secret route so a secret

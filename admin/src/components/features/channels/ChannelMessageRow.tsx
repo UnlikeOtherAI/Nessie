@@ -24,6 +24,8 @@ import {
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
+import { GmailDraftCard } from './GmailDraftCard'
+import { GoogleScopeRequestCard } from './GoogleScopeRequestCard'
 import { AppSetupCard } from './AppSetupCard'
 import { AgentCardMessage } from './AgentCardMessage'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -31,6 +33,7 @@ import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { DocumentRefChip } from './DocumentRefChip'
 import { RunStopContinue } from './RunStopContinue'
+import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
@@ -399,10 +402,19 @@ export const ChannelMessageRow = ({
             <CommsConnectCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
+            <GmailDraftCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <GoogleScopeRequestCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
             <AppSetupCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <RunApprovalGate metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <AgentCardMessage metadata={message.metadata} />

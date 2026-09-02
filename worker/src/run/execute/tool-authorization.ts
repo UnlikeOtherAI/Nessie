@@ -1,9 +1,27 @@
-import { BUILTIN_TOOL_DEFINITIONS, DEEP_WATER_START_FAILURE_DETAIL } from '@nessie/runtime'
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  DEEP_WATER_START_FAILURE_DETAIL,
+  STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
+} from '@nessie/runtime'
+import {
+  recordSendDecision,
+  resolveStandingConsentForToolCall,
+} from '@nessie/workspace-admin'
+import {
+  buildSendBoundaryPrompt,
+  readSendBoundaryVerdict,
+  type SendBoundaryVerdict,
+} from './send-boundary-judge.js'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
 import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import {
+  reviewableToolSurface,
+  type AutoReviewResult,
+  type ReviewableToolSurface,
+} from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
 import {
@@ -29,6 +47,7 @@ export type ToolAuthorizationDecision =
       decision: 'suspend'
       approval: {
         id: string
+        notice: string
         toolName: string
       }
     }
@@ -48,11 +67,23 @@ export type ToolAuthorizationContext = {
    * skip it and still pass the policy/approval evaluation.
    */
   externalToolNames?: Set<string>
+  /** The main loop's live view, including deferred MCP names loaded mid-run. */
+  mcpToolNames?: ReadonlySet<string>
+  /** The executor operations actually exposed for this run. */
+  executorToolNames?: ReadonlySet<string>
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
+  /**
+   * The run's utility-model call, used for the send-boundary judgement. Absent
+   * where no utility model resolves, which fails the judgement closed to
+   * asking rather than proceeding unjudged.
+   */
+  runUtility?: (prompt: string) => Promise<string | null>
   /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
   consumeApprovalProof?: boolean
+  /** A prepared call has already received its single auto-review verdict. */
+  skipAutoReview?: boolean
   resumeState?: {
     actorContext: AuthorizedActionContext
     interactive: boolean
@@ -68,6 +99,12 @@ export type ToolAuthorizationAuditEmitter = (
 
 export type ToolAuthorizationHooks = {
   deepWaterHandoffGuard: DeepWaterHandoffGuard
+  /** One bounded utility-model review, supplied by the caller that owns metering. */
+  reviewProposedAction?: (input: {
+    args: Record<string, unknown>
+    surface: ReviewableToolSurface
+    toolName: string
+  }) => Promise<AutoReviewResult>
   // Audit defaults to `emitWorkerAuditEvent` in `authorizeToolExecution`; the
   // seam exists so flows whose audit identity is out of scope for this change
   // (the delegate sub-agent) keep their previous recording behaviour exactly.
@@ -166,7 +203,7 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const policyDecision = await evaluateToolInvokePolicy(
+  const rawPolicyDecision = await evaluateToolInvokePolicy(
     prisma,
     toolActorContext,
     context,
@@ -174,6 +211,67 @@ export const authorizeToolExecution = async (
     args,
     { consumeApprovalProof: auth.consumeApprovalProof },
   )
+
+  // A tool may declare its approval requirement in CODE rather than relying on
+  // a `PolicyRule` row. The evaluator's default verdict is `allow`, so a purely
+  // data-driven gate is simply absent in any organization whose seed never ran
+  // — which is every organization created before the rule existed. Sending mail
+  // as a person is not something that may be ungated by accident.
+  //
+  // The one legitimate bypass is standing consent the mailbox owner gave for
+  // this exact agent, resolved here so the decision lives at the chokepoint
+  // every tool execution passes through rather than in each handler.
+  let boundaryReason: string | null = null
+  const policyDecision = await (async () => {
+    if (
+      !rawPolicyDecision.allowed
+      || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+      || toolActorContext.approval?.approvalProof
+    ) {
+      return rawPolicyDecision
+    }
+    const consent = await resolveStandingConsentForToolCall(prisma, {
+      toolName,
+      args,
+      organizationId: context.channel.organizationId,
+      agentId: context.agent.id,
+      requestingUserId: toolActorContext.actionContext.effectiveUserId ?? null,
+      interactive: auth.resumeState?.interactive ?? false,
+    })
+    // Keep the full denied shape: spreading an *allowed* decision would drop
+    // `approvalActionType`, which the approval row and its card read.
+    const escalate = () => ({
+      ...rawPolicyDecision,
+      allowed: false as const,
+      approvalActionType: undefined as string | undefined,
+      policyRuleId: undefined as string | undefined,
+      reason: 'approval_required' as const,
+    })
+    if (consent.outcome === 'ask') return escalate()
+    if (consent.outcome === 'proceed') return rawPolicyDecision
+
+    // A `judged` grant is consent to DECIDE, not consent to send. One bounded
+    // utility call weighs the action against the owner's own written boundary,
+    // and fails closed to asking — the inverse of the watch-status gate,
+    // because a miss there costs a redundant message and a miss here sends an
+    // email nobody approved.
+    const verdict = await judgeAgainstSendBoundary({
+      args,
+      boundary: consent.boundary,
+      runUtility: auth.runUtility,
+      toolName,
+    })
+    await recordSendDecision(
+      prisma,
+      consent.grantId,
+      verdict.verdict === 'proceed' ? 'decided' : 'asked',
+    ).catch(() => undefined)
+    if (verdict.verdict === 'proceed') return rawPolicyDecision
+    // Shown on the approval card: the person should see why they were asked.
+    boundaryReason = verdict.reason
+    return escalate()
+  })()
+
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       approvalActionType: policyDecision.approvalActionType,
@@ -192,8 +290,16 @@ export const authorizeToolExecution = async (
         toolName,
         interactive: auth.resumeState.interactive,
         messageId: auth.resumeState.messageId,
+        ...(boundaryReason ? { boundaryReason } : {}),
       })
-      return { decision: 'suspend', approval: { id: approval.id, toolName } }
+      return {
+        decision: 'suspend',
+        approval: {
+          id: approval.id,
+          notice: `⚠️ I need approval before I can run ${toolName}.`,
+          toolName,
+        },
+      }
     }
     return {
       decision: 'deny',
@@ -210,10 +316,170 @@ export const authorizeToolExecution = async (
     }
   }
 
+  if (policyDecision.reviewMode === 'auto' && !auth.skipAutoReview) {
+    const surface = reviewableToolSurface(toolName, {
+      executorToolNames: auth.executorToolNames,
+      mcpToolNames: auth.mcpToolNames,
+    })
+    if (surface) {
+      const review = await runAutoReview(hooks, { args, surface, toolName })
+      await recordAutoReview(prisma, emitAudit, toolActorContext, context, toolName, surface, review)
+
+      if (review.verdict === 'deny') {
+        return {
+          decision: 'deny',
+          result: toolDeniedResult(toolName, args, {
+            message: `Automated review denied ${toolName}: ${review.reason}`,
+            policyRuleId: policyDecision.policyRuleId,
+            policySource: policyDecision.policySource,
+            reason: 'auto_review_denied',
+          }),
+        }
+      }
+
+      if (review.verdict === 'require_approval') {
+        const notice = `Automated review asked for approval before ${toolName}: ${review.reason}`
+        if (auth.maySuspendForApproval && auth.resumeState) {
+          const approval = await createToolApprovalRequest(prisma, {
+            actorContext: auth.resumeState.actorContext,
+            args,
+            context,
+            interactive: auth.resumeState.interactive,
+            messageId: auth.resumeState.messageId,
+            policyRuleId: policyDecision.policyRuleId,
+            reason: notice,
+            toolCallId,
+            toolName,
+          })
+          return { decision: 'suspend', approval: { id: approval.id, notice, toolName } }
+        }
+        return {
+          decision: 'deny',
+          result: toolDeniedResult(toolName, args, {
+            message: notice,
+            policyRuleId: policyDecision.policyRuleId,
+            policySource: policyDecision.policySource,
+            reason: 'approval_required',
+          }),
+        }
+      }
+    }
+  }
+
   return { decision: 'allow', toolActorContext }
 }
 
+/**
+ * One bounded judgement, on the same utility-model plumbing compaction and the
+ * watch-status gate already use. Every failure path returns `ask`.
+ */
+const judgeAgainstSendBoundary = async (input: {
+  args: Record<string, unknown>
+  boundary: string
+  runUtility?: (prompt: string) => Promise<string | null>
+  toolName: string
+}): Promise<SendBoundaryVerdict> => {
+  if (!input.runUtility) {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
+  try {
+    const raw = await input.runUtility(
+      buildSendBoundaryPrompt({
+        boundary: input.boundary,
+        proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
+        request: 'See the conversation this action came from.',
+      }),
+    )
+    return readSendBoundaryVerdict(raw)
+  } catch {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
+}
+
+// Policy-declared auto-review sits alongside the boundary judge, deliberately.
+// They answer different questions: this one is an organisation saying "review
+// this class of action", the boundary judge is one person delegating their own
+// mailbox. Both fail closed to a human.
+const runAutoReview = async (
+  hooks: ToolAuthorizationHooks,
+  input: { args: Record<string, unknown>; surface: ReviewableToolSurface; toolName: string },
+): Promise<AutoReviewResult> => {
+  if (!hooks.reviewProposedAction) {
+    return {
+      reason: 'The automated reviewer was unavailable, so a human must decide.',
+      reviewerModel: null,
+      verdict: 'require_approval',
+    }
+  }
+  try {
+    return await hooks.reviewProposedAction(input)
+  } catch {
+    return {
+      reason: 'The automated reviewer was unavailable, so a human must decide.',
+      reviewerModel: null,
+      verdict: 'require_approval',
+    }
+  }
+}
+
+const recordAutoReview = async (
+  prisma: PrismaClient,
+  emitAudit: ToolAuthorizationAuditEmitter,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+  surface: ReviewableToolSurface,
+  review: AutoReviewResult,
+): Promise<void> => {
+  await prisma.taskEvent.create({
+    data: {
+      eventType: 'tool.auto_reviewed',
+      payload: {
+        surface,
+        toolName,
+        verdict: review.verdict,
+      },
+      taskId: context.task.id,
+    },
+  })
+  await emitAudit(actorContext, {
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      autoReview: {
+        reviewerModel: review.reviewerModel,
+        verdict: review.verdict,
+      },
+      runId: context.run.id,
+      surface,
+      taskId: context.task.id,
+      toolId: toolName,
+    },
+    outcome: review.verdict === 'deny' ? 'denied' : 'success',
+    ...(review.verdict === 'deny' ? { reason: 'auto_review_denied' } : {}),
+    resourceId: toolName,
+    resourceType: 'tool',
+  })
+}
+
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
+
+/**
+ * A mailbox action waits far longer than a routine tool gate.
+ *
+ * Thirty minutes is a sensible window for something a person is watching
+ * happen. It is the wrong window for "your assistant wants to send this email"
+ * raised at 06:00 by a schedule: the request would be dead before anyone woke
+ * up, and the plan called that failure out explicitly. Twenty-four hours is
+ * long enough to survive a night and short enough that a forgotten request
+ * does not linger indefinitely.
+ */
+const MAILBOX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000
+
+const approvalExpiryFor = (toolName: string): number =>
+  STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+    ? MAILBOX_APPROVAL_EXPIRY_MS
+    : DEFAULT_APPROVAL_EXPIRY_MS
 
 /**
  * The partial `(run_id, tool_call_id)` unique index is the crash-redelivery
@@ -230,8 +496,11 @@ const createToolApprovalRequest = async (
     interactive: boolean
     messageId: string
     policyRuleId?: string
+    reason?: string
     toolCallId: string
     toolName: string
+    /** Why the assistant escalated instead of deciding, when it judged. */
+    boundaryReason?: string
   },
 ): Promise<{ id: string }> => {
   const existing = await prisma.approvalRequest.findFirst({
@@ -250,13 +519,22 @@ const createToolApprovalRequest = async (
       inputSummary: summarizeToolInput(input.args),
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
+      boundaryReason: input.boundaryReason ?? null,
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
-    expiresAt: new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_MS),
+    expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),
     organizationId: input.context.channel.organizationId,
     projectId: input.context.channel.projectId,
-    reason: `Tool ${input.toolName} requires approval before it can run.`,
+    reason: input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
+    // A send-as-you gate is resolvable ONLY by the person whose account it
+    // acts as. Approval visibility otherwise reaches any member who can read a
+    // public channel, so without this a colleague could authorise an email
+    // sent in somebody else's name.
+    requiredApproverUserId:
+      STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
+        ? input.actorContext.actionContext.effectiveUserId ?? null
+        : null,
     resumeState: {
       actorContext: input.actorContext,
       args: input.args,

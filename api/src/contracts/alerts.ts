@@ -12,6 +12,7 @@ export const UserAlertKindSchema = z.enum([
   // failure this surfaces was previously invisible unless somebody opened the
   // Triggers page and read a delivery row.
   'trigger_health',
+  'approval_requested',
   'call_missed',
   'workspace_invitation',
 ])

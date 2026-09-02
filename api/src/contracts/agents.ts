@@ -33,6 +33,12 @@ export const CreateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  /**
+   * Which linked personal subscription this agent spends, when `provider` is a
+   * `subscription/<key>` value. Explicit because a person may link two accounts
+   * at one provider and the (provider, model) pair cannot tell them apart.
+   */
+  modelSubscriptionId: z.string().uuid().nullish(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   visibility: AgentVisibilitySchema.optional(),
@@ -61,6 +67,12 @@ export const UpdateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  /**
+   * Which linked personal subscription this agent spends, when `provider` is a
+   * `subscription/<key>` value. Explicit because a person may link two accounts
+   * at one provider and the (provider, model) pair cannot tell them apart.
+   */
+  modelSubscriptionId: z.string().uuid().nullish(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   todosEnabled: z.boolean().optional(),

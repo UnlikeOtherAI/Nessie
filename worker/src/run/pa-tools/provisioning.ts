@@ -11,7 +11,7 @@ import {
 import {
   AGENT_BINDING_ERROR_CODES,
   AgentBindingError,
-  assertLedgerAgentModelSelection,
+  assertAgentModelSelection,
   bindAgentToChannel,
   checkPolicy,
   createAgentRecord,
@@ -139,25 +139,34 @@ export const runAgentCreateTool = async (
     throw new Error('A private agent can only be created for you.')
   }
 
-  // Same gate as the route: a model/provider pair must exist in the Ledger
-  // catalogue, so chat cannot mint an agent pointing at a model that will fail
-  // on its first run.
+  // The SAME validator the route uses, not a second copy: a Ledger pair must
+  // exist in the catalogue, and a `subscription/<key>` pair must belong to the
+  // acting person. Chat cannot mint an agent pointing at a model that will fail
+  // on its first run, nor at somebody else's personal plan.
+  let modelSubscriptionId: string | null = null
   if (args.model !== undefined || args.provider !== undefined) {
-    await assertLedgerAgentModelSelection({
+    const selection = await assertAgentModelSelection(context.prisma, {
+      actingUserId: member.userId,
       config: loadConfig().model,
-      ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+      ...(process.env.LEDGER_PUBLIC_URL
+        ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
+        : {}),
       model: args.model,
+      organizationId: member.organizationId,
+      ownerUserId: member.userId,
       provider: args.provider,
-      requestHeaders: () => ledgerAgentModelCatalogRequestHeaders({
+      requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
         actorContext: member.actorContext,
         ledgerIdentity: context.ledgerIdentity,
       }),
     })
+    modelSubscriptionId = selection.modelSubscriptionId
   }
 
   const agent = await createAgentRecord(context.prisma, {
     effort: args.effort,
     model: args.model,
+    modelSubscriptionId,
     name: args.name,
     organizationId: member.organizationId,
     // Mirrors `POST /api/agents`: the person who asked for the agent stewards

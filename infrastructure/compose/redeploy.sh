@@ -6,6 +6,18 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 COMPOSE="docker compose -f infrastructure/compose/docker-compose.prod.yml"
 
+# One redeploy at a time on this host. The Deploy workflow already serializes
+# its own runs via a GitHub concurrency group, but that cannot see an
+# out-of-band manual run — and two redeploys interleaving (one rsyncing/
+# building while the other rolls containers) corrupts the deploy. The lock
+# lives OUTSIDE the synced tree: rsync --delete would replace the inode and
+# split the lock. Waits up to 30 min for the other run, then gives up loudly.
+exec 9>/var/lock/nessie-redeploy.lock
+if ! flock -w 1800 9; then
+  echo "Another redeploy holds /var/lock/nessie-redeploy.lock — aborting" >&2
+  exit 1
+fi
+
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
@@ -89,8 +101,118 @@ echo "==> Seeding App Store catalogue (first-party + curated connectors)"
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:connectors
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:apps
 
-echo "==> Recreating api + worker + admin + web"
-$COMPOSE up -d
+# Zero-downtime rollout for the services Caddy fronts. Instead of the
+# stop-then-start recreate (which took the site down for the whole API boot,
+# and left it down when a broken image never came up), start a NEW replica of
+# the service next to the old one, wait for its Docker healthcheck to pass,
+# and only then retire the old replica. Caddy targets these services by the
+# pinned network alias (nessie-api / nessie-admin / nessie-web) which both
+# replicas carry, so Docker DNS moves traffic to the survivor by itself; the
+# Caddyfile's lb_try_duration on the nessie blocks re-dials across the brief
+# swap instant. If the new replica never becomes healthy it is removed and the
+# OLD one keeps serving — the deploy fails loudly instead of taking the site
+# down with it.
+rollout() {
+  local service="$1"
+  local timeout="${2:-240}"
+
+  # Clear out any non-running leftovers of this service first, so `--scale`
+  # creates a genuinely new replica instead of restarting a stale container
+  # built from an old image.
+  local stale
+  stale="$(comm -13 <($COMPOSE ps -q "$service" | sort) <($COMPOSE ps -aq "$service" | sort))"
+  if [ -n "$stale" ]; then
+    echo "$stale" | xargs docker rm -f >/dev/null 2>&1 || true
+  fi
+
+  local old_ids
+  old_ids="$($COMPOSE ps -q "$service" | sort)"
+
+  if [ -z "$old_ids" ]; then
+    # Nothing running (first deploy / previously failed): plain start.
+    $COMPOSE up -d --no-deps "$service"
+  else
+    local old_count
+    old_count="$(printf '%s\n' "$old_ids" | grep -c .)"
+    $COMPOSE up -d --no-deps --no-recreate \
+      --scale "$service=$((old_count + 1))" "$service"
+  fi
+
+  local new_id
+  new_id="$(comm -13 <(printf '%s\n' "$old_ids") <($COMPOSE ps -q "$service" | sort) | head -1)"
+  if [ -z "$new_id" ]; then
+    echo "rollout($service): no new container was created" >&2
+    return 1
+  fi
+
+  echo "    waiting for new $service replica ${new_id:0:12} to pass health checks"
+  local waited=0
+  while true; do
+    local status
+    status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$new_id" 2>/dev/null || echo missing)"
+    case "$status" in
+      healthy)
+        break ;;
+      starting|created|running)
+        ;;
+      *)
+        echo "rollout($service): new replica is '$status' — removing it; the old replica keeps serving" >&2
+        docker logs --tail 80 "$new_id" >&2 2>&1 || true
+        docker rm -f "$new_id" >/dev/null 2>&1 || true
+        return 1 ;;
+    esac
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "rollout($service): new replica not healthy after ${timeout}s — removing it; the old replica keeps serving" >&2
+      docker logs --tail 80 "$new_id" >&2 2>&1 || true
+      docker rm -f "$new_id" >/dev/null 2>&1 || true
+      return 1
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+
+  if [ -n "$old_ids" ]; then
+    echo "    new $service replica healthy — retiring old replica(s)"
+    local id
+    for id in $old_ids; do
+      # Drop the old replica out of edge DNS *before* stopping it, so Caddy
+      # never dials a dying container: from this instant new requests resolve
+      # only to the new replica. (Established streams to the old one break
+      # here, exactly as they would at stop; the admin SPA reconnects.)
+      docker network disconnect edge "$id" >/dev/null 2>&1 || true
+      sleep 1
+      docker stop "$id" >/dev/null
+      docker rm "$id" >/dev/null
+    done
+  fi
+}
+
+echo "==> Rolling out api (health-gated blue-green swap)"
+rollout api 240
+
+echo "==> Rolling out admin + web"
+rollout admin 90
+rollout web 90
+
+echo "==> Recreating worker + reconciling remaining services"
+$COMPOSE up -d --no-deps worker
+$COMPOSE up -d --no-recreate
+
+# Final gate: prove the whole path (Caddy -> new containers) actually serves.
+# Without this a deploy could go green while the site is down — the exact
+# failure this script used to have.
+echo "==> Verifying public endpoints through the edge proxy"
+for url in \
+  https://api.nessie.works/api/health \
+  https://app.nessie.works/ \
+  https://nessie.works/; do
+  if curl -fsS --max-time 15 -o /dev/null "$url"; then
+    echo "    OK $url"
+  else
+    echo "    FAILED $url" >&2
+    exit 1
+  fi
+done
 
 # Reclaim Docker build cache + dangling images. Each rebuild adds layers and
 # ~10GB of build cache; left unbounded it filled the shared host disk to 100%,
@@ -108,6 +230,6 @@ df -h / | tail -1
 cat <<'NOTE'
 
 If this is the first deploy (no users yet), grab the one-time owner bootstrap URL:
-  docker logs nessie-api 2>&1 | grep bootstrap
+  docker compose -f infrastructure/compose/docker-compose.prod.yml logs api 2>&1 | grep bootstrap
 Then open https://app.nessie.works/bootstrap?token=<token>
 NOTE
