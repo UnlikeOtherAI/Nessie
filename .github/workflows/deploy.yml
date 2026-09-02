@@ -8,6 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One deploy at a time, and a running deploy is never killed. This group is
+# load-bearing: it is what stops one run's rsync from rewriting /srv/nessie
+# while another run's build/redeploy is still reading it. GitHub keeps only the
+# newest PENDING run per group, so under heavy merge traffic intermediate
+# queued deploys show as "cancelled" — that is subsumption, not lost work: the
+# newer run deploys a tree that already contains their commits.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
