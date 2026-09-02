@@ -1,8 +1,12 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 
 import type { ProjectRecord } from '../../../lib/api-client'
 import type { CreateSecretInput } from '../../../facades/secrets/hooks'
+import { toFormErrors } from '../../../facades/form-errors'
 import { Dialog } from '../../shared/Dialog'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input, Select } from '../../shared/FormControls'
 
 type CreateSecretDialogProps = {
   onClose: () => void
@@ -55,7 +59,6 @@ export const CreateSecretDialog = ({
   pending,
   projects,
 }: CreateSecretDialogProps) => {
-  const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [value, setValue] = useState('')
   const [scopeType, setScopeType] = useState<SecretCreationScope>('personal')
@@ -86,7 +89,7 @@ export const CreateSecretDialog = ({
       resetForm()
       onSaved()
     } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : 'Could not save secret.')
+      setFormError(toFormErrors(caught).formError ?? 'Could not save secret.')
     }
   }
 
@@ -96,79 +99,42 @@ export const CreateSecretDialog = ({
     <Dialog
       description="Secret values go directly to Infisical and are never stored in Nessie, chat, or agent context."
       dismissDisabled={pending}
-      initialFocusRef={nameInputRef}
       onClose={handleClose}
       open={open}
       title="Save a secret"
     >
       <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-        <div className="grid gap-1.5">
-          <label
-            className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
-            htmlFor="secret-name"
-          >
-            Secret key
-          </label>
-          <input
-            ref={nameInputRef}
+        <FormField help="Use uppercase letters, numbers, and underscores." label="Secret key">
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id="secret-name"
             onChange={(event) => setName(event.target.value.toUpperCase())}
             placeholder="STRIPE_API_KEY"
             value={name}
           />
-          <p className="text-xs text-[color:var(--tx3)]">
-            Use uppercase letters, numbers, and underscores.
-          </p>
-        </div>
+        </FormField>
 
-        <div className="grid gap-1.5">
-          <label
-            className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
-            htmlFor="secret-value"
-          >
-            Value
-          </label>
-          <input
+        <FormField label="Value">
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id="secret-value"
             onChange={(event) => setValue(event.target.value)}
             type="password"
             value={value}
           />
-        </div>
+        </FormField>
 
-        <div className="grid gap-1.5">
-          <label
-            className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
-            htmlFor="secret-scope"
-          >
-            Scope
-          </label>
-          <select
-            className="admin-input"
-            id="secret-scope"
+        <FormField label="Scope">
+          <Select
             onChange={(event) => setScopeType(event.target.value as SecretCreationScope)}
             value={scopeType}
           >
             <option value="personal">Personal</option>
             <option value="project">Project</option>
-          </select>
-        </div>
+          </Select>
+        </FormField>
 
         {scopeType === 'project' ? (
-          <div className="grid gap-1.5">
-            <label
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
-              htmlFor="secret-project"
-            >
-              Project
-            </label>
-            <select
-              className="admin-input"
-              id="secret-project"
+          <FormField label="Project" required>
+            <Select
               onChange={(event) => setScopeId(event.target.value)}
               required
               value={scopeId}
@@ -177,13 +143,13 @@ export const CreateSecretDialog = ({
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </FormField>
         ) : null}
 
-        {formError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{formError}</p> : null}
+        <FormError>{formError}</FormError>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <FormActions>
           <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
             Cancel
           </button>
@@ -194,7 +160,7 @@ export const CreateSecretDialog = ({
           >
             {pending ? 'Saving…' : 'Save securely'}
           </button>
-        </div>
+        </FormActions>
       </form>
     </Dialog>
   )

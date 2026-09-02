@@ -8,6 +8,8 @@ import { uploadAttachment, useAuthedObjectUrl } from '../../../lib/uploads'
 import { CircleImageCropper } from '../../../components/shared/CircleImageCropper'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { Card } from '../../../components/shared/Card'
+import { FormError, FormSuccess } from '../../../components/shared/FormActions'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -19,6 +21,7 @@ export const LogoPanel = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token)
   const canEdit = organization ? ADMIN_ROLES.has(organization.role) : false
@@ -29,17 +32,20 @@ export const LogoPanel = () => {
     event.target.value = ''
     if (!file) return
     setError(null)
+    setNotice(null)
     setSelectedFile(file)
   }
 
   const handleSave = async (blob: Blob) => {
     setUploading(true)
     setError(null)
+    setNotice(null)
     try {
       const file = new File([blob], 'logo.png', { type: 'image/png' })
       const attachment = await uploadAttachment(file, token)
       await updateLogo.mutateAsync(attachment.id)
       setSelectedFile(null)
+      setNotice('Logo saved.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save logo')
     } finally {
@@ -49,23 +55,25 @@ export const LogoPanel = () => {
 
   const handleRemove = () => {
     setError(null)
+    setNotice(null)
     updateLogo.mutate(null, {
       onError: (removeError) =>
         setError(removeError instanceof Error ? removeError.message : 'Failed to remove logo'),
+      onSuccess: () => setNotice('Logo removed.'),
     })
   }
 
   if (isLoading || !organization) {
     return (
-      <section className="admin-card max-w-3xl p-4">
+      <Card as="section">
         <SectionLabel>Logo</SectionLabel>
         <div className="mt-2 text-sm text-[color:var(--tx2)]">Loading…</div>
-      </section>
+      </Card>
     )
   }
 
   return (
-    <section className="admin-card max-w-3xl p-4">
+    <Card as="section">
       <SectionLabel>Logo</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         A round logo for {organization.name}, shown in the sidebar and on the sign-in screen.
@@ -124,7 +132,8 @@ export const LogoPanel = () => {
         )}
       </div>
 
-      {error && <div className="mt-3 text-sm text-[color:var(--danger-text)]">{error}</div>}
+      <FormError className="mt-3">{error}</FormError>
+      {!error ? <FormSuccess className="mt-3">{notice}</FormSuccess> : null}
 
       {selectedFile && (
         <CircleImageCropper
@@ -137,6 +146,6 @@ export const LogoPanel = () => {
           title="Edit logo"
         />
       )}
-    </section>
+    </Card>
   )
 }

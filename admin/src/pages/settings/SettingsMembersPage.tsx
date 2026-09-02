@@ -18,16 +18,20 @@ import {
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents, usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
-import {
-  FeedbackBanner,
-  SettingsPanel,
-  type SettingsFeedback,
-} from './settings-shared'
+import { SettingsPanel } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { WorkspaceMembersSection } from './WorkspaceMembersSection'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { toFormErrors } from '../../facades/form-errors'
+import { Card } from '../../components/shared/Card'
+import { EmptyState } from '../../components/shared/EmptyState'
+import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'
+import { FormField } from '../../components/shared/FormField'
+import { Input, Select } from '../../components/shared/FormControls'
+import { Section } from '../../components/shared/PageBody'
+import { QueryState } from '../../components/shared/QueryState'
 
 const ROLE_OPTIONS = [
   { value: 'owner', label: 'Owner' },
@@ -71,7 +75,7 @@ const MemberRow = ({
   }
 
   return (
-    <div className="admin-card p-3">
+    <Card variant="row">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <UserAvatar
@@ -92,7 +96,7 @@ const MemberRow = ({
           </div>
         </div>
         {deactivated ? (
-          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning" uppercase={false}>
             Deactivated
           </Pill>
         ) : null}
@@ -102,11 +106,11 @@ const MemberRow = ({
       <PersonAgents agents={ownedAgents} token={token} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select
+        <Select
           aria-label={`Role for ${user.displayName}`}
-          className="admin-input admin-input-compact"
           disabled={busy}
           onChange={(event) => void changeRole(event.target.value)}
+          size="compact"
           value={user.role}
         >
           {ROLE_OPTIONS.map((option) => (
@@ -114,7 +118,7 @@ const MemberRow = ({
               {option.label}
             </option>
           ))}
-        </select>
+        </Select>
         {isSelf ? null : (
           <button
             className="admin-button admin-button-secondary admin-button-compact"
@@ -127,12 +131,8 @@ const MemberRow = ({
         )}
       </div>
 
-      {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
+      <FormError className="mt-2">{error}</FormError>
+    </Card>
   )
 }
 
@@ -145,7 +145,8 @@ export const SettingsMembersPage = () => {
   // features: UOA owns membership, and Nessie holds no list to show.
   const isUoaSession = me?.auth.providerType === 'uoa'
   const canManageWorkspace = isOwner || roleIds.includes('admin')
-  const { data: users = [] } = useUsers(isOwner && !isUoaSession)
+  const usersQuery = useUsers(isOwner && !isUoaSession)
+  const users = usersQuery.data ?? []
   const createUser = useCreateUser()
 
   /*
@@ -178,7 +179,9 @@ export const SettingsMembersPage = () => {
   const [userEmail, setUserEmail] = useState('')
   const [userPassword, setUserPassword] = useState('')
   const [userRole, setUserRole] = useState('member')
-  const [addFeedback, setAddFeedback] = useState<SettingsFeedback | null>(null)
+  const [addFieldErrors, setAddFieldErrors] = useState<Record<string, string>>({})
+  const [addFormError, setAddFormError] = useState<string | undefined>(undefined)
+  const [addSuccess, setAddSuccess] = useState(false)
 
   if (!me) {
     return null
@@ -213,7 +216,9 @@ export const SettingsMembersPage = () => {
 
   const createUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setAddFeedback(null)
+    setAddFieldErrors({})
+    setAddFormError(undefined)
+    setAddSuccess(false)
     try {
       await createUser.mutateAsync({
         displayName: userDisplayName,
@@ -225,12 +230,11 @@ export const SettingsMembersPage = () => {
       setUserEmail('')
       setUserPassword('')
       setUserRole('member')
-      setAddFeedback({ kind: 'success', message: 'Member added.' })
+      setAddSuccess(true)
     } catch (error) {
-      setAddFeedback({
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to add member.',
-      })
+      const { fieldErrors, formError } = toFormErrors(error)
+      setAddFieldErrors(fieldErrors)
+      setAddFormError(formError ?? (Object.keys(fieldErrors).length === 0 ? 'Failed to add member.' : undefined))
     }
   }
 
@@ -240,21 +244,32 @@ export const SettingsMembersPage = () => {
   return (
     <SettingsPanel eyebrow="Organization" title="Members">
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="admin-card p-4">
-          <SectionLabel>People</SectionLabel>
-          <div className="mt-4 grid gap-2">
-            {users.map((user) => (
-              <MemberRow
-                isSelf={user.id === me.user.id}
-                key={user.id}
-                ownedAgents={localTree.agentsByUserId.get(user.id) ?? []}
-                user={user}
-              />
-            ))}
-          </div>
+        <Section title="People">
+          <QueryState
+            errorLabel="Could not load members."
+            loadingLabel="Loading members…"
+            query={usersQuery}
+          >
+            {() => (
+              users.length > 0 ? (
+                <div className="grid gap-2">
+                  {users.map((user) => (
+                    <MemberRow
+                      isSelf={user.id === me.user.id}
+                      key={user.id}
+                      ownedAgents={localTree.agentsByUserId.get(user.id) ?? []}
+                      user={user}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState>No members yet.</EmptyState>
+              )
+            )}
+          </QueryState>
           {localTree.tree.pausedPrivateAgentCount > 0 || localTree.tree.unowned.length > 0 ? (
             <div
-              className="mt-5 border-t border-[color:var(--sep)] pt-4"
+              className="border-t border-[color:var(--sep)] pt-4"
               data-testid="local-unassigned-agents"
             >
               <PausedPrivateAgentsBucket count={localTree.tree.pausedPrivateAgentCount} />
@@ -268,45 +283,36 @@ export const SettingsMembersPage = () => {
               ) : null}
             </div>
           ) : null}
-        </section>
+        </Section>
 
-        <section className="admin-card p-4">
+        <Card as="section">
           <SectionLabel>Add member</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={createUserSubmit}>
-            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-              Display name
-              <input
-                className="admin-input"
+            <FormField error={addFieldErrors.displayName} label="Display name">
+              <Input
                 onChange={(event) => setUserDisplayName(event.target.value)}
                 placeholder="Display name"
                 value={userDisplayName}
               />
-            </label>
-            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-              Email
-              <input
-                className="admin-input"
+            </FormField>
+            <FormField error={addFieldErrors.email} label="Email">
+              <Input
                 onChange={(event) => setUserEmail(event.target.value)}
                 placeholder="name@example.com"
                 type="email"
                 value={userEmail}
               />
-            </label>
-            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-              Password
-              <input
+            </FormField>
+            <FormField error={addFieldErrors.password} help="At least 8 characters." label="Password">
+              <Input
                 autoComplete="new-password"
-                className="admin-input"
                 onChange={(event) => setUserPassword(event.target.value)}
-                placeholder="At least 8 characters"
                 type="password"
                 value={userPassword}
               />
-            </label>
-            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-              Role
-              <select
-                className="admin-input"
+            </FormField>
+            <FormField label="Role">
+              <Select
                 onChange={(event) => setUserRole(event.target.value)}
                 value={userRole}
               >
@@ -315,18 +321,21 @@ export const SettingsMembersPage = () => {
                     {option.label}
                   </option>
                 ))}
-              </select>
-            </label>
-            <button
-              className="admin-button admin-button-primary justify-self-start disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!canAddMember}
-              type="submit"
-            >
-              {createUser.isPending ? 'Adding…' : 'Add member'}
-            </button>
-            <FeedbackBanner feedback={addFeedback} />
+              </Select>
+            </FormField>
+            <FormError>{addFormError}</FormError>
+            <FormSuccess>{addSuccess ? 'Member added.' : undefined}</FormSuccess>
+            <FormActions>
+              <button
+                className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canAddMember}
+                type="submit"
+              >
+                {createUser.isPending ? 'Adding…' : 'Add member'}
+              </button>
+            </FormActions>
           </form>
-        </section>
+        </Card>
       </div>
     </SettingsPanel>
   )

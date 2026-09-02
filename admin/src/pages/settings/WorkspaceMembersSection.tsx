@@ -15,9 +15,16 @@ import {
   WorkspaceMemberRow,
   WORKSPACE_TEAM_ROLE_OPTIONS,
 } from './WorkspaceMemberPeople'
-import { FeedbackBanner, type SettingsFeedback } from './settings-shared'
+import { FeedbackBanner } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { toFormErrors } from '../../facades/form-errors'
+import { Card } from '../../components/shared/Card'
+import { EmptyState } from '../../components/shared/EmptyState'
+import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'
+import { FormField } from '../../components/shared/FormField'
+import { Input, Select } from '../../components/shared/FormControls'
+import { Section } from '../../components/shared/PageBody'
 
 /**
  * The workspace roster on an UnlikeOtherAI session: people, their workspace
@@ -62,7 +69,7 @@ const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }
   }
 
   return (
-    <div className="admin-card p-3">
+    <Card variant="row">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-semibold text-[color:var(--tx)]">
@@ -82,7 +89,9 @@ const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }
           </div>
         </div>
         {awaitingApproval ? (
-          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">Needs approval</Pill>
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning" uppercase={false}>
+            Needs approval
+          </Pill>
         ) : null}
       </div>
 
@@ -149,12 +158,8 @@ const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }
         )}
       </div>
 
-      {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
+      <FormError className="mt-2">{error}</FormError>
+    </Card>
   )
 }
 
@@ -162,45 +167,46 @@ const InviteForm = () => {
   const createInvitations = useCreateWorkspaceInvitations()
   const [email, setEmail] = useState('')
   const [teamRole, setTeamRole] = useState<string>('member')
-  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [formError, setFormError] = useState<string | undefined>(undefined)
+  const [success, setSuccess] = useState<string | undefined>(undefined)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setFeedback(null)
+    setFieldErrors({})
+    setFormError(undefined)
+    setSuccess(undefined)
     try {
       const response = await createInvitations.mutateAsync({
         invites: [{ email: email.trim(), teamRole }],
       })
       setEmail('')
       setTeamRole('member')
-      setFeedback({
-        kind: 'success',
-        // UOA decides the outcome per address (invited, already a member, …).
-        message: response.results[0]?.status
+      // UOA decides the outcome per address (invited, already a member, …).
+      setSuccess(
+        response.results[0]?.status
           ? `Invitation ${response.results[0].status.replace(/_/g, ' ')}.`
           : 'Invitation sent.',
-      })
+      )
     } catch (caught) {
-      setFeedback({ kind: 'error', message: errorMessage(caught, 'Failed to send invitation.') })
+      const { fieldErrors: nextFieldErrors, formError: nextFormError } = toFormErrors(caught)
+      setFieldErrors(nextFieldErrors)
+      setFormError(nextFormError ?? errorMessage(caught, 'Failed to send invitation.'))
     }
   }
 
   return (
     <form className="mt-4 grid gap-3" onSubmit={submit}>
-      <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-        Email
-        <input
-          className="admin-input"
+      <FormField error={fieldErrors.email} label="Email">
+        <Input
           onChange={(event) => setEmail(event.target.value)}
           placeholder="name@example.com"
           type="email"
           value={email}
         />
-      </label>
-      <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-        Role
-        <select
-          className="admin-input"
+      </FormField>
+      <FormField label="Role">
+        <Select
           onChange={(event) => setTeamRole(event.target.value)}
           value={teamRole}
         >
@@ -209,22 +215,22 @@ const InviteForm = () => {
               {option.label}
             </option>
           ))}
-        </select>
-      </label>
-      <button
-        className={[
-          'admin-button admin-button-primary justify-self-start',
-          'disabled:cursor-not-allowed disabled:opacity-60',
-        ].join(' ')}
-        disabled={createInvitations.isPending || email.trim().length === 0}
-        type="submit"
-      >
-        {createInvitations.isPending ? 'Sending…' : 'Send invitation'}
-      </button>
+        </Select>
+      </FormField>
       <p className="text-xs text-[color:var(--tx3)]">
         UnlikeOtherAI emails the invitation and hosts the acceptance page.
       </p>
-      <FeedbackBanner feedback={feedback} />
+      <FormError>{formError}</FormError>
+      <FormSuccess>{success}</FormSuccess>
+      <FormActions>
+        <button
+          className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={createInvitations.isPending || email.trim().length === 0}
+          type="submit"
+        >
+          {createInvitations.isPending ? 'Sending…' : 'Send invitation'}
+        </button>
+      </FormActions>
     </form>
   )
 }
@@ -288,9 +294,8 @@ export const WorkspaceMembersSection = ({
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <section className="admin-card p-4">
-        <SectionLabel>People</SectionLabel>
-        <div className="mt-4 grid gap-2" data-testid="workspace-member-list">
+      <Section title="People">
+        <div className="grid gap-2" data-testid="workspace-member-list">
           {needsWorkspaceReconnect ? (
             <FeedbackBanner
               feedback={{
@@ -305,6 +310,8 @@ export const WorkspaceMembersSection = ({
                 message: 'The UnlikeOtherAI directory could not be reached.',
               }}
             />
+          ) : members.isLoading ? (
+            <p className="text-sm text-[color:var(--tx3)]">Loading members…</p>
           ) : null}
           {needsWorkspaceReconnect && onReconnect ? (
             <button
@@ -326,9 +333,7 @@ export const WorkspaceMembersSection = ({
             />
           ))}
           {!members.isLoading && !members.isError && memberRows.length === 0 ? (
-            <div className="text-sm text-[color:var(--tx2)]">
-              This workspace has no members in UnlikeOtherAI yet.
-            </div>
+            <EmptyState>This workspace has no members in UnlikeOtherAI yet.</EmptyState>
           ) : null}
         </div>
 
@@ -339,26 +344,28 @@ export const WorkspaceMembersSection = ({
           bucket describes what is known rather than declaring anyone departed.
         */}
         {hasUnassignedAgents ? <WorkspaceAgentBuckets tree={tree} /> : null}
-      </section>
+      </Section>
 
       {canManage && !needsWorkspaceReconnect ? (
         <div className="grid content-start gap-4">
-          <section className="admin-card p-4">
+          <Card as="section">
             <SectionLabel>Invite to workspace</SectionLabel>
             <InviteForm />
-          </section>
+          </Card>
 
-          <section className="admin-card p-4">
-            <SectionLabel>Pending invitations</SectionLabel>
-            <div className="mt-4 grid gap-2" data-testid="workspace-invitation-list">
+          <Section title="Pending invitations">
+            <div className="grid gap-2" data-testid="workspace-invitation-list">
+              {invitations.isLoading ? (
+                <p className="text-sm text-[color:var(--tx3)]">Loading invitations…</p>
+              ) : null}
               {invitationRows.map((invitation) => (
                 <InvitationRow invitation={invitation} key={invitation.inviteId} />
               ))}
               {!invitations.isLoading && invitationRows.length === 0 ? (
-                <div className="text-sm text-[color:var(--tx2)]">No invitations are waiting.</div>
+                <EmptyState>No invitations are waiting.</EmptyState>
               ) : null}
             </div>
-          </section>
+          </Section>
         </div>
       ) : null}
     </div>

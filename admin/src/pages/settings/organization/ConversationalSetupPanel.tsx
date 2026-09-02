@@ -1,5 +1,6 @@
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Switch } from '../../../components/primitives/Switch'
+import { FormError } from '../../../components/shared/FormActions'
 
 type ConversationalSetupPanelProps = {
   enabled: boolean
@@ -33,6 +34,6 @@ export const ConversationalSetupPanel = ({
         onChange={onChange}
       />
     </div>
-    {error ? <p className="mt-3 text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
+    <FormError className="mt-3">{error}</FormError>
   </section>
 )

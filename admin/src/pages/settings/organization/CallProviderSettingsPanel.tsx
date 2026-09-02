@@ -3,6 +3,10 @@ import type { TeamRecord } from '../../../lib/api-client'
 import { callProviderLabel } from '../../../facades/calls/call-presentation'
 import { useTeams, useUpdateTeamCallProvider } from '../../../facades/projects/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { Card } from '../../../components/shared/Card'
+import { FormError } from '../../../components/shared/FormActions'
+import { QueryState } from '../../../components/shared/QueryState'
+import { RowList, Row } from '../../../components/shared/RowList'
 
 type CallProvider = TeamRecord['callProvider']
 
@@ -31,42 +35,34 @@ export const CallProviderSelect = ({ disabled, onChange, team }: CallProviderSel
   )
 
   return (
-    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-start">
-      <div className="min-w-0">
-        <div className="truncate font-medium text-[color:var(--tx)]">{team.name}</div>
-        <p className="mt-1 text-sm text-[color:var(--tx2)]">
-          Calls in this team create a {callProviderLabel(team.callProvider)} link.
+    <div className="grid max-w-sm gap-1">
+      <select
+        aria-label={`Call provider for ${team.name}`}
+        className="admin-input"
+        disabled={disabled || !hasConfiguredProvider}
+        onChange={(event) => onChange(event.target.value as CallProvider)}
+        value={team.callProvider}
+      >
+        {CALL_PROVIDERS.map((provider) => {
+          const available = team.callProviderAvailability[provider]
+          return (
+            <option disabled={!available} key={provider} value={provider}>
+              {callProviderLabel(provider)}{available ? '' : ` — ${callProviderUnavailableReason(provider)}`}
+            </option>
+          )
+        })}
+      </select>
+      {!hasConfiguredProvider ? (
+        <p className="text-xs text-[color:var(--danger-text)]" role="status">
+          No call providers are configured for this deployment.
         </p>
-      </div>
-      <div className="grid gap-1">
-        <select
-          aria-label={`Call provider for ${team.name}`}
-          className="admin-input"
-          disabled={disabled || !hasConfiguredProvider}
-          onChange={(event) => onChange(event.target.value as CallProvider)}
-          value={team.callProvider}
-        >
-          {CALL_PROVIDERS.map((provider) => {
-            const available = team.callProviderAvailability[provider]
-            return (
-              <option disabled={!available} key={provider} value={provider}>
-                {callProviderLabel(provider)}{available ? '' : ` — ${callProviderUnavailableReason(provider)}`}
-              </option>
-            )
-          })}
-        </select>
-        {!hasConfiguredProvider ? (
-          <p className="text-xs text-[color:var(--danger-text)]" role="status">
-            No call providers are configured for this deployment.
+      ) : (
+        unavailableProviders.map((provider) => (
+          <p className="text-xs text-[color:var(--tx3)]" key={provider}>
+            {callProviderUnavailableReason(provider)}
           </p>
-        ) : (
-          unavailableProviders.map((provider) => (
-            <p className="text-xs text-[color:var(--tx3)]" key={provider}>
-              {callProviderUnavailableReason(provider)}
-            </p>
-          ))
-        )}
-      </div>
+        ))
+      )}
     </div>
   )
 }
@@ -85,16 +81,19 @@ const CallProviderRow = ({ team }: { team: TeamRecord }) => {
   }
 
   return (
-    <li className="border-t border-[color:var(--sep)] py-4 first:border-t-0 first:pt-0 last:pb-0">
-      <CallProviderSelect
-        disabled={updateProvider.isPending}
-        onChange={(provider) => void changeProvider(provider)}
-        team={team}
-      />
-      {error ? (
-        <p className="mt-2 text-sm text-[color:var(--danger-text)]" role="alert">{error}</p>
-      ) : null}
-    </li>
+    <Row
+      subtitle={`Calls in this team create a ${callProviderLabel(team.callProvider)} link.`}
+      title={team.name}
+    >
+      <div className="mt-2">
+        <CallProviderSelect
+          disabled={updateProvider.isPending}
+          onChange={(provider) => void changeProvider(provider)}
+          team={team}
+        />
+      </div>
+      <FormError className="mt-2">{error}</FormError>
+    </Row>
   )
 }
 
@@ -103,21 +102,27 @@ export const CallProviderSettingsPanel = () => {
   const teams = useTeams()
 
   return (
-    <section className="admin-card p-4">
+    <Card as="section">
       <SectionLabel>Calls</SectionLabel>
       <p className="mt-2 text-sm text-[color:var(--tx2)]">
         Choose the provider used when someone starts a call in each team.
       </p>
 
-      {teams.isLoading ? (
-        <p className="mt-4 text-sm text-[color:var(--tx2)]">Loading teams…</p>
-      ) : teams.data?.length ? (
-        <ul className="mt-4">
-          {teams.data.map((team) => <CallProviderRow key={team.id} team={team} />)}
-        </ul>
-      ) : (
-        <p className="mt-4 text-sm text-[color:var(--tx3)]">No teams are available.</p>
-      )}
-    </section>
+      <div className="mt-4">
+        <QueryState
+          emptyLabel="No teams are available."
+          errorLabel="Could not load teams."
+          isEmpty={(teams.data?.length ?? 0) === 0}
+          loadingLabel="Loading teams…"
+          query={teams}
+        >
+          {() => (
+            <RowList label="Teams">
+              {(teams.data ?? []).map((team) => <CallProviderRow key={team.id} team={team} />)}
+            </RowList>
+          )}
+        </QueryState>
+      </div>
+    </Card>
   )
 }

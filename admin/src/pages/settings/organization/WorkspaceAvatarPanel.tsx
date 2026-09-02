@@ -9,6 +9,8 @@ import {
 import { activeWorkspace } from '../../../lib/workspaces'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { Card } from '../../../components/shared/Card'
+import { FormError, FormSuccess } from '../../../components/shared/FormActions'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -78,7 +80,7 @@ export const WorkspaceAvatarPanel = () => {
   }
 
   return (
-    <section className="admin-card max-w-3xl p-4">
+    <Card as="section">
       <SectionLabel>Workspace avatar</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         The company picture for {workspaceName}, held by UnlikeOtherAI and shown
@@ -134,10 +136,8 @@ export const WorkspaceAvatarPanel = () => {
         )}
       </div>
 
-      {error && <div className="mt-3 text-sm text-[color:var(--danger-text)]">{error}</div>}
-      {notice && !error && (
-        <div className="mt-3 text-sm text-[color:var(--tx2)]">{notice}</div>
-      )}
-    </section>
+      <FormError className="mt-3">{error}</FormError>
+      {!error ? <FormSuccess className="mt-3">{notice}</FormSuccess> : null}
+    </Card>
   )
 }
