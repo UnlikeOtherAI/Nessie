@@ -61,33 +61,42 @@ does not apply `allow_user_create_org`. Each consequence lands on Nessie.
 
 ### (a) Nessie's own authorization gate
 
-Backend mode means the product's own gate is the only authorization. Nessie's
-gate for organisation creation is: the caller must hold a **valid Nessie
-session whose live `OrganizationMember` row in their current organisation
-carries the `owner` role**. Owner, not member: creating an organisation mints a
-whole new tenancy container and makes the creator its UOA owner, and the
-closest existing analogue in the product — workspace provisioning actions like
-binding agents — is owner-gated. A member who wants a new organisation asks an
-owner, exactly as they would for other structural changes.
+Backend mode means the product's own gate is the only authorization. The design
+first put `owner` on both routes; the build corrected that, because the two acts
+are not the same act.
 
-Two properties of the gate matter as much as the role itself:
+**Founding an organisation: any active member.** This is the flow being
+replaced, not a widening of it. The old redirect sent people into UOA's chooser
+in user mode, where `allow_user_create_org` — true for this deployment — lets
+any authenticated user of the domain found one. Owner-gating would have quietly
+removed a capability from members while the change claimed only to remove a
+login. It is also right on its own terms: founding an organisation is not an act
+upon the current tenant. It reads nothing from it, changes nothing in it, and
+produces a separate tenancy in which the caller is the owner. What backend mode
+costs is the upstream role check, and the answer is not a stricter role but the
+two things that are checked: a live, non-deactivated membership (re-resolved per
+request, so a revoked account cannot mint tenancies) and a linked UOA subject to
+own the result.
 
-- **Re-read at call time.** The role comes from the live
-  `OrganizationMember` row read inside the request handler, never from the
-  session's enqueue-time claims. This is the same rule the personal-assistant
-  provisioning tools follow (`agent_bind_channel` re-reads the acting
-  membership rather than trusting `actorContext`), and it exists because a
-  demotion between login and click must take effect immediately.
+**Adding a workspace to the current organisation: owner or admin.** That one
+does write into the existing tenant, and it runs in user mode, where UOA applies
+its own owner/admin gate on the live membership. The local check mirrors that
+exactly — owner-only would make Nessie stricter than the authority it is
+relaying to, refusing an admin UOA is willing to serve. The local gate exists to
+refuse early and identically, never to invent a second policy.
+
+Two properties matter as much as the roles themselves:
+
+- **Re-read at call time.** Roles come from the live `OrganizationMember` row
+  resolved inside the request, never from the session's enqueue-time claims.
+  This is the same rule the personal-assistant provisioning tools follow, and it
+  exists because a demotion between login and click must take effect
+  immediately.
 - **Reject, don't widen, non-UOA sessions.** The flow is only meaningful for
-  UOA-bound sessions (`providerType === 'uoa'`, `uoaIdentity` present, a bound
-  refresh credential) because the last leg — the workspace-switch grant —
-  requires one. A local-only deployment has no UOA to create in and must not
-  show the doorway at all, rather than offering a form that can only fail.
-
-The gate lives in a new service function in `@nessie/workspace-admin` (the
-package that already owns `uoa-org-request.ts` and the roster functions), so
-that if a personal-assistant tool ever needs the same act it calls the same
-function — the route-mirroring rule applies here as everywhere.
+  UOA-bound sessions, because the last leg — the workspace-switch grant —
+  requires the bound refresh credential. A session without one keeps the
+  provider redirect, which is the only way it can come to hold one; a local
+  deployment with no IdP never shows the doorway.
 
 ### (b) `owner_user_id` and the DomainRole precondition
 

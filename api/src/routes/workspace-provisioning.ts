@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { writeAuditEntryInTransaction } from '@nessie/db'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
@@ -71,9 +71,11 @@ const lockUserProvisioning = async (
  *
  * **The audit log is the ledger.** It already records who created what, it is
  * append-only and hash-chained, and using it means no second table mirroring
- * UOA's organisation ids — which is the whole point of this feature. A window
- * bounds the scan so this stays an index-friendly lookup over recent rows
- * rather than a walk of the organisation's history.
+ * UOA's organisation ids — which is the whole point of this feature. Every
+ * predicate but the JSON one is covered by an existing organisation-scoped
+ * index (`audit_logs` carries several leading on `organization_id`), and the
+ * 24-hour window bounds what is left, so only a handful of rows ever reach the
+ * JSON comparison: no new index, and no walk of the organisation's history.
  */
 const findPriorProvisioning = async (
   tx: Prisma.TransactionClient,
@@ -223,21 +225,34 @@ export const registerWorkspaceProvisioningRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { prisma, requireActorContext, requireOwner, requireUserActor } = deps
+  const { prisma, requireActorContext, requireUserActor } = deps
 
   /**
    * Found a new UOA organisation, owned by the caller.
    *
-   * Owner-gated. In UOA backend mode there is no acting user and therefore no
-   * upstream role check at all, so this gate is the entire authorization —
-   * and `actor.roles` is re-resolved from the live `OrganizationMember` row on
-   * every request, so a demotion takes effect immediately.
+   * **Any active member**, which is the flow this replaces, not a widening of
+   * it. The old "Add workspace" redirect sent people into UOA's chooser in
+   * user mode, where `org_features.allow_user_create_org` (true for this
+   * deployment) lets any authenticated user of the domain found one — so
+   * owner-gating here would quietly take a capability away from members while
+   * claiming only to remove a login.
+   *
+   * It is also the right shape on its own terms: founding an organisation is
+   * not an act upon the current tenant. It reads nothing from it, changes
+   * nothing in it, and produces a separate tenancy in which the caller is the
+   * owner. The route that DOES write into the current tenant — adding a
+   * workspace, below — carries the owner/admin gate.
+   *
+   * What backend mode costs is the upstream role check, and the answer to that
+   * is not a stricter role but the two things that ARE checked here: a live,
+   * non-deactivated membership (re-resolved per request by
+   * `requireActorContext`, so a revoked account cannot mint tenancies) and a
+   * linked UOA subject to own the result.
    */
   app.post('/api/workspaces/organizations', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
-    if (!requireOwner(actorContext, reply)) return reply
     const body = parseInput(CreateOrganizationBodySchema, request.body, reply)
     if (!body) return reply
     const ownerUoaSub = requireUoaSubject(actorContext, reply)
@@ -267,16 +282,29 @@ export const registerWorkspaceProvisioningRoutes = (
   /**
    * Add a workspace to the organisation the caller is currently in.
    *
-   * User mode upstream, so UOA applies its own owner/admin gate on the live
-   * membership and enforces `allow_user_create_team`. The local owner gate
-   * stays as the first refusal, keeping the affordance and the answer
-   * consistent with the organisation route.
+   * Owner **or admin**, deliberately wider than the organisation route above.
+   * This one is user mode upstream, so UOA applies its own gate on the live
+   * membership — owner/admin — and enforces `allow_user_create_team`. Gating
+   * locally on owner alone would refuse an admin UOA is willing to serve,
+   * making Nessie stricter than the authority it is relaying to; the local
+   * check exists to refuse early and identically, not to invent a second
+   * policy. The organisation route is owner-only for the opposite reason:
+   * backend mode has no upstream gate at all, so its local one is the whole
+   * authorization.
    */
   app.post('/api/workspaces/teams', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
-    if (!requireOwner(actorContext, reply)) return reply
+    if (!isAdminActor(actorContext)) {
+      sendApiError(
+        reply,
+        403,
+        'FORBIDDEN',
+        'Only organisation owners and admins can create a workspace',
+      )
+      return reply
+    }
     const body = parseInput(CreateOrganizationBodySchema, request.body, reply)
     if (!body) return reply
 
