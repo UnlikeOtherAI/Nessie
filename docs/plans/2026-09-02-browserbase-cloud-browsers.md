@@ -282,12 +282,17 @@ signed in for the first time):
    **While the dialog is open in interactive mode, `browser_observe` /
    `browser_screenshot` for that session are refused** ("a person is at the
    controls"), so the model cannot watch credentials being entered.
-4. The person presses *Done* on the card, confirming the service label. The
-   press is the ordinary `agentCardResponse` user turn; the run resumes;
-   cookies are now in the agent's context (`persist: true`), and an
-   `AgentBrowserLogin` row is written in the press transaction recording
-   **this user** signed **this service** into **this agent's browser** —
-   the fact §4.5's disclosure basis reads.
+4. The person presses *Done* on the card, confirming the service label and
+   declaring **whose account this is**: *my personal account* or *a team
+   account* (the card's team = the channel's team). The press is the
+   ordinary `agentCardResponse` user turn; the run resumes; cookies are now
+   in the agent's context (`persist: true`), and an `AgentBrowserLogin` row
+   is written in the press transaction recording **this user** signed
+   **this service** into **this agent's browser** with `accountScope:
+   'personal' | 'team'` — the person's own structural declaration at press
+   time (never inferred from page content), and the fact §4.5's disclosure
+   basis reads. Personal is the default; the declaration is shown on the
+   login row in every surface that lists it.
 5. Card expiry (agent-set, swept with the approval sweep) releases the parked
    session so an abandoned login doesn't burn browser-hours.
 
@@ -297,20 +302,22 @@ document-stream dialog precedent).
 
 ### 4.5 Disclosure and unattended use
 
-- Opening the agent's own browser registers a `user:<id>` scope in
-  `ConsumedSourceSink` for **every user with an `AgentBrowserLogin` on that
-  browser** — one registration at open, because everything read through a
-  human-authenticated browser is those people's material, and the sink
-  fails closed when audiences mix (a reply built on it is withheld from
-  anyone who doesn't satisfy the basis). An agent browser with no recorded
-  logins, and every ephemeral session, browses the public web like
-  `web_fetch` and adds no basis. Practical consequence, surfaced in the
-  handoff card's copy: **sign personal accounts into your private agent's
-  browser** (owner-only by construction, so the basis never bites); a
-  workspace agent's browser is the place for shared/team service accounts,
-  and a second person adding their login to it narrows every subsequent
-  reply to people who satisfy both — safe, but usually not what anyone
-  wanted.
+- Opening the agent's own browser registers one scope per
+  `AgentBrowserLogin` on that browser in `ConsumedSourceSink` — `user:<id>`
+  for a `personal` login, the team scope for a `team` login — one
+  registration at open, because everything read through a
+  human-authenticated browser is that material, and the sink fails closed
+  when audiences mix (a reply built on it is withheld from anyone who
+  doesn't satisfy every scope). The `accountScope` declaration is what lets
+  a team agent browse usefully: a browser holding only `team` logins
+  produces replies readable by the whole team, while a single `personal`
+  login on it narrows every subsequent reply to that person's audience —
+  safe, but mostly useless to everyone else, which the handoff card's copy
+  says out loud: **personal accounts belong in your private agent's
+  browser** (owner-only by construction, so the basis never bites);
+  a workspace agent's browser is for `team`-declared service accounts. An
+  agent browser with no recorded logins, and every ephemeral session,
+  browses the public web like `web_fetch` and adds no basis.
 - Web pages are untrusted content; nothing on a page is an instruction. The
   existing prompt-side framing for fetched content applies to `browser_observe`
   output verbatim.
