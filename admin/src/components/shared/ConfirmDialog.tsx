@@ -26,6 +26,14 @@ type ConfirmDialogProps = {
    */
   body?: ReactNode
   cancelLabel?: string
+  /**
+   * The sanctioned nesting (docs/navigation/overview.md §7): a confirm over an already
+   * open modal renders in the blocking layer and outranks it for Back, rather
+   * than competing with it in the plain modal layer. Off by default — every
+   * call site converted so far replaces a standalone `window.confirm` with
+   * nothing open beneath it.
+   */
+  blocking?: boolean
   confirmLabel: string
   /** Renders the confirm control as the danger action rather than the primary one. */
   destructive?: boolean
@@ -44,6 +52,7 @@ type ConfirmDialogProps = {
 }
 
 export const ConfirmDialog = ({
+  blocking = false,
   body,
   cancelLabel = 'Cancel',
   confirmLabel,
@@ -60,6 +69,7 @@ export const ConfirmDialog = ({
 
   return (
     <Dialog
+      blocking={blocking}
       dismissDisabled={pending}
       initialFocusRef={cancelRef}
       onClose={onCancel}

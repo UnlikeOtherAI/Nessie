@@ -5,7 +5,9 @@ import {
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 
-export type KnowledgeViewMode = 'column' | 'full' | 'tree'
+export const KNOWLEDGE_VIEW_MODES = ['full', 'column', 'tree'] as const
+
+export type KnowledgeViewMode = (typeof KNOWLEDGE_VIEW_MODES)[number]
 
 export const knowledgeViewOptions: Array<{
   icon: IconDefinition
@@ -34,4 +36,4 @@ export const knowledgeViewOptions: Array<{
 ]
 
 export const isKnowledgeViewMode = (value: string | null): value is KnowledgeViewMode =>
-  value === 'full' || value === 'column' || value === 'tree'
+  KNOWLEDGE_VIEW_MODES.some((mode) => mode === value)

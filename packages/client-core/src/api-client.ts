@@ -9,9 +9,15 @@ export type ApiClient = {
    * throws them away.
    */
   getPage: <TData>(path: string) => Promise<ApiResponse<TData>>
-  patch: <TData>(path: string, body?: unknown) => Promise<TData>
-  post: <TData>(path: string, body?: unknown) => Promise<TData>
-  put: <TData>(path: string, body?: unknown) => Promise<TData>
+  // `headers` exists for the conditional writes the auto-saving editors make:
+  // `If-Match: <revision>` is what lets the server refuse a stale save instead
+  // of taking the last write (docs/navigation/overview.md → "Drafts").
+  patch: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
+  post: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
+  put: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    Promise<TData>
 }
 
 export type ApiClientConfig = {
@@ -39,7 +45,9 @@ export class ApiClientError extends Error {
      * `flatten()` — `{ formErrors, fieldErrors }` — which is what lets a form
      * put the server's complaint on the field it is about instead of showing
      * one sentence above everything. It was being parsed off the response and
-     * dropped here, so no client could reach it.
+     * dropped here, so no client could reach it. A 409 from a conditional
+     * write carries the current revision here too, which is what lets the
+     * client offer "take theirs" without a second round trip.
      */
     readonly details?: unknown,
   ) {
@@ -133,20 +141,23 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
     getPage: (path) => requestEnvelope(path, { method: 'GET' }),
     delete: (path) => request(path, { method: 'DELETE' }),
     get: (path) => request(path, { method: 'GET' }),
-    patch: (path, body) =>
+    patch: (path, body, headers) =>
       request(path, {
         method: 'PATCH',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
-    post: (path, body) =>
+    post: (path, body, headers) =>
       request(path, {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
-    put: (path, body) =>
+    put: (path, body, headers) =>
       request(path, {
         method: 'PUT',
         body: body === undefined ? undefined : JSON.stringify(body),
+        ...(headers ? { headers } : {}),
       }),
   }
 }

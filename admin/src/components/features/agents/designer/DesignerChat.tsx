@@ -58,7 +58,7 @@ export const DesignerChat = ({
 
   useEffect(() => {
     if (!streaming) {
-      inputRef.current?.focus()
+      inputRef.current?.focus({ preventScroll: true })
     }
   }, [streaming])
 

@@ -1,15 +1,17 @@
 import { faUsers } from '@fortawesome/free-solid-svg-icons'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ProjectRecord } from '../../../lib/api-client'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
-import { AdminPageHeader } from '../../shared/AdminPageHeader'
+import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type ProjectPageHeaderProps = {
   actions?: PageHeaderAction[]
   project: ProjectRecord | undefined
-  titleTone?: 'page' | 'section'
+  // A project is a Tab host: its section strip rides in the header's tabs
+  // slot rather than in a bar beneath it.
+  tabs?: ReactNode
 }
 
 /**
@@ -20,7 +22,7 @@ type ProjectPageHeaderProps = {
 export const ProjectPageHeader = ({
   actions = [],
   project,
-  titleTone,
+  tabs,
 }: ProjectPageHeaderProps) => {
   const isOwner = useIsOwner()
   const [membersOpen, setMembersOpen] = useState(false)
@@ -39,10 +41,10 @@ export const ProjectPageHeader = ({
 
   return (
     <>
-      <AdminPageHeader
+      <ScreenHeader
         actions={projectActions}
+        tabs={tabs}
         title={project?.name ?? 'Project'}
-        titleTone={titleTone}
       />
       {membersOpen && project ? (
         <ProjectMembersDialog

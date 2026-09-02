@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { SectionLabel } from '../../primitives/SectionLabel'
-import { Skeleton } from '../../primitives/Skeleton'
-import { identityTileRadius } from '../../primitives/identity-shape'
 
 export type SectionLink = {
   label: string
@@ -52,30 +50,6 @@ export const DashboardSectionCard = ({
     </header>
     <div className="px-2 pb-2">{children}</div>
   </section>
-)
-
-/**
- * Skeleton rows shared by the list-shaped sections, built on the kit's own
- * `Skeleton` — this shape (a line, optionally led by an avatar tile) was one of
- * the six hand-rolled pulse placeholders `Skeleton`'s docstring names as the
- * reason it exists. The leading tile matches the avatar that replaces it, so a
- * loaded row does not change shape under the reader.
- */
-export const SectionSkeleton = ({ rows = 3, circles }: { rows?: number; circles?: boolean }) => (
-  <div aria-label="Loading" className="flex flex-col gap-1 p-2" role="status">
-    {Array.from({ length: rows }, (_, index) => (
-      <div className="flex items-center gap-3" key={index}>
-        {circles ? (
-          <Skeleton
-            height="h-7"
-            style={{ borderRadius: identityTileRadius(28) }}
-            width="w-7"
-          />
-        ) : null}
-        <Skeleton height="h-4" />
-      </div>
-    ))}
-  </div>
 )
 
 /** Quiet one-liner used for both empty and failed sections. */

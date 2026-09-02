@@ -2,6 +2,16 @@ export const channelHashClassName =
   'sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]';
 
 /**
+ * `aria-current="page"` for a sidebar row that carries the `active` class —
+ * shared so every row (rail item, channel, DM, project, space) marks the
+ * current page the same way instead of each file inventing its own.
+ * `undefined`, not `"false"`, so the attribute is absent rather than present
+ * with a false value on every unselected row.
+ */
+export const sidebarAriaCurrent = (active: boolean): 'page' | undefined =>
+  active ? 'page' : undefined;
+
+/**
  * A project is selected outright on its overview route. When a channel inside
  * it is selected, the project remains a deliberately softer contextual cue.
  */

@@ -1,6 +1,7 @@
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentRecord } from '../../../lib/api-client'
+import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentOwnerCell } from './AgentOwnerCell'
 import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
@@ -8,6 +9,8 @@ import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 type AgentListRowProps = {
   agent: AgentRecord
   onOpen: (agentId: string) => void
+  /** From the table's own `usePrewarm()`; a row cannot call a hook itself. */
+  prewarm: (to: string) => void
   token: string | null
 }
 
@@ -17,12 +20,14 @@ type AgentListRowProps = {
 export const AgentListRow = ({
   agent,
   onOpen,
+  prewarm,
   token,
 }: AgentListRowProps) => (
   <tr
     className="cursor-pointer"
     onClick={() => onOpen(agent.id)}
     tabIndex={0}
+    {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
     onKeyDown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()

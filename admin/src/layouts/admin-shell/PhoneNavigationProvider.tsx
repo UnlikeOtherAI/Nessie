@@ -4,43 +4,71 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import {
   createPhoneHistoryLedger,
-  currentPhoneHistoryEntry,
   recordPhoneHistory,
-  resolvePhoneLedgerBackAction,
   resolvePhoneTabPress,
   resolvePhoneTabSelect,
-  pathnameOf,
   type PhoneHistoryLedger,
   type PhoneTabAction,
 } from './phone-navigation-ledger'
-import {
-  getPhoneNavigationBackTarget,
-  getPhoneTabRootPath,
-  type PhoneNavigationBackAction,
-} from './phone-navigation'
+import { getPhoneTabRootPath } from './phone-navigation'
+import type { NavSectionId } from './nav-items'
 import { NativePhoneNavigationBridge } from './NativePhoneNavigationBridge'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 import { useNativeLargePhoneLandscapeApp } from '../../lib/mobile-shell'
+import { resolveBack, type BackAction } from '../../navigation/back'
+import { ANNOUNCER_ATTRIBUTE } from '../../navigation/settle'
+import { canGoBack, canGoForward, resolveSectionTarget } from '../../navigation/history'
+import {
+  deferredRedirect,
+  useTrackLocationKey,
+  type RedirectOptions,
+  type RedirectTarget,
+} from '../../navigation/redirect'
+
+export type BackOptions = {
+  // An explicit return address wins over history: it is the one case where
+  // the caller knows more than the ledger (a designer opened from a specific
+  // row). Otherwise a real previous entry is popped, else `fallback` replaces.
+  returnTo?: string | null
+  returnToState?: unknown
+  fallback: string
+}
+
+export type NavigationHistory = {
+  canBack: boolean
+  canForward: boolean
+  // History controls (the desktop top bar, the iPad toolbar) walk the ledger
+  // across sections — which Back never does — but consult the Back registry
+  // first, so a toolbar Back over an open owner closes the owner.
+  goBack: () => void
+  goForward: () => void
+}
 
 export type PhoneNavigationApi = {
-  // Run the route-level Back for the CURRENT location: ledger-aware
-  // (resolveBackAction) then execute. This is the stable seam the on-screen
-  // Back doorway, the native hardware-Back bridge, and the later interactive
-  // gesture all consume, so they can never disagree about pop vs replace.
+  // Run Back for the current location through the one resolver.
   performBack: () => void
-  // Execute a resolved action (pop real history, or replace a cold deep link
-  // with its deterministic parent).
-  performBackAction: (action: Exclude<PhoneNavigationBackAction, null>) => void
+  performBackAction: (action: BackAction) => void
+  // The one Back decision, for the current location (ledger-aware) or for a
+  // named pathname (metadata only).
+  resolveBackAction: (pathname?: string) => BackAction | null
+  hasBack: () => boolean
+  // The shared smart Back for screens opened with a return address.
+  back: (options: BackOptions) => void
+  // A navigation the person did not ask for: replaces, forwards state, waits
+  // for the stack to settle, and is dropped if the location moved on.
+  redirect: (to: RedirectTarget, options?: RedirectOptions) => void
+  history: NavigationHistory
+  // Where a section's rail tab goes: the last place visited there this
+  // session, else the section root.
+  sectionTarget: (section: NavSectionId, root: string) => string
   // Reselect the active tab: no-op at its root, pop/replace home from a detail.
   pressActiveTab: () => void
-  // The Back action for a pathname — ledger-aware for the current location,
-  // metadata-only otherwise.
-  resolveBackAction: (pathname: string) => PhoneNavigationBackAction
   // Tap any tab: reselect semantics for the active one, root navigation for
   // the others.
   selectTab: (tabRoot: string) => void
@@ -48,42 +76,60 @@ export type PhoneNavigationApi = {
 
 const PhoneNavigationContext = createContext<PhoneNavigationApi | null>(null)
 
-// Exactly one of these wraps the authenticated shell, mounted persistently so
-// its ledger survives every route change. The shared Back control, the web
-// tab bar, the native tab bridge, and Android hardware Back all consume this
-// one context — a second hook-local ledger would let the surfaces disagree
-// about when to pop versus re-anchor.
+const fullPath = (location: { pathname: string; search: string; hash: string }): string =>
+  `${location.pathname}${location.search}${location.hash}`
+
+// The navigation controller. Exactly one wraps the authenticated shell, so
+// its ledger survives every route change. The Back doorway, the edge swipe,
+// Android hardware Back, the web tab bar, the desktop top bar, the iPad
+// toolbar and the rail all consume this one context — a second hook-local
+// ledger or counter would let the surfaces disagree.
 export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const navigationType = useNavigationType()
-  const localBack = useLocalBackSnapshot()?.active ?? null
+  const localBack = useLocalBackSnapshot()
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp()
+  useTrackLocationKey()
+
   const ledgerRef = useRef<PhoneHistoryLedger | null>(null)
   if (ledgerRef.current === null) {
-    ledgerRef.current = createPhoneHistoryLedger(
-      location.key,
-      `${location.pathname}${location.search}${location.hash}`,
-    )
+    ledgerRef.current = createPhoneHistoryLedger(location.key, fullPath(location))
   }
+  // A render-time mirror of the ledger so history reads (Back/Forward
+  // enablement, section targets) re-render with it; the ref stays the source
+  // for actions dispatched from events.
+  const [ledger, setLedger] = useState<PhoneHistoryLedger>(ledgerRef.current)
 
   // Record in a layout effect (never mutate refs during render): every commit
   // folds its location into the ledger before paint, so an action dispatched
-  // from an event after commit — the Back doorway, a tab tap, Android
-  // hardware Back — always reads the current location. The reducer is
-  // idempotent, so a StrictMode double-effect or a re-render for the same
-  // location records nothing twice.
+  // from an event after commit always reads the current location. The
+  // reducer is idempotent, so a StrictMode double-effect records nothing twice.
   useLayoutEffect(() => {
-    ledgerRef.current = recordPhoneHistory(
-      ledgerRef.current ?? createPhoneHistoryLedger(
-        location.key,
-        `${location.pathname}${location.search}${location.hash}`,
-      ),
+    const next = recordPhoneHistory(
+      ledgerRef.current ?? createPhoneHistoryLedger(location.key, fullPath(location)),
       navigationType,
       location.key,
-      `${location.pathname}${location.search}${location.hash}`,
+      fullPath(location),
     )
+    if (next !== ledgerRef.current) {
+      ledgerRef.current = next
+      setLedger(next)
+    }
   })
+
+  const stateRef = useRef({ localBack, location, navigate })
+  useLayoutEffect(() => {
+    stateRef.current = { localBack, location, navigate }
+  }, [localBack, location, navigate])
+
+  const redirect = useMemo(
+    () => (to: RedirectTarget, options?: RedirectOptions) => {
+      const { location: current, navigate: nav } = stateRef.current
+      deferredRedirect(nav, current.key, () => stateRef.current.location.key, to, options)
+    },
+    [],
+  )
 
   // Landscape has a menu and detail in adjacent columns. Once that extra
   // column disappears, showing the retained detail alone is a dead end: land
@@ -96,27 +142,11 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
     if (!returnedToPortrait) return
 
     const menuPath = getPhoneTabRootPath(location.pathname)
-    if (location.pathname !== menuPath) {
-      void navigate(menuPath, { replace: true })
-    }
-  }, [location.pathname, nativeLargePhoneLandscape, navigate])
-
-  // Stable outward API: the ledger and the latest navigate/location live on
-  // refs, so consumers and the native bridge never resubscribe per location
-  // while their actions still see the post-commit state.
-  const stateRef = useRef({ localBack, location, navigate })
-  useLayoutEffect(() => {
-    stateRef.current = { localBack, location, navigate }
-  }, [localBack, location, navigate])
+    if (location.pathname !== menuPath) redirect(menuPath)
+  }, [location.pathname, nativeLargePhoneLandscape, redirect])
 
   const value = useMemo<PhoneNavigationApi>(() => {
-    const currentLedger = (): PhoneHistoryLedger => {
-      const current = stateRef.current.location
-      return ledgerRef.current ?? createPhoneHistoryLedger(
-        current.key,
-        `${current.pathname}${current.search}${current.hash}`,
-      )
-    }
+    const currentLedger = (): PhoneHistoryLedger => ledgerRef.current ?? ledger
     const apply = (tabAction: PhoneTabAction): void => {
       const { navigate: nav } = stateRef.current
       if (tabAction.type === 'pop') {
@@ -127,49 +157,79 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
         void nav(tabAction.root)
       }
     }
-    const performBackAction = (action: Exclude<PhoneNavigationBackAction, null>): void => {
+    const resolveBackAction = (pathname?: string): BackAction | null => {
+      const current = stateRef.current.location.pathname
+      const target = pathname ?? current
+      return resolveBack({
+        pathname: target,
+        owners: stateRef.current.localBack,
+        ledger: target === current ? currentLedger() : null,
+      })
+    }
+    const performBackAction = (action: BackAction): void => {
       const { navigate: nav } = stateRef.current
-      if (action.mode === 'pop') {
+      if (action.kind === 'owner') {
+        action.perform()
+      } else if (action.mode === 'pop') {
         void nav(-1)
       } else {
         void nav(action.to, { replace: true })
       }
     }
-    const resolveBackAction = (pathname: string): PhoneNavigationBackAction => {
-      const ledger = currentLedger()
-      if (pathname === pathnameOf(currentPhoneHistoryEntry(ledger)?.path ?? '')) {
-        return resolvePhoneLedgerBackAction(ledger)
-      }
-      const target = getPhoneNavigationBackTarget(pathname)
-      return target ? { mode: 'replace', to: target.pathname } : null
-    }
     return {
       performBack: () => {
-        const activeLocalBack = stateRef.current.localBack
-        if (activeLocalBack) {
-          activeLocalBack.onBack()
-          return
-        }
-        const action = resolveBackAction(stateRef.current.location.pathname)
+        const action = resolveBackAction()
         if (action) performBackAction(action)
       },
       performBackAction,
-      pressActiveTab: () => apply(resolvePhoneTabPress(currentLedger())),
       resolveBackAction,
+      hasBack: () => resolveBackAction() !== null,
+      back: ({ returnTo, returnToState, fallback }) => {
+        const { navigate: nav } = stateRef.current
+        if (returnTo) {
+          void nav(returnTo, { replace: true, state: returnToState })
+        } else if (canGoBack(currentLedger())) {
+          void nav(-1)
+        } else {
+          void nav(fallback, { replace: true })
+        }
+      },
+      redirect,
+      history: {
+        canBack: canGoBack(ledger),
+        canForward: canGoForward(ledger),
+        goBack: () => {
+          const owner = stateRef.current.localBack?.active ?? null
+          if (owner) {
+            owner.onBack()
+            return
+          }
+          if (canGoBack(currentLedger())) void stateRef.current.navigate(-1)
+        },
+        goForward: () => {
+          if (canGoForward(currentLedger())) void stateRef.current.navigate(1)
+        },
+      },
+      sectionTarget: (section, root) => resolveSectionTarget(ledger, section, root),
+      pressActiveTab: () => apply(resolvePhoneTabPress(currentLedger())),
       selectTab: (tabRoot) => apply(resolvePhoneTabSelect(currentLedger(), tabRoot)),
     }
-  }, [])
+  }, [ledger, redirect])
 
   return (
     <PhoneNavigationContext.Provider value={value}>
       {children}
       <NativePhoneNavigationBridge />
+      {/* The one polite live region: the settled screen's heading, debounced
+          (docs/navigation/overview.md §12). Overlays announce through their own
+          dialog semantics instead. */}
+      <div aria-live="polite" className="sr-only" role="status" {...{ [ANNOUNCER_ATTRIBUTE]: '' }} />
     </PhoneNavigationContext.Provider>
   )
 }
 
-// Every phone navigation consumer shares this context. It is only null outside
-// the authenticated shell (login/bootstrap), where phone navigation chrome is
-// never rendered.
+// Every navigation consumer shares this context. It is only null outside the
+// authenticated shell (login/bootstrap), where navigation chrome is never
+// rendered.
 export const usePhoneNavigation = (): PhoneNavigationApi | null =>
   useContext(PhoneNavigationContext)

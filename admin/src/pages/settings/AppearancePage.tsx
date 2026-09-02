@@ -1,10 +1,12 @@
-import { useState } from 'react'
 import { TabBar } from '../../components/primitives/TabBar'
+import { useTabParam } from '../../navigation/useTabParam'
 import { ColoursPanel } from './appearance/ColoursPanel'
 import { TypePanel } from './appearance/TypePanel'
 import { SettingsPanel } from './settings-shared'
 
-type AppearanceTab = 'colours' | 'type'
+const APPEARANCE_TABS = ['colours', 'type'] as const
+
+type AppearanceTab = (typeof APPEARANCE_TABS)[number]
 
 const TABS: ReadonlyArray<{ label: string; value: AppearanceTab }> = [
   { label: 'Colours', value: 'colours' },
@@ -17,7 +19,7 @@ const PANELS: Record<AppearanceTab, () => React.JSX.Element> = {
 }
 
 export const AppearancePage = () => {
-  const [activeTab, setActiveTab] = useState<AppearanceTab>('colours')
+  const [activeTab, setActiveTab] = useTabParam('tab', APPEARANCE_TABS, 'colours')
   const ActivePanel = PANELS[activeTab]
 
   return (

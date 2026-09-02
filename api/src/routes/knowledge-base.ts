@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import {
+  KnowledgePageRevisionConflictError,
   buildNativeSourceRef,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
@@ -16,6 +17,11 @@ import {
   UpdateKnowledgeSpaceBodySchema,
 } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import {
+  readIfMatchRevision,
+  sendMalformedIfMatch,
+  sendRevisionConflict,
+} from '../lib/if-match.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
 import {
@@ -380,15 +386,29 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    // The auto-saving editor states the revision it edited; a stale save is
+    // refused so the client can offer the choice in place, never resolved by
+    // taking the last write (docs/navigation/overview.md → "Drafts").
+    const ifMatch = readIfMatchRevision(request)
+    if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)
     let page: KnowledgePageRecord | null
     try {
       page = await provider.updatePage(pageId, {
         ...body,
+        ...(ifMatch.kind === 'revision' ? { expectedRevision: ifMatch.revision } : {}),
         organizationId: actorContext.tenant.organizationId,
         authorId: actorContext.actor.actorId,
         authorType: actorAuthorType(actorContext),
       })
     } catch (error) {
+      if (error instanceof KnowledgePageRevisionConflictError) {
+        return sendRevisionConflict(
+          reply,
+          'KNOWLEDGE_PAGE_REVISION_CONFLICT',
+          'This page changed since you started editing',
+          error.currentRevision,
+        )
+      }
       return sendKnowledgeMutationError(request, reply, error, {
         code: 'KNOWLEDGE_PAGE_INVALID',
         message: 'Knowledge page could not be updated',

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
@@ -33,6 +33,9 @@ export const useSendMessage = (threadId?: string) => {
       content: string
       attachmentIds?: string[]
       agentMentions?: PersonalAssistantMention[]
+      // Idempotency key for this unsent draft: a retried send resolves to the
+      // message the first attempt created instead of posting a second one.
+      clientMessageId?: string
     } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {
@@ -115,6 +118,7 @@ export const useMessageSearch = (channelId: string | undefined, query: string) =
   const trimmed = query.trim()
 
   return useQuery<MessageSearchResult[]>({
+    placeholderData: keepPreviousData,
     queryKey: channelKeys.messageSearch(channelId, trimmed),
     queryFn: () =>
       apiClient.get(

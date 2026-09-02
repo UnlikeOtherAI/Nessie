@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   useConvertToDocument,
   useUploadFileNode,
-  useUploadFileVersion,
-  useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
 import {
   useKnowledgePage,
@@ -12,19 +10,15 @@ import {
   type KnowledgePageRecord,
 } from '../../../facades/knowledge/hooks'
 import { getCookie, setCookie } from '../../../lib/storage'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
-import {
-  LOCAL_BACK_PRIORITY,
-  useLocalBack,
-} from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { LOCAL_BACK_PRIORITY } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
+import { useTabParam } from '../../../navigation/useTabParam'
 import type { UploadProgress } from '../../../lib/upload-xhr'
-import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import { isMarkdownFilename } from './file-icons'
-import { FileNodeViewer } from './FileNodeViewer'
-import { FileVersionUploadDialog } from './FileVersionUploadDialog'
+import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
@@ -32,10 +26,10 @@ import { ProductDocumentsView } from './ProductDocumentsView'
 import { isAgentDraft } from './page-status'
 import {
   isKnowledgeViewMode,
+  KNOWLEDGE_VIEW_MODES,
   type KnowledgeViewMode,
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
-import { PagePreview } from './PagePreview'
 import { SpaceSettingsDialog } from './SpaceSettingsDialog'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { VersionHistory } from './VersionHistory'
@@ -43,13 +37,14 @@ import { buildKnowledgeWorkspaceActions } from './knowledge-workspace-actions'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
-// On a phone the outer route header (KnowledgeBasePage's MobileSectionHeader,
-// ProjectView's own header) stays painted above every pane and owns the single
-// doorway, so the workspace registers one unwind action with the shell's
-// local-back registry and passes onBack to its inner panes only on wider
-// layouts. Priority: editor > history > open document/file > folder depth —
-// exactly one level per press; at the space base nothing is active and the
-// route Back owns the doorway again.
+// The workspace's four inner screens — a folder browsed beyond the space root,
+// an open document or file, its version history, the page editor — are nested
+// stages (docs/navigation/overview.md §6). Where a single-column stack hosts them each
+// is a real layer: it slides in, Back unwinds exactly one level (the deepest
+// priority owns the doorway) and the edge swipe drives the top one. Where no
+// stack hosts stages (a split layout's detail column, an isolated render) they
+// render inline and the workspace composes one pane at a time, exactly as the
+// desktop columns and the full-width editor did before.
 type KnowledgeWorkspaceProps = {
   canManageSpace?: boolean
 }
@@ -70,19 +65,14 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     openPagePath,
     editor,
     openCreate,
-    openEdit,
     closeEditor,
     createFolder,
     createFolderPending,
     savePage,
     savePending,
-    drillTo,
     popTo,
-    openHistory,
     closeHistory,
     historyPageId,
-    publishPage,
-    publishPending,
     restoreVersion,
     restorePending,
     spaceSettingsOpen,
@@ -95,11 +85,25 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     refetchPages,
   } = useKnowledge()
   const navigate = useNavigate()
-  const phoneLayout = usePhoneLayout()
-  const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
+  // The stack's presence — never a breakpoint — decides whether the stages are
+  // layers over this route or panes composed in place.
+  const stacked = useNestedStageHosted()
+  // The view mode is `?view=` like every other in-page strip
+  // (docs/navigation/overview.md §1, "Tab hosts") so a link to a space opens in the
+  // layout it was shared in. The cookie stays the *default* for a URL that
+  // names no view, and is rewritten on every change, so the preference still
+  // follows the reader across spaces and sessions. Read once per mount: the
+  // fallback must not move underneath the hook that deletes the param when the
+  // fallback itself is selected.
+  const [storedViewMode] = useState<KnowledgeViewMode>(() => {
     const stored = getCookie(VIEW_MODE_COOKIE)
     return isKnowledgeViewMode(stored) ? stored : 'column'
   })
+  const [viewMode, selectViewMode] = useTabParam(
+    'view',
+    KNOWLEDGE_VIEW_MODES,
+    storedViewMode,
+  )
   const [creatingFolder, setCreatingFolder] = useState(false)
 
   // "Needs review" filters the current space's tree down to agent drafts (and
@@ -139,40 +143,32 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const current = openPageId ? pageById(openPageId) : undefined
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const currentFolder = openPageId ? null : pathPages.at(-1)
+  const historyPage = historyPageId ? pageById(historyPageId) : undefined
 
-  const localBackLabel = editor
-    ? 'Back from page editor'
-    : historyPageId
-      ? 'Back from version history'
-      : current
-        ? depth > 0
-          ? 'Back to parent page'
-          : 'Back to space'
-        : 'Back to parent folder'
-  const localBackPriority = editor
-    ? LOCAL_BACK_PRIORITY.knowledgeEditor
-    : historyPageId
-      ? LOCAL_BACK_PRIORITY.knowledgeHistory
-      : current
-        ? LOCAL_BACK_PRIORITY.knowledgeDocument
-        : LOCAL_BACK_PRIORITY.knowledgeFolder
-  // browseTo takes the path's string ids, never page records.
-  const localBackAction = editor
-    ? closeEditor
-    : historyPageId
-      ? closeHistory
-      : current
-        ? () => popTo(depth)
-        : pathPages.length > 0
-          ? () => browseTo(pathPages.slice(0, -1).map((page) => page.id))
-          : null
-  useLocalBack({
-    active: phoneLayout && localBackAction !== null,
-    id: 'knowledge-workspace',
-    label: localBackLabel,
-    onBack: localBackAction ?? (() => undefined),
-    priority: localBackPriority,
-  })
+  const canWrite = selectedSpace?.canWrite ?? false
+  const canManageAccess = selectedSpace?.canManageAccess ?? false
+  // A space administrator must retain the settings doorway after enabling
+  // writeRestricted, even when that switch removes ordinary content writes.
+  const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
+
+  // Which stages are open. A stack shows them all at once, one layer each; an
+  // inline host shows only the deepest, which is what the early returns this
+  // replaced did — editor over history over document over the browser.
+  const editorOpen = Boolean(editor) && canWrite
+  const historyOpen = Boolean(historyPage) && (stacked || !editorOpen)
+  const documentOpen = Boolean(current) && (stacked || !(editorOpen || historyOpen))
+  // A document's ancestors are unwound by the document stage itself ("Back to
+  // parent page"), so the folder stage is the browse path with nothing open.
+  const folderOpen = stacked && !current && !activeProductView && pathPages.length > 0
+  const baseIsBrowser = stacked || !(editorOpen || historyOpen || documentOpen)
+  // What the route layer's browser shows: the listing a stage was pushed over
+  // — the space root under an open folder, the open document's ancestors under
+  // an open document — and the live path wherever it is the only browser.
+  const basePath = current
+    ? pathPages.slice(0, Math.max(depth, 0)).map((page) => page.id)
+    : folderOpen
+      ? []
+      : pagePath
 
   // The space-pages list omits page bodies (they're large and the tree/column
   // views never show them). Fetch the full body on demand for whichever page
@@ -186,26 +182,13 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const fullPage =
     fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
 
-  // ─── File upload wiring (file nodes, page attachments, new versions) ───────
-  const [attachmentsPageId, setAttachmentsPageId] = useState<string | null>(null)
-  const [versionDialogFor, setVersionDialogFor] = useState<KnowledgePageRecord | null>(null)
-  const [attachProgress, setAttachProgress] = useState<UploadProgress | null>(null)
+  // ─── File-node upload wiring (a file dropped into the current folder) ──────
   const [fileNodeProgress, setFileNodeProgress] = useState<UploadProgress | null>(null)
-  const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
-  const [versionError, setVersionError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
   const fileNodeUpload = useUploadFileNode(selectedSpaceId, currentFolder?.id ?? null)
-  const pageAttachmentUpload = useUploadPageAttachment(current?.id)
-  const fileVersionUpload = useUploadFileVersion(versionDialogFor?.id, selectedSpaceId)
-  const canWrite = selectedSpace?.canWrite ?? false
-  const canManageAccess = selectedSpace?.canManageAccess ?? false
-  // A space administrator must retain the settings doorway after enabling
-  // writeRestricted, even when that switch removes ordinary content writes.
-  const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
 
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
-    setViewMode(nextMode)
+    selectViewMode(nextMode)
     setCookie(VIEW_MODE_COOKIE, nextMode)
   }
   const workspaceActions = buildKnowledgeWorkspaceActions({
@@ -251,178 +234,18 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       { onSettled: () => setFileNodeProgress(null) },
     )
   }
-  const uploadPageAttachment = (file: File) => {
-    if (!current) return
-    setAttachmentsPageId(current.id)
-    setAttachProgress({ loaded: 0, total: file.size, pct: 0 })
-    pageAttachmentUpload.mutate(
-      { file, onProgress: setAttachProgress },
-      { onSettled: () => setAttachProgress(null) },
-    )
-  }
-
   const fileNodeDrop = useFileDrop(firstFileOnly(uploadFileNode), !selectedSpaceId || !canWrite)
-  const attachmentDrop = useFileDrop(firstFileOnly(uploadPageAttachment), !current || !canWrite)
 
-  const versionDialog = versionDialogFor && canWrite ? (
-    <FileVersionUploadDialog
-      error={versionError}
-      onClose={() => {
-        setVersionDialogFor(null)
-        setVersionError(null)
-      }}
-      onPick={(file) => {
-        setVersionError(null)
-        setVersionProgress({ loaded: 0, total: file.size, pct: 0 })
-        fileVersionUpload.mutate(
-          { file, onProgress: setVersionProgress },
-          {
-            onError: (error) => setVersionError((error as Error).message),
-            onSuccess: () => setVersionDialogFor(null),
-            onSettled: () => setVersionProgress(null),
-          },
-        )
-      }}
-      progressPct={versionProgress?.pct ?? 0}
-      title={versionDialogFor.title}
-      uploading={fileVersionUpload.isPending}
-    />
-  ) : null
-
-  // A product Documents view (e.g. DeepWater Research) is selected in the
-  // sidebar — it owns the whole main area instead of a space's pages.
-  if (activeProductView) {
-    return <ProductDocumentsView view={activeProductView} />
-  }
-
-  // Full-width editor (create or edit) — takes the whole main area. Editing waits
-  // for the on-demand full body so the editor never initialises from an empty
-  // (list-stripped) body and overwrites real content on save.
-  if (editor && canWrite) {
-    return (
+  // ─── Panes ────────────────────────────────────────────────────────────────
+  // The browser renders twice while a folder stage is open: the space's root
+  // listing stays in the route layer as the screen that folder was pushed
+  // over, and the stage carries the live path. `chrome` marks the interactive
+  // copy — exactly one of the two — so the actions, the upload input and the
+  // dialogs they open exist once.
+  const renderBrowser = (path: string[], chrome: boolean) => (
+    <div className="relative h-full w-full" {...(chrome ? fileNodeDrop.dropHandlers : {})}>
       <KnowledgePane
-        onBack={phoneLayout ? undefined : closeEditor}
-        title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}
-      >
-        <div className="flex h-full w-full flex-col">
-          {editor.mode === 'edit' ? (
-            <QueryState
-              className="flex h-full items-center justify-center py-0"
-              errorLabel="Couldn’t load this page."
-              loadingLabel="Loading…"
-              query={fullPageQuery}
-            >
-              {() => (
-                <PageEditor
-                  mode="edit"
-                  onCancel={closeEditor}
-                  onSubmit={savePage}
-                  page={fullPage ?? null}
-                  pending={savePending}
-                />
-              )}
-            </QueryState>
-          ) : (
-            <PageEditor
-              initialTitle={editor.initialTitle}
-              mode="create"
-              onCancel={closeEditor}
-              onSubmit={savePage}
-              page={null}
-              parentPageId={editor.parentPageId}
-              pending={savePending}
-            />
-          )}
-        </div>
-      </KnowledgePane>
-    )
-  }
-
-  // Full-width version history.
-  const historyPage = historyPageId ? pageById(historyPageId) : undefined
-  if (historyPage) {
-    return (
-      <KnowledgePane
-        onBack={phoneLayout ? undefined : closeHistory}
-        title={`History — ${historyPage.title}`}
-      >
-        <div className="mx-auto w-full max-w-3xl px-6 py-6">
-          <VersionHistory
-            canRestore={canWrite}
-            onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
-            page={fullPage ?? historyPage}
-            pending={restorePending}
-            versions={versionsQuery.data ?? []}
-          />
-        </div>
-      </KnowledgePane>
-    )
-  }
-
-  // Full-width page preview / file viewer. Dropping a file here adds an
-  // attachment to the open page (document or file node).
-  if (current) {
-    return (
-      <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
-        {canWrite && isMarkdownFileNode && !convertToDocument.isError ? (
-          <KnowledgePane
-            onBack={phoneLayout ? undefined : () => popTo(depth)}
-            title={current.title}
-          >
-            <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
-              Opening as document…
-            </div>
-          </KnowledgePane>
-        ) : current.kind === 'file' ? (
-          <FileNodeViewer
-            canWrite={canWrite}
-            onBack={phoneLayout ? undefined : () => popTo(depth)}
-            onOpenHistory={() => openHistory(current.id)}
-            onToggleAttachments={() => setAttachmentsPageId(current.id)}
-            onUploadVersion={() => setVersionDialogFor(current)}
-            page={current}
-          />
-        ) : (
-          <PagePreview
-            bodyQuery={fullPageQuery}
-            canWrite={canWrite}
-            onBack={phoneLayout ? undefined : () => popTo(depth)}
-            onCreateChild={() => openCreate(current.id)}
-            onDrill={(childPageId) => drillTo(depth, childPageId)}
-            onEdit={() => openEdit(current)}
-            onOpenHistory={() => openHistory(current.id)}
-            onPublish={() => publishPage(current.id)}
-            onToggleAttachments={() => setAttachmentsPageId(current.id)}
-            page={fullPage ?? current}
-            publishPending={publishPending}
-            subPages={childrenOf(current.id)}
-          />
-        )}
-        <DropZoneOverlay
-          active={attachmentDrop.isDragging}
-          label="Drop to attach to this page"
-          progressPct={attachProgress?.pct}
-          uploading={pageAttachmentUpload.isPending}
-        />
-        {attachmentsPageId ? (
-          <AttachmentsDrawer
-            canWrite={canWrite}
-            onClose={() => setAttachmentsPageId(null)}
-            open={Boolean(attachmentsPageId)}
-            pageId={attachmentsPageId}
-          />
-        ) : null}
-        {versionDialog}
-      </div>
-    )
-  }
-
-  // No document open → the selected space's filesystem browser. Dropping a file
-  // here uploads it as a new file node in the current folder.
-  return (
-    <div className="relative h-full w-full" {...fileNodeDrop.dropHandlers}>
-      <KnowledgePane
-        actions={workspaceActions}
+        actions={chrome ? workspaceActions : undefined}
         title={selectedSpace?.name ?? 'Pages'}
       >
         <div className="h-full w-full">
@@ -448,7 +271,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
               {() => (
                 <KnowledgeFilesystemBrowser
                   childrenOf={visibleChildrenOf}
-                  creatingFolder={canWrite && creatingFolder}
+                  creatingFolder={chrome && canWrite && creatingFolder}
                   createFolderPending={createFolderPending}
                   mode={viewMode}
                   onBrowsePath={browseTo}
@@ -460,7 +283,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
                     )
                   }}
                   pageById={pageById}
-                  pagePath={pagePath}
+                  pagePath={path}
                   pages={pages}
                   rootPages={visibleRootPages}
                   selectedSpaceId={selectedSpaceId}
@@ -471,33 +294,161 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
           )}
         </div>
       </KnowledgePane>
-      <DropZoneOverlay
-        active={fileNodeDrop.isDragging}
-        label="Drop a file to upload"
-        progressPct={fileNodeProgress?.pct}
-        uploading={fileNodeUpload.isPending}
-      />
-      <input
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) uploadFileNode(file)
-          event.target.value = ''
-        }}
-        ref={fileInputRef}
-        type="file"
-      />
-      {versionDialog}
-      {selectedSpace && canManage ? (
-        <SpaceSettingsDialog
-          canManageAccess={canManageAccess}
-          onClose={closeSpaceSettings}
-          onSave={updateSpace}
-          open={spaceSettingsOpen}
-          pending={updateSpacePending}
-          space={selectedSpace}
-        />
+      {chrome ? (
+        <>
+          <DropZoneOverlay
+            active={fileNodeDrop.isDragging}
+            label="Drop a file to upload"
+            progressPct={fileNodeProgress?.pct}
+            uploading={fileNodeUpload.isPending}
+          />
+          <input
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) uploadFileNode(file)
+              event.target.value = ''
+            }}
+            ref={fileInputRef}
+            type="file"
+          />
+          {selectedSpace && canManage ? (
+            <SpaceSettingsDialog
+              canManageAccess={canManageAccess}
+              onClose={closeSpaceSettings}
+              onSave={updateSpace}
+              open={spaceSettingsOpen}
+              pending={updateSpacePending}
+              space={selectedSpace}
+            />
+          ) : null}
+        </>
       ) : null}
     </div>
+  )
+
+  // The open document or file node, with its attachments and versions.
+  const documentPane = current ? (
+    <KnowledgeDocumentPane
+      bodyQuery={fullPageQuery}
+      canWrite={canWrite}
+      converting={canWrite && isMarkdownFileNode && !convertToDocument.isError}
+      depth={depth}
+      fullPage={fullPage}
+      onBack={stacked ? undefined : () => popTo(depth)}
+      page={current}
+      selectedSpaceId={selectedSpaceId}
+    />
+  ) : null
+
+  // Full-width version history.
+  const historyPane = historyPage ? (
+    <KnowledgePane
+      onBack={stacked ? undefined : closeHistory}
+      title={`History — ${historyPage.title}`}
+    >
+      <div className="mx-auto w-full max-w-3xl px-6 py-6">
+        <VersionHistory
+          canRestore={canWrite}
+          onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
+          page={fullPage ?? historyPage}
+          pending={restorePending}
+          versions={versionsQuery.data ?? []}
+        />
+      </div>
+    </KnowledgePane>
+  ) : null
+
+  // Full-width editor (create or edit). Editing waits for the on-demand full
+  // body so the editor never initialises from an empty (list-stripped) body and
+  // overwrites real content on save.
+  const editorPane = editor ? (
+    <KnowledgePane
+      onBack={stacked ? undefined : closeEditor}
+      title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}
+    >
+      <div className="flex h-full w-full flex-col">
+        {editor.mode === 'edit' ? (
+          <QueryState
+            className="flex h-full items-center justify-center py-0"
+            errorLabel="Couldn’t load this page."
+            loadingLabel="Loading…"
+            query={fullPageQuery}
+          >
+            {() => (
+              <PageEditor
+                mode="edit"
+                onCancel={closeEditor}
+                onSubmit={savePage}
+                page={fullPage ?? null}
+                pending={savePending}
+              />
+            )}
+          </QueryState>
+        ) : (
+          <PageEditor
+            initialTitle={editor.initialTitle}
+            mode="create"
+            onCancel={closeEditor}
+            onSubmit={savePage}
+            page={null}
+            parentPageId={editor.parentPageId}
+            pending={savePending}
+          />
+        )}
+      </div>
+    </KnowledgePane>
+  ) : null
+
+  return (
+    <>
+      {activeProductView ? (
+        // A product Documents view (e.g. DeepWater Research) owns the whole
+        // main area instead of a space's pages.
+        <ProductDocumentsView view={activeProductView} />
+      ) : baseIsBrowser ? (
+        renderBrowser(basePath, !folderOpen)
+      ) : null}
+      <NestedStage
+        active={folderOpen}
+        id="knowledge:folder"
+        label="Back to parent folder"
+        onBack={() => browseTo(pathPages.slice(0, -1).map((page) => page.id))}
+        priority={LOCAL_BACK_PRIORITY.knowledgeFolder}
+      >
+        {renderBrowser(pagePath, true)}
+      </NestedStage>
+      <NestedStage
+        active={documentOpen}
+        id="knowledge:document"
+        label={depth > 0 ? 'Back to parent page' : 'Back to space'}
+        onBack={() => popTo(depth)}
+        priority={LOCAL_BACK_PRIORITY.knowledgeDocument}
+      >
+        {documentPane}
+      </NestedStage>
+      <NestedStage
+        active={historyOpen}
+        id="knowledge:history"
+        label="Back from version history"
+        onBack={closeHistory}
+        priority={LOCAL_BACK_PRIORITY.knowledgeHistory}
+      >
+        {historyPane}
+      </NestedStage>
+      <NestedStage
+        active={editorOpen}
+        id="knowledge:editor"
+        label="Back from page editor"
+        onBack={closeEditor}
+        priority={LOCAL_BACK_PRIORITY.knowledgeEditor}
+        // The editor holds its draft in its own state and publishes no dirty
+        // signal, so the swipe stays refused for as long as it is open: a
+        // half-written page must never be lost to a stray edge gesture.
+        swipeable={false}
+      >
+        {editorPane}
+      </NestedStage>
+    </>
   )
 }

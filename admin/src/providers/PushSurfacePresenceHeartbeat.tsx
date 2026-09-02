@@ -76,7 +76,7 @@ export const PushSurfacePresenceHeartbeat = () => {
   // its server-side entitlement check later.
   const heartbeatSequence = useRef(Date.now() * 1_000)
   const surface = useMemo(
-    () => resolvePushSurface(location.pathname, location.search),
+    () => resolvePushSurface(location.pathname),
     [location.pathname, location.search],
   )
   const route = useMemo(

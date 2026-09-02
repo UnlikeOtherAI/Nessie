@@ -51,6 +51,13 @@ export type MentionInputHandle = {
   insertAtSign: () => void
   insertHashSign: () => void
   insertText: (text: string) => void
+  /**
+   * Replaces the whole editor content — how a restored draft is put back.
+   * Deliberately does NOT focus: a draft restored on mount must not steal the
+   * caret, and `decorateMarkdownEditor` only restores a cursor that was
+   * already inside this editor.
+   */
+  setText: (text: string) => void
 }
 
 type Props = {
@@ -358,6 +365,13 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
       insertHashSign() {
         insertTrigger('#')
       },
+      setText(text: string) {
+        const el = editorRef.current
+        if (!el) return
+        decorateMarkdownEditor(el, text)
+        setHasContent(text.trim().length > 0)
+        onChange?.(text)
+      },
       insertText(text: string) {
         const el = editorRef.current
         if (!el) return
@@ -427,6 +441,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ].join(' ')}
           contentEditable
           data-placeholder={placeholder}
+          enterKeyHint="send"
           onCompositionEnd={() => {
             composingRef.current = false
             sync()

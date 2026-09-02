@@ -2,6 +2,7 @@ import { faCube, faGlobe, type IconDefinition } from '@fortawesome/free-solid-sv
 import { useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
+import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
 import { Pill } from '../../primitives/Pill'
 import { AppConnectDialog } from './AppConnectDialog'
 import { AppIcon } from './AppIcon'
@@ -106,6 +107,7 @@ const HighlightedText = ({ query, text }: { query: string; text: string }) => (
 
 export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }: AppCardProps) => {
   const [connectOpen, setConnectOpen] = useState(false)
+  const prewarm = usePrewarm()
   const status = appCardStatus(app)
   const action = appCardAction(app)
   const kindPill = appKindPill(app)
@@ -142,6 +144,7 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
             ].join(' ')}
             data-testid="app-card-open"
             to={appDetailHref(app)}
+            {...prewarmRowHandlers(prewarm, appDetailHref(app))}
           >
             <HighlightedText query={query} text={app.displayName} />
           </Link>

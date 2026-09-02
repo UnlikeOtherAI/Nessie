@@ -1,23 +1,22 @@
-import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
-import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
+import { Skeleton } from '../components/primitives/Skeleton'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
+  appDetailTabIds,
   appDetailTabs,
   appNotFoundMessage,
-  resolveAppDetailTab,
-  type AppDetailTab,
 } from '../components/features/apps/app-detail-view'
 import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 import { usePhoneLayout } from '../lib/mobile-shell'
+import { useConsumedIntent } from '../navigation/intent'
+import { useTabParam } from '../navigation/useTabParam'
 
 /**
  * One app, as a full page at `/apps/:slug`.
@@ -35,24 +34,31 @@ import { usePhoneLayout } from '../lib/mobile-shell'
 export const AppDetailPage = () => {
   const navigate = useNavigate()
   const { slug } = useParams<{ slug?: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { data: app, isPending } = useApp(slug)
   const [connectOpen, setConnectOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
   const removeApp = useRemoveAppConnections()
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
+  // Called before the loading/absent early returns, as every hook must be.
+  // With no app yet the offered list is empty, so `?tab=` reads as Overview
+  // until the record arrives and then resolves against the real tabs.
+  const tabIds = useMemo(
+    () => (app ? appDetailTabIds(appDetailTabs(app)) : []),
+    [app],
+  )
+  // The tab lives in the URL so `?tab=accounts` is linkable, and it is written
+  // with `replace` so flipping tabs never enters history
+  // (docs/navigation/overview.md §1, "Tab hosts").
+  const [activeTab, selectTab] = useTabParam('tab', tabIds, 'overview')
 
   // A custom app's address is checked before it arrives here. Its first
   // connection still waits for this explicit review, so `?connect=true` opens
   // the dialog but never starts a connection by itself.
+  const connectIntent = useConsumedIntent('connect')
   useEffect(() => {
-    if (searchParams.get('connect') !== 'true') return
-    setConnectOpen(true)
-    const params = new URLSearchParams(searchParams)
-    params.delete('connect')
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    if (connectIntent.value === 'true') setConnectOpen(true)
+  }, [connectIntent])
 
   // Apps owns this detail's immediate parent. On a phone use the shell's
   // ledger-aware action so the labelled Apps doorway, an edge swipe, and
@@ -66,22 +72,16 @@ export const AppDetailPage = () => {
     void navigate('/apps')
   }
 
+  // One header for every state of this screen — loading, not found, and the
+  // app itself — so Back never disappears with the content. The wide-layout
+  // Back is the page's own, because Apps owns this detail's parent; on a
+  // phone the shared doorway resolves it through the one Back resolver.
   const header = (
-    <header className="flex items-center gap-3 px-6 pt-6 pb-4">
-      {/* This is the one visible phone Back doorway. Rendering the shell's
-          circular control beside it created two actions with different
-          destinations (Admin and Apps). */}
-      {!phoneLayout ? <PhoneNavigationButton /> : null}
-      <button
-        className="admin-button admin-button-secondary gap-1.5"
-        data-testid="app-detail-back"
-        onClick={backToList}
-        type="button"
-      >
-        <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-        Apps
-      </button>
-    </header>
+    <ScreenHeader
+      backLabel="Back to Apps"
+      onBack={backToList}
+      title={app?.name ?? 'App'}
+    />
   )
 
   if (!app) {
@@ -90,7 +90,7 @@ export const AppDetailPage = () => {
         {header}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 pb-8">
           {isPending ? (
-            <AppDetailSkeleton />
+            <Skeleton variant="detail" />
           ) : (
             <div className="flex flex-1 items-center justify-center py-16 text-sm text-[color:var(--tx3)]">
               {appNotFoundMessage(false)}
@@ -99,18 +99,6 @@ export const AppDetailPage = () => {
         </div>
       </div>
     )
-  }
-
-  const tabs = appDetailTabs(app)
-  const activeTab = resolveAppDetailTab(searchParams.get('tab'), tabs)
-
-  // The tab lives in the URL so `?tab=accounts` is linkable, and `replace` keeps
-  // tab-flipping out of the back button's history.
-  const selectTab = (tab: AppDetailTab) => {
-    const params = new URLSearchParams(searchParams)
-    if (tab === 'overview') params.delete('tab')
-    else params.set('tab', tab)
-    setSearchParams(params, { replace: true })
   }
 
   const closeRemove = () => {

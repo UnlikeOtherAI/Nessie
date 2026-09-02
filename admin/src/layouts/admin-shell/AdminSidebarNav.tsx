@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
+import { sidebarAriaCurrent } from './SidebarRow';
 
 /**
  * What the nav knows about the person reading it. Visibility is decided from
@@ -463,6 +464,7 @@ const AdminNavSection = ({
           const isActive = isAdminNavItemActive(item, pathname);
           return (
             <Link
+              aria-current={sidebarAriaCurrent(isActive)}
               key={item.path}
               className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
               to={item.path}

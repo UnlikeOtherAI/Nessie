@@ -11,6 +11,7 @@ import {
   useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
 import type { AttachmentRecord } from '../../../lib/uploads'
+import { Sheet } from '../../overlays/Sheet'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { QueryState } from '../../shared/QueryState'
@@ -18,9 +19,9 @@ import { Row, RowList } from '../../shared/RowList'
 import { iconForMime } from './file-icons'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
-// Right-hand attachments drawer. On desktop it docks as a right rail; on mobile
-// (`open` over a full-screen sheet) it covers the page. Drag-and-drop, a button,
-// and a native picker all upload an attachment to the page.
+// Right-hand attachments drawer: a 360 px sheet on a split layout, covering the
+// page on a single-column one. Drag-and-drop, a button, and a native picker all
+// upload an attachment to the page.
 export const AttachmentsDrawer = ({
   canWrite,
   pageId,
@@ -55,131 +56,131 @@ export const AttachmentsDrawer = ({
   const attachments = attachmentsQuery.data ?? []
 
   return (
-    <aside
-      aria-hidden={!open}
-      className={[
-        'fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-[color:var(--sep)]',
-        'bg-[color:var(--main)] shadow-[-12px_0_40px_var(--scrim)] transition-transform duration-300 sm:w-[360px]',
-        open ? 'translate-x-0' : 'translate-x-full',
-      ].join(' ')}
-    >
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
-        <h3 className="flex-1 text-sm font-semibold text-[color:var(--tx)]">
-          Attachments {attachments.length ? `(${attachments.length})` : ''}
-        </h3>
-        <button
-          aria-label="Close attachments"
-          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
-          onClick={onClose}
-          type="button"
-        >
-          <FontAwesomeIcon className="h-4 w-4" icon={faXmark} />
-        </button>
-      </div>
+    <Sheet onClose={onClose} open={open} side="right" size="sm" title="Attachments">
+      <div
+        className={[
+          'flex h-full w-full min-h-0 flex-col border-l border-[color:var(--sep)]',
+          'bg-[color:var(--main)] shadow-[-12px_0_40px_var(--scrim)]',
+        ].join(' ')}
+      >
+        <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
+          <h3 className="flex-1 text-sm font-semibold text-[color:var(--tx)]">
+            Attachments {attachments.length ? `(${attachments.length})` : ''}
+          </h3>
+          <button
+            aria-label="Close attachments"
+            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
+            onClick={onClose}
+            type="button"
+          >
+            <FontAwesomeIcon className="h-4 w-4" icon={faXmark} />
+          </button>
+        </div>
 
-      <div className="relative flex-1 overflow-y-auto p-3" {...dropHandlers}>
-        <DropZoneOverlay
-          active={isDragging}
-          progressPct={progress?.pct}
-          uploading={upload.isPending}
-        />
-        <QueryState
-          className="py-6"
-          emptyLabel={
-            canWrite
-              ? 'No attachments yet. Drop a file here or use the button below.'
-              : 'No attachments yet.'
-          }
-          errorLabel="Couldn’t load attachments."
-          isEmpty={attachments.length === 0}
-          loadingLabel="Loading attachments…"
-          query={attachmentsQuery}
-        >
-          {() => (
-            <RowList>
-              {attachments.map((attachment) => (
-                <Row
-                  key={attachment.id}
-                  leading={
-                    <FontAwesomeIcon
-                      className="h-4 w-4 text-[color:var(--tx3)]"
-                      fixedWidth
-                      icon={iconForMime(attachment.mime)}
-                    />
-                  }
-                  subtitle={formatBytes(Number(attachment.sizeBytes))}
-                  title={attachment.filename}
-                  trailing={
-                    <>
-                      <button
-                        aria-label={`Download ${attachment.filename}`}
-                        className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
-                        onClick={() =>
-                          void downloadAuthedPath(
-                            kbAttachmentDownloadPath(attachment.id),
-                            attachment.filename,
-                            token,
-                          )
-                        }
-                        type="button"
-                      >
-                        <FontAwesomeIcon className="h-3.5 w-3.5" icon={faDownload} />
-                      </button>
-                      {canWrite ? (
+        <div className="relative flex-1 overflow-y-auto p-3" {...dropHandlers}>
+          <DropZoneOverlay
+            active={isDragging}
+            progressPct={progress?.pct}
+            uploading={upload.isPending}
+          />
+          <QueryState
+            className="py-6"
+            emptyLabel={
+              canWrite
+                ? 'No attachments yet. Drop a file here or use the button below.'
+                : 'No attachments yet.'
+            }
+            errorLabel="Couldn’t load attachments."
+            isEmpty={attachments.length === 0}
+            loadingLabel="Loading attachments…"
+            query={attachmentsQuery}
+          >
+            {() => (
+              <RowList>
+                {attachments.map((attachment) => (
+                  <Row
+                    key={attachment.id}
+                    leading={
+                      <FontAwesomeIcon
+                        className="h-4 w-4 text-[color:var(--tx3)]"
+                        fixedWidth
+                        icon={iconForMime(attachment.mime)}
+                      />
+                    }
+                    subtitle={formatBytes(Number(attachment.sizeBytes))}
+                    title={attachment.filename}
+                    trailing={
+                      <>
                         <button
-                          aria-label={`Delete ${attachment.filename}`}
-                          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger-text)]"
-                          onClick={() => setPendingDelete(attachment)}
+                          aria-label={`Download ${attachment.filename}`}
+                          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
+                          onClick={() =>
+                            void downloadAuthedPath(
+                              kbAttachmentDownloadPath(attachment.id),
+                              attachment.filename,
+                              token,
+                            )
+                          }
                           type="button"
                         >
-                          <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
+                          <FontAwesomeIcon className="h-3.5 w-3.5" icon={faDownload} />
                         </button>
-                      ) : null}
-                    </>
-                  }
-                />
-              ))}
-            </RowList>
-          )}
-        </QueryState>
-      </div>
+                        {canWrite ? (
+                          <button
+                            aria-label={`Delete ${attachment.filename}`}
+                            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger-text)]"
+                            onClick={() => setPendingDelete(attachment)}
+                            type="button"
+                          >
+                            <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
+                          </button>
+                        ) : null}
+                      </>
+                    }
+                  />
+                ))}
+              </RowList>
+            )}
+          </QueryState>
+        </div>
 
-      {canWrite ? <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
-        <button
-          className="admin-button admin-button-primary admin-button-compact w-full"
-          disabled={upload.isPending}
-          onClick={() => inputRef.current?.click()}
-          type="button"
-        >
-          {upload.isPending ? `Uploading… ${progress?.pct ?? 0}%` : 'Add attachment'}
-        </button>
-        <input
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) handleFile(file)
-            event.target.value = ''
+        {canWrite ? <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
+          <button
+            className="admin-button admin-button-primary admin-button-compact w-full"
+            disabled={upload.isPending}
+            onClick={() => inputRef.current?.click()}
+            type="button"
+          >
+            {upload.isPending ? `Uploading… ${progress?.pct ?? 0}%` : 'Add attachment'}
+          </button>
+          <input
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) handleFile(file)
+              event.target.value = ''
+            }}
+            ref={inputRef}
+            type="file"
+          />
+        </div> : null}
+
+        <ConfirmDialog
+          body={pendingDelete ? `“${pendingDelete.filename}” will be removed from this page.` : undefined}
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            if (!pendingDelete) return
+            const attachment = pendingDelete
+            setPendingDelete(null)
+            remove.mutate(attachment.id)
           }}
-          ref={inputRef}
-          type="file"
+          open={pendingDelete !== null}
+          pending={remove.isPending}
+          title="Delete attachment?"
         />
-      </div> : null}
-
-      <ConfirmDialog
-        body={pendingDelete ? `“${pendingDelete.filename}” will be removed from this page.` : undefined}
-        confirmLabel="Delete"
-        destructive
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={() => {
-          if (!pendingDelete) return
-          const attachment = pendingDelete
-          setPendingDelete(null)
-          remove.mutate(attachment.id)
-        }}
-        open={pendingDelete !== null}
-        pending={remove.isPending}
-        title="Delete attachment?"
-      />
-    </aside>
+      </div>
+    </Sheet>
   )
 }

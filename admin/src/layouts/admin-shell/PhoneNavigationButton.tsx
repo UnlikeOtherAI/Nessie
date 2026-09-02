@@ -1,48 +1,35 @@
 import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
-import {
-  useColumnBackContext,
-  useLocalBackSnapshot,
-} from './local-back/LocalBackContext';
+import { useLocalBackSnapshot } from './local-back/LocalBackContext';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
-import { getPhoneNavigationBackTarget } from './phone-navigation';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 
-// The phone's single leading doorway, with an explicit ownership order:
-// an in-page local Back (deepest registered active action) > the route's
-// deterministic Back > the section menu at tab roots. Desktop and tablet
-// keep their pinned sidebar and per-column controls.
+// The phone's single leading doorway. What it does is decided by the one
+// Back resolver (navigation/back.ts): the topmost registered owner (an open
+// overlay, the deepest nested stage) > the route's parent > the section menu
+// at tab roots. This component only renders that decision; it never
+// re-derives it. Desktop and tablet keep their pinned sidebar and
+// per-column controls.
 export const PhoneNavigationButton = () => {
   const phoneLayout = usePhoneLayout();
   const location = useLocation();
   const nav = useMobileNav();
-  const history = usePhoneNavigation();
-  const localBack = useLocalBackSnapshot()?.active ?? null;
-  const column = useColumnBackContext();
-  const backTarget = getPhoneNavigationBackTarget(location.pathname);
+  const navigation = usePhoneNavigation();
+  // Subscribing to the registry snapshot re-renders this doorway when an
+  // owner registers or leaves; the resolver reads the same snapshot.
+  useLocalBackSnapshot();
+  const action = navigation?.resolveBackAction(location.pathname) ?? null;
 
   if (!phoneLayout || !nav) {
     return null;
   }
 
-  // Column browsers retain every column so their track can slide, but only
-  // the column at the viewport origin owns interactive chrome. Without this
-  // guard the off-screen list's route/menu button would re-render as the
-  // active detail's local Back, leaving two Back controls in the DOM.
-  if (column.index !== null && !column.phoneVisible) {
-    return null;
-  }
-
-  if (localBack) {
-    return <PhoneBackButton label={localBack.label} onBack={localBack.onBack} />;
-  }
-
-  if (backTarget) {
+  if (action) {
     return (
       <PhoneBackButton
-        label={backTarget.label}
-        onBack={() => history?.performBack()}
+        label={action.label}
+        onBack={() => navigation?.performBack()}
       />
     );
   }

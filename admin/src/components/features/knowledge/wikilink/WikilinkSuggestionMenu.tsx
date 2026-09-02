@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import { Popover } from '../../../overlays/Popover'
 import { useDebouncedValue } from '../../../../hooks/useDebouncedValue'
 import { useWikilinkSuggestions } from '../../../../facades/knowledge/wikilink-hooks'
 import { INACTIVE_TRIGGER, wikilinkSuggestionKey } from './wikilink-suggestion'
@@ -21,6 +22,10 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
   const [trigger, setTrigger] = useState(() => wikilinkSuggestionKey.getState(editor.state) ?? INACTIVE_TRIGGER)
   const [dismissedFrom, setDismissedFrom] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  // The editor's own DOM node stands in for a trigger element: a press inside
+  // the text it is suggesting for is not an outside press.
+  const editorRef = useRef<HTMLElement | null>(editor.view.dom as HTMLElement)
+  editorRef.current = editor.view.dom as HTMLElement
 
   useEffect(() => {
     const handleTransaction = () => {
@@ -97,13 +102,27 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
 
   if (!open) return null
 
+  // The anchor is the caret, not an element: `coordsAtPos` gives its rect, and
+  // placePopover flips the list above the line when the caret sits near the
+  // bottom of the window and clamps it inside the horizontal gutter.
   const coords = editor.view.coordsAtPos(trigger.from)
-  const left = Math.min(Math.max(coords.left, MENU_WIDTH / 2 + 8), window.innerWidth - MENU_WIDTH / 2 - 8)
 
   return (
-    <div
-      className="fixed z-50 flex max-h-64 flex-col overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-[0_16px_40px_var(--scrim-strong)]"
-      style={{ top: `${coords.bottom + 6}px`, left: `${left}px`, width: `${MENU_WIDTH}px` }}
+    <Popover
+      anchorRect={{
+        bottom: coords.bottom,
+        left: coords.left,
+        right: coords.left,
+        top: coords.top,
+      }}
+      anchorRef={editorRef}
+      className="flex max-h-64 flex-col overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-[0_16px_40px_var(--scrim-strong)]"
+      label="Page suggestions"
+      onClose={() => setDismissedFrom(trigger.from)}
+      open
+      placement="bottom-start"
+      role="listbox"
+      style={{ width: MENU_WIDTH }}
     >
       {items.length === 0 ? (
         <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">
@@ -128,6 +147,6 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
           </button>
         ))
       )}
-    </div>
+    </Popover>
   )
 }

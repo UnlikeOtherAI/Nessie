@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { useRedirect } from '../navigation/redirect'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const LOCAL_BOOTSTRAP_EMAIL = 'owner@example.com'
@@ -27,6 +28,7 @@ const errorBoxClass = [
 
 export const BootstrapPage = () => {
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const { bootstrap, bootstrapState, sessionState } = useAuthSession()
   const [email, setEmail] = useState(LOCAL_BOOTSTRAP_EMAIL)
   const [displayName, setDisplayName] = useState(LOCAL_BOOTSTRAP_DISPLAY_NAME)
@@ -37,9 +39,9 @@ export const BootstrapPage = () => {
 
   useEffect(() => {
     if (sessionState === 'authenticated') {
-      void navigate('/channels', { replace: true })
+      redirect('/channels')
     }
-  }, [navigate, sessionState])
+  }, [redirect, sessionState])
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('token')

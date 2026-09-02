@@ -105,9 +105,15 @@ so billing shows appropriately. Verified in code
   must attach `X-UOA-Delegation` + `X-Nessie-Context` on both the mint and
   every usage relay, and on a signing deployment **voice calls are only
   available to users with a linked UOA identity** — the same fail-closed
-  rule ordinary inference already follows. Per-user session concurrency
-  (`PROXY_TOKEN_USER_MAX_CONCURRENT_SESSIONS`) comes free with that
-  attribution.
+  rule ordinary inference already follows. **Correction from adversarial
+  review:** the concurrency cap does NOT come free per-user — Ledger's
+  count filters by `tokenId` only (`gemini-live-repository.ts:159-173`),
+  so on Nessie's one deployment-wide token
+  `PROXY_TOKEN_USER_MAX_CONCURRENT_SESSIONS` is a **global** cap across
+  the whole deployment. Coder never hit this because its tokens are
+  per-user. The Ledger fix (include `endUserSub` in the concurrency
+  predicate, with a two-subjects-one-token regression test) is a launch
+  blocker.
 - **Rows land in the UOA-read portfolio dimensions.** The entries carry
   `billingProduct` / `billingOrganizationId` / `billingTeamId` /
   `billingUserId`, `serviceId`, units in/out, and
@@ -127,19 +133,44 @@ so billing shows appropriately. Verified in code
   rate it from the snapshot either, because the portfolio's `unitsIn` /
   `unitsOut` collapse the modality split (audio vs text differ 4–16× in
   price), so the dollars are not reconstructible downstream.
-- **Required follow-up (Ledger + UOA, not Nessie):** carry the
-  client-reported estimated cost into the portfolio for telemetry-basis
-  rows — most naturally by populating `rawProviderEstimatedCost` for them
-  and letting the existing `costProvenance: "client_reported"` dimension
-  label its trust level, leaving UOA to decide how to rate it into
-  credits. Until that lands, Nessie's `/tokens` statement will show voice
-  calls as usage without charges; Nessie-side there is nothing to build or
-  work around (rendering UOA-authored models only is the invariant).
+- **Decided billing flow (2026-09-02):** Ledger passes the call's cost
+  through to UOA; UOA — the sole commercial authority, owning payments and
+  tariffs — applies its margin on top (10–30%, exact rate still Ondrej's
+  call, and a UOA tariff decision Nessie never sees as a number); the
+  resulting credit charge appears on the UOA-authored statement Nessie
+  renders at `/tokens`. Nessie-side there is nothing to build — rendering
+  UOA-authored models only is the invariant, and margin application lives
+  strictly in UOA.
+- **Required follow-up in Ledger** to make that flow real: carry the cost
+  into the portfolio for telemetry-basis rows. One precision on "real
+  costs": for ephemeral Live sessions Google exposes **no provider-side
+  metering**, so the truest cost Ledger can ever pass is its own
+  per-modality-priced figure computed from the client-reported
+  `usageMetadata` — already stored per turn as `LedgerEntry.estimated`.
+  The change is to surface that figure in the `metering-portfolio-v1`
+  aggregation (today it sums only the `rawProvider*Cost` columns, which
+  telemetry rows null), keeping the existing
+  `costProvenance: "client_reported"` dimension as the trust label so UOA
+  rates it knowingly. Two qualifications from review: Google Cloud Billing
+  *does* export authoritative provider cost at **project** scope — the
+  limitation is per-session attribution under a shared project, and a
+  reconciliation of client-reported totals against project billing is the
+  honest audit for the margin decision; and the portfolio's `calls` column
+  counts **usage turns** (one `LedgerEntry` per turn), not phone calls —
+  the statement display must say turns, or Ledger adds a session-level
+  count. **Gating:** the Ledger portfolio change + Ledger concurrency fix
+  + UOA rating of `client_reported` cost are release blockers for anything
+  beyond Ondrej's own testing; phase 1 is explicitly an unbilled dev
+  phase.
 - Trust note, for the record: usage is client-reported because Google
-  exposes no server-side metering for ephemeral Live sessions — a
-  compromised client could under-report. Exposure is bounded by the $5/day
-  per-device reservation and the Google project spend controls; that
-  bound, not the telemetry, is the financial backstop.
+  exposes no per-session server-side metering — a compromised client could
+  under-report. The $5/day reservation is **admission control, not a
+  spending bound**: Ledger checks it only at issuance, live entries carry
+  `realCost: 0` so client-reported spend never consumes the daily-budget
+  calculation mid-day, and a superseded credential stays valid at Google
+  until its 30-minute expiry. The actual exposure bounds are the Google
+  project spend/rate controls plus Nessie's own per-call caps (§2) and
+  per-user mint caps (§1).
 
 ## Where Nessie must differ from Coder
 
@@ -166,76 +197,133 @@ per-device credential**. So the Nessie API becomes the credential broker:
   to Ledger under the stored Ledger session id, preserving the client's
   sequence numbers and idempotency keys. Accepts reports only from the
   session's own user.
-- Rotation = the client calls `POST /api/voice/sessions` again with the
-  same device id (Ledger supersession does the bookkeeping), exactly like
-  Coder's `rotateCredential()` but with the Nessie route as the source.
+- **`voiceSessionId` is call-scoped and survives rotation.** Rotation
+  (`POST /api/voice/sessions/:id/rotate`) mints a fresh Ledger credential
+  for the *same* voice session — Ledger supersession does the slot
+  bookkeeping, and the row just updates its current Ledger session id.
+  Keying rotation as a brand-new voice session would double the transcript
+  slot, orphan the tool-call claims, and split the usage relay mid-call.
+  One call = one `voiceSessionId`, N Ledger sessions.
+- **Device ids are server-minted.** A client-chosen id (a `localStorage`
+  UUID, a reinstalled Keychain) would let one authenticated user mint
+  unlimited Ledger device slots, each reserving $5/day against the
+  deployment token's budget. Instead the relay registers installations
+  server-side and enforces **per-user caps**: max active voice
+  installations and max session mints per day. The HMAC'd id sent to
+  Ledger derives from the server-side registration.
 
 The ephemeral Gemini access token is the *only* credential the phone ever
 sees: one-use, 30-minute, restricted to the constrained Live endpoint —
 that is precisely what it was designed for.
 
-A small `voice_sessions` table (user, org, device hash, Ledger session id,
-model, expiry, timestamps) gives the relay its lookup and gives `/ops/usage`
-an owner-only observability row. No cost figures locally — Ledger meters,
-UOA rates; same rule as everything else.
+The `voice_sessions` row binds, immutably at mint: user, **the exact UOA
+subject/organization/team tuple and credential epoch used to sign the
+mint** (later usage/tool/transcript requests re-sign against that bound
+tuple and refuse on workspace drift — never ambient current-workspace
+context), device registration, current Ledger session id, model, expiry,
+the per-call caps, and the durably accumulated disclosure scopes. It gives
+the relay its lookup and `/ops/usage` an owner-only row that names the
+decision it drives: active slot state and which user/device holds today's
+reservation. No cost figures locally — Ledger meters, UOA rates.
+
+Usage-relay durability: Coder's usage reporter queues in memory and gives
+up after three drain attempts — app death loses usage. The Nessie clients
+keep a small persistent outbox (Keychain-adjacent storage native,
+IndexedDB web) replayed by exact sequence on next launch, and a session
+whose reports never completed is marked incomplete server-side rather than
+silently final.
 
 ### 2. The call is the PA, live — context seeded, tools real
 
 **Decided (2026-09-02):** the voice agent is not a dumb relay. It gets the
 previous DM conversation at call start, and it gets real tools during the
-call, so things actually happen while you talk. The way to grant that
-without minting a second brain is: **Gemini does the talking and the tool
-*choosing*; every tool executes server-side inside the existing PA run
-machinery.** The device never holds a tool credential, and no gate is
-bypassed.
+call, so things actually happen while you talk. Honest framing (adversarial
+review made the first draft's "same run machinery" claim untenable): **this
+is a voice orchestrator of its own** — Gemini owns the conversational loop,
+turn-taking, and tool choice — and what Nessie guarantees is that **no
+authority exists client-side**: every tool executes server-side through the
+shared tool implementations and gates, with its own explicitly designed
+lifecycle rather than a pretended reuse of `Run`.
 
-- **Context seeding.** `POST /api/voice/sessions` returns, alongside the
-  credential, a context bundle rendered server-side: the recent PA DM
-  window (a bounded slice — Gemini Live re-bills accumulated context every
-  turn, so the seed is deliberately small, on the order of the last few
-  dozen messages / a few thousand tokens) plus the PA's identity and
-  standing instructions. The client folds it into the session `setup`
-  system instruction. Everything in the bundle is messages the caller can
-  already read through the normal DM read path, and the session's only
-  audience is the caller — so seeding leaks nothing. Older history is not
-  seeded; it is one tool call away (below), which is both cheaper and
+- **Context seeding — role-preserving, never system-tier.** The session
+  response carries a server-rendered context bundle: a bounded recent DM
+  slice (Gemini Live re-bills accumulated context every turn, so the seed
+  is small — a few thousand tokens). Only the PA's identity and standing
+  instructions go into `setup.systemInstruction`; the conversation history
+  is sent as **role-preserving client-content turns**, because folding
+  user/agent history into the system instruction would promote untrusted
+  conversation content to the highest instruction tier. Everything in the
+  bundle is messages the caller can already read via the normal DM read
+  path, and the session's only audience is the caller — seeding leaks
+  nothing. Older history is one tool call away, which is cheaper and
   correct.
-- **Live tools, server-executed.** When a call starts, the worker opens a
-  **voice run** for the PA: same toolset assembly as any PA run (builtins +
-  granted MCP projections), same budget metering, same disclosure sink,
-  same single truncation chokepoint. The session response carries the
-  projected function declarations for Gemini's `setup` (a curated hot set
-  plus a `find_tools`-style meta tool above the inline limit — the existing
-  deferred-tools discipline, not a new one). Each Gemini function call goes
-  to `POST /api/voice/sessions/:id/tool-call`, which dispatches through the
-  voice run's chokepoint and returns the (truncated) result for Gemini to
-  speak from. Coder's rule holds on-device: tool calls run in their own
-  tasks and never block the socket receive loop.
-- **Approvals park, never bypass.** A tool behind an approval gate returns
-  `{status: "approval_required"}` to Gemini, which says so aloud; the
-  approval itself happens on its existing surfaces. A voice turn can never
-  confirm a Nessie approval — that rule from Coder's security doc survives
-  verbatim.
-- **`pa_send(text)` stays, for the long-running work.** Quick lookups and
-  actions happen live through the tool bridge; "go research X and get back
-  to me" is handed off as a real user message into the DM via the existing
-  message-create route, spawning an ordinary asynchronous PA run. The
-  client watches the thread (SSE `stream.done`) and injects the reply into
-  the Gemini session to be spoken when it lands — with an immediate
-  `{status:"working"}` ack so nothing blocks meanwhile.
-- **Disclosure holds by construction.** Voice-run tool reads feed
-  `ConsumedSourceSink` exactly like any run's reads (the obligation sits on
-  the read, unchanged). The spoken reply reaches only the caller; the
-  durable transcript record (below) is stamped with the voice run's
-  accumulated basis at write time, like any agent message, so a privileged
-  read during a call cannot launder into a wider room later.
+- **A voice session is not a `Run` row.** Runs are one-shot queue jobs
+  serialized per `(agent, thread)` (`claimThreadRunOrPend`); a "run" held
+  open for a whole call would (a) pend every message posted to the DM until
+  the call ends — killing `pa_send` — and (b) occupy an execution slot and
+  budget envelope with no defined trigger/terminal semantics. Instead the
+  `voice_sessions` row is the durable state, and each tool call is its own
+  short server-side dispatch: `POST /api/voice/sessions/:id/tool-call`
+  atomically **claims `(voiceSessionId, geminiToolCallId)` with an argument
+  hash** (retries replay the cached result; a changed-args replay is
+  refused), executes through the shared tool implementations and the single
+  truncation chokepoint, persists the consumed disclosure scopes durably on
+  the voice session **in the same transaction as the tool result** (the
+  in-memory `ConsumedSourceSink` cannot span independent HTTP requests),
+  and returns the result. The voice session never holds the `(agent,
+  thread)` chat slot, so typed messages and `pa_send` runs proceed
+  normally during a call.
+- **Voice-sized budgets, enforced at the relay.** "Same budget metering"
+  was false — Live spend never enters the local token ledger. The voice
+  session gets its own per-call caps enforced server-side: wall-clock,
+  tool-call count, and an estimated-spend ceiling fed by the relayed usage
+  reports; hitting one ends the call with a spoken notice. Tool results
+  returned to Gemini get a **voice-specific cap far below the ordinary
+  32,000-char chokepoint ceiling** (order of 2–4 KB), because every byte
+  returned is re-billed on every subsequent turn of the call.
+- **Tool declarations are setup-time.** Gemini Live takes function
+  declarations only in the WebSocket `setup`, so the deferred-tools
+  mutation trick does not port. The declared set is a curated hot set plus
+  one generic `invoke_tool(name, args)` dispatcher (validated server-side
+  against the assembled toolset) for everything discovered via a
+  `find_tools` meta tool — a discovered tool is callable without a
+  reconnect because the dispatcher, not the declaration list, is the
+  contract.
+- **Approvals refuse in-call; they never resume into the socket.** The
+  existing approval machinery checkpoints a run and resumes it as a
+  continuation run — there is no path that delivers a later-approved
+  result back into a live Gemini WebSocket, and this plan does not invent
+  one. A tool behind an approval gate returns
+  `{status: "approval_required"}`; Gemini says so aloud, and the action
+  goes through `pa_send` as an ordinary PA run whose approval flows on its
+  existing surfaces. A voice turn can never confirm a Nessie approval.
+- **`pa_send(text)` stays, for the long-running work.** "Go research X" is
+  handed off as a real user message via the existing message-create route,
+  spawning an ordinary asynchronous PA run. The client watches the thread
+  (SSE `stream.done`; when the run consumed a privileged source the SSE
+  lane is structurally cut by `runReplyIsRestricted`, so the client falls
+  back to the viewer-entitled REST read on completion) and injects the
+  reply to be spoken — with an immediate `{status:"working"}` ack so
+  nothing blocks meanwhile.
+- **Untrusted content stays data.** The first draft dismissed Coder's
+  fencing too broadly: no terminal bytes enter this session, but web
+  pages, documents, and MCP results do, and they are exactly the injection
+  surface Coder's security doc names. Tool results are bounded, and the
+  session instruction carries the Coder-style
+  observations-are-data-not-instructions framing — while the actual
+  security boundary remains server-side: nothing a tool result says can
+  widen the toolset, skip a gate, or confirm an approval, because those
+  decisions never live in the model.
+- **Provider governance.** A voice call sends DM history, tool results,
+  and raw audio to Google regardless of the org's configured chat
+  provider. Voice calling is therefore an **org-level feature toggle**
+  (owner-set, like other integrations), and enabling it is the org's
+  explicit consent to Google as the audio/model processor for this surface.
 
-The Gemini system instruction carries the spoken-style rules (concise,
-answer-first, never read markdown syntax aloud) — model-judged behaviour,
-per the no-string-matching standard. Coder's elaborate terminal-fencing
-apparatus (`docs/ios-voice-session-security.md`) is not needed because no
-raw terminal bytes ever enter this session; what we keep from it is the
-logging discipline — no tool argument or transcript values in device
+The Gemini system instruction also carries the spoken-style rules (concise,
+answer-first, never read markdown aloud) — model-judged behaviour, per the
+no-string-matching standard. From Coder's security doc we keep the logging
+discipline verbatim: no tool argument or transcript values in device
 diagnostics, shape only.
 
 ### 3. The native layer needs a credential it deliberately never had
@@ -247,14 +335,30 @@ screen locked and the WebView suspended, so the native layer needs its own
 credential. Amend the invariant deliberately, not by accident:
 
 - `POST /api/voice/device-token` — called by the **SPA** (WebView, ordinary
-  session auth); mints a short-lived, rotating, *voice-scoped* bearer bound
-  to (user, org, device). Scope: the two voice-session routes plus message
-  create/read **on the caller's PA DM channel only**. Delivered to native
-  over the existing native-shell bridge message channel, stored in
-  Keychain, refreshed the same way on app foreground.
-- The invariant's new wording: the native app never sees a *general* Nessie
-  session; it may hold the voice-scoped device token, which cannot reach
-  any other route or channel.
+  session auth); mints a *voice-scoped* credential bound to (user, org,
+  device registration) and **backed by revocable server state**, not a
+  bare stateless JWT: every request rechecks session revocation, live
+  membership, and the UOA epoch, exactly as ordinary sessions do — theft
+  of the token dies with the session it derives from.
+- **Scope = the voice routes only, enumerated.** Nessie has no
+  generic route-scoping machinery (`requireActorContext` checks no
+  scopes), so the token is honoured exclusively by dedicated
+  voice endpoints: session mint/rotate, usage, tool-call, transcript,
+  a narrow `pa-send` action, and a voice-scoped reply stream/poll for the
+  `pa_send` follow-up. It is **not** accepted by the generic message
+  routes or the thread SSE route — scoping those by channel would bolt a
+  second auth mode onto every general route. The build ships a
+  method-by-path authorization matrix (web cookie vs voice token vs both)
+  as part of the phase-1 spec.
+- **Refresh cannot depend on the WebView.** A locked-phone CallKit call
+  outlives any foreground refresh, and rotation/usage/transcript all need
+  the credential mid-call. The native layer refreshes the voice credential
+  itself (its own refresh exchange against the voice routes); minting at
+  call start guarantees a minimum validity covering the longest allowed
+  call, and the WebView bridge is only the *initial* provisioning path.
+- The invariant's new wording: the native app never sees a *general*
+  Nessie session; it may hold the voice-scoped device credential, which
+  only the enumerated voice routes accept.
 
 ### 4. The web admin gets the same call — no CallKit, same everything else
 
@@ -268,10 +372,10 @@ token needed), the setup payload, rotation, the `pa_send` tool bridge, the
 usage relay — is byte-identical to the native path, so the protocol client
 is written once in TypeScript for the web (`admin/src/facades/voice/`) and
 once in Swift for the phone; the *server* contract is the single shared
-thing. Web "device id" is a per-browser-installation UUID in
-`localStorage`, HMAC'd server-side with the user id exactly like the native
-one, so each browser gets its own Ledger slot. The desktop Tauri shell gets
-this for free through the hosted admin.
+thing. The web "device" is a server-registered installation like the
+native one (see §1 — client-chosen ids would multiply $5 reservations),
+with the browser holding only an opaque registration handle. The desktop
+Tauri shell gets this for free through the hosted admin.
 
 ### 5. It lives in the Expo app as a local native module
 
@@ -304,10 +408,14 @@ the verification path, per the repo's install-on-named-device build rule.
 - **Not touching `macos/`.** The OpenAI-Realtime companion stays as-is,
   architecturally separate. If it ever converges onto the Ledger Gemini
   path, that is its own plan.
-- **Not a second agent loop.** Gemini chooses tools, but every execution,
-  gate, meter, and disclosure decision happens inside the worker's existing
-  run machinery via the voice run — there is no client-side toolset, no
-  duplicated authorization, and no device-held credential for any tool.
+- **Not a hidden second agent loop — an explicit one.** Gemini *is* a
+  second conversational loop, and the plan says so rather than pretending
+  the worker's agentic loop is reused. What is genuinely shared: the tool
+  implementations, the authorization gates, the truncation chokepoint, and
+  the disclosure obligations — all server-side, with the voice session's
+  own lifecycle, idempotency, and caps designed explicitly (§2). No
+  client-side toolset, no duplicated authorization, no device-held tool
+  credential.
 
 ## Rule zero — the doorways
 
@@ -318,39 +426,49 @@ the verification path, per the repo's install-on-named-device build rule.
   Nessie") for Siri/CarPlay/Shortcuts; `includesCallsInRecents` so redial
   works from the system Recents list.
 - **Ops:** voice sessions appear as rows in the owner-only `/ops/usage`
-  telemetry (session count/duration per user; no currency), because a $5/day
-  per-device Ledger reservation is something an owner must be able to see
-  the cause of.
+  telemetry — and the rows name the decision they drive: which user +
+  installation holds today's $5 reservation slot, session state, and a
+  revoke action on a registration (per-user caps in §1 are what the owner
+  is adjusting for). Bare count/duration numbers with no action would fail
+  Rule zero's third check. No currency figures.
 
 ## Phases
 
 **Phase 0 — decisions + ops (no code)**
 Add the `gemini-3.1-flash-live-preview` model grant and `live-token`
 endpoint grant to the production `LEDGER_PROXY_TOKEN`; confirm daily budget
-headroom for the per-device reservations. Sign off the two open decisions
-below.
+headroom for the per-device reservations. Sign off the open decision
+below. File the two Ledger tasks (portfolio cost passthrough; per-subject
+concurrency) and the UOA rating task — release blockers past phase-1
+testing.
 
 **Phase 1 — the server contract + the web call**
-API: `voice_sessions` table + the three routes (`sessions`, `usage`,
-`device-token`), Ledger relay through the existing signing seam, tests for
-the relay's idempotent usage sequencing and the scoped token's refusal of
-non-voice routes; context-bundle assembly in the session response. Admin:
-the PA channel's existing header call button starts a Gemini Live call in
-the browser (TypeScript protocol client, AudioWorklet capture, WebAudio
-playback, `pa_send` bridge + reply injection, in-call popover with
-mute/end/transcript ticker). This lands the whole product loop with the
-fastest verification cycle (Playwright + a real browser mic session)
-before any native build is involved.
+API: `voice_sessions` table + routes (session mint/rotate, usage relay,
+device registration + voice credential, transcript), the method-by-path
+authorization matrix, Ledger relay through the existing signing seam,
+tests for the relay's idempotent usage sequencing and the voice
+credential's refusal of non-voice routes; context-bundle assembly
+(role-preserving turns) in the session response. Admin: the PA channel's
+existing header call button starts a Gemini Live call in the browser
+(TypeScript protocol client, AudioWorklet capture, WebAudio playback,
+`pa_send` bridge + reply injection with the restricted-SSE REST fallback,
+in-call popover with mute/end/transcript ticker). **Verification item:**
+prove credential rotation + Gemini session-resumption handles compose
+across ephemeral tokens on a live call (Coder ships exactly this
+composition, which is strong evidence, but it has to be seen working
+through the relay), with re-seeding on a fresh socket as the documented
+fallback. Explicitly unbilled dev phase.
 
 **Phase 1a — the live tool bridge**
-The worker-side voice run (toolset assembly, budget metering, disclosure
-sink, truncation chokepoint reused; new lifecycle: opened at session
-start, closed at call end, holding the `(agent, thread)` slot like any
-run), the `tool-call` route, function-declaration projection into the
-session response, approval parking. This is the largest single piece of
+The voice-session tool dispatch of §2: per-call claims
+(`voiceSessionId` + tool-call id + argument hash), shared tool
+implementations behind the truncation chokepoint with voice-sized result
+caps, durable disclosure-scope accumulation, per-call budget caps,
+`invoke_tool` dispatcher + `find_tools`, approval refusal semantics, and
+the org-level voice feature toggle. This is the largest single piece of
 server work in the plan and is what turns the call from a relay into
 "actually doing stuff while you talk" — sequenced right after the basic
-call loop proves out so the run plumbing lands on a working audio path.
+call loop proves out so the plumbing lands on a working audio path.
 
 **Phase 1b — the iPhone call**
 Mobile: local Expo module with the ported `GeminiLiveClient` +
@@ -382,50 +500,85 @@ card — "📞 Call with Personal Assistant · 6 min" — that expands in place 
 the complete transcript underneath. No per-utterance messages: a call is
 one conversation event, not forty rows of crap burying the channel.
 
-Design, matched to the standing invariants:
+Design, revised after adversarial review — three findings reshaped the
+first draft: a `user`-role record would **structurally wake the PA**
+(`resolvePersonalAssistantDecisions` replies to every user turn in a PA
+DM), a mixed-speaker transcript cannot live under a single message role
+without either the assistant's lines becoming user instructions or the
+user's lines becoming assistant assertions, and messages cap at 4,000
+characters anyway. The shape that satisfies all three **and** Ondrej's
+folded-card requirement:
 
-- **Written once, at call end.** Nothing rewrites a message, so the record
-  is not created at call start and edited as lines arrive — the client
-  buffers the transcript locally (it already holds it for the live ticker)
-  and the message is written when the call ends. A dropped app mid-call
-  loses at most that call's record, never a half-edited message; if that
-  ever matters, periodic client-side checkpointing into the *pending*
-  record is a later refinement, still ending in exactly one message.
-- **Server-authored metadata, via the session.** The client does not post a
-  free-form message carrying `metadata.voiceCall` — metadata keys that
-  drive rendering and orchestration are server-written (the
-  `agentCard`/`replyBroadcast` discipline). Instead
-  `POST /api/voice/sessions/:id/transcript` accepts the transcript lines,
-  verifies the session belongs to the caller and is ending/ended, writes
-  the message server-side stamped `metadata.voiceCall = { voiceSessionId,
-  durationMs, turnCount }`, and closes the session's transcript slot
-  (set-once, so a retry cannot produce two records). The voice-scoped
-  device token's allowed surface already covers exactly this route.
-- **Content is the transcript, plain text.** `Ondrej: …` / `Assistant: …`
-  lines in the message content — so channel search finds what was said, and
-  the PA's later runs get the call in their conversation window like any
-  other message (that is the point of persisting it: "as we discussed on
-  the call" just works). The collapsed rendering is a client concern keyed
-  on the metadata, like the other metadata-rendered message kinds — not a
-  new card system.
-- **Size guard.** A long call is a big message and enters the PA's context
-  window whole. Above a threshold (~16 KB of transcript), the message keeps
-  the head plus a marker line, and the full transcript is stored as a `.md`
-  attachment on the same message through the one `FileService` chokepoint —
-  readable on demand (and by the PA via its attachment tools, which feed
-  the disclosure sink like every read). The expanded card stitches the two
-  seamlessly; the threshold covers the overwhelming majority of calls
-  without ever letting one marathon call eat the context window.
-- **`pa_send` messages stay real messages.** Commands relayed to the PA
-  during the call were already posted as ordinary user turns when they
-  happened — the transcript record does not duplicate them as new turns; it
-  is the record of what was *spoken*, and the folded card renders around
-  the interleaved command/reply messages in feed order.
+- **The record is an `agent`-role message from the PA, written at call
+  end.** Role `agent` is the structural no-engagement path (the PA never
+  replies to its own message), so no billed run answers the record. Its
+  *content* is a short summary of the call (≤ 4,000 chars) — searchable,
+  and in the PA's later conversation windows so "as we discussed on the
+  call" works. The **full transcript is a `.md` attachment on that same
+  message**, stored through the one `FileService` chokepoint, speaker
+  lines preserved as labeled text — never role-bearing turns. The PA reads
+  it on demand via its attachment tools (which feed the disclosure sink),
+  and the expanded call card renders the transcript from the attachment.
+  Full-transcript search is honestly out of scope for phase 2 (message
+  search covers the summary; an entitlement-aware transcript index is its
+  own later feature — and search already excludes basis-carrying messages
+  by design).
+- **Server-authored, via the session, through the message-create
+  service.** `POST /api/voice/sessions/:id/transcript` verifies the
+  session belongs to the caller and is ending/ended, then writes through
+  the existing message-create service — never a bespoke Prisma insert, or
+  it silently skips realtime publish, reply bookkeeping, and the
+  disclosure-basis stamping chokepoint — with `metadata.voiceCall =
+  { voiceSessionId, durationMs, turnCount }` and the basis stamped from
+  the session's **durably accumulated** scopes (§2). It closes the
+  session's set-once transcript slot, so a retry cannot produce two
+  records; rotation cannot either, because `voiceSessionId` is
+  call-scoped (§1).
+- **Client transcript text is labeled, and sanity-checked.** The spoken
+  lines are client-reported (only the client saw the audio), so the
+  attachment is marked client-reported in the card, and the server
+  cross-checks plausibility against the usage turns it relayed for that
+  session — a "transcript" for a session with no relayed usage is
+  refused. The summary line the PA context carries is generated
+  server-side from the same submission, not trusted as instructions.
+- **Written once; crash-safe enough.** The client buffers the transcript
+  (it already holds it for the live ticker) in the same persistent outbox
+  as the usage reports, so an app death mid-call submits the record on
+  next launch rather than losing it. Nothing rewrites the message after it
+  lands.
+- **`pa_send` messages stay real messages.** Commands relayed during the
+  call were posted as ordinary user turns when they happened; the record
+  does not duplicate them. The feed stays strictly time-ordered — the call
+  card lands at call end and *references* the call window; it does not
+  pretend to wrap earlier rows.
 
-## Open decisions for Ondrej
+## Open decision for Ondrej
 
-1. **Voice-scoped device token shape.** Proposed: short-lived JWT minted by
-   the API, delivered via the WebView bridge, Keychain-stored, ~1 h expiry
-   with foreground refresh. Alternative is a long-lived revocable device
-   credential row (more machinery, survives long offline gaps). The short
-   JWT is recommended — a call can't start offline anyway.
+1. **Voice call caps.** §2 introduces per-call caps (wall-clock, tool
+   calls, estimated spend) and §1 per-user caps (active installations,
+   session mints per day). The *numbers* are the open decision — e.g. max
+   call length 30/60/120 min, max 2 installations per user, spend ceiling
+   per call. Everything else that was open (the credential shape) is now
+   designed in §3: a revocable server-state-backed voice credential with
+   native-side refresh, not a bare short-lived JWT — review showed the
+   stateless-JWT-with-foreground-refresh idea dies on a locked-phone call.
+
+## Review log
+
+- 2026-09-02: adversarial review by Kimix (narrowed brief, 11 findings)
+  and Codex Sol (full scope, 28 findings), each verified against the
+  Nessie/Coder/Ledger code before folding in. Confirmed highs reshaped
+  the plan: the voice session is not a `Run` and never holds the
+  `(agent, thread)` slot; tool calls are idempotent server dispatches
+  with durable disclosure accumulation; approvals refuse in-call; context
+  seeds as role-preserving turns, never system-tier; the call record is
+  an agent-role summary message + transcript attachment (a user-role
+  record would structurally wake the PA, and one role cannot carry two
+  speakers); device ids are server-minted with per-user caps; the voice
+  credential is revocable server state with native refresh; Ledger's
+  concurrency cap is per-token (global for Nessie) until fixed; the $5
+  reservation is admission control, not a spend bound. Rejected/absorbed
+  as already-covered: none of the reviewers' findings were dropped
+  outright; two were softened with evidence (Coder ships
+  rotation+resumption composition; Ledger concurrency enforcement exists
+  but mis-scoped).

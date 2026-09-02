@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
@@ -34,6 +34,7 @@ export const useExecutors = () => {
 export const useExecutorAccess = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: executorKeys.access(executorId),
     queryFn: async () => ExecutorAccessViewResponseSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/access`),
@@ -45,6 +46,7 @@ export const useExecutorAccess = (executorId?: string) => {
 export const useExecutorWorkspaceReviews = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: executorKeys.workspaceReviews(executorId),
     queryFn: async () => ExecutorWorkspaceReviewRecordResponseSchema.array().parse(
       await apiClient.get(`/api/executors/${executorId}/workspace-reviews`),
@@ -66,6 +68,7 @@ export const useMyExecutorWorkspaceReviews = () => {
 export const useExecutorWorkspacePromotion = (promotionId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: executorKeys.workspacePromotion(promotionId),
     queryFn: async () => ExecutorWorkspacePromotionRecordResponseSchema.parse(
       await apiClient.get(`/api/executor-workspace-promotions/${promotionId}`),
@@ -78,6 +81,7 @@ export const useExecutorWorkspacePromotion = (promotionId?: string) => {
 export const usePendingExecutorEnrollment = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: executorKeys.pairing(executorId),
     queryFn: async () => PendingExecutorEnrollmentResponseSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/pairing-pending`),
@@ -90,6 +94,7 @@ export const usePendingExecutorEnrollment = (executorId?: string) => {
 export const useExecutorAccessChange = (accessChangeId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: executorKeys.accessChange(accessChangeId),
     queryFn: async () => ExecutorAccessChangeResponseSchema.parse(
       await apiClient.get(`/api/executor-access-changes/${accessChangeId}`),

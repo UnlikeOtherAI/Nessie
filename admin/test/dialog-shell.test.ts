@@ -67,10 +67,16 @@ test('a closed dialog renders nothing at all', () => {
 // `size` names the three panel geometries the admin ships, not a general scale:
 // `md` is the bare `.create-channel-panel` card, and the other two are the exact
 // inline overrides their call sites already carried.
+test('the scrim sits in the modal layer of the one scale, or the blocking layer when nested', () => {
+  assert.match(render(), /z-index:var\(--layer-modal, 70\)/)
+  assert.match(render({ blocking: true }), /z-index:var\(--layer-blocking, 80\)/)
+  assert.doesNotMatch(render(), /9999/)
+})
+
 test('the three shipped panel geometries are the only widths on offer', () => {
   assert.match(render(), /class="create-channel-panel" role="dialog"/)
   assert.match(render({ size: 'lg' }), /class="create-channel-panel" role="dialog" style="max-width:640px;width:100%"/)
-  assert.match(render({ size: 'xl' }), /style="max-height:88vh;max-width:none;overflow-y:auto;width:min\(80vw, 1100px\)"/)
+  assert.match(render({ size: 'xl' }), /style="max-height:88dvh;max-width:none;overflow-y:auto;width:min\(80vw, 1100px\)"/)
 })
 
 // ---------------------------------------------------------------------------

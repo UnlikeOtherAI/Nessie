@@ -13,6 +13,7 @@ import {
   type NativeShellInfo,
   wrapNativeWebViewScript,
 } from '../lib/native-shell'
+import { NATIVE_BACK_FORWARD_GESTURES } from '../lib/webview-back-gesture'
 
 type Props = {
   backgroundColor: string
@@ -20,7 +21,6 @@ type Props = {
   formFactor: NativeShellInfo['formFactor']
   initialPushPathResolved: boolean
   nativeAppForeground: RefObject<boolean>
-  nativeBackForwardGestures: boolean
   onError: (event: WebViewErrorEvent) => void
   onHttpError: (event: WebViewHttpErrorEvent) => void
   onLoadEnd: () => void
@@ -44,7 +44,6 @@ export const MobileAdminWebView = ({
   formFactor,
   initialPushPathResolved,
   nativeAppForeground,
-  nativeBackForwardGestures,
   onError,
   onHttpError,
   onLoadEnd,
@@ -71,7 +70,7 @@ export const MobileAdminWebView = ({
 
   return (
     <WebView
-      allowsBackForwardNavigationGestures={nativeBackForwardGestures}
+      allowsBackForwardNavigationGestures={NATIVE_BACK_FORWARD_GESTURES}
       domStorageEnabled
       injectedJavaScriptBeforeContentLoaded={wrapNativeWebViewScript(nativeShellInfoScript(shellInfo))}
       injectedJavaScript={wrapNativeWebViewScript(`${nativeShellInfoScript(shellInfo)}\n${INJECTED}`)}
@@ -89,7 +88,11 @@ export const MobileAdminWebView = ({
       onRenderProcessGone={onRenderProcessGone}
       onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
       originWhitelist={['*']}
-      pullToRefreshEnabled
+      // Pull-to-refresh is the web's (docs/navigation/overview.md §13): the WebView's
+      // own gesture was iOS-only, forced bounces, reloaded the document from
+      // any screen and told the page nothing. The admin owns the pull at the
+      // top of a root or detail scroller and posts nessie:full-refresh.
+      pullToRefreshEnabled={false}
       ref={webRef}
       sharedCookiesEnabled
       source={{ uri: sourceUri }}

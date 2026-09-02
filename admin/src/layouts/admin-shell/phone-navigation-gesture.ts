@@ -6,11 +6,9 @@ export const PHONE_BACK_SWIPE_EDGE_PX = 28
 export const PHONE_BACK_SWIPE_COMMIT_RATIO = 0.42
 export const PHONE_BACK_SWIPE_FLICK_MIN_PROGRESS = 0.08
 export const PHONE_BACK_SWIPE_COMMIT_VELOCITY_PX_PER_MS = 0.5
-export const PHONE_BACK_SWIPE_SETTLE_MS = 220
-
-// The displacement the underlying root screen travels from its resting offset
-// to fully revealed — the same 28% parallax the route keyframes use.
-export const PHONE_BACK_SWIPE_UNDERLAY_TRAVEL = 0.28
+// Settle timing and the underlay's parallax travel are the navigation motion
+// spec's (admin/src/navigation/motion.ts): the released swipe runs the same
+// transition a tapped Back does.
 
 const HORIZONTAL_LOCK_SLOP_PX = 8
 

@@ -1,64 +1,8 @@
-import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } from 'react'
-import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
-import { recordSectionRoute } from './section-route-memory'
 import { useTransientMenu } from './TransientMenuContext'
-
-// Tracks position in the SPA history so the back/forward buttons can disable at
-// the ends. New navigations (PUSH) advance the cursor and clear the forward
-// stack; our own buttons move the cursor in step with React Router's history.
-export const useHistoryNav = () => {
-  const navigate = useNavigate()
-  const navType = useNavigationType()
-  const location = useLocation()
-  const posRef = useRef(0)
-  const fwdRef = useRef(0)
-  const lastKey = useRef(location.key)
-  const [, force] = useReducer((n: number) => n + 1, 0)
-
-  useEffect(() => {
-    if (location.key === lastKey.current) return
-    lastKey.current = location.key
-    if (navType === 'PUSH') {
-      posRef.current += 1
-      fwdRef.current = 0
-      force()
-    }
-  }, [location.key, navType])
-
-  const goBack = () => {
-    if (posRef.current <= 0) return
-    posRef.current -= 1
-    fwdRef.current += 1
-    force()
-    navigate(-1)
-  }
-
-  const goForward = () => {
-    if (fwdRef.current <= 0) return
-    posRef.current += 1
-    fwdRef.current -= 1
-    force()
-    navigate(1)
-  }
-
-  return { goBack, goForward, canBack: posRef.current > 0, canForward: fwdRef.current > 0 }
-}
-
-// Remember the reader's place in each top-level section so its rail tab returns
-// there instead of the section root. Runs once at the shell so every route
-// change is recorded, whichever section it belongs to.
-export const useRecordSectionRoute = () => {
-  const location = useLocation()
-
-  useEffect(() => {
-    recordSectionRoute(
-      location.pathname,
-      `${location.pathname}${location.search}${location.hash}`,
-    )
-  }, [location.pathname, location.search, location.hash])
-}
 
 export const useRecordRecentChannelVisits = () => {
   const location = useLocation()

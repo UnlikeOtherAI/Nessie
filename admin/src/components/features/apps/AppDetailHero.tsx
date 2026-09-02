@@ -68,9 +68,11 @@ export const AppDetailHero = ({
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="hero" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="min-w-0 text-2xl font-semibold text-[color:var(--tx)]">
+            {/* h2: the screen's one h1 is the ScreenHeader's title, which the
+                settle focuses (docs/navigation/overview.md §9/§12). */}
+            <h2 className="min-w-0 text-2xl font-semibold text-[color:var(--tx)]">
               {app.displayName}
-            </h1>
+            </h2>
             <AppTrustBadge trustLevel={app.trustLevel} />
             {status.kind === 'pill' || status.kind === 'indicator' ? (
               <Pill tone={status.tone}>{status.label}</Pill>

@@ -301,3 +301,81 @@ jobs:
       # tool-call row, token-ledger events, and the run.timing TaskEvent.
       - name: Run mock-LLM smoke test
         run: pnpm --filter @nessie/worker test:smoke
+
+  navigation-e2e:
+    name: Navigation Transitions
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nessie_test
+          POSTGRES_USER: nessie
+          POSTGRES_PASSWORD: nessie
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+      # A built bundle rather than the dev server: CI has no hot-reload loop
+      # to preserve, and preview serves the same code deterministically.
+      NAV_E2E_ADMIN_MODE: preview
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nessie/api prisma:generate
+
+      - name: Build shared packages
+        run: pnpm --filter "./packages/*" build
+
+      # The suite runs the API in local mode, which starts the worker
+      # in-process from its built dist.
+      - name: Build worker
+        run: pnpm --filter @nessie/worker build
+
+      - name: Build admin bundle
+        run: pnpm --filter @nessie/admin build
+
+      - name: Apply database migrations
+        run: pnpm --filter @nessie/api prisma:migrate:deploy
+
+      # playwright-core ships the same `install` CLI as the playwright
+      # package, so the repo needs no extra dependency for this.
+      - name: Install Chromium
+        run: pnpm exec playwright-core install --with-deps chromium
+
+      # Real-browser navigation transitions: each case freezes the actual
+      # animation with document.getAnimations() at 0 %, 50 % and 100 %,
+      # asserts layer positions and scrollLeft numerically, and saves the
+      # frames (docs/navigation/overview.md → "Verification").
+      - name: Run navigation transition suite
+        run: pnpm --filter @nessie/admin test:e2e:navigation
+
+      - name: Upload transition frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: navigation-transition-frames
+          path: e2e/screenshots/navigation
+          if-no-files-found: warn
