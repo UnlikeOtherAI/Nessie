@@ -5,7 +5,6 @@ import type {
   DesignerToolOption,
 } from '../../../../facades/designer/tool-catalog'
 import { isToolEnabled } from '../../../../facades/designer/tool-catalog'
-import { Pill } from '../../../primitives/Pill'
 import { Switch } from '../../../primitives/Switch'
 import { QueryState } from '../../../shared/QueryState'
 
@@ -29,11 +28,12 @@ type ToolPickerProps = {
   onToggle: (toolKey: string, enabled: boolean) => void
   query: DesignerToolCatalogQuery
   /**
-   * Render the resolved state without switches. The read-only view used to be
-   * a second component with its own grouping, its own cards and no search —
-   * the same list, drawn differently, which is how the two drifted. It is a
-   * mode of this one now: a viewer who cannot change a tool still gets the
-   * index, the counts and the search box.
+   * Show the switches, disabled. A viewer who cannot change a tool sees the
+   * *same page* as one who can — same sections, same rows, same control in the
+   * same place — with the control visibly not theirs to press. The read-only
+   * view used to be a second component with its own grouping, its own cards,
+   * status chips instead of switches and no search at all, so it read as a
+   * different screen about a different thing.
    */
   readOnly?: boolean
   toolState: Record<string, boolean>
@@ -125,17 +125,16 @@ const ToolGroupSection = ({
                     {tool.description}
                   </div>
                 </div>
-                {readOnly ? (
-                  <Pill tone={enabled ? 'success' : 'muted'}>
-                    {enabled ? 'enabled' : 'off'}
-                  </Pill>
-                ) : (
-                  <Switch
-                    checked={enabled}
-                    label={`${enabled ? 'Disable' : 'Enable'} ${tool.label}`}
-                    onChange={(next) => onToggle(tool.key, next)}
-                  />
-                )}
+                <Switch
+                  checked={enabled}
+                  disabled={readOnly}
+                  label={
+                    readOnly
+                      ? `${tool.label} is ${enabled ? 'enabled' : 'off'}`
+                      : `${enabled ? 'Disable' : 'Enable'} ${tool.label}`
+                  }
+                  onChange={(next) => onToggle(tool.key, next)}
+                />
               </div>
             )
           })}
