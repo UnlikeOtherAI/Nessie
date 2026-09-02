@@ -290,6 +290,11 @@ export const AuditActionSchema = z.enum([
   'comms.connection.disconnected',
   'comms.connection.data_deleted',
   'comms.connection.capabilities_changed',
+  // Personal model subscriptions. Metadata only — a link's credential and its
+  // vault location never enter the audit trail.
+  'model_subscription.linked',
+  'model_subscription.relinked',
+  'model_subscription.disconnected',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

@@ -380,6 +380,45 @@ op, streaming, EXIF strip, thumbnails, images in agent context):
   [docs/plans/2026-08-06-attachment-thumbnails-and-previews.md](docs/plans/2026-08-06-attachment-thumbnails-and-previews.md),
   [docs/plans/2026-08-07-images-in-agent-context.md](docs/plans/2026-08-07-images-in-agent-context.md).
 
+## Personal model subscriptions — run your own agents on your own plan
+
+A person links a plan they already pay for and the agents **they own** run on
+it instead of the organisation's Ledger credits. Phase 1 ships Kimi and GLM
+(pasted subscription keys); OpenAI Codex and xAI Grok arrive with the
+device-code OAuth phase. Anthropic is deliberately excluded — subscription
+credentials are not licensed for third-party agent platforms, and Nessie
+already serves Claude through Ledger. The invariants (own grant never a CLI
+import, vault-only token storage in a dedicated project, run-admission pinning
+with no Ledger fallback, budget gates skipped, structural `billingSource`, one
+shared validator, the refresh/epoch discipline): `AGENTS.md` → "Personal model
+subscriptions". Spec:
+[docs/plans/2026-09-02-personal-model-subscriptions.md](docs/plans/2026-09-02-personal-model-subscriptions.md).
+
+Facts not restated there:
+
+- **Two egress lanes, never a proxy.** A subscription run opens no Ledger
+  connection at all — `resolveStageProviderConfig` short-circuits the whole
+  deployment/organisation chain and returns the adapter's own base URL and the
+  person's token. Signing needs no special case: the effective URL is not a
+  Ledger origin, so `createProviderRequestHeadersResolver` already declines to
+  attach `X-Nessie-Context`/`X-UOA-Delegation`.
+- **Generative inference only.** Main turns, delegates, compaction and
+  checkpoint notes follow the run's lane. Engagement decisions (made on the
+  boot-time model client before a run exists), embeddings and memory, avatar
+  generation, and demonstration generalisation stay deployment-billed — a
+  "subscription-only" agent still produces some Ledger events by design.
+- **Utility model is explicitly null** for a subscription run, not a lookup
+  miss: `NESSIE_UTILITY_MODEL` names a Ledger-catalogue model a subscription
+  backend may not serve.
+- Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
+  routes `/api/model-subscriptions*`; surfaces are the "Personal model
+  subscriptions" section on `/settings/connections` and the **Your
+  subscriptions** group in the Agent Designer model picker, which also carries
+  the "Link a personal subscription…" doorway when none is linked.
+- Vault configuration is `NESSIE_SUBSCRIPTION_VAULT_API_URL` /
+  `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
+  section says the feature is unavailable and linking is refused.
+
 ## Embeddings — routed separately, one pinned width
 
 Authoritative: `AGENTS.md` → "Embeddings" (`NESSIE_EMBEDDING_*` routing with

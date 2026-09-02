@@ -195,6 +195,9 @@ importers:
       '@nessie/memory':
         specifier: workspace:*
         version: link:../packages/memory
+      '@nessie/model-subscriptions':
+        specifier: workspace:*
+        version: link:../packages/model-subscriptions
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
@@ -623,6 +626,28 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  packages/model-subscriptions:
+    dependencies:
+      '@nessie/config':
+        specifier: workspace:*
+        version: link:../config
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@prisma/client':
+        specifier: ^6.17.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/push:
     devDependencies:
       '@types/node':
@@ -702,6 +727,9 @@ importers:
       '@nessie/db':
         specifier: workspace:*
         version: link:../db
+      '@nessie/model-subscriptions':
+        specifier: workspace:*
+        version: link:../model-subscriptions
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -785,6 +813,9 @@ importers:
       '@nessie/memory':
         specifier: workspace:*
         version: link:../packages/memory
+      '@nessie/model-subscriptions':
+        specifier: workspace:*
+        version: link:../packages/model-subscriptions
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push

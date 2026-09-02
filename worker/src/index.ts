@@ -1,3 +1,4 @@
+import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
@@ -182,6 +183,17 @@ export const startWorker = async (
         : undefined,
     systemComponent: 'worker-model-service',
   })
+  // Vault access for personal model subscriptions. Null when the deployment
+  // has not configured the dedicated subscription vault project, which makes
+  // every subscription-routed run refuse in words rather than fall back to the
+  // organization's Ledger route.
+  const subscriptionSecrets = createSubscriptionSecretStoreFromEnv()
+  if (!subscriptionSecrets) {
+    console.log(
+      '[worker.subscriptions] no subscription vault configured; personal model '
+      + 'subscriptions are unavailable on this deployment.',
+    )
+  }
   // MCP credential plumbing shared by the agentic MCP toolset and the
   // personal assistant's connector tools: encrypts assistant-collected
   // secrets at rest, resolves any credentialRef (pg store, then env), and
@@ -227,6 +239,7 @@ export const startWorker = async (
             modelClient,
             pool,
           },
+          subscriptionSecrets,
         },
         payload,
         { attempt: job.attempt, maxAttempts: job.maxAttempts },

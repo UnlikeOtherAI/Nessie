@@ -1,6 +1,20 @@
 # Personal model subscriptions — run your own agents on your own plan
 
-**Status: proposed (plan only — nothing built).**
+**Status: phase 1 BUILT (2026-09-02) — Kimi + GLM linking, routing, budgets,
+metering and surfaces are on `main`. Phase 2 (Codex + Grok device-code OAuth)
+and phase 3 remain proposed.**
+
+What shipped in phase 1: the `@nessie/model-subscriptions` package (adapters,
+vault-backed secret store, credential coordinator), the four Prisma tables plus
+`Agent.modelSubscriptionId`, the `Run` lane pin and
+`TokenLedgerEvent.billingSource`; the run-admission binding with fail-closed
+routing, the budget-gate and mid-run-probe skips, the explicit-null utility
+model, and owner-attributed metering; `assertAgentModelSelection` as the one
+validator across create/update/clone/PA-create with transfer and clone
+stripping the selection; `/api/model-subscriptions*` routes; and the settings
+section plus the Designer's "Your subscriptions" group and link doorway.
+Deliberately deferred with phase 2: the per-subscription concurrency lease and
+the health-sweep alert (§4 phase 3).
 
 A person who already pays for a consumer AI subscription — OpenAI Codex
 (ChatGPT Plus/Pro), Kimi for Coding, a GLM coding plan, Grok — links it to

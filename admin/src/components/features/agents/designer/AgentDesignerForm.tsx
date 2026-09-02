@@ -141,10 +141,17 @@ export const AgentDesignerForm = ({
       <div className="grid gap-1.5">
         <FieldLabel htmlFor="agent-model">Model</FieldLabel>
         <ModelCombobox
-          disabled={modelsLoading || modelOptions.length === 0}
+          // Deliberately NOT disabled on an empty list: the list itself now
+          // carries the "Link a personal subscription…" doorway, and a
+          // deployment whose Ledger catalogue is empty or unreachable is
+          // exactly when a person most needs to reach it.
+          disabled={modelsLoading}
           emptyLabel="No models match that search"
           highlighted={isStreaming('model')}
           id="agent-model"
+          onLinkSubscription={() => {
+            window.open('/settings/connections', '_blank', 'noopener,noreferrer')
+          }}
           onSelect={actions.setModelSelection}
           options={modelOptions}
           placeholder={modelsLoading ? 'Loading Ledger models…' : 'Search models…'}

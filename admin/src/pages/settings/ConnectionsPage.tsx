@@ -7,6 +7,7 @@ import { EmptyState } from '../../components/shared/EmptyState'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 
 const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
   { provider: 'slack', label: 'Connect Slack' },
@@ -98,6 +99,10 @@ export const ConnectionsPage = () => {
             )
           )}
         </QueryState>
+
+        <div className="h-px bg-[color:var(--bd1)]" />
+
+        <ModelSubscriptionSection />
       </div>
     </SettingsPanel>
   )
