@@ -26,6 +26,7 @@ import {
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
+import { resolveSystemAgentConversation } from '../services/system-agent-conversations.js'
 import { registerGlobalAgentRoutes } from './global-agents.js'
 import { registerPersonalAssistantRoutes } from './personal-assistant.js'
 import type { RouteDeps } from './types.js'
@@ -398,6 +399,41 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const agentIds = body.agentIds ?? []
     const userIds = body.userIds ?? []
+    const teamId =
+      actorContext.tenant.teamId
+      ?? actorContext.actionContext.teamId
+      ?? '00000000-0000-4000-8000-000000000003'
+
+    // Addressing a DM-homed system agent — the Personal Assistant, a global
+    // agent such as the Agent Designer — opens this person's own home DM with
+    // it rather than binding it into a new conversation, which the binding
+    // chokepoint refuses by design. Member-level for that reason: it is not
+    // placement, it is the conversation they already have.
+    const outcome = agentIds.length > 0 && actorContext.actor.actorType === 'user'
+      ? await resolveSystemAgentConversation(prisma, {
+        agentIds,
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+        userId: actorContext.actor.actorId,
+        userIds,
+      })
+      : ({ kind: 'none' } as const)
+    if (outcome.kind === 'exclusive') {
+      sendApiError(
+        reply,
+        400,
+        'SYSTEM_AGENT_CONVERSATION_EXCLUSIVE',
+        `${outcome.agentName} works with you one to one, so it cannot join a `
+        + 'conversation with other people or agents. Message it on its own, or '
+        + 'leave it out of this one.',
+      )
+      return reply
+    }
+    if (outcome.kind === 'channel') {
+      return reply
+        .code(201)
+        .send(createApiResponse(ChannelRecordSchema.parse(outcome.channel)))
+    }
 
     if (agentIds.length > 0 && !requireOwner(actorContext, reply)) {
       return reply
@@ -407,10 +443,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       agentIds,
       currentUserId: actorContext.actor.actorId,
       organizationId: actorContext.tenant.organizationId,
-      teamId:
-        actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? '00000000-0000-4000-8000-000000000003',
+      teamId,
       userIds,
     })
 
