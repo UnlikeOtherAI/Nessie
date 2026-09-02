@@ -20,6 +20,8 @@ import {
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
+import { EmptyState } from '../../shared/EmptyState'
+import { QueryState } from '../../shared/QueryState'
 import { isMarkdownFilename } from './file-icons'
 import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
@@ -88,6 +90,9 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     closeSpaceSettings,
     updateSpace,
     updateSpacePending,
+    pagesLoading,
+    pagesLoadFailed,
+    refetchPages,
   } = useKnowledge()
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
@@ -294,25 +299,37 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   // for the on-demand full body so the editor never initialises from an empty
   // (list-stripped) body and overwrites real content on save.
   if (editor && canWrite) {
-    const editLoading = editor.mode === 'edit' && !fullPage
     return (
       <KnowledgePane
         onBack={phoneLayout ? undefined : closeEditor}
         title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}
       >
         <div className="flex h-full w-full flex-col">
-          {editLoading ? (
-            <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
-              Loading…
-            </div>
+          {editor.mode === 'edit' ? (
+            <QueryState
+              className="flex h-full items-center justify-center py-0"
+              errorLabel="Couldn’t load this page."
+              loadingLabel="Loading…"
+              query={fullPageQuery}
+            >
+              {() => (
+                <PageEditor
+                  mode="edit"
+                  onCancel={closeEditor}
+                  onSubmit={savePage}
+                  page={fullPage ?? null}
+                  pending={savePending}
+                />
+              )}
+            </QueryState>
           ) : (
             <PageEditor
-              initialTitle={editor.mode === 'create' ? editor.initialTitle : undefined}
-              mode={editor.mode}
+              initialTitle={editor.initialTitle}
+              mode="create"
               onCancel={closeEditor}
               onSubmit={savePage}
-              page={editor.mode === 'edit' ? (fullPage ?? null) : null}
-              parentPageId={editor.mode === 'create' ? editor.parentPageId : null}
+              page={null}
+              parentPageId={editor.parentPageId}
               pending={savePending}
             />
           )}
@@ -367,7 +384,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
           />
         ) : (
           <PagePreview
-            bodyPending={!fullPage}
+            bodyQuery={fullPageQuery}
             canWrite={canWrite}
             onBack={phoneLayout ? undefined : () => popTo(depth)}
             onCreateChild={() => openCreate(current.id)}
@@ -410,34 +427,47 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       >
         <div className="h-full w-full">
           {!selectedSpaceId ? (
-            <div className="py-16 text-center text-sm text-[color:var(--tx3)]">Select a space</div>
-          ) : rootPages.length === 0 && (!creatingFolder || !canWrite) ? (
-            <div className="py-16 text-center text-sm text-[color:var(--tx3)]">
-              {canWrite
-                ? 'No pages yet — create one with “New page”, or drop a file to upload.'
-                : 'No pages yet.'}
+            <div className="p-5">
+              <EmptyState>Select a space</EmptyState>
             </div>
           ) : (
-            <KnowledgeFilesystemBrowser
-              childrenOf={visibleChildrenOf}
-              creatingFolder={canWrite && creatingFolder}
-              createFolderPending={createFolderPending}
-              mode={viewMode}
-              onBrowsePath={browseTo}
-              onCancelFolder={() => setCreatingFolder(false)}
-              onOpenDocumentPath={openPagePath}
-              onSubmitFolder={(name) => {
-                void createFolder(currentFolder?.id ?? null, name).finally(() =>
-                  setCreatingFolder(false),
-                )
-              }}
-              pageById={pageById}
-              pagePath={pagePath}
-              pages={pages}
-              rootPages={visibleRootPages}
-              selectedSpaceId={selectedSpaceId}
-              selectedSpaceName={selectedSpace?.name ?? 'Pages'}
-            />
+            <QueryState
+              className="p-5"
+              emptyLabel={
+                creatingFolder && canWrite
+                  ? undefined
+                  : canWrite
+                    ? 'No pages yet — create one with “New page”, or drop a file to upload.'
+                    : 'No pages yet.'
+              }
+              errorLabel="Couldn’t load this space’s pages."
+              isEmpty={rootPages.length === 0}
+              loadingLabel="Loading pages…"
+              query={{ isError: pagesLoadFailed, isLoading: pagesLoading, refetch: refetchPages }}
+            >
+              {() => (
+                <KnowledgeFilesystemBrowser
+                  childrenOf={visibleChildrenOf}
+                  creatingFolder={canWrite && creatingFolder}
+                  createFolderPending={createFolderPending}
+                  mode={viewMode}
+                  onBrowsePath={browseTo}
+                  onCancelFolder={() => setCreatingFolder(false)}
+                  onOpenDocumentPath={openPagePath}
+                  onSubmitFolder={(name) => {
+                    void createFolder(currentFolder?.id ?? null, name).finally(() =>
+                      setCreatingFolder(false),
+                    )
+                  }}
+                  pageById={pageById}
+                  pagePath={pagePath}
+                  pages={pages}
+                  rootPages={visibleRootPages}
+                  selectedSpaceId={selectedSpaceId}
+                  selectedSpaceName={selectedSpace?.name ?? 'Pages'}
+                />
+              )}
+            </QueryState>
           )}
         </div>
       </KnowledgePane>

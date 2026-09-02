@@ -6,11 +6,20 @@ import { ColumnBackProvider } from '../../../layouts/admin-shell/local-back/Loca
 type ColumnBrowserViewportProps = {
   activeColumn: number
   columns: ReactNode[]
+  /**
+   * A fixed pixel width shared by every column, for a caller whose columns
+   * are user-resizable (paired with `ColumnBrowserColumn`'s `resize` prop) —
+   * Knowledge's file browser is the one user of this today. Omit it for the
+   * default: every other column-browser page splits the viewport evenly
+   * across `visibleColumns`, which stays the behaviour here too.
+   */
+  columnWidth?: number
 }
 
 export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
+  columnWidth,
 }: ColumnBrowserViewportProps) => {
   // Phone ownership follows the shell's geometry-aware classification, so
   // native Android/iOS tablets keep multiple columns even at a narrow CSS
@@ -30,8 +39,6 @@ export const ColumnBrowserViewport = ({
   const phoneVisibleIndex = isMobile ? Math.max(0, Math.min(activeColumn, totalColumns - 1)) : -1
 
   const translateX = useMemo(() => {
-    const columnWidthPercent = 100 / visibleColumns
-
     if (isMobile) {
       return -(activeColumn * 100)
     }
@@ -44,18 +51,25 @@ export const ColumnBrowserViewport = ({
       ),
     )
 
-    return -(desktopStartIndex * columnWidthPercent)
-  }, [activeColumn, isMobile, totalColumns, visibleColumns])
+    // Pixel-based columns shift by an exact pixel offset (`translateX` then
+    // carries a `px` unit below); percentage-based ones shift by a fraction
+    // of the viewport, as every other column-browser page already did.
+    if (columnWidth) return -(desktopStartIndex * columnWidth)
+    return -(desktopStartIndex * (100 / visibleColumns))
+  }, [activeColumn, columnWidth, isMobile, totalColumns, visibleColumns])
+  const translateUnit = !isMobile && columnWidth ? 'px' : '%'
 
   return (
     <div className="h-full w-full overflow-hidden">
       <div
         className="flex h-full transition-transform duration-300 ease-out"
-        style={{ transform: `translateX(${translateX}%)` }}
+        style={{ transform: `translateX(${translateX}${translateUnit})` }}
       >
         {normalizedColumns.map((column, index) => {
           // The last column absorbs any unused slots so a two-column layout
-          // does not leave a dead third of the viewport on desktop.
+          // does not leave a dead third of the viewport on desktop — only
+          // meaningful for the percentage split; pixel-width columns are
+          // sized by the caller's own resizable width instead.
           const slots =
             index === totalColumns - 1
               ? Math.max(1, visibleColumns - (totalColumns - 1))
@@ -67,7 +81,12 @@ export const ColumnBrowserViewport = ({
               className="h-full w-full flex-shrink-0"
               inert={phoneHidden || undefined}
               key={index}
-              style={{ width: `${(100 / visibleColumns) * slots}%` }}
+              style={{
+                width:
+                  !isMobile && columnWidth
+                    ? `${columnWidth}px`
+                    : `${(100 / visibleColumns) * slots}%`,
+              }}
             >
               <ColumnBackProvider
                 value={{ index, phoneVisible: index === phoneVisibleIndex }}

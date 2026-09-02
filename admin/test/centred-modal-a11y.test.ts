@@ -38,9 +38,6 @@ const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
  * which point it does not belong on this list.
  */
 const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {
-  'src/components/features/knowledge/FileVersionUploadDialog.tsx':
-    'Documented in file: a rounded-2xl / --main / p-5 card with a drop shadow and a text "Close" '
-    + 'control, none of which the shell\'s .create-channel-panel chrome expresses.',
   'src/components/features/triggers/TriggerEditorDialog.tsx':
     'Documented in file: its subtitle is mt-1 text-sm where the shell renders a description at '
     + 'text-xs, and its 680px panel is not one of the three geometries the shell ships.',

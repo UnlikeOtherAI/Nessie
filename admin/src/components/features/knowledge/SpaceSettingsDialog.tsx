@@ -3,7 +3,13 @@ import { useAgents } from '../../../facades/agents/hooks'
 import { useUsers } from '../../../facades/users/hooks'
 import { useWorkspaceMembers } from '../../../facades/users/workspace-members'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
+import { toFormErrors } from '../../../facades/form-errors'
 import { Dialog } from '../../shared/Dialog'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input, Textarea } from '../../shared/FormControls'
+import { SectionLabel } from '../../primitives/SectionLabel'
+import { Switch } from '../../primitives/Switch'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import {
   MemberChecklist,
@@ -55,7 +61,7 @@ export const SpaceSettingsDialog = ({
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>(space.memberAgentIds)
   const [memberUserIds, setMemberUserIds] = useState<string[]>(space.memberUserIds)
   const [writeRestricted, setWriteRestricted] = useState(space.writeRestricted)
-  const [formError, setFormError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | undefined>()
 
   useEffect(() => {
     if (open) {
@@ -64,7 +70,7 @@ export const SpaceSettingsDialog = ({
       setMemberAgentIds(space.memberAgentIds)
       setMemberUserIds(space.memberUserIds)
       setWriteRestricted(space.writeRestricted)
-      setFormError(null)
+      setFormError(undefined)
     }
   }, [open, space])
 
@@ -86,83 +92,55 @@ export const SpaceSettingsDialog = ({
           : {}),
       })
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Unable to save space.')
+      setFormError(toFormErrors(error).formError ?? 'Unable to save space.')
     }
   }
 
   return (
     <Dialog onClose={onClose} open={open} title="Space settings">
       <form className="grid gap-4" onSubmit={handleSubmit}>
-        <div className="grid gap-1.5">
-          <label
-            className={[
-              'text-xs font-semibold uppercase',
-              'tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
-            htmlFor="space-settings-name"
-          >
-            Name
-          </label>
-          <input
+        <FormField label="Name" required>
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id="space-settings-name"
             onChange={(event) => {
               setName(event.target.value)
-              setFormError(null)
+              setFormError(undefined)
             }}
             value={name}
           />
-          {formError ? (
-            <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
-          ) : null}
-        </div>
+        </FormField>
 
-        <div className="grid gap-1.5">
-          <label
-            className={[
-              'text-xs font-semibold uppercase',
-              'tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
-            htmlFor="space-settings-description"
-          >
-            Description
-          </label>
-          <textarea
-            className="admin-input"
-            id="space-settings-description"
+        <FormField label="Description">
+          <Textarea
             onChange={(event) => setDescription(event.target.value)}
             placeholder="Optional description"
             rows={3}
             value={description}
           />
-        </div>
+        </FormField>
 
         {canManageAccess ? (
           <div className="grid gap-3">
-            <label className="flex items-start gap-3 text-sm text-[color:var(--tx2)]">
-              <input
-                checked={writeRestricted}
-                className="mt-0.5 accent-[var(--accent)]"
-                onChange={(event) => {
-                  setWriteRestricted(event.target.checked)
-                  if (event.target.checked && me?.user.id) {
-                    setMemberUserIds((current) => Array.from(new Set([...current, me.user.id])))
-                  }
-                }}
-                type="checkbox"
-              />
+            <div className="flex items-start justify-between gap-3">
               <span>
-                <span className="block font-medium text-[color:var(--tx)]">Restrict editing</span>
+                <span className="block text-sm font-medium text-[color:var(--tx)]">Restrict editing</span>
                 <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
                   Only explicitly added members and the space proprietor can edit; read access is unchanged.
                 </span>
               </span>
-            </label>
+              <Switch
+                checked={writeRestricted}
+                label="Restrict editing"
+                onChange={(checked) => {
+                  setWriteRestricted(checked)
+                  if (checked && me?.user.id) {
+                    setMemberUserIds((current) => Array.from(new Set([...current, me.user.id])))
+                  }
+                }}
+              />
+            </div>
             <div className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                People with access
-              </span>
+              <SectionLabel size="sm">People with access</SectionLabel>
               <MemberChecklist
                 emptyLabel="No people available."
                 members={userOptions}
@@ -171,14 +149,7 @@ export const SpaceSettingsDialog = ({
               />
             </div>
             <div className="grid gap-1.5">
-              <span
-                className={[
-                  'text-xs font-semibold uppercase',
-                  'tracking-[0.16em] text-[color:var(--tx3)]',
-                ].join(' ')}
-              >
-                Agents with access
-              </span>
+              <SectionLabel size="sm">Agents with access</SectionLabel>
               <MemberChecklist
                 emptyLabel="No agents available yet."
                 members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
@@ -189,7 +160,9 @@ export const SpaceSettingsDialog = ({
           </div>
         ) : null}
 
-        <div className="flex justify-end gap-2 pt-1">
+        <FormError>{formError}</FormError>
+
+        <FormActions>
           <button className="admin-button admin-button-secondary" onClick={onClose} type="button">
             Cancel
           </button>
@@ -200,7 +173,7 @@ export const SpaceSettingsDialog = ({
           >
             Save
           </button>
-        </div>
+        </FormActions>
       </form>
     </Dialog>
   )

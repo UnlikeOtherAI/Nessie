@@ -20,7 +20,7 @@ export const StorageUsageMeter = () => {
       title="Organization storage used"
     >
       <FontAwesomeIcon className="h-3 w-3" icon={faDatabase} />
-      <span className={near ? 'text-[color:var(--danger)]' : undefined}>
+      <span className={near ? 'text-[color:var(--danger-text)]' : undefined}>
         {formatBytes(used)}
         {limit != null ? ` / ${formatBytes(limit)}` : ''}
       </span>

@@ -1,4 +1,5 @@
 import { useProductSurfaces } from '../../../facades/integrations/useProductSurfaces'
+import { EmptyState } from '../../shared/EmptyState'
 import { KnowledgePane } from './KnowledgePane'
 import { productDocumentsViewComponents } from './product-documents-registry'
 
@@ -18,11 +19,11 @@ export const ProductDocumentsView = ({ view }: { view: string }) => {
   const label = surface?.label ?? 'Product view'
   return (
     <KnowledgePane title={label}>
-      <div className="mx-auto max-w-md px-6 py-16 text-center">
-        <p className="text-sm leading-6 text-[color:var(--tx3)]">
+      <div className="mx-auto max-w-md px-6 py-16">
+        <EmptyState>
           This is where the {label} view
           {surface ? ` for ${surface.productName}` : ''} will appear.
-        </p>
+        </EmptyState>
       </div>
     </KnowledgePane>
   )
