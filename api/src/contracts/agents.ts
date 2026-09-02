@@ -114,6 +114,12 @@ export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
   /** Original @mention to replay after a successful invitation. */
   triggerMessageId: z.string().uuid().optional(),
+  /**
+   * Accepts that the channel's members inherit whatever this agent's browser
+   * is signed in to. Only consulted when there is something to inherit, and
+   * only after the refusal has named the services.
+   */
+  confirmBrowserSharing: z.boolean().optional(),
 })
 
 export const PersonalAssistantStateResponseSchema = z.object({

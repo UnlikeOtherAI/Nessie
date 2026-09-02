@@ -557,6 +557,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         channelId: body.channelId,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        ...(body.confirmBrowserSharing === undefined
+          ? {}
+          : { confirmBrowserSharing: body.confirmBrowserSharing }),
       })
     } catch (error) {
       if (
@@ -564,6 +567,15 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY
       ) {
         sendApiError(reply, 403, error.code, error.message)
+        return reply
+      }
+      if (
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.BROWSER_LOGINS_PRESENT
+      ) {
+        // 409, not 403: the caller may proceed, but only after being told
+        // what the channel's members would inherit.
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error

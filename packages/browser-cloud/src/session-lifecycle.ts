@@ -512,7 +512,16 @@ export const releaseSessionControl = async (
 ): Promise<boolean> => {
   const released = await prisma.cloudBrowserSession.updateMany({
     where: { id: input.sessionId, controlledByUserId: input.userId },
-    data: { controlledByUserId: null, controlClaimedAt: null },
+    data: {
+      controlledByUserId: null,
+      controlClaimedAt: null,
+      // A person at the controls may have signed in — that is much of why
+      // anybody takes them — and the agent resumes into whatever they left
+      // behind. Marking the session authenticated on hand-back is the only
+      // way the run's disclosure basis can be right afterwards; it is
+      // monotone, so an unnecessary mark only ever over-restricts.
+      authenticated: true,
+    },
   })
   return released.count === 1
 }
