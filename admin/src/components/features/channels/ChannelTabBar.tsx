@@ -6,7 +6,7 @@ interface ChannelTabBarProps {
   showAgentTab: boolean
   showAgentsTab: boolean
   showAutomationsTab: boolean
-  showRoutinesTab: boolean
+  showTriggersTab: boolean
   showTodosTab: boolean
   onSelectTab: (tab: ChannelTab) => void
 }
@@ -27,12 +27,12 @@ const MESSAGES_ICON = [
 const FILES_ICON =
   'M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13'
 
-// A checklist for To-dos and a clock for Routines: the two questions a person
+// A checklist for To-dos and a clock for Triggers: the two questions a person
 // asks of an agent they are talking to — what is on its list, and what it does
 // on its own.
 const TODOS_ICON = 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2'
 
-const ROUTINES_ICON = 'M12 7v5l3 2M21 12a9 9 0 11-9-9 9 9 0 019 9z'
+const TRIGGERS_ICON = 'M12 7v5l3 2M21 12a9 9 0 11-9-9 9 9 0 019 9z'
 
 // One agent (the person icon, singular) vs. the roster below it — the two are
 // never offered at once, so they can share a family without being confused.
@@ -43,7 +43,7 @@ export const ChannelTabBar = ({
   showAgentTab,
   showAgentsTab,
   showAutomationsTab,
-  showRoutinesTab,
+  showTriggersTab,
   showTodosTab,
   onSelectTab,
 }: ChannelTabBarProps) => {
@@ -70,13 +70,13 @@ export const ChannelTabBar = ({
           },
         ]
       : []),
-    ...(showRoutinesTab
+    ...(showTriggersTab
       ? [
           {
-            icon: <TabIcon d={ROUTINES_ICON} />,
-            label: 'Routines',
-            testId: 'channel-tab-routines',
-            value: 'routines' as const,
+            icon: <TabIcon d={TRIGGERS_ICON} />,
+            label: 'Triggers',
+            testId: 'channel-tab-triggers',
+            value: 'triggers' as const,
           },
         ]
       : []),

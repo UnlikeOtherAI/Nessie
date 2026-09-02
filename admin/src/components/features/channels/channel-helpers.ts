@@ -31,7 +31,7 @@ export const CHANNEL_TABS = [
   'files',
   'agent',
   'to-dos',
-  'routines',
+  'triggers',
   'automations',
   'agents',
 ] as const
@@ -74,7 +74,7 @@ export const isAgentsTabAvailable = (input: {
 
 // Messaging one agent directly is the place a person asks "what is it working
 // on?" and "what does it do on its own?", so the agent's own To-dos and
-// Routines panels get a doorway here rather than only on `/agents/:id`. Both
+// Triggers panels get a doorway here rather than only on `/agents/:id`. Both
 // are the *same* components that page renders, parameterised by this agent —
 // never a second implementation (Rule zero, check 4).
 //
@@ -96,7 +96,7 @@ export const resolveConversationAgent = (input: {
 // wherever a conversation has a single subject; To-dos follows the agent's own
 // `todosEnabled` switch — the panel's "To-dos are off" card is the
 // right answer on the agent's configuration page and pure noise as a whole tab
-// in a chat. Routines follows `GET /api/agents/:id/triggers`, which is
+// in a chat. Triggers follows `GET /api/agents/:id/triggers`, which is
 // owner-only: for anyone else the tab could render nothing but a refusal.
 export const isConversationAgentTabAvailable = (
   conversationAgent: AgentRecord | null,
@@ -106,7 +106,7 @@ export const isConversationTodosTabAvailable = (
   conversationAgent: AgentRecord | null,
 ): boolean => Boolean(conversationAgent?.todosEnabled)
 
-export const isConversationRoutinesTabAvailable = (input: {
+export const isConversationTriggersTabAvailable = (input: {
   conversationAgent: AgentRecord | null
   isOwner: boolean
 }): boolean => Boolean(input.conversationAgent) && input.isOwner

@@ -26,6 +26,7 @@ export type {
   AgentOwner,
   AgentRecord,
   AgentStatusResponse,
+  AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   AuthProviderDescriptor,

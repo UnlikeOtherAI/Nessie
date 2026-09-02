@@ -1766,6 +1766,7 @@ Event occurs (e.g., task.review_passed)
 ```
 POST   /api/agents/{id}/runs              — manually trigger any agent (creates a run)
 GET    /api/agents/{id}/triggers          — list trigger records for the agent
+GET    /api/agents/{id}/triggers/activity — what each of those triggers is doing now
 POST   /api/agents/{id}/triggers          — create trigger record
 PUT    /api/triggers/{triggerId}          — update trigger `type` + `config`
 DELETE /api/triggers/{triggerId}          — remove trigger
@@ -1781,6 +1782,46 @@ POST   /api/webhooks/{id}/rotate           — rotate secret (returns new secret
 GET    /api/triggers/scheduled              — list all scheduled agents (admin view)
 GET    /api/triggers/upcoming               — next N scheduled activations across all agents
 ```
+
+### What "currently executing" means
+
+A trigger's execution is a **run**, and a run is never ambiguous. Firing a
+trigger writes an `AgentTriggerDelivery`; the run it starts carries both
+`Run.triggerId` and a `Run.triggerDeliveryId` that the database keeps unique.
+So two simultaneous executions of one trigger are two rows, each nameable by
+its own delivery — there is nothing to disentangle from timestamps, and no
+reason for a surface to reduce them to a boolean.
+
+`GET /api/agents/{id}/triggers/activity` (owner-only, mirroring the trigger
+list beside it) therefore returns a **list** per trigger:
+
+```
+{ triggerId, running: [{ runId, deliveryId, status, startedAt }],
+  lastOutcome: 'completed' | 'failed' | 'cancelled' | null, lastFinishedAt }
+```
+
+- Liveness is `ACTIVE_RUN_STATUSES` — the same set `GET /api/runs/active` and
+  the continuation guard use, so "still working" cannot come to mean two
+  different things in two places. `waiting_approval` and `waiting_input` are in
+  it deliberately: such a run still holds its (agent, thread) slot and its work
+  is unfinished.
+- `lastOutcome` is the newest **finished run's** outcome, not the newest
+  delivery's status — a delivery reads `delivered` the moment a run is
+  enqueued, which says the trigger fired, not that the work succeeded. It is
+  what turns a row green (or red) once the spinner stops.
+- It is resolved with one `DISTINCT ON (trigger_id)` over the existing
+  `runs (trigger_id, created_at)` index. Reading "the last N runs" and picking
+  in application code would silently drop a quiet trigger whose noisy
+  neighbour filled the window.
+- Configuration and run state are separate reads because they have separate
+  lifetimes: the admin refetches activity every 3 s while anything is running
+  and every 30 s when nothing is, without re-reading the records. There is no
+  run-status realtime event to subscribe to today, so this polls, deliberately.
+
+The admin renders it as one chip per row beside the trigger's own status —
+"Running", "2 running", "Succeeded", "Failed" — and groups the list with
+time-based triggers first (`admin/src/components/features/triggers/trigger-groups.ts`:
+Schedules = `scheduled` + `interval`, then Events, Webhooks, Manual).
 
 ### MCP Tools
 

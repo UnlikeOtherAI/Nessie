@@ -135,9 +135,10 @@ export type WriteCallRecordInput = {
 /**
  * Writes the call record, once.
  *
- * The transcript slot is claimed by a conditional update before anything is
- * written, so a retried submission (or two tabs racing a hang-up) resolves to
- * exactly one record rather than two.
+ * The transcript slot is claimed in the same transaction that creates the
+ * message, so a retried submission (or two tabs racing a hang-up) resolves to
+ * exactly one record rather than two — and a call that has already ended can
+ * still be recorded.
  *
  * Deliberate omissions versus the ordinary message-create path, each because
  * the record is not a turn in a conversation: no orchestrator decide job (the
@@ -149,45 +150,54 @@ export const writeVoiceCallRecord = async (
   prisma: PrismaClient,
   input: WriteCallRecordInput,
 ): Promise<{ messageId: string; attachmentId: string | null }> => {
-  // The claim is `active → ended`, with both the status and the empty
-  // transcript slot in the WHERE: a second submission (a retry, or two tabs
-  // racing a hang-up) fails to match and loses here, before it can write a
-  // second message. Checking `status` in a prior read would not do it —
-  // read-then-write is not a claim.
-  const claimed = await prisma.voiceSession.updateMany({
-    where: { id: input.session.id, status: 'active', transcriptMessageId: null },
-    data: { status: 'ended', endedAt: new Date() },
-  })
-  if (claimed.count !== 1) {
-    throw new VoiceSessionError(
-      'VOICE_TRANSCRIPT_ALREADY_RECORDED',
-      'This call already has a record.',
-      409,
-    )
-  }
-
-  // Storing the transcript needs the message to exist (attachments link to
-  // one), so the message is created first and the attachment linked after.
+  // The claim is the transcript slot, not the status: a call that has already
+  // ended must still be recordable, because a client that died mid-call
+  // submits on its next launch and the duration cap (or a second tab) can end
+  // a call out from under the client. Refusing those would discard exactly
+  // the records that are hardest to reproduce.
+  //
+  // Creating the message and claiming the slot in ONE transaction is what
+  // serializes two submissions: the second blocks on the row lock,
+  // re-evaluates `transcriptMessageId: null` once the first commits, matches
+  // nothing, and rolls its own message away with the transaction.
   const hasTranscript = input.lines.length > 0
-  const message = await prisma.message.create({
-    data: {
-      threadId: input.session.threadId,
-      agentId: input.session.agentId,
-      role: 'assistant',
-      content: renderCallSummary({
-        durationMs: input.durationMs,
-        lines: input.lines,
-        hasAttachment: hasTranscript,
-      }),
-      metadata: {
-        voiceCall: {
-          voiceSessionId: input.session.id,
+  const message = await prisma.$transaction(async (tx) => {
+    const created = await tx.message.create({
+      data: {
+        threadId: input.session.threadId,
+        agentId: input.session.agentId,
+        role: 'assistant',
+        content: renderCallSummary({
           durationMs: input.durationMs,
-          turnCount: input.lines.length,
-          transcriptAttachmentId: null,
+          lines: input.lines,
+          hasAttachment: hasTranscript,
+        }),
+        metadata: {
+          voiceCall: {
+            voiceSessionId: input.session.id,
+            durationMs: input.durationMs,
+            turnCount: input.lines.length,
+            transcriptAttachmentId: null,
+          },
         },
       },
-    },
+    })
+    const claimed = await tx.voiceSession.updateMany({
+      where: { id: input.session.id, transcriptMessageId: null },
+      data: {
+        transcriptMessageId: created.id,
+        status: 'ended',
+        endedAt: input.session.endedAt ?? new Date(),
+      },
+    })
+    if (claimed.count !== 1) {
+      throw new VoiceSessionError(
+        'VOICE_TRANSCRIPT_ALREADY_RECORDED',
+        'This call already has a record.',
+        409,
+      )
+    }
+    return created
   })
 
   let attachmentId: string | null = null
@@ -227,11 +237,6 @@ export const writeVoiceCallRecord = async (
       },
     })
   }
-
-  await prisma.voiceSession.update({
-    where: { id: input.session.id },
-    data: { transcriptMessageId: message.id },
-  })
 
   return { messageId: message.id, attachmentId }
 }

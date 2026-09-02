@@ -57,7 +57,7 @@ interface ChannelConversationSurfaceProps {
   agentsTabAvailable: boolean
   boundAgents: AgentRecord[]
   // The single agent a direct conversation is with, when there is one. Its
-  // To-dos and Routines sections hang off it.
+  // To-dos and Triggers sections hang off it.
   conversationAgent: AgentRecord | null
   callEligible: boolean
   callStarting: boolean
@@ -99,7 +99,7 @@ interface ChannelConversationSurfaceProps {
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
-  routinesTabAvailable: boolean
+  triggersTabAvailable: boolean
   todosTabAvailable: boolean
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   joinPending: boolean
@@ -172,7 +172,7 @@ export const ChannelConversationSurface = ({
   isConversationSurface,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
-  routinesTabAvailable,
+  triggersTabAvailable,
   todosTabAvailable,
   personalAssistantPresences,
   joinPending,
@@ -296,7 +296,7 @@ export const ChannelConversationSurface = ({
         showAgentTab={agentTabAvailable}
         showAgentsTab={agentsTabAvailable}
         showAutomationsTab={!isConversationSurface}
-        showRoutinesTab={routinesTabAvailable}
+        showTriggersTab={triggersTabAvailable}
         showTodosTab={todosTabAvailable}
         visibleActiveTab={visibleActiveTab}
         onSelectTab={setActiveTab}

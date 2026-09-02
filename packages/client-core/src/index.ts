@@ -10,6 +10,7 @@ export {
 export type {
   AgentOwner,
   AgentRecord,
+  AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   AuthProviderDescriptor,

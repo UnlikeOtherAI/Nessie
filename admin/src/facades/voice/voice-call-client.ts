@@ -19,7 +19,12 @@ import {
   type VoicePlayback,
 } from './voice-audio'
 import type { VoiceApi } from './voice-api'
-import { drainUsageOutbox, enqueueUsageReport } from './voice-usage-outbox'
+import {
+  clearTranscript,
+  drainUsageOutbox,
+  enqueueUsageReport,
+  stashTranscript,
+} from './voice-usage-outbox'
 import { collectTranscript, type TranscriptCollector } from './voice-transcript-collector'
 import { createAssistantHandoff, type AssistantHandoff } from './voice-assistant-handoff'
 
@@ -151,6 +156,7 @@ export const createVoiceCall = (deps: {
       }
       case 'turn-complete': {
         collector.finalise(Date.now())
+        stashCurrentTranscript()
         publish({
           transcript: collector.lines(),
           liveUserText: '',
@@ -195,6 +201,24 @@ export const createVoiceCall = (deps: {
         break
       }
     }
+  }
+
+  /**
+   * Snapshots the transcript so far.
+   *
+   * The lines exist only on this device, so a tab that dies mid-call is the
+   * one case where the record is unrecoverable. Written at each turn boundary
+   * and cleared once the server has it.
+   */
+  const stashCurrentTranscript = (): void => {
+    if (!credential || !state.startedAt) return
+    const lines = collector.lines()
+    if (lines.length === 0) return
+    stashTranscript({
+      voiceSessionId: credential.voiceSessionId,
+      lines,
+      durationMs: Date.now() - state.startedAt,
+    })
   }
 
   const recordUsage = (metadata: Record<string, unknown>): void => {
@@ -389,6 +413,7 @@ export const createVoiceCall = (deps: {
               lines,
               startedAt ? Date.now() - startedAt : 0,
             )
+            clearTranscript(active.voiceSessionId)
           } else {
             await deps.api.endSession(active.voiceSessionId)
           }
