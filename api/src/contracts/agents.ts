@@ -1,11 +1,13 @@
 import {
   AgentAvatarBackgroundColorSchema,
   AgentEffortSchema,
+  AgentIdSchema,
   AgentRecordSchema,
   AgentRunLimitsSchema,
   AgentVisibilitySchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
+  ThreadIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -132,6 +134,16 @@ export const PersonalAssistantStateResponseSchema = z.object({
 export type PersonalAssistantStateResponse = z.infer<
   typeof PersonalAssistantStateResponseSchema
 >
+
+// A global agent's per-user home DM (the Agent Designer's chat). The reply
+// carries the channel record so a client can patch its cached channel list and
+// navigate in one step, exactly as the PA bootstrap reply does.
+export const GlobalAgentHomeResponseSchema = z.object({
+  agentId: AgentIdSchema,
+  channel: ChannelRecordSchema,
+  threadId: ThreadIdSchema,
+})
+export type GlobalAgentHomeResponse = z.infer<typeof GlobalAgentHomeResponseSchema>
 
 export const PersonalAssistantBootstrapResponseSchema = z.object({
   agent: AgentRecordSchema,

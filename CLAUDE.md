@@ -813,13 +813,22 @@ under them (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`; the hook is the
 memo wrapper). Starring is unaffected — it resolves through the full people
 directory, because starring somebody *is* adding them. The doorways stay named:
 **Create → Message** (and the section's `+`) reaches a person, and **Create →
-Agent** reaches `/agents/designer`. It is the fourth and last row of the rail's
-create menu, and on the native phone sheet the last row *above* the Message
-button — Message there is the morphing compose button the sheet grows out of,
-not a row (`mobile/src/lib/native-creation-menu.ts`
-`NATIVE_CREATION_OPTIONS`). Both call the one `navigateToAgentDesigner`
-through the existing `__nessieCreateFromPhoneMenu` bridge, so the doorway is
-the same action on every device.
+Agent** opens the Agent Designer's **chat**, not the form: describing the
+colleague you want is the doorway, and `/agents/designer` stays where somebody
+chooses to edit fields (Agents → New agent). It is the fourth and last row of
+the rail's create menu, and on the native phone sheet the last row *above* the
+Message button — Message there is the morphing compose button the sheet grows
+out of, not a row (`mobile/src/lib/native-creation-menu.ts`
+`NATIVE_CREATION_OPTIONS`). Every client runs this one admin SPA — web, the
+Tauri shells on macOS/Windows/Linux, and the iOS/Android WebView shells through
+`__nessieCreateFromPhoneMenu` — so `openAgentDesignerChat` is the single
+handler behind all of them and no surface can drift to a different
+destination. It resolves the chat through `POST
+/api/global-agents/:slug/home`, which **ensures** the home DM rather than
+assuming it: global-agent bootstrap at login is deliberately best-effort, so a
+doorway that only looked the channel up would fail silently for exactly the
+people whose bootstrap did not run. A failure there falls back to the form
+rather than dead-ending.
 
 - **The Designer's toolset** is the blueprint's `identityToolIds`: the five PA
   provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog`,
