@@ -1,4 +1,6 @@
 import type { ToolCallEntry } from '@nessie/schemas';
+import { toolCallOutcomeTone } from './agent-presentation';
+import { Card } from '../../shared/Card';
 import { EmptyState } from '../../shared/EmptyState';
 import { Pill } from '../../primitives/Pill';
 import { SectionLabel } from '../../primitives/SectionLabel';
@@ -14,18 +16,6 @@ const compactPreview = (value: string, maxLength = 160): string => {
     : `${normalized.slice(0, maxLength - 1)}…`;
 };
 
-const getTone = (success: boolean | undefined) => {
-  if (success === true) {
-    return 'success';
-  }
-
-  if (success === false) {
-    return 'danger';
-  }
-
-  return 'warning';
-};
-
 export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
   <section className="grid gap-3">
     <SectionLabel>Tool execution log</SectionLabel>
@@ -33,13 +23,10 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
       <EmptyState>No tool calls recorded for this agent yet.</EmptyState>
     ) : (
       entries.map((entry) => (
-        <article
-          key={`${entry.runId}:${entry.toolName}:${entry.startedAt}`}
-          className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
-        >
+        <Card key={`${entry.runId}:${entry.toolName}:${entry.startedAt}`}>
           <div className="flex items-center justify-between gap-3">
             <div className="font-mono text-sm text-[var(--thinking)]">{entry.toolName}</div>
-            <Pill tone={getTone(entry.success)}>
+            <Pill tone={toolCallOutcomeTone(entry.success)}>
               {entry.success === undefined ? 'running' : entry.success ? 'success' : 'failed'}
             </Pill>
           </div>
@@ -49,7 +36,7 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
           <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
             {compactPreview(entry.outputPreview ?? entry.inputSummary)}
           </div>
-        </article>
+        </Card>
       ))
     )}
   </section>

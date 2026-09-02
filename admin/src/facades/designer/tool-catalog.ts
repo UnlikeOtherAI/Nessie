@@ -145,9 +145,22 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
 
   return {
     groups,
+    isError: builtinQuery.isError || (includeConnectors && registryQuery.isError),
     isLoading: builtinQuery.isLoading || (includeConnectors && registryQuery.isLoading),
     options,
+    refetch: () => {
+      void builtinQuery.refetch()
+      if (includeConnectors) void registryQuery.refetch()
+    },
   }
+}
+
+/** The three states {@link QueryState} needs, satisfied structurally by the
+ * object above — a caller can pass it straight through as `query`. */
+export type DesignerToolCatalogQuery = {
+  isError: boolean
+  isLoading: boolean
+  refetch: () => unknown
 }
 
 /**

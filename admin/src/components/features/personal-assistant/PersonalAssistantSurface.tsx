@@ -5,6 +5,7 @@ import type {
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 
@@ -144,7 +145,7 @@ export const PersonalAssistantConfigBanner = ({
   const pills = assistantPills(agent, channel, configSummary)
 
   return (
-    <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
+    <Notice className="mx-5 mt-3" padding="lg" radius="xl" tone="info">
       <div className="flex items-start gap-3">
         <AgentAvatar agent={agent} size="md" token={token} />
         <div className="min-w-0 flex-1">
@@ -163,14 +164,7 @@ export const PersonalAssistantConfigBanner = ({
           {pills.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {pills.map((pill) => (
-                <Pill
-                  className="border border-[var(--accent)] font-semibold"
-                  key={pill}
-                  radius="capsule"
-                  size="sm"
-                  tone="accent"
-                  uppercase={false}
-                >
+                <Pill key={pill} radius="capsule" size="sm" tone="info" uppercase={false}>
                   {pill}
                 </Pill>
               ))}
@@ -194,6 +188,6 @@ export const PersonalAssistantConfigBanner = ({
           ) : null}
         </div>
       </div>
-    </section>
+    </Notice>
   )
 }
