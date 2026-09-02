@@ -31,6 +31,7 @@ import {
   registerVoiceInstallation,
   requireActiveSession,
   requireOwnedInstallation,
+  requireRecordableSession,
   rotateVoiceSession,
   startVoiceSession,
   VoiceSessionError,
@@ -320,7 +321,10 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!body) return reply
 
     try {
-      const session = await requireActiveSession(prisma, {
+      // Not `requireActiveSession`: a client that died mid-call submits its
+      // record on a later launch, by which point the call may have been ended
+      // by its duration cap or another tab.
+      const session = await requireRecordableSession(prisma, {
         organizationId: actorContext.tenant.organizationId,
         sessionId,
         userId: actorContext.actor.actorId,
