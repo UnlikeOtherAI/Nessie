@@ -308,6 +308,11 @@ enum ChannelType {
 enum ChannelSystemType {
   personal_assistant
   external_agent
+  // Backing "operations room" for a hosted agent mailbox: one channel per
+  // AgentMailbox, one Thread per EmailConversation. The mail itself lives in
+  // email_messages — this channel carries run reports, approval gates, and the
+  // human conversation about the correspondence.
+  agent_email
 }
 
 enum ChannelVisibility {
@@ -1224,6 +1229,10 @@ model Organization {
   agentTodoTemplates               AgentTodoTemplate[]
   agentTodos                       AgentTodo[]
   demonstrations                   Demonstration[]
+  agentMailboxes                   AgentMailbox[]
+  emailDomains                     EmailDomain[]
+  emailConversations               EmailConversation[]
+  emailMessages                    EmailMessage[]
 
   agentCards AgentCard[]
 
@@ -1581,6 +1590,7 @@ model Thread {
   agentTodos                 AgentTodo[]
   demonstrations             Demonstration[]
   agentAppConnectionRequests AgentAppConnectionRequest[]
+  emailConversation          EmailConversation?
 
   agentCards AgentCard[]
 
@@ -2140,6 +2150,7 @@ model Agent {
   ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   agentCards AgentCard[]
+  mailbox    AgentMailbox?
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -4065,43 +4076,49 @@ model PolicyBinding {
 }
 
 model ApprovalRequest {
-  id                   String         @id @default(uuid()) @db.Uuid
-  organizationId       String         @map("organization_id") @db.Uuid
-  projectId            String?        @map("project_id") @db.Uuid
-  teamId               String?        @map("team_id") @db.Uuid
-  channelId            String?        @map("channel_id") @db.Uuid
-  taskId               String?        @map("task_id") @db.Uuid
-  runId                String?        @map("run_id") @db.Uuid
-  agentId              String         @map("agent_id") @db.Uuid
-  requesterId          String         @map("requester_id")
-  action               String
-  reason               String
-  context              Json?
-  status               ApprovalStatus @default(pending)
-  resolverId           String?        @map("resolver_id")
-  resolvedAt           DateTime?      @map("resolved_at")
-  resolution           String?
-  resolutionNote       String?        @map("resolution_note")
-  requiredApproverRole String?        @map("required_approver_role")
-  continuationToken    String         @map("continuation_token")
+  id                     String         @id @default(uuid()) @db.Uuid
+  organizationId         String         @map("organization_id") @db.Uuid
+  projectId              String?        @map("project_id") @db.Uuid
+  teamId                 String?        @map("team_id") @db.Uuid
+  channelId              String?        @map("channel_id") @db.Uuid
+  taskId                 String?        @map("task_id") @db.Uuid
+  runId                  String?        @map("run_id") @db.Uuid
+  agentId                String         @map("agent_id") @db.Uuid
+  requesterId            String         @map("requester_id")
+  action                 String
+  reason                 String
+  context                Json?
+  status                 ApprovalStatus @default(pending)
+  resolverId             String?        @map("resolver_id")
+  resolvedAt             DateTime?      @map("resolved_at")
+  resolution             String?
+  resolutionNote         String?        @map("resolution_note")
+  requiredApproverRole   String?        @map("required_approver_role")
+  // Pins an approval to one exact person rather than a role. A send that acts
+  // as somebody's mailbox is theirs to authorize: any org owner approving any
+  // agent's outbound mail is the wrong grain. Falls back to
+  // `requiredApproverRole` when the pinned approver's membership is no longer
+  // live, so a request never becomes unanswerable.
+  requiredApproverUserId String?        @map("required_approver_user_id") @db.Uuid
+  continuationToken      String         @map("continuation_token")
   // Server-authored tool-gate identity. These values are deliberately absent
   // from approval presenters: a human sees the bounded `context` summary,
   // while the exact arguments and original run identity stay server-side.
-  toolCallId           String?        @map("tool_call_id")
-  toolName             String?        @map("tool_name")
-  argsHash             String?        @map("args_hash")
-  resumeState          Json?          @map("resume_state")
-  proofConsumedAt      DateTime?      @map("proof_consumed_at")
-  expiresAt            DateTime       @map("expires_at") @db.Timestamptz(6)
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
-  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team                 Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  channel              Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
-  task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCallId             String?        @map("tool_call_id")
+  toolName               String?        @map("tool_name")
+  argsHash               String?        @map("args_hash")
+  resumeState            Json?          @map("resume_state")
+  proofConsumedAt        DateTime?      @map("proof_consumed_at")
+  expiresAt              DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                   Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel                Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  task                   Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  run                    Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                  Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -4324,6 +4341,10 @@ enum ConnectorType {
   push
   github
   oauth
+  // Hosted agent mailboxes: one event per outbound send and per processed
+  // inbound message — never one per protocol command. No cost fields; UOA
+  // remains the sole commercial authority.
+  email
   other
 }
 
@@ -4576,7 +4597,7 @@ model KnowledgePage {
   // `Dashboard.revision` and `WorkflowTemplate.version`. `versionNumber` lives
   // on the per-version row and cannot serve an `If-Match`, so the auto-saving
   // editor needs a current-revision column here.
-  revision        Int               @default(0)
+  revision Int @default(0)
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
@@ -5063,6 +5084,10 @@ model Attachment {
   // App-enforced link to a knowledge-base page when this attachment is one of a
   // page's drawer attachments (no FK relation, mirroring messageId).
   knowledgePageId    String?  @map("knowledge_page_id") @db.Uuid
+  // App-enforced link to a hosted-mailbox email (mirroring messageId). Inbound
+  // MIME parts hang off the EmailMessage, never off the compact chat reference
+  // message — chat visibility must not become an email attachment's authority.
+  emailMessageId     String?  @map("email_message_id") @db.Uuid
   kind               String
   mime               String
   filename           String
@@ -5094,6 +5119,7 @@ model Attachment {
 
   @@index([messageId])
   @@index([knowledgePageId])
+  @@index([emailMessageId])
   @@index([organizationId, createdAt])
   @@map("attachments")
 }
@@ -5788,4 +5814,211 @@ model DashboardEmbedPlacement {
 
   @@index([organizationId, targetType, targetId])
   @@map("dashboard_embed_placements")
+}
+
+// ── Hosted agent mailboxes (docs/plans/2026-09-02-agent-email.md, Model B) ───
+//
+// Amazon SES is integrated directly, so the deployment's own account sends and
+// receives and an address is unique per deployment. Emails are their own store,
+// NOT Message rows: delivery state, MIME identity and external participants are
+// not a chat thread's semantics. Each mailbox keeps one backing channel
+// (ChannelSystemType.agent_email) with one Thread per EmailConversation — that
+// thread is the operations room where runs, approval gates and human discussion
+// live, while the mail itself stays here.
+
+enum AgentMailboxStatus {
+  active
+  suspended
+}
+
+/// What an agent may do with its mailbox without a human in the loop.
+/// P1 ships the column, the PATCH route and the control; P2 unlocks the two
+/// non-default values behind the structural floors in the plan's §3.6.
+enum AgentMailboxSendPolicy {
+  approval
+  auto_reply
+  auto
+}
+
+enum EmailMessageDirection {
+  inbound
+  outbound
+}
+
+/// Structural header classification (RFC facts, never content interpretation).
+/// `bulk` and `dsn` are stored and displayed but never start a run.
+enum EmailMessageClassification {
+  normal
+  bulk
+  dsn
+}
+
+/// Outbound lifecycle. `sending` is a claim, not a state anyone rests in:
+/// a worker death between SES accept and the local write resolves to
+/// `delivery_unknown`, which is surfaced and NEVER auto-retried — a retry is a
+/// duplicate email.
+enum EmailDeliveryState {
+  queued
+  sending
+  sent
+  delivery_unknown
+  bounced
+  complained
+}
+
+enum EmailDomainStatus {
+  pending_dns
+  verified
+  failed
+  revoked
+}
+
+model AgentMailbox {
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @map("organization_id") @db.Uuid
+  agentId         String                 @unique @map("agent_id") @db.Uuid
+  // Full, lowercased address. Unique per deployment — deleting a mailbox
+  // retires the address permanently (retiredAt set, row kept read-only) so a
+  // recycled local part can never inherit an old correspondent's trust.
+  address         String                 @unique
+  domainId        String?                @map("domain_id") @db.Uuid
+  channelId       String                 @unique @map("channel_id") @db.Uuid
+  status          AgentMailboxStatus     @default(active)
+  statusReason    String?                @map("status_reason")
+  retiredAt       DateTime?              @map("retired_at")
+  sendPolicy      AgentMailboxSendPolicy @default(approval) @map("send_policy")
+  displayName     String?                @map("display_name")
+  createdByUserId String?                @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent         Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  domain        EmailDomain?        @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  conversations EmailConversation[]
+  messages      EmailMessage[]
+
+  @@index([organizationId, status])
+  @@map("agent_mailboxes")
+}
+
+/// Custom sending domains verified in the deployment's own SES account (P2,
+/// behind NESSIE_EMAIL_CUSTOM_DOMAINS). Stores the SES-returned DKIM tokens as
+/// facts; the DNS records an operator pastes are rendered from them at read
+/// time, never stored pre-rendered (rendered records go stale against SES).
+model EmailDomain {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  domain          String            @unique
+  status          EmailDomainStatus @default(pending_dns)
+  statusReason    String?           @map("status_reason")
+  sesIdentityArn  String?           @map("ses_identity_arn")
+  dkimTokens      Json              @default("[]") @map("dkim_tokens")
+  verifiedAt      DateTime?         @map("verified_at")
+  lastCheckedAt   DateTime?         @map("last_checked_at")
+  createdByUserId String?           @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mailboxes    AgentMailbox[]
+
+  @@index([organizationId, status])
+  @@map("email_domains")
+}
+
+/// One email thread. Deliberately carries NO unreadCount, NO muted and NO
+/// needs_approval state: per-viewer read state would need the existing
+/// ThreadReadState pattern (added only if a real need appears), and the
+/// approval/bounce chips the mailbox list renders are DERIVED from the live
+/// ApprovalRequest / EmailMessage rows rather than a second mutable copy.
+model EmailConversation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  mailboxId      String   @map("mailbox_id") @db.Uuid
+  subject        String
+  // Denormalized participant addresses for the list view.
+  participants   Json     @default("[]")
+  threadId       String   @unique @map("thread_id") @db.Uuid
+  lastMessageAt  DateTime @map("last_message_at")
+  messageCount   Int      @default(0) @map("message_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mailbox      AgentMailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  thread       Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  messages     EmailMessage[]
+
+  @@index([mailboxId, lastMessageAt])
+  @@map("email_conversations")
+}
+
+model EmailMessage {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  organizationId     String                     @map("organization_id") @db.Uuid
+  mailboxId          String                     @map("mailbox_id") @db.Uuid
+  conversationId     String                     @map("conversation_id") @db.Uuid
+  direction          EmailMessageDirection
+  // Inbound idempotency key: the SES receipt / SNS message id. SNS and SES
+  // legitimately retry, so the claim-and-wake transaction turns on THIS, never
+  // on the RFC Message-ID (which can be absent, duplicated or attacker-forged).
+  receiptId          String?                    @unique @map("receipt_id")
+  // Raw MIME staging reference in the inbound bucket (transport staging only —
+  // every durable byte goes through FileService).
+  s3ObjectKey        String?                    @map("s3_object_key")
+  rfcMessageId       String                     @map("rfc_message_id")
+  inReplyTo          String?                    @map("in_reply_to")
+  referencesIds      Json                       @default("[]") @map("references_ids")
+  fromAddress        String                     @map("from_address")
+  fromName           String?                    @map("from_name")
+  replyToAddress     String?                    @map("reply_to_address")
+  toAddresses        Json                       @default("[]") @map("to_addresses")
+  ccAddresses        Json                       @default("[]") @map("cc_addresses")
+  bccAddresses       Json                       @default("[]") @map("bcc_addresses")
+  // Inbound routing truth: the SES receipt envelope recipients. MIME To/Cc are
+  // attacker-controlled, omit Bcc destinations, and can name another tenant.
+  envelopeRecipients Json                       @default("[]") @map("envelope_recipients")
+  subject            String
+  textBody           String                     @map("text_body")
+  // Stored already sanitized at ingest (allowlist; remote images neutralized).
+  htmlBody           String?                    @map("html_body")
+  snippet            String
+  // SPF/DKIM/DMARC/spam/virus verdicts from the SES receipt.
+  authResults        Json?                      @map("auth_results")
+  classification     EmailMessageClassification @default(normal)
+  deliveryState      EmailDeliveryState?        @map("delivery_state")
+  sesMessageId       String?                    @map("ses_message_id")
+  // Projections of the authoritative run/approval rows, kept for list
+  // rendering only.
+  sentByRunId        String?                    @map("sent_by_run_id") @db.Uuid
+  approvalId         String?                    @map("approval_id") @db.Uuid
+  occurredAt         DateTime                   @map("occurred_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mailbox      AgentMailbox      @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  conversation EmailConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, occurredAt])
+  // Threading lookup (In-Reply-To / References resolution) — an index, never a
+  // uniqueness claim: a forged or duplicated Message-ID must degrade to a new
+  // conversation, not drop or mis-merge a message.
+  @@index([mailboxId, rfcMessageId])
+  @@index([mailboxId, deliveryState])
+  @@map("email_messages")
+}
+
+/// Deployment-wide suppression list. Reputation is per SES account, so this is
+/// deliberately org-agnostic: a recipient that hard-bounced or complained for
+/// one organisation must not be re-mailed by another on the same account.
+model EmailSuppression {
+  id         String   @id @default(uuid()) @db.Uuid
+  address    String   @unique
+  reason     String
+  detail     String?
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("email_suppressions")
 }

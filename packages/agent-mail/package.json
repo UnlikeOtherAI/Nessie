@@ -1,0 +1,30 @@
+{
+  "name": "@nessie/agent-mail",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src test --max-warnings 0",
+    "test": "node --test --experimental-test-isolation=none --import tsx test/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/client-sesv2": "^3.1124.0",
+    "@aws-sdk/client-sns": "^3.1124.0",
+    "@nessie/runtime": "workspace:*",
+    "@nessie/schemas": "workspace:*",
+    "mailparser": "^3.9.20"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^20.19.24"
+  }
+}
