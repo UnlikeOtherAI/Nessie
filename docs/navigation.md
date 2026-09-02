@@ -312,11 +312,26 @@ the motion: state closes at once and the leaving element plays out inert
 
 **`Dialog`** (`components/shared/Dialog.tsx`) is the Modal primitive on this
 hook, unchanged in API plus `blocking` for the sanctioned nesting;
-`ConfirmDialog` builds on it. Planned in this step: `Sheet` for the eight
-drawers, `Popover` with one `placePopover` helper, `Card` with one
-`CardViewport`, `presentation: 'panel' | 'full'` for Flows, and the adoption
-of every bespoke overlay. Pinned by `admin/test/navigation-overlay.test.ts`
-and `admin/test/dialog-shell.test.ts`.
+`ConfirmDialog` builds on it. **`Sheet`** (`components/overlays/Sheet.tsx`) is
+the Sheet primitive on the same hook — `side`, a four-name `size` drawn from
+the geometries the drawers actually ship, full width and height on the
+`single` layout (the one sanctioned layout branch, never a breakpoint), and a
+swipe-to-close that projects the phone back-swipe's own slop, commit ratio and
+flick velocity onto the sheet's axis rather than restating them
+(`components/overlays/sheet-swipe.ts`). It has replaced the hand-rolled scrim,
+literal z-index pair and CSS slide in five drawers: the mobile nav drawer
+(`MobileNavDrawer`), the knowledge `AttachmentsDrawer`, the agent quick view
+(`AgentDetailDrawer`), and the channel agent and user info drawers — each of
+which now gets Escape, a focus trap and restore, `role="dialog"` and a Back
+registration it did not have. Two edge cases stay outside it deliberately: the
+thread reply panel's 900–1279 px overlay mode, whose three presentations are
+one element switched by CSS breakpoints that no `single`/`split` branch can
+express, and the design-assistant panel, which is docked in flow rather than
+edge-anchored over a scrim. Planned in this step: `Popover` with one
+`placePopover` helper, `Card` with one `CardViewport`,
+`presentation: 'panel' | 'full'` for Flows, and the adoption of every
+remaining bespoke overlay. Pinned by `admin/test/navigation-overlay.test.ts`,
+`admin/test/dialog-shell.test.ts` and `admin/test/sheet.test.ts`.
 
 ## 8. Deep links and cold starts — **built** (step 13, the seeding; intent params follow)
 
