@@ -8,6 +8,7 @@ import {
 } from './connector-authorization'
 import { handleNativeShellMessage } from './native-shell-message-handler'
 import type { NativeShellMessage } from './native-shell-message'
+import { DEFAULT_LAST_KNOWN_SCREEN } from './native-shell-layout'
 
 test('connector authorization accepts only a credential-free HTTPS URL', () => {
   assert.equal(isConnectorAuthorizationUrl('https://idp.example/authorize?state=one'), true)
@@ -24,13 +25,13 @@ test('the narrow bridge message launches connector authorization, never a call l
   const input = {
     acknowledgeExternalAuthDelivery: () => undefined,
     acknowledgePushPath: () => false,
-    currentPath: null,
     currentPathRef: { current: null },
     dismissNativeMenus: () => undefined,
     dismissNotifications: () => undefined,
     dispatchPresentation: () => undefined,
     ensureNativePushRegistration: () => undefined,
     flushExternalAuthDelivery: () => undefined,
+    lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN,
     markBooted: () => undefined,
     noteBackState: () => undefined,
     openConnectorAuthorization: (url: string) => connectorUrls.push(url),
@@ -39,8 +40,10 @@ test('the narrow bridge message launches connector authorization, never a call l
     replayPendingPushPath: () => null,
     runExternalAuth: async (url: string) => { externalAuthUrls.push(url) },
     runScript: () => undefined,
+    screenActiveRef: { current: false },
     setCurrentPath: () => undefined,
     setIndex: () => undefined,
+    setLastKnownScreen: () => undefined,
     triggerHaptic: () => undefined,
   }
   const message = {
@@ -63,13 +66,13 @@ test('the haptic bridge message routes to the native trigger, never a connector 
   const input = {
     acknowledgeExternalAuthDelivery: () => undefined,
     acknowledgePushPath: () => false,
-    currentPath: null,
     currentPathRef: { current: null },
     dismissNativeMenus: () => undefined,
     dismissNotifications: () => undefined,
     dispatchPresentation: () => undefined,
     ensureNativePushRegistration: () => undefined,
     flushExternalAuthDelivery: () => undefined,
+    lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN,
     markBooted: () => undefined,
     noteBackState: () => undefined,
     openConnectorAuthorization: (url: string) => connectorUrls.push(url),
@@ -78,8 +81,10 @@ test('the haptic bridge message routes to the native trigger, never a connector 
     replayPendingPushPath: () => null,
     runExternalAuth: async () => undefined,
     runScript: () => undefined,
+    screenActiveRef: { current: false },
     setCurrentPath: () => undefined,
     setIndex: () => undefined,
+    setLastKnownScreen: () => undefined,
     triggerHaptic: (kind: string) => hapticKinds.push(kind),
   }
 

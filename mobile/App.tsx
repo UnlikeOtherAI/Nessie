@@ -72,14 +72,15 @@ import {
 } from './src/components/native-shell-presentation'
 import {
   createNativeTabNavigationState,
+  DEFAULT_LAST_KNOWN_SCREEN,
   getNativePhoneHeaderHeight,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   isFullScreenTaskRoute,
-  isNativePhoneChannelsRootRoute,
-  isNativePhoneTabRootRoute,
+  type LastKnownScreen,
   shouldShowNativePhoneHeader,
 } from './src/lib/native-shell-layout'
+import { tabIndexForSection } from './src/lib/tabs'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
@@ -100,8 +101,19 @@ const Shell = (): React.JSX.Element => {
     width: windowWidth,
   })
   const nativeFormFactor = IS_IPAD ? 'ipad' : largePhoneLandscape ? 'large-phone-landscape' : 'phone'
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(() => tabIndexForSection(DEFAULT_LAST_KNOWN_SCREEN.section))
   const [currentPath, setCurrentPath] = useState<string | null>(null)
+  // The shell's last-known picture of what the WebView is showing, built
+  // entirely from `nessie:screen` messages (native-shell-message-handler.ts)
+  // — never by matching `currentPath` against a copy of the admin's routing
+  // table. `currentPath` above still tracks `nessie:route` for push-path
+  // bookkeeping (boot recovery, notification/push registration), which is a
+  // separate concern from tab selection and root-ness.
+  const [lastKnownScreen, setLastKnownScreen] = useState<LastKnownScreen>(DEFAULT_LAST_KNOWN_SCREEN)
+  // Once a `nessie:screen` message has arrived it is authoritative for
+  // hardware Back consumption; a `nessie:back-state` kept around during the
+  // admin's transition no longer overrides it (native-shell-message-handler.ts).
+  const screenActiveRef = useRef(false)
   const [presentation, dispatchPresentation] = useReducer(
     reduceNativeShellPresentation,
     DEFAULT_NATIVE_SHELL_PRESENTATION,
@@ -294,13 +306,13 @@ const Shell = (): React.JSX.Element => {
     handleNativeShellMessage(msg, {
       acknowledgeExternalAuthDelivery: (id) => externalAuthDeliveries.current.acknowledge(id),
       acknowledgePushPath,
-      currentPath,
       currentPathRef,
       dismissNativeMenus,
       dismissNotifications: () => void dismissNativeNotificationCards().catch(() => undefined),
       dispatchPresentation,
       ensureNativePushRegistration,
       flushExternalAuthDelivery,
+      lastKnownScreen,
       markBooted: bootRecovery.markBooted,
       noteBackState: phoneBack.noteBackState,
       openConnectorAuthorization: (url) => openConnectorAuthorizationUrl(
@@ -316,8 +328,10 @@ const Shell = (): React.JSX.Element => {
       replayPendingPushPath,
       runExternalAuth,
       runScript,
+      screenActiveRef,
       setCurrentPath,
       setIndex,
+      setLastKnownScreen,
       triggerHaptic,
     })
   }
@@ -353,15 +367,16 @@ const Shell = (): React.JSX.Element => {
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
+  const isTabRoot = lastKnownScreen.type === 'root'
   const showNativePhoneHeader = shouldShowNativePhoneHeader({
     isIpad: IS_IPAD,
+    isTabRoot,
     largePhoneLandscape,
-    path: currentPath,
     showBar,
   })
   const showNativePhoneCreationActions = showNativePhoneHeader
-    && isNativePhoneTabRootRoute(currentPath)
-    && isNativePhoneChannelsRootRoute(currentPath)
+    && isTabRoot
+    && lastKnownScreen.section === 'channels'
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected

@@ -29,17 +29,31 @@ test('native workspace presentation carries its public picture and clears invali
   assert.equal(cleared.workspaceAvatarUrl, null)
 })
 
-test('native presentation normalizes badge counts and preserves an authoritative total', () => {
+test('native presentation normalizes per-section badge counts and sums an authoritative total', () => {
   const message = {
     type: 'nessie:attention',
-    assignedWork: 2.8,
-    channels: -1,
-    knowledge: 3,
-    total: 9,
+    badges: { channels: 2.8, projects: -1, knowledge: 3, admin: 1 },
   }
   const next = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, message)
-  assert.deepEqual(next.attentionBadges, { assignedWork: 2, channels: 0, knowledge: 3 })
-  assert.equal(nativeAttentionTotal(message), 9)
+  assert.deepEqual(next.attentionBadges, { channels: 2, projects: 0, knowledge: 3, admin: 1, search: 0 })
+  assert.equal(nativeAttentionTotal(message), 6)
+})
+
+// The admin does not post `nessie:attention` for every section yet — a
+// missing `badges` object, and any section it omits, both read as 0 rather
+// than being dropped or crashing the reducer.
+test('native presentation defaults every section to 0 when badges is absent or incomplete', () => {
+  const withoutBadges = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:attention',
+  })
+  assert.deepEqual(withoutBadges.attentionBadges, { channels: 0, projects: 0, knowledge: 0, admin: 0, search: 0 })
+  assert.equal(nativeAttentionTotal({ type: 'nessie:attention' }), 0)
+
+  const partial = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:attention',
+    badges: { channels: 5 },
+  })
+  assert.deepEqual(partial.attentionBadges, { channels: 5, projects: 0, knowledge: 0, admin: 0, search: 0 })
 })
 
 test('native account focus mode is preserved from the web shell', () => {
