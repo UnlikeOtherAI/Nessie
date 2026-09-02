@@ -5,6 +5,7 @@ import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { AgentCreateButton } from './AgentCreateButton'
@@ -33,7 +34,12 @@ export const AgentsList = () => {
   const { data: agents = [], isPending } = useAgents({ scope: 'all' })
 
   const [initialState] = useState(loadAgentsListState)
-  const [activeScope, setActiveScope] = useState<AgentScope>(
+  // `scope` in the URL, seeded from the session ledger: a pasted
+  // `/agents?scope=personal` opens on Personal, and arriving with no param
+  // restores the scope this reader left on (docs/navigation.md §1, "Tab hosts").
+  const [activeScope, setActiveScope] = useTabParam(
+    'scope',
+    AGENT_SCOPES,
     initialState.activeScope,
   )
   const [pageByScope, setPageByScope] = useState(initialState.pageByScope)

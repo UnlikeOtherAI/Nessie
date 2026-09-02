@@ -1,6 +1,6 @@
 import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
@@ -8,16 +8,16 @@ import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
 import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import {
+  appDetailTabIds,
   appDetailTabs,
   appNotFoundMessage,
-  resolveAppDetailTab,
-  type AppDetailTab,
 } from '../components/features/apps/app-detail-view'
 import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 import { usePhoneLayout } from '../lib/mobile-shell'
+import { useTabParam } from '../navigation/useTabParam'
 
 /**
  * One app, as a full page at `/apps/:slug`.
@@ -42,6 +42,17 @@ export const AppDetailPage = () => {
   const removeApp = useRemoveAppConnections()
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
+  // Called before the loading/absent early returns, as every hook must be.
+  // With no app yet the offered list is empty, so `?tab=` reads as Overview
+  // until the record arrives and then resolves against the real tabs.
+  const tabIds = useMemo(
+    () => (app ? appDetailTabIds(appDetailTabs(app)) : []),
+    [app],
+  )
+  // The tab lives in the URL so `?tab=accounts` is linkable, and it is written
+  // with `replace` so flipping tabs never enters history
+  // (docs/navigation.md §1, "Tab hosts").
+  const [activeTab, selectTab] = useTabParam('tab', tabIds, 'overview')
 
   // A custom app's address is checked before it arrives here. Its first
   // connection still waits for this explicit review, so `?connect=true` opens
@@ -99,18 +110,6 @@ export const AppDetailPage = () => {
         </div>
       </div>
     )
-  }
-
-  const tabs = appDetailTabs(app)
-  const activeTab = resolveAppDetailTab(searchParams.get('tab'), tabs)
-
-  // The tab lives in the URL so `?tab=accounts` is linkable, and `replace` keeps
-  // tab-flipping out of the back button's history.
-  const selectTab = (tab: AppDetailTab) => {
-    const params = new URLSearchParams(searchParams)
-    if (tab === 'overview') params.delete('tab')
-    else params.set('tab', tab)
-    setSearchParams(params, { replace: true })
   }
 
   const closeRemove = () => {

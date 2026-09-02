@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type {
   DeepWaterAgentAccessTarget,
@@ -10,12 +10,15 @@ import {
   useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
 import { Pill, type PillTone } from '../../primitives/Pill'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 
-type DeepWaterTab = 'run' | 'runs' | 'settings'
+const DEEP_WATER_TABS = ['run', 'runs', 'settings'] as const
+
+type DeepWaterTab = (typeof DEEP_WATER_TABS)[number]
 
 const tabs: ReadonlyArray<{ label: string; value: DeepWaterTab }> = [
   { label: 'Test run', value: 'run' },
@@ -59,7 +62,9 @@ export const DeepWaterResearchPanel = ({
 }: DeepWaterResearchPanelProps) => {
   const navigate = useNavigate()
   const isOwner = useIsOwner()
-  const [activeTab, setActiveTab] = useState<DeepWaterTab>('run')
+  // `research`, not `tab`: this panel sits inside a product's detail on the
+  // Integrations page, which owns the page-level strip.
+  const [activeTab, setActiveTab] = useTabParam('research', DEEP_WATER_TABS, 'run')
   const runsQuery = useDeepWaterResearchRuns()
   const accessQuery = useDeepWaterAgentAccess()
   const setAgentAccess = useSetDeepWaterAgentAccess()

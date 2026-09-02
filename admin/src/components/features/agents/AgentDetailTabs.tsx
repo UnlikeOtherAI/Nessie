@@ -6,6 +6,7 @@ import {
   useAgentStatus,
 } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
@@ -94,7 +95,16 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
   )
   // Land on the first tab actually rendered, so the selection and the leading
   // tab can never disagree when the tab order changes.
-  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : FIRST_DETAIL_TAB)
+  const tabValues = useMemo(() => tabs.map((item) => item.value), [tabs])
+  // `agentTab`, not `tab`: this strip also renders inside the agent quick-view
+  // sheet over a conversation, whose own sections already own `?tab=`. It is
+  // validated against the tabs actually rendered, so `?agentTab=edit` on a
+  // non-owner's view reads as the first detail tab rather than a blank panel.
+  const [activeTab, setActiveTab] = useTabParam(
+    'agentTab',
+    tabValues,
+    editSlot ? 'edit' : FIRST_DETAIL_TAB,
+  )
   const [messagePage, setMessagePage] = useState(0)
 
   const { data: status } = useAgentStatus(agent.id)

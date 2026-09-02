@@ -17,7 +17,7 @@ import {
   appNotFoundMessage,
   appProviderLine,
   capabilitiesNote,
-  resolveAppDetailTab,
+  appDetailTabIds,
 } from '../src/components/features/apps/app-detail-view.js'
 import {
   createWindowAuthLauncher,
@@ -140,14 +140,20 @@ test('Remove appears only when the caller can disconnect every connected account
   )
 })
 
-test('a deep link to a tab this app does not offer falls back to Overview, not a blank panel', () => {
-  const tabs = appDetailTabs(detail())
-  // An old bookmark, or a link pasted before the app was disconnected.
-  assert.equal(resolveAppDetailTab('accounts', tabs), 'overview')
-  assert.equal(resolveAppDetailTab('nonsense', tabs), 'overview')
-  assert.equal(resolveAppDetailTab(null, tabs), 'overview')
-  assert.equal(resolveAppDetailTab('agents', tabs), 'agents')
-  assert.equal(resolveAppDetailTab('accounts', appDetailTabs(detail({ connections: [connection()] }))), 'accounts')
+test('the tab ids offered are what a deep link is validated against', () => {
+  // An old bookmark, or a link pasted before the app was disconnected, names a
+  // tab that is simply not in this list; useTabParam then reads it as the
+  // fallback (Overview) rather than painting a blank panel — see
+  // admin/test/tab-param.test.ts.
+  assert.deepEqual(appDetailTabIds(appDetailTabs(detail())), [
+    'overview',
+    'capabilities',
+    'agents',
+  ])
+  assert.deepEqual(
+    appDetailTabIds(appDetailTabs(detail({ connections: [connection()] }))),
+    ['overview', 'capabilities', 'accounts', 'agents'],
+  )
 })
 
 test('Connect runs the flow on this page instead of linking at the install route', () => {

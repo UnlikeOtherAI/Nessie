@@ -39,6 +39,11 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   const connect = useAppConnectFlow({ slug: app.slug ?? app.id })
   const confirmRef = useRef<HTMLButtonElement>(null)
   const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
+  // Deliberately NOT a `useTabParam` host (docs/navigation.md §1, "Tab
+  // hosts"): this strip is a field of a form inside a modal, not a section of
+  // a screen. Its value is answered once and submitted, so putting it in the
+  // URL would outlive the dialog, survive its cancellation and collide with
+  // the tab of whatever page the dialog was opened from.
   const [scopeChoice, setScopeChoice] = useState<AppConnectScopeChoice>('user')
   const [channelId, setChannelId] = useState('')
   const channels = useChannels({ enabled: open && scopeChoice === 'channel' })

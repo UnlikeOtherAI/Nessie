@@ -37,6 +37,77 @@ another one is not a screen at all: it carries `type: 'redirect'`, so it is
 listed (the totality gate needs it, and the tab bar stays lit for the frame it
 exists) but never classifies, never animates and never owns a Back.
 
+### Tab hosts — **built** (step 7)
+
+Fifteen in-page strips used three state models: component state, a URL search
+param, and the project's seven route entries. They are now one model —
+`admin/src/navigation/useTabParam.ts`:
+
+```ts
+const [tab, selectTab] = useTabParam('tab', CHANNEL_TABS, 'messages')
+```
+
+It reads the param, validates it against the strip's own values (an unknown or
+absent value reads as the fallback, so an old bookmark degrades to the tab the
+host opens on rather than a blank panel), and writes with
+`setSearchParams(…, { replace: true })`. So a tab is **linkable and
+refresh-safe but never a history entry**, and Back leaves the host. Every
+other search param and the entry's `state` are carried over, so two strips on
+one page cannot overwrite each other. Selecting the fallback deletes the param
+rather than spelling out the default. No page keeps a tab in `useState` any
+more, and nothing new may.
+
+`fallback` is also the seam for a remembered preference: a host that stores its
+last choice passes the stored value as the fallback and writes its store beside
+`selectTab`, so the URL wins when it names a tab and the preference decides when
+it does not. Three hosts do that — the knowledge view-mode cookie, the apps
+filter (`localStorage`) and the agents scope (the session ledger). Each reads
+its store **once per mount**: a fallback that moved after every write would
+chase the param-deletion rule.
+
+| host | param | values |
+| --- | --- | --- |
+| a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `automations` · `agents` |
+| an app (`AppDetailPage`) | `tab` | `overview` · `capabilities` · `accounts` · `agents` (as the app offers) |
+| an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
+| Appearance (`/settings/appearance`) | `tab` | `colours` · `type` |
+| an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` |
+| the apps catalogue (`AppsPage`) | `filter` | `all` · `installed` (default: this device's last view) |
+| the agents list (`AgentsList`) | `scope` | `personal` · `team` · `global` (default: the session ledger) |
+| the tool registry (`ToolsPage`) | `source` | `all` · `builtin` · `custom` · `mcp-remote` · `interactive-session` |
+| the trigger list (`useTriggersPageState`) | `status` | `all` · `active` · `paused` · `error` |
+| full-page search (`SearchPage`) | `mode` | `text` · `semantic` (default: this device's last mode) |
+| a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
+| Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
+
+A named param is used wherever `tab` would collide: `agentTab` because the
+agent strip also renders inside the quick-view sheet over a conversation that
+owns `?tab=`, and `research` because that panel sits inside a product detail on
+the Integrations page. A strip that narrows a list (`role="radiogroup"`) uses
+the same hook — `filter`, `scope`, `source`, `status` are filters, not panel
+switches.
+
+**Projects keep seven routes.** `/projects/:id` and its `/board`, `/backlog`,
+`/insights`, `/docs`, `/executors`, `/settings` siblings stay real routes so
+each is linkable, but the header's section menu navigates with `replace: true`,
+so Back leaves the project instead of walking the sections a reader passed
+through. The registry folds all seven into one `tabHost` identity and they
+render the same element, so React reconciles one `ProjectView` across them: the
+switch swaps the section without remounting the page or animating a layer.
+
+**Three deliberate non-hosts**, each recorded where it stands: the scope choice
+in `AppConnectDialog` and the key scope in `AppSecretDialog` are fields of a
+form inside a modal — answered once and submitted, so a URL param would outlive
+the dialog and collide with the tab of the page it was opened over; and the
+top-bar search overlay's mode stays a device preference, because that overlay
+floats over whatever route the reader is on.
+
+Pinned by `admin/test/tab-param.test.ts`: the hook's three promises under a
+`MemoryRouter`, the project switch's `replace` and single mount, the host/param
+table above, and a source gate over `git ls-files` that fails when any file
+rendering a `<TabBar` keeps its value in `useState` (allowlist: the two dialog
+form fields, and it only ever shrinks).
+
 ## 2. Stack containers never scroll — **built** (step 1)
 
 The navigation stack's containers are `overflow: clip`, never `hidden`:
