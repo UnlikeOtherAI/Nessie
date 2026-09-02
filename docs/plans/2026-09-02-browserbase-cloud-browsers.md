@@ -86,10 +86,13 @@ Verified against docs.browserbase.com on 2026-09-02:
   (3 / 25 / 100 / 250+). Browser-hours are the metered unit, so sessions must
   be closed aggressively and their duration recorded. The free tier is the
   intended personal on-ramp — try it, upgrade when it bites; the connect UI
-  copy should say so. One caveat to verify in phase 2: whether the lower
-  plans' data-retention window bounds how long an *inactive* context's login
-  state survives — if it does, durable profiles effectively want a paid plan
-  and the profile UI should say that plainly.
+  copy should say so. Verified 2026-09-02: **contexts are exempt from the
+  retention windows** — the docs state contexts "live indefinitely" until
+  explicitly deleted (retention covers session artifacts like recordings and
+  logs), so a free account's login profiles do not expire on Browserbase's
+  side; re-login cadence is set by each website's own session policy. The
+  free plan's real bound is hours (1 h total, ~15-min sessions), which is
+  the number the personal connections panel surfaces as the upgrade nudge.
 
 ## 3. Design principles
 
