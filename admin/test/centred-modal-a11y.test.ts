@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url'
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const SHELL = resolve(SRC, 'components/shared/Dialog.tsx')
 const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
+// The shared overlay hook (docs/navigation.md §7) composes useModalA11y for
+// every modal; a file on it is guarded the same way.
+const OVERLAY_HOOK = resolve(SRC, 'components/overlays/useOverlay.ts')
 
 /**
  * Centred modals that compose neither the shell nor the hook. Two kinds of
@@ -127,7 +130,8 @@ for (const path of walk(SRC).filter((file) => file.endsWith('.tsx'))) {
   const paintsScrim = paintsCentredScrim(source)
   if (!paintsScrim && !rendersShell) continue
   modals.push({
-    composesA11yHook: (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y'),
+    composesA11yHook: (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
+      || (imports.get(OVERLAY_HOOK) ?? []).includes('useOverlay'),
     file: relative(SRC, path),
     importsShell,
     paintsScrim,
