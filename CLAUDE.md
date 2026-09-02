@@ -219,24 +219,8 @@ block injects that home id and title so the model never invents a `spaceId`.
 
 ## Cloud browsers — a second transport, not a second browser surface
 
-Agents can drive a real Chromium in the cloud (Browserbase) as well as the
-one the executor runs on a person's machine. Phase 1 shipped 2026-09-02;
-invariants, rationale and as-built deltas (§5a) live in
-[docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md). Three bind new work:
+Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
 
-- **One grammar, two transports.** `browser_open`/`observe`/`act`/`close`
-  reuse the executor's `ExecutorBrowser*ArgumentsSchema` verbatim — acting
-  only on an accessibility node id from a prior observe — under their own
-  `requiresExplicitGrant` key, so connecting an account never converts a
-  local-sandbox grant into cloud browsing.
-- **Scope follows the surface that accepted the key** (owner-only org
-  settings vs a member's own page), since Browserbase authenticates by API
-  key alone; an unattended run has no requester and never spends an
-  individual's hours. Connect probes before it persists.
-- **Browser-hours are money.** Release is fused to `updateRunStatus` via a
-  hook so no terminal call site participates, and the reaper stops strays
-  by *calling Browserbase*. An ambiguous CDP outcome throws (a click may
-  have placed an order), so these tools bypass `wrapTool`.
 ## Agent chat cards — one card system, not an eighth look-alike
 
 Every agent that can talk can post an **interactive card** into a conversation
