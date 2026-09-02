@@ -1227,6 +1227,9 @@ model Organization {
 
   agentCards AgentCard[]
 
+  cloudBrowserConnections CloudBrowserConnection[]
+  cloudBrowserSessions    CloudBrowserSession[]
+
   @@map("organizations")
 }
 
@@ -1350,20 +1353,22 @@ model ProductIntegrationRun {
 }
 
 model OrganizationMember {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  userId         String       @map("user_id") @db.Uuid
-  role           MemberRole   @default(member)
+  id                      String                   @id @default(uuid()) @db.Uuid
+  organizationId          String                   @map("organization_id") @db.Uuid
+  userId                  String                   @map("user_id") @db.Uuid
+  role                    MemberRole               @default(member)
   // When set, the membership is deactivated: the user is denied access to this
   // organisation (enforced in authenticateRequest) but the row + audit history
   // are kept so an owner can reactivate. Reversible — no hard delete.
-  deactivatedAt  DateTime?    @map("deactivated_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deactivatedAt           DateTime?                @map("deactivated_at")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Agents this member stewards. Tenancy only — a retained deactivated row
   /// still satisfies the FK, so readers re-derive liveness.
-  ownedAgents    Agent[]      @relation("AgentOwner")
+  ownedAgents             Agent[]                  @relation("AgentOwner")
+  /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
+  cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1583,6 +1588,8 @@ model Thread {
   agentAppConnectionRequests AgentAppConnectionRequest[]
 
   agentCards AgentCard[]
+
+  cloudBrowserSessions CloudBrowserSession[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -2141,6 +2148,8 @@ model Agent {
 
   agentCards AgentCard[]
 
+  cloudBrowserSessions CloudBrowserSession[]
+
   @@unique([organizationId, id])
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -2351,6 +2360,8 @@ model Run {
   postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
   waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
   resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
+
+  cloudBrowserSessions CloudBrowserSession[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -4576,7 +4587,7 @@ model KnowledgePage {
   // `Dashboard.revision` and `WorkflowTemplate.version`. `versionNumber` lives
   // on the per-version row and cannot serve an `If-Match`, so the auto-saving
   // editor needs a current-revision column here.
-  revision        Int               @default(0)
+  revision Int @default(0)
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
@@ -5788,4 +5799,141 @@ model DashboardEmbedPlacement {
 
   @@index([organizationId, targetType, targetId])
   @@map("dashboard_embed_placements")
+}
+
+/// Which account pays for, and can replay, the browsers opened through this
+/// connection. Decided by the surface that accepted the key (owner-only org
+/// settings vs a member's own connections page), never inferred from the key
+/// itself — Browserbase authenticates by API key only and its keys carry no
+/// personal-vs-company signal.
+enum CloudBrowserConnectionScope {
+  organization
+  user
+}
+
+/// A capability that can stop working owns the way a person finds out: a
+/// revoked key, deleted project or suspended account claims
+/// `needs_attention` with a persisted reason and alerts once, instead of
+/// retrying forever behind a toolset that still advertises a browser.
+enum CloudBrowserConnectionStatus {
+  active
+  needs_attention
+  disabled
+}
+
+/// A remote resource's lifecycle, not a boolean. A create that times out may
+/// still have produced a paid session at Browserbase (`allocating` — the
+/// reconciler's problem), and `active` may only clear once Browserbase has
+/// confirmed termination, because two sessions on one context make websites
+/// force logouts.
+enum CloudBrowserSessionStatus {
+  allocating
+  active
+  releasing
+  released
+  failed
+  unknown
+}
+
+/// One Browserbase account bound to this workspace. Bring-your-own key at
+/// both scopes: the organization subscription an owner connects, or a
+/// member's own account (the free tier is the intended on-ramp) which powers
+/// only runs that member requested.
+model CloudBrowserConnection {
+  id             String                      @id @default(uuid()) @db.Uuid
+  organizationId String                      @map("organization_id") @db.Uuid
+  scope          CloudBrowserConnectionScope
+  /// NULL for organization scope, the owning member for user scope — a CHECK
+  /// ties the two, and partial unique indexes keep one row per organization
+  /// and one per (organization, member).
+  userId         String?                     @map("user_id") @db.Uuid
+  projectId      String                      @map("project_id")
+  /// Server-minted `secret_browserbase_*` ref into the encrypted secret
+  /// store. Never caller-chosen, never returned to a client: the key plus a
+  /// context id is session-equivalent material.
+  apiKeyRef      String                      @map("api_key_ref")
+
+  status          CloudBrowserConnectionStatus @default(active)
+  /// Machine reason behind a non-active status (`auth_failed`,
+  /// `unreachable`, `disabled_by_owner`), so the surface can name the remedy
+  /// without parsing a message string.
+  healthReason    String?                      @map("health_reason")
+  healthDetail    String?                      @map("health_detail")
+  /// Bumped by every health transition; the alert key is derived from it so
+  /// one transition alerts exactly once.
+  healthRevision  Int                          @default(0) @map("health_revision")
+  healthCheckedAt DateTime?                    @map("health_checked_at")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Tenancy at the storage boundary, the `Agent.ownerMembership` precedent:
+  /// a user-scoped connection's owner must be a member of THIS organization.
+  /// It does not prove the membership is live — readers re-derive that.
+  owner        OrganizationMember? @relation("CloudBrowserConnectionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  sessions CloudBrowserSession[]
+
+  @@index([organizationId, scope])
+  @@map("cloud_browser_connections")
+}
+
+/// One Browserbase session opened for one run. Browser-hours are money, so
+/// release is fused to every terminal writer and a reaper stops whatever a
+/// crashed worker left running.
+model CloudBrowserSession {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  /// Mandatory: the reaper cannot stop a remote session without knowing which
+  /// API key owns it, and `/ops/usage` attributes hours by connection scope.
+  connectionId   String @map("connection_id") @db.Uuid
+  runId          String @map("run_id") @db.Uuid
+  threadId       String @map("thread_id") @db.Uuid
+  agentId        String @map("agent_id") @db.Uuid
+
+  /// NULL while `allocating`: a create that timed out may still have produced
+  /// a remote session, which reconciliation resolves.
+  browserbaseSessionId String?                   @map("browserbase_session_id")
+  status               CloudBrowserSessionStatus @default(allocating)
+
+  /// Monotone within the session: set the moment the browser is known to
+  /// carry a human's authenticated state (cookie-bearing context at open, a
+  /// completed login handoff, or any control claim). Never clears — it is
+  /// what makes the disclosure basis safe to evaluate per read.
+  authenticated Boolean @default(false)
+
+  /// The person whose ask started the run, when there is one. NULL for an
+  /// unattended run, which may never use a personal connection.
+  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
+
+  /// Control is one-winner coordination: claimed by conditional UPDATE, and
+  /// while held every browser tool for this session is refused.
+  controlledByUserId String?   @map("controlled_by_user_id") @db.Uuid
+  controlClaimedAt   DateTime? @map("control_claimed_at")
+
+  /// Hard TTL, mirrored into Browserbase's own session timeout so a dead
+  /// worker cannot run a browser past it.
+  expiresAt  DateTime  @map("expires_at")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  /// `run_terminal` | `tool` | `reaper` | `expiry` | `control_release` —
+  /// which writer released it, for diagnosing leaks.
+  releasedBy String?   @map("released_by")
+  lastError  String?   @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   CloudBrowserConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  run          Run                    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([threadId, status])
+  @@index([connectionId, startedAt])
+  @@map("cloud_browser_sessions")
 }
