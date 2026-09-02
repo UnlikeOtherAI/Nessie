@@ -127,14 +127,27 @@ so billing shows appropriately. Verified in code
   rate it from the snapshot either, because the portfolio's `unitsIn` /
   `unitsOut` collapse the modality split (audio vs text differ 4–16× in
   price), so the dollars are not reconstructible downstream.
-- **Required follow-up (Ledger + UOA, not Nessie):** carry the
-  client-reported estimated cost into the portfolio for telemetry-basis
-  rows — most naturally by populating `rawProviderEstimatedCost` for them
-  and letting the existing `costProvenance: "client_reported"` dimension
-  label its trust level, leaving UOA to decide how to rate it into
-  credits. Until that lands, Nessie's `/tokens` statement will show voice
-  calls as usage without charges; Nessie-side there is nothing to build or
-  work around (rendering UOA-authored models only is the invariant).
+- **Decided billing flow (2026-09-02):** Ledger passes the call's cost
+  through to UOA; UOA — the sole commercial authority, owning payments and
+  tariffs — applies its margin on top (10–30%, exact rate still Ondrej's
+  call, and a UOA tariff decision Nessie never sees as a number); the
+  resulting credit charge appears on the UOA-authored statement Nessie
+  renders at `/tokens`. Nessie-side there is nothing to build — rendering
+  UOA-authored models only is the invariant, and margin application lives
+  strictly in UOA.
+- **Required follow-up in Ledger** to make that flow real: carry the cost
+  into the portfolio for telemetry-basis rows. One precision on "real
+  costs": for ephemeral Live sessions Google exposes **no provider-side
+  metering**, so the truest cost Ledger can ever pass is its own
+  per-modality-priced figure computed from the client-reported
+  `usageMetadata` — already stored per turn as `LedgerEntry.estimated`.
+  The change is to surface that figure in the `metering-portfolio-v1`
+  aggregation (today it sums only the `rawProvider*Cost` columns, which
+  telemetry rows null), keeping the existing
+  `costProvenance: "client_reported"` dimension as the trust label so UOA
+  rates it knowingly. Until that lands, `/tokens` shows voice calls as
+  usage with no charge. This is a Ledger contract change consumed by UOA —
+  its own task in the ledger repo, coordinated with UOA's rating side.
 - Trust note, for the record: usage is client-reported because Google
   exposes no server-side metering for ephemeral Live sessions — a
   compromised client could under-report. Exposure is bounded by the $5/day
