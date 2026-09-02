@@ -115,7 +115,12 @@ const makeDeps = () => {
     },
     plan: { update: async () => ({}) },
     planStep: { count: async () => 0, update: async () => ({}) },
-    run: { update: async () => ({}) },
+    run: {
+      // The ledger writer reads the run's own subscription pin to decide which
+      // purse an invocation spent, so the fake has to model that read.
+      findUnique: async () => ({ modelSubscription: null }),
+      update: async () => ({}),
+    },
     task: { update: async () => ({}) },
     taskEvent: { create: async () => ({}) },
   }

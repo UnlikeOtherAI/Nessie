@@ -11,6 +11,17 @@ import { enqueueInteractiveReplyPush } from './reply-push.js'
 
 type BudgetBlockOptions = {
   beforeBlockedRunTerminalization?: () => Promise<void>
+  /**
+   * True when this run spends the agent owner's personal subscription.
+   *
+   * The organization budget then does not apply, in either direction. Blocking
+   * would refuse a run the organization is not paying for — with "buy more
+   * credits" copy that names the wrong purse — and a `degrade` verdict would
+   * silently rewrite the run onto the organization's cheaper Ledger provider,
+   * moving the spend it was meant to cap. The per-run backstop envelope
+   * (Agent.runLimits / NESSIE_RUN_BACKSTOP_*) still applies in full.
+   */
+  subscriptionPinned?: boolean
 }
 
 export const terminalizeBudgetBlockedRun = async (
@@ -84,6 +95,9 @@ export const applyBudgetGate = async (
   // Only a live human conversational turn (payload.interactive) is exempt by
   // default; automations — triggers (even manually fired), subtasks, mailbox,
   // scheduled runs — leave interactive unset and are throttled.
+  if (options.subscriptionPinned === true) {
+    return { blocked: false, modelOverride: null }
+  }
   const evaluation = await evaluateBudget(
     deps.prisma,
     {
@@ -131,12 +145,17 @@ export const createBudgetBlockedProbe = (
   deps: ExecutionDependencies,
   context: RunContext,
   payload: RunExecuteJobPayload,
+  options: { subscriptionPinned?: boolean } = {},
 ): (() => Promise<boolean>) => {
   // The pre-run gate just evaluated; start the throttle window from now.
   let lastEvaluatedAt = Date.now()
   let blocked = false
 
   return async () => {
+    // Same reasoning as the pre-run gate: an organization cap must not stop a
+    // run the organization is not paying for, mid-flight any more than at the
+    // door. The run's own backstop envelope still stops it.
+    if (options.subscriptionPinned === true) return false
     if (blocked) return true
     if (Date.now() - lastEvaluatedAt < BUDGET_RECHECK_INTERVAL_MS) return false
     lastEvaluatedAt = Date.now()

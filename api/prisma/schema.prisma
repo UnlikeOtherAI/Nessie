@@ -1218,6 +1218,7 @@ model Organization {
   webPushSubscriptions             WebPushSubscription[]
   pushDeliverys                    PushDelivery[]
   commsConnections                 CommsConnection[]
+  modelSubscriptions               ModelSubscription[]
   commsOAuthStates                 CommsOAuthState[]
   commsEvents                      CommsEvent[]
   executors                        Executor[]
@@ -1372,6 +1373,9 @@ model OrganizationMember {
   /// Agents this member stewards. Tenancy only — a retained deactivated row
   /// still satisfies the FK, so readers re-derive liveness.
   ownedAgents             Agent[]                  @relation("AgentOwner")
+  /// Personal model subscriptions this member has linked. Same tenancy-only
+  /// contract as `ownedAgents`: liveness is re-derived, never assumed.
+  modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
 
@@ -2089,6 +2093,13 @@ model Agent {
   todosEnabled                   Boolean                         @default(false) @map("todos_enabled")
   provider                       String?                         @map("provider")
   model                          String?                         @map("model")
+  /// Set when this agent runs on its owner's personal subscription. The
+  /// selection is an explicit pointer, never a parse of `provider`, because a
+  /// person may link two accounts at the same provider and the two must be
+  /// distinguishable at run resolution. `provider` still carries the
+  /// `subscription/<key>` namespace so a value that escapes this branch fails
+  /// closed (a `/` is illegal in a Ledger service id) instead of dispatching.
+  modelSubscriptionId            String?                         @map("model_subscription_id") @db.Uuid
   routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
   avatarBackgroundColor          String?                         @map("avatar_background_color")
@@ -2150,6 +2161,10 @@ model Agent {
   // organizationId along with its owner. organization_members rows are never
   // deleted (deactivation is a reversible flag), so this never fires.
   ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+  /// SetNull, not Cascade: disconnecting a subscription must never delete the
+  /// agent. The run-time gate then fails closed on the dangling selection and
+  /// names the remedy, which is the behaviour a person expects.
+  modelSubscription              ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
 
   agentCards AgentCard[]
 
@@ -2332,6 +2347,14 @@ model Run {
   // relation, mirroring `Message.replyParticipantIds`: readers (the thinking
   // bootstrap endpoint) never re-derive placement.
   replyRootMessageId                  String?                         @map("reply_root_message_id") @db.Uuid
+  // The inference lane, PINNED at run admission. A subscription-routed run
+  // records which subscription and which credential generation admitted it, so
+  // a relink mid-run cannot switch accounts underneath it and a continuation
+  // whose binding is no longer valid fails closed instead of silently sliding
+  // back to the organization's Ledger route.
+  modelSubscriptionId                 String?                         @map("model_subscription_id") @db.Uuid
+  modelSubscriptionEpoch              Int?                            @map("model_subscription_epoch")
+  modelSubscription                   ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
   agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
   trigger                             AgentTrigger?                   @relation(fields: [triggerId], references: [id], onDelete: SetNull)
@@ -4217,6 +4240,14 @@ model TokenLedgerEvent {
   pricingOutputPerM     Decimal?           @map("pricing_output_per_m") @db.Decimal(20, 8)
   estimatedCostAmount   Decimal?           @map("estimated_cost_amount") @db.Decimal(20, 8)
   estimatedCostCurrency String?            @map("estimated_cost_currency")
+  /// Which purse paid. `personal_subscription` events are excluded from
+  /// pricing resolution and from every organization budget sum by THIS field,
+  /// never by the absence of a pricing profile — an owner-authored wildcard
+  /// profile would otherwise price spend the organization never incurred.
+  billingSource         InferenceBillingSource @default(ledger) @map("billing_source")
+  /// Which link paid, and therefore whose plan. Attribution for these rows is
+  /// the subscription owner, not the person who happened to post.
+  modelSubscriptionId   String?            @map("model_subscription_id") @db.Uuid
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
@@ -5988,6 +6019,160 @@ model VoiceSession {
   @@index([userId, startedAt])
   @@index([installationId, status])
   @@map("voice_sessions")
+}
+
+// ─── Personal model subscriptions ─────────────────────────────────────────
+// A person links their own consumer AI subscription (Kimi, GLM, and later
+// OpenAI Codex / xAI Grok) and the agents THEY own run on it. Token values
+// never live here: they are held by the deployment's vault under a dedicated,
+// separately-ACLed project, and these rows carry only the pointer plus the
+// metadata the coordinator needs to serialize rotation.
+// Spec: docs/plans/2026-09-02-personal-model-subscriptions.md
+
+enum ModelSubscriptionProvider {
+  kimi
+  glm
+  openai_codex @map("openai-codex")
+  grok
+}
+
+enum ModelSubscriptionStatus {
+  active
+  needs_reauthorization
+  disconnected
+  error
+}
+
+/// Why a subscription is not healthy. Typed because the remedy differs:
+/// `needs_reauthorization` is a button (relink), everything else is an edit or
+/// a wait. Mirrors the trigger-health discipline — the transition owns the
+/// alert, and the reason is persisted so a surface can explain without parsing
+/// a message string.
+enum ModelSubscriptionHealthReason {
+  ok
+  needs_reauthorization
+  provider_rejected
+  quota_exhausted
+  owner_inactive
+  vault_unavailable
+}
+
+/// Which purse paid for one inference. Structural, never inferred from an
+/// absent pricing profile: connector invocations record the *runtime* provider
+/// (`openai-compatible`), and an owner-authored wildcard ModelPricingProfile
+/// would otherwise price a run the organization never paid for.
+enum InferenceBillingSource {
+  ledger
+  personal_subscription
+}
+
+/// One person's link to one account at one subscription provider. Scoped to
+/// the organization AND the user — never shared across a workspace. Several
+/// accounts per provider are allowed (work + personal), which is why
+/// `providerAccountId` is part of the natural key and why an agent points at a
+/// subscription by id rather than by provider string.
+model ModelSubscription {
+  id                String                        @id @default(uuid()) @db.Uuid
+  organizationId    String                        @map("organization_id") @db.Uuid
+  userId            String                        @map("user_id") @db.Uuid
+  provider          ModelSubscriptionProvider
+  status            ModelSubscriptionStatus       @default(active)
+  /// The provider's stable account identity (an OIDC subject, or a fingerprint
+  /// of an API key for key-based adapters). Proves the same account came back
+  /// on relink; an account mismatch is refused rather than silently re-pointed.
+  providerAccountId String                        @map("provider_account_id")
+  /// Human label for the account picker — an email or masked key suffix. Never
+  /// a credential.
+  accountLabel      String?                       @map("account_label")
+  /// Monotonic credential generation. Every rotation bumps it; a failure
+  /// transition is applied only when the FAILING epoch is still current, so a
+  /// delayed 401 carrying a pre-relink token cannot kill a fresh link.
+  credentialEpoch   Int                           @default(1) @map("credential_epoch")
+  /// Set while one process holds the refresh claim. The claim is short and
+  /// released before the provider call, so no transaction is held open across
+  /// the network; a stale claim is reclaimable after the lease expires.
+  refreshClaimedAt  DateTime?                     @map("refresh_claimed_at")
+  healthReason      ModelSubscriptionHealthReason @default(ok) @map("health_reason")
+  healthDetail      String?                       @map("health_detail")
+  /// Bumped on every health transition so an alert fires exactly once per
+  /// transition rather than once per failing run.
+  healthRevision    Int                           @default(0) @map("health_revision")
+  lastUsedAt        DateTime?                     @map("last_used_at")
+  createdAt         DateTime                      @default(now()) @map("created_at")
+  updatedAt         DateTime                      @updatedAt @map("updated_at")
+
+  credential   ModelSubscriptionCredential?
+  agents       Agent[]
+  runs         Run[]
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Tenancy at the storage boundary, exactly as `Agent.ownerUserId` does it:
+  /// the owner must be a member of THIS organization. It does not prove the
+  /// membership is live — every read re-derives `deactivatedAt: null`.
+  owner        OrganizationMember? @relation("ModelSubscriptionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([organizationId, userId, provider, providerAccountId])
+  @@index([organizationId, userId])
+  @@index([status])
+  @@map("model_subscriptions")
+}
+
+/// The vault pointer for a subscription. Deliberately holds NO ciphertext:
+/// `docs/secret-management-spec.md` bars new secret-capture flows from putting
+/// values in PostgreSQL, so the token bundle lives in the vault and this row
+/// records where. `expiresAt` is an advisory copy for cheap "refresh soon"
+/// queries — the vault bundle is the truth.
+model ModelSubscriptionCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  subscriptionId  String    @unique @map("subscription_id") @db.Uuid
+  vaultReference  String    @unique @map("vault_reference")
+  vaultSecretName String    @map("vault_secret_name")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  subscription ModelSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("model_subscription_credentials")
+}
+
+/// A vault secret whose PostgreSQL pointer is gone (disconnect, owner
+/// deactivation, organization deletion) and which still has to be deleted from
+/// the vault. Without this, a cascade would strand a live refresh token that
+/// nothing can address any more. Swept idempotently; `deletedAt` closes it.
+model ModelSubscriptionVaultTombstone {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  vaultSecretName String    @map("vault_secret_name")
+  attempts        Int       @default(0)
+  lastError       String?   @map("last_error")
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([deletedAt, createdAt])
+  @@map("model_subscription_vault_tombstones")
+}
+
+/// One-shot OAuth / device-code flow state. Flow state is not a durable secret
+/// value — it is single-use and expires in minutes — so it follows the standing
+/// `comms_oauth_states` / `mcp_oauth_states` pattern. `pollLeaseUntil` is what
+/// stops several tabs or replicas from each polling the provider.
+model ModelSubscriptionAuthState {
+  token          String                    @id
+  organizationId String                    @map("organization_id") @db.Uuid
+  userId         String                    @map("user_id") @db.Uuid
+  provider       ModelSubscriptionProvider
+  payload        Json
+  pollLeaseUntil DateTime?                 @map("poll_lease_until")
+  nextPollAt     DateTime?                 @map("next_poll_at")
+  expiresAt      DateTime                  @map("expires_at")
+  consumedAt     DateTime?                 @map("consumed_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  @@index([organizationId, userId])
+  @@index([expiresAt])
+  @@map("model_subscription_auth_states")
 }
 
 /// Which account pays for, and can replay, the browsers opened through this
