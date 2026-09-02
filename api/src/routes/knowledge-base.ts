@@ -374,7 +374,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     // The auto-saving editor states the revision it edited; a stale save is
     // refused so the client can offer the choice in place, never resolved by
-    // taking the last write (docs/navigation.md → "Drafts").
+    // taking the last write (docs/navigation/overview.md → "Drafts").
     const ifMatch = readIfMatchRevision(request)
     if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)
     let page: KnowledgePageRecord | null

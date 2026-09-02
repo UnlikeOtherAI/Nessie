@@ -1,5 +1,5 @@
 // The native WebView's interactive back/forward swipe is off on every form
-// factor (docs/navigation.md §10, plan §7). It is a WebView-wide switch that
+// factor (docs/navigation/overview.md §10, plan §7). It is a WebView-wide switch that
 // cannot be scoped to one column, and two owners of one edge gesture is the
 // exact failure phones already fixed: it would slide the whole document over
 // a blank native host (the SPA keeps a single history entry, so nothing is

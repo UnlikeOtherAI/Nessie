@@ -90,7 +90,7 @@ export type ResponsivePageHeaderProps = {
   below?: ReactNode
   eyebrow?: string
   // The title's heading level. `h1` is the screen's own title — the one the
-  // settle focuses (docs/navigation.md §12) — and `h2` is for the panes and
+  // settle focuses (docs/navigation/overview.md §12) — and `h2` is for the panes and
   // panels that sit *inside* a screen, which keep the same look.
   heading?: 'h1' | 'h2'
   leading?: ReactNode

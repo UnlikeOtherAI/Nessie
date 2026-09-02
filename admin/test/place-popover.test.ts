@@ -10,7 +10,7 @@ import {
 } from '../src/components/overlays/placePopover.js'
 
 /**
- * The one placement helper (docs/navigation.md §7). Five call sites used to
+ * The one placement helper (docs/navigation/overview.md §7). Five call sites used to
  * carry a private version of this arithmetic and three of them had no flip at
  * all, so a menu opened near the bottom of a short window simply ran off it.
  * These pin the two halves of the promise: the preferred side is used whenever

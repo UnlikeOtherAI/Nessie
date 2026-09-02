@@ -93,11 +93,11 @@ const toCommittedRoute = <Payload>(
 })
 
 // Payload for a screen the stack seeds beneath a cold start's landing route
-// (docs/navigation.md §8): the viewport renders it from the route table,
+// (docs/navigation/overview.md §8): the viewport renders it from the route table,
 // and the route's own commit replaces it the moment the person goes there.
 export type SeedPayload<Payload> = (pathname: string) => Payload
 
-// `layout` decides how a route classifies (docs/navigation.md §5): on
+// `layout` decides how a route classifies (docs/navigation/overview.md §5): on
 // `split` roots share the floor with their details and in-parent nested
 // rows collapse onto the parent, so the same reducer serves both layouts.
 // With `seed`, a fresh stack (a cold start, a section change) also carries
@@ -236,7 +236,7 @@ export const advancePhoneNavigationStack = <Payload>(
 // It is an entry like any other — same layers, same motion, same Back —
 // keyed `stage:<id>`, one depth above whatever it was pushed over, and it
 // carries its route's pathname so a same-route re-render still refreshes
-// the route beneath it (docs/navigation.md §6).
+// the route beneath it (docs/navigation/overview.md §6).
 const stageIndexOf = <Payload>(stack: PhoneNavigationStack<Payload>, id: string): number =>
   stack.entries.findIndex(
     (entry, index) => index <= stack.currentIndex && entry.key === `${STAGE_KEY_PREFIX}${id}`,

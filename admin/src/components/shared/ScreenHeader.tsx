@@ -10,7 +10,7 @@ import {
   type PageHeaderAction,
 } from './ResponsivePageHeader'
 
-// The one header every screen renders (docs/navigation.md §9, plan §4.9).
+// The one header every screen renders (docs/navigation/overview.md §9, plan §4.9).
 //
 // It replaced `AdminPageHeader`, `MobileSectionHeader` and the hand-rolled
 // hero and 58px bars each page had grown, which disagreed on height, title

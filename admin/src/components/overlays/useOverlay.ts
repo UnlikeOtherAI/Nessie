@@ -12,7 +12,7 @@ import { useReducedMotion } from '../../navigation/reduced-motion'
 import { useModalA11y } from '../shared/useModalA11y'
 import { useOverlayDismiss } from '../shared/useOverlayDismiss'
 
-// The shared work every overlay does once (docs/navigation.md §7): the Back
+// The shared work every overlay does once (docs/navigation/overview.md §7): the Back
 // registration while open, Escape and the focus trap (modal, sheet and the
 // sanctioned blocking nesting; a popover gets Escape only), the drag-safe
 // scrim dismiss, the layer, and the open/close motion on the kind's token —

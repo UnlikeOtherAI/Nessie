@@ -5,7 +5,7 @@ import { whenStackSettled } from '../../navigation/transition-state'
 import { Card, type CardRegion } from './Card'
 
 /**
- * The one region cards live in (docs/navigation.md §7). Exactly one of these is
+ * The one region cards live in (docs/navigation/overview.md §7). Exactly one of these is
  * mounted per shell.
  *
  * Two things it owns that a card cannot decide for itself:

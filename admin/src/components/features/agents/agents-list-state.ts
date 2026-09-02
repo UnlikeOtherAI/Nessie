@@ -7,7 +7,7 @@ import type { AgentScope } from './agent-scope'
 // on, matching the scroll/selection restoration the rest of the section already
 // has. It resets on a full page reload, by design.
 //
-// The active scope itself lives in `?scope=` now (docs/navigation.md §1, "Tab
+// The active scope itself lives in `?scope=` now (docs/navigation/overview.md §1, "Tab
 // hosts"); the copy kept here is the *default* the hook falls back to when the
 // URL names no scope, which is what makes returning from an agent's detail land
 // on the tab the reader left rather than on Team.

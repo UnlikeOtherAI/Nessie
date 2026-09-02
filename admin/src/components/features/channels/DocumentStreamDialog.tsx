@@ -112,7 +112,7 @@ export const DocumentStreamDialog = ({
           full-screen sheet with no backdrop, vs. a centred card) — a decision
           the shell's one panel shape cannot express. `useOverlay` still gives
           it the Back registration, focus trap, drag-safe scrim and layer
-          every other overlay gets (docs/navigation.md §7). */}
+          every other overlay gets (docs/navigation/overview.md §7). */}
       <div
         {...(phoneLayout ? {} : overlay.scrimProps)}
         className={

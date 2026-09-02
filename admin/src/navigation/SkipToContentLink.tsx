@@ -1,4 +1,4 @@
-// docs/navigation.md §12 — one skip link at the top of the shell, targeting
+// docs/navigation/overview.md §12 — one skip link at the top of the shell, targeting
 // the shell's own `<main>` (SHELL_MAIN_ID, given `tabIndex={-1}` so a
 // non-heading element can still receive programmatic focus). Visually
 // hidden until focused: Tailwind's `sr-only` clips it off-screen, and

@@ -111,7 +111,7 @@ const describe = (frame) => frame.layers
 
 // The bounce itself: a stack container that scrolled sideways landed the
 // slide short of its resting place. Zero at every sampled frame is the
-// assertion that catches it (docs/navigation.md §2).
+// assertion that catches it (docs/navigation/overview.md §2).
 export const assertNoSidewaysScroll = (checks, { frames, prefix }) => {
   for (const frame of frames) {
     const at = `${prefix}: at ${frame.fraction * 100} %`

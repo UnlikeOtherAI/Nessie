@@ -1,7 +1,7 @@
 // Freezing a real transition. Everything here goes through
 // `document.getAnimations()`, which sees a CSS keyframe animation and a Web
 // Animations one alike — the navigation stack is moving from the first to
-// the second (docs/navigation.md §3), and the suite must not care which.
+// the second (docs/navigation/overview.md §3), and the suite must not care which.
 //
 // The freezer arms before the interaction and pauses every animation on a
 // `[data-phone-navigation-layer]` the frame it appears; the driver then

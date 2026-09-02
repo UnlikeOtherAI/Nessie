@@ -154,7 +154,7 @@ export const AgentAvatarQuickEdit = ({
         // close control and no visible title row, a different chrome from the
         // shell's title-bar header. `useOverlay` still gives it the Back
         // registration, focus trap, drag-safe scrim and layer every other
-        // overlay gets (docs/navigation.md §7).
+        // overlay gets (docs/navigation/overview.md §7).
         <div
           {...overlay.scrimProps}
           className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"

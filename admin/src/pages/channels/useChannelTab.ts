@@ -9,7 +9,7 @@ import {
 
 // Which section of a conversation is showing, in one place.
 //
-// The section lives in `?tab=` (docs/navigation.md §1, "Tab hosts"), so a link
+// The section lives in `?tab=` (docs/navigation/overview.md §1, "Tab hosts"), so a link
 // to a channel's Files opens on Files, a refresh keeps it, and Back leaves the
 // channel rather than walking its sections.
 //

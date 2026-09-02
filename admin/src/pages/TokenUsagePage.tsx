@@ -25,7 +25,7 @@ export const TokenUsagePage = () => {
   const refreshedCheckoutSerial = useRef(0)
   const canReadStatement = billingCapability.data?.canReadStatement === true
   // UOA sends the person back here with the outcome; it is a consumed intent
-  // (docs/navigation.md §8), so the notice shows for this visit and a
+  // (docs/navigation/overview.md §8), so the notice shows for this visit and a
   // refresh or Back lands on plain /tokens without re-announcing it.
   const checkoutIntent = useConsumedIntent(UOA_BILLING_CHECKOUT_RETURN_PARAMETER)
   const checkoutReturn = parseUoaBillingCheckoutReturn(checkoutIntent.value)

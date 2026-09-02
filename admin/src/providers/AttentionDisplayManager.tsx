@@ -18,7 +18,7 @@ type BadgingNavigator = Navigator & {
 }
 
 // Badges are keyed by the surface registry's section names, the same
-// vocabulary `nessie:screen` posts (docs/navigation.md §9/§10), so the shell
+// vocabulary `nessie:screen` posts (docs/navigation/overview.md §9/§10), so the shell
 // reads one section language rather than a per-message one. A section the
 // admin does not count is simply absent, and the shell reads it as 0.
 export const attentionBadgeCounts = (

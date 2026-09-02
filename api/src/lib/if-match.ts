@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 
 /**
- * `If-Match` for the auto-saving editors (docs/navigation.md → "Drafts").
+ * `If-Match` for the auto-saving editors (docs/navigation/overview.md → "Drafts").
  *
  * A surface that saves itself every couple of seconds cannot ask "are you sure
  * you want to overwrite?" — so it states which revision it edited, and the

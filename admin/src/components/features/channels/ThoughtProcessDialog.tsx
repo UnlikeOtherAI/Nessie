@@ -85,7 +85,7 @@ export const ThoughtProcessDialog = ({
     // scrim that stops Escape from also closing the reply panel underneath.
     // `useOverlay` still gives it the Back registration, focus trap,
     // drag-safe scrim and layer every other overlay gets
-    // (docs/navigation.md §7).
+    // (docs/navigation/overview.md §7).
     <div
       {...overlay.scrimProps}
       className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"

@@ -36,7 +36,7 @@ export const AgentsList = () => {
   const [initialState] = useState(loadAgentsListState)
   // `scope` in the URL, seeded from the session ledger: a pasted
   // `/agents?scope=personal` opens on Personal, and arriving with no param
-  // restores the scope this reader left on (docs/navigation.md §1, "Tab hosts").
+  // restores the scope this reader left on (docs/navigation/overview.md §1, "Tab hosts").
   const [activeScope, setActiveScope] = useTabParam(
     'scope',
     AGENT_SCOPES,

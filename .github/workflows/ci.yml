@@ -327,7 +327,7 @@ jobs:
       # Real-browser navigation transitions: each case freezes the actual
       # animation with document.getAnimations() at 0 %, 50 % and 100 %,
       # asserts layer positions and scrollLeft numerically, and saves the
-      # frames (docs/navigation.md → "Verification").
+      # frames (docs/navigation/overview.md → "Verification").
       - name: Run navigation transition suite
         run: pnpm --filter @nessie/admin test:e2e:navigation
 

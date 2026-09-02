@@ -6,7 +6,7 @@ import { isStackTransitioning, subscribeStackTransition } from './transition-sta
 // in — renders on this rather than guessing at a timer, so the rule "nothing
 // moves during a transition" holds for every caller.
 //
-// Rulebook: docs/navigation.md §4.
+// Rulebook: docs/navigation/overview.md §4.
 export const useStackSettled = (): boolean =>
   useSyncExternalStore(
     subscribeStackTransition,

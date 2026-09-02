@@ -5,7 +5,7 @@ export type ApiClient = {
   get: <TData>(path: string) => Promise<TData>
   // `headers` exists for the conditional writes the auto-saving editors make:
   // `If-Match: <revision>` is what lets the server refuse a stale save instead
-  // of taking the last write (docs/navigation.md → "Drafts").
+  // of taking the last write (docs/navigation/overview.md → "Drafts").
   patch: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
     Promise<TData>
   post: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>

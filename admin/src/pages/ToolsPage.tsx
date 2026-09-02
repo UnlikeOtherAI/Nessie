@@ -58,7 +58,7 @@ export const ToolsPage = () => {
   const instanceId = readMcpInstanceToolFilter(searchParams)
 
   // The source narrowing is part of what the list shows, so it lives in the
-  // URL alongside `?status=` and `?search=` (docs/navigation.md §1,
+  // URL alongside `?status=` and `?search=` (docs/navigation/overview.md §1,
   // "Tab hosts"). 'all' is the strip's name for no narrowing at all.
   const [sourceSegment, setSourceSegment] = useTabParam(
     'source',

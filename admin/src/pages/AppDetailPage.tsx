@@ -49,7 +49,7 @@ export const AppDetailPage = () => {
   )
   // The tab lives in the URL so `?tab=accounts` is linkable, and it is written
   // with `replace` so flipping tabs never enters history
-  // (docs/navigation.md §1, "Tab hosts").
+  // (docs/navigation/overview.md §1, "Tab hosts").
   const [activeTab, selectTab] = useTabParam('tab', tabIds, 'overview')
 
   // A custom app's address is checked before it arrives here. Its first

@@ -17,7 +17,7 @@
 //    the window is a no-op. `prefetchQuery` additionally honours `staleTime`,
 //    so a warm entry costs no request even if the set has expired.
 //
-// Rulebook: `docs/navigation.md` §"Arriving with content". Plan: step 10 of
+// Rulebook: `docs/navigation/overview.md` §"Arriving with content". Plan: step 10 of
 // `docs/done/2026-09-01-navigation-motion-system.md` (§4.10).
 
 import { useCallback, useRef } from 'react'

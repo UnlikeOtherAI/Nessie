@@ -125,7 +125,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
   // This one channel-list scroller is shared across every route in the
   // section (channel A -> B never remounts it), so its remembered position
   // only needs to survive it swapping out for another section's sidebar and
-  // back — a constant key, not a per-route one (docs/navigation.md §4.13).
+  // back — a constant key, not a per-route one (docs/navigation/overview.md §4.13).
   const channelListScroll = useScrollMemory('sidebar:channel-list');
 
   return (

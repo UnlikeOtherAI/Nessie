@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-// The step-15 source-regex gates (docs/navigation.md §11 "Gates", plan
+// The step-15 source-regex gates (docs/navigation/overview.md §11 "Gates", plan
 // docs/done/2026-09-01-navigation-motion-system.md §4.18): the shapes the
 // script/ESLint gates cannot express precisely enough belong here instead.
 // Each allowlist is a plain list a later commit deletes lines from as the
@@ -50,14 +50,14 @@ test('stack containers clip rather than hide, so no descendant can scroll them',
 })
 
 // Every navigation-owned motion runs on runStackTransition's Web Animations
-// timeline (docs/navigation.md §3), never a CSS keyframe or an in-rule
+// timeline (docs/navigation/overview.md §3), never a CSS keyframe or an in-rule
 // `transition`. `admin/test/phone-navigation-transition.test.ts` already
 // pins the phone-navigation-* keyframe count at zero from the motion side;
 // this gate is the general one, covering both prefixes plus the in-rule
 // transition check the plan's §4.18 table lists separately.
 const NAVIGATION_KEYFRAME_ALLOWLIST = [
   // Knowledge's folder/document/history/editor are still their own routed
-  // views, not yet NestedStage adopters (docs/navigation.md §6, "Adopters …
+  // views, not yet NestedStage adopters (docs/navigation/overview.md §6, "Adopters …
   // in progress"): KnowledgeFilesystemBrowser.tsx and KnowledgeColumns.tsx
   // still apply this class. Delete this entry in the same change that
   // deletes admin/src/styles.css's `kb-view-slide` keyframe and
@@ -77,7 +77,7 @@ test('no new navigation-motion keyframes or transitions on a stack layer', () =>
     unexpectedKeyframes,
     [],
     'A new phone-navigation-*/kb-view-* @keyframes reintroduces CSS-driven '
-      + 'motion; runStackTransition (docs/navigation.md §3) is the only mover.',
+      + 'motion; runStackTransition (docs/navigation/overview.md §3) is the only mover.',
   )
 
   // Every `.phone-navigation-<name>` (and its combinator variants, e.g.
@@ -91,14 +91,14 @@ test('no new navigation-motion keyframes or transitions on a stack layer', () =>
       body,
       /\btransition\s*:/,
       'A `transition:` inside a .phone-navigation-* rule fights '
-        + "runStackTransition's own Web Animations timeline — see docs/navigation.md §3.",
+        + "runStackTransition's own Web Animations timeline — see docs/navigation/overview.md §3.",
     )
   }
 })
 
 // Every centred/edge-anchored overlay composes the shared work useOverlay()
 // does once — Back registration, focus trap/Escape, the drag-safe scrim
-// dismiss, the layer and its motion (docs/navigation.md §7) — either
+// dismiss, the layer and its motion (docs/navigation/overview.md §7) — either
 // directly or through one of the primitives already built on it. A bespoke
 // `role="dialog"` is exactly the fifty-overlays-disagreeing defect the hook
 // replaced.
@@ -132,7 +132,7 @@ test('every role="dialog" surface composes the shared overlay primitives', () =>
     violations,
     [],
     'A role="dialog" surface must render Dialog/ConfirmDialog/Sheet/Popover or '
-      + 'call useOverlay() directly — see docs/navigation.md §7, or allowlist it '
+      + 'call useOverlay() directly — see docs/navigation/overview.md §7, or allowlist it '
       + 'in admin/test/navigation-gates.test.ts while the conversion is in flight.',
   )
 

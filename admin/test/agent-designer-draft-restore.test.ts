@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 // mirrors its reducer into the draft from an effect; on the mount render that
 // reducer still holds the empty baseline, and writing it before the hook's
 // restore landed counted as "nothing to store" — which deleted the very
-// draft the person came back for (docs/navigation.md §15).
+// draft the person came back for (docs/navigation/overview.md §15).
 
 const settle = async (act: (callback: () => Promise<void>) => Promise<void>): Promise<void> => {
   await act(async () => {

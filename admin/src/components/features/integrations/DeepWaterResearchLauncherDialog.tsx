@@ -65,7 +65,7 @@ export const DeepWaterResearchLauncherDialog = ({
     // a `text-base` heading and a sticky in-scroll header, a different panel
     // family from the shell's `.create-channel-panel`. `useOverlay` still gives
     // it the Back registration, focus trap, drag-safe scrim and layer every
-    // other overlay gets (docs/navigation.md §7).
+    // other overlay gets (docs/navigation/overview.md §7).
     <div
       {...overlay.scrimProps}
       className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"

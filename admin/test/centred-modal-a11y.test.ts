@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const SHELL = resolve(SRC, 'components/shared/Dialog.tsx')
 const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
-// The shared overlay hook (docs/navigation.md §7) composes useModalA11y for
+// The shared overlay hook (docs/navigation/overview.md §7) composes useModalA11y for
 // every modal; a file on it is guarded the same way.
 const OVERLAY_HOOK = resolve(SRC, 'components/overlays/useOverlay.ts')
 
@@ -197,7 +197,7 @@ test('no exception has stopped needing to be one', () => {
   }
 })
 
-// `useOverlay` (docs/navigation.md §7) is the one place that composes
+// `useOverlay` (docs/navigation/overview.md §7) is the one place that composes
 // `useModalA11y` and `useOverlayDismiss` — every other overlay goes through
 // it (or the shell, which goes through it too) so the registry, the layer and
 // the motion cannot be forgotten by a call site that reaches for the raw
@@ -222,6 +222,6 @@ test('useModalA11y and useOverlayDismiss are composed only by useOverlay', () =>
     [],
     `${offenders.join(', ')}: imports useModalA11y/useOverlayDismiss directly. Compose useOverlay `
     + '(components/overlays/useOverlay.ts) instead — it is the only file allowed to reach for either '
-    + 'primitive (docs/navigation.md §7).',
+    + 'primitive (docs/navigation/overview.md §7).',
   )
 })

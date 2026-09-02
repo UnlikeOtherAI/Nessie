@@ -10,7 +10,7 @@ const readSource = (relativePath: string): string =>
 
 const workspace = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
 
-// Knowledge's inner screens are nested stages (docs/navigation.md §6): the
+// Knowledge's inner screens are nested stages (docs/navigation/overview.md §6): the
 // stack owns their layers, and each registers its own Back through
 // NestedStage. The workspace itself registers nothing.
 
@@ -117,7 +117,7 @@ test('the agent detail page owns no Back of its own', () => {
   assert.doesNotMatch(page, /LOCAL_BACK_PRIORITY/)
   // Wider layouts keep their own Back beside the title — since step 9 that
   // is `ScreenHeader`'s `onBack`, rendered only because the registry says
-  // this screen has a parent (docs/navigation.md §9).
+  // this screen has a parent (docs/navigation/overview.md §9).
   assert.match(page, /<ScreenHeader/)
   assert.match(page, /onBack=\{backToList\}/)
   assert.match(page, /backLabel="Back to Agents"/)

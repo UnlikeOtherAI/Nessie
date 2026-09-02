@@ -78,7 +78,7 @@ export const ChannelConversationComposePage = () => {
     void navigate(returnTo, { replace: true })
   }, [navigate, returnTo])
   // A route, not a popup — the phone-navigation stack already owns Back for
-  // it there (docs/navigation.md §6), so it registers as a modal overlay only
+  // it there (docs/navigation/overview.md §6), so it registers as a modal overlay only
   // on `split`, where it visually IS a centred dialog over the channel list.
   // Never a breakpoint read of its own: `phoneLayout` is the layout question
   // this page already answers for its own scrim/full-screen branch.
@@ -377,7 +377,7 @@ export const ChannelConversationComposePage = () => {
 
         <form
           className="admin-compose mt-auto flex-shrink-0"
-          // The soft-keyboard inset (docs/navigation.md §4.14) keeps this
+          // The soft-keyboard inset (docs/navigation/overview.md §4.14) keeps this
           // composer above an on-screen keyboard on hosts whose `dvh` does
           // not itself shrink for it.
           style={{ marginBottom: 'var(--keyboard-inset, 0px)' }}

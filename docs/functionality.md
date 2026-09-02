@@ -808,7 +808,7 @@ If MCP action and HTTP route diverge, both must share the same:
 ### Draft-safe write contracts (auto-saving editors)
 
 Every admin surface that holds unsent words auto-saves it
-(`docs/navigation.md` §12), so the write endpoints behind them are idempotent
+(`docs/navigation/overview.md` §12), so the write endpoints behind them are idempotent
 or conditional rather than last-write-wins.
 
 **Client idempotency key — `POST /api/threads/{threadId}/messages`.** The body

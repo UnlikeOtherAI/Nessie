@@ -78,7 +78,7 @@ export const useWorkflowGraphIo = ({
   const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
   // The template version this designer hydrated from, advanced on every save it
   // makes. Sent as `If-Match` so a second editor's save is refused rather than
-  // silently overwritten (docs/navigation.md → "Drafts").
+  // silently overwritten (docs/navigation/overview.md → "Drafts").
   const expectedVersionRef = useRef<number | null>(null)
   // Set when the server refused a save as stale: the header offers the choice
   // in place — keep mine (save unconditionally) or take theirs (rehydrate).

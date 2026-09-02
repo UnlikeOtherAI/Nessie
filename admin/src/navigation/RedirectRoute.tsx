@@ -6,7 +6,7 @@ import { Navigate, useLocation, type To } from 'react-router-dom'
 // arrives intact at the new one. router.tsx renders this and never a bare
 // <Navigate>; admin/test/navigation-redirect-route.test.ts pins both.
 //
-// Rulebook: docs/navigation.md §4.
+// Rulebook: docs/navigation/overview.md §4.
 
 export const RedirectRoute = ({ to }: { to: To }) => {
   const location = useLocation()

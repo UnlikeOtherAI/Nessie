@@ -1,6 +1,6 @@
 // Phone, switching a tab inside the channel (Messages → Files). A tab host
 // swaps its sections in place: it is never a push, never a history entry,
-// and the screen must not move at all (docs/navigation.md §1).
+// and the screen must not move at all (docs/navigation/overview.md §1).
 import { hasPhoneViewport, waitForStackSettled, watchForMotion } from '../lib/freeze.mjs'
 import { clickChannelTab, gotoChannel, selectedChannelTab, shot } from '../lib/page.mjs'
 import { createChecks } from '../lib/expect.mjs'

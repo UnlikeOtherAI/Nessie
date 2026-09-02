@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Drafts — auto-save first, never a save button, never a confirm
- * (docs/navigation.md → "Drafts", plan §4.11).
+ * (docs/navigation/overview.md → "Drafts", plan §4.11).
  *
  * One primitive behind every composer, editor and dialog that holds a person's
  * unsent words. It buffers to `localStorage` on a short debounce and, where an

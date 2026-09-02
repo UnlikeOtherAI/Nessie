@@ -84,7 +84,7 @@
   --nav-easing: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-parallax: 28%;
   --nav-shadow: -12px 0 32px var(--scrim);
-  /* The overlay layer scale (docs/navigation.md §7); mirrors OVERLAY_LAYER in
+  /* The overlay layer scale (docs/navigation/overview.md §7); mirrors OVERLAY_LAYER in
      admin/src/navigation/overlay.ts. Nothing declares a z-index outside it. */
   --layer-stack: 1;
   --layer-card: 40;
@@ -527,7 +527,7 @@ a {
 }
 
 /* The pull-to-refresh indicator a Root or Detail page scroller shows in the
-   native shell (docs/navigation.md §13). Driven inline by the gesture; at
+   native shell (docs/navigation/overview.md §13). Driven inline by the gesture; at
    rest it is invisible and out of the way. */
 .phone-navigation-refresh {
   position: absolute;
@@ -1036,7 +1036,7 @@ a {
   font-size: 13px;
 }
 
-/* The one card region (docs/navigation.md §7): toasts, and anything else that
+/* The one card region (docs/navigation/overview.md §7): toasts, and anything else that
    arrives beside the work rather than over it. Which region is in use is a
    TypeScript decision made from the shell's navigation layout — `data-region`
    is that decision written down, never a second breakpoint. */
@@ -2890,7 +2890,7 @@ button.reaction-pill-active:focus-visible {
   background: var(--overlay-weak);
 }
 
-/* Windows High Contrast (docs/navigation.md §12): every colour token is
+/* Windows High Contrast (docs/navigation/overview.md §12): every colour token is
    still respected in a forced-colors palette (browsers only replace
    background/border/text colours with the OS-chosen system colours, on
    elements we don't opt out with `forced-color-adjust: none`), but the four

@@ -16,7 +16,7 @@ export const useChannelMessageActions = (threadId?: string) => {
   // The message's stored text: the draft's baseline, so an edit that changes
   // nothing is never persisted and Escape on an untouched row leaves no trace.
   const [editingBaseline, setEditingBaseline] = useState('')
-  // Drafts (docs/navigation.md → "Drafts"): an in-progress edit is keyed by the
+  // Drafts (docs/navigation/overview.md → "Drafts"): an in-progress edit is keyed by the
   // message, so Escape keeps it instead of discarding a person's rewrite.
   const editDraft = useDraft<string>(draftKey('message-edit', editingMessageId), {
     initial: editingBaseline,

@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import { isReactNativeWebView, requestNativeFullRefresh } from '../lib/mobile-shell'
 
-// Pull-to-refresh, owned by the web (docs/navigation.md §13): the native
+// Pull-to-refresh, owned by the web (docs/navigation/overview.md §13): the native
 // WebView's own gesture was iOS-only, forced bounces, reloaded the whole
 // document from any screen and told the web nothing, and Android had none.
 // The web owns the gesture at the top of a Root or Detail page scroller that

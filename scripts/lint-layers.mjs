@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Layer-scale gate (docs/navigation.md §7, plan §4.18, step 15): the
+// Layer-scale gate (docs/navigation/overview.md §7, plan §4.18, step 15): the
 // overlay/stack layer scale is declared exactly twice — the `--layer-*`
 // custom properties in styles.css's `:root` block and the mirrored
 // `OVERLAY_LAYER` object in admin/src/navigation/overlay.ts — and every
@@ -139,7 +139,7 @@ if (violations.length > 0) {
       'Literal z-index values are not allowed in admin/src.',
       "Use the layer scale: styles.css's var(--layer-<kind>) in CSS/Tailwind,",
       "or OVERLAY_LAYER[kind] / useOverlay()'s layerStyle in TS/TSX. See",
-      'docs/navigation.md §7 and admin/src/navigation/overlay.ts.',
+      'docs/navigation/overview.md §7 and admin/src/navigation/overlay.ts.',
       '',
       ...violations,
     ].join('\n'),

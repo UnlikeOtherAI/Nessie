@@ -15,7 +15,7 @@ import { getPhoneNavigationBackTarget } from '../layouts/admin-shell/phone-navig
 // The desktop top bar and the iPad toolbar are history controls, not Back:
 // they walk the ledger across sections (see history.ts) and only consult the
 // registry first so a toolbar Back never pops a route underneath an open
-// owner. Rulebook: docs/navigation.md §4.
+// owner. Rulebook: docs/navigation/overview.md §4.
 
 export type BackAction =
   | {

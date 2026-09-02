@@ -133,7 +133,7 @@ export const getWorkflowTemplate = async (
 /**
  * The caller's `If-Match` version is not the row's current one: a second editor
  * saved in between. Never resolved by taking the last write — the choice is the
- * person's (docs/navigation.md → "Drafts").
+ * person's (docs/navigation/overview.md → "Drafts").
  */
 export class WorkflowTemplateVersionConflictError extends Error {
   constructor(readonly currentVersion: number) {

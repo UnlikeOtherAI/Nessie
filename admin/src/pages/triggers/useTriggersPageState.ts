@@ -158,7 +158,7 @@ export const useTriggersPageState = (): TriggersPageState => {
 
   // A "scheduled" link (`/agents/triggers#trigger-<id>`) selects its row
   // once; the fragment is consumed, so Back and a refresh keep the person's
-  // own later selection (docs/navigation.md §8).
+  // own later selection (docs/navigation/overview.md §8).
   const linkedTrigger = useConsumedHashIntent('trigger', parseTriggerHash)
   useEffect(() => {
     if (linkedTrigger.value) setSelectedTriggerId(linkedTrigger.value)

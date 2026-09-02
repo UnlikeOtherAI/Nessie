@@ -83,7 +83,7 @@ export const UoaBillingCancellationDialog = ({
     // own `data-testid` panel hook — a different panel family from the shell's
     // `.create-channel-panel`. `useOverlay` still gives it the Back
     // registration, focus trap, drag-safe scrim and layer every other overlay
-    // gets (docs/navigation.md §7).
+    // gets (docs/navigation/overview.md §7).
     <div
       {...overlay.scrimProps}
       className={[

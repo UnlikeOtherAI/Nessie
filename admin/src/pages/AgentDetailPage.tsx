@@ -36,7 +36,7 @@ export const AgentDetailPage = () => {
   const backToList = () => void navigate('/agents')
 
   // `/agents/:id` is a real depth-2 route whose parent is Agents (the surface
-  // registry, docs/navigation.md §4.1), so the shared Back already returns to
+  // registry, docs/navigation/overview.md §4.1), so the shared Back already returns to
   // the list — this page registers no owner of its own, which used to outrank
   // the Knowledge stages inside its Documents tab and leave the agent instead
   // of unwinding the open document. Wider layouts keep their own Back button

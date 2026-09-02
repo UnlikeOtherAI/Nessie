@@ -1,6 +1,6 @@
 // Phone, a link that carries an instruction: `#trigger-<id>` on the Triggers
 // browser and `?messageId=` on a conversation are consumed intents
-// (docs/navigation.md §8). Each is read once and stripped with a replacing
+// (docs/navigation/overview.md §8). Each is read once and stripped with a replacing
 // redirect, so the address the person stands on — and the one Back returns
 // to — is the screen, never the instruction.
 import { createChecks } from '../lib/expect.mjs'

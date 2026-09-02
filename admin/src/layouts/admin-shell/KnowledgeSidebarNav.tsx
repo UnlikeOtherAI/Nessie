@@ -86,7 +86,7 @@ export const KnowledgeSidebarNav = () => {
 
   // Shared across every route in the Knowledge section, so its position only
   // needs to survive it swapping out for another section's sidebar and back
-  // — a constant key, not a per-route one (docs/navigation.md §4.13).
+  // — a constant key, not a per-route one (docs/navigation/overview.md §4.13).
   const treeScroll = useScrollMemory('sidebar:knowledge-tree')
 
   return (

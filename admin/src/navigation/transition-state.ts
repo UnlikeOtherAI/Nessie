@@ -5,7 +5,7 @@
 // wants to slide in. Kept React-independent so the stack, the controller and
 // tests share one instance without a provider.
 //
-// Rulebook: docs/navigation.md §4.
+// Rulebook: docs/navigation/overview.md §4.
 
 type Listener = () => void
 

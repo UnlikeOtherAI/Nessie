@@ -1,4 +1,4 @@
-// What the stack does once a slide has landed (docs/navigation.md §12):
+// What the stack does once a slide has landed (docs/navigation/overview.md §12):
 // move focus and announce the screen — never mid-slide, and never by
 // scrolling a clipped container.
 

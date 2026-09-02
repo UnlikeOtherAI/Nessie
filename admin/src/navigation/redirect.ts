@@ -9,7 +9,7 @@ import { whenStackSettled } from './transition-state'
 // it is dropped if the location moved on while it waited. Every effect that
 // used to call navigate(..., { replace: true }) calls this instead.
 //
-// Rulebook: docs/navigation.md §4.
+// Rulebook: docs/navigation/overview.md §4.
 
 export type RedirectTarget = To
 

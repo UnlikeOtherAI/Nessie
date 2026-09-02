@@ -92,7 +92,7 @@ export const SearchPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   // `?mode=` through the one tab-state hook, seeded from this device's last
   // choice so plain `/search` opens the way the reader left it, while a link
-  // that names a mode wins (docs/navigation.md §1, "Tab hosts").
+  // that names a mode wins (docs/navigation/overview.md §1, "Tab hosts").
   const [storedMode] = useState(readStoredSearchMode)
   const [mode, selectMode] = useTabParam('mode', GLOBAL_SEARCH_MODES, storedMode)
   const [query, setQuery] = useState(() => searchParams.get('query') ?? '')

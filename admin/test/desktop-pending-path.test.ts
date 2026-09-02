@@ -7,7 +7,7 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'u
 
 // A desktop notification clicked on a quit app fires its open event before
 // the SPA subscribes; the init script retains the path and the root redirect
-// replays it once (docs/navigation.md §8).
+// replays it once (docs/navigation/overview.md §8).
 
 test('the retained desktop path is consumed once and must be an internal path', () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')

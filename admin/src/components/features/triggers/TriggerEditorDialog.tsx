@@ -71,7 +71,7 @@ export const TriggerEditorDialog = ({
     [agents, channels, defaultTarget, trigger, workflowInstallations],
   )
 
-  // Drafts (docs/navigation.md → "Drafts"): a half-configured schedule survives
+  // Drafts (docs/navigation/overview.md → "Drafts"): a half-configured schedule survives
   // a dismissal, keyed by the trigger being edited. Local only — a debounced
   // PUT would re-arm a live schedule on every keystroke, so Save stays the act
   // that changes when something fires.
@@ -286,7 +286,7 @@ export const TriggerEditorDialog = ({
     // renders a description at `text-xs`, and its panel is 680px wide, which is
     // not one of the shell's four panel geometries. `useOverlay` still gives it
     // the Back registration, focus trap, drag-safe scrim and layer every other
-    // overlay gets (docs/navigation.md §7).
+    // overlay gets (docs/navigation/overview.md §7).
     <div
       {...overlay.scrimProps}
       style={{

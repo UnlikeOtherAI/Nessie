@@ -24,7 +24,7 @@ import {
 } from '../src/lib/query-keys.js'
 
 // Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
-// docs/navigation.md §"Arriving with content".
+// docs/navigation/overview.md §"Arriving with content".
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')

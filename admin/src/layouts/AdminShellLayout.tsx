@@ -248,7 +248,7 @@ const AuthenticatedAdminShellLayout = () => {
   );
 
   // A cold start seeds the screens beneath the landed route
-  // (docs/navigation.md §8): a root's page on a phone is the section's list;
+  // (docs/navigation/overview.md §8): a root's page on a phone is the section's list;
   // anything else is the route table's page for that pathname.
   const seedScreen = (pathname: string): ReactNode =>
     isPhoneTabRoot(pathname) && phoneTabRootHasContextualList(pathname)

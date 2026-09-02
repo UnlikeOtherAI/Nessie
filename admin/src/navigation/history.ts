@@ -9,7 +9,7 @@ import {
 // records every PUSH / REPLACE / POP the router commits; these helpers derive
 // what those surfaces need from it instead of counting on their own.
 //
-// Rulebook: docs/navigation.md §4.
+// Rulebook: docs/navigation/overview.md §4.
 
 export const canGoBack = (ledger: PhoneHistoryLedger): boolean => ledger.index > 0
 

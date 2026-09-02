@@ -3,13 +3,13 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 /**
- * Step 8 of docs/navigation.md §7: the bespoke centred dialogs that used to
+ * Step 8 of docs/navigation/overview.md §7: the bespoke centred dialogs that used to
  * compose `useModalA11y`/`useOverlayDismiss` directly now go through one of
  * the two sanctioned doorways — the shared `Dialog`/`ConfirmDialog` shell for
  * a panel that fits one of its four geometries, or `useOverlay` directly for
  * a genuine carve-out (its own comment says why it isn't `Dialog`). Either
  * way, none of them may hand-roll a z-index of its own any more — the shared
- * layer scale (`docs/navigation.md` §7) is the only source of one.
+ * layer scale (`docs/navigation/overview.md` §7) is the only source of one.
  *
  * `EditProjectDialog` landed on the shell in an earlier step; it is pinned
  * here too because it is one of the fourteen files this step named.
@@ -44,7 +44,7 @@ const ADOPTERS: Adopter[] = [
   { mode: 'overlay', path: 'components/features/billing/UoaBillingCancellationDialog.tsx' },
   { mode: 'overlay', path: 'components/features/integrations/DeepWaterResearchLauncherDialog.tsx' },
   { mode: 'overlay', path: 'components/features/triggers/TriggerEditorDialog.tsx' },
-  // A Flow, not a modal on `single` (docs/navigation.md §7): still pinned here
+  // A Flow, not a modal on `single` (docs/navigation/overview.md §7): still pinned here
   // because it is one of the fourteen files and still must own no z-index.
   { mode: 'overlay', path: 'pages/ChannelConversationComposePage.tsx' },
 ]

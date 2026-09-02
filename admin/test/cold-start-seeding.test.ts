@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mountPhoneNavigationViewport } from './support/phone-navigation-viewport-harness'
 
-// A cold start (docs/navigation.md §8) lands on a screen with no stack
+// A cold start (docs/navigation/overview.md §8) lands on a screen with no stack
 // beneath it. The stack seeds the registry's parent chain as render-only
 // layers so Back and the edge swipe reveal what a real navigation would have.
 

@@ -53,7 +53,7 @@ export const NativePhoneNavigationBridge = () => {
 
   // `nessie:screen` — what screen the person is on, so the shell stops
   // re-deriving the tab from a hand-copied prefix list and can name the
-  // screen in its own chrome (docs/navigation.md §9/§10, plan §4.16).
+  // screen in its own chrome (docs/navigation/overview.md §9/§10, plan §4.16).
   // `section`, `screenType` and `depth` come off the surface registry,
   // `hasBack` off the one Back resolver, and `title` off the rendered header.
   // Posted on every settled change of any field, never on a re-render that

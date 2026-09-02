@@ -123,7 +123,7 @@ export const useTabletShell = (): boolean => {
   return isReactNativeWebView() && (tablet || largePhoneLandscape)
 }
 
-// The navigation layout (docs/navigation.md §5): one stack over the whole
+// The navigation layout (docs/navigation/overview.md §5): one stack over the whole
 // content region, or a pinned list column beside detail stacks. This is the
 // single composition of shell probes × viewport bands; every hook here reads
 // its probes unconditionally, so crossing a band between renders never

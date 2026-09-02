@@ -27,7 +27,7 @@ type ConfirmDialogProps = {
   body?: ReactNode
   cancelLabel?: string
   /**
-   * The sanctioned nesting (docs/navigation.md §7): a confirm over an already
+   * The sanctioned nesting (docs/navigation/overview.md §7): a confirm over an already
    * open modal renders in the blocking layer and outranks it for Back, rather
    * than competing with it in the plain modal layer. Off by default — every
    * call site converted so far replaces a standalone `window.confirm` with

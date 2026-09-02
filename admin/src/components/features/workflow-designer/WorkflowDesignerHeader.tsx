@@ -22,7 +22,7 @@ type WorkflowDesignerHeaderProps = {
   onTestRun: () => void
   testRunState: WorkflowTestRunState
   // A save the server refused as stale. The two answers replace Save in place —
-  // never a blocking dialog (docs/navigation.md → "Drafts").
+  // never a blocking dialog (docs/navigation/overview.md → "Drafts").
   versionConflict: boolean
   onKeepMine: () => void
   onTakeTheirs: () => void

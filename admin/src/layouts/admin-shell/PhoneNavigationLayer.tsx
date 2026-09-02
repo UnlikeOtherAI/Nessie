@@ -75,7 +75,7 @@ const seededLocationContext = (
 })
 
 // A Root or Detail page scroller offers pull-to-refresh in the native
-// shell (docs/navigation.md §13); a nested screen, a flow, a stage and a
+// shell (docs/navigation/overview.md §13); a nested screen, a flow, a stage and a
 // seeded layer never do.
 const offersRefresh = (pathname: string): boolean => {
   const type = matchSurface(pathname)?.surface.type

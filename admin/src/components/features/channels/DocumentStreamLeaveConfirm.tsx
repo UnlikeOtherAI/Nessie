@@ -22,7 +22,7 @@ type DocumentStreamLeaveConfirmProps = {
  * as if they were the same thing would make one of the two a lie.
  *
  * Renders on `<Dialog blocking>` rather than `ConfirmDialog`: this is the
- * sanctioned nesting (docs/navigation.md §7) — a confirm over the already-open
+ * sanctioned nesting (docs/navigation/overview.md §7) — a confirm over the already-open
  * document popup — but its three actions (Cancel / Stop and discard / the
  * mode's own "keep writing" verb) don't fit `ConfirmDialog`'s two-button
  * cancel/confirm shape.

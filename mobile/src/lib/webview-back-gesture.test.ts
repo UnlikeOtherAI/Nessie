@@ -8,7 +8,7 @@ import { shouldInstallNativeBackHandler } from './native-phone-navigation'
 // The native back/forward swipe is a WebView-wide switch that cannot be
 // scoped to a column; the admin's stack owns the edge swipe on phones and
 // every screen header carries a Back on the wider layouts, so the switch is
-// off everywhere (docs/navigation.md §10).
+// off everywhere (docs/navigation/overview.md §10).
 test('the native back/forward gesture is off on every form factor', () => {
   assert.equal(NATIVE_BACK_FORWARD_GESTURES, false)
   const webView = readFileSync(join(process.cwd(), 'src', 'components', 'MobileAdminWebView.tsx'), 'utf8')

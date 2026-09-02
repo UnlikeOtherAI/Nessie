@@ -1,6 +1,6 @@
 import { NAV_MOTION, OVERLAY_MOTION } from './motion'
 
-// The overlay family (docs/navigation.md §7): four kinds plus the one
+// The overlay family (docs/navigation/overview.md §7): four kinds plus the one
 // sanctioned nesting, each with one stacking layer, one Back precedence and
 // one motion. Every number here is mirrored as a token in styles.css
 // (`--layer-*`); admin/test/navigation-overlay.test.ts pins the two equal.

@@ -81,7 +81,7 @@ export const useChannelComposer = ({
   const uploadAttachment = useUploadAttachment()
   const attachments = useComposerAttachments()
   const bindAgent = useBindAgent()
-  // Drafts (docs/navigation.md → "Drafts"): text and staged-attachment
+  // Drafts (docs/navigation/overview.md → "Drafts"): text and staged-attachment
   // metadata persist per entity, so switching channels can no longer carry one
   // conversation's unsent post into the next.
   const draft = useDraft<ComposerDraft>(draftKey, {

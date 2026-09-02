@@ -45,7 +45,7 @@ delivery.
 ## Navigation — one framework
 
 Anything that moves a person between screens, opens an overlay, or handles
-Back goes through the navigation framework — read `docs/navigation.md` first.
+Back goes through the navigation framework — read `docs/navigation/overview.md` first.
 It is the only way, and adding a second one is the defect Rule zero names.
 
 ## Workflow

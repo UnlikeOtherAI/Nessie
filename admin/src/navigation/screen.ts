@@ -6,7 +6,7 @@
 // the layer it rendered under. The shell then reads the title for the *live*
 // location and turns it into the two things outside the document that name a
 // screen: the browser tab (`document.title`) and the native shell's
-// `nessie:screen` message (docs/navigation.md §9, plan §4.9/§4.16).
+// `nessie:screen` message (docs/navigation/overview.md §9, plan §4.9/§4.16).
 //
 // Keying by pathname rather than keeping one "current" title is what makes
 // this correct under the navigation stack: retained and seeded layers stay
