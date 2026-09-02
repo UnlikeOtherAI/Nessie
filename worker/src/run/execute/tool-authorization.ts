@@ -3,7 +3,15 @@ import {
   DEEP_WATER_START_FAILURE_DETAIL,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
-import { resolveStandingConsentForToolCall } from '@nessie/workspace-admin'
+import {
+  recordSendDecision,
+  resolveStandingConsentForToolCall,
+} from '@nessie/workspace-admin'
+import {
+  buildSendBoundaryPrompt,
+  readSendBoundaryVerdict,
+  type SendBoundaryVerdict,
+} from './send-boundary-judge.js'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -56,6 +64,12 @@ export type ToolAuthorizationContext = {
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
+  /**
+   * The run's utility-model call, used for the send-boundary judgement. Absent
+   * where no utility model resolves, which fails the judgement closed to
+   * asking rather than proceeding unjudged.
+   */
+  runUtility?: (prompt: string) => Promise<string | null>
   /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
   consumeApprovalProof?: boolean
   resumeState?: {
@@ -189,6 +203,7 @@ export const authorizeToolExecution = async (
   // The one legitimate bypass is standing consent the mailbox owner gave for
   // this exact agent, resolved here so the decision lives at the chokepoint
   // every tool execution passes through rather than in each handler.
+  let boundaryReason: string | null = null
   const policyDecision = await (async () => {
     if (
       !rawPolicyDecision.allowed
@@ -197,7 +212,7 @@ export const authorizeToolExecution = async (
     ) {
       return rawPolicyDecision
     }
-    const consented = await resolveStandingConsentForToolCall(prisma, {
+    const consent = await resolveStandingConsentForToolCall(prisma, {
       toolName,
       args,
       organizationId: context.channel.organizationId,
@@ -205,12 +220,38 @@ export const authorizeToolExecution = async (
       requestingUserId: toolActorContext.actionContext.effectiveUserId ?? null,
       interactive: auth.resumeState?.interactive ?? false,
     })
-    if (consented) return rawPolicyDecision
-    return {
+    // Keep the full denied shape: spreading an *allowed* decision would drop
+    // `approvalActionType`, which the approval row and its card read.
+    const escalate = () => ({
       ...rawPolicyDecision,
       allowed: false as const,
+      approvalActionType: undefined as string | undefined,
+      policyRuleId: undefined as string | undefined,
       reason: 'approval_required' as const,
-    }
+    })
+    if (consent.outcome === 'ask') return escalate()
+    if (consent.outcome === 'proceed') return rawPolicyDecision
+
+    // A `judged` grant is consent to DECIDE, not consent to send. One bounded
+    // utility call weighs the action against the owner's own written boundary,
+    // and fails closed to asking — the inverse of the watch-status gate,
+    // because a miss there costs a redundant message and a miss here sends an
+    // email nobody approved.
+    const verdict = await judgeAgainstSendBoundary({
+      args,
+      boundary: consent.boundary,
+      runUtility: auth.runUtility,
+      toolName,
+    })
+    await recordSendDecision(
+      prisma,
+      consent.grantId,
+      verdict.verdict === 'proceed' ? 'decided' : 'asked',
+    ).catch(() => undefined)
+    if (verdict.verdict === 'proceed') return rawPolicyDecision
+    // Shown on the approval card: the person should see why they were asked.
+    boundaryReason = verdict.reason
+    return escalate()
   })()
 
   if (!policyDecision.allowed) {
@@ -231,6 +272,7 @@ export const authorizeToolExecution = async (
         toolName,
         interactive: auth.resumeState.interactive,
         messageId: auth.resumeState.messageId,
+        ...(boundaryReason ? { boundaryReason } : {}),
       })
       return { decision: 'suspend', approval: { id: approval.id, toolName } }
     }
@@ -250,6 +292,33 @@ export const authorizeToolExecution = async (
   }
 
   return { decision: 'allow', toolActorContext }
+}
+
+/**
+ * One bounded judgement, on the same utility-model plumbing compaction and the
+ * watch-status gate already use. Every failure path returns `ask`.
+ */
+const judgeAgainstSendBoundary = async (input: {
+  args: Record<string, unknown>
+  boundary: string
+  runUtility?: (prompt: string) => Promise<string | null>
+  toolName: string
+}): Promise<SendBoundaryVerdict> => {
+  if (!input.runUtility) {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
+  try {
+    const raw = await input.runUtility(
+      buildSendBoundaryPrompt({
+        boundary: input.boundary,
+        proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
+        request: 'See the conversation this action came from.',
+      }),
+    )
+    return readSendBoundaryVerdict(raw)
+  } catch {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
 }
 
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
@@ -288,6 +357,8 @@ const createToolApprovalRequest = async (
     policyRuleId?: string
     toolCallId: string
     toolName: string
+    /** Why the assistant escalated instead of deciding, when it judged. */
+    boundaryReason?: string
   },
 ): Promise<{ id: string }> => {
   const existing = await prisma.approvalRequest.findFirst({
@@ -306,6 +377,7 @@ const createToolApprovalRequest = async (
       inputSummary: summarizeToolInput(input.args),
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
+      boundaryReason: input.boundaryReason ?? null,
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
     expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),

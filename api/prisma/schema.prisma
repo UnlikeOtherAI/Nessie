@@ -5402,8 +5402,28 @@ enum GmailDraftActionState {
 ///
 /// It never covers an unattended run, never covers a requester who is not the
 /// mailbox owner, and never replaces the content-fingerprint check.
+/// How a grant behaves. `always` sends whenever the owner asks; `judged` has
+/// the assistant weigh each action against the owner's own written boundary
+/// and ask when it is unsure. There is deliberately no "deny" outcome — the
+/// assistant never silently refuses on somebody's behalf, so anything outside
+/// the boundary becomes a question rather than a rejection.
+enum SendAuthorizationMode {
+  always
+  judged
+}
+
 model SendAuthorizationGrant {
   id             String    @id @default(uuid()) @db.Uuid
+  mode           SendAuthorizationMode @default(always)
+  /// The owner's boundary, in their own words. Judged by a model on every
+  /// action, never parsed: a rule builder with keyword fields could not honour
+  /// a boundary written in Czech about mail written in Slovak. Owner-private —
+  /// it is read through an owner-gated route and never leaves in metadata.
+  boundary       String?
+  /// Running shape, so the settings row can say "12 sent · 3 asked you".
+  decidedCount   Int       @default(0) @map("decided_count")
+  askedCount     Int       @default(0) @map("asked_count")
+  lastDecidedAt  DateTime? @map("last_decided_at")
   organizationId String    @map("organization_id") @db.Uuid
   connectionId   String    @map("connection_id") @db.Uuid
   agentId        String    @map("agent_id") @db.Uuid

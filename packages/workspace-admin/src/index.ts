@@ -84,6 +84,10 @@ export {
   revokeSendAuthorization,
   listSendAuthorizations,
   resolveStandingConsentForToolCall,
+  loadLiveSendGrant,
+  recordSendDecision,
+  type LiveSendGrant,
+  type StandingConsentDecision,
   type SendGrantDuration,
   type SendGrantRecord,
 } from './send-authorization.js'
