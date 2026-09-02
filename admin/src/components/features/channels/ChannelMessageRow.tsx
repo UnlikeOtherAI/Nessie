@@ -25,6 +25,7 @@ import {
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
 import { AppSetupCard } from './AppSetupCard'
+import { AgentCardMessage } from './AgentCardMessage'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
@@ -416,6 +417,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AgentCardMessage metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <TodoProgressCard metadata={message.metadata} />

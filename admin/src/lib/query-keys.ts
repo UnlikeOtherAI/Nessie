@@ -107,6 +107,10 @@ export const appConnectionRequestKeys = {
   card: (requestId?: string) => ['app-connection-requests', requestId ?? null] as const,
 }
 
+export const agentCardKeys = {
+  card: (cardId?: string) => ['agent-cards', cardId ?? null] as const,
+}
+
 export const approvalKeys = {
   all: ['approvals'] as const,
 }
