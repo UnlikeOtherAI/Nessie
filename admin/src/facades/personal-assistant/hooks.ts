@@ -8,32 +8,12 @@ import { channelKeys, personalAssistantKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { upsertChannel } from '../channels/channel-cache'
 
-export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.systemChannelType === 'personal_assistant'
-  || channel?.metadata?.systemChannelType === 'personal_assistant'
-
-// External agents (e.g. DeepSignal) are a peer of the Personal Assistant: a
-// per-user private DM channel proxied to an external product over MCP, keyed
-// by `systemChannelType` the same way the PA channel is. New external agents
-// are a data change on the backend, not a UI code fork — this predicate stays
-// generic across all of them.
-export const isExternalAgentChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.systemChannelType === 'external_agent'
-  || channel?.metadata?.systemChannelType === 'external_agent'
-
-// A global agent (the Agent Designer, ...) lives in a per-user private DM of
-// its own, keyed by `systemChannelType` exactly as the two above are. New
-// global agents are a backend blueprint entry, not a UI code fork.
-export const isGlobalAgentChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.systemChannelType === 'system_agent'
-  || channel?.metadata?.systemChannelType === 'system_agent'
-
-export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.type === 'dm'
-  && !isPersonalAssistantChannel(channel)
-  && !isExternalAgentChannel(channel)
-  && !isGlobalAgentChannel(channel)
-  && Boolean(channel.dmUserId)
+export {
+  isExternalAgentChannel,
+  isGlobalAgentChannel,
+  isPersonalAssistantChannel,
+  isUserDmChannel,
+} from './channel-kinds'
 
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()

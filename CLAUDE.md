@@ -383,17 +383,16 @@ width".
     user budget; `worker/src/run/run-budget.ts`).
   - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
     `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
-    (`worker/src/run/execute/budget-stop.ts`), and member-visible copy carries
-    **no currency figures**.
+    (`budget-stop.ts`); member-visible copy carries **no currency figures**.
   - The cache-read weight resolves once per run from the org
     `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
-    [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25); never fails a run.
+    [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).
   - Non-interactive runs (`payload.interactive !== true`) never ask and
-    auto-continue up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2), yielding
-    to the per-(agent, thread) slot when busy. `delegate` sub-agents take a
-    fixed small budget capped by `NESSIE_MAX_DELEGATES_PER_RUN` (default 16)
-    and — like compaction — use `NESSIE_UTILITY_MODEL` when it resolves through
-    the run's own org provider (else the run's model).
+    auto-continue up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2), yielding to
+    the per-(agent, thread) slot when busy. `delegate` sub-agents take a fixed
+    small budget capped by `NESSIE_MAX_DELEGATES_PER_RUN` (16) and — like
+    compaction — use `NESSIE_UTILITY_MODEL` when it resolves through the run's
+    own org provider.
   - Tool results (builtin, MCP, `delegate`) are truncated **middle-out** at the
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
@@ -407,9 +406,8 @@ width".
   - Every run records a wall-clock-only stage breakdown at its terminal state
     (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
-    toolCount }`, no cost data (`worker/src/run/execute/run-timing.ts`), written
-    after the status flip so it can never fail a finished run. Owners read
-    summaries at `GET /api/ledger/runs/timing`.
+    toolCount }`, no cost data (`run-timing.ts`), written after the status flip
+    so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
 - **Budget threshold alerts + failed-run attribution** (local ops only, never
   UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
   (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an
@@ -650,7 +648,7 @@ The live API server (`api/`) exposes a **REST MCP connector-management surface**
 
 The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation — the sharing, scope, credential-ref, locking, and context-safe-toolset rules are in `AGENTS.md` (the MCP connector management bullet). On top of it:
 
-- **Library + discovery**: `GET /api/mcp/library` (curated remotes + live registry search, HTTP/SSE only), `POST /api/mcp/discover` (probe a pasted link), `POST /api/mcp/library/import`. The PA uses these for guided setup; people add a custom app from `/apps`.
+- **Library + discovery**: `GET /api/mcp/library` (curated remotes + live registry search, HTTP/SSE only), `POST /api/mcp/discover`, `POST /api/mcp/library/import`; people add a custom app from `/apps`.
 - **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_authorize`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
 - **Dynamic OAuth** (MCP authorization spec): `{ method: "oauth2" }` with no static client triggers metadata discovery (RFC 9728/8414), Dynamic Client Registration (RFC 7591, one public client per org × issuer in `mcp_oauth_clients`), authorization-code + PKCE S256 + RFC 8707 `resource`, pg-backed one-shot state (`mcp_oauth_states`), per-user token placement, and automatic refresh at probe/dispatch. Notion/Linear/Sentry/Atlassian/Asana are curated OAuth entries — users just sign in. Set `NESSIE_API_PUBLIC_URL` in prod so the worker can mint callback URLs.
 - **Scoped sharing**: scope rules per `AGENTS.md`; shared-scope installs keep the `pending_review` tool gate (user-scope auto-activate). See [docs/external-tool-integration.md](docs/external-tool-integration.md) §2.
@@ -824,6 +822,21 @@ Facts worth having on the map:
   activity, messages and children stay closed, because a global agent's
   activity spans every member's private DM.
 
+**Direct messages lists conversations, not a directory.** Every DM channel there
+is provisioned before anybody speaks — a person's DM, a private agent's home, a
+global agent's home the moment the account exists — so listing provisioned
+channels made the section a roster of the workspace, with the Agent Designer
+pinned in it from day one. A row appears once its channel carries a message,
+plus the channel the viewer is standing in, so opening a fresh conversation
+never pulls its own row out from under them
+(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
+it resolves through the full people directory, because starring somebody *is*
+adding them. The doorways stay named: **Create → Message** (and the section's
+`+`) reaches a person, **Create → Agent** reaches `/agents/designer` — the last
+row of the rail's create menu, and on the native phone sheet the last row
+*above* the Message button, which is the morphing compose button the sheet grows
+out of (`mobile/src/lib/native-creation-menu.ts`). Both call the one
+`navigateToAgentDesigner` through the `__nessieCreateFromPhoneMenu` bridge.
 ## Personal assistant — workspace provisioning
 
 Four `personalAssistantOnly` builtins reach the PA
