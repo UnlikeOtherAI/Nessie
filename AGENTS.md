@@ -206,11 +206,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
   longer channel-gated: an app-provided agent nobody can find is the
   unreachable-capability defect Rule zero names. Finding one has to lead
-  somewhere, so a `systemManaged` agent answers a **narrow configuration read**
-  (`GET /api/agents/:agentId/config`) under exactly that list entitlement while
-  `isAgentAccessibleToActor` stays untouched — status, activity, messages and
-  children still 404, a global agent's activity spanning every member's private
-  DM. `docs/global-agents.md`; spec:
+  somewhere, so it renders **the ordinary detail surface with every control
+  disabled** — the same designer form, filtered to Edit + Tools — never a second
+  read-only view beside it, while `isAgentAccessibleToActor` stays untouched:
+  status, activity, messages and children still 404, a global agent's activity
+  spanning every member's private DM. `docs/global-agents.md`; spec:
   `docs/plans/2026-09-02-agent-designer-global-agent.md`.
 - **A capability can be moved to a specialist without being deleted.**
   `BuiltinToolDefinition.identityDelegatedOnly` narrows `personalAssistantOnly`

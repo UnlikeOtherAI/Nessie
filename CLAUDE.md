@@ -814,13 +814,13 @@ Facts worth having on the map:
   but renders the blueprint's persona and the same generated catalogue, reads
   this organisation's tools server-side, searches through Ledger, and shows the
   Designer's own name and portrait.
-- **A Nessie-managed agent has a read-only configuration view.**
-  `GET /api/agents/:agentId/config` (`readAgentConfigView`) answers name, role,
-  prompt, model, effort, limits and *resolved* tools under exactly the list
-  entitlement, and the admin renders `SystemAgentConfigPanel` in place of the
-  tabs. `isAgentAccessibleToActor` is deliberately NOT widened — status,
-  activity, messages and children stay closed, because a global agent's
-  activity spans every member's private DM.
+- **A Nessie-managed agent renders the ordinary detail surface, disabled.** Its
+  Edit tab is the same `AgentDesignerForm`, same sections in the same order,
+  every control disabled, no Save at all, plus a lead-in note saying it ships
+  with the deployment; `AgentDetailTabs` keeps only Edit and Tools, seeded from
+  the entitled list (`?scope=all`). `isAgentAccessibleToActor` is deliberately
+  NOT widened — status, activity, messages, children, to-dos, documents and
+  mailbox stay closed, a global agent working in every member's private DM.
 
 **Direct messages lists conversations, not a directory.** Every DM channel there
 is provisioned before anybody speaks — a person's DM, a private agent's home, a

@@ -118,17 +118,34 @@ is gone.
   draft to the person's own Designer DM through `deliverGlobalAgentBrief`, so it
   is the same hidden server-authored briefing a handoff writes.
 
-## The read-only configuration view
+## The detail surface: the ordinary one, disabled
 
-`readAgentConfigView` composes `readAgentRecordForActor` with
-`loadAgentToolCatalog`, resolving the sparse policy map into the tools the agent
-actually has: `default` (a deny-mode builtin nothing removed), `policy`
-(switched on for this agent), or `reserved` (a blueprint identity tool no policy
-can grant, exercisable only in the agent's own conversation).
+A global agent renders **the same** agent detail page every other agent renders.
+Its Edit tab is `AgentDesignerContent` → `AgentDesignerForm` in `readOnly` mode:
+the same sections in the same order — avatar, name, role, visibility, model,
+reasoning effort, run limits, to-dos, system prompt — with every input, select,
+combobox and switch `disabled`, no Save button rendered at all (there is nothing
+to save), and no Design Assistant drawer (it exists to fill in a form this reader
+cannot submit). A lead-in note at the top of the form says the agent ships with
+Nessie and changes only when the deployment is updated.
 
-`GET /api/agents/:agentId/config` serves it under exactly the list entitlement,
-and `admin/src/components/features/agents/SystemAgentConfigPanel.tsx` renders it
-in place of the detail tabs for any `systemManaged` agent, with no edit
-affordance at all. `isAgentAccessibleToActor` is deliberately untouched: status,
-activity, messages and children still 404 on a system agent, because a global
-agent's activity spans every member's private DM.
+This replaced a bespoke `SystemAgentConfigPanel` card, deleted 2026-09-02: it was
+a second implementation of a view that already existed, re-rendering name, role,
+model, effort, limits, prompt and tools in its own layout — the defect Rule zero
+#4 names. With it went `GET /api/agents/:agentId/config` and
+`readAgentConfigView`, its only consumers. `agent_read` (the Designer's own tool)
+still answers configuration for a `systemManaged` agent through
+`readAgentRecordForActor`, and `agent_tool_catalog` still describes the reserved
+blueprint tools; the admin needs neither, because `GET /api/agents?scope=all`
+already returns the whole record — prompt, policy, model, effort, limits — for a
+system agent, and the detail page seeds the form from it.
+
+**Which sections a global agent has is structural, stated once** in
+`AgentDetailTabs` (`SYSTEM_AGENT_TABS`): Edit and Tools, and nothing else.
+`isAgentAccessibleToActor` is deliberately untouched, so status, activity,
+sub-agents, messages, to-dos, documents, the mailbox and the cloud browser all
+404 on a system agent — a global agent's activity spans every member's private
+DM and must stay closed. Those tabs are not rendered and their reads are not
+issued. The Tools tab is `AgentAvailableTools`, which already resolves to its
+read-only `ToolPicker` for an agent the viewer cannot edit — the same catalogue,
+the same search, the switches disabled.
