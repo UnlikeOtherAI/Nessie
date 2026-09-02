@@ -7,9 +7,13 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { Input } from '../../shared/FormControls'
+import { EmptyState } from '../../shared/EmptyState'
+import { Row } from '../../shared/RowList'
+import { Pill } from '../../primitives/Pill'
 import { AgentDraftBadge } from './AgentDraftBadge'
 import { iconForFilename } from './file-icons'
-import { isAgentDraft, pageStatusTone } from './page-status'
+import { isAgentDraft, pageStatusPillTone } from './page-status'
 
 export type KnowledgeFilesystemItemKind = 'file' | 'folder'
 
@@ -86,6 +90,32 @@ const KnowledgeItemIcon = ({
   )
 }
 
+const KnowledgeItemTrailing = ({
+  childCount,
+  kind,
+  page,
+}: {
+  childCount: number
+  kind: KnowledgeFilesystemItemKind
+  page: KnowledgePageRecord
+}) =>
+  kind === 'folder' ? (
+    <span className="shrink-0 text-[11px] text-[color:var(--tx3)]">
+      {childCount} {childCount === 1 ? 'item' : 'items'}
+    </span>
+  ) : page.kind === 'file' ? (
+    <Pill size="sm" tone="muted">
+      file
+    </Pill>
+  ) : (
+    <>
+      {isAgentDraft(page) ? <AgentDraftBadge /> : null}
+      <Pill size="sm" tone={pageStatusPillTone[page.status]}>
+        {page.status}
+      </Pill>
+    </>
+  )
+
 export const KnowledgeItemRow = ({
   childCount,
   depth = 0,
@@ -105,56 +135,30 @@ export const KnowledgeItemRow = ({
   page: KnowledgePageRecord
   trailing?: ReactNode
 }) => (
-  <button
-    aria-label={`${kind === 'folder' ? 'Open folder' : 'Open file'} ${page.title}`}
-    className={[
-      'group flex min-h-10 w-full items-center gap-2 rounded-md py-2 pr-3 text-left text-sm',
-      'transition-colors',
-      isSelected
-        ? 'bg-[color:var(--overlay)] text-[color:var(--tx)]'
-        : 'text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)] hover:text-[color:var(--tx)]',
-    ].join(' ')}
+  <Row
+    depth={depth}
+    leading={<KnowledgeItemIcon kind={kind} page={page} />}
     onClick={onClick}
-    style={{ paddingLeft: `${12 + depth * 18}px` }}
-    type="button"
-  >
-    <KnowledgeItemIcon kind={kind} page={page} />
-    <span className="min-w-0 flex-1">
-      <span className="block truncate font-medium">{page.title}</span>
-      {page.summary ? (
-        <span className="mt-0.5 block truncate text-xs text-[color:var(--tx3)]">{page.summary}</span>
-      ) : null}
-    </span>
-    {kind === 'folder' ? (
-      <span className="shrink-0 text-[11px] text-[color:var(--tx3)]">
-        {childCount} {childCount === 1 ? 'item' : 'items'}
-      </span>
-    ) : page.kind === 'file' ? (
-      <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-[color:var(--tx3)]">
-        file
-      </span>
-    ) : (
+    selected={isSelected}
+    subtitle={page.summary}
+    title={page.title}
+    trailing={
       <>
-        {isAgentDraft(page) ? <AgentDraftBadge /> : null}
-        <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
-          {page.status}
-        </span>
+        <KnowledgeItemTrailing childCount={childCount} kind={kind} page={page} />
+        {trailing ?? (
+          kind === 'folder' ? (
+            <FontAwesomeIcon
+              className="h-3 w-3 shrink-0 text-[color:var(--tx3)]"
+              icon={isExpanded ? faChevronDown : faChevronRight}
+            />
+          ) : null
+        )}
       </>
-    )}
-    {trailing ?? (
-      kind === 'folder' ? (
-        <FontAwesomeIcon
-          className="h-3 w-3 shrink-0 text-[color:var(--tx3)]"
-          icon={isExpanded ? faChevronDown : faChevronRight}
-        />
-      ) : null
-    )}
-  </button>
+    }
+  />
 )
 
-export const EmptyFolder = ({ label }: { label: string }) => (
-  <div className="py-12 text-center text-sm text-[color:var(--tx3)]">{label}</div>
-)
+export const EmptyFolder = ({ label }: { label: string }) => <EmptyState>{label}</EmptyState>
 
 // Finder-style inline "new folder" row: a folder icon + an auto-focused name
 // field. Enter creates, Escape cancels, and blurring submits a typed name (or
@@ -169,9 +173,11 @@ export const NewFolderRow = ({
   pending: boolean
 }) => {
   const [name, setName] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
   const doneRef = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
+  // Not `autoFocus`: the browser's own initial focus scrolls whatever box it
+  // lands in, which is the sideways bounce docs/navigation.md §2 names.
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true })
   }, [])
@@ -193,8 +199,9 @@ export const NewFolderRow = ({
         fixedWidth
         icon={faFolder}
       />
-      <input
-        className="min-w-0 flex-1 rounded border border-[color:var(--sep)] bg-[color:var(--main)] px-2 py-1 text-sm text-[color:var(--tx)] outline-none focus:border-[color:var(--accent)]"
+      <Input
+        aria-label="Folder name"
+        className="min-w-0 flex-1"
         disabled={pending}
         onBlur={submit}
         onChange={(event) => setName(event.target.value)}
@@ -209,6 +216,7 @@ export const NewFolderRow = ({
         }}
         placeholder="Folder name"
         ref={inputRef}
+        size="compact"
         value={name}
       />
     </div>

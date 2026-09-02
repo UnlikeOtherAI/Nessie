@@ -754,14 +754,67 @@ pnpm build:device:android
 
 ## Windows Desktop
 
-Run the build on a Windows machine:
+Build the normal Windows shell on a Windows machine. This release has no
+console subsystem, so opening Nessie from Start or from the installer does not
+leave a terminal window behind.
 
-```sh
-pnpm install
-pnpm --filter @nessie/desktop exec tauri build
+```powershell
+pnpm install --frozen-lockfile
+pnpm --filter @nessie/api prisma:generate
+pnpm --filter @nessie/schemas build
+pnpm --filter @nessie/runtime build
+pnpm --dir desktop run tauri:build -- --bundles nsis
 ```
 
-Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
+The preparation script bundles the exact local Node runtime, its licence, and
+an integrity manifest before Tauri packages the application. If the installed
+Node distribution omits its licence file, the script retrieves the official
+licence for that exact Node version; a missing or malformed licence still fails
+the build.
+
+The NSIS installer is written below
+`desktop/src-tauri/target/release/bundle/nsis/`. Install it on the target
+Windows device and launch **Nessie** from Start. Tauri's Windows configuration
+also supports WiX when an operator requests `--bundles msi`.
+
+An unsigned build is a desktop-shell test build only: it retains hosted
+workspace access, browser SSO/deep links, notifications, and single-instance
+behaviour, but deliberately refuses local executor pairing and daemon control.
+Do not work around that refusal. A production executor release requires a
+Windows Authenticode signature and a pinned publisher identity as specified in
+the [Windows desktop parity plan](plans/2026-09-01-windows-desktop-parity.md).
+
+## Linux Desktop (Ubuntu x86_64)
+
+Nessie Desktop ships the same hosted-admin shell, browser SSO deep link,
+native notifications, and single-instance focus behavior on Linux. The initial
+Linux release targets Ubuntu x86_64 and produces a Debian package and AppImage;
+the local executor companion remains unavailable on Linux.
+
+Install the Tauri Linux build requirements, then build both distributables:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+  desktop-file-utils
+pnpm install
+pnpm --filter @nessie/desktop run tauri:build:linux
+```
+
+The artifacts are written to
+`desktop/src-tauri/target/release/bundle/deb/` and
+`desktop/src-tauri/target/release/bundle/appimage/`. Install the Debian package
+with `sudo apt install ./Nessie_*.deb`; make the AppImage executable and run it
+directly when a system package is not appropriate.
+
+For development, start `pnpm dev` at the repository root, then run
+`pnpm --filter @nessie/desktop dev` from the Linux environment. Under WSL, this
+requires WSLg; it opens the Nessie window on the Windows desktop.
+
+On first launch, Nessie registers itself as the current user's `nessie://`
+handler. This lets the browser return an SSO callback to the already-running
+single instance without a system-wide association or administrator access.
 
 ## Status And Caveats
 

@@ -1,27 +1,40 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../components/shared/AlertRow'
+import { PageBody } from '../components/shared/PageBody'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import {
   getAlertLink,
-  useAlerts,
+  useAttentionSummary,
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../facades/alerts/hooks'
 import { useAcceptWorkspaceInvitation } from '../facades/workspace/invitations'
+import { alertKeys } from '../lib/query-keys'
+import { usePagedList } from '../facades/usePagedList'
 
 export const AlertsPage = () => {
   const navigate = useNavigate()
   const [unreadOnly, setUnreadOnly] = useState(false)
-  // apiClient unwraps the { data, meta } envelope and drops meta, so cursor
-  // pagination isn't reachable through it — fetch a generous window instead.
-  const { data } = useAlerts({ limit: 100, unreadOnly })
+  const summary = useAttentionSummary()
+  // Not a raw key: `alertKeys.all` is the factory; 'page' only distinguishes
+  // this hook's own cache entry. See AuditLogPage's identical note. Nested
+  // under `alertKeys.all` deliberately, so `useMarkAlertsRead`'s invalidation
+  // of that root reaches this page's list too.
+  const cacheKey = [...alertKeys.all, 'page']
+  const rows = usePagedList<UserAlertRecord>({
+    params: { unread: unreadOnly ? 'true' : undefined },
+    path: '/api/alerts',
+    queryKey: cacheKey,
+  })
   const markRead = useMarkAlertsRead()
   const acceptInvitation = useAcceptWorkspaceInvitation()
 
-  const alerts = data?.alerts ?? []
-  const unreadCount = data?.unreadCount ?? 0
+  const unreadCount = summary.data?.unreadCount ?? 0
   const headerActions: PageHeaderAction[] = [
     {
       id: 'unread-only',
@@ -53,37 +66,52 @@ export const AlertsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader actions={headerActions} title="Alerts" />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="grid gap-2">
-          {alerts.map((alert) => {
-            const invite = alert.metadata
-            const accepting = acceptInvitation.isPending
-              && acceptInvitation.variables?.inviteId === invite?.inviteId
-            const acceptError = acceptInvitation.isError
-              && acceptInvitation.variables?.inviteId === invite?.inviteId
-              ? acceptInvitation.error.message
-              : null
-            return (
-              <AlertRow
-                acceptError={acceptError}
-                accepting={accepting}
-                alert={alert}
-                className="admin-card p-3"
-                key={alert.id}
-                onAcceptInvitation={invite
-                  ? () => acceptInvitation.mutate(invite)
-                  : undefined}
-                onOpen={() => openAlert(alert)}
+      <PageBody width="regular">
+        <QueryState
+          emptyLabel={unreadOnly ? 'No unread alerts' : 'No alerts yet'}
+          errorLabel="Alerts could not be loaded."
+          isEmpty={rows.items.length === 0}
+          loadingLabel="Loading alerts…"
+          query={rows.query}
+        >
+          {() => (
+            <>
+              <RowList label="Alerts">
+                {rows.items.map((alert) => {
+                  const invite = alert.metadata
+                  const accepting = acceptInvitation.isPending
+                    && acceptInvitation.variables?.inviteId === invite?.inviteId
+                  const acceptError = acceptInvitation.isError
+                    && acceptInvitation.variables?.inviteId === invite?.inviteId
+                    ? acceptInvitation.error.message
+                    : null
+                  return (
+                    <li className="px-3 py-2.5" key={alert.id}>
+                      <AlertRow
+                        acceptError={acceptError}
+                        accepting={accepting}
+                        alert={alert}
+                        onAcceptInvitation={invite
+                          ? () => acceptInvitation.mutate(invite)
+                          : undefined}
+                        onOpen={() => openAlert(alert)}
+                      />
+                    </li>
+                  )
+                })}
+              </RowList>
+              <PaginationFooter
+                canNext={rows.canNext}
+                canPrevious={rows.canPrevious}
+                hideWhenSinglePage
+                label={rows.label}
+                onPageChange={rows.onPageChange}
+                page={rows.page}
               />
-            )
-          })}
-          {alerts.length === 0 ? (
-            <div className="py-8 text-center text-[color:var(--tx3)]">
-              {unreadOnly ? 'No unread alerts' : 'No alerts yet'}
-            </div>
-          ) : null}
-        </div>
-      </div>
+            </>
+          )}
+        </QueryState>
+      </PageBody>
     </section>
   )
 }

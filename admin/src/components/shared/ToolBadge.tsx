@@ -14,14 +14,17 @@ type ToolBadgeProps = {
   source?: ToolRegistrySource
 }
 
-// Unconverted: Pill has one accent tone (--thinking); this ramp needs two
-// accent-family foregrounds (--accent for builtin/fallback, --thinking for
-// mcp-remote), and splitting the ramp across Pill and raw markup would put two
-// chip sizes in one list.
-const SOURCE_STYLES: Record<ToolRegistrySource, string> = {
-  'builtin': [
-    'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
-  ].join(' '),
+// Unconverted, reassessed against `outline` and `height="control"` (2026-09-01):
+// neither closes the gap. Four of five sources now match a `Pill` tone exactly
+// (`custom`→warning, `executor`/`interactive-session`→info, `mcp-remote`→accent
+// on `--thinking`) — only `builtin`/the fallback still needs a plain `--accent`
+// foreground, which no tone emits (`accent` is pinned to `--thinking`, the
+// second accent-family colour this ramp also needs). Splitting the ramp across
+// `Pill` for four sources and raw markup for the fifth would put two chip sizes
+// in one list, so the whole ramp stays here. Shared with `ToolCategoryIcon`,
+// which reads this map rather than keeping its own copy.
+export const TOOL_SOURCE_TONE_CLASS: Record<ToolRegistrySource, string> = {
+  'builtin': 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
   'custom': 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
   'executor': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
   'mcp-remote': 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
@@ -30,7 +33,7 @@ const SOURCE_STYLES: Record<ToolRegistrySource, string> = {
 
 export const ToolBadge = ({ label, source }: ToolBadgeProps) => {
   const styles = source
-    ? SOURCE_STYLES[source]
+    ? TOOL_SOURCE_TONE_CLASS[source]
     : 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
 
   return (

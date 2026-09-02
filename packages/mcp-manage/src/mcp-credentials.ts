@@ -98,8 +98,15 @@ export type UpsertOverrideInput = {
   credentialRef: string
 }
 
+/**
+ * Accepts a transaction client as well as the root client: a caller that must
+ * place a credential atomically with its own write (the agent-card press does)
+ * passes its `tx`, and the placement commits or rolls back with it.
+ */
+export type CredentialOverrideWriter = Pick<PrismaClient, 'mcpServerCredentialOverride'>
+
 export const upsertOverride = async (
-  prisma: PrismaClient,
+  prisma: CredentialOverrideWriter,
   input: UpsertOverrideInput,
 ): Promise<McpCredentialOverrideRow> => {
   if (!input.credentialRef.startsWith('secret_')) {

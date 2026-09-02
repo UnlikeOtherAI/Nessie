@@ -10,6 +10,13 @@
  * depending on which screen you landed on. The shimmer lives here and nowhere
  * else; `admin/test/skeleton.test.ts` pins that.
  *
+ * A skeleton is the exception, not the default: the content kit's
+ * `QueryState` single loading line is what an ordinary list shows. Reach for a
+ * skeleton only where the layout is already known and stable enough that
+ * drawing it empty is more honest than a sentence — a table with fixed
+ * columns, a grid of cards. A skeleton over a surface whose shape depends on
+ * the response is a lie about what is coming.
+ *
  * A variant is a *page type*, not a component: `list` for a column of rows,
  * `detail` for one entity's header and prose, `feed` for a conversation,
  * `board` for a grid of cards. A screen picks the one its content is shaped

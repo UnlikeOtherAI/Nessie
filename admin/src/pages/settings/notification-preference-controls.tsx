@@ -1,11 +1,5 @@
+import { Switch } from '../../components/primitives/Switch'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-
-type NotificationToggleProps = {
-  checked: boolean
-  disabled?: boolean
-  label: string
-  onChange: (next: boolean) => void
-}
 
 type PushPreferenceCardProps = {
   disabled: boolean
@@ -24,36 +18,6 @@ type PushPreferenceCardProps = {
   setPushMessages: (next: boolean) => void
   setPushPublishedKnowledge: (next: boolean) => void
 }
-
-export const NotificationToggle = ({
-  checked,
-  disabled = false,
-  label,
-  onChange,
-}: NotificationToggleProps) => (
-  <button
-    aria-checked={checked}
-    aria-label={label}
-    className={[
-      'inline-flex h-7 w-12 items-center rounded-full border p-0.5 transition-colors',
-      checked
-        ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-white'
-        : 'border-[color:var(--sep)] bg-[color:var(--scrim)] text-[color:var(--tx3)]',
-      disabled ? 'cursor-not-allowed opacity-60' : '',
-    ].join(' ')}
-    disabled={disabled}
-    onClick={() => onChange(!checked)}
-    role="switch"
-    type="button"
-  >
-    <span
-      className={[
-        'h-6 w-6 rounded-full bg-white shadow-sm transition-transform',
-        checked ? 'translate-x-5' : 'translate-x-0',
-      ].join(' ')}
-    />
-  </button>
-)
 
 export const PushPreferenceCard = ({
   disabled,
@@ -81,7 +45,7 @@ export const PushPreferenceCard = ({
           {pushEnabled ? 'Enabled' : 'Disabled'}
         </div>
       </div>
-      <NotificationToggle
+      <Switch
         checked={pushEnabled}
         disabled={disabled}
         label="Toggle push notifications"
@@ -141,7 +105,7 @@ export const PushPreferenceCard = ({
                 {preference.description}
               </div>
             </div>
-            <NotificationToggle
+            <Switch
               checked={preference.checked}
               disabled={!pushEnabled || disabled}
               label={`Toggle ${preference.label.toLowerCase()} notifications`}

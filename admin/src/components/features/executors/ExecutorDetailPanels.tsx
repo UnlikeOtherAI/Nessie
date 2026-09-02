@@ -12,6 +12,9 @@ import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
+import { FormError } from '../../shared/FormActions'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar } from '../../primitives/TabBar'
 
 const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
@@ -122,10 +125,7 @@ export const ExecutorDetailPanels = ({
           <h2 className="text-base font-semibold text-[color:var(--tx)]">{executor.label}</h2>
           <p className="mt-0.5 text-xs text-[color:var(--tx3)]">{scopeSummary(executor)}</p>
         </div>
-        {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
-        <span className="rounded-full border border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx2)]">
-          {executor.status}
-        </span>
+        <Pill tone="outline" uppercase={false}>{executor.status}</Pill>
       </div>
       <div className="mt-3 flex">
         <TabBar
@@ -136,7 +136,7 @@ export const ExecutorDetailPanels = ({
           value={tab}
         />
       </div>
-      {error ? <p className="mt-3 text-xs text-[color:var(--danger-text)]">{error}</p> : null}
+      <FormError className="mt-3">{error}</FormError>
       {tab === 'overview' ? (
         <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
           <p><span className="font-medium text-[color:var(--tx)]">Profiles:</span> {executor.profiles.join(', ') || 'None approved yet'}</p>
@@ -151,7 +151,7 @@ export const ExecutorDetailPanels = ({
           {executor.statusDetail ? <p className="text-xs text-[color:var(--tx3)]">{executor.statusDetail}</p> : null}
           {(access?.descriptorRevisions ?? []).length > 0 ? (
             <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Local policy proposals</p>
+              <SectionLabel size="sm">Local policy proposals</SectionLabel>
               {(access?.descriptorRevisions ?? []).map((revision, index) => (
                 <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={revision.revision}>
                   <p className="font-medium text-[color:var(--tx)]">Revision {revision.revision} · {revision.reviewStatus}</p>
@@ -191,7 +191,7 @@ export const ExecutorDetailPanels = ({
           ) : null}
           {reviews.length > 0 ? (
             <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Recent draft reviews</p>
+              <SectionLabel size="sm">Recent draft reviews</SectionLabel>
               {reviews.slice(0, 3).map((review) => (
                 <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={review.commandId}>
                   <p className="font-medium text-[color:var(--tx)]">{review.changes.length} change{review.changes.length === 1 ? '' : 's'} · {review.acknowledgedAt}</p>
@@ -216,7 +216,7 @@ export const ExecutorDetailPanels = ({
           </p>
           {executor.scope.kind === 'private' && canManage ? (
             <div className="grid gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Private assignments</p>
+              <SectionLabel size="sm">Private assignments</SectionLabel>
               {(access?.privateAssignments ?? []).map((assignment) => {
                 const name = assignment.principalKind === 'user'
                   ? users.find((user) => user.id === assignment.userId)?.displayName ?? assignment.userId

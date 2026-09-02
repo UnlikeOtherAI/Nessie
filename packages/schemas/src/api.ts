@@ -28,17 +28,65 @@ export const ApiErrorSchema = z.object({
 export const PaginationDirectionSchema = z.enum(['forward', 'backward'])
 export type PaginationDirection = z.infer<typeof PaginationDirectionSchema>
 
+/**
+ * How every list endpoint is asked for a page.
+ *
+ * Five services had each written the same keyset paging by hand, two more used
+ * offset, and about ten list endpoints took a bare `limit` with no way to
+ * reach the rest of the rows at all. These schemas existed the whole time and
+ * nothing imported them; that is the drift the content system closes.
+ *
+ * The default page is 25 and the ceiling is 100. There is deliberately no
+ * page-size control: a size a person can change is a preference to store, a
+ * URL to keep, and a second thing that can differ between two lists.
+ */
+export const DEFAULT_PAGE_LIMIT = 25
+export const MAX_PAGE_LIMIT = 100
+
 export const PaginationParamsSchema = z.object({
   cursor: z.string().optional(),
-  limit: z.number().int().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(MAX_PAGE_LIMIT).optional(),
   direction: PaginationDirectionSchema.optional(),
 })
 export type PaginationParams = z.infer<typeof PaginationParamsSchema>
 
+export const SortOrderSchema = z.enum(['asc', 'desc'])
+export type SortOrder = z.infer<typeof SortOrderSchema>
+
+/**
+ * The query a paged list route accepts, as it arrives on the wire — every
+ * value is a string, so `limit` is coerced here rather than at each call site.
+ * A route composes this with its own `sort` whitelist and its own named
+ * filters; `q` is free-text search, and the server is what filters and ranks.
+ */
+export const ListQuerySchema = z.object({
+  cursor: z.string().optional(),
+  direction: PaginationDirectionSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_LIMIT).optional(),
+  order: SortOrderSchema.optional(),
+  q: z.string().max(200).optional(),
+  sort: z.string().max(64).optional(),
+})
+export type ListQuery = z.infer<typeof ListQuerySchema>
+
+/**
+ * What a list endpoint reports about the page it just returned.
+ *
+ * `nextCursor` and `prevCursor` are both here because Previous and Next are
+ * both real controls; the single `cursor` this replaced could only move
+ * forward, which is why every list that had one still rendered no pagination.
+ * Both are opaque: the server encodes its own sort key into them, and no
+ * client may parse or construct one.
+ *
+ * `total` is optional in the type and **required in practice for admin
+ * lists** — it is what turns "Page 2" into "26–50 of 134". It is omitted only
+ * where counting is not meaningful, as in ranked search results.
+ */
 export const PaginationMetaSchema = z.object({
-  cursor: z.string().nullable(),
-  total: z.number().int().nonnegative().optional(),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
+  prevCursor: z.string().nullable(),
+  total: z.number().int().nonnegative().optional(),
 })
 export type PaginationMeta = z.infer<typeof PaginationMetaSchema>
 

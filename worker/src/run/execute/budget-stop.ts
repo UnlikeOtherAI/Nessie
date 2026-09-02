@@ -19,7 +19,11 @@ export type RunStopReason =
 // or `wound_down` — the model was told the run was ending (spec §3a) and chose
 // to finish and hand over, so no system notice is posted; the checkpoint is
 // still written quietly so a follow-up resumes with full state.
-export type RunEndReason = RunStopReason | 'wound_down' | 'approval_required'
+export type RunEndReason =
+  | RunStopReason
+  | 'wound_down'
+  | 'approval_required'
+  | 'card_response'
 
 export type BudgetStopStats = {
   iterations: number

@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react'
 import type { DashboardTone, DashboardWidgetKind } from '@nessie/schemas'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useDashboardSources, type DashboardSourceRecord } from '../../../facades/dashboards/hooks'
+import { SidePanel } from '../../shared/SidePanel'
 
 const CATALOGUE: { kind: DashboardWidgetKind; question: string; label: string }[] = [
   { kind: 'stat', label: 'Stat', question: 'What is the number now?' },
@@ -41,18 +42,12 @@ const categorical = (columns: Column[]) =>
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <label className="flex flex-col gap-1">
-    <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--tx3)' }}>
+    <span className="text-[11px] uppercase tracking-wide text-[color:var(--tx3)]">
       {label}
     </span>
     {children}
   </label>
 )
-
-const selectStyle = {
-  background: 'var(--panel)',
-  borderColor: 'var(--sep)',
-  color: 'var(--tx)',
-} as const
 
 export const AddWidgetPanel = ({
   dashboardId,
@@ -147,44 +142,22 @@ export const AddWidgetPanel = ({
   }
 
   return (
-    <aside
-      className="flex h-full min-h-0 w-full flex-col border-l md:w-80 md:shrink-0"
-      style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
-      data-testid="add-widget-panel"
-    >
-      <header
-        className="flex items-center gap-2 border-b px-3 py-2.5"
-        style={{ borderColor: 'var(--sep)' }}
-      >
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--tx)' }}>
-          Add a widget
-        </h2>
-        <button
-          className="ml-auto rounded px-1.5 text-sm"
-          onClick={onClose}
-          style={{ color: 'var(--tx3)' }}
-          type="button"
-        >
-          ✕
-        </button>
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+    <SidePanel className="shrink-0" onClose={onClose} title="Add a widget">
+      <div className="flex flex-col gap-3" data-testid="add-widget-panel">
         {!kind ? (
           <ul className="flex flex-col gap-1.5">
             {CATALOGUE.map((entry) => (
               <li key={entry.kind}>
                 <button
-                  className="w-full rounded border px-3 py-2 text-left"
+                  className="w-full rounded border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] px-3 py-2 text-left"
                   onClick={() => setKind(entry.kind)}
-                  style={{ borderColor: 'var(--sep)', background: 'var(--overlay-weak)' }}
                   type="button"
                   data-testid={`widget-kind-${entry.kind}`}
                 >
-                  <div className="text-sm font-medium" style={{ color: 'var(--tx)' }}>
+                  <div className="text-sm font-medium text-[color:var(--tx)]">
                     {entry.label}
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--tx3)' }}>
+                  <div className="text-xs text-[color:var(--tx3)]">
                     {entry.question}
                   </div>
                 </button>
@@ -194,9 +167,8 @@ export const AddWidgetPanel = ({
         ) : (
           <>
             <button
-              className="w-fit text-xs underline"
+              className="w-fit text-xs text-[color:var(--tx3)] underline"
               onClick={() => setKind(null)}
-              style={{ color: 'var(--tx3)' }}
               type="button"
             >
               ← choose a different kind
@@ -204,23 +176,21 @@ export const AddWidgetPanel = ({
 
             <Field label="Title">
               <input
-                className="rounded border px-2 py-1.5 text-sm"
+                className="admin-input"
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Requests per day"
-                style={selectStyle}
                 value={title}
               />
             </Field>
 
             <Field label="Data source">
               <select
-                className="rounded border px-2 py-1.5 text-sm"
+                className="admin-input"
                 onChange={(event) => {
                   setSourceId(event.target.value)
                   setPrimary('')
                   setSecondary('')
                 }}
-                style={selectStyle}
                 value={sourceId}
               >
                 <option value="">Choose a source…</option>
@@ -235,9 +205,8 @@ export const AddWidgetPanel = ({
             {sourceId && kind !== 'table' ? (
               <Field label={kind === 'status' ? 'State column' : 'Value'}>
                 <select
-                  className="rounded border px-2 py-1.5 text-sm"
+                  className="admin-input"
                   onChange={(event) => setPrimary(event.target.value)}
-                  style={selectStyle}
                   value={primary}
                 >
                   <option value="">Choose a column…</option>
@@ -253,9 +222,8 @@ export const AddWidgetPanel = ({
             {sourceId && (kind === 'timeseries' || kind === 'bar') ? (
               <Field label={kind === 'timeseries' ? 'Time axis' : 'Category'}>
                 <select
-                  className="rounded border px-2 py-1.5 text-sm"
+                  className="admin-input"
                   onChange={(event) => setSecondary(event.target.value)}
-                  style={selectStyle}
                   value={secondary}
                 >
                   <option value="">Choose a column…</option>
@@ -272,13 +240,14 @@ export const AddWidgetPanel = ({
               <div className="flex flex-wrap gap-1">
                 {TONES.map((candidate) => (
                   <button
-                    className="rounded px-2 py-1 text-[11px] capitalize"
+                    className={[
+                      'rounded px-2 py-1 text-[11px] capitalize',
+                      tone === candidate
+                        ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
+                        : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx2)]',
+                    ].join(' ')}
                     key={candidate}
                     onClick={() => setTone(candidate)}
-                    style={{
-                      background: tone === candidate ? 'var(--accent)' : 'var(--overlay-weak)',
-                      color: tone === candidate ? 'var(--on-accent, #fff)' : 'var(--tx2)',
-                    }}
                     type="button"
                   >
                     {candidate}
@@ -288,16 +257,15 @@ export const AddWidgetPanel = ({
             </Field>
 
             {error ? (
-              <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+              <p className="text-xs text-[color:var(--danger-text)]">
                 {error}
               </p>
             ) : null}
 
             <button
-              className="mt-1 rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+              className="admin-button admin-button-primary mt-1"
               disabled={!canSave || saving}
               onClick={() => void save()}
-              style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
               type="button"
               data-testid="add-widget-save"
             >
@@ -306,6 +274,6 @@ export const AddWidgetPanel = ({
           </>
         )}
       </div>
-    </aside>
+    </SidePanel>
   )
 }

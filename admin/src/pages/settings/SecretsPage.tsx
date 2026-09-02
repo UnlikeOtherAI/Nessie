@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { CreateSecretDialog } from '../../components/features/settings/CreateSecretDialog'
 import { SecretMetadataTable } from '../../components/features/settings/SecretMetadataTable'
+import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjects } from '../../facades/projects/hooks'
 import {
@@ -18,12 +19,14 @@ export const SecretsPage = () => {
   const revokeSecret = useRevokeSecret()
   const [createOpen, setCreateOpen] = useState(false)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
+  const [pendingRevoke, setPendingRevoke] = useState<string | null>(null)
 
   const revoke = async (reference: string) => {
     setFeedback(null)
     try {
       await revokeSecret.mutateAsync(reference)
       setFeedback({ kind: 'success', message: 'Secret revoked.' })
+      setPendingRevoke(null)
     } catch (caught) {
       setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke secret.' })
     }
@@ -63,7 +66,7 @@ export const SecretsPage = () => {
           </div>
           <SecretMetadataTable
             isLoading={isLoading}
-            onRevoke={(reference) => void revoke(reference)}
+            onRevoke={(reference) => setPendingRevoke(reference)}
             revokingReference={revokeSecret.isPending ? revokeSecret.variables : null}
             secrets={secrets}
           />
@@ -79,6 +82,18 @@ export const SecretsPage = () => {
         open={createOpen}
         pending={createSecret.isPending}
         projects={projects}
+      />
+      <ConfirmDialog
+        body="Anything still using this secret reference will stop working."
+        confirmLabel="Revoke secret"
+        destructive
+        onCancel={() => setPendingRevoke(null)}
+        onConfirm={() => {
+          if (pendingRevoke) void revoke(pendingRevoke)
+        }}
+        open={pendingRevoke != null}
+        pending={revokeSecret.isPending}
+        title="Revoke this secret?"
       />
     </SettingsPanel>
   )

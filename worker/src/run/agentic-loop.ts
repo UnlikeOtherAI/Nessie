@@ -36,6 +36,7 @@ import {
   type ExecuteToolFn,
   type ExecutedToolResult,
   type PrepareToolFn,
+  type AgentCardSuspension,
   type ToolApprovalSuspension,
   type ToolBatchCallbacks,
 } from './tool-batch.js'
@@ -71,6 +72,12 @@ export type LoopResult = {
   exhaustedBudget: BudgetExhaustionReason | null
   /** A policy-gated tool persisted an approval request and stopped the loop. */
   pendingApproval?: ToolApprovalSuspension | null
+  /**
+   * `card_post` posted an interactive card with `wait: true`. Unlike an
+   * approval this is decided *after* dispatch — the card has to exist before
+   * anybody can press it — so the batch reports it from a settled result.
+   */
+  pendingInput?: AgentCardSuspension | null
   // True when the loop exited because a cooperative cancel was observed (via
   // `checkCancelled`) between iterations or after a tool-call batch, rather than
   // because the model finished or a budget cap tripped. `finalText` then holds
@@ -175,6 +182,7 @@ export const runAgenticLoop = async (input: {
     finalText: string = lastAssistantText,
     cancelled = false,
     pendingApproval: ToolApprovalSuspension | null = null,
+    pendingInput: AgentCardSuspension | null = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
@@ -185,6 +193,7 @@ export const runAgenticLoop = async (input: {
     iterations,
     messages,
     pendingApproval,
+    pendingInput,
     toolCallsUsed,
     toolMs: totalToolMs,
     totalCostCents: spend.totalCostCents,
@@ -312,6 +321,11 @@ export const runAgenticLoop = async (input: {
     toolCallsUsed += toolResults.length
     if (batch.pendingApproval) {
       return finish(null, lastAssistantText, false, batch.pendingApproval)
+    }
+    // The card is posted and the person owes an answer; nothing further in this
+    // generation can usefully run, so the loop exits and the run parks.
+    if (batch.pendingInput) {
+      return finish(null, lastAssistantText, false, null, batch.pendingInput)
     }
     pendingToolResults = toolResults.map(({ acknowledgeDelivery: _ack, ...rest }) => rest)
 

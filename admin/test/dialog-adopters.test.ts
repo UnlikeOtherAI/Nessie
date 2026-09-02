@@ -36,14 +36,21 @@ const ADOPTERS: Adopter[] = [
   { mode: 'dialog', path: 'components/shared/CircleImageCropper.tsx' },
   { mode: 'dialog', path: 'components/shared/EditProjectDialog.tsx' },
   { mode: 'overlay', path: 'components/shared/AttachmentViewer.tsx' },
-  { mode: 'overlay', path: 'components/features/agents/AgentAvatarQuickEdit.tsx' },
+  // Was an `overlay` carve-out for an avatar-centred card with no title row;
+  // the content-system migration put it on the shell, with its destructive
+  // "Remove image" behind the sanctioned nested `ConfirmDialog(blocking)`.
+  { mode: 'dialog', path: 'components/features/agents/AgentAvatarQuickEdit.tsx' },
   { mode: 'overlay', path: 'components/features/channels/DocumentStreamDialog.tsx' },
   { mode: 'dialog', path: 'components/features/channels/DocumentStreamLeaveConfirm.tsx' },
   { mode: 'overlay', path: 'components/features/channels/ThoughtProcessDialog.tsx' },
   { mode: 'dialog', path: 'components/features/executors/ExecutorRunLauncherDialog.tsx' },
   { mode: 'overlay', path: 'components/features/billing/UoaBillingCancellationDialog.tsx' },
-  { mode: 'overlay', path: 'components/features/integrations/DeepWaterResearchLauncherDialog.tsx' },
-  { mode: 'overlay', path: 'components/features/triggers/TriggerEditorDialog.tsx' },
+  // Was an `overlay` carve-out for its own `max-w-3xl` panel family; it now
+  // wears the shell's `size="xl"` rather than a geometry of its own.
+  { mode: 'dialog', path: 'components/features/integrations/DeepWaterResearchLauncherDialog.tsx' },
+  // Was an `overlay` carve-out for a 680px panel the shell did not ship; it
+  // now wears `size="lg"` (640px) rather than keep a geometry of its own.
+  { mode: 'dialog', path: 'components/features/triggers/TriggerEditorDialog.tsx' },
   // A Flow, not a modal on `single` (docs/navigation.md §7): still pinned here
   // because it is one of the fourteen files and still must own no z-index.
   { mode: 'overlay', path: 'pages/ChannelConversationComposePage.tsx' },

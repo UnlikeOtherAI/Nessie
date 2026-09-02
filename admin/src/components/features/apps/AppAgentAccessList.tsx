@@ -12,6 +12,7 @@ import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 import { getAgentGlyph } from '../../shared/AgentAvatar'
 import { EmptyState } from '../../shared/EmptyState'
+import { QueryState } from '../../shared/QueryState'
 import {
   agentAccessConsequence,
   agentAccessEmptyState,
@@ -223,50 +224,49 @@ export const AppAgentAccessList = ({ app }: AppAgentAccessListProps) => {
   return (
     <div className="grid gap-3" data-testid="app-agent-access">
       <ControlNotice control={control} />
-      {source.isError ? (
-        <p className="text-xs text-[color:var(--danger-text)]" role="alert">
-          Agent access could not be loaded.{' '}
-          <button
-            className="underline"
-            onClick={() => source.refetch()}
-            type="button"
-          >
-            Try again
-          </button>
-        </p>
-      ) : null}
-      {empty ? (
-        empty.placement === 'sole' ? (
-          <EmptyState>
-            <div className="font-medium text-[color:var(--tx2)]">{empty.message.title}</div>
-            <p className="mt-1">{empty.message.body}</p>
-          </EmptyState>
-        ) : (
-          <p className="text-xs leading-5 text-[color:var(--tx3)]">{empty.message.body}</p>
-        )
-      ) : null}
-      {list.rows.length > 0 ? (
-        <>
-          <p className="text-xs text-[color:var(--tx3)]">{agentAccessHeadline(list)}</p>
-          <ul className="grid gap-2">
-            {list.rows.map((row) =>
-              list.mode === 'managed' ? (
-                <ManagedAgentRow
-                  appName={app.displayName}
-                  key={row.agentId}
-                  row={row}
-                  toolRegistryEntryIds={toolRegistryEntryIds}
-                />
+      <QueryState
+        className="py-2"
+        errorLabel="Agent access could not be loaded."
+        loadingLabel="Checking agent access…"
+        query={source}
+      >
+        {() => (
+          <>
+            {empty ? (
+              empty.placement === 'sole' ? (
+                <EmptyState>
+                  <div className="font-medium text-[color:var(--tx2)]">{empty.message.title}</div>
+                  <p className="mt-1">{empty.message.body}</p>
+                </EmptyState>
               ) : (
-                <ObservedAgentRow key={row.agentId} row={row} />
-              ),
-            )}
-          </ul>
-        </>
-      ) : null}
-      <p className="text-xs leading-5 text-[color:var(--tx3)]">
-        {agentAccessConsequence(list)}
-      </p>
+                <p className="text-xs leading-5 text-[color:var(--tx3)]">{empty.message.body}</p>
+              )
+            ) : null}
+            {list.rows.length > 0 ? (
+              <>
+                <p className="text-xs text-[color:var(--tx3)]">{agentAccessHeadline(list)}</p>
+                <ul className="grid gap-2">
+                  {list.rows.map((row) =>
+                    list.mode === 'managed' ? (
+                      <ManagedAgentRow
+                        appName={app.displayName}
+                        key={row.agentId}
+                        row={row}
+                        toolRegistryEntryIds={toolRegistryEntryIds}
+                      />
+                    ) : (
+                      <ObservedAgentRow key={row.agentId} row={row} />
+                    ),
+                  )}
+                </ul>
+              </>
+            ) : null}
+            <p className="text-xs leading-5 text-[color:var(--tx3)]">
+              {agentAccessConsequence(list)}
+            </p>
+          </>
+        )}
+      </QueryState>
     </div>
   )
 }

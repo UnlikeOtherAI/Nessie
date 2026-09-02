@@ -6,15 +6,18 @@ type AppIconProps = {
   displayName: string
   /** Always a Nessie-served path; an upstream URL never reaches this component. */
   iconUrl: string | null
-  size: 'card' | 'hero'
+  size: 'badge' | 'card' | 'hero'
 }
 
 const TILE_SIZE: Record<AppIconProps['size'], string> = {
+  // The service mark in a chat card's top-left corner.
+  badge: 'h-6 w-6 rounded-[var(--radius-sm)]',
   card: 'h-12 w-12 rounded-[var(--radius-md)]',
   hero: 'h-16 w-16 rounded-[var(--radius-lg)]',
 }
 
 const INITIALS_SIZE: Record<AppIconProps['size'], string> = {
+  badge: 'text-[10px]',
   card: 'text-sm',
   hero: 'text-lg',
 }
@@ -53,7 +56,11 @@ export const AppIcon = ({ displayName, iconUrl, size }: AppIconProps) => {
       ].join(' ')}
     >
       {objectUrl ? (
-        <img alt="" className="h-full w-full object-contain p-2" src={objectUrl} />
+        <img
+          alt=""
+          className={`h-full w-full object-contain ${size === 'badge' ? 'p-0.5' : 'p-2'}`}
+          src={objectUrl}
+        />
       ) : (
         <span
           aria-hidden="true"

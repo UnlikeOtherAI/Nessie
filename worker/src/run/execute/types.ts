@@ -155,6 +155,13 @@ export type StoredConversationMessage = {
    */
   attachmentNote?: string | null
   /**
+   * One rendered line giving the live state of a card posted in this message —
+   * its buttons, whether it is still open, and what was decided. Beside
+   * `content` for the same reason as `attachmentNote`: the state changes after
+   * the message is written, and the message itself must never be rewritten.
+   */
+  cardNote?: string | null
+  /**
    * Attached images, inlined so a vision-capable model can look at them. Only
    * ever set on `user` turns; connectors whose model is text-only drop them and
    * fall back to `attachmentNote`. See `../message-attachments.ts`.

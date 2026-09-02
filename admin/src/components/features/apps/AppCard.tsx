@@ -9,6 +9,7 @@ import { AppIcon } from './AppIcon'
 import { AppIconBadge } from './AppIconBadge'
 import { AppTrustBadge } from './AppTrustBadge'
 import {
+  APP_KIND_PILL_TONE,
   appCardAction,
   appCardMeta,
   appCardStatus,
@@ -17,7 +18,6 @@ import {
   appDetailHref,
   appKindPill,
   type AppCardStatusTone,
-  type AppKindPillTone,
 } from './app-card-presentation'
 import { highlightSegments } from './app-search'
 import { showsTrustBadgeOnCard } from './app-trust'
@@ -36,14 +36,6 @@ type AppCardProps = {
   provenance?: string | null
   /** The live search term, so the matched run can be marked in place. */
   query?: string
-}
-
-const KIND_PILL_TONE: Record<AppKindPillTone, string> = {
-  // `--thinking` is the accent-family foreground each theme tuned to sit on
-  // `--accent-soft`; `--accent` itself is a fill colour and goes muddy on it.
-  accent: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
-  info: 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
-  neutral: 'bg-[color:var(--overlay-weak)] text-[color:var(--tx2)]',
 }
 
 const KIND_BADGES: Record<'Built-in' | 'Remote', {
@@ -162,17 +154,12 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
               <AppIconBadge
                 {...KIND_BADGES[kindPill.label as keyof typeof KIND_BADGES]}
                 testId={`app-kind-${kindPill.label.toLowerCase()}`}
-                toneClass={KIND_PILL_TONE[kindPill.tone]}
+                tone={APP_KIND_PILL_TONE[kindPill.tone]}
               />
             ) : kindPill ? (
-              <span
-                className={[
-                  'rounded-full px-2 py-0.5 font-medium',
-                  KIND_PILL_TONE[kindPill.tone],
-                ].join(' ')}
-              >
+              <Pill className="font-medium" tone={APP_KIND_PILL_TONE[kindPill.tone]} uppercase={false}>
                 {kindPill.label}
-              </span>
+              </Pill>
             ) : null}
             {showsTrustBadgeOnCard(app.trustLevel) ? (
               <AppTrustBadge iconOnly trustLevel={app.trustLevel} />

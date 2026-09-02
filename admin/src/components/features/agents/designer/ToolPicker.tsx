@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { DesignerToolGroup, DesignerToolOption } from '../../../../facades/designer/tool-catalog'
+import type {
+  DesignerToolCatalogQuery,
+  DesignerToolGroup,
+  DesignerToolOption,
+} from '../../../../facades/designer/tool-catalog'
 import { isToolEnabled } from '../../../../facades/designer/tool-catalog'
 import { Switch } from '../../../primitives/Switch'
-import { EmptyState } from '../../../shared/EmptyState'
+import { QueryState } from '../../../shared/QueryState'
 
 /**
  * Tool picker for the agent designer. Renders the real org tool catalog
@@ -13,8 +17,8 @@ import { EmptyState } from '../../../shared/EmptyState'
 
 type ToolPickerProps = {
   groups: DesignerToolGroup[]
-  isLoading: boolean
   onToggle: (toolKey: string, enabled: boolean) => void
+  query: DesignerToolCatalogQuery
   toolState: Record<string, boolean>
 }
 
@@ -105,9 +109,9 @@ const ToolGroupSection = ({
   )
 }
 
-export const ToolPicker = ({ groups, isLoading, onToggle, toolState }: ToolPickerProps) => {
-  const [query, setQuery] = useState('')
-  const normalizedQuery = query.trim().toLowerCase()
+export const ToolPicker = ({ groups, onToggle, query, toolState }: ToolPickerProps) => {
+  const [search, setSearch] = useState('')
+  const normalizedQuery = search.trim().toLowerCase()
 
   const visibleGroups = useMemo(() => {
     if (!normalizedQuery) return groups
@@ -117,41 +121,42 @@ export const ToolPicker = ({ groups, isLoading, onToggle, toolState }: ToolPicke
     })
   }, [groups, normalizedQuery])
 
-  if (isLoading) {
-    return (
-      <div className="py-4 text-center text-sm text-[color:var(--tx3)]">Loading tools…</div>
-    )
-  }
-
-  if (groups.length === 0) {
-    return <EmptyState>No tools are registered for this organisation yet.</EmptyState>
-  }
-
   return (
-    <div className="grid gap-2">
-      <input
-        autoComplete="off"
-        className="admin-input"
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search tools…"
-        type="search"
-        value={query}
-      />
-      {visibleGroups.length === 0 ? (
-        <div className="py-4 text-center text-sm text-[color:var(--tx3)]">
-          No tools match “{query.trim()}”.
-        </div>
-      ) : (
-        visibleGroups.map((group) => (
-          <ToolGroupSection
-            group={group}
-            isFiltering={normalizedQuery.length > 0}
-            key={group.name}
-            onToggle={onToggle}
-            toolState={toolState}
+    <QueryState
+      className="py-4"
+      emptyLabel="No tools are registered for this organisation yet."
+      errorLabel="Tools could not be loaded."
+      isEmpty={groups.length === 0}
+      loadingLabel="Loading tools…"
+      query={query}
+    >
+      {() => (
+        <div className="grid gap-2">
+          <input
+            autoComplete="off"
+            className="admin-input"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search tools…"
+            type="search"
+            value={search}
           />
-        ))
+          {visibleGroups.length === 0 ? (
+            <div className="py-4 text-center text-sm text-[color:var(--tx3)]">
+              No tools match “{search.trim()}”.
+            </div>
+          ) : (
+            visibleGroups.map((group) => (
+              <ToolGroupSection
+                group={group}
+                isFiltering={normalizedQuery.length > 0}
+                key={group.name}
+                onToggle={onToggle}
+                toolState={toolState}
+              />
+            ))
+          )}
+        </div>
       )}
-    </div>
+    </QueryState>
   )
 }

@@ -147,7 +147,7 @@ export const CircleImageCropper = ({
 
   return (
     <Dialog description={description} dismissDisabled={busy} onClose={onCancel} open title={title}>
-      <div className="mt-4 flex justify-center">
+      <div className="flex justify-center">
         <div
           className="relative overflow-hidden rounded-xl bg-[color:var(--main)]"
           onPointerCancel={endDrag}

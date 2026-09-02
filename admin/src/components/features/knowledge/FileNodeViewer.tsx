@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react'
 import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -8,6 +9,8 @@ import {
 } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { EmptyState } from '../../shared/EmptyState'
+import { QueryState } from '../../shared/QueryState'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
 import {
@@ -19,6 +22,38 @@ import {
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+
+// `useAuthedTextFromPath` fetches on mount and has no `refetch` of its own —
+// Retry here works by discarding this body and mounting a fresh one (a new
+// `key` from the parent), which re-runs the fetch exactly like a first load.
+const TextFilePreview = ({
+  downloadPath,
+  onRetry,
+  render,
+  token,
+}: {
+  downloadPath: string
+  onRetry: () => void
+  render: (state: { text: string; truncated: boolean }) => ReactNode
+  token: string | null
+}) => {
+  const textPreview = useAuthedTextFromPath(downloadPath, token)
+  return (
+    <QueryState
+      className="py-12"
+      errorLabel="Preview unavailable."
+      loadingLabel="Loading preview…"
+      query={{ isError: textPreview.error, isLoading: textPreview.loading, refetch: onRetry }}
+    >
+      {() => render({ text: textPreview.text ?? '', truncated: textPreview.truncated })}
+    </QueryState>
+  )
+}
+
+const RetryableTextFilePreview = (props: Omit<Parameters<typeof TextFilePreview>[0], 'onRetry'>) => {
+  const [retryKey, setRetryKey] = useState(0)
+  return <TextFilePreview key={retryKey} {...props} onRetry={() => setRetryKey((value) => value + 1)} />
+}
 
 type FileNodeViewerProps = {
   canWrite: boolean
@@ -68,10 +103,6 @@ export const FileNodeViewer = ({
     // Only the PDF iframe needs a pinned MIME; <img>/<video>/<audio> can't execute
     // scripts, so they keep the server's media type for correct codec selection.
     previewMime,
-  )
-  const textPreview = useAuthedTextFromPath(
-    previewKind === 'text' && downloadPath ? downloadPath : null,
-    token,
   )
   const headerActions: PageHeaderAction[] = [
     {
@@ -129,7 +160,7 @@ export const FileNodeViewer = ({
 
         <div className="mt-6">
           {!version?.attachmentId ? (
-            <p className="text-sm text-[color:var(--tx3)]">This file has no content yet.</p>
+            <EmptyState>This file has no content yet.</EmptyState>
           ) : previewKind === 'image' && previewUrl ? (
             <img
               alt={page.title}
@@ -162,37 +193,37 @@ export const FileNodeViewer = ({
                 Your browser can’t play this audio — use Download.
               </audio>
             </div>
-          ) : markdownPreview ? (
-            textPreview.loading ? (
-              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
-            ) : textPreview.error || textPreview.text === null ? (
-              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Preview unavailable.</p>
-            ) : (
-              <div
-                className="max-h-[70vh] overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4"
-                data-testid="markdown-file-preview"
-              >
-                <MessageMarkdown allowRemoteImages={false} renderInlineText={(text) => text}>
-                  {textPreview.text}
-                </MessageMarkdown>
-                {textPreview.truncated ? (
-                  <p className="mt-3 text-xs text-[color:var(--tx3)]">
-                    …truncated — download to see the rest.
-                  </p>
-                ) : null}
-              </div>
-            )
-          ) : previewKind === 'text' ? (
-            textPreview.loading ? (
-              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
-            ) : textPreview.error || textPreview.text === null ? (
-              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Preview unavailable.</p>
-            ) : (
-              <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4 font-mono text-xs leading-relaxed text-[color:var(--tx)]">
-                {textPreview.text}
-                {textPreview.truncated ? '\n\n…truncated — download to see the rest.' : ''}
-              </pre>
-            )
+          ) : markdownPreview && downloadPath ? (
+            <RetryableTextFilePreview
+              downloadPath={downloadPath}
+              render={({ text, truncated }) => (
+                <div
+                  className="max-h-[70vh] overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4"
+                  data-testid="markdown-file-preview"
+                >
+                  <MessageMarkdown allowRemoteImages={false} renderInlineText={(inline) => inline}>
+                    {text}
+                  </MessageMarkdown>
+                  {truncated ? (
+                    <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                      …truncated — download to see the rest.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              token={token}
+            />
+          ) : previewKind === 'text' && downloadPath ? (
+            <RetryableTextFilePreview
+              downloadPath={downloadPath}
+              render={({ text, truncated }) => (
+                <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4 font-mono text-xs leading-relaxed text-[color:var(--tx)]">
+                  {text}
+                  {truncated ? '\n\n…truncated — download to see the rest.' : ''}
+                </pre>
+              )}
+              token={token}
+            />
           ) : isZipFilename(page.title) && version ? (
             <ZipContents pageId={page.id} versionId={version.id} />
           ) : (previewKind === 'image' ||
@@ -200,24 +231,25 @@ export const FileNodeViewer = ({
               previewKind === 'video' ||
               previewKind === 'audio') &&
             !previewUrl ? (
+            // `useAuthedObjectUrlFromPath` has no error signal distinct from
+            // "not ready yet" (both read back as a null url), so this can't
+            // offer a Retry without conflating a real failure with a normal
+            // in-flight load — see the knowledge content-kit migration report.
             <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
           ) : (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[color:var(--sep)] py-16 text-center">
-              <FontAwesomeIcon
-                className="h-10 w-10 text-[color:var(--tx3)]"
-                icon={iconForFilename(page.title)}
-              />
-              <p className="text-sm text-[color:var(--tx3)]">
-                No inline preview for this file type.
-              </p>
-              <button
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
-                type="button"
-              >
-                Download to view
-              </button>
-            </div>
+            <EmptyState
+              action={
+                <button
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
+                  type="button"
+                >
+                  Download to view
+                </button>
+              }
+            >
+              No inline preview for this file type.
+            </EmptyState>
           )}
         </div>
 

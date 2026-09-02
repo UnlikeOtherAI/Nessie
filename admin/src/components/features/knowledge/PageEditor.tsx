@@ -3,7 +3,11 @@ import type {
   KnowledgePageRecord,
   SavePageInput,
 } from '../../../facades/knowledge/hooks'
+import { toFormErrors } from '../../../facades/form-errors'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
 import { RichTextEditor } from './RichTextEditor'
 
 // One unsent page edit. Kept whole so a dismissed editor loses nothing.
@@ -42,7 +46,11 @@ export const PageEditor = ({
   parentPageId,
   pending,
 }: PageEditorProps) => {
-  const [error, setError] = useState<string | null>(null)
+  // Two separate complaints: the one the Title field owns, and the one the
+  // save itself returned. A server error rendered above the form is not a
+  // field error, and a field error shown once at the top is unreachable.
+  const [titleError, setTitleError] = useState<string | undefined>()
+  const [formError, setFormError] = useState<string | undefined>()
 
   // The page as stored — the draft's baseline, so opening a page and leaving
   // it untouched stores nothing.
@@ -74,56 +82,53 @@ export const PageEditor = ({
   const setBody = useCallback((next: string) => patchDraft({ body: next }), [patchDraft])
 
   useEffect(() => {
-    setError(null)
+    setTitleError(undefined)
+    setFormError(undefined)
   }, [page, initialTitle])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!title.trim()) {
-      setError('Title is required.')
+      setTitleError('Title is required.')
       return
     }
-    setError(null)
-    await onSubmit({
-      title: title.trim(),
-      summary: summary.trim() || null,
-      labels: splitLabels(labels),
-      body,
-      changeComment: changeComment.trim() || null,
-      parentPageId: mode === 'create' ? parentPageId ?? null : undefined,
-    })
-    // Saved: this edit is no longer unsent.
-    pageDraft.clear()
+    setTitleError(undefined)
+    setFormError(undefined)
+    try {
+      await onSubmit({
+        title: title.trim(),
+        summary: summary.trim() || null,
+        labels: splitLabels(labels),
+        body,
+        changeComment: changeComment.trim() || null,
+        parentPageId: mode === 'create' ? parentPageId ?? null : undefined,
+      })
+      // Saved: this edit is no longer unsent.
+      pageDraft.clear()
+    } catch (error) {
+      setFormError(toFormErrors(error).formError ?? 'Unable to save this page.')
+    }
   }
 
   return (
     <form className="flex h-full min-h-0 flex-col" onSubmit={submit}>
       <div className="grid gap-3 border-b border-[color:var(--sep)] p-4">
-        <label className="text-xs text-[color:var(--tx2)]">
-          Title
-          <input
-            className="admin-input mt-1"
-            onChange={(event) => patchDraft({ title: event.target.value })}
-            value={title}
-          />
-        </label>
-        <label className="text-xs text-[color:var(--tx2)]">
-          Summary
-          <input
-            className="admin-input mt-1"
+        <FormField error={titleError} label="Title" required>
+          <Input onChange={(event) => patchDraft({ title: event.target.value })} value={title} />
+        </FormField>
+        <FormField label="Summary">
+          <Input
             onChange={(event) => patchDraft({ summary: event.target.value })}
             value={summary}
           />
-        </label>
-        <label className="text-xs text-[color:var(--tx2)]">
-          Labels
-          <input
-            className="admin-input mt-1"
+        </FormField>
+        <FormField help="Comma-separated" label="Labels">
+          <Input
             onChange={(event) => patchDraft({ labels: event.target.value })}
             placeholder="runbook, onboarding"
             value={labels}
           />
-        </label>
+        </FormField>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
@@ -136,21 +141,13 @@ export const PageEditor = ({
       </div>
 
       <div className="grid gap-3 border-t border-[color:var(--sep)] p-4">
-        <input
-          className="admin-input"
+        <Input
           onChange={(event) => patchDraft({ changeComment: event.target.value })}
           placeholder="Change comment"
           value={changeComment}
         />
-        {error ? <div className="text-sm text-[var(--danger-text)]">{error}</div> : null}
-        <div className="flex items-center gap-2">
-          <button
-            className="admin-button admin-button-primary"
-            disabled={pending}
-            type="submit"
-          >
-            {mode === 'create' ? 'Create page' : 'Save version'}
-          </button>
+        <FormError>{formError}</FormError>
+        <FormActions>
           <button
             className="admin-button admin-button-secondary"
             onClick={onCancel}
@@ -158,7 +155,14 @@ export const PageEditor = ({
           >
             Cancel
           </button>
-        </div>
+          <button
+            className="admin-button admin-button-primary"
+            disabled={pending}
+            type="submit"
+          >
+            {mode === 'create' ? 'Create page' : 'Save version'}
+          </button>
+        </FormActions>
       </div>
     </form>
   )

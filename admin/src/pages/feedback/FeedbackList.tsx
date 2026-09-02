@@ -1,29 +1,20 @@
 import { useEffect } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
+import { buildPageLabel } from '@nessie/schemas'
+import { Card } from '../../components/shared/Card'
+import { PaginationFooter } from '../../components/shared/PaginationFooter'
+import { QueryState } from '../../components/shared/QueryState'
+import { Row, RowList } from '../../components/shared/RowList'
+import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import type { FeedbackRecord } from '../../lib/api-client'
+import { feedbackStatusLabel, feedbackStatusTone } from './feedback-presentation'
 
 const FEEDBACK_PAGE_SIZE = 5
-
-const STATUS_LABELS: Record<string, string> = {
-  saved: 'Recorded',
-  submitted: 'Sent to GitHub',
-  failed: 'Send failed',
-}
 
 const formatDate = (iso: string): string => {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
-}
-
-const StatusChip = ({ status }: { status: string }) => {
-  const label = STATUS_LABELS[status] ?? status
-  const tone =
-    status === 'failed'
-      ? 'text-[color:var(--danger-text)]'
-      : status === 'submitted'
-        ? 'text-[color:var(--accent)]'
-        : 'text-[color:var(--tx3)]'
-  return <span className={`text-xs font-semibold ${tone}`}>{label}</span>
 }
 
 export const getFeedbackPage = <Item,>(items: Item[], page: number) => {
@@ -39,16 +30,15 @@ export const getFeedbackPage = <Item,>(items: Item[], page: number) => {
 }
 
 export const FeedbackList = ({
-  items,
-  isLoading,
   onPageChange,
   page,
+  query,
 }: {
-  items: FeedbackRecord[]
-  isLoading: boolean
   onPageChange: (page: number) => void
   page: number
+  query: UseQueryResult<FeedbackRecord[]>
 }) => {
+  const items = query.data ?? []
   const { currentPage, items: pageItems, totalPages } = getFeedbackPage(items, page)
 
   useEffect(() => {
@@ -56,84 +46,68 @@ export const FeedbackList = ({
   }, [currentPage, onPageChange, page])
 
   return (
-    <section className="admin-card w-full p-4">
+    <Card variant="section">
       <SectionLabel>Your feedback</SectionLabel>
 
-      {/* Not QueryState: this takes an `isLoading` boolean, not a query, so
-          there is nothing for a Retry to call — and the lines are tx2, not
-          tx3, left-aligned under the section label. */}
-      {isLoading ? (
-        <div className="mt-3 text-sm text-[color:var(--tx2)]">Loading…</div>
-      ) : items.length === 0 ? (
-        <div className="mt-3 text-sm text-[color:var(--tx2)]">
-          You haven&apos;t sent any feedback yet.
-        </div>
-      ) : (
-        <>
-          <ul className="mt-3 flex flex-col gap-2">
-            {pageItems.map((item) => (
-              <li
-                key={item.id}
-                className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="font-semibold text-[color:var(--tx)]">{item.title}</div>
-                  <StatusChip status={item.status} />
-                </div>
-                <div className="mt-1 whitespace-pre-wrap text-sm text-[color:var(--tx2)]">
-                  {item.body}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--tx3)]">
-                  <span>{formatDate(item.createdAt)}</span>
-                  {item.attachmentFilename && (
-                    <span>📎 {item.attachmentFilename}</span>
-                  )}
-                  {item.githubIssueUrl && (
-                    <a
-                      className="text-[color:var(--lnk)] hover:underline"
-                      href={item.githubIssueUrl}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      View issue{item.githubIssueNumber ? ` #${item.githubIssueNumber}` : ''}
-                    </a>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+      <div className="mt-3">
+        <QueryState
+          emptyLabel="You haven't sent any feedback yet."
+          errorLabel="Your feedback could not be loaded."
+          isEmpty={items.length === 0}
+          loadingLabel="Loading your feedback…"
+          query={query}
+        >
+          {() => (
+            <>
+              <RowList label="Your feedback">
+                {pageItems.map((item) => (
+                  <Row
+                    key={item.id}
+                    title={item.title}
+                    trailing={
+                      <Pill radius="chip" size="sm" tone={feedbackStatusTone(item.status)}>
+                        {feedbackStatusLabel(item.status)}
+                      </Pill>
+                    }
+                  >
+                    <span className="mt-1 block whitespace-pre-wrap text-sm text-[color:var(--tx2)]">
+                      {item.body}
+                    </span>
+                    <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--tx3)]">
+                      <span>{formatDate(item.createdAt)}</span>
+                      {item.attachmentFilename && <span>📎 {item.attachmentFilename}</span>}
+                      {item.githubIssueUrl && (
+                        <a
+                          className="text-[color:var(--lnk)] hover:underline"
+                          href={item.githubIssueUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          View issue{item.githubIssueNumber ? ` #${item.githubIssueNumber}` : ''}
+                        </a>
+                      )}
+                    </span>
+                  </Row>
+                ))}
+              </RowList>
 
-          {/* Not the shared PaginationFooter: that strip puts Previous and Next
-              at the two edges around a centred text-xs label, and this card
-              ships the label first with both buttons grouped on the right at
-              text-sm. Two DOM orders is a variant prop, not a shared control. */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-              <span className="text-[color:var(--tx3)]">
-                Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={currentPage === 1}
-                  onClick={() => onPageChange(currentPage - 1)}
-                  type="button"
-                >
-                  Previous
-                </button>
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={currentPage === totalPages}
-                  onClick={() => onPageChange(currentPage + 1)}
-                  type="button"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+              <PaginationFooter
+                canNext={currentPage < totalPages}
+                canPrevious={currentPage > 1}
+                className="mt-4"
+                hideWhenSinglePage
+                label={buildPageLabel(
+                  { total: items.length },
+                  (currentPage - 1) * FEEDBACK_PAGE_SIZE,
+                  pageItems.length,
+                )}
+                onPageChange={onPageChange}
+                page={currentPage}
+              />
+            </>
           )}
-        </>
-      )}
-    </section>
+        </QueryState>
+      </div>
+    </Card>
   )
 }

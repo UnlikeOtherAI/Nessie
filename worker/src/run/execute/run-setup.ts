@@ -1,5 +1,7 @@
 import { markRecallsInjected } from '@nessie/memory'
 import {
+  APP_CONNECT_REQUEST_TOOL_ID,
+  APP_SEARCH_TOOL_ID,
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
   TODO_TOOL_DEFINITIONS,
@@ -24,6 +26,7 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import { hasCardPromptTools } from './agent-cards-prompt.js'
 import {
   hasDocumentsPromptTools,
   hasKbWriteTools,
@@ -36,6 +39,17 @@ import {
 
 const DELEGATE_TOOL_ID = 'delegate'
 const TODO_TOOL_IDS = new Set(TODO_TOOL_DEFINITIONS.map((tool) => tool.id))
+const CONVERSATIONAL_SETUP_TOOL_IDS = new Set([
+  APP_SEARCH_TOOL_ID,
+  APP_CONNECT_REQUEST_TOOL_ID,
+])
+
+export const applyConversationalSetupExclusions = (
+  toolIds: Set<string>,
+  enabled: boolean,
+): Set<string> => enabled
+  ? toolIds
+  : new Set([...toolIds].filter((toolId) => !CONVERSATIONAL_SETUP_TOOL_IDS.has(toolId)))
 
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
@@ -122,7 +136,15 @@ export const prepareRunExecution = async (
     prompt: string
   },
 ): Promise<RunExecutionSetup> => {
-  const allowedToolIds = await loadAllowedToolIds(deps.prisma, context)
+  const registryAllowedToolIds = await loadAllowedToolIds(deps.prisma, context)
+  const organization = await deps.prisma.organization.findUnique({
+    where: { id: context.channel.organizationId },
+    select: { conversationalSetupEnabled: true },
+  })
+  const allowedToolIds = applyConversationalSetupExclusions(
+    registryAllowedToolIds,
+    organization?.conversationalSetupEnabled === true,
+  )
 
   const agentRecord = await deps.prisma.agent.findUnique({
     where: { id: context.agent.id },
@@ -306,6 +328,7 @@ export const prepareRunExecution = async (
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
+      hasCardTool: hasCardPromptTools(resolvedToolIds),
       todoFacts,
       documents: documentsHome
         ? {

@@ -3,6 +3,7 @@ import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
 import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
 import type { DocumentStreamRecorder } from './execute/document-stream.js'
+import type { RunContext } from './execute/types.js'
 import type {
   ConnectorUsage,
   LedgerIdentityService,
@@ -13,10 +14,20 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
 
+/**
+ * A tool that posted an interactive card and asked to wait for the answer.
+ * Unlike an approval gate — decided *before* dispatch — this is decided after,
+ * because the card has to exist before anybody can press it.
+ */
+export type AgentCardSuspension = {
+  cardId: string
+}
+
 export type ToolExecutionResult = {
   connectorUsage?: ToolExecutionUsage
   inputSummary: string
   outputPreview: string
+  pendingInput?: AgentCardSuspension
   toolName: string
 }
 
@@ -28,6 +39,7 @@ export type AgenticToolResult = {
   connectorUsage?: ToolExecutionUsage
   inputSummary: string
   output: string
+  pendingInput?: AgentCardSuspension
   success: boolean
   /** A pre-created durable ToolCall used by an executor command. */
   toolCallRecordId?: string
@@ -90,10 +102,14 @@ export type BuiltinToolRuntimeContext = {
   realtimeTransport: PgRealtimeTransport
   run: {
     id: string
+    /** True only for a live human conversational turn, never automation. */
+    interactive?: boolean
     messageId: string
     originatingUserId?: string | null
     principalUserId?: string | null
     threadId: string
   }
+  /** The complete run context used by the one disclosure-stamped message write. */
+  runContext?: RunContext
   toolCallId: string | null
 }

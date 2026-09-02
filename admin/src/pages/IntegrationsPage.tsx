@@ -7,7 +7,9 @@ import {
   mcpConnectorLabel,
   mcpConnectorTone,
 } from '../components/features/integrations/AgentConnectorSection'
+import { Notice } from '../components/primitives/Notice'
 import { Pill, type PillTone } from '../components/primitives/Pill'
+import { Switch } from '../components/primitives/Switch'
 import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
@@ -15,7 +17,9 @@ import { ExternalAgentActivationSection } from '../components/features/integrati
 import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { KeyValueList } from '../components/shared/KeyValueList'
 import { QueryState } from '../components/shared/QueryState'
+import { StatGrid, StatTile } from '../components/shared/StatTile'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
   useIntegratedProducts,
@@ -97,18 +101,32 @@ const healthTone = (status: IntegratedProductResponse['healthStatus']): PillTone
   return 'muted'
 }
 
-const productAccent = (slug: string): string => {
-  if (slug === 'deep-water') return '#0f766e'
-  if (slug === 'deeptest') return '#991b1b'
-  if (slug === 'buildme') return '#4338ca'
-  if (slug === 'deepsignal') return 'var(--accent)'
-  return '#475569'
+/**
+ * The glyph's fill, as tokens. Each product still reads as its own colour —
+ * that is the whole job of a glyph beside a name — but the four raw hex
+ * literals this used to carry (`#0f766e`, `#991b1b`, `#4338ca`, `#475569`)
+ * answered to no theme: a person on the contrast or the parchment theme saw
+ * the exact same teal regardless. There is no categorical brand palette in
+ * the token system, so this reuses the nearest semantic tokens instead —
+ * `info` for research, `danger` for a security product, `accent-strong` (a
+ * second, darker step from `deepsignal`'s own `accent`) for the project-
+ * management product, and `tx3` for anything not named here.
+ */
+const productAccentClass = (slug: string): string => {
+  if (slug === 'deep-water') return 'bg-[color:var(--info)]'
+  if (slug === 'deeptest') return 'bg-[color:var(--danger)]'
+  if (slug === 'buildme') return 'bg-[color:var(--accent-strong)]'
+  if (slug === 'deepsignal') return 'bg-[color:var(--accent)]'
+  return 'bg-[color:var(--tx3)]'
 }
 
 const ProductGlyph = ({ product }: { product: IntegratedProductResponse }) => (
   <span
-    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
-    style={{ backgroundColor: productAccent(product.slug) }}
+    className={[
+      'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold',
+      'text-[color:var(--on-accent)]',
+      productAccentClass(product.slug),
+    ].join(' ')}
   >
     {product.name.slice(0, 2).toUpperCase()}
   </span>
@@ -153,7 +171,7 @@ const ProductRow = ({
   <button
     className={[
       'admin-card w-full p-3 text-left transition',
-      active ? 'ring-2 ring-[var(--accent)]' : 'hover:bg-[var(--overlay-weak)]',
+      active ? 'ring-2 ring-[color:var(--accent)]' : 'hover:bg-[color:var(--overlay-weak)]',
     ].join(' ')}
     onClick={onSelect}
     type="button"
@@ -162,7 +180,7 @@ const ProductRow = ({
       <ProductGlyph product={product} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-[var(--tx)]">{product.name}</h3>
+          <h3 className="truncate text-sm font-semibold text-[color:var(--tx)]">{product.name}</h3>
           <Pill
             className="font-semibold"
             radius="chip"
@@ -173,18 +191,18 @@ const ProductRow = ({
             {healthLabels[product.healthStatus]}
           </Pill>
         </div>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx3)]">{product.summary}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--tx3)]">{product.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Pill radius="chip" size="sm" uppercase={false}>
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
             {installLabels[product.defaultInstallState]}
           </Pill>
-          <Pill radius="chip" size="sm" uppercase={false}>
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
             {accountLabel(product)}
           </Pill>
-          <Pill radius="chip" size="sm" uppercase={false}>
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
             {teamEnablementLabel(product)}
           </Pill>
-          <Pill radius="chip" size="sm" uppercase={false}>
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
             {teamAuthorityLabel(product)}
           </Pill>
           <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
@@ -194,13 +212,6 @@ const ProductRow = ({
       </div>
     </div>
   </button>
-)
-
-const SurfaceRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="border-t border-[var(--sep)] py-3 first:border-t-0 first:pt-0">
-    <div className="text-xs font-semibold uppercase text-[var(--tx3)]">{label}</div>
-    <div className="mt-1 text-sm leading-6 text-[var(--tx)]">{value}</div>
-  </div>
 )
 
 const TeamAccessSection = ({
@@ -218,55 +229,52 @@ const TeamAccessSection = ({
   const externalOrgId = product.teamEnablement?.externalOrgId ?? product.accountLink?.activeOrgId
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Team access</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">Team access</h3>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
             {enabled ? 'Enabled for the active team.' : 'Not enabled for the active team.'}
           </p>
         </div>
-        <label className="inline-flex min-h-9 items-center gap-2 rounded border border-[var(--sep)] px-3 text-sm text-[var(--tx)]">
-          <input
+        <span className="flex items-center gap-2">
+          <span className="text-sm text-[color:var(--tx2)]">
+            {isToggling ? 'Saving...' : enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          <Switch
             checked={enabled}
-            className="h-4 w-4 accent-[var(--accent)]"
             disabled={!isOwner || isToggling}
+            label={`${enabled ? 'Disable' : 'Enable'} team access for ${product.name}`}
             onChange={() =>
               setTeamEnablement.mutate({
                 enabled: !enabled,
                 productSlug: product.slug,
               })
             }
-            type="checkbox"
           />
-          <span>{isToggling ? 'Saving...' : 'Enabled'}</span>
-        </label>
+        </span>
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="rounded border border-[var(--sep)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Account</div>
-          <div className="mt-1 text-sm text-[var(--tx)]">{accountLabel(product)}</div>
-        </div>
-        <div className="rounded border border-[var(--sep)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">UOA workspace</div>
-          <div className="mt-1 truncate text-sm text-[var(--tx)]">
-            {externalTeamId ? `${externalOrgId ?? 'org'} / ${externalTeamId}` : 'Not projected yet'}
-          </div>
-        </div>
-        <div className="rounded border border-[var(--sep)] px-3 py-2 sm:col-span-2">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Authority</div>
-          <div className="mt-1 text-sm text-[var(--tx)]">{teamAuthorityLabel(product)}</div>
-        </div>
-      </div>
+      <StatGrid className="mt-3">
+        <StatTile label="Account" value={accountLabel(product)} />
+        <StatTile
+          label="UOA workspace"
+          value={externalTeamId ? `${externalOrgId ?? 'org'} / ${externalTeamId}` : 'Not projected yet'}
+        />
+        <StatTile
+          className="sm:col-span-2"
+          label="Authority"
+          value={teamAuthorityLabel(product)}
+        />
+      </StatGrid>
       {!isOwner ? (
-        <p className="mt-2 text-xs text-[var(--tx3)]">Owner access required to change team access.</p>
+        <p className="mt-2 text-xs text-[color:var(--tx3)]">Owner access required to change team access.</p>
       ) : null}
       {setTeamEnablement.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
+        <Notice className="mt-2" role="alert" size="sm" tone="danger">
           {setTeamEnablement.error instanceof Error
             ? setTeamEnablement.error.message
             : 'Failed to update team access.'}
-        </p>
+        </Notice>
       ) : null}
     </section>
   )
@@ -299,15 +307,19 @@ const ProductDetail = ({
       {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
       <ExternalAgentActivationSection product={product} />
 
-      <section>
-        <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>
-        <div className="mt-3">
-          <SurfaceRow label="Native page" value={plan.nativePage} />
-          <SurfaceRow label="Chat cards" value={plan.chatCards} />
-          <SurfaceRow label="Custom controls" value={plan.controls} />
-          <SurfaceRow label="Agent access" value={plan.agentAccess} />
-          <SurfaceRow label="Artifacts" value={plan.artifacts} />
-        </div>
+      <section className="border-t border-[color:var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[color:var(--tx)]">Interface surfaces</h3>
+        <KeyValueList
+          className="mt-3"
+          items={[
+            { label: 'Native page', value: plan.nativePage },
+            { label: 'Chat cards', value: plan.chatCards },
+            { label: 'Custom controls', value: plan.controls },
+            { label: 'Agent access', value: plan.agentAccess },
+            { label: 'Artifacts', value: plan.artifacts },
+          ]}
+          layout="grid"
+        />
       </section>
 
       <ProductSurfacesPanel
@@ -316,23 +328,20 @@ const ProductDetail = ({
         product={product}
       />
 
-      <section className="border-t border-[var(--sep)] pt-4">
-        <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
+      <section className="border-t border-[color:var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[color:var(--tx)]">Capabilities</h3>
         <div className="mt-2 flex flex-wrap gap-2">
           {product.capabilities.map((capability) => (
-            <span
-              className="rounded bg-[var(--overlay)] px-2 py-1 text-xs text-[var(--tx2)]"
-              key={capability}
-            >
+            <Pill key={capability} radius="chip" size="sm" tone="muted" uppercase={false}>
               {capabilityLabel(capability)}
-            </span>
+            </Pill>
           ))}
         </div>
       </section>
 
-      <section className="border-t border-[var(--sep)] pt-4">
-        <h3 className="text-sm font-semibold text-[var(--tx)]">Next step</h3>
-        <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+      <section className="border-t border-[color:var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[color:var(--tx)]">Next step</h3>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
           {product.setupHint ?? plan.nextStep}
         </p>
       </section>
@@ -342,12 +351,12 @@ const ProductDetail = ({
   return (
     <ColumnBrowserColumn onBack={onBack} showBack={showBack} title={product.name}>
       <div className="grid max-w-4xl gap-4">
-        <section className="grid gap-3 border-b border-[var(--sep)] pb-4">
+        <section className="grid gap-3 border-b border-[color:var(--sep)] pb-4">
           <div className="flex items-start gap-3">
             <ProductGlyph product={product} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold text-[var(--tx)]">{product.name}</h2>
+                <h2 className="text-base font-semibold text-[color:var(--tx)]">{product.name}</h2>
                 <Pill
                   className="font-semibold"
                   radius="chip"
@@ -358,25 +367,25 @@ const ProductDetail = ({
                   {healthLabels[product.healthStatus]}
                 </Pill>
               </div>
-              <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">{product.summary}</p>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">{product.summary}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+            <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
               {categoryLabels[product.category]}
-            </span>
-            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+            </Pill>
+            <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
               {installLabels[product.defaultInstallState]}
-            </span>
-            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+            </Pill>
+            <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
               {accountLabel(product)}
-            </span>
-            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+            </Pill>
+            <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
               {teamEnablementLabel(product)}
-            </span>
-            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+            </Pill>
+            <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
               {teamAuthorityLabel(product)}
-            </span>
+            </Pill>
             <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
               {mcpConnectorLabel(product)}
             </Pill>

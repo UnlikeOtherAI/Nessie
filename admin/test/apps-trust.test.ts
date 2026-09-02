@@ -7,6 +7,7 @@ import {
   appTrustBadge,
   showsTrustBadgeOnCard,
 } from '../src/components/features/apps/app-trust.js'
+import type { PillTone } from '../src/components/primitives/Pill.js'
 
 /**
  * How much the instance vouches for an app, said in one chip. The chip must
@@ -16,18 +17,28 @@ import {
 
 const LEVELS: readonly AppTrustLevel[] = ['nessie', 'verified', 'community', 'unknown', 'blocked']
 
+const PILL_TONES: readonly PillTone[] = [
+  'accent',
+  'danger',
+  'info',
+  'muted',
+  'outline',
+  'success',
+  'warning',
+]
+
 test('the badge carries an icon identity, a word, and a sentence saying what the word means', () => {
   assert.deepEqual(appTrustBadge('nessie'), {
     iconId: 'shield',
     label: 'Nessie',
     description: 'Built and reviewed by Nessie.',
-    toneClass: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
+    tone: 'accent',
   })
   assert.deepEqual(appTrustBadge('blocked'), {
     iconId: 'blocked',
     label: 'Blocked',
     description: 'Turned off for this organisation.',
-    toneClass: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+    tone: 'danger',
   })
 })
 
@@ -42,21 +53,19 @@ test('every trust level is distinguishable — same-looking chips would say noth
   }
 })
 
-test('every tone is a theme token, so a chip is legible on every theme rather than one', () => {
+test('every tone is one of the shared Pill tones, so a chip is legible on every theme rather than one', () => {
   for (const level of LEVELS) {
-    const { toneClass } = appTrustBadge(level)
-    const colours = [...toneClass.matchAll(/\[([^\]]+)\]/g)].map((match) => match[1])
-    assert.ok(colours.length > 0, level)
-    for (const colour of colours) {
-      assert.match(colour ?? '', /^color:var\(--[a-z0-9-]+\)$/, `${level}: ${colour}`)
-    }
+    const { tone } = appTrustBadge(level)
+    assert.ok(PILL_TONES.includes(tone), `${level}: ${tone}`)
   }
 })
 
-test('the Nessie chip avoids --accent-strong, which sinks into the panel on dark themes', () => {
-  // `--thinking` is the accent-family foreground each theme already tuned to
-  // sit on `--accent-soft`.
-  assert.ok(!appTrustBadge('nessie').toneClass.includes('--accent-strong'))
+test('the Nessie chip uses the accent tone — the exact pair Pill avoids sinking into the panel on dark themes', () => {
+  // `Pill`'s own `accent` tone renders on `--thinking`, the accent-family
+  // foreground every theme already tuned to sit on `--accent-soft`, rather
+  // than the raw `--accent`/`--accent-strong` fill that disappears into a
+  // dark panel — that guarantee now lives once, in `Pill`, not re-typed here.
+  assert.equal(appTrustBadge('nessie').tone, 'accent')
 })
 
 test('only Unknown is withheld from the card — printing it on every custom app is noise', () => {

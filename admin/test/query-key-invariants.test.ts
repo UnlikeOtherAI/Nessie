@@ -190,7 +190,18 @@ const RAW_KEY_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
  * source line, trimmed, so an exception cannot silently widen to cover a
  * different literal that drifts onto the same line number.
  */
-const RAW_KEY_EXCEPTIONS: readonly { file: string; line: string; reason: string }[] = []
+const RAW_KEY_EXCEPTIONS: readonly { file: string; line: string; reason: string }[] = [
+  {
+    file: 'facades/usePagedList.ts',
+    line: 'queryKey: [...queryKey, paramsKey, cursor ?? null, limit],',
+    reason:
+      'Not a key literal: the identity is the caller\'s `queryKey`, which is a factory result '
+      + 'from lib/query-keys.ts. This appends the paging state — filters, cursor, page size — '
+      + 'that makes one page of that list distinct from another. Spelling it in each list\'s '
+      + 'factory instead would put the same three suffixes in twenty factories, which is the '
+      + 'duplication this guard exists to prevent.',
+  },
+]
 
 const isSourceFile = (name: string) => name.endsWith('.ts') || name.endsWith('.tsx')
 

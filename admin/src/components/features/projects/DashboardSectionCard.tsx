@@ -57,13 +57,9 @@ export const SectionNotice = ({ children }: { children: ReactNode }) => (
   <p className="px-2 py-3 text-sm leading-5 text-[color:var(--tx3)]">{children}</p>
 )
 
-/** "…and N more" — a hint, not a control: the owning surface is a click away. */
-export const SectionOverflowHint = ({ count, noun }: { count: number; noun: string }) =>
-  count > 0 ? (
-    <p className="px-2 py-1.5 text-xs text-[color:var(--tx3)]">
-      …and {count} more {count === 1 ? noun : `${noun}s`}
-    </p>
-  ) : null
+// "…and N more" is `shared/SectionOverflowHint` — promoted out of this file
+// once the kit existed. Import it from there rather than re-adding a local
+// copy here.
 
 /** The shared hover/typography treatment for a clickable dashboard row. */
 export const dashboardRowClass = [

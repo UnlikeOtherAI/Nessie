@@ -196,6 +196,7 @@ export const canManageProjectMembers = (input: {
 export type DashboardAgentStatus =
   | 'error'
   | 'waiting_approval'
+  | 'waiting_input'
   | 'executing'
   | 'thinking'
   | 'idle'
@@ -219,10 +220,11 @@ export type ProjectAgentRow<T extends DashboardAgent = DashboardAgent> = {
 const AGENT_STATUS_RANK: Record<DashboardAgentStatus, number> = {
   error: 0,
   waiting_approval: 1,
-  executing: 2,
-  thinking: 3,
-  idle: 4,
-  offline: 5,
+  waiting_input: 2,
+  executing: 3,
+  thinking: 4,
+  idle: 5,
+  offline: 6,
 }
 
 /**
@@ -253,5 +255,8 @@ export const projectAgentRows = <T extends DashboardAgent>(
 }
 
 /** Human label for an agent status dot. */
-export const agentStatusLabel = (status: DashboardAgentStatus): string =>
-  status === 'waiting_approval' ? 'waiting for approval' : status
+export const agentStatusLabel = (status: DashboardAgentStatus): string => {
+  if (status === 'waiting_approval') return 'waiting for approval'
+  if (status === 'waiting_input') return 'waiting for an answer'
+  return status
+}

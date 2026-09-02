@@ -8,6 +8,9 @@ import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCr
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
 import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
+import { FormError } from '../components/shared/FormActions'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
 import { useAgents } from '../facades/agents/hooks'
 import {
   useConfirmExecutorAccessChange,
@@ -34,9 +37,9 @@ import { NestedStage } from '../navigation/NestedStage'
 import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
 
 const statusClass = (status: string): string => status === 'online'
-  ? 'text-emerald-600'
+  ? 'text-[color:var(--success-text)]'
   : status === 'pending_pairing' || status === 'draining'
-    ? 'text-amber-600'
+    ? 'text-[color:var(--warning-text)]'
     : status === 'revoked' || status === 'error'
       ? 'text-[color:var(--danger-text)]'
       : 'text-[color:var(--tx3)]'
@@ -269,14 +272,18 @@ export const ExecutorsPage = () => {
               <p className="mt-1 text-xs text-[color:var(--tx3)]">This one-time change expires at {reviewChange.expiresAt}. It is bound to your account and the executor’s current authorization revision.</p>
             </div>
             <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(reviewChange.change, null, 2)}</pre>
-            {!confirmationToken ? <p className="text-xs text-[color:var(--danger-text)]">The confirmation token is missing. Recreate the change from this page or reopen the Personal Assistant review link.</p> : null}
+            <FormError>
+              {!confirmationToken
+                ? 'The confirmation token is missing. Recreate the change from this page or reopen the Personal Assistant review link.'
+                : undefined}
+            </FormError>
             {reviewChange.requiresFreshVerification ? (
               <label className="grid max-w-sm gap-1 text-xs font-medium text-[color:var(--tx2)]">
                 Confirm with current password
                 <input className="admin-input" onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
               </label>
             ) : null}
-            {reviewError ? <p className="text-xs text-[color:var(--danger-text)]">{reviewError}</p> : null}
+            <FormError>{reviewError}</FormError>
             <div className="flex flex-wrap gap-2">
               <button className="admin-button admin-button-primary" disabled={!confirmationToken || confirmChange.isPending} onClick={() => void handleConfirmChange()} type="button">Confirm change</button>
               <button className="admin-button admin-button-secondary" disabled={!confirmationToken || rejectChange.isPending} onClick={() => void handleRejectChange()} type="button">Reject</button>
@@ -295,12 +302,16 @@ export const ExecutorsPage = () => {
               </p>
               <code className="mt-2 block overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{promotionChange.manifestDigest}</code>
             </div>
-            {!confirmationToken ? <p className="text-xs text-[color:var(--danger-text)]">The confirmation token is missing. Prepare the promotion again from your reviewed drafts.</p> : null}
+            <FormError>
+              {!confirmationToken
+                ? 'The confirmation token is missing. Prepare the promotion again from your reviewed drafts.'
+                : undefined}
+            </FormError>
             <label className="grid max-w-sm gap-1 text-xs font-medium text-[color:var(--tx2)]">
               Confirm with current password
               <input className="admin-input" onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
             </label>
-            {reviewError ? <p className="text-xs text-[color:var(--danger-text)]">{reviewError}</p> : null}
+            <FormError>{reviewError}</FormError>
             <div className="flex flex-wrap gap-2">
               <button className="admin-button admin-button-primary" disabled={!confirmationToken || confirmPromotion.isPending} onClick={() => void handleConfirmPromotion()} type="button">Confirm promotion</button>
               <button className="admin-button admin-button-secondary" disabled={!confirmationToken || rejectPromotion.isPending} onClick={() => void handleRejectPromotion()} type="button">Reject</button>
@@ -314,20 +325,40 @@ export const ExecutorsPage = () => {
           isLoading={myReviewsQuery.isLoading}
           onPrepare={(reviewCommandId) => void handlePreparePromotion(reviewCommandId)}
           preparingReviewId={preparePromotion.isPending ? preparePromotion.variables?.reviewCommandId : undefined}
+          refetch={myReviewsQuery.refetch}
           reviews={myReviewsQuery.data ?? []}
         />
 
         <div className="grid min-h-[460px] gap-4 lg:grid-cols-[minmax(230px,0.33fr)_minmax(0,0.67fr)]">
           <aside className="admin-card min-h-0 p-3">
             <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-[color:var(--tx)]">Available to you</h2><span className="text-xs text-[color:var(--tx3)]">{executors.length}</span></div>
-            {/* Not QueryState: left-aligned p-2 notes rendered above the list
-                rather than in place of it, and the error offers no Retry. */}
-            {executorsQuery.isLoading ? <p className="p-2 text-sm text-[color:var(--tx3)]">Loading executors…</p> : null}
-            {executorsQuery.isError ? <p className="p-2 text-sm text-[color:var(--danger-text)]">Unable to load executors.</p> : null}
-            {!executorsQuery.isLoading && executors.length === 0 ? <p className="p-2 text-sm text-[color:var(--tx3)]">No executor is visible to you. Pair one, or ask its human administrator to assign you.</p> : null}
-            <div className="grid gap-1">
-              {executors.map((executor) => <button className={['rounded-md p-2 text-left text-xs', executor.id === selected?.id ? 'bg-[color:var(--accent-soft)]' : 'hover:bg-[color:var(--overlay-weak)]'].join(' ')} key={executor.id} onClick={() => setSelection(executor.id)} type="button"><span className="block truncate font-semibold text-[color:var(--tx)]">{executor.label}</span><span className={statusClass(executor.status)}>{executor.status}</span><span className="ml-2 text-[color:var(--tx3)]">{executor.scope.kind}</span></button>)}
-            </div>
+            <QueryState
+              className="py-6"
+              emptyLabel="No executor is visible to you. Pair one, or ask its human administrator to assign you."
+              errorLabel="Executors could not be loaded."
+              isEmpty={executors.length === 0}
+              loadingLabel="Loading executors…"
+              query={executorsQuery}
+            >
+              {() => (
+                <RowList label="Available executors">
+                  {executors.map((executor) => (
+                    <Row
+                      key={executor.id}
+                      onClick={() => setSelection(executor.id)}
+                      selected={executor.id === selected?.id}
+                      title={executor.label}
+                      trailing={
+                        <>
+                          <span className={statusClass(executor.status)}>{executor.status}</span>
+                          <span className="text-[color:var(--tx3)]">{executor.scope.kind}</span>
+                        </>
+                      }
+                    />
+                  ))}
+                </RowList>
+              )}
+            </QueryState>
           </aside>
           {selected ? <ExecutorDetailPanels access={accessQuery.data} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} reviews={reviewsQuery.data ?? []} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
         </div>

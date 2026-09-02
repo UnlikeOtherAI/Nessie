@@ -6,6 +6,7 @@ import {
   useUploadFcm,
 } from '../../../facades/platform-push/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { PushResultBanner, PushStatusRow } from './shared'
 
 type FcmCardProps = {
@@ -19,6 +20,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
 
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<PushCredentialResult | PushTestResult | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const configured = status?.configured === true
 
@@ -48,6 +50,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
 
   const onRemove = async () => {
     setResult(null)
+    setConfirmingRemove(false)
     try {
       setResult(await remove.mutateAsync('fcm'))
     } catch (error) {
@@ -98,7 +101,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
               <button
                 className="admin-button admin-button-secondary"
                 disabled={remove.isPending}
-                onClick={() => void onRemove()}
+                onClick={() => setConfirmingRemove(true)}
                 type="button"
               >
                 Remove
@@ -109,6 +112,17 @@ export const FcmCard = ({ status }: FcmCardProps) => {
       </form>
 
       <PushResultBanner result={result} />
+
+      <ConfirmDialog
+        body="Push notifications through Google will stop until a new service account is uploaded."
+        confirmLabel="Remove"
+        destructive
+        onCancel={() => setConfirmingRemove(false)}
+        onConfirm={() => void onRemove()}
+        open={confirmingRemove}
+        pending={remove.isPending}
+        title="Remove the FCM credential?"
+      />
     </section>
   )
 }

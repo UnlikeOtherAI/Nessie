@@ -8,13 +8,17 @@ const readSource = (relativePath: string): string =>
 
 test('agent details put the avatar editor at the agent detail surface for owners only', () => {
   const drawer = readSource('../src/components/features/agents/AgentDetailDrawer.tsx')
+  const identityBlock = readSource('../src/components/features/agents/AgentIdentityBlock.tsx')
 
   // The owner derivation itself now lives in one place (components/shared/OwnerGate).
   assert.match(drawer, /const isOwner = useIsOwner\(\)/)
-  assert.match(drawer, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{isOwner\} \/>/)
+  // The avatar editor lives once, in the shared identity block both the
+  // detail page header and this drawer compose.
+  assert.match(drawer, /<AgentIdentityBlock agent=\{agent\} canEditAvatar=\{isOwner\} \/>/)
+  assert.match(identityBlock, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{canEditAvatar\} size=\{avatarSize\} \/>/)
 })
 
-test('the avatar pencil opens a modal with a prompt, AI generation, upload, remove, and close', () => {
+test('the avatar pencil opens a modal, built on the shared Dialog shell, with a prompt, AI generation, upload, and a confirmed remove', () => {
   const source = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
 
   // Pencil on the avatar itself opens the modal.
@@ -27,8 +31,13 @@ test('the avatar pencil opens a modal with a prompt, AI generation, upload, remo
   // Upload path still routes through the cropper.
   assert.match(source, /Upload/)
   assert.match(source, /<CircleImageCropper/)
-  // A single close control (top-right) and a remove control (only with a custom image).
-  assert.match(source, /aria-label="Close"/)
+  // The modal shell is the shared Dialog — its own close control and focus
+  // trap come for free, rather than a second hand-rolled scrim.
+  assert.match(source, /<Dialog onClose=\{close\} open=\{open\} title=\{`\$\{agent\.name\} avatar`\}>/)
+  // Removing the custom avatar is confirmed, not a one-click destructive action.
+  assert.match(source, /onClick=\{\(\) => setRemoveConfirmOpen\(true\)\}/)
+  assert.match(source, /<ConfirmDialog/)
+  assert.match(source, /destructive/)
   assert.match(source, /Remove image/)
   assert.match(source, /hasCustom && !generated/)
 })
@@ -49,7 +58,7 @@ test('agent avatar generation has an announced spinning progress indicator', () 
   const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
   const indicator = readSource('../src/components/features/agents/AgentAvatarGenerationIndicator.tsx')
 
-  assert.match(quickEdit, /avatarChanges\.isGenerating \? \(\s*<AgentAvatarGenerationIndicator/)
+  assert.match(quickEdit, /avatarChanges\.isGenerating \? <AgentAvatarGenerationIndicator/)
   assert.match(indicator, /animate-spin/)
   assert.match(indicator, /role="status"/)
 })

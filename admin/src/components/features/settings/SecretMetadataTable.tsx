@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from 'react'
 
 import { Pill, type PillTone } from '../../primitives/Pill'
 import type { SecretRecord, SecretScopeType } from '../../../facades/secrets/hooks'
-import { ExpandableTable } from '../../shared/ExpandableTable'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { DataTable, type DataTableColumn } from '../../shared/DataTable'
+import { EmptyState } from '../../shared/EmptyState'
 
 type SecretMetadataTableProps = {
   isLoading: boolean
@@ -22,6 +24,12 @@ const statusTone: Record<SecretRecord['status'], PillTone> = {
   active: 'success',
   expired: 'warning',
   revoked: 'danger',
+}
+
+const statusLabel: Record<SecretRecord['status'], string> = {
+  active: 'Active',
+  expired: 'Expired',
+  revoked: 'Revoked',
 }
 
 type CopySecretMetadataButtonProps = {
@@ -98,71 +106,80 @@ export const SecretMetadataTable = ({
   onRevoke,
   revokingReference,
   secrets,
-}: SecretMetadataTableProps) => (
-  <ExpandableTable label="Secrets table">
-    <table className="admin-table min-w-[46rem] w-full border-collapse">
-      <caption className="sr-only">Available secret metadata</caption>
-      <thead>
-        <tr className="border-b border-[color:var(--sep)]">
-          <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]" scope="col">
-            Secret key
-          </th>
-          <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]" scope="col">
-            Reference
-          </th>
-          <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]" scope="col">
-            Scope
-          </th>
-          <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]" scope="col">
-            Status
-          </th>
-          <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]" scope="col">
-            Actions
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {isLoading ? (
-          <tr>
-            <td className="px-4 py-10 text-center text-sm text-[color:var(--tx3)]" colSpan={5} role="status">
-              Loading secrets…
-            </td>
-          </tr>
-        ) : secrets.length === 0 ? (
-          <tr>
-            <td className="px-4 py-10 text-center text-sm text-[color:var(--tx3)]" colSpan={5}>
-              No secrets saved yet. Use “Save a secret” to add one.
-            </td>
-          </tr>
-        ) : secrets.map((secret) => (
-          <tr className="border-b border-[color:var(--sep)] last:border-b-0" key={secret.reference}>
-            <td className="max-w-64 px-4 py-3 align-middle">
-              <MetadataCell label="Secret key" value={secret.name} />
-            </td>
-            <td className="max-w-80 px-4 py-3 align-middle">
-              <MetadataCell label="Secret reference" value={secret.reference} />
-            </td>
-            <td className="whitespace-nowrap px-4 py-3 text-sm text-[color:var(--tx2)]">
-              {scopeLabel[secret.scopeType]}
-            </td>
-            <td className="whitespace-nowrap px-4 py-3">
-              <Pill radius="chip" size="sm" tone={statusTone[secret.status]}>{secret.status}</Pill>
-            </td>
-            <td className="px-4 py-3 text-right">
-              {secret.status === 'active' ? (
-                <button
-                  className="admin-button admin-button-secondary admin-button-compact"
-                  disabled={revokingReference === secret.reference}
-                  onClick={() => onRevoke(secret.reference)}
-                  type="button"
-                >
-                  {revokingReference === secret.reference ? 'Revoking…' : 'Revoke'}
-                </button>
-              ) : <span className="text-sm text-[color:var(--tx3)]">—</span>}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </ExpandableTable>
-)
+}: SecretMetadataTableProps) => {
+  const [pendingRevoke, setPendingRevoke] = useState<SecretRecord | null>(null)
+
+  const columns: DataTableColumn<SecretRecord>[] = [
+    {
+      header: 'Secret key',
+      key: 'name',
+      render: (secret) => <MetadataCell label="Secret key" value={secret.name} />,
+    },
+    {
+      header: 'Reference',
+      key: 'reference',
+      render: (secret) => <MetadataCell label="Secret reference" value={secret.reference} />,
+    },
+    {
+      header: 'Scope',
+      key: 'scope',
+      render: (secret) => scopeLabel[secret.scopeType],
+      secondary: true,
+    },
+    {
+      header: 'Status',
+      key: 'status',
+      render: (secret) => (
+        <Pill radius="chip" size="sm" tone={statusTone[secret.status]} uppercase={false}>
+          {statusLabel[secret.status]}
+        </Pill>
+      ),
+    },
+    {
+      align: 'right',
+      header: 'Actions',
+      key: 'actions',
+      render: (secret) => (
+        secret.status === 'active' ? (
+          <button
+            className="admin-button admin-button-secondary admin-button-compact"
+            disabled={revokingReference === secret.reference}
+            onClick={() => setPendingRevoke(secret)}
+            type="button"
+          >
+            {revokingReference === secret.reference ? 'Revoking…' : 'Revoke'}
+          </button>
+        ) : <span className="text-sm text-[color:var(--tx3)]">—</span>
+      ),
+      width: '7rem',
+    },
+  ]
+
+  return (
+    <>
+      <DataTable
+        columns={columns}
+        empty={<EmptyState>No secrets saved yet. Use “Save a secret” to add one.</EmptyState>}
+        label="Secrets table"
+        loading={isLoading}
+        minWidth="46rem"
+        rowKey={(secret) => secret.reference}
+        rows={secrets}
+        skeletonRows={4}
+      />
+
+      <ConfirmDialog
+        body={pendingRevoke ? `"${pendingRevoke.name}" will stop working anywhere it is bound.` : undefined}
+        confirmLabel="Revoke"
+        destructive
+        onCancel={() => setPendingRevoke(null)}
+        onConfirm={() => {
+          if (pendingRevoke) onRevoke(pendingRevoke.reference)
+          setPendingRevoke(null)
+        }}
+        open={pendingRevoke !== null}
+        title="Revoke this secret?"
+      />
+    </>
+  )
+}

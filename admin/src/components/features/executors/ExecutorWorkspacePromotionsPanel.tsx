@@ -2,12 +2,15 @@ import type {
   ExecutorRecordResponse,
   OriginatingExecutorWorkspaceReviewRecordResponse,
 } from '@nessie/schemas'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
 
 type ExecutorWorkspacePromotionsPanelProps = {
   isError: boolean
   isLoading: boolean
   onPrepare: (reviewCommandId: string) => void
   preparingReviewId?: string
+  refetch: () => unknown
   reviews: OriginatingExecutorWorkspaceReviewRecordResponse[]
   executors: ExecutorRecordResponse[]
 }
@@ -19,6 +22,7 @@ export const ExecutorWorkspacePromotionsPanel = ({
   isLoading,
   onPrepare,
   preparingReviewId,
+  refetch,
   reviews,
 }: ExecutorWorkspacePromotionsPanelProps) => {
   const executorNames = new Map(executors.map((executor) => [executor.id, executor.label]))
@@ -31,32 +35,43 @@ export const ExecutorWorkspacePromotionsPanel = ({
           password-confirmed review; it never writes the host workspace by itself.
         </p>
       </div>
-      {isLoading ? <p className="text-sm text-[color:var(--tx3)]">Loading your reviewed drafts…</p> : null}
-      {isError ? <p className="text-sm text-[color:var(--danger-text)]">Unable to load your reviewed drafts.</p> : null}
-      {!isLoading && !isError && reviews.length === 0 ? <p className="text-sm text-[color:var(--tx3)]">No reviewed drafts are ready to promote.</p> : null}
-      <div className="grid gap-2">
-        {!isError && reviews.map((review) => (
-          <article className="rounded-md border border-[color:var(--border)] p-3" key={review.commandId}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-[color:var(--tx)]">
-                  {executorNames.get(review.executorId) ?? 'Paired executor'} · {review.changes.length} change{review.changes.length === 1 ? '' : 's'}
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--tx3)]">Reviewed {review.acknowledgedAt}</p>
-                <code className="mt-1 block truncate text-[11px] text-[color:var(--tx3)]">{review.manifestDigest}</code>
-              </div>
-              <button
-                className="admin-button admin-button-secondary"
-                disabled={preparingReviewId === review.commandId}
-                onClick={() => onPrepare(review.commandId)}
-                type="button"
+      <QueryState
+        className="py-6"
+        emptyLabel="No reviewed drafts are ready to promote."
+        errorLabel="Your reviewed drafts could not be loaded."
+        isEmpty={reviews.length === 0}
+        loadingLabel="Loading your reviewed drafts…"
+        query={{ isError, isLoading, refetch }}
+      >
+        {() => (
+          <RowList label="Your reviewed drafts">
+            {reviews.map((review) => (
+              <Row
+                key={review.commandId}
+                subtitle={`Reviewed ${review.acknowledgedAt}`}
+                title={
+                  `${executorNames.get(review.executorId) ?? 'Paired executor'} · `
+                  + `${review.changes.length} change${review.changes.length === 1 ? '' : 's'}`
+                }
+                trailing={
+                  <button
+                    className="admin-button admin-button-secondary"
+                    disabled={preparingReviewId === review.commandId}
+                    onClick={() => onPrepare(review.commandId)}
+                    type="button"
+                  >
+                    {preparingReviewId === review.commandId ? 'Preparing…' : 'Review promotion'}
+                  </button>
+                }
               >
-                {preparingReviewId === review.commandId ? 'Preparing…' : 'Review promotion'}
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+                <code className="mt-0.5 block truncate text-[11px] text-[color:var(--tx3)]">
+                  {review.manifestDigest}
+                </code>
+              </Row>
+            ))}
+          </RowList>
+        )}
+      </QueryState>
     </section>
   )
 }

@@ -14,6 +14,7 @@ import {
 import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { isThreadRunSlotBusy } from '@nessie/db'
 import { buildAgentVisibilityWhere } from '@nessie/workspace-admin'
+import { cancelAgentCardsForRun } from './agent-card-sweep.js'
 import { expirePendingToolApprovalsForRun } from './approval-resume.js'
 import {
   ACTIVE_RUN_STATUSES,
@@ -168,11 +169,12 @@ export const requestRunCancellation = async (
   // Queued or approval-suspended: cancel immediately in one atomic statement so
   // the (never-executed) run is skipped by the worker's terminal-state guard.
   const immediate = await prisma.run.updateMany({
-    where: { id: run.id, status: { in: ['pending', 'waiting_approval'] } },
+    where: { id: run.id, status: { in: ['pending', 'waiting_approval', 'waiting_input'] } },
     data: { status: 'cancelled', finishedAt: now, cancelRequestedAt: now, cancelRequestedByUserId: input.cancelledByUserId },
   })
   if (immediate.count === 1) {
     await expirePendingToolApprovalsForRun(prisma, run.id)
+    await cancelAgentCardsForRun(prisma, run.id)
     await prisma.task.updateMany({ where: { runId: run.id }, data: { status: 'cancelled' } })
     const task = await prisma.task.findFirst({ where: { runId: run.id }, select: { id: true } })
     if (task) {

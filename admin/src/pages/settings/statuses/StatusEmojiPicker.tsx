@@ -3,6 +3,7 @@ import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../../components/overlays/Popover'
 import { EmojiPickerPanel } from '../../../components/shared/EmojiPickerPanel'
+import { useFormFieldControl } from '../../../components/shared/FormField'
 
 type StatusEmojiPickerProps = {
   label: string
@@ -14,6 +15,10 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
   const [open, setOpen] = useState(false)
   const pickerId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
+  // The field's own id / describedBy / invalid wiring, so the trigger reads as
+  // the form control it stands for. Dismissal — outside press, Escape, the
+  // layer — is `Popover`'s, never a second listener here.
+  const field = useFormFieldControl()
 
   const pick = (nextValue: string) => {
     onChange(nextValue)
@@ -24,10 +29,13 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
     <div className="relative">
       <button
         aria-controls={open ? pickerId : undefined}
+        aria-describedby={field?.describedBy}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-invalid={field?.invalid || undefined}
         aria-label={label}
         className="admin-input flex items-center justify-between gap-2 text-left"
+        id={field?.id}
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
         type="button"

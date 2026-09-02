@@ -3,24 +3,24 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
+  WorkflowRunRecord,
   WorkflowTemplateRecord,
 } from '../lib/api-client'
-import {
-  useFailedWorkflowRuns,
-  useInstallWorkflowTemplate,
-  useWorkflowInstallations,
-  useWorkflowTemplates,
-} from '../facades/workflows/hooks'
+import { useInstallWorkflowTemplate } from '../facades/workflows/hooks'
 import {
   useDemonstrations,
 } from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { usePagedList } from '../facades/usePagedList'
 import { workflowKeys } from '../lib/query-keys'
 import { Pill } from '../components/primitives/Pill'
 import { Skeleton } from '../components/primitives/Skeleton'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
@@ -30,7 +30,7 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
 import {
   formatRelativeTime,
   formatTimestamp,
-  getInstallationTone,
+  getRunTone,
 } from '../components/features/workflows/presentation'
 
 /**
@@ -67,15 +67,27 @@ const readWorkflowsPageLocationState = (
   }
 }
 
+/**
+ * The badge beside a workflow on the list.
+ *
+ * It reads the server's aggregate rather than counting a page of rows the
+ * browser happens to hold — which is what it did before, and which stopped
+ * being true the moment list endpoints started returning 25 rows instead of
+ * every row. An absent summary means the endpoint did not report one, which
+ * is not the same as zero, so the badge says nothing rather than "draft".
+ */
 const summarizeInstallations = (
-  installations: WorkflowInstallationRecord[],
-): { label: string; tone: 'accent' | 'danger' | 'muted' | 'success' | 'warning' } => {
-  const latest = installations[0]
-  if (!latest) return { label: 'draft', tone: 'muted' }
-  if (installations.some((entry) => entry.status === 'active')) {
-    return { label: 'active', tone: 'success' }
+  summary: WorkflowTemplateRecord['installationSummary'],
+): { label: string; tone: 'accent' | 'danger' | 'muted' | 'success' | 'warning' } | null => {
+  if (!summary) return null
+  if (summary.total === 0) return { label: 'draft', tone: 'muted' }
+  if (summary.active > 0) {
+    return {
+      label: summary.active === summary.total ? 'active' : `${summary.active} of ${summary.total} active`,
+      tone: 'success',
+    }
   }
-  return { label: latest.status, tone: getInstallationTone(latest.status) }
+  return { label: `${summary.total} inactive`, tone: 'muted' }
 }
 
 export const WorkflowsPage = () => {
@@ -89,10 +101,18 @@ export const WorkflowsPage = () => {
   // W19: template authoring stays admin-gated; the member-facing read surface
   // is the installations list (entitlement-scoped server-side) plus the
   // failed-runs triage view.
-  const { data: templates = [], isPending: templatesPending } =
-    useWorkflowTemplates(isWorkflowAdmin)
-  const { data: installations = [] } = useWorkflowInstallations(true)
-  const { data: failedRuns = [] } = useFailedWorkflowRuns(true)
+  const templatesList = usePagedList<WorkflowTemplateRecord>({
+    enabled: isWorkflowAdmin,
+    path: '/api/workflows',
+    queryKey: workflowKeys.templates,
+  })
+  const templates = templatesList.items
+  const failedRunsList = usePagedList<WorkflowRunRecord>({
+    params: { status: 'failed' },
+    path: '/api/workflow-runs',
+    queryKey: workflowKeys.failedRuns,
+  })
+  const failedRuns = failedRunsList.items
   const installWorkflowTemplate = useInstallWorkflowTemplate()
   const { data: demonstrations = [] } = useDemonstrations()
   const restoredSelection = useMemo(
@@ -109,6 +129,20 @@ export const WorkflowsPage = () => {
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>(
     () => restoredSelection.selectedRunId,
   )
+
+  // Installations are read for the selected template only, through the
+  // endpoint's `workflowTemplateId` filter. The page used to fetch the
+  // organisation's whole installation set and group it in the browser to
+  // serve both this pane and the per-row counts; the counts now come from the
+  // template record's server-side aggregate, so nothing needs the cross-
+  // template set and this asks a question the size of the answer.
+  const installationsList = usePagedList<WorkflowInstallationRecord>({
+    enabled: Boolean(selectedTemplateId),
+    params: { workflowTemplateId: selectedTemplateId },
+    path: '/api/workflow-installations',
+    queryKey: workflowKeys.installations,
+  })
+  const installations = installationsList.items
   // W29: the triage surface — one cross-installation answer to "what broke
   // last night". Opens straight onto the failed run's detail.
   const [showFailedRuns, setShowFailedRuns] = useState(false)
@@ -132,18 +166,16 @@ export const WorkflowsPage = () => {
     [templates],
   )
 
-  const installationsByTemplateId = useMemo(() => {
-    const map = new Map<string, WorkflowInstallationRecord[]>()
-    for (const installation of [...installations].sort(
-      (left, right) =>
-        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-    )) {
-      const bucket = map.get(installation.workflowTemplateId) ?? []
-      bucket.push(installation)
-      map.set(installation.workflowTemplateId, bucket)
-    }
-    return map
-  }, [installations])
+  // Newest first, as the detail pane renders them. No grouping by template
+  // any more — the query is already scoped to one.
+  const selectedTemplateInstallations = useMemo(
+    () =>
+      [...installations].sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+      ),
+    [installations],
+  )
 
   const filteredTemplates = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -212,42 +244,56 @@ export const WorkflowsPage = () => {
         key="failed-runs"
         onBack={() => setShowFailedRuns(false)}
         showBack
-        title={`Failed runs (${failedRuns.length})`}
+        title={`Failed runs (${failedRunsList.total ?? failedRuns.length})`}
       >
-        {failedRuns.length === 0 ? (
-          <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-            No failed runs — nothing broke.
-          </div>
-        ) : (
-          <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-            {failedRuns.map((run) => (
-              <button
-                className="w-full px-3 py-2.5 text-left hover:bg-[var(--overlay-weak)]"
-                data-testid="failed-run-row"
-                key={run.id}
-                onClick={() => {
-                  setSelectedRunId(run.id)
-                  setSelectedInstallationId(run.installationId)
-                  setShowFailedRuns(false)
-                }}
-                type="button"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-                    Run {run.id.slice(0, 8)}
-                  </span>
-                  <Pill tone="danger">{run.status}</Pill>
-                </div>
-                <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
-                  {run.errorMessage ?? run.summary ?? 'Failed'}
-                  {' · '}
-                  {formatRelativeTime(run.finishedAt ?? run.updatedAt) ??
-                    formatTimestamp(run.updatedAt)}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        <QueryState
+          emptyLabel="No failed runs — nothing broke."
+          errorLabel="Failed runs could not be loaded."
+          isEmpty={failedRuns.length === 0}
+          loadingLabel="Loading failed runs…"
+          query={failedRunsList.query}
+        >
+          {() => (
+            <>
+              <RowList label="Failed runs">
+                {failedRuns.map((run) => (
+                  <Row
+                    key={run.id}
+                    onClick={() => {
+                      setSelectedRunId(run.id)
+                      setSelectedInstallationId(run.installationId)
+                      setShowFailedRuns(false)
+                    }}
+                    subtitle={
+                      `${run.errorMessage ?? run.summary ?? 'Failed'} · `
+                      + `${formatRelativeTime(run.finishedAt ?? run.updatedAt)
+                        ?? formatTimestamp(run.updatedAt)}`
+                    }
+                    title={
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate">
+                          Run {run.id.slice(0, 8)}
+                        </span>
+                        <Pill height="control" tone={getRunTone(run.status)}>
+                          {run.status}
+                        </Pill>
+                      </span>
+                    }
+                  />
+                ))}
+              </RowList>
+              <PaginationFooter
+                canNext={failedRunsList.canNext}
+                canPrevious={failedRunsList.canPrevious}
+                className="mt-3"
+                hideWhenSinglePage
+                label={failedRunsList.label}
+                onPageChange={failedRunsList.onPageChange}
+                page={failedRunsList.page}
+              />
+            </>
+          )}
+        </QueryState>
       </ColumnBrowserColumn>,
     )
   }
@@ -290,7 +336,7 @@ export const WorkflowsPage = () => {
         ) : undefined
       }
       key="workflows"
-      title={`Workflows (${sortedTemplates.length})`}
+      title={`Workflows (${templatesList.total ?? sortedTemplates.length})`}
     >
       <button
         className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
@@ -334,58 +380,82 @@ export const WorkflowsPage = () => {
             }}
           />
         </div>
-        {isWorkflowAdmin && templatesPending ? (
-          // A disabled query stays `pending` forever, so the non-admin case
-          // (whose refusal is the page's own gate) must not read as loading.
-          <Skeleton className="py-4" count={4} variant="list" />
-        ) : filteredTemplates.length === 0 ? (
-          <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-            {sortedTemplates.length === 0
-              ? 'No workflows yet. Build one in the designer.'
-              : 'No workflows match the search.'}
-          </div>
-        ) : (
-          <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-            {filteredTemplates.map((template) => {
-              const templateInstallations =
-                installationsByTemplateId.get(template.id) ?? []
-              const summary = summarizeInstallations(templateInstallations)
+        {/* Search narrows only the loaded page: `/api/workflows` has no
+            server-side text filter to page a search against, so paging past
+            the first screen and searching are two different ways to reach
+            more templates rather than one combined query.
 
-              return (
-                <button
-                  className={[
-                    'w-full border-l-2 px-3 py-2.5 text-left transition-colors',
-                    template.id === selectedTemplate?.id
-                      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-                      : 'border-transparent hover:bg-[var(--overlay-weak)]',
-                  ].join(' ')}
-                  key={template.id}
-                  onClick={() => selectTemplate(template)}
-                  type="button"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-                      {template.name}
-                    </span>
-                    <Pill tone={summary.tone}>{summary.label}</Pill>
-                    {template.source === 'demonstration' ? <Pill tone="accent">Learned</Pill> : null}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
-                    v{template.version} · {template.graph.steps.length} step
-                    {template.graph.steps.length === 1 ? '' : 's'}
-                    {templateInstallations.length > 0
-                      ? ` · ${templateInstallations.length} installation${
-                          templateInstallations.length === 1 ? '' : 's'
-                        }`
-                      : ''}
-                    {' · '}
-                    {formatRelativeTime(template.updatedAt) ??
-                      formatTimestamp(template.updatedAt)}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+            A list whose shape is already known shows that shape while it
+            loads rather than the word Loading (docs/navigation.md §14); the
+            kit's QueryState still owns the error and empty lines. */}
+        {templatesList.query.isLoading ? (
+          <Skeleton className="py-4" count={4} variant="list" />
+        ) : (
+          <QueryState
+            emptyLabel={
+              sortedTemplates.length === 0
+                ? 'No workflows yet. Build one in the designer.'
+                : 'No workflows match the search.'
+            }
+            errorLabel="Workflows could not be loaded."
+            isEmpty={filteredTemplates.length === 0}
+            loadingLabel="Loading workflows…"
+            query={templatesList.query}
+          >
+            {() => (
+              <>
+                <RowList label="Workflows">
+                  {filteredTemplates.map((template) => {
+                    const summary = summarizeInstallations(template.installationSummary)
+
+                    return (
+                      <Row
+                        key={template.id}
+                        onClick={() => selectTemplate(template)}
+                        selected={template.id === selectedTemplate?.id}
+                        subtitle={
+                          `v${template.version} · ${template.graph.steps.length} step`
+                          + `${template.graph.steps.length === 1 ? '' : 's'}`
+                          + (template.installationSummary?.total
+                            ? ` · ${template.installationSummary.total} installation${
+                                template.installationSummary.total === 1 ? '' : 's'
+                              }`
+                            : '')
+                          + ' · '
+                          + (formatRelativeTime(template.updatedAt)
+                            ?? formatTimestamp(template.updatedAt))
+                        }
+                        title={
+                          <span className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate">
+                              {template.name}
+                            </span>
+                            {summary ? (
+                              <Pill height="control" tone={summary.tone}>
+                                {summary.label}
+                              </Pill>
+                            ) : null}
+                            {template.source === 'demonstration' ? (
+                              <Pill height="control" tone="accent">Learned</Pill>
+                            ) : null}
+                          </span>
+                        }
+                      />
+                    )
+                  })}
+                </RowList>
+                <PaginationFooter
+                  canNext={templatesList.canNext}
+                  canPrevious={templatesList.canPrevious}
+                  className="mt-3"
+                  hideWhenSinglePage
+                  label={templatesList.label}
+                  onPageChange={templatesList.onPageChange}
+                  page={templatesList.page}
+                />
+              </>
+            )}
+          </QueryState>
         )}
       </div>
     </ColumnBrowserColumn>,
@@ -400,7 +470,7 @@ export const WorkflowsPage = () => {
         title={selectedTemplate.name}
       >
         <WorkflowTemplateDetail
-          installations={installationsByTemplateId.get(selectedTemplate.id) ?? []}
+          installations={selectedTemplateInstallations}
           isInstalling={installWorkflowTemplate.isPending}
           onInstall={() =>
             installWorkflowTemplate.mutate(

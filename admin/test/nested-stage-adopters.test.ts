@@ -108,22 +108,30 @@ test('LOCAL_BACK_PRIORITY carries the three new stage priorities', () => {
 })
 
 test('the dashboard panels keep a full-height flex column with their own scroll region', () => {
-  const addWidget = readSource('../src/components/features/dashboards/AddWidgetPanel.tsx')
-  const versions = readSource('../src/components/features/dashboards/DashboardVersionsPanel.tsx')
-  for (const source of [addWidget, versions]) {
-    // `h-full min-h-0` so the aside fills the available height whether that
-    // comes from flex stretch (an inline side panel beside the grid, on
-    // split) or from a real definite height (a hosted, full-screen stage on
-    // a phone, where the portal target is not itself a flex parent). `w-full
-    // md:w-80` so the phone stage is a genuine full screen rather than a
-    // 320px column with empty space beside it, while split keeps today's
-    // fixed-width side placement — a pure CSS breakpoint, not a page-level
-    // read of the navigation layout.
-    assert.match(source, /className="flex h-full min-h-0 w-full flex-col border-l md:w-80 md:shrink-0"/)
-    // The inner body owns its own scroll independent of the aside's height.
-    assert.match(source, /min-h-0 flex-1[^"]*overflow-auto/)
-    // The close control is the header ✕, present regardless of layout — a
-    // phone-mode full screen has no separate chrome to supply one.
-    assert.match(source, /onClick=\{onClose\}/)
+  // Both panels are one `SidePanel` now (the content system's shared shell),
+  // so the geometry this pins lives there rather than twice in the callers.
+  for (const path of [
+    '../src/components/features/dashboards/AddWidgetPanel.tsx',
+    '../src/components/features/dashboards/DashboardVersionsPanel.tsx',
+  ]) {
+    const source = readSource(path)
+    assert.match(source, /<SidePanel[\s\n]/)
+    assert.match(source, /onClose=\{onClose\}/)
   }
+
+  const shell = readSource('../src/components/shared/SidePanel.tsx')
+  // `h-full min-h-0` so the aside fills the available height whether that
+  // comes from flex stretch (an inline side panel beside the grid, on
+  // split) or from a real definite height (a hosted, full-screen stage on
+  // a phone, where the portal target is not itself a flex parent). `w-full
+  // md:w-80` so the phone stage is a genuine full screen rather than a
+  // 320px column with empty space beside it, while split keeps today's
+  // fixed-width side placement — a pure CSS breakpoint, not a page-level
+  // read of the navigation layout.
+  assert.match(shell, /flex h-full min-h-0 w-full flex-col border-l[^']*md:w-80/)
+  // The inner body owns its own scroll independent of the aside's height.
+  assert.match(shell, /min-h-0 flex-1[^"]*overflow-y-auto/)
+  // The close control is the header ✕, present regardless of layout — a
+  // phone-mode full screen has no separate chrome to supply one.
+  assert.match(shell, /onClick=\{onClose\}/)
 })

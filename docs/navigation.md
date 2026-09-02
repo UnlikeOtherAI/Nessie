@@ -633,6 +633,16 @@ loading and not-found branches — so a phone standing on one had no Back.
   `document.title` becomes `<screen title> · Nessie` (an unpublished screen
   keeps `Nessie` alone rather than a leading separator), and the native shell
   receives `nessie:screen` (§10).
+- **The header is this framework's; the body below it is the content kit's.**
+  A page is one `ScreenHeader` over the content system's own components —
+  `PageBody`/`Section`, `RowList`, `QueryState`, `PaginationFooter`,
+  `DataTable`, the `FormField`/`FormControls`/`FormActions` family
+  ([plans/2026-09-01-content-design-system/overview.md](plans/2026-09-01-content-design-system/overview.md)).
+  Neither owns the other: a body component never paints a `<header>` or a
+  second `h1`, and the header never lays out content. Where a screen's
+  loading state is a skeleton frame rather than a sentence (§14), it keeps
+  that markup and `QueryState` is left with the error and empty lines it
+  exists for.
 - Pinned by `admin/test/screen-header.test.ts`: the SSR shape (one `h1`, the
   doorway at a screen with a parent and the menu at a root, the optional
   slots), `document.title`, the posted message's six fields, and the source
@@ -770,79 +780,11 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
 
 ## 11. Verification — the transition suite — **built** (step 2)
 
-The JSDOM harness cannot see an animation and cannot see a layout, so the
-motion itself is pinned in a real browser:
-`admin/e2e/navigation/` (run it with
-`pnpm --filter @nessie/admin test:e2e:navigation`).
-
-What it does, per run:
-
-- starts the real API on 5454 and the real admin on 5455 against
-  `DATABASE_URL` — a server already listening on either port is used as it
-  stands, so it costs nothing next to a running `pnpm dev`;
-- signs in through the product's own doors — the one-time owner bootstrap on
-  a fresh database, `GET /api/auth/dev-login` on a database that already has
-  an owner — and seeds one organisation with its project and two channels
-  through `POST /api/channels`;
-- drives Chromium (`playwright-core`, no `@playwright/test`) at 390×844,
-  768×1024 and 1280×800.
-
-What a case asserts. It **freezes the real animation** rather than timing it:
-a `requestAnimationFrame` watcher pauses every animation that appears on a
-`[data-phone-navigation-layer]`, then `currentTime` is seeked to 0 %, 50 %
-and 100 % and each frame is measured with `getBoundingClientRect()`. There is
-no sleep anywhere in the measurement. `document.getAnimations()` is the seam
-on purpose: it sees a CSS keyframe animation and a Web Animations one alike,
-so the suite survived the step-2 rewrite unchanged. Every frame also asserts
-`scrollLeft === 0` on `.phone-navigation-viewport` and on every
-`.phone-navigation-screen` — that is §2's bounce, measured.
-
-| case | viewport | what it pins |
-| --- | --- | --- |
-| `phone-push` | 390×844 | tapping a channel row: the conversation travels 100 % → 0, the list 0 → -28 % |
-| `phone-back` | 390×844 | header Back: the conversation travels 0 → 100 %, the list -28 % → 0 |
-| `phone-edge-swipe` | 390×844 | a touchscreen swipe from x=8 to x=300 commits Back; the settle runs from exactly the released displacement to the ends |
-| `phone-tab-switch` | 390×844 | Messages → Files moves nothing: no layer animates, the screen's rect is unchanged |
-| `tablet-select` | 768×1024 | selecting a channel in the split stack is an in-place swap: one layer, nothing animates, the columns keep their geometry |
-| `desktop-select` | 1280×800 | the same at desktop width |
-| `tablet-split-push` / `desktop-split-push` | 768×1024 / 1280×800 | Agents → the designer pushes inside the detail column: the designer travels 100 % → 0 of the column, the list 0 → -28 %, the pinned sidebar never moves |
-| `phone-cold-start` | 390×844 | a cold link to a conversation seeds the channel list beneath it; header Back slides the conversation away over that list (0 → 100 %, -28 % → 0) |
-| `phone-intent-strip` | 390×844 | `#trigger-<id>` and `?messageId=` are consumed and stripped with a replace: the address settles on the screen, the linkable `?tab=` stays, and browser Back lands on the stripped address |
-
-Each transition case navigates once per saved frame, deliberately: the stack
-closes its own transition on a fallback timer shortly after the animation's
-nominal end, so one run cannot hold a frozen frame for three screenshots —
-while all three fractions are measured inside one synchronous `evaluate`,
-far inside that window. Frames land in `e2e/screenshots/navigation/<case>/`
-(`00-start`, `01-midway`, `02-settled`) for the eyeball rule in `AGENTS.md`.
-
-Where it runs:
-
-- **CI** — the `navigation-e2e` job in `.github/workflows/ci.yml`: Postgres 16
-  + pgvector, `prisma migrate deploy`, a built admin bundle
-  (`NAV_E2E_ADMIN_MODE=preview`), `pnpm exec playwright-core install
-  --with-deps chromium`, and the frames uploaded as the
-  `navigation-transition-frames` artifact.
-- **Locally** — `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:navigation`.
-  Useful switches: `--case=phone-push` / `--viewport=phone` to narrow,
-  `CHROMIUM_PATH` to name a browser binary, `NAV_E2E_ADMIN_MODE=preview` to
-  serve `admin/dist` instead of the dev server, `NAV_E2E_SERVER_LOGS=1` to see
-  the servers' output, `NAV_E2E_KEEP_SERVERS=1` to leave them up.
-  With no reachable database the suite prints why and exits 0 — everything it
-  asserts needs a running product, and a red run that only means "no Postgres
-  here" teaches people to ignore it.
-- **On device** — iPhone and iPad checks stay manual; the plan lists them per
-  step.
-
-**What it caught first.** `phone-back` was red on its first run: the route
-pop painted only the returning list, because `advancePhoneNavigationStack`'s
-same-depth branch truncated every entry above `currentIndex` on the first
-re-render of the destination (its data settling is enough), and after a Back
-the outgoing screen *is* that entry. The stack now refreshes a same-route
-re-render in place and releases the entries above only for a sibling swap;
-`admin/test/phone-navigation-stack.test.ts` replays the route mid-Back to
-pin it. The JSDOM stack test had passed because it never replayed a route —
-the browser suite is what sees it.
+The motion itself is pinned in a real browser, not in JSDOM: `admin/e2e/navigation/`
+freezes each transition and measures three frames of it, and every frame also
+asserts `scrollLeft === 0` on the stack containers — §2’s bounce, measured.
+The ten cases, the sign-in and seeding, the CI job and the local switches:
+[docs/navigation-transition-suite.md](navigation-transition-suite.md).
 
 ### Gates — **built** (step 15)
 
@@ -1032,126 +974,13 @@ for it. Four pieces, plus one cache underneath them all.
 
 ## 15. Drafts — **built** (step 12)
 
-Nothing in the admin asks a person "discard changes?" about their own draft.
-Leaving a screen is safe because the draft is already persisted. One
-primitive, `admin/src/navigation/useDraft.ts`, is the only way a surface holds
-unsent state.
-
-```ts
-const { draft, setDraft, flush, clear, restored, revision, saveError, isSaving } =
-  useDraft<T>(key, {
-    initial,                                  // the baseline; equal to it = nothing to store
-    local: { debounceMs: 300 },               // localStorage buffer (default 300 ms)
-    server: { debounceMs: 2000, save },       // where an endpoint exists (default 2 s)
-    isEmpty,                                  // optional: what "nothing to store" means
-    revive,                                   // optional: storage is untrusted input
-  })
-```
-
-- **Key scheme — `draft:<surface>:<entityId>`** (`draftKey(surface, entityId)`;
-  a null entity means no store, so the surface keeps its state in memory only).
-  The key is the **entity**, never the screen, which is what fixes the
-  reset-on-channel-change leak: a composer draft is per channel, a reply draft
-  per root message, a task draft per task, an editor draft per page.
-
-  | surface | key |
-  | --- | --- |
-  | channel and DM composers, both info drawers | `draft:composer:<channelId>` |
-  | reply-thread composer (panel + Threads inbox) | `draft:reply:<rootMessageId>` |
-  | message inline edit | `draft:message-edit:<messageId>` |
-  | task dialog | `draft:task:<taskId \| new>` |
-  | agent designer | `draft:agent-designer:<agentId \| new>` |
-  | knowledge page editor | `draft:kb-page:<pageId \| new>` |
-  | trigger editor | `draft:trigger:<triggerId \| new>` |
-  | dashboard edit mode | `draft:dashboard-layout:<dashboardId>` |
-  | workflow designer (pre-existing, its own store) | `nessie.workflow-designer.draft.<templateId \| new>` |
-
-- **Two lanes, a signature diff, and no retry loop.** The local lane buffers on
-  a short debounce; the server lane flushes on a longer one. Both compare a
-  signature, so a re-render that changes nothing touches neither storage nor
-  the network. A payload the server **rejected** is remembered and never
-  re-sent by the auto lane — only an explicit `flush()` retries it — and the
-  rejection surfaces as `saveError` on the returned state, never a blocking
-  dialog. Every storage access is guarded (private mode, quota, site data
-  blocked), and a store that throws degrades to an in-memory draft.
-- **A key change persists the outgoing draft under its own key first**, then
-  reads the new one — the synchronous ordering is exactly what stops one
-  channel's text and staged attachments arriving in the next. `revision` bumps
-  only when the hook itself replaced the value (key swap, restore, `clear()`),
-  which is how the uncontrolled composer repaints itself without a keystroke
-  re-rendering its own text back into it.
-- **Composer drafts carry staged attachment *metadata*, never bytes**
-  (`components/features/channels/composer-draft.ts`): only a finished upload
-  (`status === 'done'` with an `attachmentId`) is stored, because its bytes
-  already live server-side. A draft whose text trips the structural
-  `detectSecrets` scanner counts as empty and is deleted rather than written —
-  the composer already refuses to send a credential, and the disk is the one
-  place that refusal must also hold.
-- **Save buttons go where a server flush is possible.** Three surfaces keep
-  their primary action deliberately, each for a stated reason: a **create**
-  form cannot flush before its required fields are valid (the task dialog, a
-  new agent, a new page — leaving keeps the local draft); the **knowledge page
-  editor** and the **dashboard** each append a durable version per save, so a
-  debounced flush would bury the history their version panels exist for; and
-  the **trigger editor** decides when automation fires, so re-arming a live
-  schedule on every keystroke is not a save. All four still buffer locally, so
-  nothing is lost.
-- **A draft is written from a person's edit, never from a mount effect.** The
-  agent designer mirrors its reducer into the draft and once did so on mount,
-  while the reducer still held the empty baseline: that write counted as
-  "nothing to store" and deleted the draft the person had come back for. The
-  mirror now skips an untouched form (decided by comparison against the
-  baseline, not a first-run flag — StrictMode re-runs effects with refs
-  intact, so a flag armed on the first pass let the second pass wipe it), and
-  starts once the form is edited or a stored draft has been restored. Pinned
-  by `admin/test/agent-designer-draft-restore.test.ts`, which fails without
-  the guard.
-- **Message inline edit closes without discarding**: Escape leaves the editor,
-  the rewrite stays under the message's key, and only a successful save clears
-  it.
-- **The one confirm that stays** is `useLeaveGuard`'s — an agent-authored
-  document still streaming into a thread. That is not a person's draft.
-
-### The API is safe to auto-save against
-
-- **`POST /api/threads/:threadId/messages` takes a client idempotency key.**
-  Body field `clientMessageId` (the `Idempotency-Key` request header is
-  accepted as the transport spelling; the body field wins). It is stored on
-  `Message.clientMessageId`, unique per thread
-  (`messages_thread_id_client_message_id_key`; NULLs are distinct in
-  PostgreSQL, so every message posted without one is unaffected). A retry
-  carrying a key the thread already holds returns **200** with that message and
-  no `pendingAgentInvites`, rather than the **201** of a fresh post — the
-  attachments, alerts, push and orchestration of the first attempt are not
-  replayed. Two attempts racing past the pre-check are resolved by the unique
-  index and the loser replays the winner. The admin composers mint one key per
-  unsent draft, keep it while the attempt is unresolved, and mint a fresh one
-  after a success or a channel switch.
-- **`If-Match` on the conditional writes.** `PUT /api/dashboards/:id/layout`
-  (`Dashboard.revision`), `PUT /api/workflows/:workflowTemplateId`
-  (`WorkflowTemplate.version`) and `PATCH /api/knowledge-base/pages/:pageId`
-  (`KnowledgePage.revision`, added in migration
-  `20260902130000_knowledge_page_revision`) accept the revision the caller
-  edited — bare, quoted, or weak — and answer **409** with
-  `details.currentRevision` when it is not the current one
-  (`DASHBOARD_REVISION_CONFLICT`, `WORKFLOW_TEMPLATE_VERSION_CONFLICT`,
-  `KNOWLEDGE_PAGE_REVISION_CONFLICT`). A header the server cannot parse is a
-  **400 `INVALID_IF_MATCH`**, never a silent unconditional save; a missing
-  header or `*` means "no opinion" and saves unconditionally, which is what
-  makes it the "keep mine" answer. The one parser is
-  `api/src/lib/if-match.ts`.
-- **A conflict is a choice in place, never a dialog.** The dashboard renders a
-  bar over the grid and the workflow designer replaces Save in its header, both
-  offering **Keep mine** (save again with no precondition) and **Take theirs**
-  (drop this draft and rehydrate). The draft survives either way.
-
-Pinned by `admin/test/use-draft.test.ts` (restore, debounce, key-change
-isolation, signature diff, a rejection kept out of the retry loop, `clear`, a
-throwing store), `admin/test/draft-surfaces.test.ts` (every adopted surface
-calls `useDraft` with its entity key and carries no discard confirm),
-`api/test/message-idempotency.test.ts`,
-`api/test/if-match-conditional-writes.test.ts`, and
-`packages/knowledge/test/page-revision-db.test.ts`.
+Nothing in the admin asks a person “discard changes?” about their own draft:
+leaving a screen is safe because the draft is already persisted. One primitive,
+`admin/src/navigation/useDraft.ts`, is the only way a surface holds unsent
+state, and it is keyed by the **entity** (`draft:<surface>:<entityId>`), never
+by the screen. The key table, the two lanes, the composer/attachment rules and
+the idempotent, `If-Match`-guarded API they auto-save against:
+[docs/navigation-drafts.md](navigation-drafts.md).
 
 ## 16. Still planned
 

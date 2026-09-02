@@ -9,9 +9,11 @@ import {
   useDeepWaterResearchRuns,
   useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
+import { Notice } from '../../primitives/Notice'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
+import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
@@ -89,15 +91,15 @@ export const DeepWaterResearchPanel = ({
   }
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Deep Water research</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">Deep Water research</h3>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
             Start research, follow your team’s durable runs, and manage access separately.
           </p>
         </div>
-        <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
+        <Link className="text-xs text-[color:var(--tx3)] underline" to="/tokens">
           Team credits and customer totals
         </Link>
       </div>
@@ -119,10 +121,10 @@ export const DeepWaterResearchPanel = ({
           id="integration-tabpanel-run"
           role="tabpanel"
         >
-          <div className="mb-4 rounded border border-[var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-sm leading-6 text-[var(--tx2)]">
+          <Notice className="mb-4" tone="neutral">
             This starts a real Deep Water research job. Pick Light, Standard or Heavy to
             assume the settings, or Custom to review every value before submitting.
-          </div>
+          </Notice>
           <DeepWaterResearchLauncher
             canLaunch={canLaunch}
             onLaunched={(response) => navigate(`/channels/${response.channel.id}`)}
@@ -141,7 +143,14 @@ export const DeepWaterResearchPanel = ({
           id="integration-tabpanel-runs"
           role="tabpanel"
         >
-          <DeepWaterRunHistory loading={runsQuery.isLoading} runs={runsQuery.data ?? []} />
+          <QueryState
+            className="py-8"
+            errorLabel="Could not load Deep Water runs."
+            loadingLabel="Loading runs…"
+            query={runsQuery}
+          >
+            {() => <DeepWaterRunHistory runs={runsQuery.data ?? []} />}
+          </QueryState>
         </div>
       ) : null}
 
@@ -152,11 +161,11 @@ export const DeepWaterResearchPanel = ({
           id="integration-tabpanel-settings"
           role="tabpanel"
         >
-          <section className="rounded border border-[var(--sep)] p-3">
+          <section className="rounded-[var(--radius-md)] border border-[color:var(--sep)] p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h4 className="text-sm font-semibold text-[var(--tx)]">Research readiness</h4>
-                <p className="mt-1 text-xs leading-5 text-[var(--tx3)]">
+                <h4 className="text-sm font-semibold text-[color:var(--tx)]">Research readiness</h4>
+                <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
                   The Personal Assistant needs all six explicit Deep Water grants before it can
                   start a research job.
                 </p>
@@ -202,11 +211,11 @@ export const DeepWaterResearchPanel = ({
             </div>
           </section>
 
-          <section className="rounded border border-[var(--sep)] p-3">
+          <section className="rounded-[var(--radius-md)] border border-[color:var(--sep)] p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h4 className="text-sm font-semibold text-[var(--tx)]">Agent access</h4>
-                <p className="mt-1 text-xs leading-5 text-[var(--tx3)]">
+                <h4 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h4>
+                <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
                   Grants are explicit, per agent, and remain subject to team and user tenancy.
                 </p>
               </div>
@@ -220,81 +229,77 @@ export const DeepWaterResearchPanel = ({
               ) : null}
             </div>
 
-            {/* Not QueryState: text-xs, left-aligned, sitting above the list
-                as a note rather than replacing it. */}
-            {accessQuery.isLoading ? (
-              <div className="mt-3 text-xs text-[var(--tx3)]">Checking agent access…</div>
-            ) : accessQuery.isError ? (
-              <div className="mt-3 text-xs text-[var(--danger-text)]">
-                Could not check agent access.{' '}
-                <button className="underline" onClick={() => void accessQuery.refetch()} type="button">
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <div className="mt-3 divide-y divide-[var(--sep)] overflow-hidden rounded border border-[var(--sep)]">
-                {accessTargets.map((target) => {
-                  const canRevoke = target.revocableGrantCount > 0
-                  const pending = setAgentAccess.isPending && (
-                    setAgentAccess.variables?.target === 'personal_assistant'
-                      ? target.agentKind === 'personal_assistant'
-                      : setAgentAccess.variables?.agentId === target.agentId
-                  )
-                  return (
-                    <div className="flex items-center justify-between gap-3 px-3 py-2" key={target.agentId}>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-[var(--tx)]">
-                          {accessTargetLabel(target)}
+            <QueryState
+              className="mt-3 py-2"
+              errorLabel="Could not check agent access."
+              loadingLabel="Checking agent access…"
+              query={accessQuery}
+            >
+              {() => (
+                <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--sep)]">
+                  {accessTargets.map((target) => {
+                    const canRevoke = target.revocableGrantCount > 0
+                    const pending = setAgentAccess.isPending && (
+                      setAgentAccess.variables?.target === 'personal_assistant'
+                        ? target.agentKind === 'personal_assistant'
+                        : setAgentAccess.variables?.agentId === target.agentId
+                    )
+                    return (
+                      <div className="flex items-center justify-between gap-3 px-3 py-2" key={target.agentId}>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-[color:var(--tx)]">
+                            {accessTargetLabel(target)}
+                          </div>
+                          <div className="text-xs text-[color:var(--tx3)]">
+                            {target.grantedToolCount}/{target.requiredToolCount} tools granted
+                          </div>
                         </div>
-                        <div className="text-xs text-[var(--tx3)]">
-                          {target.grantedToolCount}/{target.requiredToolCount} tools granted
-                        </div>
+                        {isOwner ? (
+                          <button
+                            className={[
+                              'admin-button admin-button-compact',
+                              canRevoke ? 'admin-button-secondary' : 'admin-button-primary',
+                            ].join(' ')}
+                            disabled={pending || (!canRevoke && accessQuery.data?.configured !== true)}
+                            onClick={() => changeAccess(target, !canRevoke)}
+                            type="button"
+                          >
+                            {pending ? 'Saving…' : canRevoke ? 'Revoke all' : 'Grant all'}
+                          </button>
+                        ) : null}
                       </div>
-                      {isOwner ? (
-                        <button
-                          className={[
-                            'admin-button admin-button-compact',
-                            canRevoke ? 'admin-button-secondary' : 'admin-button-primary',
-                          ].join(' ')}
-                          disabled={pending || (!canRevoke && accessQuery.data?.configured !== true)}
-                          onClick={() => changeAccess(target, !canRevoke)}
-                          type="button"
-                        >
-                          {pending ? 'Saving…' : canRevoke ? 'Revoke all' : 'Grant all'}
-                        </button>
-                      ) : null}
+                    )
+                  })}
+                  {!accessQuery.data?.personalAssistant && isOwner ? (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div>
+                        <div className="text-sm font-medium text-[color:var(--tx)]">Personal Assistant</div>
+                        <div className="text-xs text-[color:var(--tx3)]">Set up and grant all six tools</div>
+                      </div>
+                      <button
+                        className="admin-button admin-button-primary admin-button-compact"
+                        disabled={setAgentAccess.isPending || accessQuery.data?.configured !== true}
+                        onClick={() => changeAccess(null, true)}
+                        type="button"
+                      >
+                        {setAgentAccess.isPending ? 'Saving…' : 'Set up & grant'}
+                      </button>
                     </div>
-                  )
-                })}
-                {!accessQuery.data?.personalAssistant && isOwner ? (
-                  <div className="flex items-center justify-between gap-3 px-3 py-2">
-                    <div>
-                      <div className="text-sm font-medium text-[var(--tx)]">Personal Assistant</div>
-                      <div className="text-xs text-[var(--tx3)]">Set up and grant all six tools</div>
-                    </div>
-                    <button
-                      className="admin-button admin-button-primary admin-button-compact"
-                      disabled={setAgentAccess.isPending || accessQuery.data?.configured !== true}
-                      onClick={() => changeAccess(null, true)}
-                      type="button"
-                    >
-                      {setAgentAccess.isPending ? 'Saving…' : 'Set up & grant'}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            )}
+                  ) : null}
+                </div>
+              )}
+            </QueryState>
             {!isOwner && !personalAssistantReady ? (
-              <p className="mt-2 text-xs text-[var(--tx3)]">
+              <p className="mt-2 text-xs text-[color:var(--tx3)]">
                 An organization owner must grant Deep Water to the Personal Assistant.
               </p>
             ) : null}
             {setAgentAccess.isError ? (
-              <p className="mt-2 text-xs text-[var(--danger-text)]">
+              <Notice className="mt-2" role="alert" size="sm" tone="danger">
                 {setAgentAccess.error instanceof Error
                   ? setAgentAccess.error.message
                   : 'Could not change agent access.'}
-              </p>
+              </Notice>
             ) : null}
           </section>
 

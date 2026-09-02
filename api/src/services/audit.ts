@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
+import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext, AuditAction, AuditOutcome } from '@nessie/schemas'
 
 const REDACTED_FIELDS = new Set([
@@ -88,19 +89,11 @@ export type AuditLogQuery = {
   to?: string
 }
 
-const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
-  const [isoPart, idPart] = raw.split('|')
-  if (!isoPart || !idPart) return null
-  const d = new Date(isoPart)
-  if (Number.isNaN(d.getTime())) return null
-  return { cursorDate: d, cursorId: idPart }
-}
-
 export const listAuditLogs = async (
   prisma: PrismaClient,
   query: AuditLogQuery,
 ) => {
-  const limit = Math.min(query.limit ?? 50, 200)
+  const limit = resolvePageLimit(query.limit)
   const where: Record<string, unknown> = {
     organizationId: query.organizationId,
   }
@@ -119,20 +112,23 @@ export const listAuditLogs = async (
   if (query.to) dateFilter['lte'] = new Date(query.to)
   if (Object.keys(dateFilter).length > 0) where['createdAt'] = dateFilter
 
-  if (query.cursor) {
-    const parsed = parseCursor(query.cursor)
-    if (parsed) {
-      const existingAnd = where['AND']
-      where['AND'] = [
-        ...(Array.isArray(existingAnd) ? existingAnd : []),
-        {
-          OR: [
-            { createdAt: { lt: parsed.cursorDate } },
-            { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
-          ],
-        },
-      ]
-    }
+  // The total is counted against the same filters but before the cursor is
+  // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
+  // after the one this page starts at.
+  const total = await prisma.auditLog.count({ where: where as Prisma.AuditLogWhereInput })
+
+  const parsed = decodeKeysetCursor(query.cursor)
+  if (parsed) {
+    const existingAnd = where['AND']
+    where['AND'] = [
+      ...(Array.isArray(existingAnd) ? existingAnd : []),
+      {
+        OR: [
+          { createdAt: { lt: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+        ],
+      },
+    ]
   }
 
   const entries = await prisma.auditLog.findMany({
@@ -141,12 +137,15 @@ export const listAuditLogs = async (
     take: limit + 1,
   })
 
-  const hasMore = entries.length > limit
-  const data = hasMore ? entries.slice(0, limit) : entries
-  const last = data.at(-1)
+  const page = buildPage({
+    hasCursor: Boolean(parsed),
+    limit,
+    rows: entries,
+    total,
+  })
 
   return {
-    data: data.map((entry) => ({
+    data: page.data.map((entry) => ({
       id: entry.id,
       organizationId: entry.organizationId,
       projectId: entry.projectId,
@@ -165,10 +164,7 @@ export const listAuditLogs = async (
       userAgent: entry.userAgent,
       createdAt: entry.createdAt.toISOString(),
     })),
-    meta: {
-      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
-      hasMore,
-    },
+    meta: page.meta,
   }
 }
 

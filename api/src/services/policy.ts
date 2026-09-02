@@ -7,6 +7,7 @@ import type {
   PolicyResourceType,
   PolicyScope,
 } from '@nessie/schemas'
+import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import {
   buildScopeChain,
   loadRulesForChecks,
@@ -100,14 +101,6 @@ export const getEffectivePolicy = async (
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
-const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
-  const [isoPart, idPart] = raw.split('|')
-  if (!isoPart || !idPart) return null
-  const d = new Date(isoPart)
-  if (Number.isNaN(d.getTime())) return null
-  return { cursorDate: d, cursorId: idPart }
-}
-
 export const listPolicyRules = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -119,19 +112,23 @@ export const listPolicyRules = async (
     limit?: number
   },
 ) => {
-  const limit = Math.min(filters?.limit ?? 50, 200)
+  const limit = resolvePageLimit(filters?.limit)
   const where: Record<string, unknown> = { organizationId }
   if (filters?.scope) where['scope'] = filters.scope
   if (filters?.scopeId) where['scopeId'] = filters.scopeId
   if (filters?.resourceType) where['resourceType'] = filters.resourceType
-  if (filters?.cursor) {
-    const parsed = parseCursor(filters.cursor)
-    if (parsed) {
-      where['OR'] = [
-        { createdAt: { gt: parsed.cursorDate } },
-        { createdAt: parsed.cursorDate, id: { gt: parsed.cursorId } },
-      ]
-    }
+
+  // The total is counted against the same filters but before the cursor is
+  // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
+  // after the one this page starts at.
+  const total = await prisma.policyRule.count({ where: where as Prisma.PolicyRuleWhereInput })
+
+  const parsed = decodeKeysetCursor(filters?.cursor)
+  if (parsed) {
+    where['OR'] = [
+      { createdAt: { gt: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { gt: parsed.id } },
+    ]
   }
 
   const rules = await prisma.policyRule.findMany({
@@ -141,16 +138,16 @@ export const listPolicyRules = async (
     take: limit + 1,
   })
 
-  const hasMore = rules.length > limit
-  const data = hasMore ? rules.slice(0, limit) : rules
-  const last = data.at(-1)
+  const page = buildPage({
+    hasCursor: Boolean(parsed),
+    limit,
+    rows: rules,
+    total,
+  })
 
   return {
-    data: data.map(mapPolicyRule),
-    meta: {
-      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
-      hasMore,
-    },
+    data: page.data.map(mapPolicyRule),
+    meta: page.meta,
   }
 }
 

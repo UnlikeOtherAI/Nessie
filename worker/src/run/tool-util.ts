@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { AgenticToolResult, ToolExecutionUsage } from './tool-types.js'
+import type { AgenticToolResult, ToolExecutionUsage, AgentCardSuspension } from './tool-types.js'
 
 // --- Tool result size budget -------------------------------------------------
 //
@@ -65,7 +65,11 @@ export const truncateToolResult = (
  */
 export const wrapTool = async (
   inputSummary: string,
-  fn: () => Promise<{ connectorUsage?: ToolExecutionUsage; outputPreview: string }>,
+  fn: () => Promise<{
+    connectorUsage?: ToolExecutionUsage
+    outputPreview: string
+    pendingInput?: AgentCardSuspension
+  }>,
 ): Promise<AgenticToolResult> => {
   try {
     const result = await fn()
@@ -73,6 +77,9 @@ export const wrapTool = async (
       connectorUsage: result.connectorUsage,
       inputSummary,
       output: truncateToolResult(result.outputPreview),
+      // Only a successful post may suspend the run: a card nobody can see is
+      // not something to wait on.
+      ...(result.pendingInput ? { pendingInput: result.pendingInput } : {}),
       success: true,
     }
   } catch (error) {

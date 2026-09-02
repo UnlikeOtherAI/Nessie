@@ -1,3 +1,4 @@
+import { Notice } from '../../primitives/Notice'
 import { connectErrorPresentation } from './connect-error-copy'
 import {
   connectShowsSlowProviderNote,
@@ -36,17 +37,6 @@ const panelClass = [
   'rounded-[var(--radius-md)] border border-[color:var(--sep)]',
   'bg-[color:var(--panel-soft)] px-4 py-3',
 ].join(' ')
-
-const noticeClass = (tone: 'danger' | 'info') =>
-  tone === 'info'
-    ? [
-      'rounded-[var(--radius-md)] border border-[color:var(--info-border)]',
-      'bg-[color:var(--info-soft)] px-4 py-3 text-sm text-[color:var(--info-text)]',
-    ].join(' ')
-    : [
-      'rounded-[var(--radius-md)] border border-[color:var(--danger-border)]',
-      'bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger-text)]',
-    ].join(' ')
 
 const StepRow = ({ step }: { step: ConnectStep }) => (
   <li className="flex items-center gap-2 text-sm">
@@ -106,7 +96,7 @@ export const ConnectProgress = ({
       providerName,
     })
     return (
-      <div className={noticeClass(presentation.tone)} data-testid="app-connect-error" role="alert">
+      <Notice role="alert" tone={presentation.tone}>
         <p>{presentation.message}</p>
         {presentation.retryLabel ? (
           <button
@@ -118,13 +108,13 @@ export const ConnectProgress = ({
           </button>
         ) : null}
         <TechnicalDetails code={state.error.code} detail={state.error.detail} />
-      </div>
+      </Notice>
     )
   }
 
   if (state.phase === 'needs_secret') {
     return (
-      <div className={noticeClass('info')} data-testid="app-connect-needs-secret">
+      <Notice tone="info">
         <p>
           {appName} signs in with a key you hold. Add it once and Nessie keeps it
           encrypted — it is never shown again, here or anywhere else.
@@ -138,7 +128,7 @@ export const ConnectProgress = ({
             Add the key
           </button>
         ) : null}
-      </div>
+      </Notice>
     )
   }
 

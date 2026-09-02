@@ -11,6 +11,7 @@ import type {
   WorkflowStepRunRecord,
   WorkflowStepSamplesRecord,
 } from '../../../lib/api-client'
+import { Notice } from '../../primitives/Notice'
 import { WorkflowSamplePicker } from './WorkflowSamplePicker'
 
 /**
@@ -47,11 +48,14 @@ type WorkflowNodeInspectorProps = {
 const fieldLabelClass =
   'text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]'
 
+// The designer's inspector sits on `--surface-inverse`, a light "canvas"
+// surface every theme declares independently of the dark app chrome around
+// it — these were hard-coded approximations of that surface's own nebula
+// values (`bg-white`≈`--surface-inverse`, `#433349`≈`--ink`,
+// `#7445c7`≈`--accent`) that never changed with the theme, sitting beside
+// tokens from the same family that do.
 const inspectorInputClass =
-  'w-full rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-[#433349] outline-none focus:border-[#7445c7]'
-
-const warningClass =
-  'rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-800'
+  'w-full rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] px-2.5 py-1.5 text-sm text-[var(--ink)] outline-none focus:border-[var(--accent)]'
 
 const readString = (config: Record<string, unknown>, key: string): string => {
   const value = config[key]
@@ -137,9 +141,9 @@ const NodeConfigFields = ({
           </select>
         </label>
         {!channelId ? (
-          <div className={warningClass}>
+          <Notice size="sm" tone="warning">
             Agent steps need a channel — the run will fail without one.
-          </div>
+          </Notice>
         ) : null}
         <TextField
           label="Instruction"
@@ -176,9 +180,9 @@ const NodeConfigFields = ({
           />
         ))}
         {missingPrimary && primaryField ? (
-          <div className={warningClass}>
+          <Notice size="sm" tone="warning">
             “{primaryField.label}” is required — the run will fail without it.
-          </div>
+          </Notice>
         ) : null}
       </div>
     )
@@ -204,9 +208,9 @@ const NodeConfigFields = ({
           value={readString(config, 'source')}
         />
         {missingExpression ? (
-          <div className={warningClass}>
+          <Notice size="sm" tone="warning">
             “Expression” is required — the save will fail without it.
-          </div>
+          </Notice>
         ) : null}
       </div>
     )
@@ -349,13 +353,13 @@ export const WorkflowNodeInspector = ({
             ) : null}
 
             {selectedNodeStepRun ? (
-              <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] px-3 py-2.5">
                 <div className={fieldLabelClass}>Last test run</div>
-                <div className="mt-1.5 text-sm text-[#433349]">
+                <div className="mt-1.5 text-sm text-[var(--ink)]">
                   {selectedNodeStepRun.status}
                 </div>
                 {selectedNodeStepRun.errorMessage ? (
-                  <div className="mt-1 text-xs text-[var(--danger)]">
+                  <div className="mt-1 text-xs text-[var(--danger-text)]">
                     {selectedNodeStepRun.errorMessage}
                   </div>
                 ) : null}
@@ -367,7 +371,7 @@ export const WorkflowNodeInspector = ({
                     >
                       Output
                     </summary>
-                    <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-black/10 bg-[#faf7fc] p-2 text-[11px] leading-4 text-[#433349]">
+                    <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--line)] bg-[var(--surface-inverse-2)] p-2 text-[11px] leading-4 text-[var(--ink)]">
                       {JSON.stringify(selectedNodeStepRun.output, null, 2)}
                     </pre>
                   </details>
@@ -376,7 +380,7 @@ export const WorkflowNodeInspector = ({
             ) : null}
 
             {selectedNodeUpstreamSteps.length > 0 ? (
-              <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] px-3 py-2.5">
                 <div className={fieldLabelClass}>Use earlier step output</div>
                 <div className="mt-1.5 grid gap-1 text-xs text-[var(--muted)]">
                   {selectedNodeUpstreamSteps.map((step) => (
@@ -394,7 +398,7 @@ export const WorkflowNodeInspector = ({
 
             <details>
               <summary
-                className={`cursor-pointer select-none ${fieldLabelClass} hover:text-[#433349]`}
+                className={`cursor-pointer select-none ${fieldLabelClass} hover:text-[var(--ink)]`}
               >
                 Advanced JSON
               </summary>
@@ -404,8 +408,11 @@ export const WorkflowNodeInspector = ({
                 spellCheck={false}
                 value={selectedNodeConfigDraft}
               />
+              {/* Recomputes on every keystroke (`handleSelectedNodeConfigChange`) —
+                  no `role="alert"`, which is for submit-time errors; a live
+                  per-character validator announcing itself would just chatter. */}
               {selectedNodeConfigError ? (
-                <div className="mt-1 text-xs text-[var(--danger)]">
+                <div className="mt-1 text-xs text-[var(--danger-text)]">
                   {selectedNodeConfigError}
                 </div>
               ) : null}

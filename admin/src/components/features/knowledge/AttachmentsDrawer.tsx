@@ -10,8 +10,12 @@ import {
   usePageAttachments,
   useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
-import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
+import type { AttachmentRecord } from '../../../lib/uploads'
 import { Sheet } from '../../overlays/Sheet'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
 import { iconForMime } from './file-icons'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
@@ -35,6 +39,7 @@ export const AttachmentsDrawer = ({
   const remove = useDeleteAttachment(pageId)
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<AttachmentRecord | null>(null)
 
   const handleFile = (file: File) => {
     setProgress({ loaded: 0, total: file.size, pct: 0 })
@@ -78,61 +83,65 @@ export const AttachmentsDrawer = ({
             progressPct={progress?.pct}
             uploading={upload.isPending}
           />
-          {attachments.length === 0 ? (
-            <p className="px-1 py-6 text-center text-sm text-[color:var(--tx3)]">
-              {canWrite
+          <QueryState
+            className="py-6"
+            emptyLabel={
+              canWrite
                 ? 'No attachments yet. Drop a file here or use the button below.'
-                : 'No attachments yet.'}
-            </p>
-          ) : (
-            <ul className="grid gap-1">
-              {attachments.map((attachment) => (
-                <li
-                  className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-[color:var(--overlay-weak)]"
-                  key={attachment.id}
-                >
-                  <FontAwesomeIcon
-                    className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-                    fixedWidth
-                    icon={iconForMime(attachment.mime)}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-[color:var(--tx)]">
-                      {attachment.filename}
-                    </span>
-                    <span className="block text-xs text-[color:var(--tx3)]">
-                      {formatBytes(Number(attachment.sizeBytes))}
-                    </span>
-                  </span>
-                  <button
-                    aria-label={`Download ${attachment.filename}`}
-                    className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
-                    onClick={() =>
-                      void downloadAuthedPath(
-                        kbAttachmentDownloadPath(attachment.id),
-                        attachment.filename,
-                        token,
-                      )
+                : 'No attachments yet.'
+            }
+            errorLabel="Couldn’t load attachments."
+            isEmpty={attachments.length === 0}
+            loadingLabel="Loading attachments…"
+            query={attachmentsQuery}
+          >
+            {() => (
+              <RowList>
+                {attachments.map((attachment) => (
+                  <Row
+                    key={attachment.id}
+                    leading={
+                      <FontAwesomeIcon
+                        className="h-4 w-4 text-[color:var(--tx3)]"
+                        fixedWidth
+                        icon={iconForMime(attachment.mime)}
+                      />
                     }
-                    type="button"
-                  >
-                    <FontAwesomeIcon className="h-3.5 w-3.5" icon={faDownload} />
-                  </button>
-                  {canWrite ? (
-                    <button
-                      aria-label={`Delete ${attachment.filename}`}
-                      className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger)]"
-                      disabled={remove.isPending}
-                      onClick={() => remove.mutate(attachment.id)}
-                      type="button"
-                    >
-                      <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+                    subtitle={formatBytes(Number(attachment.sizeBytes))}
+                    title={attachment.filename}
+                    trailing={
+                      <>
+                        <button
+                          aria-label={`Download ${attachment.filename}`}
+                          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
+                          onClick={() =>
+                            void downloadAuthedPath(
+                              kbAttachmentDownloadPath(attachment.id),
+                              attachment.filename,
+                              token,
+                            )
+                          }
+                          type="button"
+                        >
+                          <FontAwesomeIcon className="h-3.5 w-3.5" icon={faDownload} />
+                        </button>
+                        {canWrite ? (
+                          <button
+                            aria-label={`Delete ${attachment.filename}`}
+                            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--danger-text)]"
+                            onClick={() => setPendingDelete(attachment)}
+                            type="button"
+                          >
+                            <FontAwesomeIcon className="h-3.5 w-3.5" icon={faTrash} />
+                          </button>
+                        ) : null}
+                      </>
+                    }
+                  />
+                ))}
+              </RowList>
+            )}
+          </QueryState>
         </div>
 
         {canWrite ? <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
@@ -155,6 +164,22 @@ export const AttachmentsDrawer = ({
             type="file"
           />
         </div> : null}
+
+        <ConfirmDialog
+          body={pendingDelete ? `“${pendingDelete.filename}” will be removed from this page.` : undefined}
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            if (!pendingDelete) return
+            const attachment = pendingDelete
+            setPendingDelete(null)
+            remove.mutate(attachment.id)
+          }}
+          open={pendingDelete !== null}
+          pending={remove.isPending}
+          title="Delete attachment?"
+        />
       </div>
     </Sheet>
   )

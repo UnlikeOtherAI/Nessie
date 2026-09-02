@@ -17,12 +17,14 @@ import {
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import {
-  NotificationToggle,
-  PushPreferenceCard,
-} from './notification-preference-controls'
+import { PushPreferenceCard } from './notification-preference-controls'
 import { FeedbackBanner, type SettingsFeedback, SettingsPanel } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { Switch } from '../../components/primitives/Switch'
+import { Card } from '../../components/shared/Card'
+import { EmptyState } from '../../components/shared/EmptyState'
+import { QueryState } from '../../components/shared/QueryState'
+import { Row, RowList } from '../../components/shared/RowList'
 
 const DEFAULT_QUIET_START = '22:00'
 const DEFAULT_QUIET_END = '07:00'
@@ -126,7 +128,7 @@ const BrowserNotificationsSection = () => {
       return 'This browser does not support web push notifications.'
     }
     if (configLoading) {
-      return 'Checking availability...'
+      return 'Checking availability…'
     }
     if (!configEnabled) {
       return 'Browser notifications are not configured on this instance.'
@@ -176,7 +178,7 @@ const BrowserNotificationsSection = () => {
           <div className="font-semibold text-[color:var(--tx)]">Browser notifications</div>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">{describeState()}</div>
         </div>
-        <NotificationToggle
+        <Switch
           checked={subscribed}
           disabled={toggleDisabled}
           label="Toggle browser notifications"
@@ -193,7 +195,8 @@ const BrowserNotificationsSection = () => {
 export const NotificationsPage = () => {
   const { me } = useAuthSession()
   const { focusModeEnabled, setFocusModeEnabled, updating: focusModeUpdating } = useFocusMode()
-  const { data: channels = [] } = useChannels()
+  const channelsQuery = useChannels()
+  const channels = channelsQuery.data ?? []
   const browserTimeZone = useMemo(() => getBrowserTimeZone(), [])
   const updatePreferences = useUpdatePreferences()
   const setChannelMute = useSetChannelMute()
@@ -321,10 +324,10 @@ export const NotificationsPage = () => {
           form: 'notification-preferences-form',
           id: 'save-preferences',
           label: updatePreferences.isPending
-            ? 'Saving...'
+            ? 'Saving…'
             : preferencesHydrated
               ? 'Save preferences'
-              : 'Loading...',
+              : 'Loading…',
           onSelect: () => undefined,
           primary: true,
           priority: 100,
@@ -349,7 +352,7 @@ export const NotificationsPage = () => {
                     : 'Pause push notifications and mute attention cues on every device while you work.'}
                 </div>
               </div>
-              <NotificationToggle
+              <Switch
                 checked={focusModeEnabled}
                 disabled={focusModeUpdating}
                 label="Toggle focus mode"
@@ -390,7 +393,7 @@ export const NotificationsPage = () => {
                   {quietHoursEnabled ? 'Enabled' : 'Disabled'}
                 </div>
               </div>
-              <NotificationToggle
+              <Switch
                 checked={quietHoursEnabled}
                 disabled={!preferencesHydrated || updatePreferences.isPending}
                 label="Toggle quiet hours"
@@ -445,51 +448,59 @@ export const NotificationsPage = () => {
           <FeedbackBanner feedback={preferenceFeedback} />
         </form>
 
-        <section className="admin-card p-4">
+        <Card variant="section">
           <SectionLabel>Muted channels</SectionLabel>
-          <div className="mt-4 grid gap-2">
-            {channels.length === 0 ? (
-              <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">
-                No channels available.
-              </div>
-            ) : (
-              channels.map((channel) => {
-                const muted = channelMuteOverrides[channel.id] ?? channel.muted ?? false
-                const pending =
-                  setChannelMute.isPending && setChannelMute.variables?.channelId === channel.id
+          <div className="mt-4">
+            <QueryState
+              className="py-4"
+              errorLabel="Failed to load channels."
+              loadingLabel="Loading channels…"
+              query={channelsQuery}
+            >
+              {() =>
+                channels.length === 0 ? (
+                  <EmptyState>No channels available.</EmptyState>
+                ) : (
+                  <RowList label="Muted channels">
+                    {channels.map((channel) => {
+                      const muted = channelMuteOverrides[channel.id] ?? channel.muted ?? false
+                      const pending =
+                        setChannelMute.isPending
+                        && setChannelMute.variables?.channelId === channel.id
 
-                return (
-                  <div
-                    key={channel.id}
-                    className="admin-card flex items-center justify-between gap-4 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold text-[color:var(--tx)]">#{channel.label}</div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                        {muted ? 'Muted' : channel.visibility}
-                      </div>
-                    </div>
-                    <NotificationToggle
-                      checked={muted}
-                      disabled={pending}
-                      label={`Toggle ${channel.label} notifications`}
-                      onChange={(nextMuted) =>
-                        void saveChannelMute(channel.id, muted, nextMuted)}
-                    />
-                    {pending ? (
-                      <span className="sr-only" role="status">
-                        Saving channel notification setting
-                      </span>
-                    ) : null}
-                  </div>
+                      return (
+                        <Row
+                          key={channel.id}
+                          subtitle={muted ? 'Muted' : channel.visibility}
+                          title={`#${channel.label}`}
+                          trailing={
+                            <>
+                              <Switch
+                                checked={muted}
+                                disabled={pending}
+                                label={`Toggle ${channel.label} notifications`}
+                                onChange={(nextMuted) =>
+                                  void saveChannelMute(channel.id, muted, nextMuted)}
+                              />
+                              {pending ? (
+                                <span className="sr-only" role="status">
+                                  Saving channel notification setting
+                                </span>
+                              ) : null}
+                            </>
+                          }
+                        />
+                      )
+                    })}
+                  </RowList>
                 )
-              })
-            )}
+              }
+            </QueryState>
           </div>
           <div className="mt-3">
             <FeedbackBanner feedback={channelFeedback} />
           </div>
-        </section>
+        </Card>
       </div>
     </SettingsPanel>
   )

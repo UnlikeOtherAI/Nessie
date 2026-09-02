@@ -1,4 +1,4 @@
-import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
+import type { DesignerToolCatalogQuery, DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
 import type {
@@ -8,8 +8,14 @@ import type {
 } from './useAgentDesigner'
 import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
+import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 import { ToolPicker } from './ToolPicker'
 import { Switch } from '../../../primitives/Switch'
+import { FieldLabel } from '../../../primitives/FieldLabel'
+import { SectionLabel } from '../../../primitives/SectionLabel'
+import { Card } from '../../../shared/Card'
+import { FormField } from '../../../shared/FormField'
+import { Input, Select, Textarea } from '../../../shared/FormControls'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
@@ -24,14 +30,9 @@ type AgentDesignerFormProps = {
   showTools?: boolean
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
-  toolsLoading: boolean
+  toolsQuery: DesignerToolCatalogQuery
   visibilityReadOnly?: boolean
 }
-
-const fieldLabelClass = [
-  'text-xs font-semibold uppercase',
-  'tracking-[0.16em] text-[color:var(--tx3)]',
-].join(' ')
 
 // Reasoning effort maps only to the provider's `reasoning_effort` — how hard
 // the model thinks per turn. Spend ceilings live in the Run limits fieldset.
@@ -53,10 +54,11 @@ export const AgentDesignerForm = ({
   showTools = true,
   state,
   toolGroups,
-  toolsLoading,
+  toolsQuery,
   visibilityReadOnly = false,
 }: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
+  const highlightClass = (field: string) => (isStreaming(field) ? STREAMING_HIGHLIGHT_CLASS : '')
   const selectedModel = modelOptions.find(
     (option) => option.model === state.model && option.provider === state.provider,
   )
@@ -66,91 +68,78 @@ export const AgentDesignerForm = ({
     <div className="grid gap-5">
       {/* Parent agent (read-only, shown only when creating a child) */}
       {parentAgentName !== undefined && (
-        <div className="grid gap-1.5">
-          <div className={fieldLabelClass}>Parent Agent</div>
-          <div className="admin-input cursor-default opacity-60">{parentAgentName}</div>
-        </div>
+        <FormField label="Parent Agent">
+          <Input className="cursor-default opacity-60" readOnly tabIndex={-1} value={parentAgentName} />
+        </FormField>
       )}
 
-      {/* Name */}
-      <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-name">
-          Name
-        </label>
-        <input
+      {/* Name and Role pin their ids (`agent-name`, `agent-role`): the Design
+          Assistant's reveal-and-focus animation
+          (`designer/reveal-control.ts`) resolves them with
+          `document.getElementById`, so a generated id would break it. */}
+      <FormField id="agent-name" label="Name">
+        <Input
           autoComplete="off"
-          className={[
-            'admin-input',
-            isStreaming('name') ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : '',
-          ].join(' ')}
-          id="agent-name"
+          className={highlightClass('name')}
           onChange={(e) => actions.setName(e.target.value)}
           placeholder="e.g. Code Reviewer"
           value={state.name}
         />
-      </div>
+      </FormField>
 
-      {/* Role */}
-      <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-role">
-          Role
-        </label>
-        <input
+      <FormField id="agent-role" label="Role">
+        <Input
           autoComplete="off"
-          className={[
-            'admin-input',
-            isStreaming('role') ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : '',
-          ].join(' ')}
-          id="agent-role"
+          className={highlightClass('role')}
           onChange={(e) => actions.setRole(e.target.value)}
           placeholder="e.g. assistant, reviewer, analyst"
           value={state.role}
         />
-      </div>
+      </FormField>
 
-      <div className="grid gap-1.5" id="agent-visibility">
-        <div className={fieldLabelClass}>Visibility</div>
-        {visibilityReadOnly ? (
-          <>
-            <p className="text-sm text-[color:var(--tx2)]">
-              {state.visibility === 'private' ? 'Only visible to you' : 'Workspace-visible'}
-            </p>
-            <p className="text-xs text-[color:var(--tx3)]">
-              Visibility is set when an agent is created and cannot be changed.
-            </p>
-          </>
-        ) : (
-          <>
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--sep)] p-3 hover:bg-[color:var(--main-hover)]">
-              <input
-                checked={state.visibility === 'private'}
-                className="mt-0.5"
-                onChange={(event) => actions.setVisibility(
-                  event.target.checked ? 'private' : 'workspace',
-                )}
-                type="checkbox"
-              />
-              <span className="grid gap-1">
-                <span className="text-sm font-medium text-[color:var(--tx)]">Only visible to me</span>
-                <span className="text-xs text-[color:var(--tx3)]">
-                  {state.visibility === 'private'
-                    ? 'Private — only you can see it.'
-                    : 'Workspace-visible — people in this workspace can find it.'}
-                </span>
-              </span>
-            </label>
-            <p className="text-xs text-[color:var(--tx3)]">
-              A private agent cannot be added to any project, channel, or conversation, and only you can see it.
-            </p>
-          </>
-        )}
-      </div>
+      <Card className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <SectionLabel size="sm">Visibility</SectionLabel>
+          {visibilityReadOnly ? (
+            <>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+                {state.visibility === 'private' ? 'Only visible to you' : 'Workspace-visible'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+                Visibility is set when an agent is created and cannot be changed.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+                {state.visibility === 'private'
+                  ? 'Private — only you can see it.'
+                  : 'Workspace-visible — people in this workspace can find it.'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+                A private agent cannot be added to any project, channel, or conversation, and only
+                you can see it.
+              </p>
+            </>
+          )}
+        </div>
+        {!visibilityReadOnly ? (
+          <Switch
+            checked={state.visibility === 'private'}
+            label="Only visible to me"
+            onChange={(checked) => actions.setVisibility(checked ? 'private' : 'workspace')}
+          />
+        ) : null}
+      </Card>
 
-      {/* Ledger-authorized model */}
+      {/* Model stays outside `FormField`, and the reason is not its pinned id
+          — `FormField` takes one now. `ModelCombobox` is a bespoke combobox
+          with its own listbox and keyboard handling, and it does not consume
+          the field context, so wrapping it would render a label and an error
+          region that were not actually wired to the control it describes:
+          the appearance of the contract without the contract. */}
       <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-model">
-          Model
-        </label>
+        <FieldLabel htmlFor="agent-model">Model</FieldLabel>
         <ModelCombobox
           disabled={modelsLoading || modelOptions.length === 0}
           emptyLabel="No models match that search"
@@ -173,20 +162,15 @@ export const AgentDesignerForm = ({
           </p>
         ) : null}
         {modelOptionsError ? (
-          <p className="text-xs text-[color:var(--danger)]" role="alert">
+          <p className="text-xs text-[color:var(--danger-text)]" role="alert">
             {modelOptionsError}
           </p>
         ) : null}
       </div>
 
       {/* Reasoning effort */}
-      <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-effort">
-          Reasoning effort
-        </label>
-        <select
-          className="admin-input"
-          id="agent-effort"
+      <FormField help="How hard the model thinks — does not limit what a run may spend." label="Reasoning effort">
+        <Select
           onChange={(e) => actions.setEffort(e.target.value as AgentEffortValue)}
           value={state.effort}
         >
@@ -195,22 +179,15 @@ export const AgentDesignerForm = ({
               {`${e.label} — ${e.hint}`}
             </option>
           ))}
-        </select>
-        <p className="text-xs text-[color:var(--tx3)]">
-          How hard the model thinks — does not limit what a run may spend.
-        </p>
-      </div>
+        </Select>
+      </FormField>
 
       {/* Run limits */}
-      <RunLimitsFieldset
-        labelClassName={fieldLabelClass}
-        onChange={actions.setRunLimit}
-        value={state.runLimits}
-      />
+      <RunLimitsFieldset onChange={actions.setRunLimit} value={state.runLimits} />
 
-      <div className="flex items-start justify-between gap-4 rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4">
+      <Card className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className={fieldLabelClass}>To-dos</div>
+          <SectionLabel size="sm">To-dos</SectionLabel>
           <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
             Give this agent reusable checklists it can work through.
           </p>
@@ -229,34 +206,26 @@ export const AgentDesignerForm = ({
           label="Enable to-dos for this agent"
           onChange={actions.setTodosEnabled}
         />
-      </div>
+      </Card>
 
-      {/* System prompt */}
-      <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-system-prompt">
-          System prompt
-        </label>
-        <textarea
+      <FormField id="agent-system-prompt" label="System prompt">
+        <Textarea
           autoComplete="off"
-          className={[
-            'admin-input admin-input-compact admin-input-mono resize-none',
-            isStreaming('systemPrompt')
-              ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-              : '',
-          ].join(' ')}
-          id="agent-system-prompt"
+          className={['resize-none', highlightClass('systemPrompt')].filter(Boolean).join(' ')}
+          mono
           onChange={(e) => actions.setSystemPrompt(e.target.value)}
           placeholder="Instructions for the agent..."
           rows={12}
+          size="compact"
           value={state.systemPrompt}
         />
-      </div>
+      </FormField>
 
       {/* Tools — only while creating. An existing agent's tools are managed on
           the detail page's Tools tab. */}
       {showTools ? (
         <div className="grid gap-1.5">
-          <div className={fieldLabelClass}>Tools</div>
+          <SectionLabel>Tools</SectionLabel>
           <p className="text-xs text-[color:var(--tx3)]">
             Built-in tools are on by default; connector (MCP) tools must be
             switched on per agent.
@@ -281,8 +250,8 @@ export const AgentDesignerForm = ({
           </p>
           <ToolPicker
             groups={toolGroups}
-            isLoading={toolsLoading}
             onToggle={actions.toggleTool}
+            query={toolsQuery}
             toolState={state.tools}
           />
         </div>

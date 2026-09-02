@@ -8,12 +8,17 @@ export type ToolApprovalSuspension = {
   toolName: string
 }
 
+export type AgentCardSuspension = {
+  cardId: string
+}
+
 export type ExecutedToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ConnectorUsage
   inputSummary: string
   output: string
   pendingApproval?: ToolApprovalSuspension
+  pendingInput?: AgentCardSuspension
   success: boolean
   toolCallId?: string
   toolCallRecordId?: string
@@ -104,6 +109,7 @@ export const executeToolBatch = async (input: {
 }): Promise<{
   loopDetected: boolean
   pendingApproval: ToolApprovalSuspension | null
+  pendingInput: AgentCardSuspension | null
   results: ExecutedToolResult[]
   toolMs: number
 }> => {
@@ -175,6 +181,7 @@ export const executeToolBatch = async (input: {
       return {
         loopDetected,
         pendingApproval: preparation.approval,
+        pendingInput: null,
         results: resultSlots.filter((result): result is ExecutedToolResult => result !== undefined),
         toolMs,
       }
@@ -265,5 +272,6 @@ export const executeToolBatch = async (input: {
   }
   const results = resultSlots.filter((result): result is ExecutedToolResult => result !== undefined)
   const pending = results.find((result) => result.pendingApproval)?.pendingApproval ?? null
-  return { loopDetected, pendingApproval: pending, results, toolMs }
+  const pendingInput = results.find((result) => result.pendingInput)?.pendingInput ?? null
+  return { loopDetected, pendingApproval: pending, pendingInput, results, toolMs }
 }

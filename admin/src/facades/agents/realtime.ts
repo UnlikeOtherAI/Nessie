@@ -3,7 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentStatusResponse } from '@nessie/schemas'
 import { WsServerMessageSchema } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
-import { agentKeys, agentTodoKeys, channelKeys, threadKeys } from '../../lib/query-keys'
+import {
+  agentCardKeys,
+  agentKeys,
+  agentTodoKeys,
+  channelKeys,
+  threadKeys,
+} from '../../lib/query-keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   mergeAgentSnapshot,
@@ -186,6 +192,16 @@ export const useAgentRealtime = (input: {
             queryKey: threadKeys.messages(message.data.threadId),
           })
         }
+        return
+      }
+
+      // A card reached a terminal state. Only the card's own query is invalidated:
+      // the press also wrote a reply, which refreshes the thread through
+      // `message.reply` like any other message.
+      if (message.event === 'card.updated') {
+        void queryClient.invalidateQueries({
+          queryKey: agentCardKeys.card(message.data.cardId),
+        })
         return
       }
 

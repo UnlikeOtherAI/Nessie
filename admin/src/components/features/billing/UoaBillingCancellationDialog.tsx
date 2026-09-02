@@ -163,12 +163,11 @@ export const UoaBillingCancellationDialog = ({
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   Direct subscriptions checked by SSO
                 </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {/* Flattened, not nested: this list already sits inside the
+                    dialog's own bordered panel, so it draws dividers only. */}
+                <ul className="mt-2 divide-y divide-[color:var(--sep)]">
                   {preview.direct_services.map((service) => (
-                    <div
-                      className="rounded-lg border border-[color:var(--sep)] p-3"
-                      key={service.service_id}
-                    >
+                    <li className="py-2.5" key={service.service_id}>
                       <div className="text-sm font-semibold">
                         {service.display_name}
                       </div>
@@ -176,9 +175,9 @@ export const UoaBillingCancellationDialog = ({
                         {service.direct_user_count} direct{' '}
                         {service.direct_user_count === 1 ? 'user' : 'users'}
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
@@ -187,21 +186,18 @@ export const UoaBillingCancellationDialog = ({
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   Indirect services
                 </div>
-                <div className="mt-2 grid gap-2">
+                <ul className="mt-2 divide-y divide-[color:var(--sep)]">
                   {preview.indirect_services.map((service) => (
-                    <div
-                      className="rounded-lg bg-[color:var(--overlay-weak)] p-3"
-                      key={service.product}
-                    >
+                    <li className="py-2.5" key={service.product}>
                       <div className="text-sm font-semibold">
                         {service.display_name}
                       </div>
                       <div className="mt-1 text-xs text-[color:var(--tx2)]">
                         {service.impact}
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
@@ -241,12 +237,9 @@ export const UoaBillingCancellationDialog = ({
 
         {confirmation && (
           <>
-            <div className="mt-5 grid gap-2">
+            <ul className="mt-5 divide-y divide-[color:var(--sep)]">
               {confirmation.cancelled_services.map((service) => (
-                <div
-                  className="rounded-lg border border-[color:var(--sep)] p-3"
-                  key={service.service_id}
-                >
+                <li className="py-2.5" key={service.service_id}>
                   <div className="text-sm font-semibold">
                     {service.display_name}
                   </div>
@@ -255,22 +248,19 @@ export const UoaBillingCancellationDialog = ({
                       Effective {new Date(service.effective_at).toLocaleDateString()}
                     </div>
                   )}
-                </div>
+                </li>
               ))}
               {confirmation.indirect_services.map((service) => (
-                <div
-                  className="rounded-lg bg-[color:var(--overlay-weak)] p-3"
-                  key={service.product}
-                >
+                <li className="py-2.5" key={service.product}>
                   <div className="text-sm font-semibold">
                     {service.display_name}
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--tx2)]">
                     {service.impact}
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
             <div className="mt-6 flex justify-end">
               <button
                 className="admin-button admin-button-primary"

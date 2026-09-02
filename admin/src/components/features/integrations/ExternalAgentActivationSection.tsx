@@ -5,6 +5,7 @@ import {
   useActivateExternalAgentProduct,
   useDeactivateExternalAgentProduct,
 } from '../../../facades/integrations/hooks'
+import { Notice } from '../../primitives/Notice'
 
 /**
  * Per-user activation for a product that is a peer external agent (DeepSignal
@@ -55,11 +56,11 @@ export const ExternalAgentActivationSection = ({
   }
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Your access</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">Your access</h3>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
             {isLinked
               ? 'Activated for you — chat with it in its own private channel.'
               : teamEnabled
@@ -99,14 +100,14 @@ export const ExternalAgentActivationSection = ({
         </div>
       </div>
       {activate.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
+        <Notice className="mt-2" role="alert" size="sm" tone="danger">
           {activate.error instanceof Error ? activate.error.message : 'Failed to activate.'}
-        </p>
+        </Notice>
       ) : null}
       {deactivate.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
+        <Notice className="mt-2" role="alert" size="sm" tone="danger">
           {deactivate.error instanceof Error ? deactivate.error.message : 'Failed to deactivate.'}
-        </p>
+        </Notice>
       ) : null}
     </section>
   )

@@ -20,6 +20,7 @@ import {
   runLimitsToForm,
 } from '../components/features/agents/designer/run-limits'
 import { saveBlockedReason } from '../components/features/agents/designer/save-readiness'
+import { QueryState } from '../components/shared/QueryState'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
 import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
 import {
@@ -47,9 +48,16 @@ export const AgentDesignerPage = () => {
   // remount whenever the target agent changes.
   if (isEditMode && !editingAgent) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
-        {agentsQuery.isLoading ? 'Loading agent…' : 'Agent not found.'}
-      </div>
+      <QueryState
+        className="flex h-full items-center justify-center"
+        emptyLabel="Agent not found."
+        errorLabel="The agent could not be loaded."
+        isEmpty
+        loadingLabel="Loading agent…"
+        query={agentsQuery}
+      >
+        {() => null}
+      </QueryState>
     )
   }
 
@@ -348,7 +356,7 @@ export const AgentDesignerContent = ({
               showTools={!isEditMode}
               state={state}
               toolGroups={toolCatalog.groups}
-              toolsLoading={toolCatalog.isLoading}
+              toolsQuery={toolCatalog}
               visibilityReadOnly={isEditMode}
             />
           </div>

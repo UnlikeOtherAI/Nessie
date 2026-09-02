@@ -1,3 +1,5 @@
+import { EmptyState } from '../../shared/EmptyState'
+import { RowList } from '../../shared/RowList'
 import { ToolBadge } from '../../shared/ToolBadge'
 import { ToolPermissionPill } from '../../shared/ToolPermissionPill'
 import { ToolTransportPill } from '../../shared/ToolTransportPill'
@@ -34,19 +36,19 @@ export const ToolList = ({
   tools,
 }: ToolListProps) => {
   if (tools.length === 0) {
-    return (
-      <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
-        No tools match the current filter.
-      </div>
-    )
+    return <EmptyState>No tools match the current filter.</EmptyState>
   }
 
   return (
-    <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+    // Not `Row`: a reviewable row carries a checkbox *and* a click target, and
+    // `Row` renders one interactive element per row (a nested `<input>` inside
+    // its own `<button>` would be invalid HTML and unreachable by keyboard).
+    // `RowList` still gives the shared frame; the row markup stays custom.
+    <RowList label="Tools">
       {tools.map((tool) => {
         const reviewable = Boolean(onToggleSelected && isReviewable?.(tool))
         return (
-          <div
+          <li
             className={[
               'flex items-start gap-2 border-l-2 pr-3 transition-colors',
               tool.id === selectedId
@@ -95,9 +97,9 @@ export const ToolList = ({
                 ) : null}
               </div>
             </button>
-          </div>
+          </li>
         )
       })}
-    </div>
+    </RowList>
   )
 }

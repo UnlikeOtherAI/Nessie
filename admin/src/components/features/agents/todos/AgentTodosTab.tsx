@@ -29,19 +29,8 @@ export const AgentTodosTab = ({ agent }: { agent: AgentRecord }) => {
 
   return (
     <div className="grid gap-8" data-testid="agent-todos-tab">
-      <TodoTemplates
-        agent={agent}
-        isLoading={templatesQuery.isLoading}
-        loadError={templatesQuery.error instanceof Error ? templatesQuery.error : null}
-        templates={templates}
-      />
-      <TodoInstances
-        agent={agent}
-        isLoading={todosQuery.isLoading}
-        loadError={todosQuery.error instanceof Error ? todosQuery.error : null}
-        templates={templates}
-        todos={todosQuery.data ?? []}
-      />
+      <TodoTemplates agent={agent} query={templatesQuery} />
+      <TodoInstances agent={agent} query={todosQuery} templates={templates} />
     </div>
   )
 }

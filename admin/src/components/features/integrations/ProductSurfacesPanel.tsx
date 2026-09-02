@@ -7,6 +7,8 @@ import type {
 import { useChannels } from '../../../facades/channels/hooks'
 import { isExternalAgentChannel } from '../../../facades/personal-assistant/hooks'
 import { meetsRequirements } from '../../../facades/integrations/useProductSurfaces'
+import { Pill } from '../../primitives/Pill'
+import { EmptyState } from '../../shared/EmptyState'
 
 const surfaceTypeLabel: Record<ProductSurface['type'], string> = {
   chat_assistant: 'Chat assistant',
@@ -30,14 +32,14 @@ export const ProductSurfacesPanel = ({
   const { data: channels = [] } = useChannels()
 
   const heading = (
-    <h3 className="text-sm font-semibold text-[var(--tx)]">Where this appears</h3>
+    <h3 className="text-sm font-semibold text-[color:var(--tx)]">Where this appears</h3>
   )
 
   if (loading) {
     return (
-      <section className="border-t border-[var(--sep)] pt-4">
+      <section className="border-t border-[color:var(--sep)] pt-4">
         {heading}
-        <p className="mt-1 text-sm text-[var(--tx3)]">Loading surfaces…</p>
+        <p className="mt-1 text-sm text-[color:var(--tx3)]">Loading surfaces…</p>
       </section>
     )
   }
@@ -45,11 +47,11 @@ export const ProductSurfacesPanel = ({
   const surfaces: ProductSurface[] = manifest?.surfaces ?? []
   if (surfaces.length === 0) {
     return (
-      <section className="border-t border-[var(--sep)] pt-4">
+      <section className="border-t border-[color:var(--sep)] pt-4">
         {heading}
-        <p className="mt-1 text-sm text-[var(--tx3)]">
+        <EmptyState className="mt-3">
           This product doesn’t weave any surfaces into the app yet.
-        </p>
+        </EmptyState>
       </section>
     )
   }
@@ -70,7 +72,7 @@ export const ProductSurfacesPanel = ({
     surface.type === 'chat_assistant' ? `Open ${surface.label} chat` : `Open ${surface.label}`
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       {heading}
       <div className="mt-3 grid gap-2">
         {surfaces.map((surface) => {
@@ -79,12 +81,12 @@ export const ProductSurfacesPanel = ({
           const key = `${surface.type}:${surface.label}`
           return (
             <div
-              className="flex items-center justify-between gap-3 rounded border border-[var(--sep)] px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[color:var(--sep)] px-3 py-2"
               key={key}
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-[var(--tx)]">{surface.label}</div>
-                <div className="text-[11px] uppercase text-[var(--tx3)]">
+                <div className="truncate text-sm font-medium text-[color:var(--tx)]">{surface.label}</div>
+                <div className="text-[11px] uppercase text-[color:var(--tx3)]">
                   {surfaceTypeLabel[surface.type]}
                 </div>
               </div>
@@ -93,11 +95,11 @@ export const ProductSurfacesPanel = ({
                   {actionLabel(surface)}
                 </Link>
               ) : active ? (
-                <span className="text-xs text-[var(--tx3)]">Preparing…</span>
+                <span className="text-xs text-[color:var(--tx3)]">Preparing…</span>
               ) : (
-                <span className="rounded bg-[var(--overlay)] px-2 py-1 text-[11px] text-[var(--tx3)]">
+                <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
                   Unlocks on activation
-                </span>
+                </Pill>
               )}
             </div>
           )

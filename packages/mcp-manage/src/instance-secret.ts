@@ -4,6 +4,7 @@ import {
   MCP_CREDENTIAL_ERROR_CODES,
   McpCredentialError,
   upsertOverride,
+  type CredentialOverrideWriter,
 } from './mcp-credentials.js'
 import { isValidatedMcpApiKeyAuth } from './auth-apply.js'
 import {
@@ -32,8 +33,17 @@ export type StoreInstanceSecretResult = {
   credentialRef: string
 }
 
+/**
+ * The writes this needs. Widened from `PrismaClient` so a caller can pass its
+ * own transaction client: the ref is minted by the secret store on its own
+ * handle (an unreferenced secret row is inert), while the *placement* joins
+ * the caller's transaction and cannot outlive a rolled-back press.
+ */
+export type InstanceSecretWriter = Pick<PrismaClient, 'mcpServerInstance'>
+  & CredentialOverrideWriter
+
 export const storeInstanceSecret = async (
-  prisma: PrismaClient,
+  prisma: InstanceSecretWriter,
   secretStore: SecretStore,
   input: {
     instance: Pick<McpInstanceRow, 'id' | 'scopeType' | 'scopeId'>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   type ExecutorAvailabilityCandidate,
@@ -11,6 +11,7 @@ import {
   useLaunchExecutorRun,
 } from '../../../facades/executors/hooks'
 import { Dialog } from '../../shared/Dialog'
+import { FormError } from '../../shared/FormActions'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -112,7 +113,7 @@ export const ExecutorRunLauncherDialog = ({
   const [explanation, setExplanation] = useState<string | null>(null)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [selectedHandle, setSelectedHandle] = useState('')
-  const close = useCallback(() => onClose(), [onClose])
+  const close = onClose
 
   useEffect(() => {
     if (!open) return
@@ -184,6 +185,7 @@ export const ExecutorRunLauncherDialog = ({
   return (
     <Dialog
       description="Choose a channel agent and a currently eligible executor capability. The executor is selected by scope only; its identity and other people’s access remain private."
+      dismissDisabled={launch.isPending}
       onClose={close}
       open={open}
       size="lg"
@@ -222,9 +224,9 @@ export const ExecutorRunLauncherDialog = ({
         <fieldset className="grid gap-2">
           <legend className="text-sm font-semibold text-[var(--tx2)]">Available executor</legend>
           {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
-          {availabilityError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{availabilityError}</p> : null}
+          <FormError>{availabilityError}</FormError>
           {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
-            {candidates.map((candidate, index) => (
+          {candidates.map((candidate, index) => (
             <label
               className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
               key={candidate.handle}
@@ -254,9 +256,7 @@ export const ExecutorRunLauncherDialog = ({
           />
         </label>
 
-        {launch.error ? (
-          <p className="text-sm text-[color:var(--danger-text)]" role="alert">{errorMessage(launch.error)}</p>
-        ) : null}
+        <FormError>{launch.error ? errorMessage(launch.error) : undefined}</FormError>
 
         <div className="flex justify-end gap-2">
           <button className="admin-button admin-button-secondary" onClick={close} type="button">Cancel</button>

@@ -8,11 +8,13 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type {
   AgentRecord,
+  AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   ChannelRecord,
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
+import type { PillTone } from '../../primitives/Pill'
 
 /**
  * Single source for trigger display logic: labels, tones, icons, schedule
@@ -67,21 +69,43 @@ export const getTriggerTone = (status: AgentTriggerRecord['status']) => {
 }
 
 /**
+ * One status→{tone, dot-colour} mapping, built once from `Pill`'s own tone
+ * system — the compact list dot is that same tone rendered small, in a row
+ * dense enough that a full `Pill` would not fit, rather than a second
+ * `Record<Status, string>` that can silently disagree with the tone.
+ */
+const TONE_DOT_COLOR: Record<PillTone, string> = {
+  accent: 'var(--thinking)',
+  danger: 'var(--danger-text)',
+  info: 'var(--info-text)',
+  muted: 'var(--tx3)',
+  outline: 'var(--tx2)',
+  success: 'var(--success-text)',
+  warning: 'var(--warning-text)',
+}
+
+/**
  * Status as a colour token for the compact list dot — colour carries the
  * state in dense rows; the full pill is reserved for the detail header.
  */
-export const getTriggerStatusColor = (status: AgentTriggerRecord['status']): string => {
+export const getTriggerStatusColor = (status: AgentTriggerRecord['status']): string =>
+  TONE_DOT_COLOR[getTriggerTone(status)]
+
+export const getDeliveryTone = (status: AgentTriggerDeliveryRecord['status']): PillTone => {
   switch (status) {
-    case 'active':
-      return 'var(--success-text)'
-    case 'paused':
-      return 'var(--warning-text)'
-    case 'error':
-      return 'var(--danger-text)'
+    case 'delivered':
+      return 'success'
+    case 'failed':
+      return 'danger'
+    case 'pending':
+      return 'warning'
     default:
-      return 'var(--tx3)'
+      return 'muted'
   }
 }
+
+export const getDeliveryStatusColor = (status: AgentTriggerDeliveryRecord['status']): string =>
+  TONE_DOT_COLOR[getDeliveryTone(status)]
 
 export const TRIGGER_TYPE_ICONS: Record<AgentTriggerRecord['type'], IconDefinition> = {
   event: faTowerBroadcast,

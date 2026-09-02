@@ -31,6 +31,7 @@ export const TriggersPage = () => {
       statusCounts={state.statusCounts}
       statusFilter={state.statusFilter}
       totalCount={state.totalCount}
+      triggersQuery={state.triggersQuery}
       typeFilter={state.typeFilter}
     />,
   ]

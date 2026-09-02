@@ -1,5 +1,8 @@
 import { useGeneralizeDemonstration, type DemonstrationRecord } from '../../../facades/demonstrations/hooks'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
+import { EmptyState } from '../../shared/EmptyState'
+import { FormError } from '../../shared/FormActions'
+import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 
 import { formatRelativeTime, formatTimestamp } from './presentation'
@@ -25,27 +28,30 @@ export const DemonstrationDraftsColumn = ({
       title={`Demonstrations (${demonstrations.length})`}
     >
       {demonstrations.length === 0 ? (
-        <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
+        <EmptyState>
           No recorded routines yet. Record one from its channel when work is happening.
-        </div>
+        </EmptyState>
       ) : (
-        <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+        <RowList label="Demonstrations">
           {demonstrations.map((demonstration) => (
-            <div className="grid gap-2 px-3 py-3" key={demonstration.id}>
-              <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
-                  Routine with {demonstration.stepCount} captured step{demonstration.stepCount === 1 ? '' : 's'}
+            <Row
+              key={demonstration.id}
+              title={
+                <span className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    Routine with {demonstration.stepCount} captured step
+                    {demonstration.stepCount === 1 ? '' : 's'}
+                  </span>
+                  <Pill
+                    height="control"
+                    tone={demonstration.status === 'generalized' ? 'success' : 'warning'}
+                  >
+                    {demonstration.status === 'generalized' ? 'Draft ready' : demonstration.status}
+                  </Pill>
                 </span>
-                <Pill tone={demonstration.status === 'generalized' ? 'success' : 'warning'}>
-                  {demonstration.status === 'generalized' ? 'Draft ready' : demonstration.status}
-                </Pill>
-              </div>
-              <div className="flex items-center justify-between gap-2 text-xs text-[color:var(--tx3)]">
-                <span>
-                  {formatRelativeTime(demonstration.capturedAt ?? demonstration.startedAt)
-                    ?? formatTimestamp(demonstration.startedAt)}
-                </span>
-                {demonstration.workflowTemplateId ? (
+              }
+              trailing={
+                demonstration.workflowTemplateId ? (
                   <button
                     className="admin-button admin-button-secondary"
                     onClick={() => onReview(demonstration.workflowTemplateId!)}
@@ -62,16 +68,19 @@ export const DemonstrationDraftsColumn = ({
                   >
                     Generalise → draft Workflow
                   </button>
-                ) : null}
-              </div>
+                ) : null
+              }
+              subtitle={
+                formatRelativeTime(demonstration.capturedAt ?? demonstration.startedAt)
+                ?? formatTimestamp(demonstration.startedAt)
+              }
+            >
               {demonstration.generalizationError ? (
-                <p className="text-xs text-[color:var(--danger)]">
-                  {demonstration.generalizationError}
-                </p>
+                <FormError className="mt-1">{demonstration.generalizationError}</FormError>
               ) : null}
-            </div>
+            </Row>
           ))}
-        </div>
+        </RowList>
       )}
     </ColumnBrowserColumn>
   )

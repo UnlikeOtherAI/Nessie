@@ -24,6 +24,8 @@ import {
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
+import { AppSetupCard } from './AppSetupCard'
+import { AgentCardMessage } from './AgentCardMessage'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
@@ -224,6 +226,10 @@ export const ChannelMessageRow = ({
     onOpenThread(threadRootMessageId)
   }
 
+  // Structural: the server stamped a card pointer on this message.
+  const carriesAgentCard = Boolean(
+    (message.metadata as { agentCard?: unknown } | undefined)?.agentCard,
+  )
   return (
     <article
       key={message.id}
@@ -375,9 +381,16 @@ export const ChannelMessageRow = ({
             />
           ) : (
             <>
-              <MessageMarkdown renderInlineText={renderContent}>
-                {message.content}
-              </MessageMarkdown>
+              {/* A card message's `content` is the same card rendered as plain
+                  text — it exists so search, push previews, other clients and
+                  the model's transcript all see what the card says. Here the
+                  card itself renders below, so printing both says everything
+                  twice. */}
+              {carriesAgentCard ? null : (
+                <MessageMarkdown renderInlineText={renderContent}>
+                  {message.content}
+                </MessageMarkdown>
+              )}
               {message.restrictedSources && shareRestrictedMessage ? (
                 <div className="mt-2">
                   <RestrictedMessageCard
@@ -411,7 +424,13 @@ export const ChannelMessageRow = ({
             <CommsConnectCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
+            <AppSetupCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AgentCardMessage metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <TodoProgressCard metadata={message.metadata} />

@@ -177,7 +177,7 @@ runDatabaseTest('W0 sink 1: API responses redact reference bindings', async () =
     assert.equal(installation.config['note'], 'kept')
 
     const page = await listWorkflowInstallations(prisma, seed.organizationId)
-    const listed = page.items.find((item) => item.id === installation.id)
+    const listed = page.data.find((item) => item.id === installation.id)
     assert.ok(listed)
     assert.equal(JSON.stringify(listed).includes(SECRET_REF), false)
     assert.equal(listed.resolvedBindings['apiKey'], WORKFLOW_SECRET_REDACTION)

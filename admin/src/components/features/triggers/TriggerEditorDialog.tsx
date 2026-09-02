@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   useCreateAgentTrigger,
   useCreateWorkflowInstallationTrigger,
@@ -29,7 +29,7 @@ import { WebhookTriggerFields } from './WebhookTriggerFields'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
-import { useOverlay } from '../../overlays/useOverlay'
+import { Dialog } from '../../shared/Dialog'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -55,7 +55,6 @@ export const TriggerEditorDialog = ({
   workflowTemplates,
 }: TriggerEditorDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
-  const titleId = useId()
   const createAgentTrigger = useCreateAgentTrigger()
   const createWorkflowTrigger = useCreateWorkflowInstallationTrigger()
   const updateTrigger = useUpdateTrigger()
@@ -182,16 +181,6 @@ export const TriggerEditorDialog = ({
     onClose()
   }
 
-  const overlay = useOverlay({
-    dismissDisabled: isSubmitting,
-    id: 'trigger-editor',
-    initialFocusRef: nameInputRef,
-    kind: 'modal',
-    label: 'Close',
-    onClose: handleClose,
-    open,
-  })
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError(null)
@@ -267,10 +256,6 @@ export const TriggerEditorDialog = ({
     }
   }
 
-  if (!overlay.mounted) {
-    return null
-  }
-
   const currentTriggerLabel = getFormTriggerTypeLabel({
     type: form.triggerType,
     scheduleMode: form.scheduleMode,
@@ -282,71 +267,24 @@ export const TriggerEditorDialog = ({
   const webhookUrl = `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
-    // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
-    // renders a description at `text-xs`, and its panel is 680px wide, which is
-    // not one of the shell's four panel geometries. `useOverlay` still gives it
-    // the Back registration, focus trap, drag-safe scrim and layer every other
-    // overlay gets (docs/navigation.md §7).
-    <div
-      {...overlay.scrimProps}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        ...overlay.layerStyle,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--scrim-strong)',
-        backdropFilter: 'blur(4px)',
-      }}
+    // `size="lg"` (640px) rather than a new size token for this dialog's
+    // original 680px panel — close enough, per the kit. The scrolling form
+    // sizes with `dvh`, the dynamic viewport a soft keyboard shrinks
+    // (docs/navigation.md §12).
+    <Dialog
+      description={
+        mode === 'edit'
+          ? `${currentTriggerLabel} configuration`
+          : 'Choose what wakes up an agent or workflow and how it should run.'
+      }
+      dismissDisabled={isSubmitting}
+      initialFocusRef={nameInputRef}
+      onClose={handleClose}
+      open={open}
+      size="lg"
+      title={mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
     >
-      <div
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="create-channel-panel"
-        ref={overlay.panelRef}
-        role="dialog"
-        style={{ maxWidth: 680 }}
-        tabIndex={-1}
-      >
-        <div className="create-channel-header">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--tx)]" id={titleId}>
-              {mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
-            </h2>
-            <div className="mt-1 text-sm text-[color:var(--tx3)]">
-              {mode === 'edit'
-                ? `${currentTriggerLabel} configuration`
-                : 'Choose what wakes up an agent or workflow and how it should run.'}
-            </div>
-          </div>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center',
-              'rounded text-[color:var(--tx3)]',
-              'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
-            ].join(' ')}
-            disabled={isSubmitting}
-            onClick={handleClose}
-            type="button"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 18L18 6M6 6l12 12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <form className="grid max-h-[80dvh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
+      <form className="grid max-h-[80dvh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
           <TriggerMetaFields
             agentChannels={agentChannels}
             agents={agents}
@@ -442,8 +380,7 @@ export const TriggerEditorDialog = ({
               </button>
             </div>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   )
 }

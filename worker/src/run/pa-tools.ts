@@ -1,3 +1,4 @@
+export { runCardPostTool } from './pa-tools/cards.js'
 export {
   runMessageDeleteTool,
   runMessageEditTool,
@@ -14,6 +15,10 @@ export {
   runCallStartTool,
   runMeetingLinkCreateTool,
 } from './pa-tools/calls.js'
+export {
+  runAppConnectRequestTool,
+  runAppSearchTool,
+} from './pa-tools/app-setup.js'
 export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
 export {
   runChannelArchiveTool,

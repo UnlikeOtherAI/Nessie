@@ -1,23 +1,15 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
-import { AgentStatusDot } from '../components/features/agents/AgentStatusDot'
+import { AgentIdentityBlock } from '../components/features/agents/AgentIdentityBlock'
 import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
 import { AgentDesignerContent } from './AgentDesignerPage'
-import { useAgents, useAgentStatus } from '../facades/agents/hooks'
-import type { AgentRecord } from '../lib/api-client'
-import { Pill } from '../components/primitives/Pill'
+import { useAgents } from '../facades/agents/hooks'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
-
-const getStatusTone = (status: AgentRecord['status']) => {
-  if (status === 'error') return 'danger'
-  if (status === 'waiting_approval') return 'warning'
-  if (status === 'idle' || status === 'offline') return 'muted'
-  return 'accent'
-}
 
 // The agent detail surface. Tapping an agents-list row lands here. For an owner
 // it opens on an inline **Edit** tab (the full Agent Designer, embedded), with
@@ -29,9 +21,9 @@ export const AgentDetailPage = () => {
   const isOwner = useIsOwner()
   // `scope: 'all'` so a system/global agent (or a sub-agent) resolves too — the
   // same list the Agents page renders.
-  const { data: agents = [], isPending } = useAgents({ scope: 'all' })
+  const agentsQuery = useAgents({ scope: 'all' })
+  const agents = agentsQuery.data ?? []
   const agent = agentId ? agents.find((candidate) => candidate.id === agentId) : undefined
-  const { data: status } = useAgentStatus(agent?.id)
 
   const backToList = () => void navigate('/agents')
 
@@ -44,14 +36,21 @@ export const AgentDetailPage = () => {
   // registry says this screen has a parent.
 
   if (!agent) {
-    // The header is rendered here too: loading and not-found are states of
-    // this screen, and a phone with no header has no Back at all.
+    // The header is rendered here too: loading, failure and not-found are
+    // states of this screen, and a phone with no header has no Back at all.
     return (
       <div className="flex h-full flex-col">
         <ScreenHeader backLabel="Back to Agents" onBack={backToList} title="Agent" />
-        <div className="flex flex-1 items-center justify-center text-sm text-[color:var(--tx3)]">
-          {isPending ? 'Loading agent…' : 'This agent could not be found.'}
-        </div>
+        <QueryState
+          className="flex flex-1 items-center justify-center"
+          emptyLabel="This agent could not be found."
+          errorLabel="Agents could not be loaded."
+          isEmpty
+          loadingLabel="Loading agent…"
+          query={agentsQuery}
+        >
+          {() => null}
+        </QueryState>
       </div>
     )
   }
@@ -62,28 +61,25 @@ export const AgentDetailPage = () => {
         <div className="flex min-w-0 flex-1 flex-col">
           {/* The identity block the hero used to carry — status dot, status
               pill, role, home link, current tool — is the header's subtitle
-              slot, and the avatar its leading slot. */}
+              slot, and the avatar its leading slot. It is the one
+              `AgentIdentityBlock` the drawer renders too, with its heading
+              withheld because `ScreenHeader` owns the screen's single `h1`. */}
           <ScreenHeader
             backLabel="Back to Agents"
             leading={<AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />}
             onBack={backToList}
             subtitle={
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <AgentStatusDot status={agent.status} />
-                  <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
-                  <span className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</span>
-                </div>
+              <AgentIdentityBlock
+                agent={agent}
+                avatar={false}
+                canEditAvatar={isOwner}
+                headingLevel="none"
+              >
                 <PrivateAgentHomeLink
                   agent={agent}
                   className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
                 />
-                <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                  {status?.currentToolName
-                    ? `Active tool: ${status.currentToolName}`
-                    : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
-                </div>
-              </div>
+              </AgentIdentityBlock>
             }
             title={agent.name}
           />

@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../../../lib/api-client'
 import type { PillTone } from '../../primitives/Pill'
+import { Pill } from '../../primitives/Pill'
+import { StatGrid, StatTile } from '../../shared/StatTile'
 
 type ProductMcpInstallation = NonNullable<IntegratedProductResponse['mcpInstallation']>
 
@@ -47,6 +49,8 @@ const mcpActionClass = (product: IntegratedProductResponse): string =>
     ? 'admin-button admin-button-primary admin-button-compact'
     : 'admin-button admin-button-secondary admin-button-compact'
 
+const failuresTone = (count: number): 'danger' | 'default' => (count > 0 ? 'danger' : 'default')
+
 export const AgentConnectorSection = ({
   product,
 }: {
@@ -55,11 +59,11 @@ export const AgentConnectorSection = ({
   const installation = product.mcpInstallation
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Agent connector</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent connector</h3>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
             {installation
               ? `Installed at ${(scopeLabels[installation.scopeType] ?? 'Shared').toLowerCase()} scope.`
               : product.mcpCatalogEntryId
@@ -72,41 +76,27 @@ export const AgentConnectorSection = ({
             {mcpActionLabel(product)}
           </Link>
         ) : (
-          <span className="rounded border border-[var(--sep)] px-3 py-2 text-xs text-[var(--tx3)]">
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
             Contract pending
-          </span>
+          </Pill>
         )}
       </div>
 
       {installation ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-4">
-          <div className="rounded border border-[var(--sep)] px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Status</div>
-            <div className="mt-1 text-sm text-[var(--tx)]">
-              {lifecycleLabels[installation.lifecycleState] ?? 'Unknown'}
-            </div>
-          </div>
-          <div className="rounded border border-[var(--sep)] px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Scope</div>
-            <div className="mt-1 text-sm text-[var(--tx)]">
-              {scopeLabels[installation.scopeType] ?? 'Shared'}
-            </div>
-          </div>
-          <div className="rounded border border-[var(--sep)] px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Tools</div>
-            <div className="mt-1 text-sm text-[var(--tx)]">{installation.toolCount}</div>
-          </div>
-          <div className="rounded border border-[var(--sep)] px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Failures</div>
-            <div className="mt-1 text-sm text-[var(--tx)]">
-              {installation.healthFailureCount}
-            </div>
-          </div>
-        </div>
+        <StatGrid className="mt-3">
+          <StatTile label="Status" value={lifecycleLabels[installation.lifecycleState] ?? 'Unknown'} />
+          <StatTile label="Scope" value={scopeLabels[installation.scopeType] ?? 'Shared'} />
+          <StatTile label="Tools" value={installation.toolCount} />
+          <StatTile
+            label="Failures"
+            tone={failuresTone(installation.healthFailureCount)}
+            value={installation.healthFailureCount}
+          />
+        </StatGrid>
       ) : null}
 
       {installation?.lastError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">{installation.lastError}</p>
+        <p className="mt-2 text-xs text-[color:var(--danger-text)]">{installation.lastError}</p>
       ) : null}
     </section>
   )

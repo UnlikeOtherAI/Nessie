@@ -2,7 +2,11 @@ import { useRef, useState, type FormEvent } from 'react'
 import type { AppDetailRecord } from '@nessie/schemas'
 
 import { useAddCustomApp } from '../../../facades/apps/connect-hooks'
+import { toFormErrors, type FormErrors } from '../../../facades/form-errors'
 import { Dialog } from '../../shared/Dialog'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
+import { FormActions, FormError } from '../../shared/FormActions'
 
 type CustomAppDialogProps = {
   onAdded: (app: AppDetailRecord) => void
@@ -10,18 +14,19 @@ type CustomAppDialogProps = {
   open: boolean
 }
 
+const EMPTY_ERRORS: FormErrors = { fieldErrors: {}, formError: undefined }
+
 /** Discovers a remote app's requirements before its connection is confirmed. */
 export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps) => {
-  const addressRef = useRef<HTMLInputElement>(null)
   const addCustomApp = useAddCustomApp()
   const [address, setAddress] = useState('')
   const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<FormErrors>(EMPTY_ERRORS)
 
   const close = () => {
     if (addCustomApp.isPending) return
     setAddress('')
-    setError(null)
+    setErrors(EMPTY_ERRORS)
     setName('')
     onClose()
   }
@@ -30,11 +35,11 @@ export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps
     event.preventDefault()
     const url = address.trim()
     if (!url) {
-      setError('Enter the app address.')
+      setErrors({ fieldErrors: { url: 'Enter the app address.' }, formError: undefined })
       return
     }
 
-    setError(null)
+    setErrors(EMPTY_ERRORS)
     try {
       const result = await addCustomApp.mutateAsync({
         name: name.trim() || undefined,
@@ -43,53 +48,63 @@ export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps
       close()
       onAdded(result.app)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'We could not add that app.')
+      const mapped = toFormErrors(caught)
+      setErrors({
+        fieldErrors: mapped.fieldErrors,
+        formError: mapped.formError ?? 'We could not add that app.',
+      })
     }
   }
 
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
+      initialFocusRef={initialFieldRef}
       description="Paste the secure address supplied by the app. Nessie will check how it connects, then show you the sign-in details before creating an account."
       dismissDisabled={addCustomApp.isPending}
-      initialFocusRef={addressRef}
       onClose={close}
       open={open}
       title="Add a custom app"
     >
       <form className="grid gap-4" onSubmit={submit}>
-        <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="custom-app-address">
-          App address
-          <input
+        <FormField error={errors.fieldErrors.url} label="App address">
+          <Input
             autoComplete="url"
-            className="admin-input"
-            id="custom-app-address"
             onChange={(event) => setAddress(event.target.value)}
             placeholder="https://example.com/mcp"
-            ref={addressRef}
             type="url"
             value={address}
+            ref={initialFieldRef}
           />
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="custom-app-name">
-          Name <span className="font-normal text-[color:var(--tx3)]">(optional)</span>
-          <input
+        </FormField>
+        <FormField
+          error={errors.fieldErrors.name}
+          label={<>Name <span className="normal-case font-normal text-[color:var(--tx3)]">(optional)</span></>}
+        >
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id="custom-app-name"
             onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Support tools"
             value={name}
           />
-        </label>
-        {error ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
-        <div className="flex justify-end gap-2 pt-1">
+        </FormField>
+        <FormError>{errors.formError}</FormError>
+        <FormActions>
           <button className="admin-button admin-button-secondary" disabled={addCustomApp.isPending} onClick={close} type="button">
             Cancel
           </button>
           <button className="admin-button admin-button-primary" disabled={addCustomApp.isPending} type="submit">
             {addCustomApp.isPending ? 'Adding…' : 'Add app'}
           </button>
-        </div>
+        </FormActions>
       </form>
     </Dialog>
   )

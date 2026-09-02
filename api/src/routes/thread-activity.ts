@@ -22,7 +22,7 @@ export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse(ThreadActivityResponseSchema.parse({
       ...result.data,
       hasMore: result.meta.hasMore,
-      nextCursor: result.meta.cursor ?? undefined,
+      nextCursor: result.meta.nextCursor ?? undefined,
     }), result.meta)
   })
 }

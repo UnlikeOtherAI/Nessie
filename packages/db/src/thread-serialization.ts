@@ -53,7 +53,12 @@ import { enqueueRunExecution } from './queue.js'
 // Statuses that count as "a run is in flight for this (agent, thread)".
 // `waiting_approval` is in-flight: the run resumes after the approval, so new
 // messages must pend rather than interleave.
-const ACTIVE_THREAD_RUN_STATUSES = ['pending', 'running', 'waiting_approval'] as const
+const ACTIVE_THREAD_RUN_STATUSES = [
+  'pending',
+  'running',
+  'waiting_approval',
+  'waiting_input',
+] as const
 
 // Transaction-scoped advisory lock serializing claim vs. drain for one
 // (agent, principal, thread) tuple. Released automatically at commit/rollback.
@@ -376,7 +381,7 @@ export const sweepPendingThreadMessages = async (
         WHERE r.agent_id = p.agent_id
           AND r.thread_id = p.thread_id
           AND r.principal_user_id IS NOT DISTINCT FROM p.principal_user_id
-          AND r.status IN ('pending', 'running', 'waiting_approval')
+          AND r.status IN ('pending', 'running', 'waiting_approval', 'waiting_input')
       )
       LIMIT ${input.limit ?? 20}
     `,

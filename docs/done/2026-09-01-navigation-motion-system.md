@@ -847,109 +847,54 @@ form.
 
 ## 6. Refactor order
 
-Each step is independently shippable, verified with headless Playwright at
-phone, tablet and desktop widths, and leaves the app consistent at its own
-level. Commit and push per step.
+Each step was independently shippable, verified with headless Playwright at
+phone, tablet and desktop widths, and left the app consistent at its own
+level. **All sixteen are built**; what each one actually delivered is stated,
+in its finished form, in `docs/navigation.md` — the section numbers below are
+that file's, and the detail is not restated here.
 
-1. **Kill the bounce.** `overflow: clip` on the four containers, `TabBar`
-   track-only scroll, `focus({ preventScroll: true })` on the mount-time
-   focus calls. Verify on device and with `repro.mjs`.
-2. **One motion spec.** Tokens + `runStackTransition`; the route push and the
-   gesture settle share it; delete the keyframes and the blanket reduced-motion
-   rule. Give the JSDOM harness a fake `animate()` timeline; rewrite
-   `phone-back-swipe-viewport.test.ts` and the keyframe regex in
-   `phone-navigation-transition.test.ts` against the function; add the
-   duration-parity test. **The Playwright job, seed and three viewports land
-   here** (§4.19): it is the safety floor for every step after, so it cannot
-   come last.
-3. **Total registry.** Every route classified with real depths; delete
-   `admin:detail`; `/alerts`, `/feedback`, `/threads` join their sections; the
-   lint test that every router path has a row. Extend
-   `phone-navigation-routes.test.ts`; leave the shell's `tabs.ts` alone, it is
-   replaced in step 9. With this alone, every Agents and Settings push
-   animates on a phone.
-4. **One controller.** Promote the ledger and the Back registry; add
-   `redirect()`, `back()`, `openFlow()`; delete `useHistoryNav`'s counter,
-   `section-route-memory`, and the two designer smart-Backs; forward `state`
-   through the `<Navigate>` redirects (fixes the workflow-run bug); route the
-   six effect redirects through `redirect()`.
-   **One Back** in the same step: `resolveBack()` behind every Back entry
-   point (header, swipe, hardware Back, Escape, POP), and the top bar and
-   iPad toolbar re-pointed at the one ledger as history controls that
-   consult the registry first;
-   `BackButton` replaces the four chevrons and the "Apps" / "Agents" /
-   "Cancel" text buttons; Android tablets get the hardware handler; the
-   `phone-back-doorway.test.ts` source pins move to the registry. The gesture
-   finish (velocity-scaled settle, dimming scrim, `nessie:haptic`) lands
-   here too, since it is the same resolver's commit.
-5. **Split layout.** `ShellEnvironment.navigation`; `NavigationStack` in the
-   shell's detail column and in the page-owned detail columns; the thread
-   panel becomes a nested stage on `single` and a `Sheet` on `split`; project
-   Docs rail and dashboard side panels follow the layout. The iPad and
-   large-phone-landscape native swipe stays **on** until step 9.
-6. **Nested stages.** `useNestedStage`; fold `ColumnBrowserViewport` (phone),
-   Knowledge folder/document/history/editor, workflows/triggers/tools/
-   integrations columns, executors panels and dashboard panels into the stack.
-   Delete `animate-kb-view-slide`. Rewrite `phone-back-doorway.test.ts` and
-   `knowledge-local-back.test.ts` against the registry.
-7. **Tab hosts.** One state model (URL param, `replace`) for all fifteen
-   strips; project section switch uses `replace`. `ProjectView` is one
-   element reconciled in place across its seven routes, so its state
-   survives; this step sits after step 4 because the old top-bar counter only
-   advanced on `PUSH` and would stop reflecting section switches.
-8. **Overlays and Flows.** The layer scale first (a pure token swap, no
-   behaviour change); then `useOverlay` + `Modal`; then `Sheet` (eight
-   drawers), `Popover` (menus, pickers, tooltips, one placement helper),
-   `Card` (toasts, call banner, incoming-call ring); Flows present per
-   layout; the fourteen bespoke dialogs adopt or justify. Rewrite
-   `dialog-shell.test.ts` against `useOverlay`; add one test per kind that
-   Back closes it before any route change.
-9. **Screen header.** `ScreenHeader` per page type with the subtitle slot;
-   the seven hero headers and the two 58 px headers converge; `OwnerGate`
-   moves under the header; every screen gets its `h1`; `document.title` and
-   `nessie:screen` post from the header; the shell drops its path matching,
-   keeps a last-known section, and gains per-section badges. **Only now** the
-   iPad and large-phone-landscape native swipe turns off, because every
-   screen has a Back in its leading lane.
-10. **Arriving with content.** `prewarm` on `controller.push()` wired to
-    every navigating row; `keepPreviousData` on per-id detail hooks;
-    `isPending` on list hooks with the three false-empty states fixed; one
-    `Skeleton` per page type; the blob cache behind `useAuthedObjectUrl`.
-11. **Focus, announcement, scroll, keyboard.** The settle hook focuses the
-    `h1`; one live region; `aria-current` and the skip link; `useScrollMemory`
-    per layer and manual scroll restoration; blur before push; the
-    `visualViewport` listener; `dvh` on the remaining `vh` panels;
-    `forced-colors` signals.
-12. **Drafts.** `useDraft` and its storage; adoption in risk order (thread
-    reply, composers keyed by channel, task, inline edit, designer, page
-    editor, trigger editor, dashboard edit, settings forms); the idempotency
-    key on message create; `If-Match` on the three versioned update routes;
-    save buttons removed as each surface flushes on its own.
-13. **Cold starts.** Stack seeding from `parentOf`; declared intent params
-    with one consume path; `state` through every redirect; `from` on
-    project-to-channel links; the desktop pending path.
-14. **Shell polish.** `expo-haptics` + `nessie:haptic`; native pull-to-refresh
-    off and the web gesture on Root and Detail scrollers; visibility-aware
-    transitions; queued navigations during a slide.
-15. **Gates and the transition suite.** Each gate lands with the step it
-    guards (listed in §4.18); the Playwright job, seed and three viewports
-    land with step 2 and grow with every step after.
+1. **Kill the bounce** — `overflow: clip` on the four stack containers,
+   track-only `TabBar` scrolling, `preventScroll` on mount-time focus (§2).
+2. **One motion spec** — tokens + `runStackTransition`, keyframes deleted,
+   the JSDOM fake-`animate()` harness (§3). **The Playwright transition suite
+   landed here, not last**: it is the safety floor for every step after
+   ([navigation-transition-suite.md](../navigation-transition-suite.md)).
+3. **Total registry** — every route classified with real depths, the
+   `admin:detail` catch-all deleted, the totality lint (§4.1).
+4. **One controller, one Back** — the single ledger, `resolveBack()` behind
+   every entry point, `redirect()` / `back()`, and the gesture's
+   velocity-scaled settle, scrim dim and haptic (§4.2, §4).
+5. **Split layout** — `deriveNavigationLayout()`, the stack in the shell's
+   detail column, `splitInline` rows (§5).
+6. **Nested stages** — `NestedStage`; the column browsers, Knowledge's four
+   inner screens, the executor and dashboard panels; `animate-kb-view-slide`
+   deleted (§6).
+7. **Tab hosts** — one URL-param model for every strip, the project section
+   switch on `replace` (§1).
+8. **Overlays** — the layer scale, `useOverlay`, `Dialog` / `Sheet` /
+   `Popover` / `Card`, and the fourteen bespoke dialogs adopted or justified
+   in place (§7).
+9. **Screen header** — one `ScreenHeader` on every screen, the `h1`,
+   `document.title` and `nessie:screen`; **only here** did the native
+   back-swipe turn off, because every screen finally had a Back (§9, §10).
+10. **Arriving with content** — prewarm, `keepPreviousData`, the three false
+    empty states, one `Skeleton`, the blob cache (§14).
+11. **Focus, announcement, scroll, keyboard** — the settle, the live region,
+    `aria-current`, the skip link, `dvh`, `forced-colors` (§12).
+12. **Drafts** — `useDraft` and its adopters, the message idempotency key and
+    `If-Match` on the three versioned routes
+    ([navigation-drafts.md](../navigation-drafts.md)).
+13. **Cold starts** — stack seeding from `parentOf`, declared intent params
+    with one consume path, the desktop pending path (§8).
+14. **Shell polish** — haptics, pull-to-refresh handed to the web,
+    visibility-aware and queued transitions (§10, §13).
+15. **Gates** — each gate landed with the step it guards (§4.18 above; the
+    table is in `docs/navigation.md` §11).
 16. **Docs — one rulebook, two pointers.** `docs/navigation.md` is the
-   standing reference for how navigation is done: the six page types, the
-   registry, the controller API, the overlay kinds, Back, motion tokens,
-   drafts, deep links, focus, and the gates. It is created in step 1 with the
-   parts that exist and grows with every step, so the pointer is never ahead
-   of the code. `AGENTS.md` and `CLAUDE.md` each get exactly one line, no
-   restatement: *"Anything that moves a person between screens, opens an
-   overlay, or handles Back goes through the navigation framework — read
-   `docs/navigation.md` first; it is the only way, and adding a second one is
-   the defect Rule zero names."* The existing prose in `CLAUDE.md` → "Message
-   reply threads" about panel widths, and the "One tab bar" / "One dialog
-   shell" bullets, are trimmed to point at the rulebook rather than restate
-   it; the claim there that `T` opens the focused message's thread is deleted,
-   since no such handler exists in the admin. `docs/plans/2026-08-13-responsive-coherence.md`
-   Phase 5 is marked delivered by this plan, and this file moves to
-   `docs/done/` when built.
+   standing reference; `AGENTS.md` and `CLAUDE.md` each carry exactly one
+   line pointing at it and restate nothing.
+   `docs/plans/2026-08-13-responsive-coherence.md` Phase 5 is marked
+   delivered by this plan.
 
 ## 7. Decisions (made 2026-09-01, on usability, safety and stability)
 

@@ -103,7 +103,6 @@ test('no new navigation-motion keyframes or transitions on a stack layer', () =>
 // `role="dialog"` is exactly the fifty-overlays-disagreeing defect the hook
 // replaced.
 const BESPOKE_DIALOG_ALLOWLIST = [
-  'admin/src/components/features/billing/UoaBillingRecurringAddonsPanel.tsx',
   'admin/src/components/features/channels/ChannelMessageActions.tsx',
   'admin/src/components/features/channels/SecretCaptureDialog.tsx',
   'admin/src/components/features/knowledge/comments/CommentActions.tsx',

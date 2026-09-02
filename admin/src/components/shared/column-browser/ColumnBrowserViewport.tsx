@@ -18,6 +18,15 @@ import {
 type ColumnBrowserViewportProps = {
   activeColumn: number
   columns: ReactNode[]
+  /**
+   * A fixed pixel width shared by every column, for a caller whose columns
+   * are user-resizable (paired with `ColumnBrowserColumn`'s `resize` prop) —
+   * Knowledge's file browser is the one user of this today. Omit it for the
+   * default: every other column-browser page splits the viewport evenly
+   * across `visibleColumns`. It applies only where this composes the track
+   * itself; a stage is a full-width layer and has no column width.
+   */
+  columnWidth?: number
   // Prefixes the stage ids this viewport pushes. A page that mounts two
   // column browsers passes different scopes so their layers stay distinct in
   // the one stack; a page with a single browser needs nothing.
@@ -45,6 +54,7 @@ const noop = (): void => undefined
 export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
+  columnWidth,
   stageScope,
 }: ColumnBrowserViewportProps) => {
   // Column ownership follows the shell's geometry-aware classification, so
@@ -127,7 +137,12 @@ export const ColumnBrowserViewport = ({
     0,
     Math.min(activeColumn - (visibleColumns - 1), totalColumns - visibleColumns),
   )
-  const translateX = -(startIndex * columnWidthPercent)
+  // Pixel-based columns shift by an exact pixel offset; percentage-based ones
+  // shift by a fraction of the viewport, as every other page already did.
+  const translateX = columnWidth
+    ? -(startIndex * columnWidth)
+    : -(startIndex * columnWidthPercent)
+  const translateUnit = columnWidth ? 'px' : '%'
 
   return (
     <div className="h-full w-full overflow-clip">
@@ -135,13 +150,15 @@ export const ColumnBrowserViewport = ({
         className="flex h-full"
         data-column-browser-track
         style={{
-          transform: `translateX(${translateX}%)`,
+          transform: `translateX(${translateX}${translateUnit})`,
           transition: 'transform var(--nav-duration) var(--nav-easing)',
         }}
       >
         {normalizedColumns.map((column, index) => {
           // The last column absorbs any unused slots so a two-column layout
-          // does not leave a dead third of the viewport on desktop.
+          // does not leave a dead third of the viewport on desktop — only
+          // meaningful for the percentage split; pixel-width columns are
+          // sized by the caller's own resizable width instead.
           const slots =
             index === totalColumns - 1
               ? Math.max(1, visibleColumns - (totalColumns - 1))
@@ -150,7 +167,11 @@ export const ColumnBrowserViewport = ({
             <div
               className="h-full w-full flex-shrink-0"
               key={index}
-              style={{ width: `${columnWidthPercent * slots}%` }}
+              style={{
+                width: columnWidth
+                  ? `${columnWidth}px`
+                  : `${columnWidthPercent * slots}%`,
+              }}
             >
               <ColumnBackProvider value={{ index, reportBack: null }}>
                 {column}

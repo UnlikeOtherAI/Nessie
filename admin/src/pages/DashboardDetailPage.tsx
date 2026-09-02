@@ -27,6 +27,7 @@ import {
   useWidgetData,
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
+import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { dashboardKeys } from '../lib/query-keys'
@@ -65,7 +66,8 @@ const WidgetSlot = ({
 
 export const DashboardDetailPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
-  const { data: dashboard, isLoading } = useDashboard(dashboardId)
+  const dashboardQuery = useDashboard(dashboardId)
+  const { data: dashboard, isLoading } = dashboardQuery
   const saveLayout = useSaveLayout(dashboardId ?? '')
   const queryClient = useQueryClient()
 
@@ -179,9 +181,15 @@ export const DashboardDetailPage = () => {
         {isLoading ? (
           <Skeleton className="p-6" count={6} variant="board" />
         ) : (
-          <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
-            This dashboard is not available.
-          </p>
+          <QueryState
+            emptyLabel="This dashboard is not available."
+            errorLabel="Failed to load this dashboard."
+            isEmpty
+            loadingLabel="Loading…"
+            query={dashboardQuery}
+          >
+            {() => null}
+          </QueryState>
         )}
       </div>
     )
@@ -275,24 +283,17 @@ export const DashboardDetailPage = () => {
           }
         >
           {dashboard.widgets.length === 0 ? (
-            <div
-              className="rounded-lg border p-8 text-center"
-              style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
-              data-testid="dashboard-empty"
-            >
-              <p className="text-sm font-medium" style={{ color: 'var(--tx)' }}>
-                No widgets yet
-              </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--tx3)' }}>
+            <div className="admin-card p-8 text-center" data-testid="dashboard-empty">
+              <p className="text-sm font-medium text-[color:var(--tx)]">No widgets yet</p>
+              <p className="mt-1 text-xs text-[color:var(--tx3)]">
                 Ask your assistant to add one, or connect a data source to get started.
               </p>
               <button
-                className="mt-4 rounded px-3 py-1.5 text-sm"
+                className="admin-button admin-button-secondary mt-4"
                 onClick={() => {
                   setEditing(true)
                   setShowAddWidget(true)
                 }}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
                 type="button"
               >
                 Add a widget yourself

@@ -24,11 +24,14 @@ test('unread message rows open their direct-message conversation', () => {
   assert.match(router, /path: '\/unread-messages', element: <UnreadMessagesPage \/>/)
 })
 
-test('the empty unread inbox is a single centered caught-up card', () => {
+test('the empty unread inbox is the shared caught-up card', () => {
   const page = readSource('../src/pages/UnreadMessagesPage.tsx')
 
-  assert.match(page, /flex min-h-full items-center justify-center p-4/)
-  assert.match(page, /border border-dashed/)
-  assert.match(page, /You are all caught up/)
+  // Content design system migration (2026-09-01): the bespoke dashed card is
+  // now the shared `EmptyState` primitive (which itself renders the dashed
+  // border every other empty list in the admin uses), inside `PageBody`
+  // rather than a page-local centering wrapper.
+  assert.match(page, /<EmptyState title="You are all caught up">/)
+  assert.match(page, /import \{ EmptyState \} from '..\/components\/shared\/EmptyState'/)
   assert.doesNotMatch(page, /No unread messages/)
 })

@@ -4,10 +4,10 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { Skeleton } from '../../primitives/Skeleton'
+import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,
   SectionNotice,
-  SectionOverflowHint,
   dashboardRowClass,
   type SectionLink,
 } from './DashboardSectionCard'

@@ -323,6 +323,9 @@ export const buildApp = async () => {
     ledgerIdentity,
     deepSignalMcpIdentity,
     fileService,
+    mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
+      refPrefix: 'secret_mcp_',
+    }),
   }
 
   registerApiRoutes(app, deps)

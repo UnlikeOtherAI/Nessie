@@ -28,7 +28,7 @@ test('agent detail mounts documents through the shared knowledge workspace seam'
 
   assert.match(tabs, /label: 'Documents', value: 'documents'/)
   assert.match(tabs, /documents: \{/)
-  assert.match(documents, /<KnowledgeProvider agentId=\{agent\.id\} spaceId=\{documentsQuery\.data\.space\.id\}>/)
+  assert.match(documents, /<KnowledgeProvider agentId=\{agent\.id\} spaceId=\{space\.id\}>/)
   assert.match(documents, /<KnowledgeWorkspace canManageSpace=\{isOwner\} \/>/)
   assert.match(projectDocs, /<KnowledgeProvider projectId=\{projectId\}>/)
   assert.match(projectDocs, /<KnowledgeWorkspace \/>/)

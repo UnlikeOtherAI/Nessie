@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { useOverlay } from '../../overlays/useOverlay'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { CircleImageCropper } from '../../shared/CircleImageCropper'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { Dialog } from '../../shared/Dialog'
 import {
   type GeneratedAgentAvatar,
   useAgentAvatarChanges,
@@ -47,12 +48,6 @@ const UploadIcon = () => (
   </svg>
 )
 
-const CloseIcon = () => (
-  <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="16">
-    <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-  </svg>
-)
-
 const isImageFile = (file: File): boolean => file.type.startsWith('image/')
 
 export const AgentAvatarQuickEdit = ({
@@ -68,6 +63,7 @@ export const AgentAvatarQuickEdit = ({
   const [generated, setGenerated] = useState<GeneratedAgentAvatar | null>(null)
   const [prompt, setPrompt] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
   const avatarChanges = useAgentAvatarChanges(
     agent.id,
     avatarContext ?? {
@@ -78,19 +74,13 @@ export const AgentAvatarQuickEdit = ({
   )
 
   const hasCustom = Boolean(agent.avatarAttachmentId)
-  const close = useCallback(() => {
+  const close = () => {
     setOpen(false)
     setGenerated(null)
     setPrompt('')
     setFileError(null)
-  }, [])
-  const overlay = useOverlay({
-    id: `agent-avatar-quick-edit-${agent.id}`,
-    kind: 'modal',
-    label: `Close ${agent.name} avatar`,
-    onClose: close,
-    open,
-  })
+    setRemoveConfirmOpen(false)
+  }
 
   const selectFile = (file?: File) => {
     setFileError(null)
@@ -149,138 +139,117 @@ export const AgentAvatarQuickEdit = ({
         ) : null}
       </div>
 
-      {overlay.mounted ? (
-        // Not the shared `Dialog`: an avatar-centred card with a floating
-        // close control and no visible title row, a different chrome from the
-        // shell's title-bar header. `useOverlay` still gives it the Back
-        // registration, focus trap, drag-safe scrim and layer every other
-        // overlay gets (docs/navigation.md §7).
-        <div
-          {...overlay.scrimProps}
-          className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-          style={overlay.layerStyle}
-        >
-          <div
-            aria-label={`${agent.name} avatar`}
-            aria-modal="true"
-            className="relative w-full max-w-sm rounded-2xl border border-[var(--sep)] bg-[var(--panel)] p-6 shadow-2xl"
-            ref={overlay.panelRef}
-            role="dialog"
-            tabIndex={-1}
-          >
-            <button
-              aria-label="Close"
-              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full text-[color:var(--tx3)] transition hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
-              onClick={close}
-              type="button"
-            >
-              <CloseIcon />
-            </button>
+      <Dialog onClose={close} open={open} title={`${agent.name} avatar`}>
+        <div className="flex flex-col items-center gap-4 pt-2">
+          <div className="rounded-2xl ring-1 ring-[color:var(--sep)]">
+            <AgentAvatar agent={previewAgent} size="xl" token={token} />
+          </div>
 
-            <div className="flex flex-col items-center gap-4 pt-2">
-              <div className="rounded-2xl ring-1 ring-[color:var(--sep)]">
-                <AgentAvatar agent={previewAgent} size="xl" token={token} />
-              </div>
+          {avatarChanges.isGenerating ? <AgentAvatarGenerationIndicator /> : null}
 
-              {avatarChanges.isGenerating ? (
-                <AgentAvatarGenerationIndicator />
-              ) : null}
-
-              {generated ? (
-                <div className="flex w-full gap-2">
-                  <button
-                    className="admin-button admin-button-secondary flex-1"
-                    disabled={avatarChanges.busy}
-                    onClick={() => setGenerated(null)}
-                    type="button"
-                  >
-                    Discard
-                  </button>
-                  <button
-                    className="admin-button admin-button-primary flex-1"
-                    disabled={avatarChanges.isReplacing}
-                    onClick={() => void useGenerated()}
-                    type="button"
-                  >
-                    {avatarChanges.isReplacing ? 'Saving…' : 'Use this'}
-                  </button>
-                </div>
-              ) : (
-                <div className="w-full space-y-3">
-                  <input
-                    aria-label="Describe the avatar"
-                    className="admin-input w-full"
-                    onChange={(event) => setPrompt(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !avatarChanges.busy) {
-                        event.preventDefault()
-                        void handleGenerate()
-                      }
-                    }}
-                    placeholder="Add avatar details to the agent instructions (optional)"
-                    type="text"
-                    value={prompt}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      className="admin-button admin-button-primary flex-1 gap-1.5"
-                      disabled={avatarChanges.busy}
-                      onClick={() => void handleGenerate()}
-                      type="button"
-                    >
-                      <SparkleIcon />
-                      {avatarChanges.isGenerating ? 'Generating…' : 'Generate with AI'}
-                    </button>
-                    <button
-                      aria-label="Upload image"
-                      className="admin-button admin-button-secondary gap-1.5"
-                      disabled={avatarChanges.busy}
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={(event: DragEvent<HTMLButtonElement>) => {
-                        event.preventDefault()
-                        selectFile(event.dataTransfer.files[0])
-                      }}
-                      type="button"
-                    >
-                      <UploadIcon />
-                      Upload
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {error ? (
-                <p className="text-sm text-[color:var(--danger-text)]">{error}</p>
-              ) : null}
+          {generated ? (
+            <div className="flex w-full gap-2">
+              <button
+                className="admin-button admin-button-secondary flex-1"
+                disabled={avatarChanges.busy}
+                onClick={() => setGenerated(null)}
+                type="button"
+              >
+                Discard
+              </button>
+              <button
+                className="admin-button admin-button-primary flex-1"
+                disabled={avatarChanges.isReplacing}
+                onClick={() => void useGenerated()}
+                type="button"
+              >
+                {avatarChanges.isReplacing ? 'Saving…' : 'Use this'}
+              </button>
             </div>
-
-            {hasCustom && !generated ? (
-              <div className="mt-5 flex justify-end border-t border-[color:var(--sep)] pt-3">
+          ) : (
+            <div className="w-full space-y-3">
+              <input
+                aria-label="Describe the avatar"
+                className="admin-input w-full"
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !avatarChanges.busy) {
+                    event.preventDefault()
+                    void handleGenerate()
+                  }
+                }}
+                placeholder="Add avatar details to the agent instructions (optional)"
+                type="text"
+                value={prompt}
+              />
+              <div className="flex gap-2">
                 <button
-                  className="text-sm font-medium text-[color:var(--danger-text)] transition hover:underline disabled:opacity-60"
+                  className="admin-button admin-button-primary flex-1 gap-1.5"
                   disabled={avatarChanges.busy}
-                  onClick={() => void handleRemove()}
+                  onClick={() => void handleGenerate()}
                   type="button"
                 >
-                  Remove image
+                  <SparkleIcon />
+                  {avatarChanges.isGenerating ? 'Generating…' : 'Generate with AI'}
+                </button>
+                <button
+                  aria-label="Upload image"
+                  className="admin-button admin-button-secondary gap-1.5"
+                  disabled={avatarChanges.busy}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event: DragEvent<HTMLButtonElement>) => {
+                    event.preventDefault()
+                    selectFile(event.dataTransfer.files[0])
+                  }}
+                  type="button"
+                >
+                  <UploadIcon />
+                  Upload
                 </button>
               </div>
-            ) : null}
+            </div>
+          )}
 
-            <input
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => {
-                selectFile(event.target.files?.[0])
-                event.target.value = ''
-              }}
-              ref={fileInputRef}
-              type="file"
-            />
-          </div>
+          {error ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
         </div>
-      ) : null}
+
+        {hasCustom && !generated ? (
+          <div className="mt-5 flex justify-end border-t border-[color:var(--sep)] pt-3">
+            <button
+              className="text-sm font-medium text-[color:var(--danger-text)] transition hover:underline disabled:opacity-60"
+              disabled={avatarChanges.busy}
+              onClick={() => setRemoveConfirmOpen(true)}
+              type="button"
+            >
+              Remove image
+            </button>
+          </div>
+        ) : null}
+
+        <input
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            selectFile(event.target.files?.[0])
+            event.target.value = ''
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+
+        <ConfirmDialog
+          blocking
+          body="This removes the agent's custom avatar. This can't be undone."
+          confirmLabel="Remove image"
+          destructive
+          onCancel={() => setRemoveConfirmOpen(false)}
+          onConfirm={() => void handleRemove()}
+          open={removeConfirmOpen}
+          pending={avatarChanges.busy}
+          title="Remove avatar image?"
+        />
+      </Dialog>
 
       {selectedFile ? (
         <CircleImageCropper

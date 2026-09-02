@@ -139,7 +139,14 @@ export const mapAgentRecord = (agent: {
   runs?: Array<{
     createdAt: Date
     id: string
-    status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running' | 'waiting_approval'
+    status:
+      | 'cancelled'
+      | 'completed'
+      | 'failed'
+      | 'pending'
+      | 'running'
+      | 'waiting_approval'
+      | 'waiting_input'
     toolCalls: Array<{ endedAt: Date | null; startedAt: Date; toolName: string }>
   }>
   provider: string | null
@@ -151,7 +158,14 @@ export const mapAgentRecord = (agent: {
   homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
   delegationMode: 'act_as_requesting_user' | 'none'
-  status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
+  status:
+    | 'error'
+    | 'executing'
+    | 'idle'
+    | 'offline'
+    | 'thinking'
+    | 'waiting_approval'
+    | 'waiting_input'
   systemPrompt: string | null
   runLimits?: unknown
   todosEnabled: boolean

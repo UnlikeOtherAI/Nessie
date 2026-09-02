@@ -12,6 +12,9 @@ import { KnowledgePane } from './KnowledgePane'
 import { PagePreview } from './PagePreview'
 
 type KnowledgeDocumentPaneProps = {
+  // The on-demand full-body fetch, handed on so the preview can render the
+  // kit's loading / error / retry line for it.
+  bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   canWrite: boolean
   // A markdown file node being converted into a real document: the pane says
   // so rather than briefly rendering the raw file.
@@ -29,6 +32,7 @@ type KnowledgeDocumentPaneProps = {
 // The open document or file node, with everything filed against it: its
 // attachments drawer, a new file version, and drag-and-drop onto the page.
 export const KnowledgeDocumentPane = ({
+  bodyQuery,
   canWrite,
   converting,
   depth,
@@ -87,7 +91,7 @@ export const KnowledgeDocumentPane = ({
         />
       ) : (
         <PagePreview
-          bodyPending={!fullPage}
+          bodyQuery={bodyQuery}
           canWrite={canWrite}
           onBack={onBack}
           onCreateChild={() => openCreate(page.id)}

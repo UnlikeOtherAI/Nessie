@@ -11,6 +11,7 @@ import {
   useUploadApns,
 } from '../../../facades/platform-push/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { PushResultBanner, PushStatusRow } from './shared'
 
 // Derive a Key ID from an `AuthKey_<KEYID>.p8` filename, matching the server's
@@ -35,6 +36,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
   const [topic, setTopic] = useState('')
   const [environment, setEnvironment] = useState<PushApnsEnvironment>('production')
   const [result, setResult] = useState<PushCredentialResult | PushTestResult | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const configured = status?.configured === true
 
@@ -76,6 +78,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
 
   const onRemove = async () => {
     setResult(null)
+    setConfirmingRemove(false)
     try {
       setResult(await remove.mutateAsync('apns'))
     } catch (error) {
@@ -166,7 +169,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
               <button
                 className="admin-button admin-button-secondary"
                 disabled={remove.isPending}
-                onClick={() => void onRemove()}
+                onClick={() => setConfirmingRemove(true)}
                 type="button"
               >
                 Remove
@@ -177,6 +180,17 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
       </form>
 
       <PushResultBanner result={result} />
+
+      <ConfirmDialog
+        body="Push notifications through Apple will stop until a new key is uploaded."
+        confirmLabel="Remove"
+        destructive
+        onCancel={() => setConfirmingRemove(false)}
+        onConfirm={() => void onRemove()}
+        open={confirmingRemove}
+        pending={remove.isPending}
+        title="Remove the APNs credential?"
+      />
     </section>
   )
 }

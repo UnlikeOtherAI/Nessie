@@ -56,10 +56,10 @@ const renderTable = (props: Partial<Parameters<typeof SecretMetadataTable>[0]> =
 test('secret metadata is a semantic table with clear copy controls', () => {
   const html = renderTable()
 
-  assert.match(html, /<table class="admin-table min-w-\[46rem\] w-full border-collapse">/)
-  assert.match(html, /<caption class="sr-only">Available secret metadata<\/caption>/)
-  assert.match(html, /<th[^>]*scope="col"[^>]*>Secret key<\/th>/)
-  assert.match(html, /<th[^>]*scope="col"[^>]*>Reference<\/th>/)
+  assert.match(html, /<table class="admin-table w-full border-collapse" style="min-width:46rem">/)
+  assert.match(html, /<caption class="sr-only">Secrets table<\/caption>/)
+  assert.match(html, /<th[^>]*scope="col"[^>]*><span[^>]*>Secret key<\/span><\/th>/)
+  assert.match(html, /<th[^>]*scope="col"[^>]*><span[^>]*>Reference<\/span><\/th>/)
   assert.match(html, /STRIPE_API_KEY/)
   assert.match(html, /secret_123/)
   assert.match(html, /aria-label="Copy secret key"/)
@@ -67,17 +67,22 @@ test('secret metadata is a semantic table with clear copy controls', () => {
   assert.match(html, /type="button"[^>]*>Revoke<\/button>/)
 })
 
-test('secret table keeps loading and empty states inside its frame', () => {
+test('the loading table keeps its shape with skeleton rows; the empty state breaks out of the frame', () => {
   const loading = renderTable({ isLoading: true, secrets: [] })
   const empty = renderTable({ secrets: [] })
 
-  assert.match(loading, /role="status">Loading secrets…<\/td>/)
-  assert.match(empty, /No secrets saved yet\. Use “Save a secret” to add one\./)
-  for (const html of [loading, empty]) {
-    assert.match(html, /<table /)
-    assert.match(html, /<thead>/)
-    assert.match(html, /<tbody>/)
-  }
+  // Loading: the table's real shape (columns, header) stays put — a DataTable
+  // skeleton, not a placeholder sentence — while rows fill with pulse bars.
+  assert.match(loading, /<table /)
+  assert.match(loading, /<thead>/)
+  assert.match(loading, /<tbody>/)
+  assert.match(loading, /animate-pulse/)
+  assert.doesNotMatch(loading, /Loading secrets/)
+
+  // Empty: no genuinely empty table pretending to hold rows — the shared
+  // EmptyState card replaces the frame entirely.
+  assert.doesNotMatch(empty, /<table/)
+  assert.match(empty, /No secrets saved yet\. Use .Save a secret. to add one\./)
 })
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -243,7 +248,20 @@ test('the secret dialog opens and closes through the shared modal shell', async 
     assert.ok(opener)
     await act(async () => opener.click())
     assert.ok(container.querySelector('[role="dialog"]'))
-    assert.equal(dom.window.document.activeElement?.id, 'secret-name')
+    // No hardcoded id — `FormField` mints its own via `useId()` — so focus is
+    // pinned with `initialFocusRef` instead. Without it the shell focuses its
+    // own close cross, which precedes the form in the DOM.
+    //
+    // Compared as a boolean, never `assert.equal(node, node)`: a failed
+    // strict-equal on two DOM nodes sends `util.inspect` through JSDOM's
+    // prototype graph to build a diff, which took this file's process past
+    // 13 GB and 100 seconds before the runner killed it. The failure it was
+    // hiding is this very assertion.
+    const nameInput = container.querySelector<HTMLInputElement>(
+      'input[placeholder="STRIPE_API_KEY"]',
+    )
+    assert.ok(nameInput)
+    assert.equal(dom.window.document.activeElement === nameInput, true)
 
     const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
     assert.ok(close)

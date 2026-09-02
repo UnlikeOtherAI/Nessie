@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { WorkflowTemplateRecord } from '../../../lib/api-client'
 import { useCreateWorkflowTemplate } from '../../../facades/workflows/hooks'
-import { Notice } from '../../primitives/Notice'
+import { FormError } from '../../shared/FormActions'
 import { parseWorkflowImport } from './workflow-transfer'
 
 /**
@@ -71,11 +71,7 @@ export const WorkflowImportButton = ({ onImported }: WorkflowImportButtonProps) 
         ref={fileInputRef}
         type="file"
       />
-      {error ? (
-        <Notice radius="lg" size="sm" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
+      <FormError>{error}</FormError>
     </div>
   )
 }

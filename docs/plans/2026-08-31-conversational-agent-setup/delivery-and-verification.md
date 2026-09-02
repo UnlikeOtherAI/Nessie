@@ -68,6 +68,24 @@ no chat tool is exposed yet.
 
 ### Slice 2 — durable request and presentation tools
 
+Partial implementation (2026-09-01): with conversational setup enabled, the
+agent can search the entitlement-scoped Apps catalogue and a user's Personal
+Assistant can atomically create an offered request plus a basis-stamped,
+opaque-card message. The tool rechecks the live member, exact PA DM, catalog
+visibility, lock/deprecation state, and human-interactive origin; it creates no
+connection, credential, or capability grant. The authenticated viewer route
+and in-thread card now render the safe immutable choice and its live durable
+status to the requesting user only. A card click atomically claims one
+server-recorded candidate and uses the existing Apps connection orchestration;
+an OAuth URL is returned only to that immediate authenticated call and never
+enters durable card/message state. When a connection projects protected MCP
+capabilities, the Personal Assistant's existing default-grant reconciliation
+applies them unless an owner has explicitly revoked that access in App
+Management; the card derives `ready` only from the descriptor-bound grants the
+worker enforces, and otherwise reports the App Management hold. Secret entry,
+returned-flow claim/recovery and continuation remain unfinished, so this is not
+yet the completed connection journey.
+
 - Implement `app_search` on the store presenter and
   `app_connect_request` on the new request service.
 - Register both builtin schemas, explicit-grant metadata, tool dispatcher and

@@ -6,6 +6,8 @@
  * this move?" is answered by the conversation that caused it.
  */
 
+import { SidePanel } from '../../shared/SidePanel'
+import { QueryState } from '../../shared/QueryState'
 import { useDashboardVersions } from '../../../facades/dashboards/hooks'
 
 export const DashboardVersionsPanel = ({
@@ -15,60 +17,41 @@ export const DashboardVersionsPanel = ({
   dashboardId: string
   onClose: () => void
 }) => {
-  const { data: versions, isLoading } = useDashboardVersions(dashboardId)
+  const versionsQuery = useDashboardVersions(dashboardId)
+  const versions = versionsQuery.data ?? []
 
   return (
-    <aside
-      className="flex h-full min-h-0 w-full flex-col border-l md:w-80 md:shrink-0"
-      style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
-      data-testid="dashboard-versions"
-    >
-      <header
-        className="flex items-center gap-2 border-b px-3 py-2.5"
-        style={{ borderColor: 'var(--sep)' }}
-      >
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--tx)' }}>
-          Versions
-        </h2>
-        <button
-          className="ml-auto rounded px-1.5 text-sm"
-          onClick={onClose}
-          style={{ color: 'var(--tx3)' }}
-          type="button"
+    <SidePanel className="shrink-0" onClose={onClose} title="Versions">
+      <div data-testid="dashboard-versions">
+        <QueryState
+          className="py-2"
+          emptyLabel="No changes recorded yet."
+          errorLabel="Failed to load version history."
+          isEmpty={versions.length === 0}
+          loadingLabel="Loading…"
+          query={versionsQuery}
         >
-          ✕
-        </button>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        {isLoading ? (
-          <p className="text-xs" style={{ color: 'var(--tx3)' }}>
-            Loading…
-          </p>
-        ) : (versions ?? []).length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--tx3)' }}>
-            No changes recorded yet.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-3">
-            {(versions ?? []).map((version) => (
-              <li key={version.id} className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
-                  <span>{new Date(version.createdAt).toLocaleString()}</span>
-                  {version.authorType === 'agent' ? (
-                    <span style={{ color: 'var(--thinking)' }}>· agent</span>
-                  ) : null}
-                </div>
-                {/* Composed deterministically from the op log — structural
-                    fact, never a reading of content. */}
-                <p className="text-xs" style={{ color: 'var(--tx2)' }}>
-                  {version.summary}
-                </p>
-              </li>
-            ))}
-          </ol>
-        )}
+          {() => (
+            <ol className="flex flex-col gap-3">
+              {versions.map((version) => (
+                <li key={version.id} className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5 text-[11px] text-[color:var(--tx3)]">
+                    <span>{new Date(version.createdAt).toLocaleString()}</span>
+                    {version.authorType === 'agent' ? (
+                      <span className="text-[color:var(--thinking)]">· agent</span>
+                    ) : null}
+                  </div>
+                  {/* Composed deterministically from the op log — structural
+                      fact, never a reading of content. */}
+                  <p className="text-xs text-[color:var(--tx2)]">
+                    {version.summary}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </QueryState>
       </div>
-    </aside>
+    </SidePanel>
   )
 }

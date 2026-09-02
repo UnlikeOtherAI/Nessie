@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
 import type { AgentTodoRecord, AgentTodoStepStatus, AgentTodoTemplateRecord } from '@nessie/schemas'
 
 import {
@@ -13,25 +14,23 @@ import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { EmptyState } from '../../../shared/EmptyState'
+import { QueryState } from '../../../shared/QueryState'
 import { useIsOwner } from '../../../shared/OwnerGate'
 import { TodoInstanceCard } from './TodoInstanceCard'
 
 type TodoInstancesProps = {
   agent: AgentRecord
-  isLoading: boolean
-  loadError?: Error | null
+  query: UseQueryResult<AgentTodoRecord[]>
   templates: AgentTodoTemplateRecord[]
-  todos: AgentTodoRecord[]
 }
 
 export const TodoInstances = ({
   agent,
-  isLoading,
-  loadError,
+  query,
   templates,
-  todos,
 }: TodoInstancesProps) => {
   const { me } = useAuthSession()
+  const todos = query.data ?? []
   const isOwner = useIsOwner()
   const { pushToast } = useToasts()
   const createTodo = useCreateAgentTodo()
@@ -155,49 +154,55 @@ export const TodoInstances = ({
           then anyone who can see this agent can start it.
         </EmptyState>
       ) : null}
-      {isLoading ? <div className="py-4 text-sm text-[color:var(--tx3)]">Loading to-dos…</div> : null}
-      {loadError ? <div className="text-sm text-[color:var(--danger-text)]" role="alert">{loadError.message}</div> : null}
-      {!isLoading && !loadError && todos.length === 0 ? (
-        <EmptyState>
-          Choose an active template and create a to-do to begin tracking its checklist.
-        </EmptyState>
-      ) : null}
 
-      {openTodos.length > 0 ? (
-        <div className="grid gap-3">
-          <SectionLabel>Open to-dos</SectionLabel>
-          {openTodos.map((todo) => (
-            <TodoInstanceCard
-              agent={agent}
-              currentUserId={me?.user.id}
-              isOwner={isOwner}
-              key={todo.id}
-              onCancel={cancel}
-              onRun={run}
-              onUpdateStep={update}
-              todo={todo}
-            />
-          ))}
-        </div>
-      ) : null}
+      <QueryState
+        className="py-4"
+        emptyLabel="Choose an active template and create a to-do to begin tracking its checklist."
+        errorLabel="To-dos could not be loaded."
+        isEmpty={todos.length === 0}
+        loadingLabel="Loading to-dos…"
+        query={query}
+      >
+        {() => (
+          <>
+            {openTodos.length > 0 ? (
+              <div className="grid gap-3">
+                <SectionLabel>Open to-dos</SectionLabel>
+                {openTodos.map((todo) => (
+                  <TodoInstanceCard
+                    agent={agent}
+                    currentUserId={me?.user.id}
+                    isOwner={isOwner}
+                    key={todo.id}
+                    onCancel={cancel}
+                    onRun={run}
+                    onUpdateStep={update}
+                    todo={todo}
+                  />
+                ))}
+              </div>
+            ) : null}
 
-      {recentTodos.length > 0 ? (
-        <div className="grid gap-3">
-          <SectionLabel>Recent to-dos</SectionLabel>
-          {recentTodos.map((todo) => (
-            <TodoInstanceCard
-              agent={agent}
-              currentUserId={me?.user.id}
-              isOwner={isOwner}
-              key={todo.id}
-              onCancel={cancel}
-              onRun={run}
-              onUpdateStep={update}
-              todo={todo}
-            />
-          ))}
-        </div>
-      ) : null}
+            {recentTodos.length > 0 ? (
+              <div className="grid gap-3">
+                <SectionLabel>Recent to-dos</SectionLabel>
+                {recentTodos.map((todo) => (
+                  <TodoInstanceCard
+                    agent={agent}
+                    currentUserId={me?.user.id}
+                    isOwner={isOwner}
+                    key={todo.id}
+                    onCancel={cancel}
+                    onRun={run}
+                    onUpdateStep={update}
+                    todo={todo}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </QueryState>
     </section>
   )
 }

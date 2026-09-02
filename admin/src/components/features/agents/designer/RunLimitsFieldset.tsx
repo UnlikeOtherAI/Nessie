@@ -1,8 +1,9 @@
 import type { RunLimitsField, RunLimitsFormState } from './run-limits'
+import { FormField } from '../../../shared/FormField'
+import { Input } from '../../../shared/FormControls'
 
 type RunLimitField = {
   hint: string
-  id: string
   key: RunLimitsField
   label: string
   placeholder: string
@@ -14,7 +15,6 @@ type RunLimitField = {
 const RUN_LIMIT_FIELDS: RunLimitField[] = [
   {
     hint: 'Total tokens the run may consume.',
-    id: 'agent-run-limit-tokens',
     key: 'maxTokens',
     label: 'Max tokens',
     placeholder: 'No limit',
@@ -22,7 +22,6 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
   },
   {
     hint: 'Total tool calls across the run.',
-    id: 'agent-run-limit-tool-calls',
     key: 'maxToolCalls',
     label: 'Max tool calls',
     placeholder: 'No limit',
@@ -30,7 +29,6 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
   },
   {
     hint: 'Think/act cycles before the run stops.',
-    id: 'agent-run-limit-iterations',
     key: 'maxIterations',
     label: 'Max reasoning steps',
     placeholder: 'No limit',
@@ -38,7 +36,6 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
   },
   {
     hint: 'Wall-clock time the run may take.',
-    id: 'agent-run-limit-duration',
     key: 'maxDurationMinutes',
     label: 'Max duration (minutes)',
     placeholder: 'No limit',
@@ -46,7 +43,6 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
   },
   {
     hint: 'Spend ceiling for the run, in cents.',
-    id: 'agent-run-limit-cost',
     key: 'maxCostCents',
     label: 'Max cost (cents)',
     placeholder: 'No limit',
@@ -55,7 +51,6 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
 ]
 
 type RunLimitsFieldsetProps = {
-  labelClassName: string
   onChange: (field: RunLimitsField, value: string) => void
   value: RunLimitsFormState
 }
@@ -64,28 +59,28 @@ type RunLimitsFieldsetProps = {
  * Optional explicit per-run caps (`Agent.runLimits`). Leaving a field blank is
  * the default and means that dimension is governed only by the deployment
  * backstop; clearing every field removes the agent's explicit limits entirely.
+ *
+ * The legend carries {@link FieldLabel}'s exact classes rather than importing
+ * that component: a `<legend>` cannot be a `<label htmlFor>`, so this is the
+ * one place that class string is legitimately written out a second time.
  */
 export const RunLimitsFieldset = ({
-  labelClassName,
   onChange,
   value,
 }: RunLimitsFieldsetProps) => (
   <fieldset className="grid gap-1.5 border-0 p-0" data-testid="agent-run-limits">
-    <legend className={labelClassName}>Run limits</legend>
+    <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+      Run limits
+    </legend>
     <p className="text-xs text-[color:var(--tx3)]">
       Optional ceilings for a single run. Leave a field blank for no explicit
       limit — the deployment backstop still applies.
     </p>
     <div className="grid gap-3 sm:grid-cols-2">
       {RUN_LIMIT_FIELDS.map((field) => (
-        <div className="grid gap-1" key={field.key}>
-          <label className="text-xs font-medium text-[color:var(--tx2)]" htmlFor={field.id}>
-            {field.label}
-          </label>
-          <input
+        <FormField help={field.hint} key={field.key} label={field.label}>
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id={field.id}
             inputMode="decimal"
             min="0"
             onChange={(event) => onChange(field.key, event.target.value)}
@@ -94,8 +89,7 @@ export const RunLimitsFieldset = ({
             type="number"
             value={value[field.key]}
           />
-          <span className="text-[11px] text-[color:var(--tx3)]">{field.hint}</span>
-        </div>
+        </FormField>
       ))}
     </div>
   </fieldset>

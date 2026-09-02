@@ -34,6 +34,7 @@ import {
   requireKnowledgePolicy,
   requireProjectId,
   requestIds,
+  toKnowledgePaginationMeta,
   type KnowledgeRouteDeps,
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
@@ -76,9 +77,14 @@ export const registerKnowledgeBaseRoutes = (
       limit: query.limit,
       viewer,
     })
+    // `total` is intentionally omitted: unlike a SQL-filtered list, a
+    // non-bypass viewer's visibility here is applied in application code
+    // *after* the page is fetched (`canReadSpace` filtering above the
+    // provider's `where`), so a separate count against the same `where` would
+    // describe a larger set than what this page actually shows.
     return createApiResponse(
       result.data.map((space) => attachSpaceEnvelope(space, decision, viewer, actorContext)),
-      result.meta,
+      toKnowledgePaginationMeta(result.meta, Boolean(query.cursor), result.data.at(0)),
     )
   })
 
@@ -321,6 +327,10 @@ export const registerKnowledgeBaseRoutes = (
         spaceId: body.spaceId,
         limit: body.limit,
       })
+      // `total` omitted: this is ranked semantic/lexical search (RRF-fused,
+      // score-ordered), never a fixed cursor-paged set — a count answers a
+      // different question than "how many hits" and the provider's hybrid
+      // path (native-search-hybrid.ts) never supports a cursor at all.
       return createApiResponse(
         result.data.map((hit) => ({
           page: attachPageEnvelope(hit.page, decision),
@@ -328,7 +338,7 @@ export const registerKnowledgeBaseRoutes = (
           passages: hit.passages,
           score: hit.score,
         })),
-        result.meta,
+        toKnowledgePaginationMeta(result.meta, false, undefined),
       )
     }
 
@@ -338,12 +348,16 @@ export const registerKnowledgeBaseRoutes = (
       projectId,
       viewer,
     })
+    // `total` omitted: this is the same free-text search endpoint's keyword
+    // fallback (ranked search per the pagination contract) — its matching
+    // predicate lives in the provider's raw SQL (native-search.ts), so a
+    // separate count would either fork that WHERE clause or drift from it.
     return createApiResponse(
       result.data.map((hit) => ({
         page: attachPageEnvelope(hit.page, decision),
         snippet: hit.snippet,
       })),
-      result.meta,
+      toKnowledgePaginationMeta(result.meta, Boolean(body.cursor), result.data.at(0)?.page),
     )
   })
 

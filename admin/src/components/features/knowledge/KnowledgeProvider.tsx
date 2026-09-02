@@ -74,6 +74,12 @@ type KnowledgeContextValue = {
   updateSpace: (input: Omit<UpdateSpaceInput, 'spaceId'>) => Promise<void>
   updateSpacePending: boolean
   pages: KnowledgePageRecord[]
+  // The selected space's page list fetch — surfaced so the filesystem browser
+  // can show a real loading/error+Retry state instead of treating a failed
+  // fetch as an empty space.
+  pagesLoading: boolean
+  pagesLoadFailed: boolean
+  refetchPages: () => unknown
   rootPages: KnowledgePageRecord[]
   childrenOf: (parentPageId: string) => KnowledgePageRecord[]
   pageById: (pageId: string) => KnowledgePageRecord | undefined
@@ -431,6 +437,9 @@ export const KnowledgeProvider = ({
     updateSpace,
     updateSpacePending: updateSpaceMutation.isPending,
     pages,
+    pagesLoading: pagesQuery.isLoading,
+    pagesLoadFailed: pagesQuery.isError,
+    refetchPages: () => pagesQuery.refetch(),
     rootPages,
     childrenOf: (parentPageId) => pagesByParent.get(parentPageId) ?? [],
     pageById: (pageId) => pagesById.get(pageId),

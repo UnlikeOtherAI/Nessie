@@ -6,6 +6,7 @@ import { classifyBudgetStop } from './budget-stop.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { prepareApprovalSuspend, suspendRunForApproval } from './approval-suspend.js'
+import { prepareCardSuspend, suspendRunForCard } from './card-suspend.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
 import { handleRunExecutionFailure } from './failure.js'
 import { stripLeadingSectionTag } from './memory.js'
@@ -63,6 +64,27 @@ export const handleRunLoopOutcome = async (
       priorGeneration: input.setup.checkpoint?.generation ?? 0,
     })
     await suspendRunForApproval(deps, payload, context, {
+      ...suspendPlan,
+      invocations: input.loopResult.invocations,
+      responseText,
+    })
+    return null
+  }
+
+  if (input.loopResult.pendingInput && !input.handoffLocator) {
+    // Waiting on a card is an interruption like an approval: nothing
+    // half-streamed becomes durable while a person is deciding.
+    await input.documentStream.finalizeOutstanding('card_response')
+    const suspendPlan = await prepareCardSuspend(deps, context, {
+      cardId: input.loopResult.pendingInput.cardId,
+      goal: input.prompt,
+      inference: input.inference,
+      invocationSink: input.invocations,
+      lastAssistantText: responseText,
+      messages: input.loopResult.messages,
+      priorGeneration: input.setup.checkpoint?.generation ?? 0,
+    })
+    await suspendRunForCard(deps, payload, context, {
       ...suspendPlan,
       invocations: input.loopResult.invocations,
       responseText,

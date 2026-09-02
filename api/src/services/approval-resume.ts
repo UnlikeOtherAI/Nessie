@@ -1,17 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { drainPendingThreadMessagesBestEffort, isThreadRunSlotBusy } from '@nessie/db'
+import { drainPendingThreadMessagesBestEffort } from '@nessie/db'
 import { applyReplyBookkeeping } from '@nessie/runtime'
-import {
-  AuthorizedActionContextSchema,
-  parseAgentId,
-  parseChannelId,
-  parseRunId,
-  parseTaskId,
-  parseThreadId,
-  withActionContext,
-} from '@nessie/schemas'
+import { AuthorizedActionContextSchema } from '@nessie/schemas'
 import { z } from 'zod'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { ResumeRollback, resumeSuspendedRun, type RunResumeFailure } from './run-resume-core.js'
 
 const ApprovalResumeStateSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
@@ -20,13 +12,7 @@ const ApprovalResumeStateSchema = z.object({
   messageId: z.string().min(1),
 }).strict()
 
-type ResumeFailure = 'already_resumed' | 'busy' | 'invalid_resume_state' | 'run_not_waiting'
-
-class ResumeRollback extends Error {
-  constructor(readonly reason: ResumeFailure) {
-    super(reason)
-  }
-}
+type ResumeFailure = RunResumeFailure
 
 const updateApprovalGateNoticeStatus = async (
   tx: Prisma.TransactionClient,
@@ -89,122 +75,48 @@ export const resumeRunFromApproval = async (
       })
       if (!approval?.runId) throw new ResumeRollback('invalid_resume_state')
       const resumeState = ApprovalResumeStateSchema.safeParse(approval.resumeState)
-      if (!resumeState.success || resumeState.data.actorContext.tenant.organizationId !== approval.organizationId) {
+      if (
+        !resumeState.success
+        || resumeState.data.actorContext.tenant.organizationId !== approval.organizationId
+      ) {
         throw new ResumeRollback('invalid_resume_state')
       }
 
-      const run = await tx.run.findFirst({
-        where: { id: approval.runId, thread: { channel: { organizationId: approval.organizationId } } },
-        select: {
-          agentId: true,
-          principalUserId: true,
-          replyPlacement: true,
-          replyRootMessageId: true,
-          thread: { select: { channelId: true } },
-          threadId: true,
-          triggerMessageId: true,
+      // Tenancy: the parked run must belong to the approval's organisation.
+      const scoped = await tx.run.findFirst({
+        select: { threadId: true },
+        where: {
+          id: approval.runId,
+          thread: { channel: { organizationId: approval.organizationId } },
         },
       })
-      if (!run || !run.triggerMessageId || run.triggerMessageId !== resumeState.data.messageId) {
-        throw new ResumeRollback('invalid_resume_state')
-      }
-      const message = await tx.message.findUnique({
-        where: { id: resumeState.data.messageId },
-        select: { content: true, id: true },
-      })
-      if (!message) throw new ResumeRollback('invalid_resume_state')
+      if (!scoped) throw new ResumeRollback('invalid_resume_state')
 
-      const terminalized = await tx.run.updateMany({
-        where: { id: approval.runId, status: 'waiting_approval' },
-        data: { finishedAt: new Date(), status: 'completed' },
+      const resumed = await resumeSuspendedRun(tx, {
+        // The one-time proof that lets the resumed run re-issue the gated call.
+        actorContextExtra: {
+          approval: {
+            approvalId: approval.id,
+            approvalProof: approval.continuationToken,
+          },
+        },
+        eventPayload: { fromApprovalId: approval.id },
+        interactive: resumeState.data.interactive,
+        organizationId: approval.organizationId,
+        queueKeyPrefix: 'run:approval',
+        resumeActorContext: resumeState.data.actorContext,
+        runId: approval.runId,
+        suspendedStatus: 'waiting_approval',
+        triggerMessageId: resumeState.data.messageId,
       })
-      if (terminalized.count !== 1) throw new ResumeRollback('run_not_waiting')
+
       await updateApprovalGateNoticeStatus(tx, {
         approvalId: approval.id,
         status: 'approved',
-        threadId: run.threadId,
+        threadId: scoped.threadId,
       })
 
-      if (await isThreadRunSlotBusy(tx, {
-        agentId: run.agentId,
-        ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
-        threadId: run.threadId,
-      })) {
-        throw new ResumeRollback('busy')
-      }
-      const checkpoint = await tx.runCheckpoint.findUnique({
-        where: { runId: approval.runId },
-        select: { id: true, consumedByRunId: true },
-      })
-      if (!checkpoint || checkpoint.consumedByRunId !== null) {
-        throw new ResumeRollback('already_resumed')
-      }
-
-      const continuation = await tx.run.create({
-        data: {
-          agentId: run.agentId,
-          continuationOfRunId: approval.runId,
-          principalUserId: run.principalUserId,
-          replyPlacement: run.replyPlacement,
-          status: 'pending',
-          threadId: run.threadId,
-          triggerMessageId: message.id,
-        },
-        select: { id: true },
-      })
-      const claimed = await tx.runCheckpoint.updateMany({
-        where: { consumedByRunId: null, id: checkpoint.id },
-        data: { consumedAt: new Date(), consumedByRunId: continuation.id },
-      })
-      if (claimed.count !== 1) throw new ResumeRollback('already_resumed')
-
-      const task = await tx.task.create({
-        data: {
-          agentId: run.agentId,
-          organizationId: approval.organizationId,
-          purpose: message.content.slice(0, 200),
-          runId: continuation.id,
-          status: 'inbox',
-        },
-        select: { id: true },
-      })
-      await tx.taskEvent.create({
-        data: {
-          eventType: 'run.continued',
-          payload: {
-            auto: false,
-            continuationOfRunId: approval.runId,
-            fromApprovalId: approval.id,
-            fromCheckpointId: checkpoint.id,
-            runId: continuation.id,
-          },
-          taskId: task.id,
-        },
-      })
-      const actorContext = AuthorizedActionContextSchema.parse({
-        ...withActionContext(resumeState.data.actorContext, {
-          agentId: parseAgentId(run.agentId),
-          channelId: parseChannelId(run.thread.channelId),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(run.threadId),
-        }),
-        approval: {
-          approvalId: approval.id,
-          approvalProof: approval.continuationToken,
-        },
-      })
-      const queued = await enqueueRunExecution(tx, {
-        actorContext,
-        agentId: parseAgentId(run.agentId),
-        ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
-        interactive: resumeState.data.interactive,
-        messageId: message.id,
-        runId: parseRunId(continuation.id),
-        taskId: parseTaskId(task.id),
-        threadId: parseThreadId(run.threadId),
-      }, `run:approval:${continuation.id}`)
-      if (!queued) throw new Error('Approval continuation enqueue conflict')
-      return { kind: 'resumed' as const, runId: continuation.id, taskId: task.id }
+      return { kind: 'resumed' as const, runId: resumed.runId, taskId: resumed.taskId }
     })
   } catch (error) {
     if (error instanceof ResumeRollback) return { kind: error.reason }

@@ -1,4 +1,7 @@
 import type { DeepWaterResearchDepth } from '../../../lib/api-client'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
+import { FormField } from '../../shared/FormField'
+import { Input, Select } from '../../shared/FormControls'
 import {
   deepWaterResearchLanguages,
   type DeepWaterResearchFormValues,
@@ -34,33 +37,16 @@ export const DeepWaterResearchCustomControls = ({
   values,
 }: DeepWaterResearchCustomControlsProps) => (
   <>
-    <div>
-      <div className="mb-2 text-sm font-semibold text-[var(--tx2)]">Depth</div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {depthOptions.map((option) => (
-          <button
-            aria-pressed={values.depth === option.value}
-            className={[
-              'h-9 rounded border px-2 text-xs font-semibold',
-              values.depth === option.value
-                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--thinking)]'
-                : 'border-[var(--sep)] text-[var(--tx2)] hover:bg-[var(--overlay)]',
-            ].join(' ')}
-            key={option.value}
-            onClick={() => onChange('depth', option.value)}
-            type="button"
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <ChoiceGroup
+      label="Depth"
+      onChange={(value) => onChange('depth', value)}
+      options={depthOptions}
+      value={values.depth}
+    />
 
     <div className="grid gap-3 md:grid-cols-2">
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Chapter detail</span>
-        <select
-          className="admin-input"
+      <FormField label="Chapter detail">
+        <Select
           onChange={(event) =>
             onChange(
               'chapterDepth',
@@ -73,12 +59,10 @@ export const DeepWaterResearchCustomControls = ({
           <option value="standard">Standard</option>
           <option value="detailed">Detailed</option>
           <option value="exhaustive">Exhaustive</option>
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Output</span>
-        <select
-          className="admin-input"
+        </Select>
+      </FormField>
+      <FormField label="Output">
+        <Select
           onChange={(event) =>
             onChange('outputTier', event.target.value as DeepWaterResearchFormValues['outputTier'])
           }
@@ -86,12 +70,10 @@ export const DeepWaterResearchCustomControls = ({
         >
           <option value="full">Full report</option>
           <option value="summary">Summary</option>
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Search quality</span>
-        <select
-          className="admin-input"
+        </Select>
+      </FormField>
+      <FormField label="Search quality">
+        <Select
           onChange={(event) =>
             onChange(
               'searchQuality',
@@ -102,12 +84,10 @@ export const DeepWaterResearchCustomControls = ({
         >
           <option value="standard">Standard</option>
           <option value="premium">Premium</option>
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Recency</span>
-        <select
-          className="admin-input"
+        </Select>
+      </FormField>
+      <FormField label="Recency">
+        <Select
           onChange={(event) =>
             onChange('recency', event.target.value as DeepWaterResearchFormValues['recency'])
           }
@@ -118,34 +98,28 @@ export const DeepWaterResearchCustomControls = ({
           <option value="week">Last week</option>
           <option value="month">Last month</option>
           <option value="year">Last year</option>
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Sections</span>
-        <input
-          className="admin-input"
+        </Select>
+      </FormField>
+      <FormField label="Sections">
+        <Input
           max={20}
           min={3}
           onChange={(event) => onChange('sections', Number(event.target.value))}
           type="number"
           value={values.sections}
         />
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Searches per pillar</span>
-        <input
-          className="admin-input"
+      </FormField>
+      <FormField label="Searches per pillar">
+        <Input
           max={20}
           min={1}
           onChange={(event) => onChange('searchesPerPillar', Number(event.target.value))}
           type="number"
           value={values.searchesPerPillar}
         />
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Output language</span>
-        <select
-          className="admin-input"
+      </FormField>
+      <FormField label="Output language">
+        <Select
           onChange={(event) => onChange('outputLanguage', event.target.value)}
           value={values.outputLanguage}
         >
@@ -154,12 +128,10 @@ export const DeepWaterResearchCustomControls = ({
               {language.label} ({language.code})
             </option>
           ))}
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-semibold text-[var(--tx2)]">Destination</span>
-        <select
-          className="admin-input"
+        </Select>
+      </FormField>
+      <FormField label="Destination">
+        <Select
           onChange={(event) =>
             onChange(
               'artifactDestination',
@@ -170,8 +142,8 @@ export const DeepWaterResearchCustomControls = ({
         >
           <option value="knowledge_draft">Knowledge draft</option>
           <option value="chat_only">Chat only</option>
-        </select>
-      </label>
+        </Select>
+      </FormField>
     </div>
   </>
 )

@@ -34,6 +34,7 @@ import {
   isAppSearchActive,
   searchResultsLabel,
 } from '../components/features/apps/app-search'
+import { Notice } from '../components/primitives/Notice'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { EmptyState } from '../components/shared/EmptyState'
 import { useApps } from '../facades/apps/hooks'
@@ -208,17 +209,9 @@ export const AppsPage = () => {
           ) : isError ? (
             // Never let a failed load render as "nothing is published" — that
             // is a different fact with a different next move.
-            <p
-              className={[
-                'mt-8 rounded-md border border-[color:var(--danger-border)]',
-                'bg-[color:var(--danger-soft)] px-3 py-2 text-sm',
-                'text-[color:var(--danger-text)]',
-              ].join(' ')}
-              data-testid="apps-load-error"
-              role="alert"
-            >
+            <Notice className="mt-8" role="alert" tone="danger">
               We couldn&apos;t load the app catalogue. Refresh the page to try again.
-            </p>
+            </Notice>
           ) : empty ? (
             <div className="mt-8" data-testid="apps-empty">
               <EmptyState>

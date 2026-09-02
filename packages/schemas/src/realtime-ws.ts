@@ -73,6 +73,17 @@ export type WsEventMap = {
     action: string
     reason: string
   }
+  /**
+   * An interactive card reached a terminal state. Content-free by
+   * construction — ids and status only — because WS scopes are channel-wide
+   * and no read-side predicate can close a wire leak.
+   */
+  'card.updated': {
+    cardId: string
+    messageId: string
+    threadId: ThreadId
+    status: 'resolved' | 'expired' | 'cancelled'
+  }
   'approval.resolved': {
     approvalId: string
     taskId: TaskId
@@ -307,6 +318,14 @@ export const ApprovalResolvedEventSchema = z.object({
 })
 export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>
 
+export const CardUpdatedEventSchema = z.object({
+  cardId: NonEmptyStringSchema,
+  messageId: NonEmptyStringSchema,
+  threadId: ThreadIdSchema,
+  status: z.enum(['resolved', 'expired', 'cancelled']),
+})
+export type CardUpdatedEvent = z.infer<typeof CardUpdatedEventSchema>
+
 // User alerts (#246): additive kinds per the #225 realtime registry.
 export const AlertCreatedEventSchema = z.object({
   userId: UserIdSchema,
@@ -370,6 +389,7 @@ export const WsEventNameSchema = z.enum([
   'task.updated',
   'approval.needed',
   'approval.resolved',
+  'card.updated',
   'message.new',
   'message.updated',
   'message.deleted',
@@ -515,6 +535,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('approval.resolved'),
     data: ApprovalResolvedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('card.updated'),
+    data: CardUpdatedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

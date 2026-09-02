@@ -1,6 +1,6 @@
+import { PageBody, Section } from '../../components/shared/PageBody'
+import { QueryState } from '../../components/shared/QueryState'
 import { type ProjectInsights, useProjectInsights } from '../../facades/iterations/hooks'
-
-const label = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
 const VelocityChart = ({ velocity }: { velocity: ProjectInsights['velocity'] }) => {
   if (velocity.length === 0) {
@@ -69,47 +69,56 @@ type ProjectInsightsTabProps = {
 }
 
 export const ProjectInsightsTab = ({ projectId }: ProjectInsightsTabProps) => {
-  const { data: insights, isLoading } = useProjectInsights(projectId)
-
-  if (isLoading || !insights) {
-    return <div className="p-6 text-sm text-[color:var(--tx3)]">Loading…</div>
-  }
+  const insightsQuery = useProjectInsights(projectId)
 
   return (
-    <div className="min-h-0 overflow-y-auto p-6">
-      <div className="mx-auto grid max-w-2xl gap-8">
-        <section className="grid gap-3">
-          <div className={label}>Velocity</div>
-          <div className="admin-card p-4">
-            <VelocityChart velocity={insights.velocity} />
-          </div>
-          <p className="text-xs text-[color:var(--tx3)]">Story points delivered per completed sprint.</p>
-        </section>
+    <PageBody width="regular">
+      <QueryState
+        errorLabel="Couldn't load insights."
+        loadingLabel="Loading insights…"
+        query={insightsQuery}
+      >
+        {() => {
+          const insights = insightsQuery.data
+          if (!insights) return null
 
-        <section className="grid gap-3">
-          <div className={label}>Burndown — active sprint</div>
-          <div className="admin-card p-4">
-            {insights.burndown ? (
-              <>
-                <div className="mb-2 flex items-center gap-3 text-xs text-[color:var(--tx3)]">
-                  <span className="font-semibold text-[color:var(--tx2)]">{insights.burndown.name}</span>
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block h-2 w-3 rounded-sm bg-[color:var(--accent)]" /> remaining
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block h-0 w-3 border-t border-dashed border-[color:var(--tx3)]" /> ideal
-                  </span>
+          return (
+            <>
+              <Section
+                description="Story points delivered per completed sprint."
+                title="Velocity"
+              >
+                <div className="admin-card p-4">
+                  <VelocityChart velocity={insights.velocity} />
                 </div>
-                <BurndownChart burndown={insights.burndown} />
-              </>
-            ) : (
-              <div className="text-xs text-[color:var(--tx3)]">
-                Start a sprint with start and end dates to see its burndown.
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </div>
+              </Section>
+
+              <Section title="Burndown — active sprint">
+                <div className="admin-card p-4">
+                  {insights.burndown ? (
+                    <>
+                      <div className="mb-2 flex items-center gap-3 text-xs text-[color:var(--tx3)]">
+                        <span className="font-semibold text-[color:var(--tx2)]">{insights.burndown.name}</span>
+                        <span className="flex items-center gap-1">
+                          <span className="inline-block h-2 w-3 rounded-sm bg-[color:var(--accent)]" /> remaining
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="inline-block h-0 w-3 border-t border-dashed border-[color:var(--tx3)]" /> ideal
+                        </span>
+                      </div>
+                      <BurndownChart burndown={insights.burndown} />
+                    </>
+                  ) : (
+                    <div className="text-xs text-[color:var(--tx3)]">
+                      Start a sprint with start and end dates to see its burndown.
+                    </div>
+                  )}
+                </div>
+              </Section>
+            </>
+          )
+        }}
+      </QueryState>
+    </PageBody>
   )
 }

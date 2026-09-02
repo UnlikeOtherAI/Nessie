@@ -25,7 +25,7 @@ export const ColumnBrowserItem = ({
     className={[
       'w-full rounded-xl border p-3 text-left transition',
       isSelected
-        ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)]'
+        ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)]'
         : 'border-[color:var(--sep)] bg-[color:var(--scrim-weak)] hover:bg-[color:var(--scrim)]',
     ].join(' ')}
     onClick={onClick}

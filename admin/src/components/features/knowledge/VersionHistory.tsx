@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { SectionLabel } from '../../primitives/SectionLabel'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import type {
   KnowledgePageRecord,
   KnowledgeVersionRecord,
@@ -66,24 +66,16 @@ export const VersionHistory = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[color:var(--sep)] p-4">
-        <SectionLabel>Versions</SectionLabel>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {versions.map((version) => (
-            <button
-              className={[
-                'rounded-md border px-2 py-1 text-xs',
-                selectedVersion?.id === version.id
-                  ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-[var(--on-accent)]'
-                  : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
-              ].join(' ')}
-              key={version.id}
-              onClick={() => setSelectedVersionId(version.id)}
-              type="button"
-            >
-              v{version.versionNumber}
-            </button>
-          ))}
-        </div>
+        <ChoiceGroup
+          label="Versions"
+          onChange={setSelectedVersionId}
+          options={versions.map((version) => ({
+            label: `v${version.versionNumber}`,
+            value: version.id,
+          }))}
+          value={selectedVersion?.id ?? ''}
+          variant="inline"
+        />
       </div>
 
       {selectedVersion ? (
