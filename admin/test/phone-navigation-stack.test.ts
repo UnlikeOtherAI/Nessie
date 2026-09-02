@@ -304,8 +304,21 @@ test('with a seed, a fresh stack carries the parent chain as render-only entries
   assert.equal(back.entries[1]?.payload, 'payload:channel_a')
   assert.equal(back.entries.length, 3, 'the outgoing info screen is retained for its slide')
   // A section change seeds again.
+  // A section change seeds the origin the person came from beneath the route.
   const elsewhere = advancePhoneNavigationStack(cold, '/agents/a1', 'payload:agent', 'single', seed)
-  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/settings', '/agents', '/agents/a1'])
+  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/channels/channel_a/info', '/agents/a1'])
   // Without a seed a cold start is a single entry, as before.
   assert.equal(createPhoneNavigationStack('/channels/channel_a/info', 'p').entries.length, 1)
+})
+
+test('a push that crosses sections seeds its origin beneath the route, where Back pops to', () => {
+  const seed = (pathname: string) => `seed:${pathname}`
+  const project = createPhoneNavigationStack('/projects/p1', 'payload:project', 'single', seed)
+  const channel = advancePhoneNavigationStack(project, '/channels/c1', 'payload:channel', 'single', seed)
+  assert.deepEqual(channel.entries.map((entry) => entry.pathname), ['/projects/p1', '/channels/c1'])
+  assert.equal(channel.entries[0]?.payload, 'seed:/projects/p1')
+  assert.equal(channel.currentIndex, 1)
+  // A real cold start into the same route seeds the registry chain instead.
+  const cold = createPhoneNavigationStack('/channels/c1', 'payload:channel', 'single', seed)
+  assert.deepEqual(cold.entries.map((entry) => entry.pathname), ['/channels', '/channels/c1'])
 })

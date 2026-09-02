@@ -2,6 +2,7 @@ import type { NavigationLayout } from '../../navigation/layout'
 import {
   getPhoneNavigationScreen,
   getPhoneNavigationSeedChain,
+  isCrossSectionOrigin,
   type PhoneNavigationScreen,
 } from './phone-navigation'
 
@@ -104,17 +105,23 @@ export type SeedPayload<Payload> = (pathname: string) => Payload
 // Back and the edge swipe reveal the screens a real navigation would have.
 // Nothing about them enters the ledger: Back from a seeded stage is always
 // `replace`.
+// `origin` is the screen the person came from when a push crossed into
+// this section (a channel opened from a project): it is seeded beneath the
+// route instead of the registry's chain, because that is where Back pops to.
 export const createPhoneNavigationStack = <Payload>(
   pathname: string,
   payload: Payload,
   layout: NavigationLayout = 'single',
   seed?: SeedPayload<Payload>,
+  origin?: string,
 ): PhoneNavigationStack<Payload> => {
   const screen = requireScreen(pathname, layout)
   const landed = toStackEntry(pathname, screen, payload)
   if (!seed) return { currentIndex: 0, entries: [landed] }
-  const ancestors = getPhoneNavigationSeedChain(pathname, layout)
-    .reverse()
+  const seededPaths = origin && isCrossSectionOrigin(pathname, origin)
+    ? [origin]
+    : getPhoneNavigationSeedChain(pathname, layout).reverse()
+  const ancestors = seededPaths
     .map((ancestor) => toStackEntry(ancestor, requireScreen(ancestor, layout), seed(ancestor)))
   return { currentIndex: ancestors.length, entries: [...ancestors, landed] }
 }
@@ -153,7 +160,7 @@ export const advancePhoneNavigationStack = <Payload>(
   const routeIndex = routeIndexOf(stack)
   const current = stack.entries[routeIndex]
   if (!current || screen.section !== current.section) {
-    return createPhoneNavigationStack(pathname, payload, layout, seed)
+    return createPhoneNavigationStack(pathname, payload, layout, seed, current?.pathname)
   }
 
   const nextEntry = toStackEntry(pathname, screen, payload)

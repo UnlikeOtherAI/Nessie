@@ -27,8 +27,13 @@
     return (await api.requestPermission()) === 'granted'
   }
 
+  // The path is retained on the window before the event fires: a click on
+  // a quit app arrives before the SPA has subscribed, and the root redirect
+  // replays it (docs/navigation.md §8), exactly as the native shell's
+  // pending push path is replayed. The SPA clears it once consumed.
   const emitOpen = (path) => {
     if (isInternalPath(path)) {
+      window.__nessieDesktopPendingPath = path
       window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { path } }))
     }
   }

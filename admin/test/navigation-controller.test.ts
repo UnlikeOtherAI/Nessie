@@ -74,7 +74,7 @@ test('an origin screen pops to the real predecessor and says only "Back"', () =>
   // Operational usage is owner-only and listed on Admin; /ops is
   // super-admin-only, so it is never the fallback.
   const usage = resolveBack({ pathname: '/ops/usage', owners: null, ledger: ledgerOf(['/settings', '/ops/usage']) })
-  assert.deepEqual(usage, { kind: 'route', label: 'Back', mode: 'pop', to: '/settings', swipeable: true })
+  assert.deepEqual(usage, { kind: 'route', label: 'Back to Admin', mode: 'pop', to: '/settings', swipeable: true })
   assert.equal(resolveBack({ pathname: '/ops/usage', owners: null, ledger: null })?.to, '/settings')
 })
 
@@ -122,4 +122,13 @@ test('the transition signal counts in-flight transitions and releases waiters on
   await Promise.resolve()
   assert.equal(settled, true)
   assert.equal(isStackTransitioning(), false)
+})
+
+test('a cross-section push says only "Back" and pops to its origin', () => {
+  const action = resolveBack({
+    pathname: '/channels/c1',
+    owners: null,
+    ledger: ledgerOf(['/projects', '/projects/p1', '/channels/c1']),
+  })
+  assert.deepEqual(action, { kind: 'route', label: 'Back', mode: 'pop', to: '/projects/p1', swipeable: true })
 })

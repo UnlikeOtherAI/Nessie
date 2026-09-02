@@ -122,7 +122,21 @@ export const resolvePhoneNavigationBackAction = (
   if (previous === target.pathname) {
     return { mode: 'pop', to: target.pathname }
   }
+  // A screen pushed from another section (a channel opened from a project,
+  // a result opened from Search) returns to where the person came from: the
+  // stack seeded that origin beneath it, so Back and the swipe reveal the
+  // same screen the ledger pops to (docs/navigation.md §8).
+  if (previous && isCrossSectionOrigin(pathname, previous)) {
+    return { mode: 'pop', to: previous }
+  }
   return { mode: 'replace', to: target.pathname }
+}
+
+// True when `origin` is a screen in another section than `pathname`.
+export const isCrossSectionOrigin = (pathname: string, origin: string): boolean => {
+  const here = getPhoneNavigationScreen(pathname)
+  const from = getPhoneNavigationScreen(origin)
+  return Boolean(here && from && here.section !== from.section)
 }
 
 // Android hardware Back and the shared in-app Back converge on the same

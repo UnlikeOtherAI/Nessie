@@ -1,5 +1,6 @@
 import { createBrowserRouter, useLocation } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
+import { consumeDesktopPendingPath } from './lib/desktop'
 import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
@@ -54,7 +55,11 @@ const RootRouteRedirect = () => {
   // The native shell injects a tapped notification route before this SPA
   // starts. Resolve it here, rather than first redirecting to /channels and
   // replacing the notification destination with the default conversation.
-  return <RedirectRoute to={resolveRootLandingPath(search, readNativePendingPushPath())} />
+  return (
+    <RedirectRoute
+      to={resolveRootLandingPath(search, readNativePendingPushPath() ?? consumeDesktopPendingPath())}
+    />
+  )
 }
 
 // The Admin tab's first phone page is its existing navigation list. Wider

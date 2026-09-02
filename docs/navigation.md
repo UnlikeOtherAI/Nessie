@@ -447,14 +447,23 @@ the floor with its details there.
   from the route table for the seeded pathname (`navigation/SeededRoute.tsx`,
   `useRoutes` over the shell route's children) under a location of its own,
   so the page reads the route it stands for. It renders inert until reached.
-- A section change seeds the same way; a real push never does.
+- **A push that crosses sections seeds its origin.** A channel opened from
+  a project, a result opened from Search: the screen the person came from is
+  seeded beneath the route instead of the registry's chain, and Back pops to
+  it (the control says only "Back"), so the swipe reveals exactly what Back
+  lands on. Within a section the declared parent still decides.
 - Pinned by `admin/test/cold-start-seeding.test.ts`,
   `admin/test/phone-navigation-stack.test.ts` and
   `admin/test/navigation-layout.test.ts`.
 
+- **The desktop shell has a pending path** like the native one: the Tauri
+  init script retains a clicked notification's route on the window before
+  it dispatches the open event, and the root redirect replays it once
+  (`consumeDesktopPendingPath`), so a click that launched a quit app is no
+  longer lost between the dispatch and the subscriber.
+
 Planned in this step: declared intent params (`consume` vs `state`) on the
-registry rows with one consume path; `from` on project-to-channel links; the
-desktop pending path.
+registry rows with one consume path.
 
 ## 9. Native shell contract — **built** (the two bridge pieces)
 

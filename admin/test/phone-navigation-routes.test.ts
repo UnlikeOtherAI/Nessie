@@ -250,10 +250,10 @@ test('the provider-independent Back decision: pop a parent, replace otherwise', 
     resolvePhoneNavigationBackAction('/dashboards/dash_a', '/dashboards'),
     { mode: 'pop', to: '/dashboards' },
   )
-  // Foreign or missing predecessor → cold-deep-link replace.
+  // A predecessor in another section is where the push came from: pop.
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/channels/chan_a', '/projects'),
-    { mode: 'replace', to: '/channels' },
+    { mode: 'pop', to: '/projects' },
   )
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/dashboards/dash_a', '/knowledge-base'),
@@ -461,4 +461,20 @@ test('an unknown path classifies as nothing at all', () => {
   assert.equal(getPhoneNavigationBackTarget('/totally/unknown'), null)
   assert.equal(getPhoneNavigationScreen('/login'), null)
   assert.equal(getPhoneTabRootPath('/totally/unknown'), '/channels')
+})
+
+test('a screen pushed from another section pops back to where it came from', () => {
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/projects/p1'),
+    { mode: 'pop', to: '/projects/p1' },
+  )
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/search'),
+    { mode: 'pop', to: '/search' },
+  )
+  // Within a section the declared parent still decides.
+  assert.deepEqual(
+    resolvePhoneNavigationBackAction('/channels/c1', '/channels/c2'),
+    { mode: 'replace', to: '/channels' },
+  )
 })

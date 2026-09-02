@@ -4,7 +4,6 @@ import {
   resolvePhoneLedgerBackAction,
 } from '../layouts/admin-shell/phone-navigation-ledger'
 import { getPhoneNavigationBackTarget } from '../layouts/admin-shell/phone-navigation'
-import { matchSurface } from './surfaces'
 
 // The one Back decision. Every entry point — the header button, the edge
 // swipe, Android hardware Back, Escape, a browser POP landing on a parent —
@@ -62,10 +61,11 @@ export const resolveBack = ({ pathname, owners, ledger }: ResolveBackInput): Bac
   if (!target) return null
 
   const action = ledger ? resolvePhoneLedgerBackAction(ledger) : null
-  // A `parent: 'origin'` screen pops to wherever the reader came from; that
-  // predecessor has no registry label, so the control says only "Back"
-  // rather than naming the fallback it will not go to.
-  const toOrigin = action?.mode === 'pop' && matchSurface(pathname)?.surface.parent === 'origin'
+  // A pop to somewhere other than the declared parent — an origin screen's
+  // real predecessor, the section a push came from — has no registry label,
+  // so the control says only "Back" rather than naming a screen it will not
+  // go to.
+  const toOrigin = action?.mode === 'pop' && action.to !== target.pathname
   return {
     kind: 'route',
     label: toOrigin ? 'Back' : target.label,
