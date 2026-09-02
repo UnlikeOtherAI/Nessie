@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react'
-
 /**
  * One skeleton, four shapes — the placeholder every screen shows on its first
  * load (docs/navigation/overview.md §"Arriving with content").
