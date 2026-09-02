@@ -105,13 +105,12 @@ export default [
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
       'admin/src/pages/channels/useReplyThread.ts',
       // Popover/overlay placement geometry (D11): they clamp coordinates to the
-      // window, they do not classify the device.
-      'admin/src/components/features/channels/ReactionPills.tsx',
-      'admin/src/layouts/admin-shell/WorkspaceMenu.tsx',
-      'admin/src/layouts/admin-shell/UserMenuPopover.tsx',
-      'admin/src/layouts/admin-shell/CreateMenuTrigger.tsx',
+      // window, they do not classify the device. The list shrinks as call sites
+      // adopt the one placePopover helper (docs/navigation.md §7) — the account,
+      // workspace, create and reaction menus and the wikilink suggestion list
+      // came off it that way in step 8.
+      'admin/src/components/overlays/placePopover.ts',
       'admin/src/layouts/admin-shell/GroupDmSidebarLabel.tsx',
-      'admin/src/components/features/knowledge/wikilink/WikilinkSuggestionMenu.tsx',
       'admin/src/components/features/knowledge/wikilink/WikilinkCreateConfirm.tsx',
       'admin/src/components/features/knowledge/notes/PageNotesLayer.tsx',
     ],

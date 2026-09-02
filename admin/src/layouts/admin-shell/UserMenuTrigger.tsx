@@ -101,16 +101,15 @@ export const UserMenuTrigger = ({
           userId={me.user.id}
         />
       </button>
-      {menuOpen ? (
-        <UserMenuPopover
-          anchorRef={avatarButtonRef}
-          onClose={close}
-          onLogout={onLogout}
-          placement={placement}
-          token={token}
-          user={me.user}
-        />
-      ) : null}
+      <UserMenuPopover
+        anchorRef={avatarButtonRef}
+        onClose={close}
+        onLogout={onLogout}
+        open={menuOpen}
+        placement={placement}
+        token={token}
+        user={me.user}
+      />
     </>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Popover } from '../../../overlays/Popover'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import {
   filterModelOptions,
@@ -38,19 +39,10 @@ export const ModelCombobox = ({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => filterModelOptions(options, query), [options, query])
-
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
-  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -102,7 +94,7 @@ export const ModelCombobox = ({
   }
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative">
       <input
         aria-activedescendant={open && filtered[activeIndex]
           ? `${id}-option-${activeIndex}`
@@ -127,6 +119,7 @@ export const ModelCombobox = ({
           if (!open) openList()
         }}
         placeholder={placeholder}
+        ref={inputRef}
         role="combobox"
         type="text"
         value={open ? query : value ? modelOptionLabel(value) : ''}
@@ -136,25 +129,30 @@ export const ModelCombobox = ({
         icon={faChevronDown}
       />
 
-      {open ? (
-        <ul
-          className={[
-            'absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden py-1',
-            'rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg',
-          ].join(' ')}
-          id={`${id}-listbox`}
-          ref={listRef}
-          role="listbox"
-        >
+      <Popover
+        anchorRef={inputRef}
+        className={[
+          'max-h-72 overflow-y-auto overflow-x-hidden py-1',
+          'rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg',
+        ].join(' ')}
+        id={`${id}-listbox`}
+        label={placeholder}
+        matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="bottom-start"
+        role="listbox"
+      >
+        <div ref={listRef}>
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-[color:var(--tx3)]">{emptyLabel}</li>
+            <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">{emptyLabel}</div>
           ) : null}
           {filtered.map((option, index) => {
             const isActive = index === activeIndex
             const startsProvider = filtered[index - 1]?.providerDisplayName
               !== option.providerDisplayName
             return (
-              <li key={modelOptionKey(option)}>
+              <div key={modelOptionKey(option)}>
                 {startsProvider ? (
                   <div
                     className={[
@@ -192,11 +190,11 @@ export const ModelCombobox = ({
                     {modelOptionSubtitle(option)}
                   </div>
                 </div>
-              </li>
+              </div>
             )
           })}
-        </ul>
-      ) : null}
+        </div>
+      </Popover>
     </div>
   )
 }

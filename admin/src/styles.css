@@ -1006,6 +1006,34 @@ a {
   font-size: 13px;
 }
 
+/* The one card region (docs/navigation.md §7): toasts, and anything else that
+   arrives beside the work rather than over it. Which region is in use is a
+   TypeScript decision made from the shell's navigation layout — `data-region`
+   is that decision written down, never a second breakpoint. */
+.card-viewport {
+  position: fixed;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.card-viewport[data-region='top-right'] {
+  top: 16px;
+  right: 16px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+/* On one stack the cards sit above the tab bar, clear of the home indicator. */
+.card-viewport[data-region='bottom'] {
+  right: 12px;
+  bottom: calc(12px + var(--mobile-tabbar-h, 0px) + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+}
+
+.overlay-card {
+  pointer-events: auto;
+}
+
 .mobile-tabbar {
   position: fixed;
   right: 0;
@@ -1747,12 +1775,9 @@ a {
   position: static;
 }
 
+/* Presentation only: the Popover primitive owns its position and its layer. */
 .admin-compose-emoji-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
-  z-index: 60;
-  width: min(20rem, 100%);
+  width: min(20rem, 100vw - 24px);
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--panel);
@@ -1884,13 +1909,9 @@ button.reaction-pill-active:focus-visible {
 }
 
 /* "Who reacted" popover: shown above the pill on hover / focus / long-press.
-   Left-anchored by default; flipped to the right edge (data-align="right")
-   when it would overflow the viewport. */
+   It is a Popover, so its position, its layer and its flip above/below the
+   pill all come from the primitive; this is presentation only. */
 .reaction-pill-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 50;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1906,11 +1927,6 @@ button.reaction-pill-active:focus-visible {
   line-height: 1.5;
   text-align: left;
   pointer-events: none;
-}
-
-.reaction-pill-popover[data-align='right'] {
-  left: auto;
-  right: 0;
 }
 
 .reaction-pill-popover-emoji {

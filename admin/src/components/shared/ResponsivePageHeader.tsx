@@ -13,7 +13,9 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
+import { Popover } from '../overlays/Popover'
 import {
   partitionPageHeaderActions,
   type PageHeaderActionLayout,
@@ -109,6 +111,11 @@ const moreAction: PageHeaderButtonAction = {
   priority: 0,
 }
 
+const menuPanelClassName = [
+  'min-w-52 rounded-lg border border-[color:var(--sep)]',
+  'bg-[color:var(--main)] p-1 shadow-lg',
+].join(' ')
+
 const sameIds = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
 
@@ -146,7 +153,14 @@ export const ResponsivePageHeader = ({
   const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const moreMeasureRef = useRef<HTMLDivElement>(null)
   const triggerRefs = useRef<Record<string, HTMLElement | null>>({})
-  const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  // One stable RefObject per action id, reading through to the live trigger
+  // node: the Popover keeps its anchor across renders, and a trigger that has
+  // not mounted yet simply reads null.
+  const anchorRefs = useRef<Record<string, RefObject<HTMLElement | null>>>({})
+  const anchorRefFor = (id: string): RefObject<HTMLElement | null> => {
+    anchorRefs.current[id] ??= { get current() { return triggerRefs.current[id] ?? null } }
+    return anchorRefs.current[id] as RefObject<HTMLElement | null>
+  }
   const [visibleIds, setVisibleIds] = useState(() => actions.map((action) => action.id))
   const [overflowIds, setOverflowIds] = useState<string[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
@@ -222,24 +236,18 @@ export const ResponsivePageHeader = ({
     }
   }, [actions, onBack, showHeaderAccountMenu])
 
+  // Outside press and Escape belong to the Popover primitive; the header keeps
+  // only the menu's own keyboard model — first item focused on open, arrows
+  // between items — because a menu that opens under the pointer still has to
+  // be reachable from the keyboard.
   useEffect(() => {
     if (!openMenu) return undefined
+    const menuId = `${menuIdPrefix}-${openMenu}`
     const frame = requestAnimationFrame(() => {
-      menuRefs.current[openMenu]?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus()
+      document.getElementById(menuId)?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus()
     })
-    const closeForOutsidePointer = (event: MouseEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      if (menuRefs.current[openMenu]?.contains(target) || triggerRefs.current[openMenu]?.contains(target)) return
-      setOpenMenu(null)
-      requestAnimationFrame(() => triggerRefs.current[openMenu]?.focus())
-    }
-    document.addEventListener('mousedown', closeForOutsidePointer)
-    return () => {
-      cancelAnimationFrame(frame)
-      document.removeEventListener('mousedown', closeForOutsidePointer)
-    }
-  }, [openMenu])
+    return () => cancelAnimationFrame(frame)
+  }, [menuIdPrefix, openMenu])
 
   useEffect(() => {
     const focusedOverflowAction = overflowIds.find((id) => document.activeElement === triggerRefs.current[id])
@@ -370,16 +378,20 @@ export const ResponsivePageHeader = ({
           {visibleActions.map((action) => (
             <div className="relative" key={action.id}>
               {renderAction(action)}
-              {openMenu === action.id && action.kind === 'menu' ? (
-                <div
-                  className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-lg border border-[color:var(--sep)] bg-[color:var(--main)] p-1 shadow-lg"
+              {action.kind === 'menu' ? (
+                <Popover
+                  anchorRef={anchorRefFor(action.id)}
+                  className={menuPanelClassName}
                   id={`${menuIdPrefix}-${action.id}`}
+                  label={action.label}
+                  onClose={() => closeMenu()}
                   onKeyDown={handleMenuKeys}
-                  ref={(element) => { menuRefs.current[action.id] = element }}
+                  open={openMenu === action.id}
+                  placement="bottom-end"
                   role="menu"
                 >
                   <PageHeaderMenu action={action} onSelect={selectMenuItem} />
-                </div>
+                </Popover>
               ) : null}
             </div>
           ))}
@@ -398,22 +410,24 @@ export const ResponsivePageHeader = ({
               >
                 <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
               </button>
-              {openMenu === MORE_ACTION_ID ? (
-                <div
-                  className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-lg border border-[color:var(--sep)] bg-[color:var(--main)] p-1 shadow-lg"
-                  id={`${menuIdPrefix}-${MORE_ACTION_ID}`}
-                  onKeyDown={handleMenuKeys}
-                  ref={(element) => { menuRefs.current[MORE_ACTION_ID] = element }}
-                  role="menu"
-                >
-                  {overflowActions.map((action, index) => (
-                    <div key={action.id}>
-                      <PageHeaderMenu action={action} onSelect={selectMenuItem} />
-                      {index < overflowActions.length - 1 ? <div className="my-1 border-t border-[color:var(--sep)]" /> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <Popover
+                anchorRef={anchorRefFor(MORE_ACTION_ID)}
+                className={menuPanelClassName}
+                id={`${menuIdPrefix}-${MORE_ACTION_ID}`}
+                label="More page actions"
+                onClose={() => closeMenu()}
+                onKeyDown={handleMenuKeys}
+                open={openMenu === MORE_ACTION_ID}
+                placement="bottom-end"
+                role="menu"
+              >
+                {overflowActions.map((action, index) => (
+                  <div key={action.id}>
+                    <PageHeaderMenu action={action} onSelect={selectMenuItem} />
+                    {index < overflowActions.length - 1 ? <div className="my-1 border-t border-[color:var(--sep)]" /> : null}
+                  </div>
+                ))}
+              </Popover>
             </div>
           ) : null}
           <HeaderAccountMenu />
