@@ -241,6 +241,9 @@ const describeCatalogEntry = (entry: AgentToolCatalogEntry): string =>
   + `\n  ${entry.summary}`
 
 const RESTRICTION_REASONS: Record<AgentToolCatalogRestrictedEntry['restriction'], string> = {
+  built_in_specialist_only:
+    'reserved for Nessie’s built-in specialists — nobody can give it to a '
+    + 'designed agent, including you',
   explicit_grant:
     'granted only from the owner surfaces (Apps, Integrations) — never from here',
   personal_assistant_only:

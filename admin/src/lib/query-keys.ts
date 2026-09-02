@@ -39,6 +39,7 @@ export const agentKeys = {
   // both live under the family root so one invalidation covers them.
   allScopes: ['agents', 'all'] as const,
   activity: (agentId?: string) => ['agents', agentId, 'activity'] as const,
+  config: (agentId?: string) => ['agents', agentId, 'config'] as const,
   children: (agentId?: string) => ['agents', agentId, 'children'] as const,
   documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,

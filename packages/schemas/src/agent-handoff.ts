@@ -11,6 +11,16 @@ import { z } from 'zod'
  * Spec: docs/plans/2026-09-02-agent-designer-global-agent.md (D8).
  */
 
+/**
+ * The Agent Designer's blueprint slug.
+ *
+ * The blueprint itself lives in `@nessie/workspace-admin` (it holds a Prisma
+ * client's worth of dependencies), but its slug is a plain contract that the
+ * admin needs too: `AgentRecord.systemSlug` is how a client says "this is the
+ * Agent Designer" structurally instead of matching a display name.
+ */
+export const AGENT_DESIGNER_SLUG = 'agent-designer'
+
 const GlobalAgentSlugSchema = z
   .string()
   .trim()
@@ -50,6 +60,24 @@ export const AgentHandoffBriefMetadataSchema = z.object({
   targetSlug: GlobalAgentSlugSchema,
 })
 export type AgentHandoffBriefMetadata = z.infer<typeof AgentHandoffBriefMetadataSchema>
+
+/**
+ * The other brief a global agent can receive: a form draft handed over from the
+ * Agent Designer page's sidebar ("Continue in chat", D9).
+ *
+ * Same shape of act as a handoff and the same delivery — a hidden `system`
+ * message that starts the run — so it carries its own server-authored
+ * provenance rather than arriving as an anonymous instruction, and the person's
+ * unsaved draft is never written as a `user` turn under their id.
+ */
+export const GlobalAgentDraftMetadataSchema = z.object({
+  source: z.literal('designer_form'),
+  requestedByUserId: z.string().uuid(),
+  targetSlug: GlobalAgentSlugSchema,
+  /** Present when the draft was an edit of an existing agent, not a new one. */
+  editingAgentId: z.string().uuid().optional(),
+})
+export type GlobalAgentDraftMetadata = z.infer<typeof GlobalAgentDraftMetadataSchema>
 
 /**
  * The doorway left behind in the origin thread: an ordinary agent-authored

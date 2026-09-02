@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type {
+  AgentConfigView,
   AgentModelOption,
   AgentActivityResponse,
   AgentChild,
@@ -32,6 +33,25 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
     queryKey: scope === 'all' ? agentKeys.allScopes : agentKeys.all,
     queryFn: () =>
       apiClient.get(scope === 'all' ? '/api/agents?scope=all' : '/api/agents'),
+  })
+}
+
+/**
+ * One agent's configuration, for a reader who may look but not touch (D7).
+ *
+ * This is the ONLY read that answers for a Nessie-managed agent — the Personal
+ * Assistant, the Agent Designer. Every other per-agent route (status, activity,
+ * messages, children) 404s on one deliberately: a global agent's activity spans
+ * every member's private conversation with it.
+ */
+export const useAgentConfig = (agentId?: string, enabled = true) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentConfigView>({
+    enabled: Boolean(agentId) && enabled,
+    queryKey: agentKeys.config(agentId),
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/config`),
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -30,6 +30,22 @@ export type BuiltinToolDefinition = {
    */
   personalAssistantOnly?: boolean
   /**
+   * Narrows `personalAssistantOnly` to the identity-delegated arm alone: the
+   * tool acts as the requesting person, but the Personal Assistant may NOT call
+   * it — only a global agent whose blueprint names it in `identityToolIds`,
+   * inside its own home DM, on an interactive human turn.
+   *
+   * This is how a capability is moved from the PA to a specialist without
+   * deleting it: designing an agent is the Agent Designer's job, and the design
+   * catalogue is large enough that it belongs in one agent's context. The PA
+   * keeps the operational verbs on agents that already exist (list, bind,
+   * schedule) and routes creation and redesign through `agent_handoff`.
+   *
+   * Meaningless without `personalAssistantOnly` — it only ever removes the
+   * kind-based arm — so the two are declared together.
+   */
+  identityDelegatedOnly?: boolean
+  /**
    * When true, the tool is OFF for every agent by default and is exposed ONLY
    * to an agent whose per-agent `toolPolicy` carries an explicit allow
    * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled

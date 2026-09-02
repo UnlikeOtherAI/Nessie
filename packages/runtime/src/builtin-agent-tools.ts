@@ -14,10 +14,17 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
  * named: in the UI an owner picks the agent from a list, and without this the
  * assistant could only act on an agent it had just created itself.
  *
- * `agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update`
- * are the Agent Designer's half of the same idea — reading an agent's
- * configuration, rewriting it, and knowing which tools this workspace actually
- * has. `agent_update` gates on the agent's ownership state through the one
+ * **Two sets, split by `identityDelegatedOnly`.** The Personal Assistant keeps
+ * the operational verbs on agents that already exist — `agent_list`,
+ * `agent_bind_channel`, `agent_trigger_create`. Designing an agent — creating
+ * one, reading its configuration in order to change it, knowing this
+ * workspace's tool catalogue, rewriting it, restyling it — belongs to the Agent
+ * Designer, which reaches these through its blueprint's `identityToolIds`; the
+ * PA hands the conversation over with `agent_handoff` instead. That is the
+ * whole isolation story: the design catalogue is large and belongs in one
+ * agent's context, and a person who asked their assistant for an agent lands in
+ * a conversation with the specialist rather than getting a thinner version of
+ * it. `agent_update` gates on the agent's ownership state through the one
  * shared `canEditAgent` predicate the PUT route uses, so a conversation and a
  * form cannot disagree about who may rewrite an agent.
  */
@@ -57,6 +64,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Create a shared agent with instructions and a tool policy.',
     label: 'Create Agent',
     personalAssistantOnly: true,
+    identityDelegatedOnly: true,
     description:
       'Create a new workspace-visible or private agent — a colleague with its own instructions, model, '
       + 'and tool policy — the same record the Agent Designer writes. The agent '
@@ -124,6 +132,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Read one agent’s full configuration.',
     label: 'Read Agent',
     personalAssistantOnly: true,
+    identityDelegatedOnly: true,
     description:
       'Read everything an agent is configured with — its instructions, model, '
       + 'effort, run limits, tool policy, ownership and visibility — before you '
@@ -147,6 +156,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Rewrite an existing agent’s configuration.',
     label: 'Update Agent',
     personalAssistantOnly: true,
+    identityDelegatedOnly: true,
     description:
       'Change an existing agent: its name, role, instructions, model, effort, '
       + 'run limits, or tool policy. Read it with agent_read first and send only '
@@ -218,6 +228,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'List the tools an agent can be given, with their policy keys.',
     label: 'Agent Tool Catalogue',
     personalAssistantOnly: true,
+    identityDelegatedOnly: true,
     description:
       'The live list of tools a designed agent can be given in this workspace: '
       + 'the built-in tools and the organisation’s connected apps, each with the '
@@ -243,6 +254,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Set or clear an agent’s portrait.',
     label: 'Update Agent Avatar',
     personalAssistantOnly: true,
+    identityDelegatedOnly: true,
     description:
       'Attach an already-stored image as an agent’s portrait, or clear the one '
       + 'it has. Follows the same edit authority as agent_update. Newly created '
@@ -277,7 +289,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'Organisation owners only, and only in a channel the owner is a member '
       + 'of; a Personal Assistant DM cannot take another agent. Use channel_find '
       + 'for the channelId, and agent_list for the agentId of an agent the user '
-      + 'named (agent_create returns the id of one you just made).',
+      + 'named.',
     parameters: {
       type: 'object',
       properties: {

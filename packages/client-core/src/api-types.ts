@@ -173,6 +173,12 @@ export type AgentRecord = {
   runLimits?: AgentRunLimits | null
   surfacePolicy?: 'shared' | 'dm_only'
   systemManaged?: boolean
+  /**
+   * The global-agent blueprint this row instantiates, when it is one. Read-only
+   * and server-written: it is how a client says "this is the Agent Designer"
+   * structurally instead of matching a display name.
+   */
+  systemSlug?: string | null
   todosEnabled: boolean
   status: AgentStatusResponse['status']
   systemPrompt?: string

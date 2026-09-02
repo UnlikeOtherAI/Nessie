@@ -1,4 +1,4 @@
-import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
+import { AGENT_DESIGNER_SLUG, type AgentEffort, type AgentRunLimits } from '@nessie/schemas'
 
 /**
  * Global agents — app-provided, instantiated per organisation.
@@ -123,7 +123,7 @@ const AGENT_DESIGNER_PROMPT = [
   'the content genuinely is a list.',
 ].join('\n')
 
-export const AGENT_DESIGNER_SLUG = 'agent-designer'
+export { AGENT_DESIGNER_SLUG }
 
 export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   slug: AGENT_DESIGNER_SLUG,

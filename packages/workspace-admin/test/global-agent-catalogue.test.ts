@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { AgentEffortSchema, AgentVisibilitySchema } from '@nessie/schemas'
-import type { AgentToolCatalog } from '@nessie/workspace-admin'
 
-import { buildGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
+import { buildGlobalAgentCatalogueBlock } from '../src/global-agent-catalogue.js'
+import type { AgentToolCatalog } from '../src/agent-tool-catalog.js'
 
 /**
  * The design catalogue renders from live definitions, never from prose somebody
@@ -25,7 +25,7 @@ const catalogue = (
       key: 'agent_create',
       kind: 'builtin',
       label: 'Create Agent',
-      restriction: 'personal_assistant_only',
+      restriction: 'built_in_specialist_only',
       summary: 'Create a shared agent.',
     },
   ],
@@ -57,8 +57,8 @@ const block = (overrides: Parameters<typeof buildGlobalAgentCatalogueBlock>[0] e
   : Partial<Parameters<typeof buildGlobalAgentCatalogueBlock>[0]> = {}) =>
   buildGlobalAgentCatalogueBlock({
     catalogue: catalogue(),
-    hasIdentityTools: true,
     models: null,
+    writeSurface: 'agent_tools',
     ...overrides,
   })
 
@@ -94,7 +94,7 @@ test('a tool added to the registry appears without touching the prompt', () => {
 
 test('tools nobody may grant are named with the reason, never offered', () => {
   const rendered = block()
-  assert.match(rendered, /agent_create — Personal Assistant only/)
+  assert.match(rendered, /agent_create — reserved for Nessie's built-in specialists/)
   assert.match(rendered, /not yours to grant/)
 })
 
@@ -133,10 +133,14 @@ test('an unreadable model catalogue says so rather than guessing', () => {
   assert.match(withModels, /kimi\/kimi-k2 — Kimi K2/)
 })
 
-test('the block states plainly whether this run can write agents', () => {
-  assert.match(block({ hasIdentityTools: true }), /You can create and change agents/)
+test('the block states plainly how this face of the Designer writes', () => {
+  assert.match(block({ writeSurface: 'agent_tools' }), /You can create and change agents/)
   assert.match(
-    block({ hasIdentityTools: false }),
+    block({ writeSurface: 'read_only' }),
     /cannot create or change agents in this conversation/,
   )
+  // The sidebar drives an unsaved form, so it must never claim an agent exists.
+  const form = block({ writeSurface: 'designer_form' })
+  assert.match(form, /filling in the form in front of the person/)
+  assert.match(form, /never say an agent has been created or changed/)
 })

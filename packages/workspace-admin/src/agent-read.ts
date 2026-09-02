@@ -1,10 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type {
-  AgentEffort,
-  AgentOwner,
-  AgentRecord,
-  AgentRunLimits,
-} from '@nessie/schemas'
+import type { AgentConfigProjectionRecord, AgentRecord } from '@nessie/schemas'
 
 import { findEntitledAgent, type AgentEntitlementScope } from './agent-list.js'
 
@@ -28,22 +23,12 @@ import { findEntitledAgent, type AgentEntitlementScope } from './agent-list.js'
  * Spec: docs/plans/2026-09-02-agent-designer-global-agent.md (D4, D7).
  */
 
-export type AgentConfigProjection = {
-  agentKind?: 'personal_assistant' | 'shared'
-  effort?: AgentEffort
-  id: string
-  model?: string
-  name: string
-  owner: AgentOwner | null
-  provider?: string
-  role: string
-  runLimits?: AgentRunLimits
-  systemManaged: boolean
-  systemPrompt?: string
-  todosEnabled: boolean
-  toolPolicy?: Record<string, boolean>
-  visibility: 'private' | 'workspace'
-}
+/**
+ * The configuration half, defined once as a contract (`@nessie/schemas`
+ * `AgentConfigProjectionSchema`) because the read-only detail view parses it on
+ * the wire and this function produces it.
+ */
+export type AgentConfigProjection = AgentConfigProjectionRecord
 
 export type AgentReadResult = {
   /**
