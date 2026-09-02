@@ -1,6 +1,6 @@
 # Global agents — the Agent Designer's mechanics
 
-The invariants live in `AGENTS.md` → "A global agent is a blueprint in code",
+The invariants live in [standards/global-agents.md](standards/global-agents.md),
 and the map entry in `CLAUDE.md` → "Global agents". This file holds the
 mechanics beyond both: what the Agent Designer's tools stand on, how its
 capability catalogue is generated, how `agent_handoff` delivers a briefing, and
