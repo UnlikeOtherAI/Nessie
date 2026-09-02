@@ -40,7 +40,7 @@ export const AgentScreenPanel = ({ sessionId, onClose }: AgentScreenPanelProps) 
     return (
       <div
         aria-label="Agent's screen"
-        className="fixed inset-0 z-[90] flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
+        className="fixed inset-0 z-[var(--layer-modal)] flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
         role="dialog"
       >
         <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
