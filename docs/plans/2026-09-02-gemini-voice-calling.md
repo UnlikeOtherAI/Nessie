@@ -2,12 +2,21 @@
 
 **Status: plan (2026-09-02). Nothing here is built yet.**
 
-Ondrej wants to *call* his Personal Assistant from an iPhone: real-time
-voice-to-voice, presented to iOS as a phone call — lock-screen call UI,
+Ondrej wants to *call* his Personal Assistant: real-time voice-to-voice,
+triggered by the existing call button in the top-right of the PA
+conversation header, on **every** client — the web admin included — and on
+iPhone presented to iOS as a phone call: lock-screen call UI,
 AirPods/Bluetooth routing, CarPlay, "Hey Siri, call my assistant". The Coder
 project (`/Volumes/External/Projects/Coder`, `ios/TalkIOS.swiftpm`) has a
 working implementation of exactly this shape against Gemini Live; this plan
 says what we port, what Nessie must do differently, and in what order.
+
+The credential model, confirmed: Ledger mints **temporary, one-use Gemini
+Live tokens** (it already ships this — see below), the client opens the
+Gemini WebSocket *directly* with that ephemeral token, and audio flows
+device↔Google. The deployment's main `LEDGER_PROXY_TOKEN` never leaves the
+server; the Nessie API is only the broker that asks Ledger for each
+ephemeral token on the authenticated user's behalf.
 
 One naming correction up front: the framework involved is **CallKit** (and
 App Intents for Siri initiation), not CoreTelephony. CoreTelephony is
@@ -161,7 +170,24 @@ credential. Amend the invariant deliberately, not by accident:
   session; it may hold the voice-scoped device token, which cannot reach
   any other route or channel.
 
-### 4. It lives in the Expo app as a local native module
+### 4. The web admin gets the same call — no CallKit, same everything else
+
+Because the ephemeral token is safe to hand to any authenticated client,
+the browser can hold the whole session too: the admin SPA opens the same
+Gemini Live WebSocket directly, captures the mic via
+`getUserMedia` + an `AudioWorklet` resampling to 16 kHz PCM, and plays the
+24 kHz response through WebAudio. Everything above the audio layer —
+`POST /api/voice/sessions` (ordinary session-cookie auth on web, no device
+token needed), the setup payload, rotation, the `pa_send` tool bridge, the
+usage relay — is byte-identical to the native path, so the protocol client
+is written once in TypeScript for the web (`admin/src/facades/voice/`) and
+once in Swift for the phone; the *server* contract is the single shared
+thing. Web "device id" is a per-browser-installation UUID in
+`localStorage`, HMAC'd server-side with the user id exactly like the native
+one, so each browser gets its own Ledger slot. The desktop Tauri shell gets
+this for free through the hosted admin.
+
+### 5. It lives in the Expo app as a local native module
 
 `mobile/` is a managed Expo app (SDK 55, dev-client already in use), so the
 Swift lives in a **local Expo module** (`mobile/modules/nessie-voice-call/`)
@@ -178,13 +204,17 @@ CallKit does not run meaningfully on the iOS simulator — device builds
 (`pnpm --filter @nessie/mobile build:device:ios`, existing EAS profile) are
 the verification path, per the repo's install-on-named-device build rule.
 
-### 5. What this is *not*
+### 6. What this is *not*
 
-- **Not a provider-linked call.** Nessie's existing `Call` domain mints
-  Google Meet/Jitsi links and rings channels. A PA voice session is a
-  different animal (one person, one agent, no external meeting URI) — it
-  gets its own small model rather than a fake row in `calls`, and the two
-  surfaces stay visually distinct so nobody expects teammates to join.
+- **Not a provider-linked call — but it *is* the same button.** Nessie's
+  existing `Call` domain mints Google Meet/Jitsi links and rings channels;
+  a PA voice session is a different animal (one person, one agent, no
+  external meeting URI) and gets its own small model rather than a fake row
+  in `calls`. The **surface** is shared per Rule zero: the channel header's
+  call button is one component, and on the `personal_assistant` system
+  channel it starts the Gemini voice call (a structural fact of the channel
+  kind, not a content heuristic), while every other channel keeps
+  provider-linked behaviour. No second look-alike phone glyph.
 - **Not touching `macos/`.** The OpenAI-Realtime companion stays as-is,
   architecturally separate. If it ever converges onto the Ledger Gemini
   path, that is its own plan.
@@ -193,9 +223,9 @@ the verification path, per the repo's install-on-named-device build rule.
 
 ## Rule zero — the doorways
 
-- **Home:** the PA conversation screen in the mobile app gets a call button
-  (phone glyph) in its header — the same place a person's thumb goes in any
-  messenger. That is the owning surface.
+- **Home:** the call button already in the top-right of the PA conversation
+  header — on web, mobile, and desktop alike — becomes the trigger. One
+  button, every client; no new glyph.
 - **In-context entries:** the App Shortcut ("Call my assistant with
   Nessie") for Siri/CarPlay/Shortcuts; `includesCallsInRecents` so redial
   works from the system Recents list.
@@ -212,16 +242,24 @@ endpoint grant to the production `LEDGER_PROXY_TOKEN`; confirm daily budget
 headroom for the per-device reservations. Sign off the two open decisions
 below.
 
-**Phase 1 — outgoing call, end to end**
+**Phase 1 — the server contract + the web call**
 API: `voice_sessions` table + the three routes (`sessions`, `usage`,
 `device-token`), Ledger relay through the existing signing seam, tests for
 the relay's idempotent usage sequencing and the scoped token's refusal of
-non-voice routes. Mobile: local Expo module with the ported
-`GeminiLiveClient` + `AgentCallCoordinator` + `AgentCallSession` seam;
-credential source swapped to the Nessie routes; `pa_send` tool + reply
-injection; call button on the PA screen; usage relay wired. Verify on a
-physical iPhone: place call, lock screen, AirPods, mute from lock screen,
-end from lock screen.
+non-voice routes. Admin: the PA channel's existing header call button
+starts a Gemini Live call in the browser (TypeScript protocol client,
+AudioWorklet capture, WebAudio playback, `pa_send` bridge, in-call popover
+with mute/end/transcript ticker). This lands the whole product loop with
+the fastest verification cycle (Playwright + a real browser mic session)
+before any native build is involved.
+
+**Phase 1b — the iPhone call**
+Mobile: local Expo module with the ported `GeminiLiveClient` +
+`AgentCallCoordinator` + `AgentCallSession` seam; credential source swapped
+to the Nessie routes; the same header call button in the mobile WebView
+hands off to native via the shell bridge so the call becomes a CallKit
+call. Verify on a physical iPhone: place call, lock screen, AirPods, mute
+from lock screen, end from lock screen.
 
 **Phase 2 — Siri, CarPlay, polish**
 App Intent + Shortcuts phrases; verify initiation and in-call UI in CarPlay
