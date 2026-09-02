@@ -492,6 +492,22 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
+- **A setting that exists at more than one level goes through the one cascade,
+  and a lock is visible where it binds.** `ScopedSetting` (`@nessie/runtime`
+  `scoped-settings.ts`) resolves organisation → team → person: the most
+  specific value wins, and the walk stops at the first level marked `locked`.
+  Cascading resolution was bespoke four times over before this (budgets, policy
+  rules, `Team.callProvider`, the cloud browser's hardcoded organisation-first
+  order), so a fifth hand-rolled ordering is the defect, not the pattern. A row
+  may carry a lock with no value, pinning whatever resolved above it — how a
+  setting whose value lives in its own table (cloud browser credentials) is
+  governed by this cascade rather than a second one.
+  `isLockedAbove` is the read-only condition — strictly above, so the locking
+  level still edits and a lock never binds upwards — and the surface greys the
+  control and names the level (`ScopedSettingGate`) instead of accepting an
+  edit the server would refuse. Scopes are the three people work in; projects
+  are walked past, not through. Plan:
+  `docs/plans/2026-09-03-scoped-settings.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

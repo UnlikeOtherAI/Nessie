@@ -124,3 +124,51 @@ looking at a setting must be able to tell which of these they are in:
 3. **The rest of the Account group.** Connected accounts, Secrets,
    Integrations and Statuses stay in the sidebar for now; folding them in is a
    second pass once the tab pattern is real.
+
+## 6. As built (2026-09-03)
+
+Shipped on `claude/settings-scopes`. Deltas from the sketch above:
+
+- **The store carries a lock without a value.** `ScopedSetting.value` is
+  nullable and a row may express only `locked`. That is what lets the cloud
+  browser — whose value is a credential row in its own table — be governed by
+  this cascade instead of a second one.
+- **`isLockedAbove` is strictly-above.** The level holding the lock still edits
+  it, and a lock never binds upwards. Four of the six resolver tests fail if the
+  lock is neutralized.
+- **The resolver lives in `@nessie/runtime`, not `@nessie/workspace-admin`** —
+  beside `budget.ts`, which is the existing cascade. `browser-cloud` needs it
+  and depends on runtime already; depending on workspace-admin would have
+  dragged `comms-google` and `agent-mail` into a small package.
+- **Scopes are three, and projects are walked past.** Structurally the tree is
+  Organisation → Project → Team; adding a project tier later is a scope value
+  and a resolver step.
+- **The cloud browser flipped precedence.** Most specific wins
+  (user > team > org) unless a level above locked `browser.connection`.
+  Connections gained a `team` scope; an unattended run may use it, because a
+  team account is shared, but still never a personal one.
+- **Team names are refused where UOA owns them.** `PATCH /api/teams/:id`
+  answers `TEAM_NAME_OWNED_BY_IDP` when `externalWorkspaceId` is set; a local
+  install with no IdP may rename. Writing the mirror would have been the second
+  copy of the org structure the SSO invariant forbids.
+- **Surfaces.** `/settings/account` (Profile · Agents · Notifications ·
+  Appearance · Security), `/settings/team` (Profile · Agents),
+  `/settings/organization` (Profile · Agents). The sidebar reads User → Team →
+  Organization, the order the cascade resolves in. Old routes redirect to their
+  tab.
+- **Conversational agent setup is no longer a gate**: the column, its route,
+  its schema and all four readers are gone.
+
+### Not done
+
+- **The Browserbase listing in `/apps`.** The store's Connect flow is
+  `createInstance` → probe → `startOAuth`, which is wrong for a first-party
+  capability that is not MCP at all and is configured by an API key at three
+  scopes. It needs a "configure in settings" affordance in the presenter and
+  the detail page — a real addition to the store, not a seed row. The listing
+  should then deep-link to the scope's settings tab.
+- **End-to-end verification of the new API routes.** The admin was verified
+  against a live dev server; the API on 5454 belongs to another worktree, so
+  `/api/settings/scoped`, the team-scoped connect, and the rename refusal are
+  covered by types, unit tests and a clean-database migration apply, not by a
+  round trip.
