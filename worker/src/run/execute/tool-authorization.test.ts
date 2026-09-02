@@ -301,6 +301,7 @@ const runLoop = async (input: {
       checkBudgetBlocked: async () => false,
       deepWaterHandoffGuard: quietGuard(),
       executorToolset,
+      identityToolIds: new Set<string>(),
       initialMessages: [{ content: 'go', role: 'user' }],
       inference: {
         consumeStreamedFlag: () => false,

@@ -202,23 +202,49 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   config is not authority. Its home is a per-user private DM keyed
   `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
   its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
-  and held to exactly its encoded member by the deferred home-membership
-  trigger, whose `gagent:` arm reads the owner at **segment 4** where an
-  `agent:` key carries it at segment 3. Sole membership is not decoration: it is
+  and held to exactly its encoded member (owner at **segment 4**) by the
+  deferred home-membership trigger. Sole membership is not decoration: it is
   what makes `effectiveUserId = poster` and the orchestrator's single-candidate
   fast path safe, so it must hold at rest. Three refusals keep that true — no
   agent binds into ANY system channel (`bindAgentToChannel`, both routes, the PA
   tool; `canManageChannel` likewise refuses to rename, archive or re-member
   one), `createAgentTrigger` refuses a `systemSlug` target because a scheduled
-  run re-arms its creator's identity, and the worker's
-  `assertGlobalAgentRunPlacement` admits only the agent's own home DM before any
-  inference (trigger threads deliberately excluded, unlike the private-agent
-  rule). Reachability is the point of the tier: `listAgentsForUser`'s
-  `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
-  longer channel-gated, because an app-provided agent nobody can find is the
-  unreachable-capability defect Rule zero names. Details: `CLAUDE.md` → "Global
+  run re-arms its creator's identity, and `assertGlobalAgentRunPlacement` admits
+  only the agent's own home DM before any inference (trigger threads
+  deliberately excluded, unlike the private-agent rule). Reachability is the
+  point of the tier: `listAgentsForUser`'s `includeSystemManaged` arm is
+  `{ organizationId, systemManaged: true }` and no longer channel-gated, because
+  an app-provided agent nobody can find is the unreachable-capability defect
+  Rule zero names. Details: `CLAUDE.md` → "Global
   agents"; spec:
   `docs/plans/2026-09-02-agent-designer-global-agent.md`.
+- **"This run delegates to its requesting person" is ONE predicate, and the
+  identity-tool gate widens by exactly one arm.** The worker keyed delegation on
+  `agentKind === 'personal_assistant'` in five places (memory scopes, realtime
+  narrowing, reply attribution, the trigger binding waiver, the acting-member
+  helpers) because the PA was the only delegate. A global agent is
+  `agentKind: 'shared'` and delegates just as completely, so all five would have
+  treated it as an ordinary shared agent with no failing check anywhere.
+  `runDelegatesToRequestingPerson` (`worker/src/run/delegated-identity.ts`) is
+  the one answer: the PA in its own DM, or a `home: 'per_user_dm'` blueprint in
+  its own home DM, from agent kind + `systemSlug` → blueprint + the destination's
+  `systemChannelType`/`dmKey`, never content. It is surface-keyed on both arms,
+  because a PA presence in a shared room still carries its owner's identity: the
+  exemptions key on the surface, never the kind. Memory containment and realtime
+  narrowing moved onto it and placement shares its home-surface half; reply
+  re-attribution and the two *binding* waivers stay PA-only, a global agent being
+  genuinely bound to one channel. `personalAssistantOnly` gains one arm beside the
+  PA's: the blueprint's `identityToolIds` lists that id, the run is on the agent's
+  own home DM, and `payload.interactive === true` with a live human requester
+  whose id equals the stamped `effectiveUserId` — resolved **once** at run setup
+  by `resolveIdentityDelegatedToolIds` and passed to BOTH `resolveAgentTools`
+  (the schema omits them, never offer-then-deny) and `authorizeToolCall` (a
+  stale schema cannot be exercised), never to a delegate sub-agent. **Two locks
+  on triggers**: `createAgentTrigger` refuses a `systemSlug` target, governing
+  what can be *created*; the interactive arm governs what may be *exercised*,
+  including by a row predating it: remove either and an unattended run
+  reconstructing an absent creator's `effectiveUserId` creates agents and
+  channels as that person. Delegated reads it opens feed the disclosure sink.
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and

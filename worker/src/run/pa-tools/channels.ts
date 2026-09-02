@@ -16,6 +16,7 @@ import {
   buildVisibleChannelWhere,
   requireActingUserId,
 } from './access.js'
+import { recordChannelDirectoryRead } from './message-search-basis.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
 // The shared writes answer with the flat channel record; the assistant's
@@ -56,6 +57,10 @@ export const runChannelListTool = async (
     },
     take,
   })
+
+  // Provenance: the non-public channels among these were reachable only through
+  // the acting person's own memberships.
+  recordChannelDirectoryRead(context, channels)
 
   const lines = channels.map((channel, index) =>
     `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`
@@ -114,6 +119,10 @@ export const runChannelFindTool = async (
       !scopedTarget
       || toChannelSlug(channel.team?.project.name ?? '') === scopedTarget.projectSlug,
   )
+
+  // Same obligation as `channel_list`: a match found through the person's own
+  // membership in a non-public channel is scoped material.
+  recordChannelDirectoryRead(context, channels)
 
   const lines = channels.map(
     (channel) =>

@@ -1,7 +1,7 @@
 # The Agent Designer — the first global agent
 
-**Status:** phase 1 (Foundation) implemented 2026-09-02; phases 0 and 2–4
-remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
+**Status:** phase 1 (Foundation) and phase 2a (the identity-delegation
+backbone) implemented 2026-09-02; phases 0, 2b and 3–4 remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
 code-aware reviews (see "Cross-model review"); every adopted finding was
 re-verified against code first.
 **Date:** 2026-09-02
@@ -717,21 +717,62 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
    (`auth-login` ×2, `auth-core`) and user provisioning (`users.ts`), wrapped
    best-effort so a blueprint fault can never fail a login.
 
-   **Deferred out of phase 1, deliberately:** the Designer has no
-   identity-delegated tools and no generated capability catalogue (D3/D5,
-   phase 2) — its prompt says plainly that it advises rather than creates;
-   `identityToolIds` is declared and consumed by nothing; no avatar *image* is
+   **Deferred out of phase 1, deliberately** (the first two landed in phase 2a
+   below): the Designer had no identity-delegated tools and no generated
+   capability catalogue (D3/D5) — its prompt said plainly that it advises
+   rather than creates, and `identityToolIds` was declared and consumed by
+   nothing; no avatar *image* is
    generated at bootstrap (a billed call), only a stable
    `avatarBackgroundColor`, with image generation left to the PA's own lazy,
    owner-triggered pattern; the read-only global detail view stays phase 4.
-2. **The Designer at work.** D3 gate arm + surface/interactive plumbing +
-   the delegation-predicate re-key (each listed site); new tools
-   `agent_read`, `agent_update`, `agent_tool_catalog`,
-   `agent_avatar_update` (shared functions + re-exports; member-safe
-   catalogue projection; sink obligations on all delegated reads); shared
-   avatar-generation seam for `agent_create`; generated capability-catalogue
-   prompt block; persona; card-driven collection (no-wait default). Verify
-   end-to-end: describe → question → card → create → home DM link.
+2. **The Designer at work.**
+   **2a — identity-delegation backbone, implemented 2026-09-02.** One shared
+   predicate, `runDelegatesToRequestingPerson`
+   (`worker/src/run/delegated-identity.ts`): the PA inside its own DM, or a
+   `home: 'per_user_dm'` blueprint inside its own home DM, derived from agent
+   kind + `systemSlug` → blueprint + the destination's `systemChannelType` and
+   `dmKey`. Beside it, `agentActsAsRequestingPerson` (the identity half, no
+   surface condition), `isGlobalAgentHomeSurface` (the surface half, now shared
+   with `assertGlobalAgentRunPlacement`), `isDelegatedSystemDmChannelType` (the
+   channel-type-only half, mirroring the api helper, now backing
+   `isSingleAgentSystemDm` and `buildRealtimeScopesForChannel`),
+   `resolveDelegatedRequesterUserId` and `resolveIdentityDelegatedToolIds`.
+   The `personalAssistantOnly` gate takes exactly one new arm — blueprint
+   declares the id AND own home DM AND `payload.interactive === true` with a
+   live human requester equal to the stamped `effectiveUserId` — resolved once
+   at run setup and threaded into **both** `resolveAgentTools` (omit, never
+   offer-then-deny) and `authorizeToolCall`, never into a delegate sub-agent.
+   The interactive arm is the second of two locks with phase 1's
+   `createAgentTrigger` refusal: that one governs what can be created, this one
+   what may be exercised. Re-keyed sites: `execute/memory.ts` (containment
+   exemption + scope-resolution mode) and `execute/scopes.ts` (org/agent lanes
+   withheld from a `system_agent` DM, matching the orchestrator's already-general
+   `isSingleAgentSystemDm`). Deliberately still PA-keyed, each with a comment
+   saying why: `execute/completion.ts` (inside its own DM the reply stays
+   assistant-authored — a design conversation must render as the Designer's
+   words), `control/trigger-run.ts` and `schedule_task`'s
+   `isDelegatingPersonalAssistant` (both waive a *binding* check, and a global
+   agent is genuinely bound to exactly one channel), and
+   `resolveAccessibleChannelIds` (a global agent falls to `user_shared`, which
+   is narrower, never wider — widening belongs with the tools that need it).
+   `pa-tools/access.ts`'s `resolveEffectiveUserId` / `requireActingUserId` /
+   `resolveActingMember` were verified correct unchanged: they read
+   `effectiveUserId`, which the message-create route stamps for every delegated
+   system DM. Delegated reads now feed the sink —
+   `recordChannelDirectoryRead` on `channel_list` / `channel_find` and on
+   `agent_list`'s bound-channel labels, `recordVisibleAgentRead` for private
+   agents (workspace rows deliberately unstamped: `agent:<id>` is the shared
+   visibility predicate and an org owner's list exceeds it, so stamping would
+   withhold the Designer's answer from the only reader of the DM). The
+   blueprint declares its five identity tools in `identityToolIds` and states
+   them in `toolPolicy`, and its prompt no longer says it can only advise.
+   **2b — the rest.** New tools `agent_read`, `agent_update`,
+   `agent_tool_catalog`, `agent_avatar_update` (shared functions + re-exports;
+   member-safe catalogue projection; sink obligations on their reads too);
+   shared avatar-generation seam for `agent_create`; generated
+   capability-catalogue prompt block; persona; card-driven collection (no-wait
+   default). Verify end-to-end: describe → question → card → create → home DM
+   link.
 3. **Handoff.** `agent_handoff` builtin (requester-keyed, loop-bounded,
    slot-claimed, hidden-system brief, basis subtraction) + origin doorway
    message + routing prompt block for all non-designer agents.

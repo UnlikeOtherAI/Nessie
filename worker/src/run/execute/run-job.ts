@@ -461,6 +461,7 @@ export const executeRunJob = async (
       checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload, {
         subscriptionPinned: subscriptionBinding !== null,
       }),
+      identityToolIds: setup.identityToolIds,
       inference,
       isHandoffTurn: handoffLocator !== null,
       initialMessages: setup.initialMessages,

@@ -181,6 +181,17 @@ export const queueTriggerRun = async (
   // is NOT exempt from the membership re-check: a PA's reach is its owner's
   // reach, so if the owner has since lost access to a private target channel
   // the trigger must not fire and load that channel's conversation.
+  //
+  // DELIBERATELY STILL PA-KEYED, not moved onto the shared delegation
+  // predicate. What is exempted here is the binding lookup, and a DM-homed
+  // global agent is genuinely bound: bootstrap writes exactly one
+  // `AgentBinding` into its home DM. So it needs no exemption, and granting it
+  // one would let a leftover trigger row fire into a channel the agent is not
+  // bound to. v1 global agents own no automation at all — `createAgentTrigger`
+  // refuses a `systemSlug` target — and a row that predates that refusal is
+  // stopped twice more downstream: `assertGlobalAgentRunPlacement` refuses any
+  // destination but the home DM, and the identity-tool gate admits nothing on a
+  // run that is not an interactive human turn.
   const isPersonalAssistantTrigger =
     input.trigger.agent.agentKind === 'personal_assistant'
   const existingDelivery = input.dedupeKey

@@ -16,8 +16,17 @@ export type ChannelAgent = {
 
 // The user this run acts on behalf of: the actor itself for an interactive
 // (user-actor) run, or the delegated effectiveUserId when an agent acts for a
-// user (the personal assistant acting for its owner). Null when there is no
-// user to act as.
+// user (the personal assistant acting for its owner, or a DM-homed global
+// agent acting for the sole member of its home DM). Null when there is no user
+// to act as.
+//
+// VERIFIED CORRECT FOR GLOBAL AGENTS AS WRITTEN — no re-keying needed. This
+// resolves from `effectiveUserId`, which the message-create route stamps for
+// every delegated system DM (`isDelegatedSystemDmChannelType`), not from
+// `agentKind`. `requireActingUserId` and `resolveActingMember` build on it, so
+// the Agent Designer's identity tools already act as the person whose home DM
+// they are running in, and `resolveActingMember` still re-reads that person's
+// live `OrganizationMember` role at call time.
 export const resolveEffectiveUserId = (
   context: BuiltinToolRuntimeContext,
 ): string | null =>
@@ -31,6 +40,11 @@ export const resolveEffectiveUserId = (
 // reach is still the owner's own reach (public + member channels) — being a
 // delegate exempts it from the binding gate, not from the owner's visibility.
 // True only when this run is the PA and it has an owner to act as.
+//
+// DELIBERATELY STILL PA-KEYED. Its one consumer (`schedule_task`) uses it to
+// waive the *binding* check on a cross-channel target, and a DM-homed global
+// agent is genuinely bound — to exactly one channel, its own home DM. Waiving
+// the check for it would let it schedule posts into rooms it is not in.
 export const isDelegatingPersonalAssistant = (
   context: BuiltinToolRuntimeContext,
 ): boolean =>
@@ -147,6 +161,15 @@ export const buildVisibleChannelWhere = (
 // The set of channels an agent run may search past conversations in. Shares
 // the exact access model used for curated-memory recall, so search can never
 // return a conversation outside what the agent (or its acting user) can access.
+//
+// DELIBERATELY STILL PA-KEYED, and it fails closed rather than open. A DM-homed
+// global agent lands in `user_shared`, which intersects its own bindings (one:
+// its home DM) with the person's reach — so conversation search returns
+// essentially nothing for it. That is narrower than the delegation premise
+// would allow, never wider, and none of the tools this phase opens
+// (`agent_list`, `agent_create`, `agent_bind_channel`, `agent_trigger_create`,
+// `channel_create`) reads through here. Widening it is a decision to take with
+// the tools that need it, not a side effect of the identity gate.
 export const resolveAccessibleChannelIds = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<string[]> => {
