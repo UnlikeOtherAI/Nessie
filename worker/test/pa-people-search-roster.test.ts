@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
@@ -16,12 +17,18 @@ const CHANNEL_ID = '20000000-0000-4000-8000-000000000003'
 const USER_ID = '20000000-0000-4000-8000-000000000004'
 const EXTERNAL_ORG_ID = 'org_acme'
 const EXTERNAL_TEAM_ID = 'team_design'
+const uoaPrivateKeyPem = String(
+  crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+    format: 'pem',
+    type: 'pkcs8',
+  }),
+)
 
 const uoaEnv = {
   UOA_BASE_URL: 'https://uoa.test',
   UOA_CLIENT_SECRET: 'test-client-secret',
   UOA_CONFIG_JWT_KID: 'test-kid',
-  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
+  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(uoaPrivateKeyPem).toString('base64'),
   UOA_CONFIG_URL: 'https://nessie.test/uoa/config.jwt',
   UOA_DOMAIN: 'nessie.test',
   UOA_JWKS_URL: 'https://nessie.test/.well-known/jwks.json',
@@ -99,7 +106,15 @@ const makeContext = (prisma: PrismaClient): BuiltinToolRuntimeContext =>
     actorContext: {
       actor: { actorId: USER_ID, actorType: 'user', roles: ['member'] },
       tenant: { organizationId: ORGANIZATION_ID },
-      actionContext: { requestId: 'req-people-search' },
+      actionContext: {
+        requestId: 'req-people-search',
+        uoaIdentity: {
+          organizationId: EXTERNAL_ORG_ID,
+          subject: 'usr_ada',
+          teamId: EXTERNAL_TEAM_ID,
+          tokenVersion: 7,
+        },
+      },
     },
     channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID },
     prisma,

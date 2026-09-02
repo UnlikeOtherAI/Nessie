@@ -4,6 +4,29 @@ import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
 import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
 import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
+  runGmailSearchTool,
+  runGmailThreadReadTool,
+  runGmailMessageReadTool,
+  runGmailDraftCreateTool,
+  runGmailDraftUpdateTool,
+} from './pa-tools/gmail-tools.js'
+import { runGmailDraftSendTool } from './pa-tools/gmail-send-tool.js'
+import {
+  runGmailLabelsListTool,
+  runGmailOrganiseTool,
+  runGmailAttachmentReadTool,
+  runContactsSearchTool,
+  runCalendarEventRespondTool,
+} from './pa-tools/gmail-organise-tools.js'
+import {
+  runCalendarListTool,
+  runCalendarEventsListTool,
+  runCalendarFreeBusyTool,
+  runCalendarEventCreateTool,
+  runCalendarEventUpdateTool,
+  runCalendarEventCancelTool,
+} from './pa-tools/calendar-tools.js'
+import {
   runAppConnectRequestTool,
   runAppSearchTool,
   runCardPostTool,
@@ -44,6 +67,7 @@ import {
   runEmailReadTool,
   runEmailSendTool,
 } from './pa-tools.js'
+import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
 import { executorManagementTool } from './pa-tools/executor-dispatch.js'
 import {
@@ -148,6 +172,8 @@ const executeBuiltinToolUncorrected = async (
   if (executorTool) return wrapTool(inputSummary, executorTool)
   const connectorTool = connectorManagementTool(toolName, args, context)
   if (connectorTool) return wrapTool(inputSummary, connectorTool)
+  const browserResult = cloudBrowserTool(toolName, args, context)
+  if (browserResult) return browserResult
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
   if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {
@@ -408,6 +434,40 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runMeetingLinkCreateTool(context, args))
     case 'call_start':
       return wrapTool(inputSummary, () => runCallStartTool(context, args))
+    case 'gmail_search':
+      return wrapTool(inputSummary, () => runGmailSearchTool(context, args))
+    case 'gmail_thread_read':
+      return wrapTool(inputSummary, () => runGmailThreadReadTool(context, args))
+    case 'gmail_message_read':
+      return wrapTool(inputSummary, () => runGmailMessageReadTool(context, args))
+    case 'gmail_draft_create':
+      return wrapTool(inputSummary, () => runGmailDraftCreateTool(context, args))
+    case 'gmail_draft_update':
+      return wrapTool(inputSummary, () => runGmailDraftUpdateTool(context, args))
+    case 'gmail_draft_send':
+      return wrapTool(inputSummary, () => runGmailDraftSendTool(context, args))
+    case 'calendar_list':
+      return wrapTool(inputSummary, () => runCalendarListTool(context, args))
+    case 'calendar_events_list':
+      return wrapTool(inputSummary, () => runCalendarEventsListTool(context, args))
+    case 'calendar_freebusy':
+      return wrapTool(inputSummary, () => runCalendarFreeBusyTool(context, args))
+    case 'calendar_event_create':
+      return wrapTool(inputSummary, () => runCalendarEventCreateTool(context, args))
+    case 'calendar_event_update':
+      return wrapTool(inputSummary, () => runCalendarEventUpdateTool(context, args))
+    case 'calendar_event_cancel':
+      return wrapTool(inputSummary, () => runCalendarEventCancelTool(context, args))
+    case 'calendar_event_respond':
+      return wrapTool(inputSummary, () => runCalendarEventRespondTool(context, args))
+    case 'gmail_labels_list':
+      return wrapTool(inputSummary, () => runGmailLabelsListTool(context, args))
+    case 'gmail_organise':
+      return wrapTool(inputSummary, () => runGmailOrganiseTool(context, args))
+    case 'gmail_attachment_read':
+      return wrapTool(inputSummary, () => runGmailAttachmentReadTool(context, args))
+    case 'contacts_search':
+      return wrapTool(inputSummary, () => runContactsSearchTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

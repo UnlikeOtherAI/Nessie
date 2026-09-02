@@ -327,6 +327,7 @@ export const streamDesignerChat = async (
         input.formState,
         input.availableTools,
         input.availableModels,
+        input.pageContext,
       ),
     },
     ...input.messages.map((m) => ({

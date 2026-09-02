@@ -10,11 +10,11 @@ shared edge proxy (Caddy) and joining the shared Docker networks that already
 host other apps on that box. TLS is automatic via Caddy + Let's Encrypt. DNS is
 Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 
-| Component | URL | Container | Network(s) |
-|-----------|-----|-----------|------------|
-| Public holding page | `https://nessie.works` | `nessie-web` (nginx) | `edge` |
-| Admin SPA | `https://app.nessie.works` | `nessie-admin` (nginx) | `edge` |
-| API (REST + WS) | `https://api.nessie.works` | `nessie-api` (Fastify, 5554) | `edge`, `db` |
+| Component | URL | Container / DNS alias | Network(s) |
+|-----------|-----|-----------------------|------------|
+| Public holding page | `https://nessie.works` | `nessie-web` (nginx; alias, blue-green) | `edge` |
+| Admin SPA | `https://app.nessie.works` | `nessie-admin` (nginx; alias, blue-green) | `edge` |
+| API (REST + WS) | `https://api.nessie.works` | `nessie-api` (Fastify, 5554; alias, blue-green) | `edge`, `db` |
 | Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
@@ -69,6 +69,27 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
   `0`, so forwarded client IP headers are ignored.
+
+### Personal model subscriptions vault
+
+Personal model subscriptions (a person's own Kimi/GLM plan powering the agents
+they own) keep their token bundles in a **dedicated, separately-ACLed Infisical
+project** — never the shared `/nessie/<org>/personal/<user>` partition, which
+also holds a person's ordinary captured secrets and would hand any identity
+scoped to it every one of them.
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `NESSIE_SUBSCRIPTION_VAULT_API_URL` | yes | Infisical API origin (HTTPS only). |
+| `NESSIE_SUBSCRIPTION_VAULT_TOKEN` | yes | Machine-identity token scoped to the subscriptions project only. |
+| `NESSIE_SUBSCRIPTION_VAULT_PROJECT_ID` | yes | The dedicated project id. |
+| `NESSIE_SUBSCRIPTION_VAULT_ENVIRONMENT` | no | Defaults to `prod`. |
+
+Both the API and the **worker** need these: inference runs in the worker, so it
+holds its own machine identity for this project (the executor and agent
+sandboxes still receive nothing). With any of the three unset, the feature is
+simply unavailable — `/settings/connections` says so and linking is refused;
+there is deliberately no PostgreSQL fallback.
 
 ### Infisical vault
 
@@ -180,11 +201,11 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 6. **First owner account** — Nessie runs in `selfHosted` mode with no users, so
    the API prints a one-time bootstrap URL on startup:
    ```sh
-   docker logs nessie-api 2>&1 | grep bootstrap
+   docker compose -f infrastructure/compose/docker-compose.prod.yml logs api 2>&1 | grep bootstrap
    ```
    Open `https://app.nessie.works/bootstrap?token=<token>` and create the
-   owner account. The token has a 15-minute TTL; restart `nessie-api` to mint a
-   fresh one.
+   owner account. The token has a 15-minute TTL; restart the `api` service to
+   mint a fresh one.
 
 ### Granting the first super-admin
 
@@ -294,8 +315,51 @@ data live in named Docker volumes outside the synced tree.
 
 **Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
 host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
-migrations, recreates the API/worker/admin containers). Postgres and its volume
-are untouched.
+migrations, rolls the containers). Postgres and its volume are untouched.
+
+### Zero-downtime rollout (health-gated blue-green swap)
+
+`redeploy.sh` does **not** stop-then-start the public-facing services. For
+`api`, `admin`, and `web` it scales the Compose service to a second replica
+built from the just-built image, polls the new container's Docker healthcheck
+(`start_interval: 3s` during startup, so readiness is detected within seconds
+of the API actually serving), and only after it reports **healthy** retires the
+old replica — first disconnecting it from the `edge` network so its Docker DNS
+record disappears and Caddy dials only the new one, then stopping and removing
+it. Caddy targets the pinned network aliases `nessie-api` / `nessie-admin` /
+`nessie-web` (declared in `docker-compose.prod.yml`), which every replica
+carries, so the edge proxy config never changes across deploys.
+
+Consequences worth knowing:
+
+- **A broken image cannot take the site down.** If the new replica never goes
+  healthy, `rollout()` removes it, the old container keeps serving, and the
+  script (and the Deploy workflow) fails red with the new container's logs.
+- The script ends with a **public-endpoint gate** — it curls
+  `https://api.nessie.works/api/health`, `https://app.nessie.works/`, and
+  `https://nessie.works/` through Caddy and exits non-zero on any failure, so
+  a green deploy now proves the site is actually up (previously a dead API
+  could deploy "green" silently).
+- These services have **no fixed `container_name`** (a pinned name cannot
+  scale to two replicas); Compose names them `compose-api-1`-style. Use
+  `docker compose -f infrastructure/compose/docker-compose.prod.yml logs api`
+  rather than `docker logs nessie-api`. `nessie-postgres`, `nessie-minio`, and
+  `nessie-worker` keep their fixed names — they are never blue-greened (the
+  worker is recreated in place; queued work waits out the gap).
+- `redeploy.sh` takes a host-wide `flock` on `/var/lock/nessie-redeploy.lock`
+  (30-min wait), so an out-of-band manual run cannot interleave with a Deploy
+  workflow run. The workflow additionally serializes its own runs through the
+  `deploy-production` GitHub concurrency group; queued runs it shows as
+  "cancelled" were subsumed by a newer run that deploys their commits too.
+- Migrations still run **before** the swap, while the old API is serving, so a
+  schema change must remain compatible with the previous code for the length
+  of the build+swap window (this was already true of the old recreate flow).
+- In-flight SSE/WebSocket streams to the old API replica break at retirement;
+  the admin's stream-retry/refetch paths reconnect to the new one.
+- Optional hardening: the nessie site blocks in `/srv/infra/caddy/Caddyfile`
+  can carry `lb_try_duration 10s` / `lb_try_interval 250ms` inside their
+  `reverse_proxy` blocks so Caddy re-dials across the swap instant instead of
+  surfacing a rare 502 to whoever hits it at exactly that moment.
 
 `redeploy.sh` also checks for an interrupted
 `20260613100000_channel_project_slugs` migration and marks that failed attempt as
@@ -406,8 +470,13 @@ rejecting connections — which also blocks `prisma migrate deploy`). Mitigation
 now in place:
 
 - `redeploy.sh` waits for Postgres to accept connections (`pg_isready`) before
-  migrating, and after recreate prunes build cache older than 48h
-  (`docker builder prune -f --filter until=48h`) plus dangling images.
+  migrating, and bounds the build cache to a fixed budget before and after
+  building (`docker builder prune -f --keep-storage 40GB`) plus dangling
+  images. It deliberately does **not** wipe the cache (`-af`): that forced a
+  full from-scratch rebuild on every deploy, which — combined with Compose
+  building api/admin/web in parallel — drove the 8-core host to load ~340 with
+  0% idle and made the live site time out while deploys built. The script also
+  builds the three images sequentially for the same reason.
 - If the disk fills anyway, the safe manual reclaim (does **not** touch named
   volumes / running images): `docker builder prune -af` (build cache, 0 active)
   then `docker image prune -f` (dangling only). Avoid `image prune -a` and

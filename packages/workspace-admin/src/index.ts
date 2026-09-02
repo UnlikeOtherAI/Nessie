@@ -12,6 +12,8 @@ export * from './agent-bindings.js'
 export * from './agent-create.js'
 export * from './agent-list.js'
 export * from './agent-model-order.js'
+export * from './agent-model-options.js'
+export * from './agent-model-selection.js'
 export * from './agent-record.js'
 export * from './agent-card-presentation.js'
 export * from './agent-card-values.js'
@@ -72,3 +74,36 @@ export {
   type MailboxRefusal,
   type UpdateMailboxInput,
 } from './agent-mailbox.js'
+
+export {
+  GmailDraftError,
+  composeDraftForUser,
+  updateDraftForUser,
+  readDraftForUser,
+  sendDraftForUser,
+  dispatchClaimedDraft,
+  undoHeldSend,
+  discardDraftForUser,
+  attachDraftMessage,
+  fingerprintDraft,
+  type GmailDraftActionRecord,
+  type GmailDraftDeps,
+  type GmailDraftErrorCode,
+  type SendDraftResult,
+} from './gmail-drafts.js'
+
+export {
+  SEND_GRANT_DURATIONS,
+  expiryForSendGrant,
+  hasStandingSendAuthorization,
+  grantSendAuthorization,
+  revokeSendAuthorization,
+  listSendAuthorizations,
+  resolveStandingConsentForToolCall,
+  loadLiveSendGrant,
+  recordSendDecision,
+  type LiveSendGrant,
+  type StandingConsentDecision,
+  type SendGrantDuration,
+  type SendGrantRecord,
+} from './send-authorization.js'

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { STRUCTURALLY_APPROVAL_GATED_TOOL_IDS } from '@nessie/runtime'
 import { parseAgentId, type RunExecuteJobPayload } from '@nessie/schemas'
 import type { InvocationRecord } from '@nessie/runtime'
 
@@ -28,7 +29,7 @@ export const prepareApprovalSuspend = async (
   deps: ExecutionDependencies,
   context: RunContext,
   input: {
-    approval: { id: string; toolName: string }
+    approval: { id: string; notice: string; toolName: string }
     goal: string
     inference: RunInference
     invocationSink: InvocationRecord[]
@@ -50,7 +51,7 @@ export const prepareApprovalSuspend = async (
   return {
     approvalId: input.approval.id,
     checkpointId,
-    notice: `⚠️ I need approval before I can run ${input.approval.toolName}.`,
+    notice: input.approval.notice,
     toolName: input.approval.toolName,
   }
 }
@@ -60,6 +61,42 @@ export const prepareApprovalSuspend = async (
  * keeps the thread slot and working marker held until an approval exit chooses
  * the next run.
  */
+/**
+ * One durable alert per approval, for the exact person who must resolve it.
+ *
+ * Best-effort: a failed alert must never lose the suspension itself, which is
+ * the part that keeps the action from happening. Uniqueness comes from the
+ * existing `(user_id, event_key)` constraint, so a redelivered job cannot
+ * double-alert.
+ */
+const raiseApprovalAlert = async (
+  deps: ExecutionDependencies,
+  input: {
+    approvalId: string
+    channelId: string
+    organizationId: string
+    toolName: string
+    userId: string | null
+  },
+): Promise<void> => {
+  if (!input.userId) return
+  if (!STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)) return
+  try {
+    await deps.prisma.userAlert.create({
+      data: {
+        approvalRequestId: input.approvalId,
+        channelId: input.channelId,
+        eventKey: `approval:${input.approvalId}`,
+        kind: 'approval_requested',
+        organizationId: input.organizationId,
+        userId: input.userId,
+      },
+    })
+  } catch (error) {
+    console.error('[worker.approval-alert] could not raise alert', input.approvalId, error)
+  }
+}
+
 export const suspendRunForApproval = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -69,6 +106,18 @@ export const suspendRunForApproval = async (
     responseText: string
   },
 ): Promise<void> => {
+  // A suspension notice for a mailbox action must carry the acting person's
+  // basis explicitly. The gate fires BEFORE the handler runs, so nothing has
+  // fed the run's consumed-source sink yet — and an empty basis means
+  // unrestricted, which would post "your assistant wants to send an email" and
+  // the approval affordance into whatever room the run is answering in.
+  if (STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)) {
+    const actingUserId = payload.actorContext.actionContext.effectiveUserId
+    if (actingUserId) {
+      context.consumedSources?.add({ scopeType: 'user', scopeId: actingUserId })
+    }
+  }
+
   const content = input.responseText.trim()
     ? `${input.responseText}\n\n${input.notice}`
     : input.notice
@@ -84,6 +133,18 @@ export const suspendRunForApproval = async (
       },
     } as Prisma.InputJsonValue,
   })
+  // The card is only seen by somebody already looking at the thread. A mailbox
+  // approval raised by a schedule at 06:00 needs the bell, or it expires
+  // unseen — the failure the plan named and the reason this is durable rather
+  // than push-only.
+  await raiseApprovalAlert(deps, {
+    approvalId: input.approvalId,
+    channelId: context.channel.id,
+    organizationId: context.channel.organizationId,
+    toolName: input.toolName,
+    userId: payload.actorContext.actionContext.effectiveUserId ?? null,
+  })
+
   await applySuspendedState(deps, payload, context, {
     agentStatus: 'waiting_approval',
     invocations: input.invocations,

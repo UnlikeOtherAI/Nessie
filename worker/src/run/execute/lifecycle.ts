@@ -3,6 +3,7 @@ import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
 import { parseAgentRunLimits } from '../run-budget.js'
 import type { PgRealtimeTransport } from '@nessie/runtime'
+import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
@@ -53,6 +54,9 @@ export const updateRunStatus = async (
       where: { id: runId },
     })
     await releaseAgentTodosForTerminalRun(prisma, runId)
+    // Browser-hours are money, so this sits above the trigger-message
+    // early-return: a run with no trigger message still opened a real browser.
+    await releaseRunCloudBrowsers(runId)
     if (!run?.triggerMessageId) return
     await clearWorking(prisma, transport ?? null, {
       agentId: run.agentId,
@@ -130,6 +134,7 @@ export const loadRunContext = async (
           executionMode: true,
           id: true,
           model: true,
+          modelSubscriptionId: true,
           name: true,
           parentAgentId: true,
           ownerUserId: true,

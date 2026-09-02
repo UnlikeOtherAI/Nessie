@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
+import { dispatchEmailArrivals } from './comms-arrival-triggers.js'
 import {
   ConnectorNotRegisteredError,
   needsReauthorization,
@@ -211,11 +212,17 @@ const runSyncPhase = async (
           ? await connector.runInitialSync(context, checkpoint)
           : await connector.runIncrementalSync(context, checkpoint)
 
-      await persistNormalizedEvents(
+      const persisted = await persistNormalizedEvents(
         prisma,
         { connectionId: connection.id, organizationId: connection.organizationId },
         result.events,
       )
+      // Only the incremental path fires arrival triggers. The history back-fill
+      // inserts a whole mailbox, and a trigger per historical email would be a
+      // thousand runs for an automation somebody set up expecting one.
+      if (phase !== 'history' && persisted.inserted > 0) {
+        await dispatchEmailArrivals(prisma, connection, persisted.insertedEvents)
+      }
       if (result.subscriptions?.length) {
         await recordSubscriptions(prisma, connection, result.subscriptions)
       }

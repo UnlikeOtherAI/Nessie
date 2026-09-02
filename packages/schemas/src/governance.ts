@@ -84,6 +84,7 @@ export const PolicyConditionsSchema = z.object({
   ipRanges: z.array(z.string()).optional(),
   requiresApproval: z.boolean().optional(),
   approvalActionType: z.string().optional(),
+  reviewMode: z.enum(['auto']).optional(),
   maxUsagePerHour: z.number().int().positive().optional(),
 })
 export type PolicyConditions = z.infer<typeof PolicyConditionsSchema>
@@ -103,6 +104,7 @@ export const PolicyDecisionSchema = z.object({
   ]),
   requiresApproval: z.boolean().optional(),
   approvalActionType: z.string().optional(),
+  reviewMode: z.enum(['auto']).optional(),
   /** Internal worker signal: a verified proof satisfied this decision. */
   approvalProofUsed: z.boolean().optional(),
 })
@@ -304,6 +306,14 @@ export const AuditActionSchema = z.enum([
   'email.domain.created',
   'email.domain.verified',
   'email.domain.revoked',
+  // Personal model subscriptions. Metadata only — a link's credential and its
+  // vault location never enter the audit trail.
+  'model_subscription.linked',
+  'model_subscription.relinked',
+  'model_subscription.disconnected',
+  'gmail.draft.sent',
+  'gmail.send_grant.created',
+  'gmail.send_grant.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

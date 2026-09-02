@@ -1223,6 +1223,7 @@ model Organization {
   webPushSubscriptions             WebPushSubscription[]
   pushDeliverys                    PushDelivery[]
   commsConnections                 CommsConnection[]
+  modelSubscriptions               ModelSubscription[]
   commsOAuthStates                 CommsOAuthState[]
   commsEvents                      CommsEvent[]
   executors                        Executor[]
@@ -1235,6 +1236,14 @@ model Organization {
   emailMessages                    EmailMessage[]
 
   agentCards AgentCard[]
+  gmailDraftActions       GmailDraftAction[]
+  sendAuthorizationGrants SendAuthorizationGrant[]
+
+  cloudBrowserConnections CloudBrowserConnection[]
+  cloudBrowserSessions    CloudBrowserSession[]
+
+  voiceInstallations VoiceInstallation[]
+  voiceSessions      VoiceSession[]
 
   @@map("organizations")
 }
@@ -1359,20 +1368,25 @@ model ProductIntegrationRun {
 }
 
 model OrganizationMember {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  userId         String       @map("user_id") @db.Uuid
-  role           MemberRole   @default(member)
+  id                      String                   @id @default(uuid()) @db.Uuid
+  organizationId          String                   @map("organization_id") @db.Uuid
+  userId                  String                   @map("user_id") @db.Uuid
+  role                    MemberRole               @default(member)
   // When set, the membership is deactivated: the user is denied access to this
   // organisation (enforced in authenticateRequest) but the row + audit history
   // are kept so an owner can reactivate. Reversible — no hard delete.
-  deactivatedAt  DateTime?    @map("deactivated_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deactivatedAt           DateTime?                @map("deactivated_at")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Agents this member stewards. Tenancy only — a retained deactivated row
   /// still satisfies the FK, so readers re-derive liveness.
-  ownedAgents    Agent[]      @relation("AgentOwner")
+  ownedAgents             Agent[]                  @relation("AgentOwner")
+  /// Personal model subscriptions this member has linked. Same tenancy-only
+  /// contract as `ownedAgents`: liveness is re-derived, never assumed.
+  modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
+  /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
+  cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1595,6 +1609,8 @@ model Thread {
 
   agentCards AgentCard[]
 
+  cloudBrowserSessions CloudBrowserSession[]
+
   @@index([channelId, createdAt])
   @@map("threads")
 }
@@ -1647,6 +1663,10 @@ enum UserAlertKind {
   trigger_health
   call_missed
   workspace_invitation
+  // An agent is waiting on this person to approve an action it cannot take
+  // alone. Durable rather than push-only for the same reason as
+  // trigger_health: a push at 06:00 is missable and the request expires.
+  approval_requested
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1668,6 +1688,7 @@ model UserAlert {
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
   triggerId       String?        @map("trigger_id") @db.Uuid
   callId          String?        @map("call_id") @db.Uuid
+  approvalRequestId String?      @map("approval_request_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1686,6 +1707,7 @@ model UserAlert {
   project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
   trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   call            Call?          @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -2088,6 +2110,13 @@ model Agent {
   todosEnabled                   Boolean                         @default(false) @map("todos_enabled")
   provider                       String?                         @map("provider")
   model                          String?                         @map("model")
+  /// Set when this agent runs on its owner's personal subscription. The
+  /// selection is an explicit pointer, never a parse of `provider`, because a
+  /// person may link two accounts at the same provider and the two must be
+  /// distinguishable at run resolution. `provider` still carries the
+  /// `subscription/<key>` namespace so a value that escapes this branch fails
+  /// closed (a `/` is illegal in a Ledger service id) instead of dispatching.
+  modelSubscriptionId            String?                         @map("model_subscription_id") @db.Uuid
   routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
   avatarBackgroundColor          String?                         @map("avatar_background_color")
@@ -2149,9 +2178,15 @@ model Agent {
   // organizationId along with its owner. organization_members rows are never
   // deleted (deactivation is a reversible flag), so this never fires.
   ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+  /// SetNull, not Cascade: disconnecting a subscription must never delete the
+  /// agent. The run-time gate then fails closed on the dangling selection and
+  /// names the remedy, which is the behaviour a person expects.
+  modelSubscription              ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
 
   agentCards AgentCard[]
   mailbox    AgentMailbox?
+
+  cloudBrowserSessions CloudBrowserSession[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -2163,6 +2198,7 @@ model Agent {
   // agent read, and the tree's level-3 query.
   @@index([organizationId, ownerUserId])
   @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
+  sendAuthorizationGrants SendAuthorizationGrant[]
   @@map("agents")
 }
 
@@ -2329,6 +2365,14 @@ model Run {
   // relation, mirroring `Message.replyParticipantIds`: readers (the thinking
   // bootstrap endpoint) never re-derive placement.
   replyRootMessageId                  String?                         @map("reply_root_message_id") @db.Uuid
+  // The inference lane, PINNED at run admission. A subscription-routed run
+  // records which subscription and which credential generation admitted it, so
+  // a relink mid-run cannot switch accounts underneath it and a continuation
+  // whose binding is no longer valid fails closed instead of silently sliding
+  // back to the organization's Ledger route.
+  modelSubscriptionId                 String?                         @map("model_subscription_id") @db.Uuid
+  modelSubscriptionEpoch              Int?                            @map("model_subscription_epoch")
+  modelSubscription                   ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
   agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
   trigger                             AgentTrigger?                   @relation(fields: [triggerId], references: [id], onDelete: SetNull)
@@ -2363,6 +2407,8 @@ model Run {
   postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
   waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
   resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
+
+  cloudBrowserSessions CloudBrowserSession[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -4077,49 +4123,51 @@ model PolicyBinding {
 }
 
 model ApprovalRequest {
-  id                     String         @id @default(uuid()) @db.Uuid
-  organizationId         String         @map("organization_id") @db.Uuid
-  projectId              String?        @map("project_id") @db.Uuid
-  teamId                 String?        @map("team_id") @db.Uuid
-  channelId              String?        @map("channel_id") @db.Uuid
-  taskId                 String?        @map("task_id") @db.Uuid
-  runId                  String?        @map("run_id") @db.Uuid
-  agentId                String         @map("agent_id") @db.Uuid
-  requesterId            String         @map("requester_id")
-  action                 String
-  reason                 String
-  context                Json?
-  status                 ApprovalStatus @default(pending)
-  resolverId             String?        @map("resolver_id")
-  resolvedAt             DateTime?      @map("resolved_at")
-  resolution             String?
-  resolutionNote         String?        @map("resolution_note")
-  requiredApproverRole   String?        @map("required_approver_role")
-  // Pins an approval to one exact person rather than a role. A send that acts
-  // as somebody's mailbox is theirs to authorize: any org owner approving any
-  // agent's outbound mail is the wrong grain. Falls back to
-  // `requiredApproverRole` when the pinned approver's membership is no longer
-  // live, so a request never becomes unanswerable.
-  requiredApproverUserId String?        @map("required_approver_user_id") @db.Uuid
-  continuationToken      String         @map("continuation_token")
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @map("organization_id") @db.Uuid
+  projectId            String?        @map("project_id") @db.Uuid
+  teamId               String?        @map("team_id") @db.Uuid
+  channelId            String?        @map("channel_id") @db.Uuid
+  taskId               String?        @map("task_id") @db.Uuid
+  runId                String?        @map("run_id") @db.Uuid
+  agentId              String         @map("agent_id") @db.Uuid
+  requesterId          String         @map("requester_id")
+  action               String
+  reason               String
+  context              Json?
+  status               ApprovalStatus @default(pending)
+  resolverId           String?        @map("resolver_id")
+  resolvedAt           DateTime?      @map("resolved_at")
+  resolution           String?
+  resolutionNote       String?        @map("resolution_note")
+  requiredApproverRole String?        @map("required_approver_role")
+  /// The exact person who must resolve this request. Set for a send-as-you
+  /// gate: approval visibility otherwise reaches any member who can read a
+  /// public channel, which would let a colleague authorise an email sent in
+  /// somebody else's name. Falls back to `requiredApproverRole` when no such
+  /// person resolves — an inbound-email run has no requesting user — so a
+  /// request never becomes unanswerable.
+  requiredApproverUserId String?      @map("required_approver_user_id") @db.Uuid
+  continuationToken    String         @map("continuation_token")
   // Server-authored tool-gate identity. These values are deliberately absent
   // from approval presenters: a human sees the bounded `context` summary,
   // while the exact arguments and original run identity stay server-side.
-  toolCallId             String?        @map("tool_call_id")
-  toolName               String?        @map("tool_name")
-  argsHash               String?        @map("args_hash")
-  resumeState            Json?          @map("resume_state")
-  proofConsumedAt        DateTime?      @map("proof_consumed_at")
-  expiresAt              DateTime       @map("expires_at") @db.Timestamptz(6)
-  createdAt              DateTime       @default(now()) @map("created_at")
-  updatedAt              DateTime       @updatedAt @map("updated_at")
-  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project                Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team                   Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  channel                Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
-  task                   Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  run                    Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent                  Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCallId           String?        @map("tool_call_id")
+  toolName             String?        @map("tool_name")
+  argsHash             String?        @map("args_hash")
+  resumeState          Json?          @map("resume_state")
+  proofConsumedAt      DateTime?      @map("proof_consumed_at")
+  expiresAt            DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                 Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel              Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userAlerts           UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -4213,6 +4261,14 @@ model TokenLedgerEvent {
   pricingOutputPerM     Decimal?           @map("pricing_output_per_m") @db.Decimal(20, 8)
   estimatedCostAmount   Decimal?           @map("estimated_cost_amount") @db.Decimal(20, 8)
   estimatedCostCurrency String?            @map("estimated_cost_currency")
+  /// Which purse paid. `personal_subscription` events are excluded from
+  /// pricing resolution and from every organization budget sum by THIS field,
+  /// never by the absence of a pricing profile — an owner-authored wildcard
+  /// profile would otherwise price spend the organization never incurred.
+  billingSource         InferenceBillingSource @default(ledger) @map("billing_source")
+  /// Which link paid, and therefore whose plan. Attribution for these rows is
+  /// the subscription owner, not the person who happened to post.
+  modelSubscriptionId   String?            @map("model_subscription_id") @db.Uuid
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
@@ -5342,6 +5398,8 @@ model CommsConnection {
   updatedAt              DateTime              @updatedAt @map("updated_at")
 
   credential            CommsConnectionCredential?
+  draftActions          GmailDraftAction[]
+  sendGrants            SendAuthorizationGrant[]
   resources             CommsResource[]
   syncJobs              CommsSyncJob[]
   events                CommsEvent[]
@@ -5353,6 +5411,103 @@ model CommsConnection {
   @@index([organizationId, ownerUserId])
   @@index([status])
   @@map("comms_connections")
+}
+
+/// The state of one composed email Nessie is responsible for.
+///
+/// This exists because an approval must bind to a draft's CONTENT, not its id:
+/// a Gmail draft stays mutable through the chat card's Edit button, through
+/// Gmail itself, and through another run, so hashing `{draftId}` would let an
+/// approved send deliver something nobody approved. `contentFingerprint` is
+/// re-read and compared on every send path — the agent tool and the human Send
+/// button alike — and it is also where the conditional `draft → sending → sent`
+/// claim lives, so a double click or a retried job cannot send twice.
+model GmailDraftAction {
+  id                 String                @id @default(uuid()) @db.Uuid
+  organizationId     String                @map("organization_id") @db.Uuid
+  ownerUserId        String                @map("owner_user_id") @db.Uuid
+  connectionId       String                @map("connection_id") @db.Uuid
+  /// Gmail's draft id. Stable across updates, unlike the message id.
+  providerDraftId    String                @map("provider_draft_id")
+  /// Gmail thread this draft replies into, when it is a reply.
+  providerThreadId   String?               @map("provider_thread_id")
+  /// SHA-256 over the canonical recipients/subject/body/attachments.
+  contentFingerprint String                @map("content_fingerprint")
+  /// Bumped on every edit, so a stale card can tell it is looking at old text.
+  revision           Int                   @default(1)
+  state              GmailDraftActionState @default(draft)
+  /// The chat message carrying the card, so realtime can refresh it in place.
+  messageId          String?               @map("message_id") @db.Uuid
+  /// Set when a send is held for the undo window; the job fires at this time.
+  sendAfter          DateTime?             @map("send_after")
+  sentAt             DateTime?             @map("sent_at")
+  sentMessageId      String?               @map("sent_message_id")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerDraftId])
+  @@index([organizationId, ownerUserId, state])
+  @@index([state, sendAfter])
+  @@map("gmail_draft_actions")
+}
+
+enum GmailDraftActionState {
+  draft
+  /// Held for the undo window, or handed to the provider and not yet confirmed.
+  sending
+  sent
+  discarded
+}
+
+/// Standing consent for an agent to send email as a person WITHOUT asking each
+/// time, modelled on ScopeDisclosureGrant: evaluation is a single exact-key
+/// lookup with no wildcard, inheritance, or fallback, so consenting for one
+/// agent implies nothing about another and one mailbox implies nothing about
+/// another. `expiresAt` null means "until revoked".
+///
+/// It never covers an unattended run, never covers a requester who is not the
+/// mailbox owner, and never replaces the content-fingerprint check.
+/// How a grant behaves. `always` sends whenever the owner asks; `judged` has
+/// the assistant weigh each action against the owner's own written boundary
+/// and ask when it is unsure. There is deliberately no "deny" outcome — the
+/// assistant never silently refuses on somebody's behalf, so anything outside
+/// the boundary becomes a question rather than a rejection.
+enum SendAuthorizationMode {
+  always
+  judged
+}
+
+model SendAuthorizationGrant {
+  id             String    @id @default(uuid()) @db.Uuid
+  mode           SendAuthorizationMode @default(always)
+  /// The owner's boundary, in their own words. Judged by a model on every
+  /// action, never parsed: a rule builder with keyword fields could not honour
+  /// a boundary written in Czech about mail written in Slovak. Owner-private —
+  /// it is read through an owner-gated route and never leaves in metadata.
+  boundary       String?
+  /// Running shape, so the settings row can say "12 sent · 3 asked you".
+  decidedCount   Int       @default(0) @map("decided_count")
+  askedCount     Int       @default(0) @map("asked_count")
+  lastDecidedAt  DateTime? @map("last_decided_at")
+  organizationId String    @map("organization_id") @db.Uuid
+  connectionId   String    @map("connection_id") @db.Uuid
+  agentId        String    @map("agent_id") @db.Uuid
+  grantedByUserId String   @map("granted_by_user_id") @db.Uuid
+  expiresAt      DateTime? @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  agent        Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, agentId])
+  @@index([organizationId, connectionId])
+  @@map("send_authorization_grants")
 }
 
 /// Encrypted OAuth token bundle for a connection, isolated in its own table so
@@ -6026,4 +6181,394 @@ model EmailSuppression {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("email_suppressions")
+}
+
+// ─── Calling the Personal Assistant with live voice ─────────────────────────
+// The API brokers a one-use Gemini Live credential from Ledger; audio then
+// flows directly between the client and Google. These rows are the durable
+// state that survives the socket: what was minted, for whom, under which UOA
+// identity, and what the call is allowed to spend.
+// Spec: docs/plans/2026-09-02-gemini-voice-calling.md
+
+enum VoiceInstallationPlatform {
+  web
+  ios
+  android
+}
+
+enum VoiceSessionStatus {
+  active
+  ended
+  failed
+}
+
+/// One browser or app that may place voice calls.
+///
+/// Server-minted on purpose: Ledger reserves daily budget per device slot, so
+/// a client that could choose its own device identifier could multiply those
+/// reservations. Per-user caps are enforced against these rows, and the
+/// identifier Ledger sees is derived from `id` rather than anything a client
+/// supplied.
+model VoiceInstallation {
+  id             String                    @id @default(uuid()) @db.Uuid
+  organizationId String                    @map("organization_id") @db.Uuid
+  userId         String                    @map("user_id") @db.Uuid
+  platform       VoiceInstallationPlatform
+  label          String?
+  revokedAt      DateTime?                 @map("revoked_at")
+  lastSeenAt     DateTime                  @default(now()) @map("last_seen_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions     VoiceSession[]
+
+  @@index([organizationId])
+  @@index([userId, revokedAt])
+  @@map("voice_installations")
+}
+
+/// One call.
+///
+/// `id` is call-scoped and survives credential rotation: a 30-minute Gemini
+/// credential is replaced in place (`ledgerSessionId` moves, `rotationCount`
+/// increments) so one call keeps one usage stream and one transcript slot.
+/// The UOA tuple is captured at mint and re-used to sign every later relay —
+/// never re-read from ambient request context, which could have drifted to
+/// another workspace mid-call.
+model VoiceSession {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+  installationId String @map("installation_id") @db.Uuid
+  channelId      String @map("channel_id") @db.Uuid
+  threadId       String @map("thread_id") @db.Uuid
+  agentId        String @map("agent_id") @db.Uuid
+
+  uoaSubject        String? @map("uoa_subject")
+  uoaOrganizationId String? @map("uoa_organization_id")
+  uoaTeamId         String? @map("uoa_team_id")
+  uoaTokenVersion   Int?    @map("uoa_token_version")
+
+  ledgerSessionId     String   @map("ledger_session_id")
+  model               String
+  credentialExpiresAt DateTime @map("credential_expires_at")
+  rotationCount       Int      @default(0) @map("rotation_count")
+
+  status        VoiceSessionStatus @default(active)
+  maxDurationMs Int                @map("max_duration_ms")
+  maxToolCalls  Int                @map("max_tool_calls")
+  toolCallCount Int                @default(0) @map("tool_call_count")
+
+  /// Highest usage sequence accepted by Ledger. Reports arrive in order and a
+  /// replayed or stale sequence is refused rather than double-counted.
+  lastUsageSequence Int     @default(0) @map("last_usage_sequence")
+  /// False once the call ends without its final usage report landing — spend
+  /// nobody can attribute, which must be visible rather than silently final.
+  usageComplete     Boolean @default(false) @map("usage_complete")
+
+  /// Set once, so a retried submission cannot write a second call record.
+  transcriptMessageId String? @unique @map("transcript_message_id") @db.Uuid
+
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  installation VoiceInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([userId, startedAt])
+  @@index([installationId, status])
+  @@map("voice_sessions")
+}
+
+// ─── Personal model subscriptions ─────────────────────────────────────────
+// A person links their own consumer AI subscription (Kimi, GLM, and later
+// OpenAI Codex / xAI Grok) and the agents THEY own run on it. Token values
+// never live here: they are held by the deployment's vault under a dedicated,
+// separately-ACLed project, and these rows carry only the pointer plus the
+// metadata the coordinator needs to serialize rotation.
+// Spec: docs/plans/2026-09-02-personal-model-subscriptions.md
+
+enum ModelSubscriptionProvider {
+  kimi
+  glm
+  openai_codex @map("openai-codex")
+  grok
+}
+
+enum ModelSubscriptionStatus {
+  active
+  needs_reauthorization
+  disconnected
+  error
+}
+
+/// Why a subscription is not healthy. Typed because the remedy differs:
+/// `needs_reauthorization` is a button (relink), everything else is an edit or
+/// a wait. Mirrors the trigger-health discipline — the transition owns the
+/// alert, and the reason is persisted so a surface can explain without parsing
+/// a message string.
+enum ModelSubscriptionHealthReason {
+  ok
+  needs_reauthorization
+  provider_rejected
+  quota_exhausted
+  owner_inactive
+  vault_unavailable
+}
+
+/// Which purse paid for one inference. Structural, never inferred from an
+/// absent pricing profile: connector invocations record the *runtime* provider
+/// (`openai-compatible`), and an owner-authored wildcard ModelPricingProfile
+/// would otherwise price a run the organization never paid for.
+enum InferenceBillingSource {
+  ledger
+  personal_subscription
+}
+
+/// One person's link to one account at one subscription provider. Scoped to
+/// the organization AND the user — never shared across a workspace. Several
+/// accounts per provider are allowed (work + personal), which is why
+/// `providerAccountId` is part of the natural key and why an agent points at a
+/// subscription by id rather than by provider string.
+model ModelSubscription {
+  id                String                        @id @default(uuid()) @db.Uuid
+  organizationId    String                        @map("organization_id") @db.Uuid
+  userId            String                        @map("user_id") @db.Uuid
+  provider          ModelSubscriptionProvider
+  status            ModelSubscriptionStatus       @default(active)
+  /// The provider's stable account identity (an OIDC subject, or a fingerprint
+  /// of an API key for key-based adapters). Proves the same account came back
+  /// on relink; an account mismatch is refused rather than silently re-pointed.
+  providerAccountId String                        @map("provider_account_id")
+  /// Human label for the account picker — an email or masked key suffix. Never
+  /// a credential.
+  accountLabel      String?                       @map("account_label")
+  /// Monotonic credential generation. Every rotation bumps it; a failure
+  /// transition is applied only when the FAILING epoch is still current, so a
+  /// delayed 401 carrying a pre-relink token cannot kill a fresh link.
+  credentialEpoch   Int                           @default(1) @map("credential_epoch")
+  /// Set while one process holds the refresh claim. The claim is short and
+  /// released before the provider call, so no transaction is held open across
+  /// the network; a stale claim is reclaimable after the lease expires.
+  refreshClaimedAt  DateTime?                     @map("refresh_claimed_at")
+  healthReason      ModelSubscriptionHealthReason @default(ok) @map("health_reason")
+  healthDetail      String?                       @map("health_detail")
+  /// Bumped on every health transition so an alert fires exactly once per
+  /// transition rather than once per failing run.
+  healthRevision    Int                           @default(0) @map("health_revision")
+  lastUsedAt        DateTime?                     @map("last_used_at")
+  createdAt         DateTime                      @default(now()) @map("created_at")
+  updatedAt         DateTime                      @updatedAt @map("updated_at")
+
+  credential   ModelSubscriptionCredential?
+  agents       Agent[]
+  runs         Run[]
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Tenancy at the storage boundary, exactly as `Agent.ownerUserId` does it:
+  /// the owner must be a member of THIS organization. It does not prove the
+  /// membership is live — every read re-derives `deactivatedAt: null`.
+  owner        OrganizationMember? @relation("ModelSubscriptionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([organizationId, userId, provider, providerAccountId])
+  @@index([organizationId, userId])
+  @@index([status])
+  @@map("model_subscriptions")
+}
+
+/// The vault pointer for a subscription. Deliberately holds NO ciphertext:
+/// `docs/secret-management-spec.md` bars new secret-capture flows from putting
+/// values in PostgreSQL, so the token bundle lives in the vault and this row
+/// records where. `expiresAt` is an advisory copy for cheap "refresh soon"
+/// queries — the vault bundle is the truth.
+model ModelSubscriptionCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  subscriptionId  String    @unique @map("subscription_id") @db.Uuid
+  vaultReference  String    @unique @map("vault_reference")
+  vaultSecretName String    @map("vault_secret_name")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  subscription ModelSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("model_subscription_credentials")
+}
+
+/// A vault secret whose PostgreSQL pointer is gone (disconnect, owner
+/// deactivation, organization deletion) and which still has to be deleted from
+/// the vault. Without this, a cascade would strand a live refresh token that
+/// nothing can address any more. Swept idempotently; `deletedAt` closes it.
+model ModelSubscriptionVaultTombstone {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  vaultSecretName String    @map("vault_secret_name")
+  attempts        Int       @default(0)
+  lastError       String?   @map("last_error")
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([deletedAt, createdAt])
+  @@map("model_subscription_vault_tombstones")
+}
+
+/// One-shot OAuth / device-code flow state. Flow state is not a durable secret
+/// value — it is single-use and expires in minutes — so it follows the standing
+/// `comms_oauth_states` / `mcp_oauth_states` pattern. `pollLeaseUntil` is what
+/// stops several tabs or replicas from each polling the provider.
+model ModelSubscriptionAuthState {
+  token          String                    @id
+  organizationId String                    @map("organization_id") @db.Uuid
+  userId         String                    @map("user_id") @db.Uuid
+  provider       ModelSubscriptionProvider
+  payload        Json
+  pollLeaseUntil DateTime?                 @map("poll_lease_until")
+  nextPollAt     DateTime?                 @map("next_poll_at")
+  expiresAt      DateTime                  @map("expires_at")
+  consumedAt     DateTime?                 @map("consumed_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  @@index([organizationId, userId])
+  @@index([expiresAt])
+  @@map("model_subscription_auth_states")
+}
+
+/// Which account pays for, and can replay, the browsers opened through this
+/// connection. Decided by the surface that accepted the key (owner-only org
+/// settings vs a member's own connections page), never inferred from the key
+/// itself — Browserbase authenticates by API key only and its keys carry no
+/// personal-vs-company signal.
+enum CloudBrowserConnectionScope {
+  organization
+  user
+}
+
+/// A capability that can stop working owns the way a person finds out: a
+/// revoked key, deleted project or suspended account claims
+/// `needs_attention` with a persisted reason and alerts once, instead of
+/// retrying forever behind a toolset that still advertises a browser.
+enum CloudBrowserConnectionStatus {
+  active
+  needs_attention
+  disabled
+}
+
+/// A remote resource's lifecycle, not a boolean. A create that times out may
+/// still have produced a paid session at Browserbase (`allocating` — the
+/// reconciler's problem), and `active` may only clear once Browserbase has
+/// confirmed termination, because two sessions on one context make websites
+/// force logouts.
+enum CloudBrowserSessionStatus {
+  allocating
+  active
+  releasing
+  released
+  failed
+  unknown
+}
+
+/// One Browserbase account bound to this workspace. Bring-your-own key at
+/// both scopes: the organization subscription an owner connects, or a
+/// member's own account (the free tier is the intended on-ramp) which powers
+/// only runs that member requested.
+model CloudBrowserConnection {
+  id             String                      @id @default(uuid()) @db.Uuid
+  organizationId String                      @map("organization_id") @db.Uuid
+  scope          CloudBrowserConnectionScope
+  /// NULL for organization scope, the owning member for user scope — a CHECK
+  /// ties the two, and partial unique indexes keep one row per organization
+  /// and one per (organization, member).
+  userId         String?                     @map("user_id") @db.Uuid
+  projectId      String                      @map("project_id")
+  /// Server-minted `secret_browserbase_*` ref into the encrypted secret
+  /// store. Never caller-chosen, never returned to a client: the key plus a
+  /// context id is session-equivalent material.
+  apiKeyRef      String                      @map("api_key_ref")
+
+  status          CloudBrowserConnectionStatus @default(active)
+  /// Machine reason behind a non-active status (`auth_failed`,
+  /// `unreachable`, `disabled_by_owner`), so the surface can name the remedy
+  /// without parsing a message string.
+  healthReason    String?                      @map("health_reason")
+  healthDetail    String?                      @map("health_detail")
+  /// Bumped by every health transition; the alert key is derived from it so
+  /// one transition alerts exactly once.
+  healthRevision  Int                          @default(0) @map("health_revision")
+  healthCheckedAt DateTime?                    @map("health_checked_at")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Tenancy at the storage boundary, the `Agent.ownerMembership` precedent:
+  /// a user-scoped connection's owner must be a member of THIS organization.
+  /// It does not prove the membership is live — readers re-derive that.
+  owner        OrganizationMember? @relation("CloudBrowserConnectionOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
+
+  sessions CloudBrowserSession[]
+
+  @@index([organizationId, scope])
+  @@map("cloud_browser_connections")
+}
+
+/// One Browserbase session opened for one run. Browser-hours are money, so
+/// release is fused to every terminal writer and a reaper stops whatever a
+/// crashed worker left running.
+model CloudBrowserSession {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  /// Mandatory: the reaper cannot stop a remote session without knowing which
+  /// API key owns it, and `/ops/usage` attributes hours by connection scope.
+  connectionId   String @map("connection_id") @db.Uuid
+  runId          String @map("run_id") @db.Uuid
+  threadId       String @map("thread_id") @db.Uuid
+  agentId        String @map("agent_id") @db.Uuid
+
+  /// NULL while `allocating`: a create that timed out may still have produced
+  /// a remote session, which reconciliation resolves.
+  browserbaseSessionId String?                   @map("browserbase_session_id")
+  status               CloudBrowserSessionStatus @default(allocating)
+
+  /// Monotone within the session: set the moment the browser is known to
+  /// carry a human's authenticated state (cookie-bearing context at open, a
+  /// completed login handoff, or any control claim). Never clears — it is
+  /// what makes the disclosure basis safe to evaluate per read.
+  authenticated Boolean @default(false)
+
+  /// The person whose ask started the run, when there is one. NULL for an
+  /// unattended run, which may never use a personal connection.
+  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
+
+  /// Control is one-winner coordination: claimed by conditional UPDATE, and
+  /// while held every browser tool for this session is refused.
+  controlledByUserId String?   @map("controlled_by_user_id") @db.Uuid
+  controlClaimedAt   DateTime? @map("control_claimed_at")
+
+  /// Hard TTL, mirrored into Browserbase's own session timeout so a dead
+  /// worker cannot run a browser past it.
+  expiresAt  DateTime  @map("expires_at")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  /// `run_terminal` | `tool` | `reaper` | `expiry` | `control_release` —
+  /// which writer released it, for diagnosing leaks.
+  releasedBy String?   @map("released_by")
+  lastError  String?   @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   CloudBrowserConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  run          Run                    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([threadId, status])
+  @@index([connectionId, startedAt])
+  @@map("cloud_browser_sessions")
 }

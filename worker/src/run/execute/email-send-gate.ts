@@ -40,11 +40,28 @@ export type EmailSendGateDecision = {
 }
 
 /**
- * Email is asynchronous, so a send approval outlives the 30-minute tool
- * default: an overnight approval that expired silently would strand the
- * conversation with nobody able to tell why.
+ * Why the person is being asked, in their words. Rendered on the approval card
+ * beside the draft, because "approval required" alone does not tell somebody
+ * whether to read the message carefully or just press send. Deliberately names
+ * no address: the card's row is readable by an org owner.
  */
-export const EMAIL_APPROVAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+const gateReason = (decision: EmailSendGateDecision): string => {
+  switch (decision.reason) {
+    case 'policy_approval':
+      return 'This mailbox asks you to approve every message before it leaves.'
+    case 'unattended_new_conversation':
+      return 'Nobody asked for this — the agent is starting a new conversation on its own.'
+    case 'rate_limited':
+      return 'This mailbox has already sent its hourly allowance.'
+    case 'external_disclosure':
+      return (
+        'This reply was built from material the recipient cannot reach: '
+        + decision.externalSources.map((scope) => `${scope.scopeType}:${scope.scopeId}`).join(', ')
+      )
+    default:
+      return 'This message needs your approval before it leaves.'
+  }
+}
 
 export const evaluateEmailSendGate = async (
   prisma: PrismaClient,
@@ -116,8 +133,12 @@ const emailSendRateLimit = (): number => {
 }
 
 /**
- * The `forceApproval` hook the agentic loop hands to tool authorization. Only
- * `email_send` is gated; everything else returns null and pays one comparison.
+ * The `structuralGate` hook the agentic loop hands to tool authorization.
+ *
+ * Returning non-null makes this family authoritative for that tool, so
+ * `email_send` never falls through to the send-as-you standing-consent path:
+ * nobody's account is being borrowed by an agent mailbox, and its reasons to
+ * stop are its own. Every other tool returns null and pays one comparison.
  */
 export const buildEmailSendApprovalHook = (
   prisma: PrismaClient,
@@ -130,20 +151,23 @@ export const buildEmailSendApprovalHook = (
       args: input.args,
       interactive,
     })
-    if (!decision.required) return null
+    // Owned but not gated: `{escalate:false}` still claims the decision, which
+    // is what keeps this tool off the standing-consent path.
+    if (!decision.required) return { escalate: false }
     return {
-      approvalActionType: `email.send.${decision.reason}`,
-      // What the approver is actually shown. A reply passes no `to`, so the
-      // raw arguments alone would render an empty recipient list; the send
-      // path resolves the same recipients deterministically from the same
-      // newest inbound message.
+      escalate: true,
+      reason: gateReason(decision),
+      // Address-free by rule: this row is readable through the approvals
+      // surface by an org owner, while the draft itself — recipients included
+      // — is resolved at read time by the owner-gated draft route. Only the
+      // scopes that forced the ask are recorded here, and a scope id names an
+      // audience, not a person's mail.
       contextExtra: {
-        emailDraft: await describeDraft(prisma, context, input.args),
+        emailConversationId: context.emailConversationId ?? null,
         externalDisclosureSources: decision.externalSources.map(
           (scope) => `${scope.scopeType}:${scope.scopeId}`,
         ),
       },
-      expiryMs: EMAIL_APPROVAL_EXPIRY_MS,
       // The mailbox belongs to the agent, and the agent belongs to its steward:
       // a send acting as their agent is theirs to authorize. Falls back to the
       // owner role when the agent is unowned or its steward is deactivated.
@@ -167,49 +191,4 @@ const resolveLiveSteward = async (
     },
   })
   return live > 0 ? ownerUserId : null
-}
-
-/**
- * The recipients and subject a send will actually use, resolved now so the
- * approval carries them. Best-effort: a resolution failure must never stop the
- * gate from parking the send — an unreviewable draft is still better than an
- * unreviewed one going out.
- */
-const describeDraft = async (
-  prisma: PrismaClient,
-  context: RunContext,
-  args: Record<string, unknown>,
-): Promise<Record<string, unknown>> => {
-  const explicitTo = Array.isArray(args.to) ? (args.to as string[]) : []
-  const subject = typeof args.subject === 'string' ? args.subject : ''
-  if (explicitTo.length > 0 || !context.emailConversationId) {
-    return {
-      bcc: Array.isArray(args.bcc) ? args.bcc : [],
-      cc: Array.isArray(args.cc) ? args.cc : [],
-      isReply: false,
-      subject,
-      to: explicitTo,
-    }
-  }
-  try {
-    const newest = await prisma.emailMessage.findFirst({
-      orderBy: { occurredAt: 'desc' },
-      select: { ccAddresses: true, fromAddress: true, replyToAddress: true, toAddresses: true },
-      where: { conversationId: context.emailConversationId, direction: 'inbound' },
-    })
-    const conversation = await prisma.emailConversation.findUnique({
-      select: { subject: true },
-      where: { id: context.emailConversationId },
-    })
-    const primary = newest?.replyToAddress ?? newest?.fromAddress ?? null
-    return {
-      bcc: Array.isArray(args.bcc) ? args.bcc : [],
-      cc: Array.isArray(newest?.ccAddresses) ? newest?.ccAddresses : [],
-      isReply: true,
-      subject: subject || conversation?.subject || '',
-      to: primary ? [primary] : [],
-    }
-  } catch {
-    return { bcc: [], cc: [], isReply: true, subject, to: [] }
-  }
 }

@@ -75,7 +75,8 @@ test('a built-in was never connected to anything, so it says available instead o
   assert.deepEqual(appCardStatus(app({ distribution: 'builtin', state: 'error' })), {
     kind: 'indicator',
     count: null,
-    label: 'connection error',
+    description: 'Nessie could not reach this app the last time it tried.',
+    label: 'Connection error',
     tone: 'danger',
   })
 })
@@ -84,29 +85,33 @@ test('an available app shows no status at all — absence is the signal', () => 
   assert.deepEqual(appCardStatus(app()), { kind: 'none' })
 })
 
-test('every connection state is a dot, and the words survive as its label', () => {
+test('every connection state is a dot, and the words survive as label + sentence', () => {
   assert.deepEqual(appCardStatus(app({ state: 'connecting' })), {
     kind: 'indicator',
     count: null,
+    description: 'Setup has not finished. Open the app to see what it still needs.',
     label: 'Connecting',
     tone: 'accent',
   })
   assert.deepEqual(appCardStatus(app({ state: 'connected' })), {
     kind: 'indicator',
     count: null,
+    description: 'One account is connected and working.',
     label: 'Connected',
     tone: 'success',
   })
   assert.deepEqual(appCardStatus(app({ state: 'auth_expired' })), {
     kind: 'indicator',
     count: null,
-    label: 'needs reconnecting',
+    description: 'Its sign-in has expired. Reconnect to put it back to work.',
+    label: 'Needs reconnecting',
     tone: 'warning',
   })
   // Same dot as "connected", hollow at the render: the relationship exists, off.
   assert.deepEqual(appCardStatus(app({ state: 'paused' })), {
     kind: 'indicator',
     count: null,
+    description: "This app's one account is switched off.",
     label: 'Turned off',
     tone: 'muted',
   })
@@ -120,26 +125,46 @@ test('every connection state is a dot, and the words survive as its label', () =
   })
 })
 
+test('every dot has a sentence to show — a hint with no explanation is a dead hover', () => {
+  const states = [
+    'connecting', 'connected', 'multiple_accounts', 'auth_expired', 'error', 'paused',
+  ] as const
+  for (const state of states) {
+    const status = appCardStatus(app({ connectionCount: 2, state }))
+    assert.equal(status.kind, 'indicator', state)
+    if (status.kind !== 'indicator') continue
+    assert.ok(status.label.length > 0, state)
+    // A sentence, not a restatement of the label: it says what to do or what
+    // is true, so it ends in a full stop and is longer than the title.
+    assert.ok(status.description.endsWith('.'), `${state}: ${status.description}`)
+    assert.ok(status.description.length > status.label.length, state)
+  }
+})
+
 test('a count appears only where it says something, and health decides its tone', () => {
   assert.deepEqual(appCardStatus(app({ connectionCount: 3, state: 'multiple_accounts' })), {
     kind: 'indicator',
     count: 3,
+    description: '3 accounts are connected and working.',
     label: '3 accounts connected',
     tone: 'success',
   })
   // Health beats arithmetic: two accounts of which one has expired reads as an
   // amber dot carrying a 2, not a green one — the number says how many
-  // accounts, the colour says whether they are all working.
+  // accounts, the colour says whether they are all working. The sentence
+  // claims "at least one", which is all the derived state actually proves.
   assert.deepEqual(appCardStatus(app({ connectionCount: 2, state: 'auth_expired' })), {
     kind: 'indicator',
     count: 2,
-    label: '2 accounts · needs reconnecting',
+    description: '2 accounts are connected, and at least one needs signing in again.',
+    label: 'Needs reconnecting',
     tone: 'warning',
   })
   assert.deepEqual(appCardStatus(app({ connectionCount: 2, state: 'error' })), {
     kind: 'indicator',
     count: 2,
-    label: '2 accounts · connection error',
+    description: '2 accounts are connected, and at least one could not be reached.',
+    label: 'Connection error',
     tone: 'danger',
   })
   // One account is the ordinary case, and a lone `1` beside a dot reads as a

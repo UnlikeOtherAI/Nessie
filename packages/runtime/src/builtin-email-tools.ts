@@ -49,6 +49,10 @@ export const EMAIL_SEND_TOOL_DEFINITION: BuiltinToolDefinition = {
   // Explicit grant: an address is an outward-facing identity, and sending is
   // the one thing here a person cannot take back.
   requiresExplicitGrant: true,
+  // …and the approval requirement is declared in code, not in policy data: the
+  // policy evaluator's default verdict is `allow`, so a data-only gate would be
+  // absent in every organisation whose seed never wrote a send rule.
+  requiresApproval: true,
   safe: false,
   summary: 'Send an email from this agent’s mailbox.',
 }

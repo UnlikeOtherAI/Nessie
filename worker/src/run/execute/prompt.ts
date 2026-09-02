@@ -16,6 +16,10 @@ import {
   buildResearchRoutingBlock,
   type ResearchRoutingFacts,
 } from './research-routing.js'
+import {
+  buildMailboxRoutingBlock,
+  type MailboxRoutingFacts,
+} from './mailbox-routing.js'
 import { buildAgentCardsBlock } from './agent-cards-prompt.js'
 import {
   buildAgentDocumentsBlock,
@@ -96,6 +100,8 @@ export const buildModelPrompt = (
     emailConversation?: string | null
     /** Structural toolset facts driving the research routing block (§9). */
     routing?: ResearchRoutingFacts
+    /** Structural toolset facts driving the mailbox/calendar routing block. */
+    mailbox?: MailboxRoutingFacts
     /** Bounded, durable to-do facts, omitted unless execution tools resolve. */
     todoFacts?: AgentTodoPromptFacts | null
     /** Structural home-space and toolset facts driving the documents block. */
@@ -185,6 +191,7 @@ export const buildModelPrompt = (
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
+    options.mailbox ? buildMailboxRoutingBlock(options.mailbox) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({ hasCardTool: options.hasCardTool ?? false }) ?? '',

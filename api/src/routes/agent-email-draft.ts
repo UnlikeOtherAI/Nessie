@@ -76,30 +76,78 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
     const externalSources = Array.isArray(contextRecord.externalDisclosureSources)
       ? (contextRecord.externalDisclosureSources as string[])
       : []
-    // Server-authored at gate time. A reply carries no `to` in its arguments,
-    // so the resolved recipients live here rather than in the frozen args.
-    const draft = (contextRecord.emailDraft ?? {}) as Record<string, unknown>
-    const list = (value: unknown): string[] =>
-      Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+    // Recipients are resolved HERE, not read from the approval row: that row is
+    // readable through the approvals surface by an org owner, so it carries no
+    // addresses. This route is owner-gated to the pinned approver, which is the
+    // only place the actual correspondents may be shown.
+    const draft = await resolveDraftRecipients(prisma, {
+      args: parsed.data.args,
+      conversationId:
+        typeof contextRecord.emailConversationId === 'string'
+          ? contextRecord.emailConversationId
+          : null,
+    })
 
     return reply.send(
       createApiResponse({
         approvalId: approval.id,
-        bcc: list(draft.bcc ?? parsed.data.args.bcc),
-        cc: list(draft.cc ?? parsed.data.args.cc),
+        bcc: draft.bcc,
+        cc: draft.cc,
         expiresAt: approval.expiresAt.toISOString(),
         externalDisclosureSources: externalSources,
         mailboxAddress: approval.agent.mailbox?.address ?? '',
         status: approval.status,
-        subject:
-          typeof draft.subject === 'string' && draft.subject.length > 0
-            ? draft.subject
-            : parsed.data.args.subject ?? '',
+        subject: draft.subject,
         // The body IS covered by the argument hash: what is rendered here is
         // byte-for-byte what the approved call will send.
         text: parsed.data.args.text,
-        to: list(draft.to ?? parsed.data.args.to),
+        to: draft.to,
       }),
     )
   })
+}
+
+/**
+ * The recipients a send will actually use.
+ *
+ * Explicit `to` wins; otherwise this is a reply, whose recipients come from the
+ * conversation's newest inbound message — `Reply-To` over `From`, which is what
+ * that header is for. Resolved here rather than stored on the approval row
+ * because that row is readable by an org owner and must carry no addresses.
+ */
+const resolveDraftRecipients = async (
+  prisma: RouteDeps['prisma'],
+  input: {
+    args: { to?: string[]; cc?: string[]; bcc?: string[]; subject?: string }
+    conversationId: string | null
+  },
+): Promise<{ to: string[]; cc: string[]; bcc: string[]; subject: string }> => {
+  const explicitTo = input.args.to ?? []
+  const bcc = input.args.bcc ?? []
+  if (explicitTo.length > 0 || !input.conversationId) {
+    return { bcc, cc: input.args.cc ?? [], subject: input.args.subject ?? '', to: explicitTo }
+  }
+
+  const [conversation, newest] = await Promise.all([
+    prisma.emailConversation.findUnique({
+      select: { subject: true },
+      where: { id: input.conversationId },
+    }),
+    prisma.emailMessage.findFirst({
+      orderBy: { occurredAt: 'desc' },
+      select: { ccAddresses: true, fromAddress: true, replyToAddress: true },
+      where: { conversationId: input.conversationId, direction: 'inbound' },
+    }),
+  ])
+
+  const asList = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+  const primary = newest?.replyToAddress ?? newest?.fromAddress ?? null
+
+  return {
+    bcc,
+    cc: asList(newest?.ccAddresses),
+    subject: input.args.subject || conversation?.subject || '',
+    to: primary ? [primary] : [],
+  }
 }

@@ -18,7 +18,9 @@ import {
   useResyncCommsConnection,
   useUpdateCommsResources,
 } from '../../../facades/connections/hooks'
+import { useSendGrants } from '../../../facades/gmail/hooks'
 import { ConnectionPermissions } from './ConnectionPermissions'
+import { AddSendAuthorization } from './AddSendAuthorization'
 
 const PROVIDER_LABEL: Record<CommsProvider, string> = {
   slack: 'Slack',
@@ -58,6 +60,7 @@ export const ConnectionCard = ({
   const detail = useCommsConnection(
     expanded || hasCapabilityCatalog ? connection.id : null,
   )
+  const sendGrants = useSendGrants()
   const updateResources = useUpdateCommsResources()
   const resync = useResyncCommsConnection()
   const disconnect = useDisconnectCommsConnection()
@@ -147,10 +150,18 @@ export const ConnectionCard = ({
       ) : null}
 
       {hasCapabilityCatalog && detail.data ? (
-        <ConnectionPermissions
-          capabilities={detail.data.capabilities}
-          connection={connection}
-        />
+        <>
+          <ConnectionPermissions
+            capabilities={detail.data.capabilities}
+            connection={connection}
+          />
+          {/* Standing consent belongs under the account it is about, not as a
+              floating page section: a grant is per mailbox. */}
+          <AddSendAuthorization
+            connection={connection}
+            existing={sendGrants.data?.grants ?? []}
+          />
+        </>
       ) : null}
 
       <button

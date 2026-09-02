@@ -188,24 +188,57 @@ test('an agent with no mailbox is not gated — the tool itself refuses', async 
 
 test('the hook ignores every tool but email_send', async () => {
   const hook = buildEmailSendApprovalHook(makePrisma(), makeContext(), true)
+  // null, not `{escalate:false}`: a null answer means this family does not own
+  // the tool, so authorization falls through to the standing-consent path.
   assert.equal(await hook({ args: {}, toolName: 'kb_search' }), null)
-  assert.notEqual(await hook({ args: { text: 'x' }, toolName: 'email_send' }), null)
+  const owned = await hook({ args: { text: 'x' }, toolName: 'email_send' })
+  assert.equal(owned?.escalate, true)
 })
 
-test('the approval pins the agent’s live steward and carries the resolved reply recipients', async () => {
+test('a send that needs no approval is owned but not escalated', async () => {
+  const context = makeContext()
+  context.consumedSources.add(emailMailboxScope(MAILBOX))
+  const hook = buildEmailSendApprovalHook(
+    makePrisma({ sendPolicy: 'auto_reply' }),
+    context,
+    false,
+  )
+  const decision = await hook({ args: { text: 'on it' }, toolName: 'email_send' })
+  assert.deepEqual(
+    decision,
+    { escalate: false },
+    'owning the decision is what keeps email_send off the send-as-you consent path',
+  )
+})
+
+test('the approval pins the agent’s live steward and records why it asked', async () => {
   const hook = buildEmailSendApprovalHook(makePrisma(), makeContext(), true)
   const decision = await hook({ args: { text: 'replying' }, toolName: 'email_send' })
+  assert.equal(decision?.escalate, true)
   assert.equal(decision?.requiredApproverUserId, OWNER)
-  // Seven days, not the 30-minute tool default: email is asynchronous and an
-  // overnight approval that expired would strand the conversation.
-  assert.equal(decision?.expiryMs, 7 * 24 * 60 * 60 * 1000)
-  const draft = decision?.contextExtra?.emailDraft as Record<string, unknown>
-  assert.deepEqual(
-    draft.to,
-    ['petra@example.com'],
-    'a reply passes no `to`, so the approver would otherwise see an empty recipient list',
+  // The reason reaches the approval card: "approval required" alone does not
+  // tell somebody whether to read the message carefully or just press send.
+  assert.match(decision?.reason ?? '', /approve every message/i)
+})
+
+test('the approval context carries no addresses — only the conversation and scopes', async () => {
+  // The approval row is readable through the approvals surface by an org
+  // owner. Recipients belong to the owner-gated draft route, which resolves
+  // them at read time; putting them here would widen them to every owner.
+  const context = makeContext()
+  context.consumedSources.add(emailMailboxScope(MAILBOX))
+  context.consumedSources.add({ scopeId: 'space-private', scopeType: 'user' })
+  const hook = buildEmailSendApprovalHook(makePrisma({ sendPolicy: 'auto' }), context, true)
+  const decision = await hook({ args: { text: 'x' }, toolName: 'email_send' })
+
+  const extra = (decision?.contextExtra ?? {}) as Record<string, unknown>
+  assert.deepEqual(Object.keys(extra).sort(), ['emailConversationId', 'externalDisclosureSources'])
+  assert.deepEqual(extra.externalDisclosureSources, ['user:space-private'])
+  assert.equal(
+    JSON.stringify(extra).includes('@'),
+    false,
+    'no address may reach the approval row',
   )
-  assert.equal(draft.subject, 'Invoice question')
 })
 
 test('a deactivated steward falls back to the owner role rather than being unanswerable', async () => {

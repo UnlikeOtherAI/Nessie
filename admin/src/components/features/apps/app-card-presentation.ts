@@ -50,11 +50,19 @@ export type AppCardStatus =
    * A dot, and a number beside it when more than one account sits behind it.
    * Every connected state is one of these — a card is a tile in a shelf, and a
    * tracked uppercase pill reading "CONNECTED" beside a "Manage" button was
-   * wider than the app's own name for a fact the dot already carries. The
-   * words survive as `label`, which the card hands to the tooltip and the
-   * detail hero spells out in full.
+   * wider than the app's own name for a fact the dot already carries.
+   *
+   * The words survive in two halves: `label` is the state's name, which the
+   * dot's hint titles and the detail hero renders as a pill, and `description`
+   * is the sentence under it — what the state means, or what to do about it.
    */
-  | { kind: 'indicator'; count: number | null; label: string; tone: AppCardStatusTone }
+  | {
+    kind: 'indicator'
+    count: number | null
+    description: string
+    label: string
+    tone: AppCardStatusTone
+  }
   /** Quiet `--tx3` text — an uppercase tracked pill saying "Available" shouts. */
   | { kind: 'quiet'; label: string }
 
@@ -71,11 +79,18 @@ const accountCount = (app: AppSummaryRecord): number | null =>
 /**
  * An unhealthy state is derived by precedence from a set of accounts
  * (`deriveAppCardState`), so with several connected the card knows one of them
- * needs attention but not how many. The label says exactly that much and no
- * more; the accounts tab is where each one is named.
+ * needs attention but not how many. The sentence says exactly that much and no
+ * more — "at least one", never a count it cannot prove; the accounts tab is
+ * where each one is named.
  */
-const unhealthyLabel = (app: AppSummaryRecord, verdict: string): string =>
-  app.connectionCount > 1 ? `${pluralAccounts(app.connectionCount)} · ${verdict}` : verdict
+const unhealthyDescription = (
+  app: AppSummaryRecord,
+  single: string,
+  several: string,
+): string =>
+  app.connectionCount > 1
+    ? `${pluralAccounts(app.connectionCount)} are connected, and at least one ${several}.`
+    : single
 
 export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
   // A built-in was never connected to anything, so "Connected" would be a
@@ -88,13 +103,26 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
     case 'available':
       return { kind: 'none' }
     case 'connecting':
-      return { kind: 'indicator', count: accountCount(app), label: 'Connecting', tone: 'accent' }
+      return {
+        kind: 'indicator',
+        count: accountCount(app),
+        description: 'Setup has not finished. Open the app to see what it still needs.',
+        label: 'Connecting',
+        tone: 'accent',
+      }
     case 'connected':
-      return { kind: 'indicator', count: null, label: 'Connected', tone: 'success' }
+      return {
+        kind: 'indicator',
+        count: null,
+        description: 'One account is connected and working.',
+        label: 'Connected',
+        tone: 'success',
+      }
     case 'multiple_accounts':
       return {
         kind: 'indicator',
         count: app.connectionCount,
+        description: `${pluralAccounts(app.connectionCount)} are connected and working.`,
         label: `${pluralAccounts(app.connectionCount)} connected`,
         tone: 'success',
       }
@@ -102,21 +130,39 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
       return {
         kind: 'indicator',
         count: accountCount(app),
-        label: unhealthyLabel(app, 'needs reconnecting'),
+        description: unhealthyDescription(
+          app,
+          'Its sign-in has expired. Reconnect to put it back to work.',
+          'needs signing in again',
+        ),
+        label: 'Needs reconnecting',
         tone: 'warning',
       }
     case 'error':
       return {
         kind: 'indicator',
         count: accountCount(app),
-        label: unhealthyLabel(app, 'connection error'),
+        description: unhealthyDescription(
+          app,
+          'Nessie could not reach this app the last time it tried.',
+          'could not be reached',
+        ),
+        label: 'Connection error',
         tone: 'danger',
       }
     // Every account switched off — the same dot in its off position, drawn
     // hollow, because this is the same relationship and not an availability
     // verdict.
     case 'paused':
-      return { kind: 'indicator', count: accountCount(app), label: 'Turned off', tone: 'muted' }
+      return {
+        kind: 'indicator',
+        count: accountCount(app),
+        description: app.connectionCount > 1
+          ? `All ${pluralAccounts(app.connectionCount)} for this app are switched off.`
+          : 'This app\'s one account is switched off.',
+        label: 'Turned off',
+        tone: 'muted',
+      }
     case 'disabled':
       return { kind: 'quiet', label: 'Unavailable' }
     case 'unavailable':

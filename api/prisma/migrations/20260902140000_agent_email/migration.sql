@@ -22,10 +22,11 @@ CREATE TYPE "EmailMessageClassification" AS ENUM ('normal', 'bulk', 'dsn');
 CREATE TYPE "EmailDeliveryState" AS ENUM ('queued', 'sending', 'sent', 'delivery_unknown', 'bounced', 'complained');
 CREATE TYPE "EmailDomainStatus" AS ENUM ('pending_dns', 'verified', 'failed', 'revoked');
 
--- Pins an approval to one exact person. A send that acts as somebody's mailbox
--- is theirs to authorize; any org owner approving any agent's mail is the wrong
--- grain. Nullable, so every existing role-gated approval is unchanged.
-ALTER TABLE "approval_requests" ADD COLUMN "required_approver_user_id" UUID;
+-- NOTE: `approval_requests.required_approver_user_id` is added by
+-- 20260902090000_gmail_drafts_and_send_grants, which lands first. Hosted agent
+-- mail reuses that exact column rather than declaring a second one — a send
+-- that acts as somebody's mailbox is theirs to authorize, whichever lane
+-- composed it, and two ALTERs would fail every deploy.
 
 -- Inbound MIME parts hang off the email message, never off the compact chat
 -- reference message: chat visibility must not become an attachment's authority.
