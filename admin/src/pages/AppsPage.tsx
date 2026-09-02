@@ -1,18 +1,20 @@
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import type { AppCategory } from '@nessie/schemas'
 import { useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AppCard } from '../components/features/apps/AppCard'
 import { AppCategorySection } from '../components/features/apps/AppCategorySection'
 import { AppFeaturedStrip } from '../components/features/apps/AppFeaturedStrip'
 import { AppCatalogueSkeleton } from '../components/features/apps/AppSkeletons'
 import { AppsToolbar } from '../components/features/apps/AppsToolbar'
 import { CustomAppDialog } from '../components/features/apps/CustomAppDialog'
+import { useTabParam } from '../navigation/useTabParam'
 import { appDetailHref } from '../components/features/apps/app-card-presentation'
 import {
   APP_GRID_CLASS,
   APP_GRID_FIVE_COLUMN_QUERY,
   APP_GRID_TWO_COLUMN_QUERY,
+  APP_FILTER_ORDER,
   CATALOGUE_FOOTER_NUDGE,
   appFilterOptions,
   appGridColumns,
@@ -20,7 +22,6 @@ import {
   catalogueEmptyMessage,
   catalogueMatchTotal,
   filterApps,
-  parseAppFilter,
   readStoredAppFilter,
   searchTruncationNote,
   sectionPageSize,
@@ -66,20 +67,23 @@ registerViewportMediaQuery('apps-grid-5col', APP_GRID_FIVE_COLUMN_QUERY)
 
 export const AppsPage = () => {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
   const [activeCategory, setActiveCategory] = useState<AppCategory | null>(null)
   const [customAppDialogOpen, setCustomAppDialogOpen] = useState(false)
+  // Read once per mount: the stored view is the *default* for a URL that
+  // carries no `?filter=`, and re-reading it after every write would make the
+  // hook's "selecting the default clears the param" rule chase its own tail.
+  const [storedFilter] = useState(readStoredAppFilter)
 
   // 150 ms is below the threshold where typing feels laggy and above the rate
   // at which re-requesting would churn.
   const debouncedQuery = useDebouncedValue(query, 150)
-  // A pasted URL remains an explicit view; on the normal `/apps` doorway, use
-  // the last catalogue view selected on this device so returning here does not
-  // make someone re-select Installed every time.
-  const requestedFilter = searchParams.get('filter')
-  const filter = requestedFilter === null ? readStoredAppFilter() : parseAppFilter(requestedFilter)
+  // The catalogue view lives in `?filter=` through the one tab-state hook
+  // (docs/navigation.md §1, "Tab hosts"), seeded from the last view selected on
+  // this device so the plain `/apps` doorway does not make someone re-select
+  // Installed every time. A pasted URL still wins.
+  const [filter, selectFilter] = useTabParam('filter', APP_FILTER_ORDER, storedFilter)
   // Both narrowings go to the server. The query does because Postgres owns the
   // weighted ranking and the typo fallback; "Installed" does because the
   // response is a bounded slice, and filtering a slice would hide connected
@@ -147,10 +151,7 @@ export const AppsPage = () => {
 
   const setFilter = (next: AppFilter) => {
     writeStoredAppFilter(next)
-    const params = new URLSearchParams(searchParams)
-    if (next === 'all') params.delete('filter')
-    else params.set('filter', next)
-    setSearchParams(params, { replace: true })
+    selectFilter(next)
   }
 
   const openCustomAppDialog = () => setCustomAppDialogOpen(true)

@@ -1,7 +1,4 @@
-import type {
-  ToolRegistryEntryStatus,
-  ToolRegistrySource,
-} from '@nessie/schemas'
+import type { ToolRegistryEntryStatus } from '@nessie/schemas'
 import { TabBar } from '../../primitives/TabBar'
 
 /**
@@ -11,16 +8,29 @@ import { TabBar } from '../../primitives/TabBar'
  */
 
 type ToolFilterBarProps = {
-  onSourceChange: (next?: ToolRegistrySource) => void
+  onSourceChange: (next: SourceSegment) => void
   onStatusChange: (next?: ToolRegistryEntryStatus) => void
   onTagChange: (next?: string) => void
-  source?: ToolRegistrySource
+  source: SourceSegment
   status?: ToolRegistryEntryStatus
   tag?: string
   tagOptions: string[]
 }
 
-type SourceSegment = 'all' | ToolRegistrySource
+// The strip's segments, and what `?source=` is validated against. 'all' is
+// the strip's name for "no source narrowing" — the page maps it to undefined
+// for the request. `executor` is a ToolRegistrySource with no segment here on
+// purpose, so the union is spelled out rather than derived from the source
+// type: a value the strip cannot show must not be reachable through `?source=`.
+export const TOOL_SOURCE_SEGMENTS = [
+  'all',
+  'builtin',
+  'custom',
+  'mcp-remote',
+  'interactive-session',
+] as const
+
+export type SourceSegment = (typeof TOOL_SOURCE_SEGMENTS)[number]
 
 const SOURCE_OPTIONS: Array<{ label: string; value: SourceSegment }> = [
   { label: 'All', value: 'all' },
@@ -51,10 +61,10 @@ export const ToolFilterBar = ({
       ariaLabel="Filter by source"
       fullWidth
       items={SOURCE_OPTIONS}
-      onChange={(next) => onSourceChange(next === 'all' ? undefined : next)}
+      onChange={onSourceChange}
       role="radiogroup"
       size="sm"
-      value={source ?? 'all'}
+      value={source}
     />
     <div className="flex gap-2">
       <select

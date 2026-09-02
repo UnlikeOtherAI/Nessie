@@ -1,11 +1,16 @@
 import type { AgentScope } from './agent-scope'
 
-// The Agents page keeps its active tab and per-tab page in local state, which
-// resets whenever the page unmounts — and it unmounts every time the reader
-// switches rail tabs and back (the shell renders a single <Outlet>). This
-// session-scoped ledger holds that across the unmount so returning restores the
-// tab and page the reader left on, matching the scroll/selection restoration the
-// rest of the section already has. It resets on a full page reload, by design.
+// The Agents page's per-tab page number is local state, which resets whenever
+// the page unmounts — and it unmounts every time the reader switches rail tabs
+// and back (the shell renders a single <Outlet>). This session-scoped ledger
+// holds it across the unmount so returning restores the page the reader left
+// on, matching the scroll/selection restoration the rest of the section already
+// has. It resets on a full page reload, by design.
+//
+// The active scope itself lives in `?scope=` now (docs/navigation.md §1, "Tab
+// hosts"); the copy kept here is the *default* the hook falls back to when the
+// URL names no scope, which is what makes returning from an agent's detail land
+// on the tab the reader left rather than on Team.
 export type AgentsListState = {
   activeScope: AgentScope
   pageByScope: Record<AgentScope, number>

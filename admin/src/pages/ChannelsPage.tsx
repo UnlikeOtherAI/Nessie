@@ -23,9 +23,7 @@ import { useIsOwner } from '../components/shared/OwnerGate'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
 import {
   buildFeedItems,
-  isAgentsTabAvailable,
   type ChannelAgentParticipant,
-  type ChannelTab,
   type MessageUserIdentity,
 } from '../components/features/channels/channel-helpers'
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
@@ -35,6 +33,7 @@ import { useShareRestrictedMessage } from '../facades/messages/hooks'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
 import { useChannelCall } from './channels/useChannelCall'
+import { useChannelTab } from './channels/useChannelTab'
 import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
 import { useExecutorRunLauncher } from './channels/useExecutorRunLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
@@ -83,7 +82,6 @@ export const ChannelsPage = () => {
     activeChannel?.defaultThreadId,
   )
 
-  const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
   const [selectedMessageAgent, setSelectedMessageAgent] = useState<ChannelAgentParticipant | null>(null)
@@ -91,24 +89,13 @@ export const ChannelsPage = () => {
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
-  const agentsTabAvailable = isAgentsTabAvailable({
+  const { agentsTabAvailable, setActiveTab, visibleActiveTab } = useChannelTab({
+    activeChannel,
     boundAgentCount: boundAgents.length,
     isConversationSurface,
     isPersonalAssistantConversation,
-    personalAssistantPresenceCount: activeChannel?.personalAssistantPresences?.length ?? 0,
   })
-  const visibleActiveTab =
-    (activeTab === 'agents' && !agentsTabAvailable) ||
-    (activeTab === 'automations' && isConversationSurface)
-      ? 'messages'
-      : activeTab
 
-  useEffect(() => {
-    const requestedTab = new URLSearchParams(location.search).get('tab')
-    if (requestedTab === 'files' || requestedTab === 'messages') {
-      setActiveTab(requestedTab)
-    }
-  }, [location.search])
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
@@ -252,12 +239,6 @@ export const ChannelsPage = () => {
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
-
-  useEffect(() => {
-    if (activeTab === 'agents' && !agentsTabAvailable) {
-      setActiveTab('messages')
-    }
-  }, [activeTab, agentsTabAvailable])
 
   useEffect(() => {
     cancelEdit()

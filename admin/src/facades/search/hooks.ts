@@ -18,7 +18,9 @@ const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 250
 const SEARCH_MODE_STORAGE_KEY = 'nessie.search.mode'
 
-export type GlobalSearchMode = 'text' | 'semantic'
+export const GLOBAL_SEARCH_MODES = ['text', 'semantic'] as const
+
+export type GlobalSearchMode = (typeof GLOBAL_SEARCH_MODES)[number]
 
 // A passage of a knowledge page matched by hybrid search, with its position in
 // the source page and a per-passage relevance score (ranking metadata only —
@@ -76,23 +78,30 @@ const includesQuery = (haystack: string | null | undefined, needle: string): boo
 export const parseGlobalSearchMode = (value: string | null): GlobalSearchMode | null =>
   value === 'semantic' || value === 'text' ? value : null
 
-const readStoredSearchMode = (): GlobalSearchMode => {
+// The mode a reader last chose on this device. It is the *default* the two
+// search surfaces start from — the full page then lets `?mode=` override it.
+export const readStoredSearchMode = (): GlobalSearchMode => {
   if (typeof window === 'undefined') {
     return 'text'
   }
   return parseGlobalSearchMode(window.localStorage.getItem(SEARCH_MODE_STORAGE_KEY)) ?? 'text'
 }
 
-export const usePersistedGlobalSearchMode = (
-  initialMode?: GlobalSearchMode | null,
-): readonly [GlobalSearchMode, (nextMode: GlobalSearchMode) => void] => {
-  const [mode, setMode] = useState<GlobalSearchMode>(() => initialMode ?? readStoredSearchMode())
+export const writeStoredSearchMode = (nextMode: GlobalSearchMode): void => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(SEARCH_MODE_STORAGE_KEY, nextMode)
+}
+
+// The top-bar search overlay's own mode. It is not a tab host: the overlay
+// floats over whatever route the reader is on, and writing `?mode=` onto that
+// route would be a claim about the page underneath. The full-page search at
+// /search does put the mode in its URL, through the one tab-state hook.
+export const usePersistedGlobalSearchMode = (): readonly [GlobalSearchMode, (nextMode: GlobalSearchMode) => void] => {
+  const [mode, setMode] = useState<GlobalSearchMode>(readStoredSearchMode)
 
   const updateMode = (nextMode: GlobalSearchMode) => {
     setMode(nextMode)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(SEARCH_MODE_STORAGE_KEY, nextMode)
-    }
+    writeStoredSearchMode(nextMode)
   }
 
   return [mode, updateMode] as const

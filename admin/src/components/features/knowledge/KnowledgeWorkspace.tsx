@@ -12,6 +12,7 @@ import {
 import { getCookie, setCookie } from '../../../lib/storage'
 import { LOCAL_BACK_PRIORITY } from '../../../layouts/admin-shell/local-back/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
+import { useTabParam } from '../../../navigation/useTabParam'
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { isMarkdownFilename } from './file-icons'
@@ -23,6 +24,7 @@ import { ProductDocumentsView } from './ProductDocumentsView'
 import { isAgentDraft } from './page-status'
 import {
   isKnowledgeViewMode,
+  KNOWLEDGE_VIEW_MODES,
   type KnowledgeViewMode,
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
@@ -81,10 +83,22 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   // The stack's presence — never a breakpoint — decides whether the stages are
   // layers over this route or panes composed in place.
   const stacked = useNestedStageHosted()
-  const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
+  // The view mode is `?view=` like every other in-page strip
+  // (docs/navigation.md §1, "Tab hosts") so a link to a space opens in the
+  // layout it was shared in. The cookie stays the *default* for a URL that
+  // names no view, and is rewritten on every change, so the preference still
+  // follows the reader across spaces and sessions. Read once per mount: the
+  // fallback must not move underneath the hook that deletes the param when the
+  // fallback itself is selected.
+  const [storedViewMode] = useState<KnowledgeViewMode>(() => {
     const stored = getCookie(VIEW_MODE_COOKIE)
     return isKnowledgeViewMode(stored) ? stored : 'column'
   })
+  const [viewMode, selectViewMode] = useTabParam(
+    'view',
+    KNOWLEDGE_VIEW_MODES,
+    storedViewMode,
+  )
   const [creatingFolder, setCreatingFolder] = useState(false)
 
   // "Needs review" filters the current space's tree down to agent drafts (and
@@ -169,7 +183,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const fileNodeUpload = useUploadFileNode(selectedSpaceId, currentFolder?.id ?? null)
 
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
-    setViewMode(nextMode)
+    selectViewMode(nextMode)
     setCookie(VIEW_MODE_COOKIE, nextMode)
   }
   const workspaceActions = buildKnowledgeWorkspaceActions({

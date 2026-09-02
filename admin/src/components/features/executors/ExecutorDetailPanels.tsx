@@ -11,9 +11,12 @@ import type {
 import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 
-type ExecutorTab = 'overview' | 'access' | 'operations' | 'sessions' | 'attention'
+const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
+
+type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
 
 type ExecutorDetailPanelsProps = {
   access: ExecutorAccessViewResponse | undefined
@@ -89,7 +92,7 @@ export const ExecutorDetailPanels = ({
   reviews,
   users,
 }: ExecutorDetailPanelsProps) => {
-  const [tab, setTab] = useState<ExecutorTab>('overview')
+  const [tab, setTab] = useTabParam('tab', EXECUTOR_TAB_VALUES, 'overview')
   const [principalKind, setPrincipalKind] = useState<'user' | 'agent'>('user')
   const [principalId, setPrincipalId] = useState('')
   const [assignmentAction, setAssignmentAction] = useState<'set' | 'remove'>('set')

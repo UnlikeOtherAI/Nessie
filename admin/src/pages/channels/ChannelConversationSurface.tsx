@@ -128,7 +128,7 @@ interface ChannelConversationSurfaceProps {
   replyThread: ReturnType<typeof useReplyThread>
   search: ReturnType<typeof useChannelMessageSearch>
   shareRestricted: ReturnType<typeof useShareRestrictedMessage>
-  setActiveTab: Dispatch<SetStateAction<ChannelTab>>
+  setActiveTab: (tab: ChannelTab) => void
   titleFavorite: ChannelTitleFavorite | null
   token: string | null
   visibleActiveTab: ChannelTab

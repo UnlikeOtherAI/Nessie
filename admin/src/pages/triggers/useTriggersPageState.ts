@@ -8,6 +8,7 @@ import {
   useWorkflowTemplates,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useTabParam } from '../../navigation/useTabParam'
 import type {
   AgentRecord,
   AgentTriggerRecord,
@@ -27,6 +28,16 @@ type CreateTarget =
   | undefined
 
 export type TriggerStatusFilter = 'all' | AgentTriggerRecord['status']
+
+// The four segments the status strip offers, and what `?status=` is validated
+// against — a status the strip does not list (needs_reauthorization) reads as
+// All rather than silently emptying the list.
+export const TRIGGER_STATUS_FILTERS: readonly TriggerStatusFilter[] = [
+  'all',
+  'active',
+  'paused',
+  'error',
+]
 export type TriggerTypeFilter = 'all' | AgentTriggerRecord['type']
 
 export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
@@ -73,7 +84,10 @@ export const useTriggersPageState = (): TriggersPageState => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<TriggerStatusFilter>('all')
+  // The status narrowing is part of what the list shows, so it lives in the
+  // URL: `/triggers?status=error` is linkable and survives a refresh, and
+  // Back leaves the page rather than undoing the filter.
+  const [statusFilter, setStatusFilter] = useTabParam('status', TRIGGER_STATUS_FILTERS, 'all')
   const [typeFilter, setTypeFilter] = useState<TriggerTypeFilter>('all')
 
   // Soonest-to-fire first, so the list itself answers "what runs next" and no
