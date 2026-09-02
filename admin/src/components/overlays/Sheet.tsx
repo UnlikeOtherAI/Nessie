@@ -1,3 +1,4 @@
+import { haptic } from '../../lib/haptics'
 import {
   useCallback,
   useId,
@@ -162,6 +163,8 @@ const useSheetSwipe = (
     if (!collected || !wasClaimed || !panel) return
     const extentPx = side === 'bottom' ? panel.offsetHeight : panel.offsetWidth
     if (resolveSheetSwipeOutcome({ extentPx, samples: collected, side }) === 'commit') {
+      // A committed sheet swipe feels like a committed edge swipe (§10).
+      haptic('light')
       requestClose()
     }
   }, [panelRef, requestClose, reset, side])

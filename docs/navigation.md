@@ -160,7 +160,7 @@ One spec, `admin/src/navigation/motion.ts`:
 - The blanket `prefers-reduced-motion` CSS rule stays as the baseline for
   non-navigation CSS motion; navigation reads the query in JS.
 
-## 4. Registry, controller and Back — **built** (steps 3–4, wiring in progress)
+## 4. Registry, controller and Back — **built** (steps 3–4)
 
 ### 4.1 The surface registry — `admin/src/navigation/surfaces.ts`
 
@@ -257,8 +257,9 @@ authenticated shell; the name follows in a later rename). It owns:
   the moment the settle lands and the route is about to change. A cancelled
   swipe and a tapped Back give none.
 
-Planned in this step: `BackButton` as the single glyph in every header on
-every layout.
+The single Back glyph in every header on every layout is `ScreenHeader`'s
+leading lane (§9), which renders `PhoneNavigationButton` — the one resolver's
+answer — wherever a Back paints.
 
 ## 5. Layout — **built** (step 5)
 
@@ -300,7 +301,7 @@ stay one layer. The page-owned detail columns (Knowledge, the column
 browsers, Dashboards) join the stack as nested stages in step 6; the thread
 panel becomes a nested stage on `single` and a `Sheet` on `split` in step 8.
 
-## 6. Nested stages — **built** (step 6, the core; the adopters follow)
+## 6. Nested stages — **built** (step 6)
 
 A nested stage is a state-driven screen a page pushes over its own route: a
 column browser's next column, a Knowledge folder → document → history →
@@ -381,7 +382,7 @@ inside the agent's Documents tab, so Back left the agent instead of unwinding
 the open document. Wider layouts keep the page's own Back button beside the
 title.
 
-## 7. Overlays — **built** (step 8, the layer scale and the hook; the primitives follow)
+## 7. Overlays — **built** (step 8)
 
 An overlay is one of four kinds — **Modal**, **Sheet**, **Popover**, **Card**
 — plus the one sanctioned nesting, **blocking** (a confirm over an open
@@ -493,7 +494,9 @@ its first adopter. The in-conversation call banner stays in flow in its
 conversation and the incoming-call ring stays a dialog — it asks for a decision
 and needs focus, which is exactly what a card refuses to take.
 
-Still planned in this step: `presentation: 'panel' | 'full'` for Flows.
+Still planned: the centred-panel rendering of a Flow on `split`. The row
+field exists (`flowPresentation`, §1) and every Flow today declares
+`screen`, so nothing reads the other value yet.
 Pinned by `admin/test/navigation-overlay.test.ts`,
 `admin/test/dialog-shell.test.ts`, `admin/test/sheet.test.ts`,
 `admin/test/place-popover.test.ts`, `admin/test/popover.test.ts` and
@@ -642,8 +645,9 @@ loading and not-found branches — so a phone standing on one had no Back.
 The `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7) calls
 out are **built**: Android hardware Back on every form factor, the haptic
 bridge, `nessie:screen` and `nessie:attention`, and pull-to-refresh handed to
-the web. The haptic call sites beyond the swipe commit (a sheet snap, a tab
-change) stay **planned**.
+the web. The haptic call sites are the swipe commit (`light`), a committed
+sheet swipe (`light`), a tab change (`selection`, never on a re-tap of the
+selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
 
 - **The native back/forward swipe is off on every form factor** (plan §7,
   thrown only once `ScreenHeader` put a Back in every screen's leading
@@ -937,7 +941,7 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   another (Channels → Knowledge → Channels) and back.
 - Pinned by `admin/test/a11y-navigation.test.ts`.
 
-## 13. Interruption and visibility — **built** (step 14, the stack's part)
+## 13. Interruption and visibility — **built** (step 14)
 
 - **A navigation arriving mid-slide settles the running slide first**: its
   end pose commits, its released entries drop and its settle runs, then the
@@ -1026,9 +1030,14 @@ for it. Four pieces, plus one cache underneath them all.
   used to re-fetch every image on screen — and it is cleared with the query
   cache when the session ends.
 
-## 15. Everything else — **planned**
+## 15. Still planned
 
-Nested stages, overlay kinds and layers, screen headers, drafts (auto-save,
-no confirm dialogs), focus and announcements, scroll, keyboard, haptics,
-pull-to-refresh, cold-start seeding, and the transition test suite: all
-specified in the plan and added here as each lands.
+Everything the plan (`docs/plans/2026-09-01-navigation-motion-system.md`)
+names is built and described above, except these, each noted where it
+belongs and listed here so nothing hides:
+
+- The centred-panel rendering of a Flow on `split` (§7).
+- Per-layer `useScrollMemory` on `split` and the second-scroller lint (§11).
+- The remaining `NAVIGATION_KEYFRAME_ALLOWLIST` / `BESPOKE_DIALOG_ALLOWLIST`
+  entries in `admin/test/navigation-gates.test.ts`: each is one conversion
+  away from deletion, and the gate refuses new entries.

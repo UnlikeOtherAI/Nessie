@@ -1,3 +1,4 @@
+import { haptic } from '../../lib/haptics'
 import {
   useCallback,
   useEffect,
@@ -149,7 +150,12 @@ export const TabBar = <T extends string>({
             data-testid={item.testId}
             id={isTabs && idPrefix ? `${idPrefix}-tab-${item.value}` : undefined}
             key={item.value}
-            onClick={() => onChange(item.value)}
+            onClick={() => {
+              // A tab change is a selection tick in the native shell (§10);
+              // re-tapping the selected tab is not a change.
+              if (!selected) haptic('selection')
+              onChange(item.value)
+            }}
             ref={(node) => {
               if (node) itemRefs.current.set(item.value, node)
               else itemRefs.current.delete(item.value)
