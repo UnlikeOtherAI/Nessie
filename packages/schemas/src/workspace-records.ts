@@ -201,7 +201,9 @@ export const AgentRecordSchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),
-  routingProfileId: z.string().uuid().optional(),
+  // No `routingProfileId`: `mapAgentRecord` has never emitted the column, no
+  // client reads it, and no write path sets it. It was the read-side half of
+  // the same lie as the create body — see `CreateAgentBodySchema`.
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   channelIds: z.array(ChannelIdSchema),
