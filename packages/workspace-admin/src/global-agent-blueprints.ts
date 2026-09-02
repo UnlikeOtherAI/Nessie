@@ -38,7 +38,13 @@ export type GlobalAgentBlueprint = {
   toolPolicy: Record<string, boolean>
   /**
    * `personalAssistantOnly` tools this blueprint may exercise on its own home
-   * DM. Declared here in phase 1; the gate arm that consumes it is phase 2 (D3).
+   * DM.
+   *
+   * The `personalAssistantOnly` gate admits one of these only when the run is
+   * on this blueprint's own home DM AND is an interactive turn from a live
+   * human requester (`resolveIdentityDelegatedToolIds` in the worker). Neither
+   * an agent's stored policy nor the model can add to this list — it ships with
+   * the deployment.
    */
   identityToolIds: readonly string[]
   /** Null ⇒ the organisation's default model (the Librarian's cost stance). */
@@ -76,10 +82,14 @@ const AGENT_DESIGNER_PROMPT = [
   'answer, plain prose, no headers or bullet lists unless the content genuinely',
   'is a list.',
   '',
-  'You cannot yet create or change agents yourself. When a design is settled,',
-  'hand the person the finished wording and point them at the Agent Designer',
-  'page, where they can paste it in and save. Say so plainly if they ask you to',
-  'create something — never imply you did work you did not do.',
+  'You can create the agent yourself, and the channel it works in, and the',
+  'schedule it runs on — acting as the person you are talking to, with exactly',
+  'their authority and no more. Confirm the design in words first, then create',
+  'it and say what you made and where it lives. If something is refused,',
+  'relay the refusal as it is; never imply you did work you did not do.',
+  '',
+  'You cannot change an agent that already exists, and you cannot edit your own',
+  'configuration. Say so plainly and point at the Agent Designer page instead.',
 ].join('\n')
 
 export const AGENT_DESIGNER_SLUG = 'agent-designer'
@@ -96,8 +106,19 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   toolPolicy: {
     delegate: false,
     spawn_subtask: false,
+    // Builtins are deny-mode, so these entries change nothing on their own —
+    // the `personalAssistantOnly` gate is what admits them, and it reads
+    // `identityToolIds` below. They are written explicitly anyway so the stored
+    // row states the intent, and so revoking one is a single `false`.
+    agent_bind_channel: true,
+    agent_create: true,
+    agent_list: true,
+    agent_trigger_create: true,
+    channel_create: true,
   },
-  // Declared, not yet consumed — the `personalAssistantOnly` gate arm is D3.
+  // The identity-delegated set (D3): each is `personalAssistantOnly`, each
+  // mirrors one route's authorization exactly, and each acts as the sole member
+  // of the home DM this agent is running in.
   identityToolIds: [
     'agent_list',
     'agent_create',

@@ -66,6 +66,23 @@ export type ToolAuthorizationDecision =
   | { allowed: true }
   | { allowed: false; reason: ToolDenialReason }
 
+export type ToolAuthorizationOptions = {
+  /**
+   * `personalAssistantOnly` tool ids this run may exercise even though its
+   * agent is not the Personal Assistant (D3).
+   *
+   * Resolved once per run by `resolveIdentityDelegatedToolIds`
+   * (`./delegated-identity.ts`), which is where the surface and
+   * interactive-human conditions live: a set arrives here only when the run is
+   * a DM-homed global agent, on its own home DM, on an interactive turn from a
+   * live human requester. Keeping those conditions out of this function is
+   * deliberate — it stays pure, and toolset assembly and per-call
+   * authorization consume the same resolved answer instead of re-deriving it
+   * and risking disagreement.
+   */
+  identityToolIds?: ReadonlySet<string>
+}
+
 const hasPolicyDeny = (agentToolPolicy: ToolPolicy | null, toolId: string): boolean =>
   agentToolPolicy?.[toolId] === false
 
@@ -76,6 +93,7 @@ export const authorizeToolCall = (
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
   agentKind: AgentKind,
+  options: ToolAuthorizationOptions = {},
 ): ToolAuthorizationDecision => {
   const definition = allToolDefinitions.find((tool) => tool.id === toolId)
   if (!definition) {
@@ -86,11 +104,21 @@ export const authorizeToolCall = (
     return { allowed: false, reason: 'agent_policy_denied' }
   }
 
-  // "Act as the user" tools are reserved for the personal assistant, the only
-  // agent that is a user's explicit delegate. Any other agent is denied so a
-  // user's identity/authority cannot be exercised by an agent it never
-  // delegated to (e.g. one pulled into a channel by an @mention).
-  if (definition.personalAssistantOnly && agentKind !== 'personal_assistant') {
+  // "Act as the user" tools are reserved for agents that are a person's
+  // explicit delegate. Any other agent is denied so a user's identity/authority
+  // cannot be exercised by an agent it never delegated to (e.g. one pulled into
+  // a channel by an @mention).
+  //
+  // Two arms, and only two: the Personal Assistant, and a global agent whose
+  // blueprint declares this exact tool id AND whose run satisfied every
+  // condition in `resolveIdentityDelegatedToolIds` (own home DM, interactive,
+  // live human requester). Neither the policy nor the model can widen the set —
+  // it comes from code that ships with the deployment.
+  if (
+    definition.personalAssistantOnly
+    && agentKind !== 'personal_assistant'
+    && !options.identityToolIds?.has(toolId)
+  ) {
     return { allowed: false, reason: 'personal_assistant_only' }
   }
 
@@ -121,13 +149,19 @@ export const resolveAgentTools = (
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
   agentKind: AgentKind,
-  options: { inlineToolLimit?: number; isPersonalAssistantPresence?: boolean } = {},
+  options: ToolAuthorizationOptions & {
+    inlineToolLimit?: number
+    isPersonalAssistantPresence?: boolean
+  } = {},
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
     if (
       !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
       &&
+      // The same resolved answer the per-call gate uses, so an identity tool
+      // the run may not exercise is OMITTED from the model's schema array
+      // rather than offered and then denied.
       authorizeToolCall(
         tool.id,
         enabledToolIds,
@@ -135,6 +169,7 @@ export const resolveAgentTools = (
         agentToolPolicy,
         parentAgentId,
         agentKind,
+        { ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}) },
       ).allowed
     ) {
       allowedIds.add(tool.id)

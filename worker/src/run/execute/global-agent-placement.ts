@@ -1,5 +1,6 @@
-import { getGlobalAgentBlueprint, globalAgentHomePrefix } from '@nessie/workspace-admin'
+import { getGlobalAgentBlueprint } from '@nessie/workspace-admin'
 
+import { isGlobalAgentHomeSurface } from '../delegated-identity.js'
 import type { RunContext } from './types.js'
 
 export class GlobalAgentPlacementError extends Error {
@@ -36,16 +37,20 @@ export const assertGlobalAgentRunPlacement = (context: RunContext): void => {
     throw new GlobalAgentPlacementError()
   }
 
-  const dmKey = context.channel.dmKey
+  // The encoded person is whoever this home belongs to; the sole-membership
+  // trigger proves they are its only member. What is checked here is that the
+  // destination is *a* home of *this* blueprint in *this* organisation — the
+  // same surface condition the delegation predicate and the identity-tool gate
+  // ask, so placement and identity can never disagree about what "its own home"
+  // means.
   if (
-    context.channel.systemChannelType !== 'system_agent'
-    || !dmKey
-    // The encoded person is whoever this home belongs to; the sole-membership
-    // trigger proves they are its only member. What is checked here is that the
-    // destination is *a* home of *this* blueprint in *this* organisation.
-    || !dmKey.startsWith(
-      globalAgentHomePrefix({ organizationId: context.channel.organizationId, slug }),
-    )
+    !isGlobalAgentHomeSurface({
+      agentKind: context.agent.agentKind,
+      dmKey: context.channel.dmKey,
+      organizationId: context.channel.organizationId,
+      systemChannelType: context.channel.systemChannelType,
+      systemSlug: slug,
+    })
   ) {
     throw new GlobalAgentPlacementError()
   }
