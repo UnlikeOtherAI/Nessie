@@ -1,3 +1,6 @@
+import { Checkbox } from '../../primitives/Checkbox'
+import { EmptyState } from '../../shared/EmptyState'
+
 export type KnowledgeMemberOption = {
   id: string
   label: string
@@ -26,11 +29,7 @@ export const MemberChecklist = ({
   }
 
   if (members.length === 0) {
-    return (
-      <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-        {emptyLabel}
-      </div>
-    )
+    return <EmptyState>{emptyLabel}</EmptyState>
   }
 
   return (
@@ -41,21 +40,16 @@ export const MemberChecklist = ({
       ].join(' ')}
     >
       {members.map((member) => (
-        <label
-          className={[
-            'flex items-center gap-2 rounded px-1.5 py-1 text-sm text-[color:var(--tx2)]',
-            'hover:bg-[color:var(--overlay)]',
-          ].join(' ')}
+        <div
+          className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]"
           key={member.id}
         >
-          <input
+          <Checkbox
             checked={selected.has(member.id)}
-            className="accent-[var(--accent)]"
-            onChange={(event) => toggle(member.id, event.target.checked)}
-            type="checkbox"
+            label={member.label}
+            onChange={(checked) => toggle(member.id, checked)}
           />
-          <span className="min-w-0 flex-1 truncate">{member.label}</span>
-        </label>
+        </div>
       ))}
     </div>
   )

@@ -6,6 +6,7 @@ import {
   type WorkflowSampleTreeNode,
 } from '../../../lib/workflow-designer/jmespath-preview'
 import type { WorkflowStepSamplesRecord } from '../../../lib/api-client'
+import { Notice } from '../../primitives/Notice'
 
 /**
  * §5 shape awareness: the upstream sample rendered as an expandable tree —
@@ -18,8 +19,11 @@ import type { WorkflowStepSamplesRecord } from '../../../lib/api-client'
 const fieldLabelClass =
   'text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]'
 
+// The picker sits on the designer's light "canvas" surface (`--surface-inverse`,
+// same as `WorkflowNodeInspector`) — these were hard-coded approximations of
+// that surface's own nebula-theme values, fixed regardless of theme.
 const monoChipClass =
-  'rounded border border-black/10 bg-[#faf7fc] px-1.5 py-0.5 font-mono text-[10px] text-[#433349]'
+  'rounded border border-[var(--line)] bg-[var(--surface-inverse-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink)]'
 
 const SampleTreeRow = ({
   depth,
@@ -36,7 +40,7 @@ const SampleTreeRow = ({
   return (
     <div>
       <div
-        className="group flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[#f4eff8]"
+        className="group flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[var(--surface-inverse-2)]"
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
       >
         <button
@@ -49,7 +53,7 @@ const SampleTreeRow = ({
           {expanded ? '▾' : '▸'}
         </button>
         <button
-          className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-[#433349]"
+          className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-[var(--ink)]"
           onClick={() => onInsert(node.expression)}
           title={`Insert ${node.expression}`}
           type="button"
@@ -108,11 +112,11 @@ export const WorkflowSamplePicker = ({
   }
 
   return (
-    <div className="grid gap-2 rounded-lg border border-black/10 bg-white px-3 py-2.5">
+    <div className="grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <span className={fieldLabelClass}>Sample data</span>
         <select
-          className="rounded border border-black/10 bg-white px-1.5 py-0.5 text-[11px] text-[#433349]"
+          className="rounded border border-[var(--line)] bg-[var(--surface-inverse)] px-1.5 py-0.5 text-[11px] text-[var(--ink)]"
           onChange={(event) => setSelectedStepId(event.target.value)}
           value={effectiveStepId}
         >
@@ -124,7 +128,7 @@ export const WorkflowSamplePicker = ({
         </select>
       </div>
 
-      <div className="max-h-44 overflow-y-auto rounded-md border border-black/8 bg-[#faf7fc] py-1">
+      <div className="max-h-44 overflow-y-auto rounded-md border border-[var(--line)] bg-[var(--surface-inverse-2)] py-1">
         <SampleTreeRow
           depth={0}
           node={buildWorkflowSampleTree(effectiveStepId ?? 'step', sample)}
@@ -136,13 +140,15 @@ export const WorkflowSamplePicker = ({
         <div className="grid gap-1">
           <span className={fieldLabelClass}>Preview</span>
           {preview.kind === 'value' ? (
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-emerald-200 bg-emerald-50 p-2 font-mono text-[11px] leading-4 text-emerald-900">
-              {JSON.stringify(preview.value, null, 2)}
-            </pre>
+            <Notice size="sm" tone="success">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-4">
+                {JSON.stringify(preview.value, null, 2)}
+              </pre>
+            </Notice>
           ) : preview.kind === 'error' ? (
-            <div className="rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-800">
+            <Notice size="sm" tone="danger">
               {preview.message}
-            </div>
+            </Notice>
           ) : preview.kind === 'no-sample' ? (
             <div className="text-[11px] text-[var(--muted)]">
               Pick a step above to evaluate against its sample.

@@ -5,9 +5,17 @@ import type { ReactNode } from 'react'
  * replaced shipped. Keep it that way: a chip that needs to be a block outside a
  * flex/grid row is a layout box wrapping a chip, not a new Pill.
  */
-export type PillTone = 'accent' | 'danger' | 'muted' | 'success' | 'warning'
+export type PillTone = 'accent' | 'danger' | 'info' | 'muted' | 'outline' | 'success' | 'warning'
 
 export type PillSize = 'md' | 'sm'
+
+/**
+ * `auto` sizes to its content, which is what a chip beside a heading wants.
+ * `control` pins 24px so a column of chips in a list lines up with the rows
+ * beside it — `DeepWaterRunHistory` hand-rolled its own chip for exactly this
+ * and said so, and every status column in a `DataTable` needs it too.
+ */
+export type PillHeight = 'auto' | 'control'
 
 /**
  * Two shapes, because the admin ships two and only two: the `capsule` status
@@ -19,8 +27,23 @@ export type PillRadius = 'capsule' | 'chip'
 type PillProps = {
   children: ReactNode
   className?: string
+  /**
+   * A hook for a test to find this chip. Named explicitly rather than spread
+   * from a rest prop: a `{...rest}` here would also let a call site pass
+   * `style`, `tone` classes or a second radius, which is exactly the drift the
+   * geometry props above exist to prevent.
+   */
+  'data-testid'?: string
+  height?: PillHeight
   radius?: PillRadius
   size?: PillSize
+  /**
+   * A hover title for a chip whose label had to be abbreviated to fit. Not a
+   * substitute for a visible label — a title is invisible on touch and to
+   * anyone not hovering — but where the full text is genuinely longer than the
+   * chip, it is better than nothing.
+   */
+  title?: string
   tone?: PillTone
   uppercase?: boolean
 }
@@ -45,15 +68,30 @@ type PillProps = {
  * reason: that is the pair `StatusPill` shipped, so the `--overlay`/`--tx2`
  * chips (`signal-format`, `MessageUiCards`, `KanbanCard`, `IntegrationsPage`)
  * join it rather than it joining them. A `--scrim` fill does not: it darkens
- * where `--overlay-weak` lightens, so `ToolTransportPill` stays unconverted, as
- * do the border-only billing and executor chips, which have no fill to collapse.
+ * where `--overlay-weak` lightens, so `ToolTransportPill` stays unconverted.
+ *
+ * `outline` (2026-09-01) is the border-only chip this map used to name as an
+ * unconvertible holdout: eight sites — seven across `billing/*` and one in
+ * `ExecutorDetailPanels` — each carried a comment reading "Unconverted:
+ * border-only chip; Pill bordered+muted adds an `--overlay-weak` fill". It is
+ * the same `--sep`/`--tx2` pair all eight hand-wrote, so they are now
+ * pixel-identical through this component. `info` completes the state family
+ * (`--info-*` is declared by every theme) so a neutral-but-not-quiet chip does
+ * not have to borrow `accent`.
  */
 const toneClasses: Record<PillTone, string> = {
   accent: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
   danger: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+  info: 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
   muted: 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)]',
+  outline: 'border border-[color:var(--sep)] text-[color:var(--tx2)]',
   success: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
   warning: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+}
+
+const heightClasses: Record<PillHeight, string> = {
+  auto: '',
+  control: 'h-6',
 }
 
 const sizeClasses: Record<PillSize, string> = {
@@ -92,16 +130,22 @@ const casingClasses: Record<'sentence' | 'uppercase', string> = {
 export const Pill = ({
   children,
   className,
+  'data-testid': testId,
+  height = 'auto',
   radius = 'capsule',
   size = 'md',
+  title,
   tone = 'muted',
   uppercase = true,
 }: PillProps) => (
   <span
+    data-testid={testId}
+    title={title}
     className={[
       'inline-flex items-center',
       radiusClasses[radius],
       sizeClasses[size],
+      heightClasses[height],
       toneClasses[tone],
       casingClasses[uppercase ? 'uppercase' : 'sentence'],
       className ?? '',

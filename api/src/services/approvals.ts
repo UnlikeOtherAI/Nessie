@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
+import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { runApprovalEffect } from './approval-effects.js'
 import { terminalizeExpiredToolApproval, terminalizeRejectedToolApproval } from './approval-resume.js'
@@ -56,14 +57,6 @@ export const createApprovalRequest = async (
   return mapApproval(approval)
 }
 
-const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
-  const [isoPart, idPart] = raw.split('|')
-  if (!isoPart || !idPart) return null
-  const d = new Date(isoPart)
-  if (Number.isNaN(d.getTime())) return null
-  return { cursorDate: d, cursorId: idPart }
-}
-
 /**
  * Which approvals an actor may see. An approval carries a free-text `reason`,
  * a `context` blob and the originating channel/task ids, so org scope alone
@@ -102,7 +95,7 @@ export const listApprovalRequests = async (
     limit?: number
   },
 ) => {
-  const limit = Math.min(filters?.limit ?? 50, 200)
+  const limit = resolvePageLimit(filters?.limit)
   const where: Record<string, unknown> = {
     organizationId: actorContext.tenant.organizationId,
     AND: [approvalVisibilityWhere(actorContext)],
@@ -110,14 +103,18 @@ export const listApprovalRequests = async (
   if (filters?.status) where['status'] = filters.status
   if (filters?.agentId) where['agentId'] = filters.agentId
   if (filters?.channelId) where['channelId'] = filters.channelId
-  if (filters?.cursor) {
-    const parsed = parseCursor(filters.cursor)
-    if (parsed) {
-      where['OR'] = [
-        { createdAt: { lt: parsed.cursorDate } },
-        { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
-      ]
-    }
+
+  // The total is counted against the same filters but before the cursor is
+  // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
+  // after the one this page starts at.
+  const total = await prisma.approvalRequest.count({ where: where as Prisma.ApprovalRequestWhereInput })
+
+  const parsed = decodeKeysetCursor(filters?.cursor)
+  if (parsed) {
+    where['OR'] = [
+      { createdAt: { lt: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+    ]
   }
 
   const approvals = await prisma.approvalRequest.findMany({
@@ -126,16 +123,16 @@ export const listApprovalRequests = async (
     take: limit + 1,
   })
 
-  const hasMore = approvals.length > limit
-  const data = hasMore ? approvals.slice(0, limit) : approvals
-  const last = data.at(-1)
+  const page = buildPage({
+    hasCursor: Boolean(parsed),
+    limit,
+    rows: approvals,
+    total,
+  })
 
   return {
-    data: data.map(mapApproval),
-    meta: {
-      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
-      hasMore,
-    },
+    data: page.data.map(mapApproval),
+    meta: page.meta,
   }
 }
 

@@ -8,6 +8,7 @@ import {
   resolveInstallationPinnedGraph,
   withWorkflowOverlapLock,
 } from '@nessie/workspace-admin'
+import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { WorkflowRunExecuteJobPayload } from '@nessie/schemas'
 
@@ -16,7 +17,6 @@ import { enqueueQueueJob } from '../queue/pgqueue.js'
 import {
   mapWorkflowRun,
   mapWorkflowStepRun,
-  resolveWorkflowListLimit,
   type WorkflowListPage,
   type WorkflowRunRow,
 } from './workflow-records.js'
@@ -150,16 +150,32 @@ export const listWorkflowRuns = async (
   // List view omits the large `input`/`output` Json blobs; they are only
   // fetched by the single-run GET. The contract still requires them, so the
   // list mapper substitutes empty objects.
-  const limit = resolveWorkflowListLimit(input.limit)
+  const limit = resolvePageLimit(input.limit)
+  const where: Prisma.WorkflowRunWhereInput = {
+    organizationId,
+    ...(input.installationId ? { installationId: input.installationId } : {}),
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.installationWhere ? { installation: input.installationWhere } : {}),
+  }
+  const total = await prisma.workflowRun.count({ where })
+
+  const parsed = decodeKeysetCursor(input.cursor)
+  if (parsed) {
+    const existingAnd = where.AND
+    where.AND = [
+      ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
+      {
+        OR: [
+          { createdAt: { lt: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+        ],
+      },
+    ]
+  }
+
   const runs = await prisma.workflowRun.findMany({
-    where: {
-      organizationId,
-      ...(input.installationId ? { installationId: input.installationId } : {}),
-      ...(input.status ? { status: input.status } : {}),
-      ...(input.installationWhere ? { installation: input.installationWhere } : {}),
-    },
+    where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     take: limit + 1,
     select: {
       id: true,
@@ -187,10 +203,10 @@ export const listWorkflowRuns = async (
     },
   })
 
-  const page = runs.slice(0, limit)
+  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: runs, total })
   return {
-    items: page.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} })),
-    nextCursor: runs.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+    data: page.data.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} })),
+    meta: page.meta,
   }
 }
 

@@ -1,6 +1,7 @@
 import type { AgentChild } from '@nessie/schemas'
 import { AgentRow } from '../../shared/AgentRow'
 import { EmptyState } from '../../shared/EmptyState'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentStatusDot } from './AgentStatusDot'
 
 type SubAgentTreeProps = {
@@ -11,9 +12,7 @@ type SubAgentTreeProps = {
 
 export const SubAgentTree = ({ onSelect, selectedAgentId, subAgents }: SubAgentTreeProps) => (
   <section className="grid gap-3">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-      Sub-agent tree
-    </div>
+    <SectionLabel>Sub-agent tree</SectionLabel>
     {subAgents.length === 0 ? (
       <EmptyState>This agent has no team members yet.</EmptyState>
     ) : (

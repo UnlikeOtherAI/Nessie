@@ -7,6 +7,10 @@ import {
   AGENT_TODO_TEMPLATE_DESCRIPTION_MAX,
   AGENT_TODO_TEMPLATE_NAME_MAX,
 } from '@nessie/schemas'
+import { EMPTY_FORM_ERRORS, toFormErrors } from '../../../../facades/form-errors'
+import { FormActions, FormError } from '../../../shared/FormActions'
+import { FormField } from '../../../shared/FormField'
+import { Input, Textarea } from '../../../shared/FormControls'
 
 type TodoTemplateEditorProps = {
   onCancel: () => void
@@ -24,6 +28,10 @@ const blankStep = (): AgentTodoTemplateStepInput => ({ instructions: '', title: 
 const templateSteps = (template?: AgentTodoTemplateRecord): AgentTodoTemplateStepInput[] =>
   template?.steps.map((step) => ({ ...step })) ?? [blankStep()]
 
+const counter = (length: number, max: number) => (
+  <span className="block text-right">{length} / {max}</span>
+)
+
 export const TodoTemplateEditor = ({
   onCancel,
   onSave,
@@ -33,6 +41,7 @@ export const TodoTemplateEditor = ({
   const [name, setName] = useState(template?.name ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [steps, setSteps] = useState<AgentTodoTemplateStepInput[]>(() => templateSteps(template))
+  const [formErrors, setFormErrors] = useState(EMPTY_FORM_ERRORS)
 
   const setStep = (
     index: number,
@@ -61,11 +70,12 @@ export const TodoTemplateEditor = ({
   }
 
   const save = () => {
+    setFormErrors(EMPTY_FORM_ERRORS)
     void onSave({
       description: description.trim() || null,
       name: name.trim(),
       steps,
-    })
+    }).catch((error) => setFormErrors(toFormErrors(error)))
   }
 
   return (
@@ -85,39 +95,34 @@ export const TodoTemplateEditor = ({
         </span>
       </div>
 
-      <div className="grid gap-1.5">
-        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]" htmlFor="todo-template-name">
-          Name
-        </label>
-        <input
-          className="admin-input"
-          id="todo-template-name"
+      <FormField
+        error={formErrors.fieldErrors.name}
+        help={counter(name.length, AGENT_TODO_TEMPLATE_NAME_MAX)}
+        label="Name"
+        required
+      >
+        <Input
           maxLength={AGENT_TODO_TEMPLATE_NAME_MAX}
           onChange={(event) => setName(event.target.value)}
           required
           value={name}
         />
-        <span className="text-right text-xs text-[color:var(--tx3)]">
-          {name.length} / {AGENT_TODO_TEMPLATE_NAME_MAX}
-        </span>
-      </div>
+      </FormField>
 
-      <div className="grid gap-1.5">
-        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]" htmlFor="todo-template-description">
-          Description
-        </label>
-        <textarea
-          className="admin-input admin-input-compact resize-y"
-          id="todo-template-description"
+      <FormField
+        error={formErrors.fieldErrors.description}
+        help={counter(description.length, AGENT_TODO_TEMPLATE_DESCRIPTION_MAX)}
+        label="Description"
+      >
+        <Textarea
+          className="resize-y"
           maxLength={AGENT_TODO_TEMPLATE_DESCRIPTION_MAX}
           onChange={(event) => setDescription(event.target.value)}
           rows={3}
+          size="compact"
           value={description}
         />
-        <span className="text-right text-xs text-[color:var(--tx3)]">
-          {description.length} / {AGENT_TODO_TEMPLATE_DESCRIPTION_MAX}
-        </span>
-      </div>
+      </FormField>
 
       <div className="grid gap-3">
         <div className="flex items-center justify-between gap-3">
@@ -170,51 +175,43 @@ export const TodoTemplateEditor = ({
                 Remove
               </button>
             </div>
-            <div className="grid gap-1.5">
-              <label className="text-xs text-[color:var(--tx2)]" htmlFor={`todo-step-title-${index}`}>
-                Title
-              </label>
-              <input
-                className="admin-input"
-                id={`todo-step-title-${index}`}
+            <FormField help={counter(step.title.length, AGENT_TODO_STEP_TITLE_MAX)} label="Title" required>
+              <Input
                 maxLength={AGENT_TODO_STEP_TITLE_MAX}
                 onChange={(event) => setStep(index, 'title', event.target.value)}
                 required
                 value={step.title}
               />
-              <span className="text-right text-xs text-[color:var(--tx3)]">
-                {step.title.length} / {AGENT_TODO_STEP_TITLE_MAX}
-              </span>
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-xs text-[color:var(--tx2)]" htmlFor={`todo-step-instructions-${index}`}>
-                Instructions
-              </label>
-              <textarea
-                className="admin-input admin-input-compact resize-y"
-                id={`todo-step-instructions-${index}`}
+            </FormField>
+            <FormField
+              help={counter(step.instructions.length, AGENT_TODO_STEP_INSTRUCTIONS_MAX)}
+              label="Instructions"
+              required
+            >
+              <Textarea
+                className="resize-y"
                 maxLength={AGENT_TODO_STEP_INSTRUCTIONS_MAX}
                 onChange={(event) => setStep(index, 'instructions', event.target.value)}
                 required
                 rows={4}
+                size="compact"
                 value={step.instructions}
               />
-              <span className="text-right text-xs text-[color:var(--tx3)]">
-                {step.instructions.length} / {AGENT_TODO_STEP_INSTRUCTIONS_MAX}
-              </span>
-            </div>
+            </FormField>
           </fieldset>
         ))}
       </div>
 
-      <div className="flex justify-end gap-2">
+      <FormError>{formErrors.formError}</FormError>
+
+      <FormActions>
         <button className="admin-button admin-button-secondary" onClick={onCancel} type="button">
           Cancel
         </button>
         <button className="admin-button admin-button-primary" disabled={saving} type="submit">
           {saving ? 'Saving…' : template ? 'Save template' : 'Create template'}
         </button>
-      </div>
+      </FormActions>
     </form>
   )
 }

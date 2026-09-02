@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
 import type { AgentTodoTemplateRecord, AgentTodoTemplateStepInput } from '@nessie/schemas'
 
 import {
@@ -10,7 +11,7 @@ import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '.
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
-import { EmptyState } from '../../../shared/EmptyState'
+import { QueryState } from '../../../shared/QueryState'
 import { useIsOwner } from '../../../shared/OwnerGate'
 import { TodoTemplateEditor } from './TodoTemplateEditor'
 import { TodoTemplateCard } from './TodoTemplateCard'
@@ -19,13 +20,12 @@ import { useAgentTriggers } from '../../../../facades/triggers/hooks'
 
 type TodoTemplatesProps = {
   agent: AgentRecord
-  templates: AgentTodoTemplateRecord[]
-  isLoading: boolean
-  loadError?: Error | null
+  query: UseQueryResult<AgentTodoTemplateRecord[]>
 }
 
-export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTemplatesProps) => {
+export const TodoTemplates = ({ agent, query }: TodoTemplatesProps) => {
   const isOwner = useIsOwner()
+  const templates = query.data ?? []
   const { pushToast } = useToasts()
   const createTemplate = useCreateAgentTodoTemplate()
   const updateTemplate = useUpdateAgentTodoTemplate()
@@ -43,35 +43,32 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
     })
   }
 
+  // Errors are the editor's to show — it stays open and renders them on the
+  // field the server named, per `toFormErrors` — so this deliberately does
+  // not catch: a rejection here reaches `TodoTemplateEditor`'s own submit
+  // handler.
   const saveTemplate = async (input: {
     description: string | null
     name: string
     steps: AgentTodoTemplateStepInput[]
   }) => {
-    try {
-      if (editingTemplate) {
-        await updateTemplate.mutateAsync({
-          ...input,
-          agentId: agent.id,
-          templateId: editingTemplate.id,
-          version: editingTemplate.version,
-        })
-      } else {
-        await createTemplate.mutateAsync({
-          ...input,
-          agentId: agent.id,
-          // Person-authored templates are usable immediately. Drafts arrive
-          // through the later agent-proposal flow, not a second authoring path.
-          status: 'active',
-        })
-      }
-      setEditingTemplate(undefined)
-    } catch (error) {
-      pushToast({
-        body: error instanceof Error ? error.message : 'Try saving the template again.',
-        title: 'Could not save template',
+    if (editingTemplate) {
+      await updateTemplate.mutateAsync({
+        ...input,
+        agentId: agent.id,
+        templateId: editingTemplate.id,
+        version: editingTemplate.version,
+      })
+    } else {
+      await createTemplate.mutateAsync({
+        ...input,
+        agentId: agent.id,
+        // Person-authored templates are usable immediately. Drafts arrive
+        // through the later agent-proposal flow, not a second authoring path.
+        status: 'active',
       })
     }
+    setEditingTemplate(undefined)
   }
 
   const archive = (template: AgentTodoTemplateRecord) => {
@@ -125,35 +122,41 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
         />
       ) : null}
 
-      {isLoading ? <div className="py-4 text-sm text-[color:var(--tx3)]">Loading templates…</div> : null}
-      {loadError ? <div className="text-sm text-[color:var(--danger-text)]" role="alert">{loadError.message}</div> : null}
-      {!isLoading && !loadError && templates.length === 0 ? (
-        <EmptyState>
-          {isOwner
+      <QueryState
+        className="py-4"
+        emptyLabel={
+          isOwner
             ? 'Create a template to give this agent a reusable checklist.'
-            : 'No templates exist yet. An organization owner can add a reusable checklist here.'}
-        </EmptyState>
-      ) : null}
-      <div className="grid gap-3">
-        {templates.map((template) => (
-          <TodoTemplateCard
-            isOwner={isOwner}
-            agent={agent}
-            channels={channels}
-            key={template.id}
-            onArchive={archive}
-            onEdit={setEditingTemplate}
-            onRefuseOwnerAction={refuseOwnerAction}
-            onResolveProposal={(approval, resolution) => resolveApproval.mutate(
-              { id: approval.id, resolution },
-              { onError: (error) => pushToast({ body: error.message, title: 'Could not resolve proposal' }) },
-            )}
-            proposal={proposalFor(template.id)}
-            template={template}
-            trigger={triggers.find((trigger) => trigger.config.todoTemplateId === template.id)}
-          />
-        ))}
-      </div>
+            : 'No templates exist yet. An organization owner can add a reusable checklist here.'
+        }
+        errorLabel="Templates could not be loaded."
+        isEmpty={templates.length === 0}
+        loadingLabel="Loading templates…"
+        query={query}
+      >
+        {() => (
+          <div className="grid gap-3">
+            {templates.map((template) => (
+              <TodoTemplateCard
+                isOwner={isOwner}
+                agent={agent}
+                channels={channels}
+                key={template.id}
+                onArchive={archive}
+                onEdit={setEditingTemplate}
+                onRefuseOwnerAction={refuseOwnerAction}
+                onResolveProposal={(approval, resolution) => resolveApproval.mutate(
+                  { id: approval.id, resolution },
+                  { onError: (error) => pushToast({ body: error.message, title: 'Could not resolve proposal' }) },
+                )}
+                proposal={proposalFor(template.id)}
+                template={template}
+                trigger={triggers.find((trigger) => trigger.config.todoTemplateId === template.id)}
+              />
+            ))}
+          </div>
+        )}
+      </QueryState>
     </section>
   )
 }

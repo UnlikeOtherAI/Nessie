@@ -1,11 +1,11 @@
+import { useState } from 'react'
 import { useFeedback } from '../facades/feedback/hooks'
 import { FeedbackComposer } from './feedback/FeedbackComposer'
 import { FeedbackList } from './feedback/FeedbackList'
 import { SettingsPanel } from './settings/settings-shared'
-import { useState } from 'react'
 
 export const FeedbackPage = () => {
-  const { data: feedback = [], isLoading } = useFeedback()
+  const feedback = useFeedback()
   const [page, setPage] = useState(1)
 
   return (
@@ -19,7 +19,7 @@ export const FeedbackPage = () => {
           ].join(' ')}
         >
           <FeedbackComposer onSubmitted={() => setPage(1)} />
-          <FeedbackList isLoading={isLoading} items={feedback} onPageChange={setPage} page={page} />
+          <FeedbackList onPageChange={setPage} page={page} query={feedback} />
         </div>
       </div>
     </SettingsPanel>

@@ -1,9 +1,11 @@
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import type { PillTone } from '../../primitives/Pill'
 
-export const pageStatusTone: Record<KnowledgePageRecord['status'], string> = {
-  draft: 'text-[var(--warning-text)]',
-  published: 'text-[var(--success-text)]',
-  archived: 'text-[color:var(--tx3)]',
+// The one tone map for a page's status, everywhere it renders as a `Pill`.
+export const pageStatusPillTone: Record<KnowledgePageRecord['status'], PillTone> = {
+  draft: 'warning',
+  published: 'success',
+  archived: 'muted',
 }
 
 // A page is an unreviewed agent draft when it is still in draft status and

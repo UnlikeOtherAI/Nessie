@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom'
 import type { DashboardWidgetProjection } from '@nessie/schemas'
 import { dashboardKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
+import { Skeleton } from '../../primitives/Skeleton'
 import { DashboardWidgetCard, type WidgetSurface } from './DashboardWidgetCard'
 
 type EmbedResponse =
@@ -25,13 +26,8 @@ type EmbedResponse =
 
 const UnavailableCard = ({ surface }: { surface: WidgetSurface }) => (
   <div
-    className="rounded-lg border px-3 py-2.5 text-xs"
-    style={{
-      background: 'var(--panel)',
-      borderColor: 'var(--sep)',
-      color: 'var(--tx3)',
-      maxWidth: surface === 'message' ? 520 : undefined,
-    }}
+    className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2.5 text-xs text-[color:var(--tx3)]"
+    style={{ maxWidth: surface === 'message' ? 520 : undefined }}
     data-testid="embedded-widget-unavailable"
   >
     Dashboard widget unavailable — you may not have access to it any more.
@@ -56,14 +52,9 @@ export const EmbeddedWidget = ({
 
   if (isLoading) {
     return (
-      <div
-        className="h-32 animate-pulse rounded-lg border"
-        style={{
-          background: 'var(--panel)',
-          borderColor: 'var(--sep)',
-          maxWidth: surface === 'message' ? 520 : undefined,
-        }}
-      />
+      <div style={{ maxWidth: surface === 'message' ? 520 : undefined }}>
+        <Skeleton className="rounded-lg border border-[color:var(--sep)]" height="h-32" />
+      </div>
     )
   }
   if (!data?.visible) return <UnavailableCard surface={surface} />
@@ -78,12 +69,11 @@ export const EmbeddedWidget = ({
       <div style={{ height: surface === 'message' ? 200 : 240 }}>
         <DashboardWidgetCard projection={data.projection} surface={surface} />
       </div>
-      <div className="flex items-center gap-2 px-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+      <div className="flex items-center gap-2 px-0.5 text-[11px] text-[color:var(--tx3)]">
         {/* The card's own footer already states frozen-vs-live, so this row
             carries only the way back to the dashboard. */}
         <Link
-          className="ml-auto underline"
-          style={{ color: 'var(--lnk)' }}
+          className="ml-auto text-[color:var(--lnk)] underline"
           to={`/dashboards/${data.projection.dashboardId}`}
         >
           Open dashboard →

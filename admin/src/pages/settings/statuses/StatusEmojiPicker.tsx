@@ -8,6 +8,7 @@ import {
 import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { EmojiPickerPanel } from '../../../components/shared/EmojiPickerPanel'
+import { useFormFieldControl } from '../../../components/shared/FormField'
 
 type StatusEmojiPickerProps = {
   label: string
@@ -19,6 +20,7 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
   const [open, setOpen] = useState(false)
   const pickerId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
+  const field = useFormFieldControl()
 
   useEffect(() => {
     if (!open) return
@@ -45,10 +47,13 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
     <div className="relative" ref={rootRef}>
       <button
         aria-controls={open ? pickerId : undefined}
+        aria-describedby={field?.describedBy}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-invalid={field?.invalid || undefined}
         aria-label={label}
         className="admin-input flex items-center justify-between gap-2 text-left"
+        id={field?.id}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={closeOnEscape}
         type="button"

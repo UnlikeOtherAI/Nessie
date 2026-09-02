@@ -602,6 +602,25 @@ turn): `AGENTS.md` → "Workflow". After a merge, in the main checkout run
   the same account theme.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
+- **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
+  validation, feedback, loading/empty/error states, chips, key-value views and
+  confirm flows were audited across every content page; the primitives mostly
+  exist and are adopted on a minority of surfaces (`QueryState` 12 files vs ~60
+  hand-rolled triads, `FormFieldError` 2 files vs ~40 error lines, 11 modal
+  shells outside `Dialog`). The inventory, the proposed kit, the scale and the
+  phased migration are in
+  [docs/plans/2026-09-01-content-design-system/overview.md](docs/plans/2026-09-01-content-design-system/overview.md);
+  navigation, page headers, buttons and chat are deliberately outside it.
+  One rule from it applies now, ahead of the kit: **no nesting** — a card
+  never contains a card, a table never contains a table, a bordered box never
+  sits inside a bordered box. Depth is dividers and spacing, not a second
+  frame. A second rule is decided ahead of the kit too: **big elements are
+  one contract from the API to the pixel.** List endpoints paginate through
+  `@nessie/schemas` `PaginationParamsSchema`/`PaginationMetaSchema` (cursor
+  keyset, `limit` ≤ 100, `total` required on admin lists) and the admin
+  consumes them through one facade and `PaginationFooter`; a route that pages,
+  sorts or reports validation errors differently is refactored onto the
+  contract, never accommodated by a second mode in the component.
 - **One tab bar, everywhere.** Every single-select strip in the admin — detail
   tabs, page sections, and filter segments — is
   `components/primitives/TabBar.tsx`. The selected item is a *single sliding

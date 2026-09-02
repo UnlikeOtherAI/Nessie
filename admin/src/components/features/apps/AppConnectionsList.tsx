@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
+import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
@@ -90,16 +91,9 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
                 </div>
               ) : null}
               {connection.errorMessage ? (
-                <p
-                  className={[
-                    'mt-2 rounded-md border border-[color:var(--danger-border)]',
-                    'bg-[color:var(--danger-soft)] px-3 py-2 text-xs',
-                    'text-[color:var(--danger-text)]',
-                  ].join(' ')}
-                  role="alert"
-                >
+                <Notice className="mt-2" role="alert" size="sm" tone="danger">
                   {connection.errorMessage}
-                </p>
+                </Notice>
               ) : null}
             </li>
           )

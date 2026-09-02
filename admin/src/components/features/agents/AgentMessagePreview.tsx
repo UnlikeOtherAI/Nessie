@@ -1,4 +1,5 @@
 import type { AgentMessage } from '@nessie/schemas'
+import { Card } from '../../shared/Card'
 import { EmptyState } from '../../shared/EmptyState'
 
 type AgentMessagePreviewProps = {
@@ -18,10 +19,7 @@ export const AgentMessagePreview = ({ messages }: AgentMessagePreviewProps) => (
       <EmptyState>No recent messages for this agent yet.</EmptyState>
     ) : (
       messages.map((message) => (
-        <article
-          key={message.messageId}
-          className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
-        >
+        <Card key={message.messageId}>
           <div
             className={[
               'flex items-center justify-between gap-3 text-xs uppercase',
@@ -34,7 +32,7 @@ export const AgentMessagePreview = ({ messages }: AgentMessagePreviewProps) => (
           <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
             {compactPreview(message.contentPreview)}
           </div>
-        </article>
+        </Card>
       ))
     )}
   </section>

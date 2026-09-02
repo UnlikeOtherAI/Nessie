@@ -12,6 +12,7 @@ import type {
   DashboardWidgetProjection,
   WidgetPresentation,
 } from '@nessie/schemas'
+import { Skeleton } from '../../primitives/Skeleton'
 import { formatRelative, formatTemporal as formatMoment } from './widget-format'
 
 type WidgetFrameProps = {
@@ -65,8 +66,10 @@ const FreshnessFooter = ({ projection }: { projection: DashboardWidgetProjection
 
   return (
     <div
-      className="mt-2 flex items-center gap-1.5 text-[11px]"
-      style={{ color: !frozen && state === 'stale' ? 'var(--warning-text)' : 'var(--tx3)' }}
+      className={[
+        'mt-2 flex items-center gap-1.5 text-[11px]',
+        !frozen && state === 'stale' ? 'text-[color:var(--warning-text)]' : 'text-[color:var(--tx3)]',
+      ].join(' ')}
       data-testid="widget-freshness"
     >
       <span aria-hidden>{frozen ? '📌' : null}</span>
@@ -80,7 +83,7 @@ const FreshnessFooter = ({ projection }: { projection: DashboardWidgetProjection
       <span>{label}</span>
       {/* A stable code, never an upstream message. */}
       {errorCode && state !== 'fresh' ? (
-        <span style={{ color: 'var(--tx3)' }}>· {errorCode}</span>
+        <span className="text-[color:var(--tx3)]">· {errorCode}</span>
       ) : null}
       {projection.authorityLabel ? (
         <span className="ml-auto" title="Whose access refreshes this data">
@@ -121,17 +124,16 @@ export const WidgetFrame = ({
       <header className="mb-1.5 min-w-0">
         {/* Author-supplied strings are React text nodes. Never markup. */}
         <h3
-          className={['truncate font-semibold', emphasis ? 'text-base' : 'text-sm'].join(' ')}
-          style={{ color: 'var(--tx)' }}
+          className={[
+            'truncate font-semibold text-[color:var(--tx)]',
+            emphasis ? 'text-base' : 'text-sm',
+          ].join(' ')}
           title={presentation?.title}
         >
           {presentation?.title ?? 'Widget'}
         </h3>
         {presentation?.subtitle && !dense ? (
-          <p
-            className="truncate text-[11px] uppercase tracking-wide"
-            style={{ color: 'var(--tx3)' }}
-          >
+          <p className="truncate text-[11px] uppercase tracking-wide text-[color:var(--tx3)]">
             {presentation.subtitle}
           </p>
         ) : null}
@@ -140,15 +142,14 @@ export const WidgetFrame = ({
       <div className="min-h-0 flex-1">{children}</div>
 
       {presentation?.caption && !dense ? (
-        <p className="mt-2 text-xs" style={{ color: 'var(--tx2)' }}>
+        <p className="mt-2 text-xs text-[color:var(--tx2)]">
           {presentation.caption}
         </p>
       ) : null}
 
       {projection.state === 'error' && onRetry ? (
         <button
-          className="mt-2 self-start rounded px-2 py-1 text-xs"
-          style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
+          className="mt-2 self-start rounded bg-[color:var(--overlay-weak)] px-2 py-1 text-xs text-[color:var(--tx2)]"
           onClick={onRetry}
           type="button"
         >
@@ -159,6 +160,15 @@ export const WidgetFrame = ({
       <FreshnessFooter projection={projection} />
     </section>
   )
+}
+
+// The same tone→token pairs `Pill` draws its chips from — a placeholder is a
+// filled panel rather than a chip, so it composes the pair directly instead
+// of wearing a chip shape.
+const placeholderToneClasses: Record<'neutral' | 'warning' | 'danger', string> = {
+  danger: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+  neutral: 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)]',
+  warning: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
 }
 
 /** Shown when data cannot be rendered. Carries server copy only. */
@@ -172,21 +182,10 @@ export const WidgetPlaceholder = ({
   tone?: 'neutral' | 'warning' | 'danger'
 }) => (
   <div
-    className="flex h-full min-h-[64px] flex-col items-start justify-center gap-1 rounded px-3 py-2 text-xs"
-    style={{
-      background:
-        tone === 'danger'
-          ? 'var(--danger-soft)'
-          : tone === 'warning'
-            ? 'var(--warning-soft)'
-            : 'var(--overlay-weak)',
-      color:
-        tone === 'danger'
-          ? 'var(--danger-text)'
-          : tone === 'warning'
-            ? 'var(--warning-text)'
-            : 'var(--tx3)',
-    }}
+    className={[
+      'flex h-full min-h-[64px] flex-col items-start justify-center gap-1 rounded px-3 py-2 text-xs',
+      placeholderToneClasses[tone],
+    ].join(' ')}
   >
     <span className="font-medium">{title}</span>
     {detail ? <span>{detail}</span> : null}
@@ -194,9 +193,4 @@ export const WidgetPlaceholder = ({
 )
 
 /** First-load shimmer: keeps the frame's height so the grid does not jump. */
-export const WidgetSkeleton = () => (
-  <div
-    className="h-full min-h-[64px] w-full animate-pulse rounded"
-    style={{ background: 'var(--overlay-weak)' }}
-  />
-)
+export const WidgetSkeleton = () => <Skeleton className="min-h-[64px]" height="h-full" />

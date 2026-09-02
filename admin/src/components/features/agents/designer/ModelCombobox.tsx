@@ -8,6 +8,7 @@ import {
   modelOptionLabel,
   modelOptionSubtitle,
 } from './model-options'
+import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 
 type ModelComboboxProps = {
   disabled?: boolean
@@ -113,7 +114,7 @@ export const ModelCombobox = ({
         autoComplete="off"
         className={[
           'admin-input pr-8',
-          highlighted ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : '',
+          highlighted ? STREAMING_HIGHLIGHT_CLASS : '',
         ].join(' ')}
         disabled={disabled}
         id={id}

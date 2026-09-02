@@ -124,3 +124,69 @@ test('a second 401 is terminal and never starts a renewal loop', async () => {
   assert.equal(requestCalls, 2)
   assert.equal(refreshCalls, 1)
 })
+
+const pageResponse = () =>
+  Response.json({
+    data: [{ id: 'a' }, { id: 'b' }],
+    meta: { hasMore: true, nextCursor: 'c2', prevCursor: null, total: 134 },
+  })
+
+test('getPage keeps the envelope, because a list lives in its meta', async () => {
+  // `get` unwraps to `payload.data`, which is right for a record or an array
+  // and silently wrong for a paged list: the cursors and the total are in
+  // `meta`, and a caller that lost them rendered an empty list with no next
+  // page reachable.
+  await withMockFetch(
+    async () => pageResponse(),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+
+      const page = await client.getPage<Array<{ id: string }>>('/api/audit-log?limit=25')
+      assert.deepEqual(page.data, [{ id: 'a' }, { id: 'b' }])
+      assert.deepEqual(page.meta, {
+        hasMore: true,
+        nextCursor: 'c2',
+        prevCursor: null,
+        total: 134,
+      })
+
+      const unwrapped = await client.get<Array<{ id: string }>>('/api/audit-log?limit=25')
+      assert.deepEqual(unwrapped, [{ id: 'a' }, { id: 'b' }], 'get still unwraps, unchanged')
+    },
+  )
+})
+
+test('getPage renews and retries on a 401 like every other method', async () => {
+  let calls = 0
+  await withMockFetch(
+    async () => {
+      calls += 1
+      if (calls === 1) return Response.json({ error: { message: 'expired' } }, { status: 401 })
+      return pageResponse()
+    },
+    async () => {
+      const client = createApiClient({
+        baseUrl: 'https://api.nessie.works',
+        onUnauthorized: async () => 'renewed',
+        token: 'expired',
+      })
+
+      const page = await client.getPage<Array<{ id: string }>>('/api/audit-log')
+      assert.equal(calls, 2, 'the request is retried once after renewal')
+      assert.equal(page.meta?.total, 134, 'the retry still returns the envelope')
+    },
+  )
+})
+
+test('a 204 through the envelope path reports no data rather than throwing', async () => {
+  await withMockFetch(
+    async () => new Response(null, { status: 204 }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+
+      const page = await client.getPage<null>('/api/thing')
+      assert.equal(page.data, undefined)
+      assert.equal(page.meta, undefined)
+    },
+  )
+})

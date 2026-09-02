@@ -5,6 +5,7 @@ import {
   useKnowledgeBacklinks,
   useKnowledgeMentions,
 } from '../../../../facades/knowledge/backlinks-hooks'
+import { SectionLabel } from '../../../primitives/SectionLabel'
 import { useKnowledge } from '../KnowledgeProvider'
 
 const SectionHeader = ({
@@ -23,10 +24,7 @@ const SectionHeader = ({
     onClick={onToggle}
     type="button"
   >
-    {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
-    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-      {label} ({count})
-    </span>
+    <SectionLabel size="2xs">{label} ({count})</SectionLabel>
     <FontAwesomeIcon className="h-3 w-3 text-[color:var(--tx3)]" icon={expanded ? faChevronDown : faChevronRight} />
   </button>
 )

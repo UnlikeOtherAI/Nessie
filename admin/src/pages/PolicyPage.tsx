@@ -1,12 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Pill } from '../components/primitives/Pill'
-import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { Card } from '../components/shared/Card'
+import { ConfirmDialog } from '../components/shared/ConfirmDialog'
+import { FormActions, FormError } from '../components/shared/FormActions'
+import { FormField } from '../components/shared/FormField'
+import { Select, Input } from '../components/shared/FormControls'
+import { PageBody, Section } from '../components/shared/PageBody'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { QueryState } from '../components/shared/QueryState'
+import { Row, RowList } from '../components/shared/RowList'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { EMPTY_FORM_ERRORS, toFormErrors } from '../facades/form-errors'
 import { policyKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { usePagedList } from '../facades/usePagedList'
 
 type PolicyRule = {
   id: string
@@ -21,10 +31,8 @@ type PolicyRule = {
   createdAt: string
 }
 
-type PolicyRulesResponse = {
-  data: PolicyRule[]
-  meta: { cursor: string | null; hasMore: boolean }
-}
+const RESOURCE_TYPES = ['agent', 'channel', 'project', 'tool', 'session', 'task', 'admin']
+const ACTIONS = ['view', 'invoke', 'create', 'edit', 'bind', 'admin', 'approve']
 
 export const PolicyPage = () => {
   const { me } = useAuthSession()
@@ -38,11 +46,16 @@ export const PolicyPage = () => {
   const [newAction, setNewAction] = useState('view')
   const [newEffect, setNewEffect] = useState('allow')
   const [newActorId, setNewActorId] = useState('*')
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
-  const { data } = useQuery<PolicyRulesResponse>({
-    queryKey: policyKeys.rules,
-    queryFn: () => apiClient.get('/api/policy/rules?limit=100'),
+  // Not a raw key: `policyKeys.rules` is the factory; 'page' only distinguishes
+  // this hook's own cache entry. See AuditLogPage's identical note.
+  const cacheKey = [...policyKeys.rules, 'page']
+
+  const rows = usePagedList<PolicyRule>({
     enabled: isOwner,
+    path: '/api/policy/rules',
+    queryKey: cacheKey,
   })
 
   const createRule = useMutation({
@@ -66,6 +79,7 @@ export const PolicyPage = () => {
   const deleteRule = useMutation({
     mutationFn: (ruleId: string) => apiClient.delete(`/api/policy/rules/${ruleId}`),
     onSuccess: () => {
+      setPendingDeleteId(null)
       void queryClient.invalidateQueries({ queryKey: policyKeys.rules })
     },
   })
@@ -80,103 +94,141 @@ export const PolicyPage = () => {
     })
   }
 
+  const createErrors = createRule.isError ? toFormErrors(createRule.error) : EMPTY_FORM_ERRORS
+  const deleteErrors = deleteRule.isError ? toFormErrors(deleteRule.error) : EMPTY_FORM_ERRORS
+  const pendingDeleteRule = rows.items.find((rule) => rule.id === pendingDeleteId) ?? null
+
   return (
     <OwnerGate>
       <section className="flex h-full min-h-0 flex-col">
         <AdminPageHeader title="Policy Rules" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <form className="admin-card mb-4 grid gap-3 p-4" onSubmit={handleCreate}>
-            <SectionLabel>Create Rule</SectionLabel>
-            <div className="grid grid-cols-4 gap-2">
-              <select
-                className="admin-input"
-                onChange={(e) => setNewResourceType(e.target.value)}
-                value={newResourceType}
-              >
-                {['agent', 'channel', 'project', 'tool', 'session', 'task', 'admin'].map(
-                  (t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ),
-                )}
-              </select>
-              <select
-                className="admin-input"
-                onChange={(e) => setNewAction(e.target.value)}
-                value={newAction}
-              >
-                {['view', 'invoke', 'create', 'edit', 'bind', 'admin', 'approve'].map(
-                  (a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ),
-                )}
-              </select>
-              <select
-                className="admin-input"
-                onChange={(e) => setNewEffect(e.target.value)}
-                value={newEffect}
-              >
-                <option value="allow">Allow</option>
-                <option value="deny">Deny</option>
-              </select>
-              <input
-                className="admin-input"
-                onChange={(e) => setNewActorId(e.target.value)}
-                placeholder="Actor ID (* for all)"
-                value={newActorId}
-              />
-            </div>
-            <button
-              className="admin-button admin-button-primary justify-self-start"
-              disabled={createRule.isPending}
-              type="submit"
-            >
-              Create Rule
-            </button>
-          </form>
-
-          <div className="grid gap-2">
-            {(data?.data ?? []).map((rule) => (
-              <div key={rule.id} className="admin-card flex items-center justify-between p-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Pill radius="chip" size="sm" tone={rule.effect === 'allow' ? 'success' : 'danger'}>
-                      {rule.effect}
-                    </Pill>
-                    <span className="font-mono text-xs text-[color:var(--tx)]">
-                      {rule.resourceType}.{rule.action}
-                    </span>
-                    <span className="text-xs text-[color:var(--tx3)]">
-                      priority: {rule.priority}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                    {rule.scope}:{rule.scopeId.slice(0, 8)} &rarr;{' '}
-                    {rule.bindings.map((b) => `${b.actorType}:${b.actorId}`).join(', ')}
-                  </div>
+        <PageBody width="regular">
+          <Section title="Create rule">
+            <Card variant="section">
+              <form className="grid gap-3" onSubmit={handleCreate}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  <FormField error={createErrors.fieldErrors.resourceType} label="Resource type" required>
+                    <Select onChange={(e) => setNewResourceType(e.target.value)} value={newResourceType}>
+                      {RESOURCE_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
+                  <FormField error={createErrors.fieldErrors.action} label="Action" required>
+                    <Select onChange={(e) => setNewAction(e.target.value)} value={newAction}>
+                      {ACTIONS.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
+                  <FormField error={createErrors.fieldErrors.effect} label="Effect" required>
+                    <Select onChange={(e) => setNewEffect(e.target.value)} value={newEffect}>
+                      <option value="allow">Allow</option>
+                      <option value="deny">Deny</option>
+                    </Select>
+                  </FormField>
+                  <FormField
+                    error={createErrors.fieldErrors.bindings}
+                    help="Use * to match everyone."
+                    label="Actor ID"
+                    required
+                  >
+                    <Input
+                      onChange={(e) => setNewActorId(e.target.value)}
+                      placeholder="Actor ID (* for all)"
+                      value={newActorId}
+                    />
+                  </FormField>
                 </div>
-                <button
-                  className="text-xs text-[color:var(--danger-text)] hover:text-[color:var(--danger)]"
-                  onClick={() => deleteRule.mutate(rule.id)}
-                  type="button"
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-            {/* Not QueryState: no loading and no error state exists here to
-                share; wrapping would add two. Its own change. */}
-            {(data?.data ?? []).length === 0 && (
-              <div className="py-8 text-center text-[color:var(--tx3)]">
-                No policy rules configured
-              </div>
-            )}
-          </div>
-        </div>
+
+                <FormError>{createErrors.formError}</FormError>
+
+                <FormActions>
+                  <button className="admin-button admin-button-primary" disabled={createRule.isPending} type="submit">
+                    Create rule
+                  </button>
+                </FormActions>
+              </form>
+            </Card>
+          </Section>
+
+          <Section title="Rules">
+            <FormError>{deleteErrors.formError}</FormError>
+
+            <QueryState
+              emptyLabel="No policy rules configured"
+              errorLabel="Policy rules could not be loaded."
+              isEmpty={rows.items.length === 0}
+              loadingLabel="Loading policy rules…"
+              query={rows.query}
+            >
+              {() => (
+                <>
+                  <RowList label="Policy rules">
+                    {rows.items.map((rule) => (
+                      <Row
+                        key={rule.id}
+                        subtitle={
+                          `${rule.scope}:${rule.scopeId.slice(0, 8)} → `
+                          + `${rule.bindings.map((b) => `${b.actorType}:${b.actorId}`).join(', ')} · priority ${rule.priority}`
+                        }
+                        title={
+                          <span className="flex items-center gap-2">
+                            <Pill radius="chip" size="sm" tone={rule.effect === 'allow' ? 'success' : 'danger'}>
+                              {rule.effect}
+                            </Pill>
+                            <span className="font-mono text-[color:var(--tx)]">
+                              {rule.resourceType}.{rule.action}
+                            </span>
+                          </span>
+                        }
+                        trailing={
+                          <button
+                            className="text-xs text-[color:var(--danger-text)] hover:text-[color:var(--danger)]"
+                            onClick={() => setPendingDeleteId(rule.id)}
+                            type="button"
+                          >
+                            Delete
+                          </button>
+                        }
+                      />
+                    ))}
+                  </RowList>
+                  <PaginationFooter
+                    canNext={rows.canNext}
+                    canPrevious={rows.canPrevious}
+                    hideWhenSinglePage
+                    label={rows.label}
+                    onPageChange={rows.onPageChange}
+                    page={rows.page}
+                  />
+                </>
+              )}
+            </QueryState>
+          </Section>
+        </PageBody>
+
+        <ConfirmDialog
+          body={
+            pendingDeleteRule
+              ? `${pendingDeleteRule.resourceType}.${pendingDeleteRule.action} for ${pendingDeleteRule.scope}:${pendingDeleteRule.scopeId.slice(0, 8)} will stop applying immediately.`
+              : undefined
+          }
+          confirmLabel="Delete rule"
+          destructive
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => {
+            if (pendingDeleteId) deleteRule.mutate(pendingDeleteId)
+          }}
+          open={pendingDeleteId !== null}
+          pending={deleteRule.isPending}
+          title="Delete this policy rule?"
+        />
       </section>
     </OwnerGate>
   )

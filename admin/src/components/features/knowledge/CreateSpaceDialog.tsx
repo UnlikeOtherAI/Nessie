@@ -1,8 +1,13 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
-import { MemberChecklist } from './MemberChecklist'
+import { toFormErrors } from '../../../facades/form-errors'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import { Dialog } from '../../shared/Dialog'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
+import { MemberChecklist } from './MemberChecklist'
 
 type SpaceVisibility = KnowledgeSpaceRecord['visibility']
 
@@ -26,16 +31,17 @@ const VISIBILITY_OPTIONS: { value: SpaceVisibility; label: string; description: 
 ]
 
 export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSpaceDialogProps) => {
-  const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>([])
   const [visibility, setVisibility] = useState<SpaceVisibility>('private')
+  const [formError, setFormError] = useState<string | undefined>()
   const agentsQuery = useAgents()
 
   const handleClose = () => {
     setName('')
     setMemberAgentIds([])
     setVisibility('private')
+    setFormError(undefined)
     onClose()
   }
 
@@ -43,86 +49,62 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
     event.preventDefault()
     const trimmedName = name.trim()
     if (!trimmedName) return
-    await onCreate(trimmedName, memberAgentIds, visibility)
-    handleClose()
+    setFormError(undefined)
+    try {
+      await onCreate(trimmedName, memberAgentIds, visibility)
+      handleClose()
+    } catch (error) {
+      setFormError(toFormErrors(error).formError ?? 'Unable to create space.')
+    }
   }
+
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
 
   return (
     <Dialog
-      initialFocusRef={nameInputRef}
+      initialFocusRef={initialFieldRef}
       onClose={handleClose}
       open={open}
       title="Create a space"
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
-        <div className="grid gap-1.5">
-          <label
-            className={[
-              'text-xs font-semibold uppercase',
-              'tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
-            htmlFor="space-name"
-          >
-            Name
-          </label>
-          <input
-            ref={nameInputRef}
+        <FormField label="Name" required>
+          <Input
             autoComplete="off"
-            className="admin-input"
-            id="space-name"
             onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Engineering"
             value={name}
+            ref={initialFieldRef}
           />
-        </div>
+        </FormField>
 
-        <div className="grid gap-1.5">
-          <span
-            className={[
-              'text-xs font-semibold uppercase',
-              'tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
-          >
-            Visibility
-          </span>
-          <div className="grid gap-1.5">
-            {VISIBILITY_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                className={[
-                  'flex flex-col items-start gap-0.5 rounded-md px-3 py-2 text-left transition-colors',
-                  visibility === option.value
-                    ? 'bg-[color:var(--overlay)] ring-1 ring-inset ring-[color:var(--accent)]'
-                    : 'bg-[color:var(--overlay-weak)] hover:bg-[color:var(--overlay)]',
-                ].join(' ')}
-                onClick={() => setVisibility(option.value)}
-                type="button"
-              >
-                <span className="text-sm font-semibold text-[color:var(--tx)]">{option.label}</span>
-                <span className="text-xs text-[color:var(--tx3)]">{option.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <ChoiceGroup
+          label="Visibility"
+          onChange={setVisibility}
+          options={VISIBILITY_OPTIONS}
+          value={visibility}
+          variant="card"
+        />
 
-        <div className="grid gap-1.5">
-          <span
-            className={[
-              'text-xs font-semibold uppercase',
-              'tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
-          >
-            Agents
-          </span>
+        <FormField label="Agents">
           <MemberChecklist
             emptyLabel="No agents available yet."
             members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
             onChange={setMemberAgentIds}
             selectedIds={memberAgentIds}
           />
-        </div>
+        </FormField>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <FormError>{formError}</FormError>
+
+        <FormActions>
           <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
             Cancel
           </button>
@@ -133,7 +115,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
           >
             Create space
           </button>
-        </div>
+        </FormActions>
       </form>
     </Dialog>
   )

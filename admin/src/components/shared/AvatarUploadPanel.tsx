@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { SectionLabel } from '../primitives/SectionLabel'
 import { CircleImageCropper } from './CircleImageCropper'
+import { ConfirmDialog } from './ConfirmDialog'
 
 type AvatarUploadPanelProps = {
   busy: boolean
@@ -39,6 +40,7 @@ export const AvatarUploadPanel = ({
 }: AvatarUploadPanelProps) => {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -74,7 +76,7 @@ export const AvatarUploadPanel = ({
               <button
                 className="admin-button admin-button-secondary"
                 disabled={busy}
-                onClick={onRemove}
+                onClick={() => setConfirmingRemove(true)}
                 type="button"
               >
                 {removeLabel}
@@ -106,6 +108,20 @@ export const AvatarUploadPanel = ({
           title={cropperTitle}
         />
       ) : null}
+
+      <ConfirmDialog
+        body={`This removes your ${title.toLowerCase()}.`}
+        confirmLabel={removeLabel}
+        destructive
+        onCancel={() => setConfirmingRemove(false)}
+        onConfirm={() => {
+          setConfirmingRemove(false)
+          onRemove()
+        }}
+        open={confirmingRemove}
+        pending={busy}
+        title={`${removeLabel} photo?`}
+      />
     </section>
   )
 }

@@ -3,10 +3,10 @@ import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { useIsOwner } from '../../shared/OwnerGate'
+import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,
   SectionNotice,
-  SectionOverflowHint,
   SectionSkeleton,
   dashboardRowClass,
   type SectionLink,

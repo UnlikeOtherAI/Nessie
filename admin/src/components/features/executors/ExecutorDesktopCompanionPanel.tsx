@@ -10,6 +10,7 @@ import {
 } from '../../../lib/executor-companion'
 import { getBaseUrl } from '../../../lib/api-client'
 import { isDesktopApp } from '../../../lib/desktop'
+import { FormError } from '../../shared/FormActions'
 
 const workspaceOperations = [
   { key: 'file.list', label: 'List files' },
@@ -142,7 +143,7 @@ export const ExecutorDesktopCompanionPanel = ({
         <p className="text-xs text-[color:var(--tx3)]">This executor is not paired with this Nessie Desktop device.</p>
       )}
 
-      {error ? <p className="text-xs text-[color:var(--danger-text)]">{error}</p> : null}
+      <FormError>{error}</FormError>
     </section>
   )
 }

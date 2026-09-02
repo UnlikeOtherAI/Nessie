@@ -5,9 +5,12 @@ import {
   PricingManager,
   type PricingProfile,
 } from '../components/features/budgets/PricingManager'
+import { Notice } from '../components/primitives/Notice'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
+import { StatGrid, StatTile } from '../components/shared/StatTile'
 import { opsTelemetryKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -109,23 +112,26 @@ export const OperationalTelemetryPage = () => {
   // non-owner, exactly as before OwnerGate wrapped the render.
   const isOwner = useIsOwner()
 
-  const { data: summary } = useQuery<TokenSummary>({
+  const summaryQuery = useQuery<TokenSummary>({
     queryKey: opsTelemetryKeys.tokenSummaryBy(groupBy),
     queryFn: () => apiClient.get(`/api/ledger/tokens/summary?groupBy=${groupBy}`),
     enabled: isOwner,
   })
+  const { data: summary } = summaryQuery
 
-  const { data: connectors } = useQuery<ConnectorSummary>({
+  const connectorsQuery = useQuery<ConnectorSummary>({
     queryKey: opsTelemetryKeys.connectorSummary(connectorGroupBy),
     queryFn: () => apiClient.get(`/api/ledger/connectors/summary?groupBy=${connectorGroupBy}`),
     enabled: isOwner,
   })
+  const { data: connectors } = connectorsQuery
 
-  const { data: fileUsage } = useQuery<FileUsageSummary>({
+  const fileUsageQuery = useQuery<FileUsageSummary>({
     queryKey: opsTelemetryKeys.fileUsageSummary,
     queryFn: () => apiClient.get('/api/ledger/files/summary'),
     enabled: isOwner,
   })
+  const { data: fileUsage } = fileUsageQuery
 
   const { data: estimate } = useQuery<MonthlyEstimate>({
     queryKey: opsTelemetryKeys.tokenEstimate,
@@ -133,11 +139,12 @@ export const OperationalTelemetryPage = () => {
     enabled: isOwner,
   })
 
-  const { data: outcomeUsage } = useQuery<OutcomeUsageSummary>({
+  const outcomeUsageQuery = useQuery<OutcomeUsageSummary>({
     queryKey: opsTelemetryKeys.tokenByOutcome,
     queryFn: () => apiClient.get('/api/ledger/tokens/by-outcome'),
     enabled: isOwner,
   })
+  const { data: outcomeUsage } = outcomeUsageQuery
 
   const { data: pricingProfiles } = useQuery<PricingProfile[]>({
     queryKey: opsTelemetryKeys.pricingProfiles,
@@ -186,42 +193,38 @@ export const OperationalTelemetryPage = () => {
             </p>
           </div>
 
-          {/* .admin-card is unlayered and beats both colour utilities: this renders as a plain --panel card. */}
           {costTrackingInactive && (
-            <div className="admin-card mb-4 border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
+            <Notice className="mb-4" tone="warning">
               Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
               no model pricing is configured, so every internal estimate shows $0. Add rates under
               <span className="font-semibold"> Model pricing</span> below to see operational estimates.
-            </div>
+            </Notice>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="admin-card p-4">
-              <SectionLabel>Total Tokens</SectionLabel>
-              <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                {formatTokens(summary?.totalTokens ?? 0)}
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {formatTokens(summary?.totalInputTokens ?? 0)} in /{' '}
-                {formatTokens(summary?.totalOutputTokens ?? 0)} out
-              </div>
-            </div>
-            <div className="admin-card p-4">
-              <SectionLabel>Estimated Cost</SectionLabel>
-              <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                {formatCost(summary?.totalEstimatedCost ?? 0, summary?.currency ?? 'USD')}
-              </div>
-            </div>
-            <div className="admin-card p-4">
-              <SectionLabel>Monthly Projection</SectionLabel>
-              <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                {formatCost(estimate?.projectedMonthlyCost ?? 0, estimate?.currency ?? 'USD')}
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                Day {estimate?.daysElapsed ?? 0} of {estimate?.daysInMonth ?? 30}
-              </div>
-            </div>
-          </div>
+          <QueryState
+            errorLabel="Failed to load token usage."
+            loadingLabel="Loading token usage…"
+            query={summaryQuery}
+          >
+            {() => (
+              <StatGrid className="lg:grid-cols-3">
+                <StatTile
+                  detail={`${formatTokens(summary?.totalInputTokens ?? 0)} in / ${formatTokens(summary?.totalOutputTokens ?? 0)} out`}
+                  label="Total Tokens"
+                  value={formatTokens(summary?.totalTokens ?? 0)}
+                />
+                <StatTile
+                  label="Estimated Cost"
+                  value={formatCost(summary?.totalEstimatedCost ?? 0, summary?.currency ?? 'USD')}
+                />
+                <StatTile
+                  detail={`Day ${estimate?.daysElapsed ?? 0} of ${estimate?.daysInMonth ?? 30}`}
+                  label="Monthly Projection"
+                  value={formatCost(estimate?.projectedMonthlyCost ?? 0, estimate?.currency ?? 'USD')}
+                />
+              </StatGrid>
+            )}
+          </QueryState>
 
           <BudgetManager organizationId={me.context.organizationId} />
 
@@ -290,60 +293,53 @@ export const OperationalTelemetryPage = () => {
 
           <div className="mt-6">
             <SectionLabel>File Usage</SectionLabel>
-            <div className="mt-2 grid gap-4 lg:grid-cols-4">
-              <div className="admin-card p-4">
-                <SectionLabel>Stored</SectionLabel>
-                <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                  {formatBytes(fileUsage?.currentStoredBytes ?? 0)}
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                  {formatCount(fileUsage?.currentAttachmentCount ?? 0)} files
-                </div>
-              </div>
-              <div className="admin-card p-4">
-                <SectionLabel>Uploaded</SectionLabel>
-                <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                  {formatBytes(fileUsage?.uploadBytes ?? 0)}
-                </div>
-              </div>
-              <div className="admin-card p-4">
-                <SectionLabel>Downloaded</SectionLabel>
-                <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                  {formatBytes(fileUsage?.downloadBytes ?? 0)}
-                </div>
-              </div>
-              <div className="admin-card p-4">
-                <SectionLabel>Transfers</SectionLabel>
-                <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                  {formatBytes(fileUsage?.totalTransferBytes ?? 0)}
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                  {formatCount(fileUsage?.totalTransferEvents ?? 0)} events
-                </div>
-              </div>
-            </div>
-            {(fileUsage?.breakdowns ?? []).length > 0 && (
-              <div className="mt-2 grid gap-2">
-                {(fileUsage?.breakdowns ?? []).map((breakdown) => (
-                  <div
-                    className="admin-card flex items-center justify-between p-3"
-                    key={breakdown.key}
-                  >
-                    <div className="font-semibold capitalize text-[color:var(--tx)]">
-                      {breakdown.key}
+            <QueryState
+              className="mt-2 py-6"
+              errorLabel="Failed to load file usage."
+              loadingLabel="Loading file usage…"
+              query={fileUsageQuery}
+            >
+              {() => (
+                <>
+                  <StatGrid className="lg:grid-cols-4">
+                    <StatTile
+                      detail={`${formatCount(fileUsage?.currentAttachmentCount ?? 0)} files`}
+                      label="Stored"
+                      value={formatBytes(fileUsage?.currentStoredBytes ?? 0)}
+                    />
+                    <StatTile label="Uploaded" value={formatBytes(fileUsage?.uploadBytes ?? 0)} />
+                    <StatTile label="Downloaded" value={formatBytes(fileUsage?.downloadBytes ?? 0)} />
+                    <StatTile
+                      detail={`${formatCount(fileUsage?.totalTransferEvents ?? 0)} events`}
+                      label="Transfers"
+                      value={formatBytes(fileUsage?.totalTransferBytes ?? 0)}
+                    />
+                  </StatGrid>
+                  {(fileUsage?.breakdowns ?? []).length > 0 && (
+                    <div className="mt-2 grid gap-2">
+                      {(fileUsage?.breakdowns ?? []).map((breakdown) => (
+                        <div
+                          className="admin-card flex items-center justify-between p-3"
+                          key={breakdown.key}
+                        >
+                          <div className="font-semibold capitalize text-[color:var(--tx)]">
+                            {breakdown.key}
+                          </div>
+                          <div className="text-right">
+                            <div className="font-mono text-sm text-[color:var(--tx)]">
+                              {formatBytes(breakdown.bytes)}
+                            </div>
+                            <div className="text-xs text-[color:var(--tx2)]">
+                              {formatCount(breakdown.events)} events
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="text-right">
-                      <div className="font-mono text-sm text-[color:var(--tx)]">
-                        {formatBytes(breakdown.bytes)}
-                      </div>
-                      <div className="text-xs text-[color:var(--tx2)]">
-                        {formatCount(breakdown.events)} events
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                </>
+              )}
+            </QueryState>
           </div>
 
           <div className="mt-6 flex items-center gap-4">
@@ -363,40 +359,44 @@ export const OperationalTelemetryPage = () => {
               </select>
             </div>
           </div>
-          <div className="mt-2 grid gap-4 lg:grid-cols-2">
-            <div className="admin-card p-4">
-              <SectionLabel>Total Calls</SectionLabel>
-              <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                {formatCount(connectors?.totalCalls ?? 0)}
-              </div>
-            </div>
-            <div className="admin-card p-4">
-              <SectionLabel>Connector Cost</SectionLabel>
-              <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
-                {formatCost(connectors?.totalCost ?? 0, connectors?.currency ?? 'USD')}
-              </div>
-            </div>
-          </div>
-          {(connectors?.breakdowns ?? []).length > 0 && (
-            <div className="mt-2 grid gap-2">
-              {(connectors?.breakdowns ?? []).map((breakdown) => (
-                <div
-                  className="admin-card flex items-center justify-between p-3"
-                  key={breakdown.key}
-                >
-                  <div className="font-semibold text-[color:var(--tx)]">{breakdown.key}</div>
-                  <div className="text-right">
-                    <div className="font-mono text-sm text-[color:var(--tx)]">
-                      {formatCount(breakdown.calls)} calls
-                    </div>
-                    <div className="text-xs text-[color:var(--tx2)]">
-                      {formatCost(breakdown.cost, connectors?.currency ?? 'USD')}
-                    </div>
+          <QueryState
+            className="mt-2 py-6"
+            errorLabel="Failed to load connector usage."
+            loadingLabel="Loading connector usage…"
+            query={connectorsQuery}
+          >
+            {() => (
+              <>
+                <StatGrid className="lg:grid-cols-2">
+                  <StatTile label="Total Calls" value={formatCount(connectors?.totalCalls ?? 0)} />
+                  <StatTile
+                    label="Connector Cost"
+                    value={formatCost(connectors?.totalCost ?? 0, connectors?.currency ?? 'USD')}
+                  />
+                </StatGrid>
+                {(connectors?.breakdowns ?? []).length > 0 && (
+                  <div className="mt-2 grid gap-2">
+                    {(connectors?.breakdowns ?? []).map((breakdown) => (
+                      <div
+                        className="admin-card flex items-center justify-between p-3"
+                        key={breakdown.key}
+                      >
+                        <div className="font-semibold text-[color:var(--tx)]">{breakdown.key}</div>
+                        <div className="text-right">
+                          <div className="font-mono text-sm text-[color:var(--tx)]">
+                            {formatCount(breakdown.calls)} calls
+                          </div>
+                          <div className="text-xs text-[color:var(--tx2)]">
+                            {formatCost(breakdown.cost, connectors?.currency ?? 'USD')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                )}
+              </>
+            )}
+          </QueryState>
         </div>
       </section>
     </OwnerGate>

@@ -4,6 +4,7 @@ import type {
   WorkflowStepRunRecord,
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
+import type { PillTone } from '../../primitives/Pill'
 
 export const formatTimestamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '—'
@@ -41,40 +42,46 @@ export const formatDuration = (
   return `${Math.round(ms / 60_000)} min`
 }
 
-/** Status as a colour token for compact list dots. */
-export const getRunStatusColor = (status: WorkflowRunRecord['status']): string => {
+/**
+ * One status→{tone, dot-colour} mapping, built once from `Pill`'s own tone
+ * system, rather than a second `Record<Status, string>` beside every tone
+ * getter below. `getRunTone`/`getInstallationTone`/`getStepTone` stay the
+ * single source of what a status *means*; a dot is just that tone rendered
+ * small, in a list row dense enough that a full `Pill` would not fit.
+ */
+const TONE_DOT_COLOR: Record<PillTone, string> = {
+  accent: 'var(--thinking)',
+  danger: 'var(--danger-text)',
+  info: 'var(--info-text)',
+  muted: 'var(--tx3)',
+  outline: 'var(--tx2)',
+  success: 'var(--success-text)',
+  warning: 'var(--warning-text)',
+}
+
+export const getStepTone = (status: WorkflowStepRunRecord['status']): PillTone => {
   switch (status) {
     case 'running':
-      return 'var(--success-text)'
+      return 'success'
     case 'pending':
-      return 'var(--warning-text)'
+      return 'warning'
     case 'completed':
-      return 'var(--info-text)'
+      return 'info'
     case 'failed':
-      return 'var(--danger-text)'
+      return 'danger'
+    case 'blocked':
+      return 'warning'
     default:
-      return 'var(--tx3)'
+      return 'muted'
   }
 }
 
-export const getStepStatusColor = (
-  status: WorkflowStepRunRecord['status'],
-): string => {
-  switch (status) {
-    case 'running':
-      return 'var(--success-text)'
-    case 'pending':
-      return 'var(--warning-text)'
-    case 'completed':
-      return 'var(--info-text)'
-    case 'failed':
-      return 'var(--danger-text)'
-    case 'blocked':
-      return 'var(--warning-text)'
-    default:
-      return 'var(--tx3)'
-  }
-}
+/** Status as a colour token for compact list dots. */
+export const getRunStatusColor = (status: WorkflowRunRecord['status']): string =>
+  TONE_DOT_COLOR[getRunTone(status)]
+
+export const getStepStatusColor = (status: WorkflowStepRunRecord['status']): string =>
+  TONE_DOT_COLOR[getStepTone(status)]
 
 const formatJsonValue = (value: unknown) => {
   if (value === undefined) {
@@ -145,44 +152,6 @@ export const getRunTone = (status: WorkflowRunRecord['status']) => {
       return 'muted' as const
     default:
       return 'muted' as const
-  }
-}
-
-export const runStatusClass = (status: WorkflowRunRecord['status']): string => {
-  switch (status) {
-    case 'running':
-      return 'text-[var(--success-text)]'
-    case 'pending':
-      return 'text-[var(--warning-text)]'
-    case 'completed':
-      return 'text-[var(--info-text)]'
-    case 'failed':
-      return 'text-[var(--danger-text)]'
-    case 'cancelled':
-      return 'text-[color:var(--tx3)]'
-    default:
-      return 'text-[var(--tx)]'
-  }
-}
-
-export const stepStatusClass = (
-  status: WorkflowStepRunRecord['status'],
-): string => {
-  switch (status) {
-    case 'running':
-      return 'text-[var(--success-text)]'
-    case 'pending':
-      return 'text-[var(--warning-text)]'
-    case 'completed':
-      return 'text-[var(--info-text)]'
-    case 'failed':
-      return 'text-[var(--danger-text)]'
-    case 'skipped':
-      return 'text-[color:var(--tx3)]'
-    case 'blocked':
-      return 'text-[var(--warning-text)]'
-    default:
-      return 'text-[var(--tx)]'
   }
 }
 

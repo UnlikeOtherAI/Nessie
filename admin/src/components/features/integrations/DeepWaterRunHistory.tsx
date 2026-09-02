@@ -3,6 +3,8 @@ import type {
   DeepWaterResearchRunRecord,
   ProductIntegrationRunStatus,
 } from '../../../lib/api-client'
+import { Pill, type PillTone } from '../../primitives/Pill'
+import { EmptyState } from '../../shared/EmptyState'
 
 const statusLabels: Record<ProductIntegrationRunStatus, string> = {
   completed: 'Completed',
@@ -13,20 +15,14 @@ const statusLabels: Record<ProductIntegrationRunStatus, string> = {
   warning: 'Warning',
 }
 
-// Not a `Pill`: this chip is pinned to a fixed 24px height with its label
-// vertically centred, so it lines up with the run row's baseline. `Pill` has no
-// height affordance and would become content-sized (~18px).
-const statusClass = (status: ProductIntegrationRunStatus): string =>
-  [
-    'inline-flex h-6 items-center rounded px-2 text-[11px] font-semibold',
-    status === 'completed'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'failed'
-        ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-        : status === 'warning' || status === 'needs_setup'
-          ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-          : 'bg-[var(--accent-soft)] text-[var(--thinking)]',
-  ].join(' ')
+const statusTone: Record<ProductIntegrationRunStatus, PillTone> = {
+  completed: 'success',
+  failed: 'danger',
+  needs_setup: 'warning',
+  queued: 'accent',
+  running: 'accent',
+  warning: 'warning',
+}
 
 const formatRunDate = (value: string): string =>
   new Intl.DateTimeFormat(undefined, {
@@ -63,60 +59,65 @@ const knowledgeHref = (pageId: string): string =>
 const hasNativeDocument = (run: DeepWaterResearchRunRecord): boolean =>
   run.status === 'completed' && Boolean(run.knowledgePageId)
 
+/**
+ * The run list only — loading and error belong to the caller's `QueryState`,
+ * which owns the query this list is built from.
+ */
 export const DeepWaterRunHistory = ({
-  loading,
   runs,
 }: {
-  loading: boolean
   runs: DeepWaterResearchRunRecord[]
 }) => (
-  <section className="mt-4 border-t border-[var(--sep)] pt-4">
+  <section className="mt-4 border-t border-[color:var(--sep)] pt-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 className="text-sm font-semibold text-[var(--tx)]">Recent research runs</h3>
-        <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+        <h3 className="text-sm font-semibold text-[color:var(--tx)]">Recent research runs</h3>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
           Durable Deep Water launches for the active team.
         </p>
       </div>
-      <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx3)]">
-        {loading ? 'Loading' : `${runs.length} shown`}
-      </span>
+      <Pill radius="chip" size="sm" tone="outline" uppercase={false}>
+        {runs.length} shown
+      </Pill>
     </div>
 
-    <div className="mt-3 overflow-hidden rounded border border-[var(--sep)]">
-      {/* Not QueryState: this takes a `loading` boolean, not a query, so a
-          Retry would have nothing to call. The ellipsis is the admin's
-          typographic one, matching every other loading line. */}
-      {loading ? (
-        <div className="px-3 py-4 text-sm text-[var(--tx3)]">Loading runs…</div>
-      ) : runs.length === 0 ? (
-        <div className="px-3 py-4 text-sm text-[var(--tx3)]">No Deep Water runs yet.</div>
-      ) : (
-        runs.map((run) => {
+    {runs.length === 0 ? (
+      <EmptyState className="mt-3">No Deep Water runs yet.</EmptyState>
+    ) : (
+      <div className="mt-3 divide-y divide-[color:var(--sep)] overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--sep)]">
+        {runs.map((run) => {
           const nativeDocument = hasNativeDocument(run)
           return (
-            <div className="border-t border-[var(--sep)] p-3 first:border-t-0" key={run.id}>
+            <div className="p-3" key={run.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={statusClass(run.status)}>{statusLabels[run.status]}</span>
-                    <span className="text-xs text-[var(--tx3)]">
+                    <Pill
+                      height="control"
+                      radius="chip"
+                      size="sm"
+                      tone={statusTone[run.status]}
+                      uppercase={false}
+                    >
+                      {statusLabels[run.status]}
+                    </Pill>
+                    <span className="text-xs text-[color:var(--tx3)]">
                       {formatRunDate(run.requestedAt)}
                     </span>
                   </div>
                   {nativeDocument && run.knowledgePageId ? (
                     <Link
-                      className="mt-2 block truncate text-sm font-semibold text-[var(--tx)] hover:underline"
+                      className="mt-2 block truncate text-sm font-semibold text-[color:var(--tx)] hover:underline"
                       to={knowledgeHref(run.knowledgePageId)}
                     >
                       {runTitle(run)}
                     </Link>
                   ) : (
-                    <div className="mt-2 truncate text-sm font-semibold text-[var(--tx)]">
+                    <div className="mt-2 truncate text-sm font-semibold text-[color:var(--tx)]">
                       {runTitle(run)}
                     </div>
                   )}
-                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx2)]">
+                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--tx2)]">
                     {run.queryPreview}
                   </div>
                 </div>
@@ -148,25 +149,25 @@ export const DeepWaterRunHistory = ({
                 ) : null}
               </div>
               {run.statusDetail ? (
-                <div className="mt-2 text-xs leading-5 text-[var(--tx2)]">
+                <div className="mt-2 text-xs leading-5 text-[color:var(--tx2)]">
                   {run.statusDetail}
                 </div>
               ) : null}
-              <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-3">
-                <div className="rounded bg-[var(--overlay)] px-2 py-1 capitalize">
+              <div className="mt-3 grid gap-2 text-xs text-[color:var(--tx2)] sm:grid-cols-3">
+                <div className="rounded bg-[color:var(--overlay)] px-2 py-1 capitalize">
                   {modeLabel(run)}
                 </div>
-                <div className="rounded bg-[var(--overlay)] px-2 py-1">
+                <div className="rounded bg-[color:var(--overlay)] px-2 py-1">
                   {destinationLabel(run)}
                 </div>
-                <div className="rounded bg-[var(--overlay)] px-2 py-1">
+                <div className="rounded bg-[color:var(--overlay)] px-2 py-1">
                   {sourceLabel(run.sourceCount)}
                 </div>
               </div>
             </div>
           )
-        })
-      )}
-    </div>
+        })}
+      </div>
+    )}
   </section>
 )

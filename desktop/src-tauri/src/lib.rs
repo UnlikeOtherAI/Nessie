@@ -1,8 +1,10 @@
 use std::io::{Error, ErrorKind};
 use tauri::utils::config::WebviewUrl;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
+#[cfg(target_os = "linux")]
+use tauri_plugin_deep_link::DeepLinkExt;
 
 mod executor_companion;
 
@@ -33,7 +35,7 @@ fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -56,6 +58,11 @@ pub fn run() {
             executor_companion::executor_companion_stop,
         ])
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            app.deep_link()
+                .register_all()
+                .map_err(|error| Error::new(ErrorKind::Other, error))?;
+
             let main_window = app
                 .config()
                 .app

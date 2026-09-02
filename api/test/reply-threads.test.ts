@@ -186,12 +186,12 @@ runDatabaseTest('replies feed paginates with the same keyset cursor', async (t) 
   assert.equal(newest.data.length, 1)
   assert.equal(newest.data[0]?.id, second.message.id)
   assert.equal(newest.meta.hasMore, true)
-  assert.ok(newest.meta.cursor)
+  assert.ok(newest.meta.nextCursor)
 
   const older = await listThreadMessages(prisma, seed.threadId, {
     rootMessageId: root.id,
     limit: 1,
-    before: newest.meta.cursor ?? undefined,
+    before: newest.meta.nextCursor ?? undefined,
   })
   assert.equal(older.data.length, 1)
   assert.equal(older.data[0]?.id, first.message.id)

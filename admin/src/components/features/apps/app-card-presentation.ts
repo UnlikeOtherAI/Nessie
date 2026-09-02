@@ -1,5 +1,6 @@
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { APP_CATEGORY_LABELS } from '@nessie/schemas'
+import type { PillTone } from '../../primitives/Pill'
 
 /**
  * Everything one card decides, as plain data.
@@ -238,6 +239,13 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
 // ─── Attribute pills ────────────────────────────────────────────────────────
 
 export type AppKindPillTone = 'accent' | 'info' | 'neutral'
+
+/** The one place a kind's tone becomes the shared `Pill`'s tone vocabulary. */
+export const APP_KIND_PILL_TONE: Record<AppKindPillTone, PillTone> = {
+  accent: 'accent',
+  info: 'info',
+  neutral: 'muted',
+}
 
 export type AppKindPill = { label: string; tone: AppKindPillTone }
 

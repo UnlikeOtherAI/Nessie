@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { visibleUserAlertWhere } from '@nessie/db'
+import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationMeta } from '@nessie/schemas'
 
 import {
   WorkspaceInvitationAlertMetadataSchema,
@@ -10,22 +11,6 @@ import {
 // User alerts (#246): org-scoped, per-user reads of the durable UserAlert
 // store. Every query is pinned to BOTH the caller's organization and the
 // caller's user id — alerts are private to their recipient.
-
-const DEFAULT_LIMIT = 50
-const MAX_LIMIT = 200
-
-// Keyset cursor in the same `"<isoDate>|<id>"` shape the other list services
-// (approvals/audit/messages) use.
-const parseCursor = (
-  raw: string | undefined,
-): { cursorDate: Date; cursorId: string } | null => {
-  if (!raw) return null
-  const [isoPart, idPart] = raw.split('|')
-  if (!isoPart || !idPart) return null
-  const cursorDate = new Date(isoPart)
-  if (Number.isNaN(cursorDate.getTime())) return null
-  return { cursorDate, cursorId: idPart }
-}
 
 const alertInclude = {
   message: { select: { id: true, rootMessageId: true } },
@@ -82,43 +67,47 @@ export const listUserAlerts = async (
   },
 ): Promise<{
   data: { alerts: UserAlertRecord[]; unreadCount: number }
-  meta: { cursor: string | null; hasMore: boolean }
+  meta: PaginationMeta
 }> => {
-  const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
+  const limit = resolvePageLimit(input.limit)
   const conditions: Prisma.UserAlertWhereInput[] = [
     visibleUserAlertWhere(input),
     ...(input.unreadOnly ? [{ readAt: null }] : []),
   ]
 
-  const cursor = parseCursor(input.cursor)
-  if (cursor) {
-    conditions.push({ OR: [
-      { createdAt: { lt: cursor.cursorDate } },
-      { createdAt: cursor.cursorDate, id: { lt: cursor.cursorId } },
-    ] })
-  }
-  const where: Prisma.UserAlertWhereInput = { AND: conditions }
-
-  const [rows, unread] = await Promise.all([
-    prisma.userAlert.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      include: alertInclude,
-    }),
+  // The total is counted against the same filters but before the cursor is
+  // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
+  // after the one this page starts at.
+  const [total, unread] = await Promise.all([
+    prisma.userAlert.count({ where: { AND: conditions } }),
     unreadCount(prisma, input),
   ])
 
-  const hasMore = rows.length > limit
-  const page = hasMore ? rows.slice(0, limit) : rows
-  const last = page[page.length - 1]
+  const parsed = decodeKeysetCursor(input.cursor)
+  if (parsed) {
+    conditions.push({ OR: [
+      { createdAt: { lt: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+    ] })
+  }
+
+  const rows = await prisma.userAlert.findMany({
+    where: { AND: conditions },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+    include: alertInclude,
+  })
+
+  const page = buildPage({
+    hasCursor: Boolean(parsed),
+    limit,
+    rows,
+    total,
+  })
 
   return {
-    data: { alerts: page.map(mapAlertRecord), unreadCount: unread },
-    meta: {
-      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
-      hasMore,
-    },
+    data: { alerts: page.data.map(mapAlertRecord), unreadCount: unread },
+    meta: page.meta,
   }
 }
 

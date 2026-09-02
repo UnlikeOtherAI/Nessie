@@ -11,12 +11,13 @@ import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
 import { ConversationalSetupPanel } from './organization/ConversationalSetupPanel'
-import {
-  FeedbackBanner,
-  SettingsPanel,
-  type SettingsFeedback,
-} from './settings-shared'
+import { SettingsPanel } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { Card } from '../../components/shared/Card'
+import { FormField } from '../../components/shared/FormField'
+import { Input } from '../../components/shared/FormControls'
+import { FormActions, FormSuccess } from '../../components/shared/FormActions'
+import { toFormErrors } from '../../facades/form-errors'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
@@ -30,7 +31,8 @@ export const OrganizationSettingsPage = () => {
   const updateConversationalSetup = useUpdateConversationalSetup()
 
   const [name, setName] = useState('')
-  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
+  const [nameError, setNameError] = useState<string | undefined>(undefined)
+  const [saved, setSaved] = useState(false)
   const [conversationalSetupError, setConversationalSetupError] = useState<string | null>(null)
 
   // Seed the input from the loaded org once per org id. Keying on id (not the
@@ -53,15 +55,14 @@ export const OrganizationSettingsPage = () => {
 
   const saveName = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setFeedback(null)
+    setNameError(undefined)
+    setSaved(false)
     try {
       await updateOrganization.mutateAsync({ name: name.trim() })
-      setFeedback({ kind: 'success', message: 'Organisation name saved.' })
+      setSaved(true)
     } catch (error) {
-      setFeedback({
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to save organisation name.',
-      })
+      const { fieldErrors, formError } = toFormErrors(error)
+      setNameError(fieldErrors.name ?? formError ?? 'Failed to save organisation name.')
     }
   }
 
@@ -84,29 +85,32 @@ export const OrganizationSettingsPage = () => {
   return (
     <SettingsPanel eyebrow="Organization" title="General">
       <div className="grid max-w-3xl gap-4">
-        <section className="admin-card p-4">
+        <Card as="section">
           <SectionLabel>Profile</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
-            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-              Organisation name
-              <input
-                className="admin-input"
+            <FormField error={nameError} label="Organisation name">
+              <Input
                 disabled={isLoading || updateOrganization.isPending}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  setSaved(false)
+                }}
                 placeholder="Organisation name"
                 value={name}
               />
-            </label>
-            <button
-              className="admin-button admin-button-primary justify-self-start disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!canSave}
-              type="submit"
-            >
-              {updateOrganization.isPending ? 'Saving…' : 'Save name'}
-            </button>
-            <FeedbackBanner feedback={feedback} />
+            </FormField>
+            <FormSuccess>{saved ? 'Organisation name saved.' : undefined}</FormSuccess>
+            <FormActions>
+              <button
+                className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canSave}
+                type="submit"
+              >
+                {updateOrganization.isPending ? 'Saving…' : 'Save name'}
+              </button>
+            </FormActions>
           </form>
-        </section>
+        </Card>
 
         <LogoPanel />
         <WorkspaceAvatarPanel />

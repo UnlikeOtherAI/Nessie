@@ -6,6 +6,11 @@ import type {
 } from '../../../lib/api-client'
 import { usePrepareBuildMeProjectHandoff } from '../../../facades/integrations/hooks'
 import { Pill, type PillTone } from '../../primitives/Pill'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
+import { FormField } from '../../shared/FormField'
+import { Select } from '../../shared/FormControls'
+import { KeyValueList } from '../../shared/KeyValueList'
+import { Notice } from '../../primitives/Notice'
 
 const intentOptions: Array<{ label: string; value: BuildMeProjectHandoffIntent }> = [
   { label: 'Project definition', value: 'project_definition' },
@@ -14,13 +19,6 @@ const intentOptions: Array<{ label: string; value: BuildMeProjectHandoffIntent }
 ]
 
 const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
-
-const BoundaryRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded border border-[var(--sep)] px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">{label}</div>
-    <div className="mt-1 text-sm leading-5 text-[var(--tx)]">{value}</div>
-  </div>
-)
 
 export const BuildMeProjectPanel = ({
   product,
@@ -47,10 +45,10 @@ export const BuildMeProjectPanel = ({
   }
 
   return (
-    <section className="border-t border-[var(--sep)] pt-4">
+    <section className="border-t border-[color:var(--sep)] pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">buildme.live handoff</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--tx)]">buildme.live handoff</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             <Pill
               className="font-semibold"
@@ -84,31 +82,15 @@ export const BuildMeProjectPanel = ({
       </div>
 
       <div className="mt-4 grid gap-3">
-        <div>
-          <div className="mb-2 text-sm font-semibold text-[var(--tx2)]">Handoff</div>
-          <div className="grid gap-2 md:grid-cols-3">
-            {intentOptions.map((option) => (
-              <button
-                className={[
-                  'h-9 rounded border px-2 text-xs font-semibold',
-                  intent === option.value
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--thinking)]'
-                    : 'border-[var(--sep)] text-[var(--tx2)] hover:bg-[var(--overlay)]',
-                ].join(' ')}
-                key={option.value}
-                onClick={() => setIntent(option.value)}
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ChoiceGroup
+          label="Handoff"
+          onChange={setIntent}
+          options={intentOptions}
+          value={intent}
+        />
 
-        <label className="grid max-w-sm gap-1 text-sm">
-          <span className="font-semibold text-[var(--tx2)]">Context scope</span>
-          <select
-            className="admin-input"
+        <FormField className="max-w-sm" label="Context scope">
+          <Select
             onChange={(event) =>
               setContextScope(event.target.value as 'active_project' | 'active_team')
             }
@@ -116,17 +98,20 @@ export const BuildMeProjectPanel = ({
           >
             <option value="active_project">Active project</option>
             <option value="active_team">Active team</option>
-          </select>
-        </label>
+          </Select>
+        </FormField>
 
-        <div className="grid gap-2 md:grid-cols-3">
-          <BoundaryRow label="Launch" value="Open buildme.live through UOA SSO." />
-          <BoundaryRow label="Nessie data" value="Only active project/team context is referenced." />
-          <BoundaryRow label="Board source" value="Read-only pairing waits for BuildMe API/MCP." />
-        </div>
+        <KeyValueList
+          items={[
+            { label: 'Launch', value: 'Open buildme.live through UOA SSO.' },
+            { label: 'Nessie data', value: 'Only active project/team context is referenced.' },
+            { label: 'Board source', value: 'Read-only pairing waits for BuildMe API/MCP.' },
+          ]}
+          layout="grid"
+        />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sep)] pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--sep)] pt-3">
         <div>
           {product.launchUrl ? (
             <a
@@ -149,11 +134,11 @@ export const BuildMeProjectPanel = ({
         </button>
       </div>
       {prepareHandoff.isError ? (
-        <p className="mt-2 text-xs text-[var(--danger-text)]">
+        <Notice className="mt-2" role="alert" size="sm" tone="danger">
           {prepareHandoff.error instanceof Error
             ? prepareHandoff.error.message
             : 'Could not prepare buildme.live handoff.'}
-        </p>
+        </Notice>
       ) : null}
     </section>
   )

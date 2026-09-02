@@ -3,6 +3,10 @@ import type {
   KnowledgePageRecord,
   SavePageInput,
 } from '../../../facades/knowledge/hooks'
+import { toFormErrors } from '../../../facades/form-errors'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
 import { RichTextEditor } from './RichTextEditor'
 
 type PageEditorProps = {
@@ -37,7 +41,8 @@ export const PageEditor = ({
   const [labels, setLabels] = useState('')
   const [body, setBody] = useState('')
   const [changeComment, setChangeComment] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [titleError, setTitleError] = useState<string | undefined>()
+  const [formError, setFormError] = useState<string | undefined>()
 
   useEffect(() => {
     setTitle(page?.title ?? initialTitle ?? '')
@@ -45,54 +50,48 @@ export const PageEditor = ({
     setLabels(page?.labels.join(', ') ?? '')
     setBody(page?.latestVersion?.body ?? '')
     setChangeComment('')
-    setError(null)
+    setTitleError(undefined)
+    setFormError(undefined)
   }, [page, initialTitle])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!title.trim()) {
-      setError('Title is required.')
+      setTitleError('Title is required.')
       return
     }
-    setError(null)
-    await onSubmit({
-      title: title.trim(),
-      summary: summary.trim() || null,
-      labels: splitLabels(labels),
-      body,
-      changeComment: changeComment.trim() || null,
-      parentPageId: mode === 'create' ? parentPageId ?? null : undefined,
-    })
+    setTitleError(undefined)
+    setFormError(undefined)
+    try {
+      await onSubmit({
+        title: title.trim(),
+        summary: summary.trim() || null,
+        labels: splitLabels(labels),
+        body,
+        changeComment: changeComment.trim() || null,
+        parentPageId: mode === 'create' ? parentPageId ?? null : undefined,
+      })
+    } catch (error) {
+      setFormError(toFormErrors(error).formError ?? 'Unable to save this page.')
+    }
   }
 
   return (
     <form className="flex h-full min-h-0 flex-col" onSubmit={submit}>
       <div className="grid gap-3 border-b border-[color:var(--sep)] p-4">
-        <label className="text-xs text-[color:var(--tx2)]">
-          Title
-          <input
-            className="admin-input mt-1"
-            onChange={(event) => setTitle(event.target.value)}
-            value={title}
-          />
-        </label>
-        <label className="text-xs text-[color:var(--tx2)]">
-          Summary
-          <input
-            className="admin-input mt-1"
-            onChange={(event) => setSummary(event.target.value)}
-            value={summary}
-          />
-        </label>
-        <label className="text-xs text-[color:var(--tx2)]">
-          Labels
-          <input
-            className="admin-input mt-1"
+        <FormField error={titleError} label="Title" required>
+          <Input onChange={(event) => setTitle(event.target.value)} value={title} />
+        </FormField>
+        <FormField label="Summary">
+          <Input onChange={(event) => setSummary(event.target.value)} value={summary} />
+        </FormField>
+        <FormField help="Comma-separated" label="Labels">
+          <Input
             onChange={(event) => setLabels(event.target.value)}
             placeholder="runbook, onboarding"
             value={labels}
           />
-        </label>
+        </FormField>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
@@ -105,21 +104,13 @@ export const PageEditor = ({
       </div>
 
       <div className="grid gap-3 border-t border-[color:var(--sep)] p-4">
-        <input
-          className="admin-input"
+        <Input
           onChange={(event) => setChangeComment(event.target.value)}
           placeholder="Change comment"
           value={changeComment}
         />
-        {error ? <div className="text-sm text-[var(--danger-text)]">{error}</div> : null}
-        <div className="flex items-center gap-2">
-          <button
-            className="admin-button admin-button-primary"
-            disabled={pending}
-            type="submit"
-          >
-            {mode === 'create' ? 'Create page' : 'Save version'}
-          </button>
+        <FormError>{formError}</FormError>
+        <FormActions>
           <button
             className="admin-button admin-button-secondary"
             onClick={onCancel}
@@ -127,7 +118,14 @@ export const PageEditor = ({
           >
             Cancel
           </button>
-        </div>
+          <button
+            className="admin-button admin-button-primary"
+            disabled={pending}
+            type="submit"
+          >
+            {mode === 'create' ? 'Create page' : 'Save version'}
+          </button>
+        </FormActions>
       </div>
     </form>
   )

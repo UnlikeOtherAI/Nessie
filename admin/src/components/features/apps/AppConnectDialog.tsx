@@ -5,6 +5,7 @@ import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
+import { KeyValueList } from '../../shared/KeyValueList'
 import {
   connectAuthExpectation,
   connectAuthType,
@@ -86,63 +87,70 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
             <p className="text-sm text-[color:var(--tx2)]">
               Review how this app connects before Nessie creates an account for it.
             </p>
-            <dl className="grid gap-3 rounded-[var(--radius-md)] border border-[color:var(--sep)] bg-[color:var(--panel-soft)] p-3 text-sm">
-              <div className="grid gap-0.5">
-                <dt className="text-xs font-medium uppercase tracking-[0.08em] text-[color:var(--tx3)]">
-                  Authentication
-                </dt>
-                <dd className="font-medium text-[color:var(--tx)]">{connectAuthType(app)}</dd>
-                <dd className="text-[color:var(--tx2)]">{expectationFromCatalogue}</dd>
-              </div>
-              <div className="grid gap-0.5">
-                <dt className="text-xs font-medium uppercase tracking-[0.08em] text-[color:var(--tx3)]">
-                  Who can use it
-                </dt>
-                <dd className="grid gap-3 text-[color:var(--tx2)]">
-                  <TabBar
-                    ariaLabel="Choose who this app connection is for"
-                    items={[
-                      { label: 'Just you', testId: 'app-connect-scope-user', value: 'user' },
-                      { label: 'A channel', testId: 'app-connect-scope-channel', value: 'channel' },
-                    ]}
-                    onChange={setScopeChoice}
-                    role="radiogroup"
-                    size="sm"
-                    value={scopeChoice}
-                  />
-                  {scopeChoice === 'channel' ? (
-                    <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-connect-channel">
-                      Channel
-                      <select
-                        aria-describedby="app-connect-channel-scope-copy"
-                        className="admin-input"
-                        data-testid="app-connect-channel-picker"
-                        disabled={channels.isPending || channels.isError}
-                        id="app-connect-channel"
-                        onChange={(event) => setChannelId(event.target.value)}
-                        value={channelId}
-                      >
-                        <option value="">
-                          {channels.isPending
-                            ? 'Loading channels…'
-                            : channels.isError
-                              ? 'Channels could not be loaded'
-                              : 'Choose a channel'}
-                        </option>
-                        {(channels.data ?? []).map((channel) => (
-                          <option key={channel.id} value={channel.id}>
-                            {channel.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <span data-testid="app-connect-scope-copy" id="app-connect-channel-scope-copy">
-                    {appConnectScopeCopy(scopeChoice, selectedChannel?.label)}
-                  </span>
-                </dd>
-              </div>
-            </dl>
+            <div className="rounded-[var(--radius-md)] border border-[color:var(--sep)] bg-[color:var(--panel-soft)] p-3">
+              <KeyValueList
+                items={[
+                  {
+                    label: 'Authentication',
+                    value: (
+                      <span className="grid gap-0.5">
+                        <span className="font-medium text-[color:var(--tx)]">{connectAuthType(app)}</span>
+                        <span className="text-[color:var(--tx2)]">{expectationFromCatalogue}</span>
+                      </span>
+                    ),
+                  },
+                  {
+                    label: 'Who can use it',
+                    value: (
+                      <span className="grid gap-3 text-[color:var(--tx2)]">
+                        <TabBar
+                          ariaLabel="Choose who this app connection is for"
+                          items={[
+                            { label: 'Just you', testId: 'app-connect-scope-user', value: 'user' },
+                            { label: 'A channel', testId: 'app-connect-scope-channel', value: 'channel' },
+                          ]}
+                          onChange={setScopeChoice}
+                          role="radiogroup"
+                          size="sm"
+                          value={scopeChoice}
+                        />
+                        {scopeChoice === 'channel' ? (
+                          <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-connect-channel">
+                            Channel
+                            <select
+                              aria-describedby="app-connect-channel-scope-copy"
+                              className="admin-input"
+                              data-testid="app-connect-channel-picker"
+                              disabled={channels.isPending || channels.isError}
+                              id="app-connect-channel"
+                              onChange={(event) => setChannelId(event.target.value)}
+                              value={channelId}
+                            >
+                              <option value="">
+                                {channels.isPending
+                                  ? 'Loading channels…'
+                                  : channels.isError
+                                    ? 'Channels could not be loaded'
+                                    : 'Choose a channel'}
+                              </option>
+                              {(channels.data ?? []).map((channel) => (
+                                <option key={channel.id} value={channel.id}>
+                                  {channel.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <span data-testid="app-connect-scope-copy" id="app-connect-channel-scope-copy">
+                          {appConnectScopeCopy(scopeChoice, selectedChannel?.label)}
+                        </span>
+                      </span>
+                    ),
+                  },
+                ]}
+                layout="grid"
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
                 Cancel

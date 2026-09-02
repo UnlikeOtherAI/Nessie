@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { Skeleton } from '../../primitives/Skeleton'
 
 export type SectionLink = {
   label: string
@@ -52,15 +53,18 @@ export const DashboardSectionCard = ({
   </section>
 )
 
-/** Skeleton rows shared by the list-shaped sections. */
+/**
+ * Skeleton rows shared by the list-shaped sections, built on the kit's own
+ * `Skeleton` — this shape (a line, optionally led by a circle) was one of the
+ * six hand-rolled pulse placeholders `Skeleton`'s docstring names as the
+ * reason it exists.
+ */
 export const SectionSkeleton = ({ rows = 3, circles }: { rows?: number; circles?: boolean }) => (
-  <div className="flex flex-col gap-1 p-2">
+  <div aria-label="Loading" className="flex flex-col gap-1 p-2" role="status">
     {Array.from({ length: rows }, (_, index) => (
       <div className="flex items-center gap-3" key={index}>
-        {circles ? (
-          <span className="h-7 w-7 animate-pulse rounded-full bg-[color:var(--overlay)]" />
-        ) : null}
-        <span className="h-4 flex-1 animate-pulse rounded bg-[color:var(--overlay)]" />
+        {circles ? <Skeleton className="rounded-full" height="h-7" width="w-7" /> : null}
+        <Skeleton height="h-4" />
       </div>
     ))}
   </div>
@@ -71,13 +75,9 @@ export const SectionNotice = ({ children }: { children: ReactNode }) => (
   <p className="px-2 py-3 text-sm leading-5 text-[color:var(--tx3)]">{children}</p>
 )
 
-/** "…and N more" — a hint, not a control: the owning surface is a click away. */
-export const SectionOverflowHint = ({ count, noun }: { count: number; noun: string }) =>
-  count > 0 ? (
-    <p className="px-2 py-1.5 text-xs text-[color:var(--tx3)]">
-      …and {count} more {count === 1 ? noun : `${noun}s`}
-    </p>
-  ) : null
+// "…and N more" is `shared/SectionOverflowHint` — promoted out of this file
+// once the kit existed. Import it from there rather than re-adding a local
+// copy here.
 
 /** The shared hover/typography treatment for a clickable dashboard row. */
 export const dashboardRowClass = [

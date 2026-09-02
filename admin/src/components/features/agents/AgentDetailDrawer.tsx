@@ -1,32 +1,13 @@
 import { useNavigate } from 'react-router-dom'
-import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { Pill } from '../../primitives/Pill'
 import { useIsOwner } from '../../shared/OwnerGate'
-import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
-import { AgentStatusDot } from './AgentStatusDot'
+import { AgentIdentityBlock } from './AgentIdentityBlock'
 import { AgentDetailTabs } from './AgentDetailTabs'
 
 type AgentDetailDrawerProps = {
   agent: AgentRecord | null
   onClose: () => void
   onSelectAgent: (agentId: string) => void
-}
-
-const getStatusTone = (status: AgentRecord['status']) => {
-  if (status === 'error') {
-    return 'danger'
-  }
-
-  if (status === 'waiting_approval' || status === 'waiting_input') {
-    return 'warning'
-  }
-
-  if (status === 'idle' || status === 'offline') {
-    return 'muted'
-  }
-
-  return 'accent'
 }
 
 export const AgentDetailDrawer = ({
@@ -36,7 +17,6 @@ export const AgentDetailDrawer = ({
 }: AgentDetailDrawerProps) => {
   const navigate = useNavigate()
   const isOwner = useIsOwner()
-  const { data: status } = useAgentStatus(agent?.id)
 
   if (!agent) {
     return null
@@ -59,19 +39,8 @@ export const AgentDetailDrawer = ({
             'border-b border-[color:var(--sep)] px-6 py-5',
           ].join(' ')}
         >
-          <div>
-            <div className="flex items-center gap-3">
-              <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
-              <h2 className="text-2xl font-semibold text-[var(--tx)]">{agent.name}</h2>
-              <AgentStatusDot status={agent.status} />
-              <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
-            </div>
-            <div className="mt-2 text-sm text-[color:var(--tx2)]">{agent.role}</div>
-            <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-              {status?.currentToolName
-                ? `Active tool: ${status.currentToolName}`
-                : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
-            </div>
+          <div className="flex items-center gap-3">
+            <AgentIdentityBlock agent={agent} canEditAvatar={isOwner} />
           </div>
           <div className="flex gap-2">
             {isOwner ? (

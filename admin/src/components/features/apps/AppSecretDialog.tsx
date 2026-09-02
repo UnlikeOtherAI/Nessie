@@ -1,8 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react'
 
 import { useSetAppConnectionSecret } from '../../../facades/apps/connect-hooks'
+import { toFormErrors, type FormErrors } from '../../../facades/form-errors'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
+import { FormActions, FormError } from '../../shared/FormActions'
 
 type AppSecretDialogProps = {
   canShare: boolean
@@ -11,17 +15,18 @@ type AppSecretDialogProps = {
   onSaved: () => void
 }
 
+const EMPTY_ERRORS: FormErrors = { fieldErrors: {}, formError: undefined }
+
 /** Collects a pending app connection's key without exposing it after submit. */
 export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: AppSecretDialogProps) => {
-  const secretRef = useRef<HTMLInputElement>(null)
   const setSecret = useSetAppConnectionSecret()
   const [secret, setSecretValue] = useState('')
   const [credentialScope, setCredentialScope] = useState<'personal' | 'shared'>('personal')
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<FormErrors>(EMPTY_ERRORS)
 
   const close = () => {
     if (setSecret.isPending) return
-    setError(null)
+    setErrors(EMPTY_ERRORS)
     setSecretValue('')
     setCredentialScope('personal')
     onClose()
@@ -31,12 +36,12 @@ export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: Ap
     event.preventDefault()
     const value = secret.trim()
     if (!connectionId || !value) {
-      setError('Paste the API key or token to continue.')
+      setErrors({ fieldErrors: { secret: 'Paste the API key or token to continue.' }, formError: undefined })
       return
     }
 
     // Clear the only plaintext copy before the request can resolve or fail.
-    setError(null)
+    setErrors(EMPTY_ERRORS)
     setSecretValue('')
     try {
       await setSecret.mutateAsync({
@@ -47,15 +52,28 @@ export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: Ap
       onSaved()
       close()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'We could not store that key.')
+      const mapped = toFormErrors(caught)
+      setErrors({
+        fieldErrors: mapped.fieldErrors,
+        formError: mapped.formError ?? 'We could not store that key.',
+      })
     }
   }
 
+  /**
+   * Opens on the first field rather than on the shell's close cross, which
+   * precedes the form in the DOM. Each of these dialogs pinned focus before
+   * its form moved to `FormField`; the ref was dropped because the field no
+   * longer had a fixed id to target, so the dialog began opening on Close and
+   * a person had to tab out of it to start typing.
+   */
+  const initialFieldRef = useRef<HTMLInputElement>(null)
+
   return (
     <Dialog
+      initialFocusRef={initialFieldRef}
       description="Nessie encrypts this key and never shows it again."
       dismissDisabled={setSecret.isPending}
-      initialFocusRef={secretRef}
       onClose={close}
       open={connectionId !== null}
       title="Add an API key"
@@ -86,27 +104,24 @@ export const AppSecretDialog = ({ canShare, connectionId, onClose, onSaved }: Ap
             This personal key is available only in runs acting for you.
           </p>
         )}
-        <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-secret">
-          API key or token
-          <input
+        <FormField error={errors.fieldErrors.secret} label="API key or token">
+          <Input
             autoComplete="new-password"
-            className="admin-input"
-            id="app-secret"
             onChange={(event) => setSecretValue(event.target.value)}
-            ref={secretRef}
             type="password"
             value={secret}
+            ref={initialFieldRef}
           />
-        </label>
-        {error ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
-        <div className="flex justify-end gap-2 pt-1">
+        </FormField>
+        <FormError>{errors.formError}</FormError>
+        <FormActions>
           <button className="admin-button admin-button-secondary" disabled={setSecret.isPending} onClick={close} type="button">
             Cancel
           </button>
           <button className="admin-button admin-button-primary" disabled={setSecret.isPending} type="submit">
             {setSecret.isPending ? 'Saving…' : 'Save key'}
           </button>
-        </div>
+        </FormActions>
       </form>
     </Dialog>
   )

@@ -3,7 +3,8 @@ import {
   useStartCommsConnection,
 } from '../../facades/connections/hooks'
 import type { CommsProvider } from '../../lib/api-client'
-import { Notice } from '../../components/primitives/Notice'
+import { EmptyState } from '../../components/shared/EmptyState'
+import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
 
@@ -11,6 +12,30 @@ const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
   { provider: 'slack', label: 'Connect Slack' },
   { provider: 'google', label: 'Connect Gmail' },
 ]
+
+const ConnectButtons = ({
+  onConnect,
+  pending,
+  variant,
+}: {
+  onConnect: (provider: CommsProvider) => void
+  pending: boolean
+  variant: 'primary' | 'secondary'
+}) => (
+  <div className="flex gap-2">
+    {CONNECTABLE.map((entry) => (
+      <button
+        className={`admin-button admin-button-${variant} admin-button-compact`}
+        disabled={pending}
+        key={entry.provider}
+        onClick={() => onConnect(entry.provider)}
+        type="button"
+      >
+        {entry.label}
+      </button>
+    ))}
+  </div>
+)
 
 /**
  * "Connected accounts" — the user's Individual Communications Connector control
@@ -32,64 +57,47 @@ export const ConnectionsPage = () => {
 
   return (
     <SettingsPanel eyebrow="Account" title="Connected accounts">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="flex max-w-3xl flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
           Link your Slack, Gmail, or Microsoft account so your Chief of Staff can
           work across your messages. You choose exactly what is imported, and you
           can disconnect or delete imported data at any time.
         </p>
 
-        {/* Not QueryState: the error is a Notice and the empty state is a card
-            with two Connect buttons — neither is a line. */}
-        {connections.isLoading ? (
-          <p className="text-sm text-[color:var(--tx3)]">Loading connections…</p>
-        ) : connections.isError ? (
-          <Notice tone="danger">
-            Could not load your connections. Please refresh and try again.
-          </Notice>
-        ) : rows.length === 0 ? (
-          <section className="admin-card p-6 text-center">
-            <div className="text-sm font-semibold text-[color:var(--tx)]">
-              No connected accounts yet
-            </div>
-            <p className="mx-auto mt-1 max-w-md text-sm text-[color:var(--tx3)]">
-              Connect an account below, or ask your Chief of Staff in chat — it
-              will post a card with a one-click Connect button.
-            </p>
-            <div className="mt-4 flex justify-center gap-2">
-              {CONNECTABLE.map((entry) => (
-                <button
-                  className="admin-button admin-button-primary admin-button-compact"
-                  disabled={start.isPending}
-                  key={entry.provider}
-                  onClick={() => void onConnect(entry.provider)}
-                  type="button"
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : (
-          <>
-            {rows.map((connection) => (
-              <ConnectionCard connection={connection} key={connection.id} />
-            ))}
-            <div className="flex gap-2">
-              {CONNECTABLE.map((entry) => (
-                <button
-                  className="admin-button admin-button-secondary admin-button-compact"
-                  disabled={start.isPending}
-                  key={entry.provider}
-                  onClick={() => void onConnect(entry.provider)}
-                  type="button"
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+        <QueryState
+          errorLabel="Could not load your connections."
+          loadingLabel="Loading connections…"
+          query={connections}
+        >
+          {() => (
+            rows.length === 0 ? (
+              <EmptyState
+                action={
+                  <ConnectButtons
+                    onConnect={(provider) => void onConnect(provider)}
+                    pending={start.isPending}
+                    variant="primary"
+                  />
+                }
+                title="No connected accounts yet"
+              >
+                Connect an account below, or ask your Chief of Staff in chat — it
+                will post a card with a one-click Connect button.
+              </EmptyState>
+            ) : (
+              <div className="grid gap-4">
+                {rows.map((connection) => (
+                  <ConnectionCard connection={connection} key={connection.id} />
+                ))}
+                <ConnectButtons
+                  onConnect={(provider) => void onConnect(provider)}
+                  pending={start.isPending}
+                  variant="secondary"
+                />
+              </div>
+            )
+          )}
+        </QueryState>
       </div>
     </SettingsPanel>
   )

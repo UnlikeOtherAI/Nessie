@@ -1975,6 +1975,17 @@ button.reaction-pill-active:focus-visible {
   background: var(--panel);
 }
 
+/* The `tone="attention"` card, for a block waiting on the person reading it.
+   It has to be a class rather than a utility on the call site for the reason
+   the note above gives: `.admin-card` is unlayered, so `admin-card
+   border-[color:var(--accent)]` is inert. Three "needs attention" panels on
+   the executors page were written that way and none of them ever drew the
+   accent border their author intended. Declared after `.admin-card` so it
+   wins on equal specificity. */
+.admin-card-attention {
+  border-color: var(--accent);
+}
+
 .admin-input {
   width: 100%;
   border: 1px solid var(--sep);

@@ -5,6 +5,8 @@ import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useProjects, useTeams } from '../../../facades/projects/hooks'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { QueryState } from '../../shared/QueryState'
 
 type BudgetMode = 'off' | 'warn' | 'enforce' | 'degrade' | 'unlimited'
 type BudgetScopeType = 'organization' | 'project' | 'team'
@@ -62,12 +64,14 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
-  const { data: budgets = [] } = useQuery<BudgetStatus[]>({
+  const budgetsQuery = useQuery<BudgetStatus[]>({
     queryKey: budgetKeys.all,
     queryFn: () => apiClient.get('/api/ledger/budgets'),
   })
+  const budgets = budgetsQuery.data ?? []
   const { data: projects = [] } = useProjects()
   const { data: teams = [] } = useTeams()
+  const [pendingDelete, setPendingDelete] = useState<BudgetStatus | null>(null)
 
   const [scopeType, setScopeType] = useState<BudgetScopeType>('organization')
   const [scopeId, setScopeId] = useState('')
@@ -113,7 +117,10 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const remove = useMutation({
     mutationFn: (target: { scopeType: BudgetScopeType; scopeId: string }) =>
       apiClient.delete(`/api/ledger/budget?scopeType=${target.scopeType}&scopeId=${target.scopeId}`),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setPendingDelete(null)
+      invalidate()
+    },
   })
 
   const handleSave = () => {
@@ -355,61 +362,85 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
 
       <SectionLabel className="mt-5">Configured budgets ({budgets.length})</SectionLabel>
       <div className="mt-2 grid gap-2">
-        {budgets.map((b) => (
-          <div key={`${b.scopeType}:${b.scopeId}`} className="admin-card p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <span className="font-semibold text-[var(--tx)]">{scopeLabel(b)}</span>
-                <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                  {b.scopeType} · {b.mode} · {b.period}
-                </span>
-              </div>
-              <Pill
-                className="shrink-0"
-                size="sm"
-                tone={b.mode === 'unlimited' ? 'muted' : levelTone[b.level]}
-              >
-                {b.mode === 'unlimited'
-                  ? 'unlimited'
-                  : b.percentUsed != null
-                    ? `${b.percentUsed}% used`
-                    : 'no cap'}
-              </Pill>
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--tx2)]">
-              {formatTokens(b.spentTokens)} tokens · {formatUsd(b.spentUsd)} this {b.period.replace('ly', '')}
-              {b.costLimitUsd != null && ` · cap ${formatUsd(b.costLimitUsd)}`}
-              {b.tokenLimit != null && ` · cap ${formatTokens(b.tokenLimit)} tok`}
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--tx2)]">
-              {formatBytes(Number(b.storageUsedBytes))} stored
-              {b.storageLimitBytes != null
-                ? ` of ${formatBytes(Number(b.storageLimitBytes))} cap`
-                : ' · no storage cap'}
-            </div>
-            <div className="mt-2 flex gap-2">
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={() => editBudget(b)}
-                type="button"
-              >
-                Edit
-              </button>
-              <button
-                className="admin-button admin-button-secondary"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate({ scopeType: b.scopeType, scopeId: b.scopeId })}
-                type="button"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-        {budgets.length === 0 && (
-          <div className="py-6 text-center text-[color:var(--tx3)]">No budgets configured</div>
-        )}
+        <QueryState
+          emptyLabel="No budgets configured"
+          errorLabel="Failed to load budgets."
+          isEmpty={budgets.length === 0}
+          loadingLabel="Loading budgets…"
+          query={budgetsQuery}
+        >
+          {() => (
+            <>
+              {budgets.map((b) => (
+                <div key={`${b.scopeType}:${b.scopeId}`} className="admin-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[var(--tx)]">{scopeLabel(b)}</span>
+                      <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                        {b.scopeType} · {b.mode} · {b.period}
+                      </span>
+                    </div>
+                    <Pill
+                      className="shrink-0"
+                      size="sm"
+                      tone={b.mode === 'unlimited' ? 'muted' : levelTone[b.level]}
+                    >
+                      {b.mode === 'unlimited'
+                        ? 'unlimited'
+                        : b.percentUsed != null
+                          ? `${b.percentUsed}% used`
+                          : 'no cap'}
+                    </Pill>
+                  </div>
+                  <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                    {formatTokens(b.spentTokens)} tokens · {formatUsd(b.spentUsd)} this {b.period.replace('ly', '')}
+                    {b.costLimitUsd != null && ` · cap ${formatUsd(b.costLimitUsd)}`}
+                    {b.tokenLimit != null && ` · cap ${formatTokens(b.tokenLimit)} tok`}
+                  </div>
+                  <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                    {formatBytes(Number(b.storageUsedBytes))} stored
+                    {b.storageLimitBytes != null
+                      ? ` of ${formatBytes(Number(b.storageLimitBytes))} cap`
+                      : ' · no storage cap'}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      className="admin-button admin-button-secondary"
+                      onClick={() => editBudget(b)}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="admin-button admin-button-secondary"
+                      disabled={remove.isPending}
+                      onClick={() => setPendingDelete(b)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </QueryState>
       </div>
+
+      <ConfirmDialog
+        body={pendingDelete ? `This removes the ${scopeLabel(pendingDelete)} budget. It can be re-created later.` : undefined}
+        confirmLabel="Delete budget"
+        destructive
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) {
+            remove.mutate({ scopeType: pendingDelete.scopeType, scopeId: pendingDelete.scopeId })
+          }
+        }}
+        open={pendingDelete != null}
+        pending={remove.isPending}
+        title="Delete this budget?"
+      />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useSetToolRegistryStatus } from '../../../facades/tool-grants/hooks'
+import { FormError } from '../../shared/FormActions'
 
 /**
  * Batch review controls above the tool list.
@@ -77,11 +78,9 @@ export const ToolReviewBar = ({
         one does first — a connector can expose destructive actions alongside
         read-only ones.
       </p>
-      {setStatus.isError ? (
-        <p className="text-xs text-[color:var(--danger-text)]">
-          Could not update those tools. Try again.
-        </p>
-      ) : null}
+      <FormError>
+        {setStatus.isError ? 'Could not update those tools. Try again.' : undefined}
+      </FormError>
     </div>
   )
 }

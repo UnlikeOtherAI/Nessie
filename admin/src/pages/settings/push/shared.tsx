@@ -1,4 +1,5 @@
 import type { PushCredentialResult, PushTestResult } from '@nessie/schemas'
+import { Notice } from '../../../components/primitives/Notice'
 
 export const PushStatusRow = ({ label, value }: { label: string; value: string }) => (
   <div className="flex justify-between gap-3">
@@ -8,17 +9,12 @@ export const PushStatusRow = ({ label, value }: { label: string; value: string }
 )
 
 /**
- * Deliberately not `Notice`. This banner ships without a border — a tinted
- * block, not an outlined one — and `Notice` is unconditionally bordered so
- * that no call site can quietly drop the house outline. Routing this one
- * through it would paint a 1px rule that has never been there and grow the box
- * 2px in each axis. Giving `Notice` a borderless mode to accommodate one
- * caller would put that seam inside the primitive instead, which is where the
- * next borderless banner would come back in.
- *
- * Whether push results *should* look like every other success/danger banner in
- * the admin is a design decision, not a refactor one; until it is taken, this
- * stays as it shipped.
+ * The house success/danger banner. This used to be a knowing, bordered-free
+ * fork of `Notice` kept apart on the grounds that `Notice` could not express
+ * a borderless tint — `Notice`'s tone map already carries the border, so the
+ * fork is retired onto it rather than kept as a second shape for the same
+ * "did the save work" message every other settings page already shows this
+ * way.
  */
 export const PushResultBanner = ({
   result,
@@ -27,15 +23,12 @@ export const PushResultBanner = ({
 }) => {
   if (!result) return null
   return (
-    <div
-      className={[
-        'mt-3 rounded-md p-3 text-sm',
-        result.ok
-          ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-          : 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-      ].join(' ')}
+    <Notice
+      className="mt-3"
+      role={result.ok ? 'status' : 'alert'}
+      tone={result.ok ? 'success' : 'danger'}
     >
       {result.message}
-    </div>
+    </Notice>
   )
 }

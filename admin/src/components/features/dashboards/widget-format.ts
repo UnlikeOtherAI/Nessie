@@ -26,6 +26,22 @@ export const toneVars: Record<DashboardTone, { line: string; soft: string; text:
   danger: { line: 'var(--danger)', soft: 'var(--danger-soft)', text: 'var(--danger-text)' },
 }
 
+/**
+ * The same tones as `toneVars`, spelled as a Tailwind arbitrary-value class
+ * instead of a raw custom-property string — for a text node's `className`
+ * rather than an SVG `stroke`/`fill` attribute, which still needs the raw
+ * value. Kept as a literal `Record` so every class string is discoverable by
+ * Tailwind's static scan.
+ */
+export const toneTextClass: Record<DashboardTone, string> = {
+  neutral: 'text-[color:var(--tx2)]',
+  accent: 'text-[color:var(--tx)]',
+  info: 'text-[color:var(--info-text)]',
+  success: 'text-[color:var(--success-text)]',
+  warning: 'text-[color:var(--warning-text)]',
+  danger: 'text-[color:var(--danger-text)]',
+}
+
 /** A fixed rotation for multi-series charts, so series colours are stable. */
 export const SERIES_TONES: DashboardTone[] = ['accent', 'info', 'success', 'warning', 'danger']
 

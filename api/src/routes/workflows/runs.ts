@@ -85,10 +85,7 @@ export const registerWorkflowRunRoutes = (app: FastifyInstance, deps: RouteDeps)
       ...(query.status ? { status: query.status } : {}),
       ...(installationWhere ? { installationWhere } : {}),
     })
-    return createApiResponse(
-      WorkflowRunRecordSchema.array().parse(page.items),
-      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
-    )
+    return createApiResponse(WorkflowRunRecordSchema.array().parse(page.data), page.meta)
   })
 
   app.get('/api/workflow-runs/:workflowRunId', async (request, reply) => {

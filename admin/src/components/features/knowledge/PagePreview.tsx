@@ -2,18 +2,23 @@ import { useRef } from 'react'
 import { faFileLines, faFolder, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { Pill } from '../../primitives/Pill'
+import { QueryState } from '../../shared/QueryState'
+import { Row, RowList } from '../../shared/RowList'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentDraftBadge } from './AgentDraftBadge'
 import { BacklinksPanel } from './backlinks/BacklinksPanel'
 import { CommentsSection } from './comments/CommentsSection'
 import { KnowledgePane } from './KnowledgePane'
 import { PageNotesLayer } from './notes/PageNotesLayer'
-import { isAgentDraft, pageStatusTone } from './page-status'
+import { isAgentDraft, pageStatusPillTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type PagePreviewProps = {
-  // True while the page body is still being fetched on demand (the list omits it).
-  bodyPending?: boolean
+  // The on-demand full-body fetch (the pages list omits bodies): loading gets
+  // the shared line, a failure gets Retry, success renders the body below.
+  bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   canWrite: boolean
   // On a phone the workspace owns the doorway through the local-back
   // registry and passes no onBack; wider layouts keep the pane's own Back.
@@ -38,7 +43,7 @@ const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
   })
 
 export const PagePreview = ({
-  bodyPending,
+  bodyQuery,
   canWrite,
   onBack,
   onCreateChild,
@@ -97,8 +102,10 @@ export const PagePreview = ({
       title={page.title}
     >
       <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em]">
-          <span className={pageStatusTone[page.status]}>{page.status}</span>
+        <div className="flex items-center gap-2">
+          <Pill size="sm" tone={pageStatusPillTone[page.status]}>
+            {page.status}
+          </Pill>
           {isAgentDraft(page) ? <AgentDraftBadge /> : null}
         </div>
         <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
@@ -113,34 +120,35 @@ export const PagePreview = ({
         {page.labels.length ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {page.labels.map((label) => (
-              <span
-                className="rounded bg-[var(--overlay-weak)] px-2 py-1 text-xs text-[color:var(--tx2)]"
-                key={label}
-              >
+              <Pill key={label} radius="chip" tone="muted" uppercase={false}>
                 {label}
-              </span>
+              </Pill>
             ))}
           </div>
         ) : null}
 
-        {bodyPending ? (
-          <div className="mt-6">
-            <p className="text-sm text-[color:var(--tx3)]">Loading…</p>
-          </div>
-        ) : page.latestVersion?.body ? (
-          <PageNotesLayer
-            body={page.latestVersion.body}
-            canWrite={canWrite}
-            pageId={page.id}
-            versionId={page.latestVersion.id}
-          />
-        ) : (
-          <div className="mt-6">
-            <p className="text-sm text-[color:var(--tx3)]">
-              {canWrite ? 'No content yet. Press Edit to start writing.' : 'No content yet.'}
-            </p>
-          </div>
-        )}
+        <div className="mt-6">
+          <QueryState
+            errorLabel="Couldn’t load this page."
+            loadingLabel="Loading…"
+            query={bodyQuery}
+          >
+            {() =>
+              page.latestVersion?.body ? (
+                <PageNotesLayer
+                  body={page.latestVersion.body}
+                  canWrite={canWrite}
+                  pageId={page.id}
+                  versionId={page.latestVersion.id}
+                />
+              ) : (
+                <p className="text-sm text-[color:var(--tx3)]">
+                  {canWrite ? 'No content yet. Press Edit to start writing.' : 'No content yet.'}
+                </p>
+              )
+            }
+          </QueryState>
+        </div>
 
         <BacklinksPanel pageId={page.id} />
 
@@ -148,10 +156,7 @@ export const PagePreview = ({
 
         <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
           <div className="flex items-center justify-between">
-            {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-              Sub-pages
-            </span>
+            <SectionLabel size="2xs">Sub-pages</SectionLabel>
             {canWrite ? (
               <button
                 className="admin-button admin-button-secondary admin-button-compact"
@@ -162,41 +167,40 @@ export const PagePreview = ({
               </button>
             ) : null}
           </div>
-          <div className="mt-3 grid gap-1">
+          <div className="mt-3">
             {subPages.length === 0 ? (
-              <div className="py-4 text-sm text-[color:var(--tx3)]">No sub-pages yet.</div>
+              <p className="py-4 text-sm text-[color:var(--tx3)]">No sub-pages yet.</p>
             ) : (
-              sortedSubPages(subPages).map((child) => {
-                const isFolder = (child.childPageIds?.length ?? 0) > 0
-                return (
-                  <button
-                    className={[
-                      'flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm',
-                      'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
-                    ].join(' ')}
-                    key={child.id}
-                    onClick={() => onDrill(child.id)}
-                    type="button"
-                  >
-                    <FontAwesomeIcon
-                      className={[
-                        'h-4 w-4 flex-shrink-0',
-                        isFolder ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
-                      ].join(' ')}
-                      fixedWidth
-                      icon={isFolder ? faFolder : faFileLines}
+              <RowList>
+                {sortedSubPages(subPages).map((child) => {
+                  const isFolder = (child.childPageIds?.length ?? 0) > 0
+                  return (
+                    <Row
+                      key={child.id}
+                      leading={
+                        <FontAwesomeIcon
+                          className={[
+                            'h-4 w-4',
+                            isFolder ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
+                          ].join(' ')}
+                          fixedWidth
+                          icon={isFolder ? faFolder : faFileLines}
+                        />
+                      }
+                      onClick={() => onDrill(child.id)}
+                      title={child.title}
+                      trailing={
+                        <>
+                          {isAgentDraft(child) ? <AgentDraftBadge /> : null}
+                          <Pill size="sm" tone={pageStatusPillTone[child.status]}>
+                            {child.status}
+                          </Pill>
+                        </>
+                      }
                     />
-                    <span className="min-w-0 flex-1 truncate">{child.title}</span>
-                    {isAgentDraft(child) ? <AgentDraftBadge /> : null}
-                    <span className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[child.status]}`}>
-                      {child.status}
-                    </span>
-                    <span aria-hidden className="opacity-60">
-                      →
-                    </span>
-                  </button>
-                )
-              })
+                  )
+                })}
+              </RowList>
             )}
           </div>
         </div>

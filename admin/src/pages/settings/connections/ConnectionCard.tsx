@@ -6,6 +6,11 @@ import type {
 } from '../../../lib/api-client'
 import { Pill, type PillTone } from '../../../components/primitives/Pill'
 import { Switch } from '../../../components/primitives/Switch'
+import { Card } from '../../../components/shared/Card'
+import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
+import { KeyValueList } from '../../../components/shared/KeyValueList'
+import { QueryState } from '../../../components/shared/QueryState'
+import { Row, RowList } from '../../../components/shared/RowList'
 import {
   useCommsConnection,
   useDeleteCommsData,
@@ -13,7 +18,6 @@ import {
   useResyncCommsConnection,
   useUpdateCommsResources,
 } from '../../../facades/connections/hooks'
-import { sectionTitleClass } from '../settings-shared'
 import { ConnectionPermissions } from './ConnectionPermissions'
 
 const PROVIDER_LABEL: Record<CommsProvider, string> = {
@@ -39,37 +43,7 @@ const STATUS_TONE: Record<CommsConnectionStatus, PillTone> = {
 const formatDate = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleString() : 'Never'
 
-const DangerButton = ({
-  idleLabel,
-  confirmLabel,
-  onConfirm,
-  disabled,
-}: {
-  idleLabel: string
-  confirmLabel: string
-  onConfirm: () => void
-  disabled?: boolean
-}) => {
-  const [armed, setArmed] = useState(false)
-  return (
-    <button
-      className="admin-button admin-button-secondary admin-button-danger"
-      disabled={disabled}
-      onClick={() => {
-        if (armed) {
-          onConfirm()
-          setArmed(false)
-        } else {
-          setArmed(true)
-        }
-      }}
-      onBlur={() => setArmed(false)}
-      type="button"
-    >
-      {armed ? confirmLabel : idleLabel}
-    </button>
-  )
-}
+type PendingAction = 'delete' | 'disconnect' | null
 
 export const ConnectionCard = ({
   connection,
@@ -77,6 +51,7 @@ export const ConnectionCard = ({
   connection: CommsConnectionSummary
 }) => {
   const [expanded, setExpanded] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   // Permissions are the primary thing a person comes here to change, so a
   // provider with a capability catalog loads its detail without expanding.
   const hasCapabilityCatalog = connection.provider === 'google'
@@ -89,15 +64,34 @@ export const ConnectionCard = ({
   const deleteData = useDeleteCommsData()
 
   const isDisconnected = connection.status === 'disconnected'
+  const providerLabel = PROVIDER_LABEL[connection.provider]
+
+  const keyValueItems = [
+    {
+      label: 'Imported history',
+      value: connection.initialSyncCompletedAt
+        ? `Imported ${formatDate(connection.initialSyncCompletedAt)}`
+        : 'Import pending',
+    },
+    { label: 'Last successful sync', value: formatDate(connection.lastSuccessfulSyncAt) },
+    {
+      label: 'Granted permissions',
+      value: connection.grantedScopes.length > 0
+        ? `${connection.grantedScopes.length} scopes`
+        : 'None reported',
+    },
+    {
+      label: 'Included resources',
+      value: `${connection.syncedResourceCount} of ${connection.resourceCount} on`,
+    },
+  ]
 
   return (
-    <section className="admin-card p-4">
+    <Card as="section">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[color:var(--tx)]">
-              {PROVIDER_LABEL[connection.provider]}
-            </h2>
+            <h2 className="text-sm font-semibold text-[color:var(--tx)]">{providerLabel}</h2>
             <Pill
               className="font-semibold"
               radius="chip"
@@ -121,51 +115,28 @@ export const ConnectionCard = ({
           >
             {resync.isPending ? 'Resyncing…' : 'Resync'}
           </button>
-          <DangerButton
-            confirmLabel="Confirm disconnect"
+          <button
+            className="admin-button admin-button-secondary admin-button-danger"
             disabled={isDisconnected || disconnect.isPending}
-            idleLabel="Disconnect"
-            onConfirm={() => disconnect.mutate(connection.id)}
-          />
-          <DangerButton
-            confirmLabel="Confirm delete"
+            onClick={() => setPendingAction('disconnect')}
+            type="button"
+          >
+            Disconnect
+          </button>
+          <button
+            className="admin-button admin-button-secondary admin-button-danger"
             disabled={deleteData.isPending}
-            idleLabel="Delete imported data"
-            onConfirm={() => deleteData.mutate(connection.id)}
-          />
+            onClick={() => setPendingAction('delete')}
+            type="button"
+          >
+            Delete imported data
+          </button>
         </div>
       </div>
 
-      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="rounded border border-[color:var(--sep)] px-2 py-1.5">
-          <dt className={sectionTitleClass}>Imported history</dt>
-          <dd className="mt-0.5 text-xs text-[color:var(--tx)]">
-            {connection.initialSyncCompletedAt
-              ? `Imported ${formatDate(connection.initialSyncCompletedAt)}`
-              : 'Import pending'}
-          </dd>
-        </div>
-        <div className="rounded border border-[color:var(--sep)] px-2 py-1.5">
-          <dt className={sectionTitleClass}>Last successful sync</dt>
-          <dd className="mt-0.5 text-xs text-[color:var(--tx)]">
-            {formatDate(connection.lastSuccessfulSyncAt)}
-          </dd>
-        </div>
-        <div className="rounded border border-[color:var(--sep)] px-2 py-1.5">
-          <dt className={sectionTitleClass}>Granted permissions</dt>
-          <dd className="mt-0.5 text-xs text-[color:var(--tx)]">
-            {connection.grantedScopes.length > 0
-              ? `${connection.grantedScopes.length} scopes`
-              : 'None reported'}
-          </dd>
-        </div>
-        <div className="rounded border border-[color:var(--sep)] px-2 py-1.5">
-          <dt className={sectionTitleClass}>Included resources</dt>
-          <dd className="mt-0.5 text-xs text-[color:var(--tx)]">
-            {connection.syncedResourceCount} of {connection.resourceCount} on
-          </dd>
-        </div>
-      </dl>
+      <div className="mt-3">
+        <KeyValueList items={keyValueItems} layout="grid" />
+      </div>
 
       {/* Raw scope strings answer no question once the readable capability
           rows exist; they stay only for a provider with no catalog. */}
@@ -191,45 +162,67 @@ export const ConnectionCard = ({
       </button>
 
       {expanded ? (
-        <div className="mt-2 grid gap-1.5">
-          {detail.isLoading ? (
-            <p className="text-xs text-[color:var(--tx3)]">Loading resources…</p>
-          ) : detail.data && detail.data.resources.length > 0 ? (
-            detail.data.resources.map((resource) => (
-              <div
-                className="flex items-center justify-between gap-3 rounded border border-[color:var(--sep)] px-2 py-1.5"
-                key={resource.id}
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-xs text-[color:var(--tx)]">
-                    {resource.name ?? resource.externalId}
-                  </div>
-                  <div className="truncate text-[11px] text-[color:var(--tx3)]">
-                    {resource.resourceType}
-                    {resource.visibility ? ` · ${resource.visibility}` : ''}
-                  </div>
-                </div>
-                <Switch
-                  checked={resource.syncEnabled}
-                  disabled={updateResources.isPending || !resource.userHasAccess}
-                  label={`Include ${resource.name ?? resource.externalId}`}
-                  onChange={(next) =>
-                    updateResources.mutate({
-                      id: connection.id,
-                      resources: [{ resourceId: resource.id, syncEnabled: next }],
-                    })
-                  }
-                />
-              </div>
-            ))
-          ) : (
-            <p className="text-xs text-[color:var(--tx3)]">
-              No resources discovered yet. Run a resync after the initial import
-              completes.
-            </p>
-          )}
+        <div className="mt-2">
+          <QueryState
+            emptyLabel="No resources discovered yet. Run a resync after the initial import completes."
+            errorLabel="Could not load resources."
+            isEmpty={(detail.data?.resources.length ?? 0) === 0}
+            loadingLabel="Loading resources…"
+            query={detail}
+          >
+            {() => (
+              <RowList label={`${providerLabel} resources`}>
+                {(detail.data?.resources ?? []).map((resource) => (
+                  <Row
+                    key={resource.id}
+                    subtitle={
+                      resource.resourceType
+                      + (resource.visibility ? ` · ${resource.visibility}` : '')
+                    }
+                    title={resource.name ?? resource.externalId}
+                    trailing={
+                      <Switch
+                        checked={resource.syncEnabled}
+                        disabled={updateResources.isPending || !resource.userHasAccess}
+                        label={`Include ${resource.name ?? resource.externalId}`}
+                        onChange={(next) =>
+                          updateResources.mutate({
+                            id: connection.id,
+                            resources: [{ resourceId: resource.id, syncEnabled: next }],
+                          })}
+                      />
+                    }
+                  />
+                ))}
+              </RowList>
+            )}
+          </QueryState>
         </div>
       ) : null}
-    </section>
+
+      <ConfirmDialog
+        body={
+          pendingAction === 'disconnect'
+            ? `${providerLabel} stops syncing until you reconnect it.`
+            : pendingAction === 'delete'
+              ? 'Everything imported from this account is permanently removed.'
+              : undefined
+        }
+        confirmLabel={pendingAction === 'disconnect' ? 'Disconnect' : 'Delete imported data'}
+        destructive
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          if (pendingAction === 'disconnect') disconnect.mutate(connection.id)
+          if (pendingAction === 'delete') deleteData.mutate(connection.id)
+          setPendingAction(null)
+        }}
+        open={pendingAction !== null}
+        title={
+          pendingAction === 'disconnect'
+            ? `Disconnect ${providerLabel}?`
+            : `Delete imported data?`
+        }
+      />
+    </Card>
   )
 }

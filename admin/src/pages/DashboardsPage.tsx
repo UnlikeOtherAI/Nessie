@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Pill } from '../components/primitives/Pill'
 import { QueryState } from '../components/shared/QueryState'
 import { useCreateDashboard, useDashboards } from '../facades/dashboards/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
@@ -44,31 +45,25 @@ export const DashboardsPage = () => {
       <header className="flex items-center gap-3">
         <PhoneNavigationButton />
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--tx)' }}>
+          <h1 className="text-lg font-semibold text-[color:var(--tx)]">
             Dashboards
           </h1>
-          <p className="text-xs" style={{ color: 'var(--tx3)' }}>
+          <p className="text-xs text-[color:var(--tx3)]">
             Live data from the services you connect.
           </p>
         </div>
         <input
-          className="ml-auto w-56 rounded border px-2 py-1.5 text-sm"
+          className="admin-input ml-auto w-56"
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search dashboards"
-          style={{
-            background: 'var(--panel)',
-            borderColor: 'var(--sep)',
-            color: 'var(--tx)',
-          }}
           value={search}
         />
         <button
-          className="rounded px-3 py-1.5 text-sm font-medium"
+          className="admin-button admin-button-primary"
           disabled={createDashboard.isPending}
           onClick={() =>
             createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' })
           }
-          style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
           type="button"
         >
           Create dashboard
@@ -91,23 +86,21 @@ export const DashboardsPage = () => {
         {() =>
           filtered.length === 0 ? (
             <div
-              className="rounded-lg border p-8 text-center"
-              style={{ borderColor: 'var(--sep)', background: 'var(--panel)' }}
+              className="admin-card p-8 text-center"
               data-testid="dashboards-empty"
             >
-              <p className="text-sm font-medium" style={{ color: 'var(--tx)' }}>
+              <p className="text-sm font-medium text-[color:var(--tx)]">
                 Ask your assistant to build one
               </p>
-              <p className="mx-auto mt-1 max-w-md text-xs" style={{ color: 'var(--tx3)' }}>
+              <p className="mx-auto mt-1 max-w-md text-xs text-[color:var(--tx3)]">
                 Describe what you want to watch and it will connect the data and lay out the
                 widgets — the same controls you get here.
               </p>
               <button
-                className="mt-4 rounded px-3 py-1.5 text-sm"
+                className="admin-button admin-button-secondary mt-4"
                 onClick={() =>
                   createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' })
                 }
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
                 type="button"
               >
                 Or start with a blank canvas
@@ -118,25 +111,19 @@ export const DashboardsPage = () => {
               {filtered.map((dashboard) => (
                 <li key={dashboard.id}>
                   <Link
-                    className="flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors"
-                    style={{ background: 'var(--panel)', borderColor: 'var(--sep)' }}
+                    className="flex items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2.5 transition-colors hover:bg-[color:var(--overlay-weak)]"
                     to={`/dashboards/${dashboard.id}`}
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: 'var(--tx)' }}>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--tx)]">
                       {dashboard.title}
                     </span>
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[11px]"
-                      style={{ background: 'var(--overlay-weak)', color: 'var(--tx3)' }}
-                    >
+                    <Pill size="sm" tone="muted">
                       {HOME_LABEL[dashboard.home] ?? dashboard.home}
-                    </span>
+                    </Pill>
                     {dashboard.createdByType === 'agent' ? (
-                      <span className="text-[11px]" style={{ color: 'var(--thinking)' }}>
-                        built by an agent
-                      </span>
+                      <Pill size="sm" tone="accent">built by an agent</Pill>
                     ) : null}
-                    <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
+                    <span className="text-[11px] text-[color:var(--tx3)]">
                       {new Date(dashboard.updatedAt).toLocaleDateString()}
                     </span>
                   </Link>

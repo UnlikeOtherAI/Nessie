@@ -16,6 +16,9 @@ import {
   useUpdateWorkspaceMemberRole,
 } from '../../facades/users/workspace-members'
 import { Pill } from '../../components/primitives/Pill'
+import { Card } from '../../components/shared/Card'
+import { FormError } from '../../components/shared/FormActions'
+import { Select } from '../../components/shared/FormControls'
 
 const errorMessage = (caught: unknown, fallback: string): string =>
   caught instanceof Error ? caught.message : fallback
@@ -60,7 +63,7 @@ export const WorkspaceMemberRow = ({
   }
 
   return (
-    <div className="admin-card p-3">
+    <Card variant="row">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {/*
@@ -84,16 +87,14 @@ export const WorkspaceMemberRow = ({
           </div>
         </div>
         {deactivated ? (
-          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">Deactivated</Pill>
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning" uppercase={false}>
+            Deactivated
+          </Pill>
         ) : null}
-        {/* Not a `Pill`: this chip's fill is --main-hover, an opaque surface token
-            equal to --panel on six of ten themes, so on this card it reads as no
-            fill at all. `Pill`'s muted tone paints the translucent --overlay-weak,
-            which does show. */}
         {member.teamRole === 'owner' ? (
-          <span className="shrink-0 rounded bg-[color:var(--main-hover)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+          <Pill className="shrink-0" radius="chip" size="sm" tone="outline" uppercase={false}>
             Owner
-          </span>
+          </Pill>
         ) : null}
       </div>
 
@@ -106,15 +107,15 @@ export const WorkspaceMemberRow = ({
 
       {canManage && member.teamRole !== 'owner' ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select
+          <Select
             aria-label={`Workspace role for ${label}`}
-            className="admin-input admin-input-compact"
             disabled={busy}
             onChange={(event) =>
               void act(
                 () => updateRole.mutateAsync({ role: event.target.value, uoaSub: member.uoaSub }),
                 'Failed to update role',
               )}
+            size="compact"
             value={member.teamRole ?? 'member'}
           >
             {WORKSPACE_TEAM_ROLE_OPTIONS.map((option) => (
@@ -122,7 +123,7 @@ export const WorkspaceMemberRow = ({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             className="admin-button admin-button-secondary admin-button-compact"
             disabled={busy}
@@ -151,12 +152,8 @@ export const WorkspaceMemberRow = ({
         </div>
       ) : null}
 
-      {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
+      <FormError className="mt-2">{error}</FormError>
+    </Card>
   )
 }
 

@@ -6,9 +6,10 @@ import {
   useDesignerToolCatalog,
 } from '../../../facades/designer/tool-catalog'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
+import { Card } from '../../shared/Card'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
-import { EmptyState } from '../../shared/EmptyState'
+import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../shared/OwnerGate'
 import { ToolPicker } from './designer/ToolPicker'
 import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
@@ -35,7 +36,8 @@ const sortedPolicy = (policy: Record<string, boolean>): string =>
   )
 
 const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
-  const { groups, options, isLoading } = useDesignerToolCatalog(true)
+  const toolCatalog = useDesignerToolCatalog(true)
+  const { groups, options } = toolCatalog
   const [toolState, setToolState] = useState<Record<string, boolean>>(
     () => agent.toolPolicy ?? {},
   )
@@ -110,10 +112,10 @@ const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
       </div>
       <ToolPicker
         groups={groups}
-        isLoading={isLoading}
         onToggle={(toolKey, enabled) =>
           setToolState((prev) => ({ ...prev, [toolKey]: enabled }))
         }
+        query={toolCatalog}
         toolState={toolState}
       />
     </div>
@@ -121,49 +123,45 @@ const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
 }
 
 const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
-  const { groups, isLoading } = useDesignerToolCatalog(false)
+  const toolCatalog = useDesignerToolCatalog(false)
+  const { groups } = toolCatalog
   const policy = agent.toolPolicy ?? {}
 
-  if (isLoading) {
-    return (
-      <div className="py-6 text-center text-sm text-[color:var(--tx3)]">Loading tools…</div>
-    )
-  }
-
-  if (groups.length === 0) {
-    return <EmptyState>No tools configured.</EmptyState>
-  }
-
   return (
-    <div className="grid gap-6">
-      {groups.map((group) => (
-        <section className="grid gap-2" key={group.name}>
-          <SectionLabel>{group.name}</SectionLabel>
-          <div className="grid gap-2">
-            {group.tools.map((tool) => {
-              const enabled = isToolEnabled(tool, policy)
-              return (
-                <div
-                  className={[
-                    'rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4',
-                    enabled ? '' : 'opacity-60',
-                  ].join(' ')}
-                  key={tool.key}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-mono text-sm text-[var(--thinking)]">{tool.label}</div>
-                    <Pill tone={enabled ? 'success' : 'muted'}>
-                      {enabled ? 'enabled' : 'off'}
-                    </Pill>
-                  </div>
-                  <div className="mt-1 text-xs text-[color:var(--tx3)]">{tool.description}</div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
+    <QueryState
+      className="py-6"
+      emptyLabel="No tools configured."
+      errorLabel="Tools could not be loaded."
+      isEmpty={groups.length === 0}
+      loadingLabel="Loading tools…"
+      query={toolCatalog}
+    >
+      {() => (
+        <div className="grid gap-6">
+          {groups.map((group) => (
+            <section className="grid gap-2" key={group.name}>
+              <SectionLabel>{group.name}</SectionLabel>
+              <div className="grid gap-2">
+                {group.tools.map((tool) => {
+                  const enabled = isToolEnabled(tool, policy)
+                  return (
+                    <Card className={enabled ? '' : 'opacity-60'} key={tool.key}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-sm text-[var(--thinking)]">{tool.label}</div>
+                        <Pill tone={enabled ? 'success' : 'muted'}>
+                          {enabled ? 'enabled' : 'off'}
+                        </Pill>
+                      </div>
+                      <div className="mt-1 text-xs text-[color:var(--tx3)]">{tool.description}</div>
+                    </Card>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </QueryState>
   )
 }
 

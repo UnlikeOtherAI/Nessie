@@ -20,8 +20,12 @@ const TRANSPORT_LABELS: Record<ToolRegistryTransport, string> = {
   pty: 'pty',
 }
 
-// Unconverted: this chip's fill is --scrim, a darkening wash; Pill's muted tone
-// paints --overlay-weak, a lightening one, flipping polarity on dark themes.
+// Unconverted, reassessed against `outline` and `height="control"` (2026-09-01):
+// this chip's fill is --scrim, a darkening wash; Pill's muted tone paints
+// --overlay-weak, a lightening one, flipping polarity on dark themes. `outline`
+// does not fit either — it carries no fill at all, and this chip's filled
+// look (distinct from the bordered-only rows around it) is what keeps a
+// transport chip legible against a dense list of directly-styled rows.
 export const ToolTransportPill = ({ transport }: ToolTransportPillProps) => (
   <span
     className={[

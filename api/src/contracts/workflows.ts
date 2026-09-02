@@ -64,6 +64,24 @@ export const WorkflowTemplateRecordSchema = z.object({
   createdByActorId: NonEmptyStringSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
+  /**
+   * How many installations this template has, counted in the database.
+   *
+   * The workflows list needs a per-template count beside each row. It used to
+   * get one by fetching the organisation's whole installation set and grouping
+   * it in the browser, which was already the wrong shape and became wrong in
+   * fact when list endpoints moved to a 25-row page: the counts then described
+   * one page rather than the template.
+   *
+   * Present only on the list read, which is the only caller that needs it —
+   * `undefined` means "not reported here", never "zero".
+   */
+  installationSummary: z
+    .object({
+      active: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    })
+    .optional(),
 })
 export type WorkflowTemplateRecord = z.infer<typeof WorkflowTemplateRecordSchema>
 
@@ -156,9 +174,23 @@ export const UpdateWorkflowInstallationBodySchema = z.object({
 // triage filter (W29).
 export const WorkflowListQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
-  cursor: z.string().uuid().optional(),
+  // An opaque keyset cursor (`decodeKeysetCursor`/`buildPage`, @nessie/schemas)
+  // rather than a raw row id — never parsed or constructed by a client.
+  cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
   status: WorkflowRunStatusSchema.optional(),
+  /**
+   * Narrows installations to one template.
+   *
+   * Added because the workflows list shows an installation count per template
+   * and had no way to ask for one template's installations: it fetched the
+   * organisation's entire set and grouped in the browser. That was survivable
+   * while the endpoint returned up to 200 rows and became wrong when it moved
+   * to the shared 25-row page — the counts silently described only the first
+   * page. Scoping the question server-side is the fix; grouping a page of
+   * rows the client happens to hold never was one.
+   */
+  workflowTemplateId: z.string().uuid().optional(),
 })
 
 export const WorkflowRunRecordSchema = z.object({

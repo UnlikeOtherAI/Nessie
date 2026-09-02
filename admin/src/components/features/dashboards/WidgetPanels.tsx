@@ -13,8 +13,9 @@ import type {
   TableWidgetSchema,
 } from '@nessie/schemas'
 import type { z } from 'zod'
+import { Pill, type PillTone } from '../../primitives/Pill'
 import { ExpandableTable } from '../../shared/ExpandableTable'
-import { formatCell, formatNumber, formatTemporal, toneVars } from './widget-format'
+import { formatCell, formatNumber, formatTemporal, toneTextClass } from './widget-format'
 
 type StatWidget = z.infer<typeof StatWidgetSchema>
 type TableWidget = z.infer<typeof TableWidgetSchema>
@@ -53,22 +54,26 @@ export const StatWidgetView = ({
   return (
     <div className="flex h-full flex-col justify-center">
       <div
-        className="truncate text-3xl font-semibold tabular-nums"
-        style={{ color: toneVars[widget.presentation.tone].text }}
+        className={[
+          'truncate text-3xl font-semibold tabular-nums',
+          toneTextClass[widget.presentation.tone],
+        ].join(' ')}
         data-testid="stat-value"
       >
         {value === null ? '—' : formatNumber(value, widget.format)}
       </div>
       {delta !== null ? (
         <div
-          className="mt-1 text-xs font-medium"
-          style={{ color: improving ? 'var(--success-text)' : 'var(--danger-text)' }}
+          className={[
+            'mt-1 text-xs font-medium',
+            improving ? 'text-[color:var(--success-text)]' : 'text-[color:var(--danger-text)]',
+          ].join(' ')}
         >
           {delta >= 0 ? '▲' : '▼'} {formatNumber(Math.abs(delta), { kind: 'percent', precision: 1 })}
         </div>
       ) : null}
       {widget.presentation.detail ? (
-        <div className="mt-1 truncate text-xs" style={{ color: 'var(--tx3)' }}>
+        <div className="mt-1 truncate text-xs text-[color:var(--tx3)]">
           {widget.presentation.detail}
         </div>
       ) : null}
@@ -115,8 +120,7 @@ export const TableWidgetView = ({
               {binding.columns.map((column) => (
                 <th
                   key={column.key}
-                  className="sticky top-0 truncate px-2 py-1.5 text-left font-medium"
-                  style={{ background: 'var(--panel)', color: 'var(--tx3)' }}
+                  className="sticky top-0 truncate bg-[color:var(--panel)] px-2 py-1.5 text-left font-medium text-[color:var(--tx3)]"
                 >
                   {column.label}
                 </th>
@@ -125,12 +129,11 @@ export const TableWidgetView = ({
           </thead>
           <tbody>
             {visible.map((row, index) => (
-              <tr key={index} style={{ borderTop: '1px solid var(--sep)' }}>
+              <tr className="border-t border-[color:var(--sep)]" key={index}>
                 {binding.columns.map((column) => (
                   <td
                     key={column.key}
-                    className="max-w-[240px] truncate px-2 py-1.5 tabular-nums"
-                    style={{ color: 'var(--tx2)' }}
+                    className="max-w-[240px] truncate px-2 py-1.5 tabular-nums text-[color:var(--tx2)]"
                     title={render(column.key, row[column.key] ?? null, column.format)}
                   >
                     {render(column.key, row[column.key] ?? null, column.format)}
@@ -142,7 +145,7 @@ export const TableWidgetView = ({
         </table>
       </ExpandableTable>
       {rows.length > visible.length ? (
-        <div className="px-2 py-1.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+        <div className="px-2 py-1.5 text-[11px] text-[color:var(--tx3)]">
           {rows.length - visible.length} more rows
         </div>
       ) : null}
@@ -150,12 +153,12 @@ export const TableWidgetView = ({
   )
 }
 
-const STATE_TONE = {
-  ok: { label: 'OK', color: 'var(--success-text)', background: 'var(--success-soft)' },
-  warning: { label: 'Warning', color: 'var(--warning-text)', background: 'var(--warning-soft)' },
-  failing: { label: 'Failing', color: 'var(--danger-text)', background: 'var(--danger-soft)' },
-  unknown: { label: 'Unknown', color: 'var(--tx3)', background: 'var(--overlay-weak)' },
-} as const
+const STATE_TONE: Record<'ok' | 'warning' | 'failing' | 'unknown', { label: string; tone: PillTone }> = {
+  ok: { label: 'OK', tone: 'success' },
+  warning: { label: 'Warning', tone: 'warning' },
+  failing: { label: 'Failing', tone: 'danger' },
+  unknown: { label: 'Unknown', tone: 'muted' },
+}
 
 export const StatusWidgetView = ({
   widget,
@@ -176,15 +179,13 @@ export const StatusWidgetView = ({
 
   return (
     <div className="flex h-full flex-col justify-center gap-1.5">
-      <span
-        className="w-fit rounded px-2 py-1 text-sm font-semibold"
-        style={{ background: tone.background, color: tone.color }}
-        data-testid="status-state"
-      >
-        {tone.label}
+      <span className="w-fit" data-testid="status-state">
+        <Pill radius="chip" tone={tone.tone} uppercase={false}>
+          {tone.label}
+        </Pill>
       </span>
       {since ? (
-        <span className="text-xs" style={{ color: 'var(--tx3)' }}>
+        <span className="text-xs text-[color:var(--tx3)]">
           since {typeof since === 'string' ? formatTemporal(since) : formatCell(since)}
         </span>
       ) : null}

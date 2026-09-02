@@ -3,10 +3,10 @@ import { useAgents } from '../../../facades/agents/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import { agentGradient, getInitials } from '../../../lib/avatar'
 import { AgentStatusDot } from '../agents/AgentStatusDot'
+import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,
   SectionNotice,
-  SectionOverflowHint,
   dashboardRowClass,
 } from './DashboardSectionCard'
 import {

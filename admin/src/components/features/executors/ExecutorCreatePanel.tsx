@@ -6,6 +6,7 @@ import {
 } from '@nessie/schemas'
 import type { AgentRecord, ProjectRecord, UserRecord } from '../../../lib/api-client'
 import { useCreateExecutor } from '../../../facades/executors/hooks'
+import { FormError } from '../../shared/FormActions'
 
 type ExecutorCreatePanelProps = {
   agents: AgentRecord[]
@@ -162,7 +163,7 @@ export const ExecutorCreatePanel = ({
           </div>
         </div>
       ) : null}
-      {error ? <p className="text-xs text-[color:var(--danger-text)]">{error}</p> : null}
+      <FormError>{error}</FormError>
       <button className="admin-button admin-button-primary justify-self-start" disabled={createExecutor.isPending} type="submit">
         {createExecutor.isPending ? 'Creating…' : 'Create pairing'}
       </button>

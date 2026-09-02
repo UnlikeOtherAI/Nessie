@@ -10,6 +10,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AppTrustLevel } from '@nessie/schemas'
 import { appTrustBadge, type AppTrustIconId } from './app-trust'
 import { AppIconBadge } from './AppIconBadge'
+import { Pill } from '../../primitives/Pill'
 
 const ICONS: Record<AppTrustIconId, IconDefinition> = {
   shield: faShieldHalved,
@@ -37,25 +38,22 @@ export const AppTrustBadge = ({ iconOnly = false, trustLevel }: AppTrustBadgePro
         icon={ICONS[badge.iconId]}
         label={badge.label}
         testId={`app-trust-${trustLevel}`}
-        toneClass={badge.toneClass}
+        tone={badge.tone}
       />
     )
   }
 
   return (
-    <span
-      className={[
-        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5',
-        'text-[11px] font-medium',
-        badge.toneClass,
-      ].join(' ')}
-      data-testid={`app-trust-${trustLevel}`}
+    <Pill
+      className="gap-1 shrink-0 font-medium"
+      tone={badge.tone}
+      uppercase={false}
     >
       <FontAwesomeIcon className="h-2.5 w-2.5" icon={ICONS[badge.iconId]} />
       {badge.label}
       {/* The named detail chip is already readable; its description completes
           the otherwise short provenance label for assistive technology. */}
       <span className="sr-only">{`: ${badge.description}`}</span>
-    </span>
+    </Pill>
   )
 }
