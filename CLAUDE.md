@@ -167,7 +167,12 @@ afterwards. Spec:
   matching). A resolved card also renders a state note beside its message
   content in every later window (`message-cards.ts`, joined by
   `withMessageNotes` exactly where the attachment inventory line goes), so
-  nothing ever rewrites a message.
+  nothing ever rewrites a message. Nor may a person: `updateMessage` refuses a
+  message carrying `agentCardResponse` (`409
+  MESSAGE_IMMUTABLE_CARD_RESPONSE`) and the admin hides the pencil, both
+  through the one `isAgentCardResponseMessage` predicate — a "Deny" edited into
+  an "Allow" would lie beside the card that is the authority. Deleting stays
+  allowed; a tombstone changes nothing on the card.
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
