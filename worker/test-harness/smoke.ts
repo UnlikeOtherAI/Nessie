@@ -25,6 +25,24 @@ const SCENARIO = 'reasoning-tool-answer'
 const EXPECTED_ANSWER =
   'The workspace has a handful of channels, including the one we are talking in right now.'
 
+// Bounded poll for state a run writes after its status flips terminal.
+// Returns the last value seen when the deadline passes, so the caller's own
+// assertion reports the mismatch rather than a generic timeout.
+const pollFor = async <T>(
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+  timeoutMs = 10_000,
+): Promise<T> => {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const value = await read()
+    if (done(value) || Date.now() >= deadline) {
+      return value
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
 const main = async (): Promise<void> => {
   // The mock server must exist before worker code is imported: the agent loop
   // captures loadConfig() (incl. NESSIE_MODEL_BASE_URL) at module load.
@@ -100,9 +118,19 @@ const main = async (): Promise<void> => {
     assert.equal(toolCalls[0]?.toolName, 'channel_list')
     assert.equal(toolCalls[0]?.success, true)
 
-    const timingEvents = await pipeline.prisma.taskEvent.findMany({
-      where: { eventType: 'run.timing', taskId: seeded.taskId },
-    })
+    // `run.timing` is written in executeRunJob's `finally`, deliberately AFTER
+    // the run row reaches a terminal status — a telemetry write must never be
+    // able to fail a finished run. Waiting on the status alone therefore races
+    // the event, which is what made this assertion fail intermittently in CI
+    // (`0 !== 1`). Poll for it: its arrival is what marks teardown complete.
+    // On timeout the poll returns what it has, so a genuine regression still
+    // fails on the assertion below rather than hiding behind a timeout error.
+    const timingEvents = await pollFor(
+      () => pipeline.prisma.taskEvent.findMany({
+        where: { eventType: 'run.timing', taskId: seeded.taskId },
+      }),
+      (events) => events.length > 0,
+    )
     assert.equal(timingEvents.length, 1, 'run.timing TaskEvent recorded')
     const timing = timingEvents[0]?.payload as Record<string, unknown>
     assert.equal(timing['outcome'], 'completed')
