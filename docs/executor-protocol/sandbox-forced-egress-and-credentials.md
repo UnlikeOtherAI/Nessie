@@ -229,8 +229,10 @@ the hypervisor and the *shape of its two shares* differ: the artifact checks,
 the COW lease, the initrd build, the runtime snapshot, the forced-egress
 gateway, and every guest frame above them are shared, and the choice between
 backends is made once from the descriptor's own `sandboxBackend` (§4.5) by
-`selectGuestVmBackend`. A host reporting `none` or `hyperv` is refused there in
-words rather than falling through to another backend.
+`selectGuestVmBackend`, which now knows three backends — Virtualization.framework,
+Firecracker, and Hyper-V (see "Windows backend — Hyper-V" below). A host
+reporting `none` is refused there in words rather than falling through to
+another backend.
 
 **Binaries.** The executor's stored `browserSandbox`/`codexSandbox`
 `vmHelperPath` is the Firecracker binary itself; `kernelPath` is the packaged
@@ -349,8 +351,9 @@ removes; an opaque directory is emptied before the entries that follow are
 applied, which is what makes `rm -rf dir` visible to a review.
 
 The session drains that stream into the run's own overlay directory before it
-stops, and `sandbox-workspace.ts` drains it again at the top of
-`promotionManifestForSandbox`, so `workspace.review` and promotion keep their
+stops, and `sandbox-manifest.ts` (the review/manifest seam of the sandbox
+module, re-exported through `sandbox-workspace.ts`) drains it again at the top
+of `promotionManifestForSandbox`, so `workspace.review` and promotion keep their
 exact contracts and see live work. A block-mode session registers its flush by
 run id for the duration; a virtiofs session registers nothing, because its guest
 already wrote straight into that directory — the absence of a draft reader on
