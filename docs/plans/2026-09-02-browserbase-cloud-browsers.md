@@ -32,9 +32,12 @@ Two decisions shape everything else (decided 2026-09-02):
    (decided 2026-09-02, the Grok-bot model). Each agent has one durable
    browser — its own machine — which is what makes clashes structurally
    impossible: no two agents ever share browser state. Because Nessie is
-   multi-user where Grok is not, every human sign-in performed in an
-   agent's browser is recorded against the person who did it, and that
-   record drives the disclosure basis of everything read through it (§4.5).
+   multi-user where Grok is not, a login into a shared agent's browser is
+   **shared with everyone who can reach that agent** — said out loud by a
+   banner in the browser viewer before the first keystroke, recorded
+   per-person for audit and revocation, and enforced by stamping the
+   agent's audience as the disclosure basis of everything read through the
+   browser (§4.5).
 
 ## 1. What exists today — and why this is a transport, not a new tool family
 
@@ -114,15 +117,16 @@ Verified against docs.browserbase.com on 2026-09-02:
    challenge) is the person typing into the interactive Live View. The agent
    parks, the person acts, the agent resumes. We never automate CAPTCHA
    solving or type credentials on the model's behalf from server state.
-4. **A browser belongs to an agent; its logins belong to people.** A
-   Browserbase Context maps to one agent — its durable machine, one live
-   session at a time, so runs never fight over shared state. Every human
-   sign-in performed in it is recorded against that person, and those
-   records are what the disclosure machinery reads (§4.5).
-5. **Reads feed the disclosure sink.** A page read through a browser a
-   person authenticated is that person's private material; it enters the run
-   context with a `user:<id>` basis (`ConsumedSourceSink`), same obligation as
-   every other read path.
+4. **A browser belongs to an agent; its logins are shared with the agent's
+   audience.** A Browserbase Context maps to one agent — its durable
+   machine, one live session at a time, so runs never fight over shared
+   state. Signing in is sharing with whoever can reach the agent — warned
+   by the viewer banner, recorded per-person for audit and revocation
+   (§4.5, §4.9).
+5. **Reads feed the disclosure sink.** A page read through a
+   human-authenticated browser enters the run context with the agent's
+   `agent:<id>` audience basis (`ConsumedSourceSink`), same obligation as
+   every other read path — a private agent's audience is its owner alone.
 6. **Default OFF.** Browser tools are `requiresExplicitGrant` per agent, the
    DeepWater discipline: absent/inherited policy does not expose them.
 
@@ -153,6 +157,13 @@ Verified against docs.browserbase.com on 2026-09-02:
   runs). Resolution at toolset assembly: the org connection when one is
   healthy, else the requester's personal connection, else no cloud browser
   toolset. One connection per run — never mixed mid-run.
+- Verified 2026-09-02: Browserbase authenticates by **API key only**
+  (`x-bb-api-key`, per project) — there is no OAuth flow a third party
+  could use, so personal-vs-company cannot be inferred from the auth
+  mechanism. Both tiers paste a key; the scope is decided by **which
+  surface accepted it** (a member's own `/settings/connections` → user
+  scope; the owner-only org settings → organization scope), never by the
+  key's shape.
 - Enable (either scope) is a probe-then-persist: create + immediately
   release a throwaway session; failure refuses the connect loudly
   (`BROWSERBASE_UNREACHABLE`, `BROWSERBASE_AUTH_FAILED`) rather than
@@ -209,9 +220,23 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   createdAt }` — one row per completed login handoff (§4.4), recording
   **who** signed the browser into **what**. `serviceHint` is display
   metadata ("Google — ondrej@…") confirmed by the person at handoff, never
-  parsed out of page content. These rows drive the disclosure basis (§4.5)
-  and the sign-out surface (§4.7); "Sign out & reset" deletes the context,
-  recreates the browser empty, and clears the login rows.
+  parsed out of page content. Any login row flips the browser to
+  human-authenticated for §4.5's basis and feeds the sign-out surface
+  (§4.7); "Sign out & reset" deletes the context, recreates the browser
+  empty, and clears the login rows.
+- **Publishing a private agent must confront its browser.** Verified
+  2026-09-02: private → workspace publishing does not exist yet
+  (`UpdateAgentBodySchema` carries no `visibility` field — only create
+  accepts one; ownership transfer is likewise refused for private agents) —
+  it is in the pipeline. This plan places an obligation on that future
+  transition: because the `agent:<id>` audience is live-resolved, publishing
+  instantly widens who can reach the browser and everything read through it,
+  so the publish flow must list the browser's signed-in services and ask
+  **"Reset the browser and purge its logins?"** — purge is the default;
+  keeping them requires an explicit confirm that names each service being
+  handed to the wider audience. Past browsing-derived messages stay bounded
+  by the owner-only home DM they live in. The §4.9 shared-browser banner
+  starts rendering the moment the agent is workspace-visible.
 - `CloudBrowserSession` `{ id, organizationId, runId, agentBrowserId?,
   browserbaseSessionId, status (active|released|expired), startedAt, endedAt,
   releasedBy }` — the lifecycle row. **One live session per agent browser**:
@@ -287,7 +312,10 @@ signed in for the first time):
    cookies are now in the agent's context (`persist: true`), and an
    `AgentBrowserLogin` row is written in the press transaction recording
    **this user** signed **this service** into **this agent's browser** —
-   the fact §4.5's disclosure basis reads.
+   audit and revocation surface. Consent is handled by the §4.9 banner, not
+   a per-login declaration: on a workspace agent, signing in *is* sharing
+   with everyone who can reach the agent, and the viewer says so before the
+   first keystroke.
 5. Card expiry (agent-set, swept with the approval sweep) releases the parked
    session so an abandoned login doesn't burn browser-hours.
 
@@ -297,20 +325,21 @@ document-stream dialog precedent).
 
 ### 4.5 Disclosure and unattended use
 
-- Opening the agent's own browser registers a `user:<id>` scope in
-  `ConsumedSourceSink` for **every user with an `AgentBrowserLogin` on that
-  browser** — one registration at open, because everything read through a
-  human-authenticated browser is those people's material, and the sink
-  fails closed when audiences mix (a reply built on it is withheld from
-  anyone who doesn't satisfy the basis). An agent browser with no recorded
-  logins, and every ephemeral session, browses the public web like
-  `web_fetch` and adds no basis. Practical consequence, surfaced in the
-  handoff card's copy: **sign personal accounts into your private agent's
-  browser** (owner-only by construction, so the basis never bites); a
-  workspace agent's browser is the place for shared/team service accounts,
-  and a second person adding their login to it narrows every subsequent
-  reply to people who satisfy both — safe, but usually not what anyone
-  wanted.
+- **Logins are shared with the agent's audience — warned, not partitioned**
+  (decided 2026-09-02). A human-authenticated agent browser registers the
+  existing `agent:<agentId>` basis scope in `ConsumedSourceSink` at open —
+  the vocabulary already defines it as *exactly the people who pass the
+  shared live agent-visibility predicate*, which is precisely "the users
+  who have access to the agent". So material read through a workspace
+  agent's browser is readable by whoever can reach that agent, and on a
+  private agent the same scope resolves to its owner alone — one uniform
+  rule, no per-login declaration. The consent mechanism is the §4.9
+  banner: a person who signs a service into a shared agent's browser does
+  it knowing it is shared. The card and banner copy still steer:
+  **personal accounts belong in your private agent's browser**; a
+  workspace agent's browser is for service accounts the agent's audience
+  may share. An agent browser with no recorded logins, and every ephemeral
+  session, browses the public web like `web_fetch` and adds no basis.
 - Web pages are untrusted content; nothing on a page is an instruction. The
   existing prompt-side framing for fetched content applies to `browser_observe`
   output verbatim.
@@ -449,19 +478,39 @@ surfaces belong to the executor's own UI, not this panel.)
   `/channels/:id/threads/:threadId/browser/:sessionId`, the reply-panel URL
   discipline. All three open the panel; the panel's expand control (and any
   tap under 900px) goes full-screen.
-- **Watch vs control.** The thumbnail and the panel are watch-only
-  (`pointer-events: none`). Full-screen shows **Take control** — only to the
-  run's requester, only on sessions their run owns — which flips the iframe
-  interactive, suppresses `browser_observe`/`browser_screenshot` for the
-  session (§4.4), and shows a persistent "Hand back" bar; handing back lifts
-  the suppression and the agent resumes. The login handoff card opens
-  straight into this state.
+- **Watch vs control — and control is a claimed semaphore.** The thumbnail
+  and the panel are watch-only (`pointer-events: none`). Full-screen shows
+  **Take control**, and because a shared agent's session can render to many
+  entitled viewers at once, control is serialized exactly like every other
+  one-winner transition in the codebase: `CloudBrowserSession` carries
+  `controlledByUserId` + `controlClaimedAt`, claimed by a conditional UPDATE
+  (`controlledByUserId IS NULL` in the WHERE), so two simultaneous presses
+  have one winner. While claimed: the claimant's iframe is interactive,
+  every other viewer stays watch-only and sees "«name» is at the controls",
+  and `browser_observe`/`browser_screenshot` are suppressed for the session
+  (§4.4) — the agent, the claimant, and other viewers can never drive at
+  once. Release is explicit ("Hand back", which lifts the suppression and
+  resumes the agent) and also structural: session end releases it, and the
+  claim expires after a short keepalive timeout so a closed laptop lid never
+  holds a team's browser hostage. Eligibility to claim at all: the run's
+  requester always, and any viewer the session's basis already admits (for
+  a workspace agent, its audience). The login handoff card opens straight
+  into the claimed state for the pressing user.
+- **The shared-browser banner.** On a workspace agent's browser, the viewer
+  renders a dismissible notice pinned above the iframe: *"Other people can
+  use this agent's browser. Anything you sign in to here is shared with
+  everyone who has access to this agent."* Dismissal persists per (user,
+  agent) — but the banner **always returns, undismissed, in login-handoff
+  control mode**, because that is the moment the sentence is load-bearing.
+  Private agents' browsers render no banner; there is nobody else. This is
+  the consent half of §4.5's warn-not-partition decision.
 - **Who may watch is the session's disclosure basis, reused.** A session on
   a human-authenticated agent browser renders only for viewers who satisfy
-  every recorded login's `user:` scope; an unauthenticated or ephemeral
-  session renders for anyone who can see the thread — the same predicate the
-  reply messages answer to, and an unauthorized session is shaped exactly
-  like an absent one (the indistinguishable-404 discipline).
+  its `agent:<id>` scope (the agent's audience; a private agent's owner
+  alone); an unauthenticated or ephemeral session renders for anyone who
+  can see the thread — the same predicate the reply messages answer to, and
+  an unauthorized session is shaped exactly like an absent one (the
+  indistinguishable-404 discipline).
 - **One right panel at a time**: opening the screen panel closes the reply
   panel and vice versa (v1) — two stacked right panels is the nested-frame
   shape the content system forbids.
@@ -493,8 +542,9 @@ rules (workspace agents on org connection only; private agents may use their
 owner's personal one), `browser_open` `mode: 'mine'`, `browser_login_request`
 card + `waiting_input` park + the §4.9 viewer's control mode (Take control /
 Hand back, observe-suppression during takeover), structural prompt block
-stating browser existence + signed-in services, login-derived `user:`
-disclosure basis, the Agent Designer Browser panel + the person's
+stating browser existence + signed-in services, the `agent:<id>` audience
+disclosure basis + the shared-browser banner, the Agent Designer Browser
+panel + the person's
 browser-logins list, unattended-run refusal for authenticated browsers.
 *Done when:* a person signs a service into an agent's browser once in chat,
 tomorrow's run reuses that login without asking, a concurrent run of the
