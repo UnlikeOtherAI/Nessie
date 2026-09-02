@@ -50,7 +50,18 @@ const GrantSchema = z.object({
   connectionId: z.string().uuid(),
   agentId: z.string().uuid(),
   duration: z.enum(SEND_GRANT_DURATIONS),
-}).strict()
+  /**
+   * `always` sends whenever the owner asks. `judged` has the assistant weigh
+   * each action against `boundary` and ask when it is unsure — so a boundary
+   * is required with it, and a judged grant without one would have nothing to
+   * judge against.
+   */
+  mode: z.enum(['always', 'judged']).optional(),
+  boundary: z.string().max(4000).optional(),
+}).strict().refine(
+  (value) => value.mode !== 'judged' || (value.boundary ?? '').trim().length > 0,
+  { message: 'Deciding for you needs a note saying what you are happy with.' },
+)
 
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
@@ -249,6 +260,8 @@ export const registerGmailDraftRoutes = (
       agentId: body.agentId,
       grantedByUserId: actorContext.actor.actorId,
       duration: body.duration,
+      ...(body.mode ? { mode: body.mode } : {}),
+      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
     await emitAuditEvent(prisma, {
       actorContext,
@@ -256,7 +269,13 @@ export const registerGmailDraftRoutes = (
       resourceType: 'send_authorization_grant',
       resourceId: grant.id,
       outcome: 'success',
-      metadata: { agentId: body.agentId, duration: body.duration },
+      // The boundary itself is the owner's private words and never enters an
+      // audit row; the mode is the decision worth recording.
+      metadata: {
+        agentId: body.agentId,
+        duration: body.duration,
+        mode: body.mode ?? 'always',
+      },
     })
     return createApiResponse({
       id: grant.id,

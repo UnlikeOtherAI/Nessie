@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient, RunReplyPlacement } from '@prisma
 import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import type { CloudBrowserDeps } from '@nessie/browser-cloud'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
+import type { SubscriptionSecretStore } from '@nessie/model-subscriptions'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
@@ -45,6 +46,12 @@ export type ExecutionDependencies = {
   queueProvider: QueueProvider
   realtimeTransport: PgRealtimeTransport
   searchConfig: SearchExecutionConfig
+  /**
+   * Vault access for personal model subscriptions. Null when the deployment has
+   * not configured the subscription vault, which makes every subscription run
+   * refuse in words rather than fall back to the organization's Ledger route.
+   */
+  subscriptionSecrets?: SubscriptionSecretStore | null
 }
 
 export type RunContext = {
@@ -57,6 +64,8 @@ export type RunContext = {
     id: string
     name: string
     model: string | null
+    /** Set when this agent runs on its owner's personal subscription. */
+    modelSubscriptionId?: string | null
     parentAgentId: string | null
     provider: string | null
     /**

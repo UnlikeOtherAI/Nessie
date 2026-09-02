@@ -3,8 +3,11 @@ import type { ChannelTab } from './channel-helpers'
 
 interface ChannelTabBarProps {
   visibleActiveTab: ChannelTab
+  showAgentTab: boolean
   showAgentsTab: boolean
   showAutomationsTab: boolean
+  showRoutinesTab: boolean
+  showTodosTab: boolean
   onSelectTab: (tab: ChannelTab) => void
 }
 
@@ -24,15 +27,59 @@ const MESSAGES_ICON = [
 const FILES_ICON =
   'M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13'
 
+// A checklist for To-dos and a clock for Routines: the two questions a person
+// asks of an agent they are talking to — what is on its list, and what it does
+// on its own.
+const TODOS_ICON = 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2'
+
+const ROUTINES_ICON = 'M12 7v5l3 2M21 12a9 9 0 11-9-9 9 9 0 019 9z'
+
+// One agent (the person icon, singular) vs. the roster below it — the two are
+// never offered at once, so they can share a family without being confused.
+const AGENT_ICON = 'M4 20c0-4 3.582-7 8-7s8 3 8 7'
+
 export const ChannelTabBar = ({
   visibleActiveTab,
+  showAgentTab,
   showAgentsTab,
   showAutomationsTab,
+  showRoutinesTab,
+  showTodosTab,
   onSelectTab,
 }: ChannelTabBarProps) => {
   const items: Array<TabBarItem<ChannelTab>> = [
     { icon: <TabIcon d={MESSAGES_ICON} />, label: 'Messages', value: 'messages' },
     { icon: <TabIcon d={FILES_ICON} />, label: 'Files', value: 'files' },
+    ...(showAgentTab
+      ? [
+          {
+            icon: <TabIcon d={AGENT_ICON} round />,
+            label: 'Agent',
+            testId: 'channel-tab-agent',
+            value: 'agent' as const,
+          },
+        ]
+      : []),
+    ...(showTodosTab
+      ? [
+          {
+            icon: <TabIcon d={TODOS_ICON} />,
+            label: 'To-dos',
+            testId: 'channel-tab-to-dos',
+            value: 'to-dos' as const,
+          },
+        ]
+      : []),
+    ...(showRoutinesTab
+      ? [
+          {
+            icon: <TabIcon d={ROUTINES_ICON} />,
+            label: 'Routines',
+            testId: 'channel-tab-routines',
+            value: 'routines' as const,
+          },
+        ]
+      : []),
     ...(showAutomationsTab
       ? [
           {
@@ -46,7 +93,7 @@ export const ChannelTabBar = ({
     ...(showAgentsTab
       ? [
           {
-            icon: <TabIcon d="M4 20c0-4 3.582-7 8-7s8 3 8 7" round />,
+            icon: <TabIcon d={AGENT_ICON} round />,
             label: 'Agents',
             value: 'agents' as const,
           },

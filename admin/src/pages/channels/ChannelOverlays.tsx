@@ -17,7 +17,19 @@ import {
   CallerCallDialog,
   StartCallFailureDialog,
 } from '../../components/features/channels/CallerCallDialog'
+import VoiceCallDialog from '../../components/features/channels/VoiceCallDialog'
+import type { VoiceCallState } from '../../facades/voice/voice-call-client'
 import { AgentScreenPanel } from '../../components/features/browser-cloud/AgentScreenPanel'
+
+/** What the page hands the overlay layer to render a live voice call. */
+type VoiceCallOverlay = {
+  onClose: () => void
+  onEnd: () => void
+  onRetry: () => void
+  onToggleMute: () => void
+  open: boolean
+  state: VoiceCallState
+}
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
 import type {
   ChannelAgentParticipant,
@@ -41,6 +53,7 @@ interface ChannelOverlaysProps {
   callerCallActionError: unknown
   callerCallActionPending: boolean
   callerDialogCall: CallRecord | null
+  voiceCall: VoiceCallOverlay
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   // Already-rendered node rather than the launcher hook: the overlay layer
   // places it, it does not own it.
@@ -100,6 +113,7 @@ export const ChannelOverlays = ({
   callerCallActionError,
   callerCallActionPending,
   callerDialogCall,
+  voiceCall,
   personalAssistantPresences,
   deepWaterDialog,
   hasRespondingAgent,
@@ -212,6 +226,15 @@ export const ChannelOverlays = ({
         onEnd={onFinishCall}
       />
     ) : null}
+
+    <VoiceCallDialog
+      onClose={voiceCall.onClose}
+      onEnd={voiceCall.onEnd}
+      onRetry={voiceCall.onRetry}
+      onToggleMute={voiceCall.onToggleMute}
+      open={voiceCall.open}
+      state={voiceCall.state}
+    />
 
     <StartCallFailureDialog
       code={startCallFailureCode}

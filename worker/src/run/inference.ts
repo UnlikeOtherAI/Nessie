@@ -15,7 +15,11 @@ import type {
   RouteStage,
   RoutingMode,
 } from '@nessie/schemas'
-import { resolveModelName, resolveRuntimeProvider } from './inference-provider.js'
+import {
+  resolveModelName,
+  resolveRuntimeProvider,
+  type StageSubscriptionBinding,
+} from './inference-provider.js'
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 import { executeStage } from './inference-stage.js'
 
@@ -47,6 +51,12 @@ type RunInferenceGraphInput = {
   organizationId: string
   reasoningEffort?: ProviderReasoningEffort
   requestHeadersForProvider?: ProviderRequestHeadersResolver
+  /**
+   * The run's pinned personal-subscription lane. Present for every call in a
+   * subscription-routed run — main turn, delegates, compaction — so no single
+   * run mixes a person's plan with the organization's Ledger credits.
+   */
+  subscription?: StageSubscriptionBinding | null
   tools?: ToolSchemaDescriptor[]
   toolChoice?: 'auto' | 'none' | 'required'
 }
@@ -133,6 +143,7 @@ const executeSingleMode = async (
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
     requestHeadersForProvider?: ProviderRequestHeadersResolver
+    subscription?: StageSubscriptionBinding | null
     tools?: ToolSchemaDescriptor[]
     toolChoice?: 'auto' | 'none' | 'required'
   },
@@ -170,6 +181,7 @@ const executeSingleMode = async (
     reasoningEffort: input.reasoningEffort,
     routeSource: input.routeSource,
     requestHeadersForProvider: input.requestHeadersForProvider,
+    subscription: input.subscription ?? null,
     stage,
     stageIndex: 0,
     stream: input.route.streamLive,
@@ -235,6 +247,7 @@ export const runInferenceGraph = async (
     signal: input.signal,
     routeSource: 'direct',
     requestHeadersForProvider: input.requestHeadersForProvider,
+    subscription: input.subscription ?? null,
     toolChoice: input.toolChoice,
     tools: input.tools,
   })
@@ -245,15 +258,43 @@ export const runInferenceGraph = async (
 // one attribution shape. Attribution is derived from the run's actorContext plus
 // the agent and run ids, so token spend ties back to org/project/team/channel/
 // thread/task/agent/actor/run.
+/**
+ * Which purse a run spent is read from the run's OWN pin rather than passed in
+ * by each caller.
+ *
+ * Five terminal paths write ledger events (completion, failure, cancel,
+ * suspend, outcome). Threading a flag through all five is exactly the shape
+ * where one gets forgotten and a personal-subscription run silently reports as
+ * organization spend, so the obligation sits on the single writer instead.
+ */
+const loadRunBillingSource = async (
+  prisma: PrismaClient,
+  runId: string | null | undefined,
+): Promise<{ subscriptionId: string; ownerUserId: string } | null> => {
+  if (!runId) return null
+  const run = await prisma.run.findUnique({
+    select: { modelSubscription: { select: { id: true, userId: true } } },
+    where: { id: runId },
+  })
+  const subscription = run?.modelSubscription
+  return subscription
+    ? { ownerUserId: subscription.userId, subscriptionId: subscription.id }
+    : null
+}
+
 export const persistInvocationLedgerEvents = async (
   prisma: PrismaClient,
   input: PersistInvocationLedgerInput,
 ): Promise<void> => {
+  const personalSubscription = await loadRunBillingSource(prisma, input.runId)
   await recordInferenceUsage(prisma, {
-    attribution: attributionFromActorContext(input.actorContext, {
-      agentId: input.agentId,
-      runId: input.runId ?? null,
-    }),
+    attribution: {
+      ...attributionFromActorContext(input.actorContext, {
+        agentId: input.agentId,
+        runId: input.runId ?? null,
+      }),
+      personalSubscription,
+    },
     invocations: input.invocations,
   })
 }

@@ -7,6 +7,7 @@ import {
   filterModelOptions,
   modelOptionKey,
   modelOptionLabel,
+  modelOptionSource,
   modelOptionSubtitle,
 } from './model-options'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
@@ -17,6 +18,8 @@ type ModelComboboxProps = {
   highlighted?: boolean
   id: string
   onSelect: (option: AgentModelOption) => void
+  /** Opens the place a person links their own plan. Omit to hide the row. */
+  onLinkSubscription?: () => void
   options: AgentModelOption[]
   placeholder: string
   value: AgentModelOption | null
@@ -32,6 +35,7 @@ export const ModelCombobox = ({
   emptyLabel,
   highlighted,
   id,
+  onLinkSubscription,
   onSelect,
   options,
   placeholder,
@@ -148,12 +152,51 @@ export const ModelCombobox = ({
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">{emptyLabel}</div>
           ) : null}
+          {onLinkSubscription
+            && !filtered.some((option) => modelOptionSource(option) === 'subscription')
+            ? (
+              // The doorway: the question "can this agent run on my own plan?"
+              // arises here, so the way to link one lives here too.
+              <div
+                className={[
+                  'mt-1 cursor-pointer border-t border-[color:var(--sep)]',
+                  'px-3 py-2 text-xs text-[color:var(--tx2)]',
+                ].join(' ')}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  setOpen(false)
+                  onLinkSubscription()
+                }}
+                role="option"
+                aria-selected={false}
+              >
+                Link a personal subscription…
+              </div>
+            )
+            : null}
           {filtered.map((option, index) => {
             const isActive = index === activeIndex
             const startsProvider = filtered[index - 1]?.providerDisplayName
               !== option.providerDisplayName
+            // One "Your subscriptions" heading marks where the person's own
+            // plans begin; the provider groups inside it stay as they are.
+            const previous = filtered[index - 1]
+            const startsSubscriptions =
+              modelOptionSource(option) === 'subscription'
+              && (previous === undefined || modelOptionSource(previous) !== 'subscription')
             return (
               <div key={modelOptionKey(option)}>
+                {startsSubscriptions ? (
+                  <div
+                    className={[
+                      'mt-1 border-t border-[color:var(--sep)] px-3 pb-1 pt-2',
+                      'text-[10px] font-semibold uppercase tracking-[0.16em]',
+                      'text-[color:var(--tx2)]',
+                    ].join(' ')}
+                  >
+                    Your subscriptions
+                  </div>
+                ) : null}
                 {startsProvider ? (
                   <div
                     className={[

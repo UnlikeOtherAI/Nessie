@@ -57,7 +57,7 @@ chase the param-deletion rule.
 
 | host | param | values |
 | --- | --- | --- |
-| a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `automations` · `agents` |
+| a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `agent` · `to-dos` · `routines` · `automations` · `agents` (as the conversation offers) |
 | an app (`AppDetailPage`) | `tab` | `overview` · `capabilities` · `accounts` · `agents` (as the app offers) |
 | an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
 | Appearance (`/settings/appearance`) | `tab` | `colours` · `type` |
@@ -69,6 +69,20 @@ chase the param-deletion rule.
 | full-page search (`SearchPage`) | `mode` | `text` · `semantic` (default: this device's last mode) |
 | a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
 | Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
+
+A conversation offers a different half of that list depending on what it is.
+Messaging one agent is a conversation with a subject, so it carries that
+agent's own sections — **Agent** (identity, tools, the way in to edit),
+**To-dos** and **Routines** — each rendered by the very component
+`/agents/:id` renders. A channel carries the room's sections instead —
+**Automations**, and an **Agents** roster whose rows open `/agents/:id`. The
+two sets are deliberately exclusive: an agent-shaped section on a channel has
+no single subject, and a roster of one on a DM is the shared-tab mistake that
+put a "create an agent" card in a private conversation. `useChannelTab`
+decides both from one `resolveConversationAgent`, and holds `?tab=` unchanged
+until the channel, agent and Personal-Assistant reads have landed — otherwise
+a deep link to a conversation's To-dos is rewritten to Messages before the
+facts that justify it arrive.
 
 A named param is used wherever `tab` would collide: `agentTab` because the
 agent strip also renders inside the quick-view sheet over a conversation that

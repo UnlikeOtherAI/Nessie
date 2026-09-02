@@ -91,6 +91,8 @@ export type CreateAgentRecordInput = {
   avatarBackgroundColor?: AgentAvatarBackgroundColor
   effort?: AgentEffort
   model?: string
+  /** Which linked personal subscription this agent spends, if any. */
+  modelSubscriptionId?: string | null
   name: string
   organizationId: string
   /**
@@ -205,6 +207,7 @@ export const createAgentRecord = async (
     delegationMode: 'none',
     effort: input.effort ?? 'medium',
     model: input.model,
+    modelSubscriptionId: input.modelSubscriptionId ?? null,
     name: input.name,
     organizationId: input.organizationId,
     ownerUserId: input.ownerUserId,

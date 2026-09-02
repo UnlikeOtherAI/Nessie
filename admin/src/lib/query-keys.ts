@@ -114,6 +114,8 @@ export const agentCardKeys = {
 
 export const approvalKeys = {
   all: ['approvals'] as const,
+  detail: (approvalId?: string) => ['approvals', approvalId ?? null] as const,
+  pendingCount: ['approvals', 'pending-count'] as const,
 }
 
 export const demonstrationKeys = {
@@ -356,6 +358,11 @@ export const organizationKeys = {
 
 export const personalAssistantKeys = {
   all: ['personal-assistant'] as const,
+}
+
+export const voiceKeys = {
+  all: ['voice'] as const,
+  capability: ['voice', 'capability'] as const,
 }
 
 export const platformPushKeys = {

@@ -54,6 +54,14 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // An agent waiting on this person. Revalidated against the request's live
+      // status exactly as trigger_health revalidates its trigger: once the
+      // person approves, rejects, or it expires, the bell item stops surfacing
+      // without anything having to remember to delete it.
+      kind: 'approval_requested',
+      approvalRequest: { is: { status: 'pending' } },
+    },
+    {
       // The foreign key cascade removes this row on deletion, while this
       // relation check keeps a concurrent source deletion from leaking a stale
       // bell item through a read/count/write query.

@@ -35,6 +35,14 @@ interface ChannelHeaderProps {
   searchOpen: boolean
   routineRecording: boolean
   titleFavorite: ChannelTitleFavorite | null
+  /** A Gemini voice call is up in this conversation. */
+  voiceCallActive: boolean
+  /**
+   * This conversation takes voice calls rather than provider-linked ones.
+   * Structural — it follows from the channel being the Personal Assistant DM,
+   * never from anything said in it.
+   */
+  voiceCallSupported: boolean
 }
 
 // Conversation controls share the same priority policy as route headers. This
@@ -62,6 +70,8 @@ export const ChannelHeader = ({
   onToggleSearch,
   searchOpen,
   routineRecording,
+  voiceCallActive,
+  voiceCallSupported,
   titleFavorite,
 }: ChannelHeaderProps) => {
   const title = isPersonalAssistantConversation
@@ -78,15 +88,21 @@ export const ChannelHeader = ({
   const shouldJoin = Boolean(
     canManageChannel && activeChannel?.visibility === 'public' && !activeChannel.memberRole,
   )
-  const callLabel = isPersonalAssistantConversation
-    ? 'Personal Assistant does not support calls'
+  // One call button for every conversation; what it starts is decided by the
+  // kind of conversation, not by a second control. In the Personal Assistant
+  // DM it opens a live voice call with the assistant; everywhere else it mints
+  // a provider-linked meeting and rings people.
+  const callLabel = voiceCallSupported
+    ? voiceCallActive
+      ? 'Call in progress'
+      : 'Call your assistant'
     : callStarting
       ? 'Starting call…'
-    : callEligible
-      ? activeCall
-        ? 'Join call'
-        : 'Start a call'
-      : 'You can only start a call with humans for now'
+      : callEligible
+        ? activeCall
+          ? 'Join call'
+          : 'Start a call'
+        : 'You can only start a call with humans for now'
   const participantCount = channelUsers.length + boundAgents.length + personalAssistantPresenceCount
   const actions: PageHeaderAction[] = [
     ...(titleFavorite ? [{
@@ -137,7 +153,7 @@ export const ChannelHeader = ({
       priority: 55,
       selected: routineRecording,
     } satisfies PageHeaderAction] : []),
-    activeCall && callMeetingUri
+    activeCall && callMeetingUri && !voiceCallSupported
       ? {
           compact: true,
           href: callMeetingUri,
@@ -152,13 +168,15 @@ export const ChannelHeader = ({
         } satisfies PageHeaderAction
       : {
           compact: true,
-          disabled: !callEligible || activeCall || callStarting,
+          disabled: voiceCallSupported
+            ? false
+            : !callEligible || activeCall || callStarting,
           icon: faPhone,
           id: 'call',
           label: callLabel,
           onSelect: onCallButton,
           priority: 50,
-          selected: activeCall,
+          selected: voiceCallSupported ? voiceCallActive : activeCall,
         } satisfies PageHeaderAction,
     {
       compact: true,

@@ -10,6 +10,7 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { useVoiceCall, useVoiceCapability } from '../facades/voice/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
@@ -60,8 +61,8 @@ export const ChannelsPage = () => {
   }, [channelId, navigate])
   const { me, token } = useAuthSession()
   const { onSelectAgent } = useShellActions()
-  const { data: channels = [] } = useChannels()
-  const { data: agents = [] } = useAgents()
+  const { data: channels = [], isPending: channelsPending } = useChannels()
+  const { data: agents = [], isPending: agentsPending } = useAgents()
   const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
 
@@ -87,7 +88,8 @@ export const ChannelsPage = () => {
     isFetched: threadMessagesFetched,
     isPlaceholderData: threadMessagesArePlaceholder,
   } = useThreadMessages(activeChannel?.defaultThreadId)
-  const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
+  const { data: personalAssistantState, isPending: personalAssistantPending } =
+    usePersonalAssistant(isPersonalAssistantActiveChannel)
   const { documentSessions, documentStore, pendingMessages } = useThreadStream(
     activeChannel?.defaultThreadId,
   )
@@ -99,15 +101,33 @@ export const ChannelsPage = () => {
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
-  const { agentsTabAvailable, setActiveTab, visibleActiveTab } = useChannelTab({
-    activeChannel,
-    boundAgentCount: boundAgents.length,
-    isConversationSurface,
-    isPersonalAssistantConversation,
-  })
-
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
+  const {
+    agentTabAvailable,
+    agentsTabAvailable,
+    conversationAgent,
+    routinesTabAvailable,
+    setActiveTab,
+    todosTabAvailable,
+    visibleActiveTab,
+  } = useChannelTab({
+    activeChannel,
+    boundAgents,
+    isConversationSurface,
+    isOwner,
+    isPersonalAssistantConversation,
+    // Until these reads land there is no honest answer to "does this
+    // conversation have one agent?", and a link straight to ?tab=to-dos must
+    // not be rewritten to Messages in that window. The Personal Assistant is
+    // absent from GET /api/agents, so its own read counts here too — on its DM
+    // it is the *only* source of the conversation's agent.
+    participantsSettled:
+      !channelsPending
+      && !agentsPending
+      && !(isPersonalAssistantConversation && personalAssistantPending),
+    personalAssistantAgent,
+  })
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
@@ -125,7 +145,7 @@ export const ChannelsPage = () => {
     callActionPending,
     callStarting,
     callerDialogCall,
-    onCallButton,
+    onCallButton: onProviderCallButton,
     onCloseCallerDialog,
     onCloseStartCallFailure,
     onFinishCall,
@@ -134,6 +154,25 @@ export const ChannelsPage = () => {
     activeChannel,
     callEligible,
   })
+
+  // The Personal Assistant DM answers the same call button with a live voice
+  // call instead of a provider-linked meeting. The branch is structural — it
+  // follows from the channel being that DM — never a reading of its content.
+  const voiceCall = useVoiceCall()
+  const voiceCapability = useVoiceCapability()
+  // Both must hold: the conversation takes voice calls (structural — it is
+  // the assistant's DM) and this deployment is wired to place them.
+  const voiceCallSupported =
+    isPersonalAssistantConversation && voiceCapability.data?.available === true
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false)
+  const onCallButton = () => {
+    if (!voiceCallSupported) {
+      onProviderCallButton()
+      return
+    }
+    setVoiceDialogOpen(true)
+    if (!voiceCall.isActive) void voiceCall.start()
+  }
 
   const { mentionEntities, renderContent } = useChannelMentions({
     activeChannel,
@@ -238,7 +277,10 @@ export const ChannelsPage = () => {
   // The feed opens on its newest message and stays there while rows settle
   // (media decoding, streaming replies, growing thinking bubbles), so nothing
   // is left hiding behind the composer.
-  const feedScroll = useStickToBottom(`${activeChannel?.id ?? ''}:${visibleActiveTab}`)
+  const feedScroll = useStickToBottom(
+    `${activeChannel?.id ?? ''}:${visibleActiveTab}`,
+    visibleActiveTab === 'messages',
+  )
   const releaseFeedPin = feedScroll.releasePin
   // Jumping to an older message is the reader taking over: stop following the
   // bottom, or the next row that settles would yank them back down.
@@ -353,6 +395,8 @@ export const ChannelsPage = () => {
         boundAgents={boundAgents}
         callEligible={callEligible}
         callStarting={callStarting}
+        voiceCallActive={voiceCall.isActive}
+        voiceCallSupported={voiceCallSupported}
         channelLiveness={channelLiveness}
         channelUsers={channelUsers}
         personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
@@ -378,7 +422,9 @@ export const ChannelsPage = () => {
           setOversizePaste,
           secretCapture,
         }}
+        agentTabAvailable={agentTabAvailable}
         agentsTabAvailable={agentsTabAvailable}
+        conversationAgent={conversationAgent}
         deepWaterLauncher={deepWaterLauncher}
         documentSessions={documentSessions}
         documentStore={documentStore}
@@ -388,6 +434,8 @@ export const ChannelsPage = () => {
         feedScroll={feedScroll}
         isConversationSurface={isConversationSurface}
         isExternalAgentConversation={isExternalAgentActiveChannel}
+        routinesTabAvailable={routinesTabAvailable}
+        todosTabAvailable={todosTabAvailable}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinChannel.isPending}
         mentionEntities={mentionEntities}
@@ -405,7 +453,6 @@ export const ChannelsPage = () => {
         }}
         me={me}
         pendingMessages={pendingMessages}
-        personalAssistantAgent={personalAssistantAgent}
         personalAssistantChannel={personalAssistantChannel}
         personalAssistantState={personalAssistantState}
         renderContent={renderContent}
@@ -433,7 +480,6 @@ export const ChannelsPage = () => {
         }}
         onOpenMembers={() => setShowMembersPopup(true)}
         onOpenSettings={() => setShowChannelSettings(true)}
-        onSelectAgent={onSelectAgent}
         onSelectMessageAgent={setSelectedMessageAgent}
         onSelectMessageUser={setSelectedMessageUser}
         onToggleSearch={toggleSearch}
@@ -452,6 +498,18 @@ export const ChannelsPage = () => {
         callerCallActionError={callActionError}
         callerCallActionPending={callActionPending}
         callerDialogCall={callerDialogCall}
+        voiceCall={{
+          onClose: () => setVoiceDialogOpen(false),
+          onEnd: () => {
+            void voiceCall.end().then(() => setVoiceDialogOpen(false))
+          },
+          onRetry: () => {
+            void voiceCall.start()
+          },
+          onToggleMute: () => voiceCall.setMuted(!voiceCall.state.muted),
+          open: voiceDialogOpen,
+          state: voiceCall.state,
+        }}
         startCallFailureCode={startCallFailureCode}
         personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
         deepWaterDialog={deepWaterLauncher.dialog}

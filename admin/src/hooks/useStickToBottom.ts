@@ -22,8 +22,13 @@ const NEAR_BOTTOM_PX = 80
  * wrapper around everything inside it. Both are callback refs, so a feed that
  * mounts its scroller later (the reply panel waits for its root message) still
  * gets observed the moment the element appears.
+ *
+ * `follow` is what a shared scroller needs: a channel's Messages section reads
+ * newest-last and belongs at the bottom, while its Agent or To-dos section is a
+ * document and belongs at the top. Passing false lands at the top and keeps it
+ * there, so a long tool list no longer opens scrolled to its final row.
  */
-export const useStickToBottom = (resetKey?: string | null) => {
+export const useStickToBottom = (resetKey?: string | null, follow = true) => {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [content, setContent] = useState<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
@@ -45,12 +50,14 @@ export const useStickToBottom = (resetKey?: string | null) => {
     scrollToBottom()
   }, [scrollToBottom])
 
-  // Opening a different conversation (or tab) always lands on its newest
-  // message, even if the reader had scrolled up in the previous one.
+  // Opening a different conversation (or tab) always lands where that section
+  // starts — the newest message for a feed, the first line for a document —
+  // even if the reader had scrolled in the previous one.
   useLayoutEffect(() => {
-    pinnedRef.current = true
-    scrollToBottom()
-  }, [resetKey, scrollToBottom])
+    pinnedRef.current = follow
+    if (follow) scrollToBottom()
+    else if (container) container.scrollTop = 0
+  }, [container, follow, resetKey, scrollToBottom])
 
   useEffect(() => {
     if (!container || !content) {
@@ -58,6 +65,7 @@ export const useStickToBottom = (resetKey?: string | null) => {
     }
 
     const onScroll = () => {
+      if (!follow) return
       const distanceFromBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight
       pinnedRef.current = distanceFromBottom <= NEAR_BOTTOM_PX
@@ -78,7 +86,7 @@ export const useStickToBottom = (resetKey?: string | null) => {
       container.removeEventListener('scroll', onScroll)
       observer.disconnect()
     }
-  }, [container, content, scrollToBottom])
+  }, [container, content, follow, scrollToBottom])
 
   return {
     containerRef: setContainer,
