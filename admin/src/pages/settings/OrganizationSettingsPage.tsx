@@ -7,6 +7,7 @@ import {
 } from '../../facades/organization/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
 import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
@@ -115,6 +116,7 @@ export const OrganizationSettingsPage = () => {
         <LogoPanel />
         <WorkspaceAvatarPanel />
         <CallProviderSettingsPanel />
+        {organization?.role === 'owner' ? <CloudBrowserPanel scope="organization" /> : null}
         {organization?.role === 'owner' ? (
           <ConversationalSetupPanel
             enabled={organization.conversationalSetupEnabled}

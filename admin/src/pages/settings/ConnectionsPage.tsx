@@ -4,10 +4,12 @@ import {
 } from '../../facades/connections/hooks'
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
+import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
 const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
   { provider: 'slack', label: 'Connect Slack' },
@@ -90,6 +92,7 @@ export const ConnectionsPage = () => {
                 {rows.map((connection) => (
                   <ConnectionCard connection={connection} key={connection.id} />
                 ))}
+                <SendAuthorizationSection />
                 <ConnectButtons
                   onConnect={(provider) => void onConnect(provider)}
                   pending={start.isPending}
@@ -103,6 +106,7 @@ export const ConnectionsPage = () => {
         <div className="h-px bg-[color:var(--bd1)]" />
 
         <ModelSubscriptionSection />
+        <CloudBrowserPanel scope="user" />
       </div>
     </SettingsPanel>
   )

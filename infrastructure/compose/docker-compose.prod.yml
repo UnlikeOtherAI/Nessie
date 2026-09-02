@@ -126,12 +126,17 @@ services:
       retries: 5
       start_period: 60s
 
+  # api/admin/web have no fixed container_name: redeploy.sh performs a
+  # blue-green swap by scaling each service to 2, waiting for the new replica's
+  # healthcheck, then retiring the old one — a pinned name would make two
+  # replicas impossible. Caddy addresses them by the pinned network aliases
+  # below (nessie-api / nessie-admin / nessie-web), which every replica
+  # carries, so the edge proxy config never changes across deploys.
   api:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.app
     image: nessie-app:latest
-    container_name: nessie-api
     restart: unless-stopped
     env_file:
       - .env
@@ -180,8 +185,12 @@ services:
     secrets:
       - infisical_service_token
     networks:
-      - edge
-      - db
+      edge:
+        aliases:
+          - nessie-api
+      db:
+        aliases:
+          - nessie-api
     depends_on:
       nessie-postgres:
         condition: service_healthy
@@ -192,7 +201,11 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 40s
+      # start_interval polls fast during startup so the blue-green swap flips
+      # to the new replica seconds after it is actually serving, instead of
+      # waiting out a 30s interval tick.
+      start_period: 90s
+      start_interval: 3s
 
   worker:
     image: nessie-app:latest
@@ -249,30 +262,36 @@ services:
       args:
         VITE_API_BASE_URL: https://api.nessie.works
     image: nessie-admin:latest
-    container_name: nessie-admin
     restart: unless-stopped
     networks:
-      - edge
+      edge:
+        aliases:
+          - nessie-admin
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 20s
+      start_interval: 2s
 
   web:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
     image: nessie-web:latest
-    container_name: nessie-web
     restart: unless-stopped
     networks:
-      - edge
+      edge:
+        aliases:
+          - nessie-web
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 20s
+      start_interval: 2s
 
   nessie-gateway:
     build:

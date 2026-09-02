@@ -128,6 +128,9 @@ export default [
       'admin/src/lib/mobile-shell.ts',
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
       'admin/src/pages/channels/useReplyThread.ts',
+      // The same drag geometry, lifted out of useReplyThread so the reply
+      // panel and the agent-screen panel cannot disagree about clamping.
+      'admin/src/hooks/useSidePanelGeometry.ts',
       // Popover/overlay placement geometry (D11): they clamp coordinates to the
       // window, they do not classify the device. The list shrinks as call sites
       // adopt the one placePopover helper (docs/navigation/overview.md §7) — the account,

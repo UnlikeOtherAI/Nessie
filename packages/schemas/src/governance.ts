@@ -295,6 +295,9 @@ export const AuditActionSchema = z.enum([
   'model_subscription.linked',
   'model_subscription.relinked',
   'model_subscription.disconnected',
+  'gmail.draft.sent',
+  'gmail.send_grant.created',
+  'gmail.send_grant.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

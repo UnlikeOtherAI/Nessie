@@ -4,9 +4,15 @@ on:
   push:
     branches: ["**"]
 
+# On branches a new push supersedes the previous CI run, so cancel it. On main
+# every push must get its OWN completed run: with a shared main group, heavy
+# merge traffic cancelled main builds mid-flight (in-progress) or collapsed
+# them out of the queue, so main could go hours without a single finished test
+# run. Keying the main group by sha makes each merge's CI run independent —
+# nothing is ever cancelled on main.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:

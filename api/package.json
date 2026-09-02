@@ -36,6 +36,7 @@
     "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
+    "@nessie/browser-cloud": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
     "@nessie/memory": "workspace:*",
     "@nessie/model-subscriptions": "workspace:*",

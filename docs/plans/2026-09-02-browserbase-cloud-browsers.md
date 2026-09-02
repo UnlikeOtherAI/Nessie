@@ -638,7 +638,8 @@ surfaces belong to the executor's own UI, not this panel.)
 
 ## 5. Phasing
 
-**Phase 1 — connect (both tiers) + ephemeral cloud browsing.**
+**Phase 1 — connect (both tiers) + ephemeral cloud browsing. — BUILT
+2026-09-02**, with the deltas recorded in §5a below.
 `@nessie/browser-cloud`, `CloudBrowserConnection` at both scopes +
 secret-store keys, probe on connect, the first-party `/apps` listing in
 `seed-apps.ts` (§4.1a), org + personal settings surfaces,
@@ -655,6 +656,55 @@ personal account can grant an agent the browser and ask "check what this
 page says", watch it happen, and see their hours — and an owner connecting
 the company account makes the cloud bundle grantable org-wide (each agent
 still granted explicitly, §3.6 — a prior executor grant never converts).
+
+### 5a. What phase 1 actually shipped, and where it differs
+
+Built 2026-09-02. Everything below is a deliberate change from the plan
+above, kept here rather than silently rewriting the spec.
+
+- **The tool surface is the executor's grammar, verbatim.** The plan named
+  `browser_open/goto/act/observe/screenshot/close`; the executor already
+  defines a closed grammar — `browser.open {url}`,
+  `browser.observe {includeScreenshot?}`, and a `browser.act` discriminated
+  union of navigate/click/type/press/scroll addressed only by an
+  accessibility node id. Reusing those exact schemas is a stronger form of
+  the same "one logical surface" rule than inventing parallel verbs, so the
+  shipped set is `browser_open`, `browser_observe`, `browser_act`,
+  `browser_close`, importing `ExecutorBrowser*ArgumentsSchema` from
+  `@nessie/schemas`. `goto` and `screenshot` fold into `act:navigate` and
+  `observe:includeScreenshot`.
+- **Builtins, not a bindings-gated toolset.** `buildCloudBrowserToolset`
+  was planned as a twin of `buildExecutorToolset`. The executor needs that
+  shape because its tools are gated on live device *bindings*; a cloud
+  browser is gated on a *grant*, which the builtin registry already
+  enforces (`requiresExplicitGrant`, `tool-policy.ts`). So the tools are
+  builtin definitions dispatched from `worker/src/run/tools.ts`, which also
+  hands them `consumedSources` and the run context for free.
+- **The dispatcher returns a result rather than a `wrapTool` thunk.**
+  `wrapTool` converts every throw into `success: false`, which would have
+  swallowed `CloudBrowserUnknownOutcomeError` — telling a model an action
+  failed when it may well have completed. The browser tools follow
+  `dispatchKbTool` instead and re-throw the fatal marker.
+- **Release is fused through a hook, not a parameter.** `updateRunStatus`
+  has eight call sites and no access to a secret resolver; a new argument
+  would have put the obligation back on every caller. `setCloudBrowserReleaseHook`
+  is registered once at worker startup.
+- **Tabs come from the detail route, not `stream.browser.tabs`.** Phase 1
+  polls `sessions.debug().pages` through the session detail endpoint. The
+  worker-published SSE lane is worth building when the tab list needs to
+  update between polls; it is not needed to render the strip.
+- **Deferred out of phase 1**, none of them load-bearing for the slice:
+  the first-party `/apps` listing, `/ops/usage` rows, the thinking-bubble
+  chip, and the info-drawer *thumbnail* (a live disclosure row shipped
+  instead, and only while a browser is actually open).
+
+Verified end to end against the real Browserbase API on 2026-09-02: a
+rejected key returns `CLOUD_BROWSER_AUTH_FAILED`, the panel shows that
+sentence, and **nothing is persisted** — zero connection rows, zero stored
+secrets. Storage invariants (partial unique per scope, the scope/user
+CHECK, the composite tenancy FK) were each proven to refuse against live
+Postgres, and five DB-backed tests cover the lifecycle claims; neutralising
+the provider-stop call fails exactly the two tests that assert it.
 
 **Phase 2 — agent browsers + login handoff.**
 `AgentBrowser` + `AgentBrowserLogin`, context create/attach

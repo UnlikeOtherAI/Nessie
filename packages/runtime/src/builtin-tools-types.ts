@@ -31,6 +31,14 @@ export type BuiltinToolDefinition = {
    */
   requiresExplicitGrant?: boolean
   /**
+   * The call must pass a human (or auto-review) approval gate before it runs.
+   * Declared here in code rather than as a seeded `PolicyRule`, because the
+   * policy evaluator's default verdict is `allow` — a purely data-driven gate
+   * is absent in any organization whose seed never ran, which is every
+   * organization created before the rule existed.
+   */
+  requiresApproval?: boolean
+  /**
    * Optional Zod input schema. Slice F (MCP universal connector) tools require
    * this so the worker can validate args before invoking the handler. Existing
    * builtin tools predate the schema and continue to rely on `parameters`.
