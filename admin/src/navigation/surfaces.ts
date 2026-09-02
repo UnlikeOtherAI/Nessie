@@ -473,6 +473,37 @@ export const surfaceScreen = (
   }
 }
 
+// The screens a cold start seeds beneath a route, nearest first
+// (docs/navigation.md §8): the registry's parent chain up to the section
+// root, with a `parent: 'origin'` row seeding only its section root (its real
+// origin is unknowable on a cold link). On `split` the chain keeps only
+// strictly shallower screens — a root shares the floor with its detail there
+// and would be a swap, not a layer beneath. Roots seed nothing.
+export const surfaceSeedChain = (
+  pathname: string,
+  layout: NavigationLayout = 'single',
+): string[] => {
+  const chain: string[] = []
+  let screen = surfaceScreen(pathname, layout)
+  let cursor = pathname
+  const seen = new Set<string>([normalizeNavigationPathname(pathname)])
+  while (screen) {
+    const matched = matchSurface(cursor)
+    if (!matched || matched.surface.type === 'root') break
+    const next = matched.surface.parent === 'origin'
+      ? matched.surface.root
+      : matched.surface.parentOf?.(matched.match).pathname
+    if (!next || seen.has(next)) break
+    seen.add(next)
+    const nextScreen = surfaceScreen(next, layout)
+    if (!nextScreen) break
+    if (nextScreen.depth < screen.depth) chain.push(next)
+    screen = nextScreen
+    cursor = next
+  }
+  return chain
+}
+
 // The deterministic parent screen of a route: what Back returns to on a cold
 // deep link, and the label the Back control announces. Roots and redirects
 // have none.

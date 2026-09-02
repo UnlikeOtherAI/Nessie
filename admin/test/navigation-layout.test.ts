@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { deriveNavigationLayout } from '../src/navigation/layout'
-import { surfaceScreen } from '../src/navigation/surfaces'
+import { surfaceScreen, surfaceSeedChain } from '../src/navigation/surfaces'
 import {
   advancePhoneNavigationStack,
   createPhoneNavigationStack,
@@ -81,7 +81,23 @@ test('on split, root → detail swaps in place and detail → nested pushes insi
 
 test('the shell mounts the split stack in its detail column with no edge swipe', () => {
   const layout = source('../src/layouts/AdminShellLayout.tsx')
-  assert.match(layout, /<PhoneNavigationViewport layout="split" pathname=\{shell\.pathname\}>/)
+  assert.match(layout, /<PhoneNavigationViewport layout="split" pathname=\{shell\.pathname\} seed=\{seedScreen\}>/)
   const viewport = source('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
   assert.match(viewport, /enabled: layout === 'single' &&/)
+})
+
+test('a cold start seeds the parent chain beneath the landed route, nearest first', () => {
+  assert.deepEqual(surfaceSeedChain('/channels/c1/info/members'), ['/channels/c1/info', '/channels/c1', '/channels'])
+  assert.deepEqual(surfaceSeedChain('/agents/a1'), ['/agents', '/settings'])
+  assert.deepEqual(surfaceSeedChain('/dashboards/d1'), ['/dashboards', '/knowledge-base'])
+  assert.deepEqual(surfaceSeedChain('/channels'), [], 'a root seeds nothing')
+  // An origin screen's real predecessor is unknowable on a cold link: it
+  // seeds only its section root.
+  assert.deepEqual(surfaceSeedChain('/alerts'), ['/settings'])
+  assert.deepEqual(surfaceSeedChain('/ops/usage'), ['/settings'])
+  // On split a root shares the floor with its details, so only strictly
+  // shallower screens are seeded.
+  assert.deepEqual(surfaceSeedChain('/agents/a1', 'split'), ['/agents'])
+  assert.deepEqual(surfaceSeedChain('/channels/c1', 'split'), [])
+  assert.deepEqual(surfaceSeedChain('/channels/c1/info', 'split'), [])
 })

@@ -181,7 +181,7 @@ authenticated shell; the name follows in a later rename). It owns:
   inline with the finger — the same three callers, the same numbers, so a
   push, a pop and a released swipe dim identically.
 
-- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §8) at
+- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §9) at
   the moment the settle lands and the route is about to change. A cancelled
   swipe and a tapped Back give none.
 
@@ -315,7 +315,36 @@ drawers, `Popover` with one `placePopover` helper, `Card` with one
 of every bespoke overlay. Pinned by `admin/test/navigation-overlay.test.ts`
 and `admin/test/dialog-shell.test.ts`.
 
-## 8. Native shell contract — **built** (the two bridge pieces)
+## 8. Deep links and cold starts — **built** (step 13, the seeding; intent params follow)
+
+A cold start — a push notification, an auth return, a pasted link — lands on
+a screen with no stack beneath it. **The stack seeds the registry's parent
+chain** (`surfaceSeedChain`: `parentOf` up to the section root; a
+`parent: 'origin'` row seeds only its root, since its real predecessor is
+unknowable) as render-only layers beneath the landed route, so Back and the
+edge swipe reveal exactly the screens a real navigation would have. On
+`split` only strictly shallower screens are seeded, because a root shares
+the floor with its details there.
+
+- Seeded entries **never enter the ledger**: no browser history exists
+  behind a cold start, so Back from a seeded stage is always `replace`, and
+  the route's own commit refreshes the seeded layer with the real page the
+  moment the person arrives on it.
+- The shell supplies what a seeded screen shows (`seed` on the viewport): a
+  root's page on a phone is the section's list; anything else is rendered
+  from the route table for the seeded pathname (`navigation/SeededRoute.tsx`,
+  `useRoutes` over the shell route's children) under a location of its own,
+  so the page reads the route it stands for. It renders inert until reached.
+- A section change seeds the same way; a real push never does.
+- Pinned by `admin/test/cold-start-seeding.test.ts`,
+  `admin/test/phone-navigation-stack.test.ts` and
+  `admin/test/navigation-layout.test.ts`.
+
+Planned in this step: declared intent params (`consume` vs `state`) on the
+registry rows with one consume path; `from` on project-to-channel links; the
+desktop pending path.
+
+## 9. Native shell contract — **built** (the two bridge pieces)
 
 The two `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7)
 calls out as their own pieces are **built**; the rest of §4.15/§4.16 (the
@@ -352,7 +381,7 @@ headers, step 14 shell polish) land.
   repeating `navigator.vibrate` pattern via the same helper's fallback); the
   sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
 
-## 9. Verification — the transition suite — **built** (step 2)
+## 10. Verification — the transition suite — **built** (step 2)
 
 The JSDOM harness cannot see an animation and cannot see a layout, so the
 motion itself is pinned in a real browser:
@@ -425,7 +454,7 @@ re-render in place and releases the entries above only for a sibling swap;
 pin it. The JSDOM stack test had passed because it never replayed a route —
 the browser suite is what sees it.
 
-## 10. Everything else — **planned**
+## 11. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, prewarm and
 skeletons, drafts (auto-save, no confirm dialogs), focus and announcements,

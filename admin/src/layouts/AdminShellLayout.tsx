@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
@@ -25,6 +25,7 @@ import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
+import { SeededRoute, useShellRoutes } from '../navigation/SeededRoute';
 import {
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
@@ -115,6 +116,7 @@ const AuthenticatedAdminShellLayout = () => {
   // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
   // pinned even though they are "mobile" (their native tab bar replaces the rail).
   const navigationLayout = useNavigationLayout();
+  const shellRoutes = useShellRoutes(AdminShellLayout);
   const phoneLayout = navigationLayout === 'single';
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
@@ -146,21 +148,6 @@ const AuthenticatedAdminShellLayout = () => {
     onCreateChannel: shell.openCreateChannel,
     onSelectAgent: shell.selectAgent,
   });
-
-  // On `split` the pinned list column is the section's root, and the detail
-  // column is its own navigation stack: a detail → nested push slides inside
-  // this column with the detail retained beneath, exactly as on a phone.
-  const mainContent = phoneLayout ? (
-    <main className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
-      {outlet}
-    </main>
-  ) : (
-    <main className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
-      <PhoneNavigationViewport layout="split" pathname={shell.pathname}>
-        {outlet}
-      </PhoneNavigationViewport>
-    </main>
-  );
 
   const sidebarNavElement = (
     <SidebarNav
@@ -238,20 +225,50 @@ const AuthenticatedAdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
-  // Root content is the section's contextual list when one exists; /search
-  // and /dashboards are full outlet pages with no secondary sidebar, so their
-  // root page is the outlet itself rather than the channels fallback.
-  const rootHasContextualList = phoneTabRootHasContextualList(shell.pathname);
-  const phonePageContent = showPhoneTabRoot && rootHasContextualList ? (
+  // The section's contextual list as a phone page: the root screen, and
+  // what a cold start seeds beneath a section's details.
+  const rootListElement = (
     <div
       className={[
-        'flex h-full min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+        'flex h-full min-w-0 flex-1 overflow-clip bg-[color:var(--main)]',
         '[&>aside]:w-full [&>aside]:border-r-0',
       ].join(' ')}
     >
       {drawerNavElement}
     </div>
-  ) : mainContent;
+  );
+
+  // A cold start seeds the screens beneath the landed route
+  // (docs/navigation.md §8): a root's page on a phone is the section's list;
+  // anything else is the route table's page for that pathname.
+  const seedScreen = (pathname: string): ReactNode =>
+    isPhoneTabRoot(pathname) && phoneTabRootHasContextualList(pathname)
+      ? rootListElement
+      : <SeededRoute pathname={pathname} routes={shellRoutes} />;
+
+  // On `split` the pinned list column is the section's root, and the detail
+  // column is its own navigation stack: a detail → nested push slides inside
+  // this column with the detail retained beneath, exactly as on a phone.
+  const mainContent = phoneLayout ? (
+    <main className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
+      {outlet}
+    </main>
+  ) : (
+    <main className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
+      <PhoneNavigationViewport layout="split" pathname={shell.pathname} seed={seedScreen}>
+        {outlet}
+      </PhoneNavigationViewport>
+    </main>
+  );
+
+
+  // Root content is the section's contextual list when one exists; /search
+  // and /dashboards are full outlet pages with no secondary sidebar, so their
+  // root page is the outlet itself rather than the channels fallback.
+  const rootHasContextualList = phoneTabRootHasContextualList(shell.pathname);
+  const phonePageContent = showPhoneTabRoot && rootHasContextualList
+    ? rootListElement
+    : mainContent;
 
   const contentRegion = phoneLayout ? (
     <>
@@ -268,7 +285,7 @@ const AuthenticatedAdminShellLayout = () => {
         and rendering them outside the stack was itself the defect — they lost
         every retained screen beneath them.
       */}
-      <PhoneNavigationViewport pathname={shell.pathname}>
+      <PhoneNavigationViewport pathname={shell.pathname} seed={seedScreen}>
         {phonePageContent}
       </PhoneNavigationViewport>
     </>

@@ -1,6 +1,7 @@
 import type { NavigationLayout } from '../../navigation/layout'
 import {
   getPhoneNavigationScreen,
+  getPhoneNavigationSeedChain,
   type PhoneNavigationScreen,
 } from './phone-navigation'
 
@@ -90,16 +91,32 @@ const toCommittedRoute = <Payload>(
   section: entry.section,
 })
 
+// Payload for a screen the stack seeds beneath a cold start's landing route
+// (docs/navigation.md §8): the viewport renders it from the route table,
+// and the route's own commit replaces it the moment the person goes there.
+export type SeedPayload<Payload> = (pathname: string) => Payload
+
 // `layout` decides how a route classifies (docs/navigation.md §5): on
 // `split` roots share the floor with their details and in-parent nested
 // rows collapse onto the parent, so the same reducer serves both layouts.
+// With `seed`, a fresh stack (a cold start, a section change) also carries
+// the registry's parent chain beneath the route as render-only entries, so
+// Back and the edge swipe reveal the screens a real navigation would have.
+// Nothing about them enters the ledger: Back from a seeded stage is always
+// `replace`.
 export const createPhoneNavigationStack = <Payload>(
   pathname: string,
   payload: Payload,
   layout: NavigationLayout = 'single',
+  seed?: SeedPayload<Payload>,
 ): PhoneNavigationStack<Payload> => {
   const screen = requireScreen(pathname, layout)
-  return { currentIndex: 0, entries: [toStackEntry(pathname, screen, payload)] }
+  const landed = toStackEntry(pathname, screen, payload)
+  if (!seed) return { currentIndex: 0, entries: [landed] }
+  const ancestors = getPhoneNavigationSeedChain(pathname, layout)
+    .reverse()
+    .map((ancestor) => toStackEntry(ancestor, requireScreen(ancestor, layout), seed(ancestor)))
+  return { currentIndex: ancestors.length, entries: [...ancestors, landed] }
 }
 
 // Advances the stack to a committed route. Never rebuilds a lower entry's
@@ -127,6 +144,7 @@ export const advancePhoneNavigationStack = <Payload>(
   pathname: string,
   payload: Payload,
   layout: NavigationLayout = 'single',
+  seed?: SeedPayload<Payload>,
 ): PhoneNavigationStack<Payload> => {
   const screen = requireScreen(pathname, layout)
   // Routes compare against the route the stack rests on, never against a
@@ -135,7 +153,7 @@ export const advancePhoneNavigationStack = <Payload>(
   const routeIndex = routeIndexOf(stack)
   const current = stack.entries[routeIndex]
   if (!current || screen.section !== current.section) {
-    return createPhoneNavigationStack(pathname, payload, layout)
+    return createPhoneNavigationStack(pathname, payload, layout, seed)
   }
 
   const nextEntry = toStackEntry(pathname, screen, payload)

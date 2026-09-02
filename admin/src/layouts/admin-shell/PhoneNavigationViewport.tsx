@@ -50,6 +50,10 @@ type PhoneNavigationViewportProps = {
   // swipe arms (the column has no edge of its own; docs/navigation.md §5).
   layout?: NavigationLayout
   pathname: string
+  // Renders a screen the stack seeds beneath a cold start's landing route
+  // (docs/navigation.md §8): the shell supplies the section's list for a
+  // root and the route table's page for anything else.
+  seed?: (pathname: string) => ReactNode
 }
 
 type Stack = PhoneNavigationStack<LayerPayload>
@@ -77,6 +81,7 @@ export const PhoneNavigationViewport = ({
   children,
   layout = 'single',
   pathname,
+  seed,
 }: PhoneNavigationViewportProps) => {
   const navigate = useNavigate()
   const navigation = usePhoneNavigation()
@@ -86,13 +91,22 @@ export const PhoneNavigationViewport = ({
   const locationContext = useContext(UNSAFE_LocationContext)
   const viewportRef = useRef<HTMLDivElement>(null)
 
+  const seedRef = useRef(seed)
+  seedRef.current = seed
+  const seedPayload = useCallback((seededPathname: string): LayerPayload => ({
+    kind: 'seeded',
+    pathname: seededPathname,
+    screen: seedRef.current?.(seededPathname) ?? null,
+  }), [])
+  const seedEntries = seed ? seedPayload : undefined
+
   const initialStack = useRef<Stack | null>(null)
   if (initialStack.current === null) {
     initialStack.current = createPhoneNavigationStack(pathname, {
       kind: 'screen',
       locationContext,
       screen: children,
-    }, layout)
+    }, layout, seedEntries)
   }
   const [stack, setStack] = useState<Stack>(initialStack.current)
   const stackRef = useRef(stack)
@@ -154,7 +168,7 @@ export const PhoneNavigationViewport = ({
     }
 
     const direction = getPhoneNavigationDirection(committed.pathname, pathname, layout)
-    let next = advancePhoneNavigationStack(current, pathname, payload, layout)
+    let next = advancePhoneNavigationStack(current, pathname, payload, layout, seedEntries)
     const suppressed = suppressNextRouteAnimation.current === pathname
     suppressNextRouteAnimation.current = null
 
@@ -185,6 +199,7 @@ export const PhoneNavigationViewport = ({
     layout,
     locationContext,
     pathname,
+    seedEntries,
     startTransition,
   ])
 

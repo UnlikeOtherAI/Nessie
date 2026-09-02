@@ -1,4 +1,4 @@
-import { UNSAFE_LocationContext } from 'react-router-dom'
+import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
 import type { ContextType, CSSProperties, ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import type { PhoneNavigationDirection } from './phone-navigation'
@@ -17,7 +17,16 @@ export type StagePayload = {
   container: HTMLElement
 }
 
-export type LayerPayload = ScreenPayload | StagePayload
+// A screen seeded beneath a cold start's landing route: rendered from the
+// route table for its own pathname, under a location of its own so the page
+// reads the route it stands for, never the landed one.
+export type SeededPayload = {
+  kind: 'seeded'
+  pathname: string
+  screen: ReactNode
+}
+
+export type LayerPayload = ScreenPayload | StagePayload | SeededPayload
 
 export type LayerTransition = {
   direction: PhoneNavigationDirection
@@ -49,16 +58,33 @@ const StageMount = ({ container }: { container: HTMLElement }) => (
   />
 )
 
-const NavigationScreen = ({ payload }: { payload: LayerPayload }) =>
-  payload.kind === 'stage' ? (
-    <StageMount container={payload.container} />
-  ) : (
-    <UNSAFE_LocationContext.Provider value={payload.locationContext}>
+const seededLocationContext = (
+  pathname: string,
+): NonNullable<ContextType<typeof UNSAFE_LocationContext>> => ({
+  location: {
+    hash: '',
+    key: `seed:${pathname}`,
+    pathname,
+    search: '',
+    state: null,
+    unstable_mask: undefined,
+  },
+  navigationType: NavigationType.Pop,
+})
+
+const NavigationScreen = ({ payload }: { payload: LayerPayload }) => {
+  if (payload.kind === 'stage') return <StageMount container={payload.container} />
+  const locationContext = payload.kind === 'seeded'
+    ? seededLocationContext(payload.pathname)
+    : payload.locationContext
+  return (
+    <UNSAFE_LocationContext.Provider value={locationContext}>
       <div className="phone-navigation-page" data-phone-navigation-page>
         {payload.screen}
       </div>
     </UNSAFE_LocationContext.Provider>
   )
+}
 
 const layerName = (role: LayerRole, transition: LayerTransition | null): string => {
   if (role === 'top') {

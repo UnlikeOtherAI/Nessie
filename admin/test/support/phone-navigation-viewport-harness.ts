@@ -155,6 +155,7 @@ export type PhoneNavigationViewportHarness = {
 // screen's prepare/paint/run lifecycle deterministic without a paint engine.
 export const mountPhoneNavigationViewport = async (
   initialPathname: string,
+  options: { seed?: boolean } = {},
 ): Promise<PhoneNavigationViewportHarness> => {
   pendingFrames.clear()
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
@@ -243,7 +244,12 @@ export const mountPhoneNavigationViewport = async (
     }
     return h(
       PhoneNavigationViewport,
-      { pathname: location.pathname },
+      {
+        pathname: location.pathname,
+        ...(options.seed
+          ? { seed: (seeded: string) => h('div', { 'data-seeded': seeded }, `seeded:${seeded}`) }
+          : {}),
+      },
       h(ScreenForPath, { path: location.pathname }),
     )
   }

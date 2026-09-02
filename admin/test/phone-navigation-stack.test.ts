@@ -290,3 +290,22 @@ test('a route pushed over open stages returns to the topmost stage on Back', () 
   assert.equal(back.entries[1]?.payload, 'p:channel_a#2')
   assert.equal(back.entries.length, 4, 'the outgoing info screen is retained for its slide')
 })
+
+test('with a seed, a fresh stack carries the parent chain as render-only entries beneath the route', () => {
+  const seed = (pathname: string) => `seed:${pathname}`
+  const cold = createPhoneNavigationStack('/channels/channel_a/info', 'payload:info', 'single', seed)
+  assert.deepEqual(cold.entries.map((entry) => entry.pathname), ['/channels', '/channels/channel_a', '/channels/channel_a/info'])
+  assert.deepEqual(cold.entries.map((entry) => entry.payload), ['seed:/channels', 'seed:/channels/channel_a', 'payload:info'])
+  assert.equal(cold.currentIndex, 2)
+  // Back replaces to the parent: the retained seeded layer is found by
+  // identity and refreshed with the route's own children.
+  const back = advancePhoneNavigationStack(cold, '/channels/channel_a', 'payload:channel_a', 'single', seed)
+  assert.equal(back.currentIndex, 1)
+  assert.equal(back.entries[1]?.payload, 'payload:channel_a')
+  assert.equal(back.entries.length, 3, 'the outgoing info screen is retained for its slide')
+  // A section change seeds again.
+  const elsewhere = advancePhoneNavigationStack(cold, '/agents/a1', 'payload:agent', 'single', seed)
+  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/settings', '/agents', '/agents/a1'])
+  // Without a seed a cold start is a single entry, as before.
+  assert.equal(createPhoneNavigationStack('/channels/channel_a/info', 'p').entries.length, 1)
+})
