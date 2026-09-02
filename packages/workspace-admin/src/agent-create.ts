@@ -24,6 +24,20 @@ export const runLimitsWriteValue = (
   return runLimits ?? Prisma.DbNull
 }
 
+/**
+ * `Agent.speakingStyle` write value: whitespace is not a style.
+ *
+ * A cleared textarea posts `''`, and storing that would leave a row that is
+ * "set" but contributes an empty prompt block, so the two states a person can
+ * see (chosen / not chosen) would stop matching the two the column can hold.
+ */
+export const speakingStyleWriteValue = (
+  style: string | null | undefined,
+): string | null | undefined => {
+  if (style === undefined) return undefined
+  return style?.trim() ? style.trim() : null
+}
+
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
@@ -109,6 +123,10 @@ export type CreateAgentRecordInput = {
   role: string
   runLimits?: AgentRunLimits | null
   todosEnabled?: boolean
+  /** One of `GEMINI_LIVE_VOICES`; omitted leaves the deployment default. */
+  voiceName?: string | null
+  /** How the agent talks to people. Prompt text, never a preset id. */
+  speakingStyle?: string | null
   surfacePolicy?: 'dm_only' | 'shared'
   systemPrompt?: string
   systemManaged?: boolean
@@ -221,6 +239,8 @@ export const createAgentRecord = async (
     systemManaged: false,
     teamId: input.teamId,
     todosEnabled: input.todosEnabled ?? false,
+    voiceName: input.voiceName ?? null,
+    speakingStyle: speakingStyleWriteValue(input.speakingStyle) ?? null,
     toolPolicy: input.toolPolicy ?? undefined,
     visibility,
   })

@@ -4,10 +4,12 @@ import {
   AgentIdSchema,
   AgentRecordSchema,
   AgentRunLimitsSchema,
+  AgentSpeakingStyleSchema,
   AgentVisibilitySchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
   ThreadIdSchema,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -53,6 +55,11 @@ export const CreateAgentBodySchema = z.object({
   runLimits: AgentRunLimitsSchema.nullish(),
   visibility: AgentVisibilitySchema.optional(),
   todosEnabled: z.boolean().optional(),
+  // The voice a call is spoken in, and how the agent talks in every surface.
+  // Both nullable: `null` is "back to the deployment default" / "no style",
+  // which is a choice a person can make and `undefined` cannot express.
+  voiceName: VoiceNameSchema.nullish(),
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
 })
 
 export const UpdateAgentBodySchema = z.object({
@@ -86,6 +93,8 @@ export const UpdateAgentBodySchema = z.object({
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   todosEnabled: z.boolean().optional(),
+  voiceName: VoiceNameSchema.nullish(),
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({

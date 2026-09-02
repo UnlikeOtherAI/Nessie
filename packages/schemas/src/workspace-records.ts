@@ -19,6 +19,8 @@ import {
   UserIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+import { AgentSpeakingStyleSchema } from './agent-speech.js'
+import { VoiceNameSchema } from './voice.js'
 
 /**
  * Records the API returns for channels, agents, and triggers.
@@ -208,6 +210,16 @@ export const AgentRecordSchema = z.object({
   // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §1).
   runLimits: AgentRunLimitsSchema.optional(),
   todosEnabled: z.boolean(),
+  /**
+   * The Gemini Live voice this agent speaks in on a call. Absent = the
+   * deployment default; the value is one of `GEMINI_LIVE_VOICES`.
+   */
+  voiceName: VoiceNameSchema.nullish(),
+  /**
+   * How this agent talks to people, in the person's own words. Reaches both the
+   * typed system prompt and the voice call's system instruction.
+   */
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),

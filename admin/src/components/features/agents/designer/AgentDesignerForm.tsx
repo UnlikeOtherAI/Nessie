@@ -6,6 +6,7 @@ import type {
   AgentEffortValue,
   AgentFormState,
 } from './useAgentDesigner'
+import { AgentSpeechFieldset } from './AgentSpeechFieldset'
 import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
@@ -191,6 +192,15 @@ export const AgentDesignerForm = ({
 
       {/* Run limits */}
       <RunLimitsFieldset onChange={actions.setRunLimit} value={state.runLimits} />
+
+      {/* Voice and manner — how this agent sounds on a call, and how it talks
+          everywhere. */}
+      <AgentSpeechFieldset
+        onSpeakingStyleChange={actions.setSpeakingStyle}
+        onVoiceNameChange={actions.setVoiceName}
+        speakingStyle={state.speakingStyle}
+        voiceName={state.voiceName}
+      />
 
       <Card className="flex items-start justify-between gap-4">
         <div className="min-w-0">

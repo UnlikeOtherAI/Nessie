@@ -216,9 +216,11 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
             model: started.session.model,
             expiresAt: started.session.credentialExpiresAt.toISOString(),
             newSessionExpiresAt: started.newSessionExpiresAt,
-            voiceName: resolveVoiceName(),
+            // The agent's own voice, falling back to the deployment default.
+            voiceName: resolveVoiceName(assistant.agent.voiceName),
             systemInstruction: buildVoiceSystemInstruction({
               agentName: assistant.agent.name,
+              agentSpeakingStyle: assistant.agent.speakingStyle ?? null,
               agentSystemPrompt: assistant.agent.systemPrompt ?? null,
               toolNames: voiceToolNames(),
               userDisplayName: user?.displayName ?? null,

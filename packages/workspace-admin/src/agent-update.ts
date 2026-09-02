@@ -14,6 +14,7 @@ import {
   AgentManagementError,
   assertAgentOwnerIsActiveMember,
   runLimitsWriteValue,
+  speakingStyleWriteValue,
 } from './agent-create.js'
 import {
   AGENT_EDIT_AUTHORITY_ERROR_CODES,
@@ -63,6 +64,16 @@ export type UpdateAgentRecordInput = {
   role?: string
   runLimits?: AgentRunLimits | null
   todosEnabled?: boolean
+  /**
+   * One of `GEMINI_LIVE_VOICES`. `undefined` leaves the stored voice alone;
+   * `null` returns the agent to the deployment default.
+   */
+  voiceName?: string | null
+  /**
+   * How the agent talks to people — prompt text, never a preset id.
+   * `undefined` leaves it alone; `null` or blank removes it.
+   */
+  speakingStyle?: string | null
   surfacePolicy?: 'dm_only' | 'shared'
   systemPrompt?: string
   systemManaged?: boolean
@@ -171,6 +182,9 @@ export const updateAgentRecord = async (
         input.ownerUserId ?? undefined,
       )
     }
+    // `undefined` carries the stored style forward; `null` (an emptied field)
+    // clears it.
+    const speakingStyle = speakingStyleWriteValue(input.speakingStyle)
     const agent = await tx.agent.update({
       where: { id: agentId },
       data: {
@@ -205,6 +219,8 @@ export const updateAgentRecord = async (
         todosEnabled: existing.systemManaged
           ? existing.todosEnabled
           : input.todosEnabled ?? existing.todosEnabled,
+        voiceName: input.voiceName === undefined ? existing.voiceName : input.voiceName,
+        speakingStyle: speakingStyle === undefined ? existing.speakingStyle : speakingStyle,
         toolPolicy: toolPolicy ?? undefined,
       },
       include: {

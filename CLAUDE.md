@@ -746,6 +746,18 @@ glyph. Spec and phasing:
   `setup.systemInstruction` — folding DM history into the highest-trust tier
   would let anything ever said in the DM read as an instruction. The seed is
   small on purpose: Gemini Live re-bills accumulated context on *every* turn.
+- **The voice and the manner are per-agent.** `Agent.voiceName` is one of the
+  eight curated `GEMINI_LIVE_VOICES`; `Agent.speakingStyle` is the person's own
+  words for how the agent talks. Both are set in the Agent Designer ("Voice and
+  manner"), and both lists live once in `@nessie/schemas` — Google publishes no
+  API enumerating Live voices, so the picker reads the constant and never an
+  endpoint. `resolveVoiceName(agent.voiceName)` prefers the agent, then
+  `NESSIE_VOICE_GEMINI_VOICE`, then `Charon`, validating each against that list
+  because an unknown name fails Gemini's `setup`. The style reaches the typed
+  system prompt and `setup.systemInstruction` through one
+  `buildSpeakingStyleBlock`, at the same trust tier as the system prompt —
+  it is agent configuration, not conversation. Today's call target is always
+  the `systemManaged` PA, so its own call still uses the deployment voice.
 - **The call record is one message in the assistant's voice.** A `user`-role
   record would structurally wake the PA (`resolvePersonalAssistantDecisions`
   replies to every human turn in a PA DM) and one message role cannot carry two

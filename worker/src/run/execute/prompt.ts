@@ -5,6 +5,7 @@ import {
   WITHHELD_MESSAGE_PLACEHOLDER,
   type DisclosureViewer,
 } from '@nessie/runtime'
+import { buildSpeakingStyleBlock } from '@nessie/schemas'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
@@ -132,6 +133,9 @@ export const buildModelPrompt = (
       'message to yourself, and do not add a name prefix to your own reply.',
     ].join(' '),
     context.agent.systemPrompt?.trim() ?? '',
+    // The person's own words for how this agent should talk, rendered by the
+    // one shared builder the voice call uses too.
+    buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
     'When you need an id for a channel, person, or thread you only know by name, '

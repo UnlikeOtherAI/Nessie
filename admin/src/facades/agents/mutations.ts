@@ -21,6 +21,10 @@ export const useCreateAgent = () => {
       runLimits?: AgentRunLimits
       systemPrompt?: string
       todosEnabled?: boolean
+      // `null` on either is the explicit "no choice": the deployment default
+      // voice, and no speaking-style block.
+      voiceName?: string | null
+      speakingStyle?: string | null
       toolPolicy?: Record<string, boolean>
       visibility?: AgentRecord['visibility']
     }) =>
@@ -53,6 +57,8 @@ export const useUpdateAgent = () => {
       runLimits?: AgentRunLimits | null
       systemPrompt?: string
       todosEnabled?: boolean
+      voiceName?: string | null
+      speakingStyle?: string | null
       toolPolicy?: Record<string, boolean>
     }) => {
       const { agentId, ...body } = input
