@@ -677,6 +677,17 @@ callback page, `noopener` popup), installing-is-not-granting via
 [docs/plans/2026-08-29-apps-catalogue/overview.md](docs/plans/2026-08-29-apps-catalogue/overview.md).
 Facts not restated there:
 
+- **Installed is one flat shelf; categories are a catalogue affordance.**
+  `?installed=true` with no category returns a single alphabetical page spanning
+  every category (`loadInstalledPage`), paged on `offset` against
+  `installedCount` exactly as a category page is. It renders through the same
+  `AppCategorySection` with `category: null` + `standalone` (`installedShelf`),
+  so the flat list is a parameter of the shelf, never a second grid; the Featured
+  strip is hidden there because, uncurated, it *is* that list. An empty grid also
+  suppresses the footer nudge — the two said the same sentence with the same
+  button one line apart — and `catalogueEmptyMessage` returns `actions`, so a
+  search that found nothing inside Installed offers **Search all apps** (drops
+  the narrowing, keeps the query) beside Add custom app.
 - **Ingested rows are always `community`.** Trust decided from the advertised
   endpoint was forgeable: the record author picks that URL.
 - **An app icon resolves on first view and the instance shares one copy.**

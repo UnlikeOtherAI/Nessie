@@ -32,9 +32,9 @@ import { storeCatalogWhere } from './app-store-visibility.js'
  *
  * **It is bounded.** The official registry holds thousands of installable
  * servers, so no request may hydrate the whole catalogue: the default view is a
- * shelf of `CATEGORY_SHELF_LIMIT` per category, `?category=` is a page of
- * `CATEGORY_PAGE_LIMIT`, and `?query=` is the server-ranked top
- * `SEARCH_RESULT_LIMIT`. Phase 2 returned every row and the admin rendered
+ * shelf of `CATEGORY_SHELF_LIMIT` per category, `?category=` and
+ * `?installed=true` are pages of `CATEGORY_PAGE_LIMIT`, and `?query=` is the
+ * server-ranked top `SEARCH_RESULT_LIMIT`. Phase 2 returned every row and the admin rendered
  * every card — fine for five apps, a broken page at two thousand.
  *
  * **Its counts are exact.** Every number on the wire — `totalCount`,
@@ -54,7 +54,7 @@ export type StoreAppFilters = {
   category?: AppCategory
   installed?: boolean
   query?: string
-  /** Category paging only. The shelf and search have fixed sizes. */
+  /** Flat-list paging (a category page, or Installed). Shelf and search have fixed sizes. */
   limit?: number
   offset?: number
 }
@@ -235,16 +235,13 @@ type PageResult = {
 const loadShelfPage = async (
   prisma: PrismaClient,
   where: Prisma.McpCatalogEntryWhereInput,
-  includeSuggestions: boolean,
 ): Promise<PageResult> => {
   const [categories, suggestions] = await Promise.all([
     countCategories(prisma, where),
-    includeSuggestions
-      ? prisma.mcpCatalogEntry.findMany({
-        where: and(where, { registryName: { in: appHomeSuggestionRegistryNames() } }),
-        select: STORE_CATALOG_SELECT,
-      })
-      : Promise.resolve([]),
+    prisma.mcpCatalogEntry.findMany({
+      where: and(where, { registryName: { in: appHomeSuggestionRegistryNames() } }),
+      select: STORE_CATALOG_SELECT,
+    }),
   ])
   const shelves = await Promise.all(
     categories.map((entry) =>
@@ -267,6 +264,38 @@ const loadShelfPage = async (
       ),
     ),
   }
+}
+
+/**
+ * Everything this caller has connected, as one flat page.
+ *
+ * Installed is a list of things a person already owns, not a store to browse:
+ * three apps split under three headings is three headings and no shelf. So the
+ * category *sections* are a catalogue affordance only, and `?installed=true`
+ * with no category returns one alphabetical page spanning every category —
+ * paged on `offset` like a category is, against `installedCount`, because
+ * "installed" is bounded by how many connectors an organisation holds and not
+ * by anything this code controls.
+ *
+ * The per-category counts still travel, so the dropdown can still narrow the
+ * installed set to one category; picking one takes the category page below.
+ */
+const loadInstalledPage = async (
+  prisma: PrismaClient,
+  where: Prisma.McpCatalogEntryWhereInput,
+  filters: StoreAppFilters,
+): Promise<PageResult> => {
+  const [categories, rows] = await Promise.all([
+    countCategories(prisma, where),
+    prisma.mcpCatalogEntry.findMany({
+      where,
+      orderBy: SHELF_ORDER,
+      skip: clampOffset(filters.offset),
+      take: clampPageLimit(filters.limit),
+      select: STORE_CATALOG_SELECT,
+    }),
+  ])
+  return { categories, rows }
 }
 
 /**
@@ -350,7 +379,8 @@ const loadPage = (
 ): Promise<PageResult> => {
   if (query.length > 0) return loadSearchPage(prisma, where, query, filters, connectedIds)
   if (filters.category) return loadCategoryPage(prisma, where, filters.category, filters)
-  return loadShelfPage(prisma, where, filters.installed !== true)
+  if (filters.installed === true) return loadInstalledPage(prisma, where, filters)
+  return loadShelfPage(prisma, where)
 }
 
 export const listStoreApps = async (

@@ -50,9 +50,10 @@ const AppListQuerySchema = z.object({
   // A query string carries no booleans, and the catalogue's filter control has
   // exactly one narrowing today ("Installed"), so the enum is the vocabulary.
   installed: z.enum(['true', 'false']).optional(),
-  // Paging is a property of a category page. The default shelf and a search
-  // have fixed sizes the server owns, so `limit`/`offset` are simply ignored
-  // there rather than quietly resizing a view the client did not ask to page.
+  // Paging is a property of a flat list — a category page, or the Installed
+  // view, which spans every category. The default shelf and a search have
+  // fixed sizes the server owns, so `limit`/`offset` are simply ignored there
+  // rather than quietly resizing a view the client did not ask to page.
   limit: z.coerce.number().int().min(1).max(CATEGORY_PAGE_LIMIT_MAX).optional(),
   // Offset rather than an opaque cursor: `SHELF_ORDER` is a total order on
   // (label, id), so a page boundary is stable without one, and a deep link to

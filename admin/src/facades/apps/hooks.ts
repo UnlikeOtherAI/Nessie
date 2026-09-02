@@ -108,19 +108,21 @@ export const useApps = (filters: AppListFilters = {}) => {
 }
 
 /**
- * The rest of one category, a page at a time.
+ * The rest of one shelf, a page at a time.
  *
- * A category can hold hundreds of apps once the registry has been ingested, so
+ * A shelf can hold hundreds of apps once the registry has been ingested, so
  * "Show all" fetches rather than expands: the page never holds more cards than
  * a person asked to see. No page size is sent — the server owns that number,
  * and a second opinion here would drift from it.
  *
- * `getNextPageParam` measures progress against `categories[].count`, the SQL
- * total for this category under the same narrowing, so "there is more" is a
- * fact from the database rather than an inference from a full-looking page.
+ * `category: null` is the flat Installed shelf, which spans every category and
+ * whose population the server counts as `installedCount`. Progress is measured
+ * against whichever of those two SQL totals describes this shelf, so "there is
+ * more" is a fact from the database rather than an inference from a
+ * full-looking page.
  */
-export const useAppCategoryPages = (input: {
-  category: AppCategory
+export const useAppShelfPages = (input: {
+  category: AppCategory | null
   enabled: boolean
   installed: boolean
 }) => {
@@ -129,19 +131,20 @@ export const useAppCategoryPages = (input: {
   return useInfiniteQuery({
     enabled: input.enabled,
     initialPageParam: 0,
-    queryKey: appKeys.category(input.category, input.installed),
+    queryKey: appKeys.shelf(input.category, input.installed),
     queryFn: ({ pageParam }): Promise<AppListResponse> =>
       apiClient.get<AppListResponse>(
         `/api/apps${buildSearch({
-          category: input.category,
+          category: input.category ?? undefined,
           installed: input.installed,
           offset: pageParam,
         })}`,
       ),
     getNextPageParam: (lastPage: AppListResponse, allPages: AppListResponse[]) => {
       const loaded = allPages.reduce((sum, page) => sum + page.apps.length, 0)
-      const total =
-        lastPage.categories.find((entry) => entry.category === input.category)?.count ?? 0
+      const total = input.category === null
+        ? lastPage.installedCount
+        : lastPage.categories.find((entry) => entry.category === input.category)?.count ?? 0
       // A page that came back empty ends the walk even if the count disagrees,
       // so a row deleted mid-scroll cannot spin the loader forever.
       return lastPage.apps.length > 0 && loaded < total ? loaded : undefined
