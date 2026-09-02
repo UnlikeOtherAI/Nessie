@@ -1,5 +1,6 @@
 export * from './budget.js'
 export * from './credits.js'
+export * from './builtin-browser-tools.js'
 export * from './builtin-connector-tools.js'
 export * from './builtin-comms-tools.js'
 export * from './builtin-integration-tools.js'

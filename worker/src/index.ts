@@ -45,6 +45,12 @@ import {
 } from '@nessie/schemas'
 import { getPrismaClient } from '@nessie/db'
 import {
+  reapExpiredCloudBrowserSessions,
+  releaseSessionsForRun,
+  type CloudBrowserDeps,
+} from '@nessie/browser-cloud'
+import { setCloudBrowserReleaseHook } from './run/browser-cloud/release-hook.js'
+import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
   registerExecutionRunners,
@@ -196,6 +202,18 @@ export const startWorker = async (
       config.api.publicUrl ?? `http://localhost:${config.api.port}`
     }/api/mcp/oauth/callback`,
   }
+  // Cloud browsers (Browserbase). The resolver is the same layered one MCP
+  // uses — a `secret_browserbase_*` ref is an ordinary encrypted secret — and
+  // the release hook is what lets `updateRunStatus` free a browser on every
+  // terminal transition without any caller participating.
+  const cloudBrowser: CloudBrowserDeps = {
+    prisma,
+    resolveSecret: (ref) => mcpSecrets.resolver.resolve(ref),
+  }
+  setCloudBrowserReleaseHook(async (runId) => {
+    await releaseSessionsForRun(cloudBrowser, { runId, releasedBy: 'run_terminal' })
+  })
+
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
 
@@ -215,6 +233,7 @@ export const startWorker = async (
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
+          cloudBrowser,
           deepSignalMcpIdentity,
           executorCommandEncryptionSecret: config.auth.secret ?? undefined,
           ledgerIdentity,
@@ -657,6 +676,26 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // A run that crashed before any terminal transition, or a session that
+  // outlived its TTL, still costs browser-hours until somebody tells
+  // Browserbase to stop it. Reaping calls the provider; flipping the row alone
+  // would leave a browser billing with nothing pointing at it.
+  let cloudBrowserReapInFlight = false
+  const cloudBrowserReapInterval = setInterval(async () => {
+    if (cloudBrowserReapInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    cloudBrowserReapInFlight = true
+    try {
+      await reapExpiredCloudBrowserSessions(cloudBrowser, { limit: 20 })
+    } catch (error) {
+      console.error('[worker.cloud-browser-reaper] failed', error)
+    } finally {
+      cloudBrowserReapInFlight = false
+    }
+  }, 30_000)
+
   // sp-webhook: re-attempt failed trigger deliveries that are due for retry.
   let deliveryRetryInFlight = false
   const deliveryRetryInterval = setInterval(async () => {
@@ -826,6 +865,7 @@ export const startWorker = async (
     clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
     clearInterval(workflowStepReapInterval)
+    clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)

@@ -41,6 +41,7 @@ import {
   runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
+import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
 import { executorManagementTool } from './pa-tools/executor-dispatch.js'
 import {
@@ -145,6 +146,8 @@ const executeBuiltinToolUncorrected = async (
   if (executorTool) return wrapTool(inputSummary, executorTool)
   const connectorTool = connectorManagementTool(toolName, args, context)
   if (connectorTool) return wrapTool(inputSummary, connectorTool)
+  const browserResult = cloudBrowserTool(toolName, args, context)
+  if (browserResult) return browserResult
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
   if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {

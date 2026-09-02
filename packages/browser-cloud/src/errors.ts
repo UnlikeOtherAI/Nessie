@@ -58,6 +58,14 @@ export class CloudBrowserError extends Error {
 export class CloudBrowserUnknownOutcomeError extends Error {
   override readonly name = 'CloudBrowserUnknownOutcomeError'
 
+  /**
+   * The duck-typed marker `isFatalToolExecutionError` looks for. Set here
+   * rather than by extending the worker's `FatalToolExecutionError` so this
+   * package stays free of a dependency on the worker, while the agent loop
+   * still aborts the batch instead of feeding an invented outcome to a model.
+   */
+  readonly fatalToolExecution = true
+
   constructor(message = 'The cloud browser action outcome is unknown.') {
     super(message)
   }

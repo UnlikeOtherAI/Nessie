@@ -1,4 +1,5 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
+import type { CloudBrowserDeps } from '@nessie/browser-cloud'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
 import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
@@ -78,6 +79,13 @@ export type BuiltinToolRuntimeContext = {
    * streamed one, which simply means no live preview existed.
    */
   documentStream?: DocumentStreamRecorder
+  /**
+   * Browserbase transport plumbing for the `browser_*` builtins: the prisma
+   * handle plus the resolver that turns a stored `secret_browserbase_*` ref
+   * back into an API key. Optional so partial test fixtures keep compiling;
+   * absent means the deployment has no cloud browsing and the tools say so.
+   */
+  cloudBrowser?: CloudBrowserDeps
   /** Deployment secret used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
   executorCommandEncryptionSecret?: string

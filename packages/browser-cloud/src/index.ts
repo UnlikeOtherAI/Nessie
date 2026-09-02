@@ -47,3 +47,14 @@ export {
   type OpenSessionResult,
   type ResolvedConnection,
 } from './session-lifecycle.js'
+
+export {
+  connectCloudBrowser,
+  describeConnectError,
+  disconnectCloudBrowser,
+  listCloudBrowserConnections,
+  type ConnectCloudBrowserInput,
+  type ConnectionDeps,
+  type ConnectionScope,
+  type ConnectionSummary,
+} from './connection-management.js'

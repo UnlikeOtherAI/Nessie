@@ -62,6 +62,10 @@ export type {
 export type {
   AgentModelOption,
   AgentActivityResponse,
+  CloudBrowserConnectionRecord,
+  CloudBrowserScope,
+  CloudBrowserSessionDetail,
+  CloudBrowserSessionSummary,
   AgentChild,
   AgentMessage,
   AgentStatusResponse,
