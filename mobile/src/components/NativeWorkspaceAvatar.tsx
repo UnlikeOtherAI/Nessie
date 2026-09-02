@@ -2,15 +2,17 @@ import { Image, StyleSheet, Text, View } from 'react-native'
 import { SvgXml } from 'react-native-svg'
 import { useEffect, useState } from 'react'
 
-type NativeWorkspaceAvatarProps = {
+import { identityInitials, identityTileRadius } from '../lib/identity-shape'
+
+type NativeIdentityAvatarProps = {
   backgroundColor: string
   imageUrl: string | null
   label: string
   size: number
   textColor: string
+  /** Initials shown before any picture resolves, and when none exists. */
+  initialsFallback?: string
 }
-
-const initial = (label: string): string => [...label.trim()][0]?.toUpperCase() ?? 'W'
 
 type AvatarImageSource =
   | { kind: 'fallback' }
@@ -57,14 +59,23 @@ const useAvatarImageSource = (imageUrl: string | null): AvatarImageSource => {
   return source
 }
 
-/** Shared workspace picture for the native iPhone and iPad header triggers. */
-export const NativeWorkspaceAvatar = ({
+/**
+ * The one identity picture in the native chrome — the workspace mark and the
+ * signed-in person alike.
+ *
+ * The person used to be drawn as a full circle here while the workspace beside
+ * it was a rounded square, and the WebView an inch below drew both as rounded
+ * squares. The radius now comes from the shared contract, so the native header
+ * and the web app agree.
+ */
+export const NativeIdentityAvatar = ({
   backgroundColor,
   imageUrl,
+  initialsFallback = 'W',
   label,
   size,
   textColor,
-}: NativeWorkspaceAvatarProps): React.JSX.Element => {
+}: NativeIdentityAvatarProps): React.JSX.Element => {
   const [failedRasterUrl, setFailedRasterUrl] = useState<string | null>(null)
   const source = useAvatarImageSource(imageUrl)
   const showRaster = source.kind === 'raster' && source.uri !== failedRasterUrl
@@ -73,7 +84,7 @@ export const NativeWorkspaceAvatar = ({
     <View
       style={[
         styles.avatar,
-        { backgroundColor, borderRadius: Math.round(size / 4), height: size, width: size },
+        { backgroundColor, borderRadius: identityTileRadius(size), height: size, width: size },
       ]}
     >
       {source.kind === 'svg' ? (
@@ -86,7 +97,9 @@ export const NativeWorkspaceAvatar = ({
           style={StyleSheet.absoluteFillObject}
         />
       ) : (
-        <Text style={[styles.initial, { color: textColor }]}>{initial(label)}</Text>
+        <Text style={[styles.initial, { color: textColor }]}>
+          {identityInitials(label, initialsFallback)}
+        </Text>
       )}
     </View>
   )
@@ -103,3 +116,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 })
+
+/**
+ * Retained name for the workspace call sites. The workspace and the person are
+ * the same tile; only the initials fallback differs.
+ */
+export const NativeWorkspaceAvatar = NativeIdentityAvatar
