@@ -63,6 +63,21 @@ const isAdminUrl = (value: string, adminUrl: string): boolean => {
 }
 
 /**
+ * A document the page made, not a place the app can go.
+ *
+ * `blob:` and `data:` URLs inherit the creating page's origin, so
+ * `new URL('blob:https://app.nessie.works/…').origin` is the admin origin and
+ * an origin check waves them through. Following one replaces the whole SPA
+ * with the raw file — tapping a transcript attachment blanked the app and lost
+ * its navigation state, which read as a crash. These are always page-created
+ * documents; the page must handle them itself.
+ */
+const isPageCreatedDocument = (value: string): boolean => {
+  const scheme = value.slice(0, value.indexOf(':') + 1).toLowerCase()
+  return scheme === 'blob:' || scheme === 'data:' || scheme === 'filesystem:'
+}
+
+/**
  * Only main-frame navigation may leave Nessie's admin origin. Provider origins
  * open in the system browser; every other top-level origin is blocked while
  * embedded content is left alone.
@@ -72,6 +87,7 @@ export const webViewNavigationDisposition = (
   config: CallExternalUrlConfig & { adminUrl: string },
 ): WebViewNavigationDisposition => {
   if (!request.isTopFrame) return 'allow'
+  if (isPageCreatedDocument(request.url)) return 'block'
   if (isAllowedCallExternalUrl(request.url, config)) return 'externalize'
   return isAdminUrl(request.url, config.adminUrl) ? 'allow' : 'block'
 }

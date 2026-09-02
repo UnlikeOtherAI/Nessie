@@ -28,40 +28,65 @@ export const VoiceCapabilitySchema = z.object({
 export type VoiceCapability = z.infer<typeof VoiceCapabilitySchema>
 
 /**
- * The voices a call may be spoken in.
+ * The voices an agent can be given.
  *
- * Hardcoded on purpose, and this is the only list. Google publishes no API
- * that enumerates the voices its Live models accept, so the set can only be
- * curated — and a second copy in the picker would be the drift Rule zero
- * names. Each entry carries the description a person chooses from; the picker
- * renders these strings rather than inventing its own.
+ * A curated constant rather than a lookup, because Google publishes no API
+ * that enumerates Gemini Live's prebuilt voices — the Live documentation
+ * lists them as fixed names, and `models.get` does not return them. Routing
+ * the question through Ledger would only put the same hardcoded list one hop
+ * further away. Which voices to *offer* is a product choice regardless.
  *
- * The names are Gemini Live's prebuilt voices, sent verbatim as
- * `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName` when the client
- * opens the socket. A name the model does not know is rejected at setup, which
- * is why an agent's stored choice is validated against this list on the way in
- * rather than trusted at call time.
+ * `description` is what a person choosing one needs: what it sounds like.
  */
 export const GEMINI_LIVE_VOICES = [
-  { name: 'Charon', description: 'Even and informative — the default.' },
-  { name: 'Puck', description: 'Upbeat and quick, with a light lift.' },
-  { name: 'Kore', description: 'Firm and steady, low-key authority.' },
-  { name: 'Aoede', description: 'Breezy and unhurried.' },
-  { name: 'Zephyr', description: 'Bright and warm.' },
-  { name: 'Fenrir', description: 'Energetic, with a rougher edge.' },
-  { name: 'Leda', description: 'Youthful and light.' },
-  { name: 'Orus', description: 'Grounded and matter-of-fact.' },
-] as const satisfies ReadonlyArray<{ description: string; name: string }>
+  { name: 'Charon', description: 'Low and even. The default.' },
+  { name: 'Puck', description: 'Brighter and quicker.' },
+  { name: 'Kore', description: 'Warm, unhurried.' },
+  { name: 'Fenrir', description: 'Deep, deliberate.' },
+  { name: 'Aoede', description: 'Light and airy.' },
+  { name: 'Leda', description: 'Soft, close.' },
+  { name: 'Orus', description: 'Firm and clear.' },
+  { name: 'Zephyr', description: 'Crisp and energetic.' },
+] as const
 
-export type GeminiLiveVoice = (typeof GEMINI_LIVE_VOICES)[number]
-
-/** The voice used when an agent has expressed no preference. */
+export const VOICE_NAMES = GEMINI_LIVE_VOICES.map((voice) => voice.name)
 export const DEFAULT_VOICE_NAME = 'Charon'
 
-export const VoiceNameSchema = z.enum(
-  GEMINI_LIVE_VOICES.map((voice) => voice.name) as [string, ...string[]],
-)
+/** A voice an agent may be assigned. Validated against the curated set. */
+export const VoiceNameSchema = z.enum([
+  'Charon', 'Puck', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr',
+])
 export type VoiceName = z.infer<typeof VoiceNameSchema>
+
+export const VoiceOptionSchema = z.object({
+  name: VoiceNameSchema,
+  description: z.string().min(1),
+})
+export type VoiceOption = z.infer<typeof VoiceOptionSchema>
+
+/**
+ * One tool call the model made, dispatched server-side.
+ *
+ * `providerCallId` is Gemini's own id for the call and is the idempotency
+ * key: a retry replays the stored result, and a replay carrying different
+ * arguments is refused rather than served from cache.
+ */
+export const VoiceToolCallRequestSchema = z
+  .object({
+    providerCallId: z.string().min(1).max(200),
+    name: z.string().min(1).max(120),
+    args: z.record(z.string(), z.unknown()),
+  })
+  .strict()
+export type VoiceToolCallRequest = z.infer<typeof VoiceToolCallRequestSchema>
+
+export const VoiceToolCallResponseSchema = z.object({
+  /** Handed back to the model verbatim as the function response. */
+  result: z.record(z.string(), z.unknown()),
+  /** True when this was a retry answered from the stored result. */
+  replayed: z.boolean(),
+})
+export type VoiceToolCallResponse = z.infer<typeof VoiceToolCallResponseSchema>
 
 export const VoiceInstallationPlatformSchema = z.enum(['web', 'ios', 'android'])
 export type VoiceInstallationPlatform = z.infer<typeof VoiceInstallationPlatformSchema>

@@ -88,7 +88,11 @@ export const clearUoaWorkspaceDirectoryCache = (): void => {
  * **only** from data Nessie legitimately owns: the user's own `TeamMember` rows
  * joined to the `Team.externalWorkspaceId` / `externalOrgId` mapping written
  * when that UOA workspace was materialized locally. The team name stands in for
- * the UOA label. The local Organisation name is the permitted
+ * the UOA label, and it is a healed mirror of it: `Team.name` is refreshed
+ * from UOA's verified workspace directory by `syncExternalWorkspaceNames`, so
+ * once any verified `/org/me` read has occurred for that workspace the
+ * fallback returns the real name rather than a frozen placeholder. The local
+ * Organisation name is the permitted
  * non-authoritative mirror of UOA's `orgName`, so it is used only when present;
  * the avatar falls back to UOA's deterministic per-team image URL at render
  * time.

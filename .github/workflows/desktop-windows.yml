@@ -122,6 +122,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The generated Prisma client is intentionally excluded from source
+      # control. Generate it once before Turbo builds `@nessie/db`, rather than
+      # letting concurrent package builds race to create it.
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      # `prepare:executor-runtime` bundles the TypeScript executor with esbuild.
+      # It resolves workspace packages through their published `dist` exports,
+      # so installing the workspace links alone is insufficient on a clean
+      # runner. Build the executor and every one of those dependencies in the
+      # serialized Turbo order before Tauri invokes that preparation step.
+      - name: Build executor bundle dependencies
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

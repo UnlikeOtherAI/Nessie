@@ -19,6 +19,7 @@ import {
   type MessageUserIdentity,
 } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
+import { VoiceCallMessage } from './VoiceCallMessage'
 import {
   EmbeddedWidget,
   readMessageEmbedIds,
@@ -176,6 +177,11 @@ export const ChannelMessageRow = ({
   // walk the presser into that error. Delete stays — a tombstone changes
   // nothing on the card, which remains the authority.
   const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
+  // A finished call: server-written metadata, so this is structural rather
+  // than a reading of the text.
+  const carriesVoiceCall = Boolean(
+    (message.metadata as { voiceCall?: unknown } | undefined)?.voiceCall,
+  )
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
@@ -372,11 +378,14 @@ export const ChannelMessageRow = ({
                   the model's transcript all see what the card says. Here the
                   card itself renders below, so printing both says everything
                   twice. */}
-              {carriesAgentCard ? null : (
+              {carriesAgentCard || carriesVoiceCall ? null : (
                 <MessageMarkdown renderInlineText={renderContent}>
                   {message.content}
                 </MessageMarkdown>
               )}
+              {/* A call transcript printed in full buries the conversation it
+                  belongs to, so it collapses to its summary and opening turns. */}
+              {carriesVoiceCall ? <VoiceCallMessage content={message.content} /> : null}
               {message.restrictedSources && shareRestrictedMessage ? (
                 <div className="mt-2">
                   <RestrictedMessageCard

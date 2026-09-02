@@ -6,6 +6,7 @@ import type { VoiceTranscriptLine } from '@nessie/schemas'
 import {
   buildVoiceFunctionDeclarations,
   buildVoiceSystemInstruction,
+  voiceToolNames,
 } from '../src/services/voice/voice-context.js'
 import {
   renderCallSummary,
@@ -74,6 +75,7 @@ test('the system instruction carries identity and speech, never conversation his
   const instruction = buildVoiceSystemInstruction({
     agentName: 'Ada',
     agentSystemPrompt: 'Prefer metric units.',
+    toolNames: ['pa_send', 'web_search'],
     userDisplayName: 'Ondrej',
   })
 
@@ -88,16 +90,38 @@ test('a caller with no display name still gets a usable instruction', () => {
   const instruction = buildVoiceSystemInstruction({
     agentName: 'Ada',
     agentSystemPrompt: null,
+    toolNames: ['pa_send'],
     userDisplayName: null,
   })
   assert.match(instruction, /the person you assist/u)
   assert.doesNotMatch(instruction, /null/u)
 })
 
-test('phase 1 declares exactly the hand-off tool, with no client-side authority', () => {
+test('the declared tools match the registry, so the model cannot be told about one that will not run', () => {
   const declarations = buildVoiceFunctionDeclarations()
-  assert.equal(declarations.length, 1)
-  assert.equal(declarations[0]?.['name'], 'pa_send')
-  const parameters = declarations[0]?.['parameters'] as Record<string, unknown>
-  assert.deepEqual(parameters['required'], ['text'])
+  const declared = declarations.map((entry) => entry['name']).sort()
+  // The names the instruction promises and the functions Gemini is given have
+  // to be the same set, or the model either invents or under-reports.
+  assert.deepEqual(declared, voiceToolNames())
+  assert.ok(declared.includes('pa_send'))
+  assert.ok(declared.includes('web_search'))
+  assert.ok(declared.includes('conversation_history'))
+  for (const declaration of declarations) {
+    assert.equal(typeof declaration['description'], 'string')
+    assert.ok((declaration['description'] as string).length > 40)
+  }
+})
+
+test('the instruction names the exact toolset, because the model confabulates without it', () => {
+  // On the first real call it claimed "real-time search results" while holding
+  // only the hand-off tool.
+  const instruction = buildVoiceSystemInstruction({
+    agentName: 'Ada',
+    agentSystemPrompt: null,
+    toolNames: ['conversation_history', 'pa_send', 'web_search'],
+    userDisplayName: 'Ondrej',
+  })
+  assert.match(instruction, /conversation_history, pa_send, web_search/u)
+  assert.match(instruction, /That is the complete list/u)
+  assert.match(instruction, /Never claim a capability you cannot name there/u)
 })

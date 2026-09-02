@@ -41,6 +41,7 @@ test('the speaking style reaches the call’s system instruction', () => {
     agentName: 'Ada',
     agentSpeakingStyle: style,
     agentSystemPrompt: null,
+    toolNames: ['pa_send'],
     userDisplayName: 'Ondrej',
   })
 
@@ -55,6 +56,7 @@ test('a blank speaking style adds nothing at all', () => {
     agentName: 'Ada',
     agentSpeakingStyle: '   ',
     agentSystemPrompt: null,
+    toolNames: ['pa_send'],
     userDisplayName: null,
   })
   assert.doesNotMatch(instruction, /How to talk to this person/u)

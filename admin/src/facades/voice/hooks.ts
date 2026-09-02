@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { VoiceCapability } from '@nessie/schemas'
 
-import { voiceKeys } from '../../lib/query-keys'
+import { threadKeys, voiceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { createVoiceApi } from './voice-api'
 import { createVoiceCall, type VoiceCall, type VoiceCallState } from './voice-call-client'
@@ -49,15 +49,23 @@ export const useVoiceCall = () => {
   const apiClient = useApiClient()
   const [state, setState] = useState<VoiceCallState>(IDLE)
   const callRef = useRef<VoiceCall | null>(null)
+  const queryClient = useQueryClient()
 
   const api = useMemo(() => createVoiceApi(apiClient), [apiClient])
 
   const ensureCall = useCallback((): VoiceCall => {
     if (!callRef.current) {
-      callRef.current = createVoiceCall({ api, onState: setState })
+      callRef.current = createVoiceCall({
+        api,
+        onState: setState,
+        // The record is a message like any other; the feed has to be told.
+        onRecordWritten: (threadId) => {
+          void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
+        },
+      })
     }
     return callRef.current
-  }, [api])
+  }, [api, queryClient])
 
   useEffect(
     () => () => {
@@ -85,7 +93,7 @@ export const useVoiceCall = () => {
           .submitTranscript(entry.voiceSessionId, entry.lines, entry.durationMs)
           .then(() => undefined),
     }).catch(() => undefined)
-  }, [api])
+  }, [api, queryClient])
 
   const start = useCallback(async () => {
     await ensureCall().start()

@@ -80,6 +80,13 @@ export type VoiceCall = {
 export const createVoiceCall = (deps: {
   api: VoiceApi
   onState: (state: VoiceCallState) => void
+  /**
+   * Fired once the call's record is written, so the feed can refetch.
+   * The server publishes a realtime event too, but the record must appear
+   * without depending on that arriving — it did not, and the record stayed
+   * invisible until the conversation was re-entered.
+   */
+  onRecordWritten?: (threadId: string) => void
 }): VoiceCall => {
   let state: VoiceCallState = { ...IDLE_STATE }
   let socket: WebSocket | null = null
@@ -118,13 +125,36 @@ export const createVoiceCall = (deps: {
     void teardown()
   }
 
+  /**
+   * Answers one tool call.
+   *
+   * Everything except the hand-off runs server-side, so the model never holds
+   * a credential and cannot reach anything the person could not. `pa_send`
+   * stays here because it posts as the person through the ordinary message
+   * route with their own session — the same write a typed message makes.
+   */
   const handleToolCall = async (call: GeminiToolCall): Promise<unknown> => {
-    if (call.name !== 'pa_send' || !handoff) {
-      return { ok: false, error: `Unknown tool: ${call.name}` }
+    if (call.name === 'pa_send') {
+      if (!handoff) return { ok: false, error: 'Hand-off is unavailable on this call.' }
+      const text = typeof call.args['text'] === 'string' ? call.args['text'] : ''
+      if (text.trim().length === 0) return { ok: false, error: 'No request text was provided.' }
+      return handoff.dispatch(text)
     }
-    const text = typeof call.args['text'] === 'string' ? call.args['text'] : ''
-    if (text.trim().length === 0) return { ok: false, error: 'No request text was provided.' }
-    return handoff.dispatch(text)
+    if (!credential) return { ok: false, error: 'The call is not connected.' }
+    try {
+      const answer = await deps.api.runTool(credential.voiceSessionId, {
+        providerCallId: call.id,
+        name: call.name,
+        args: call.args,
+      })
+      return answer.result
+    } catch (error) {
+      const status = (error as { status?: unknown } | null)?.status
+      if (status === 429) {
+        return { ok: false, error: 'This call has used all of its tool calls.' }
+      }
+      return { ok: false, error: 'That did not work. Say so and carry on.' }
+    }
   }
 
   const handleEvent = (event: GeminiServerEvent): void => {
@@ -433,6 +463,7 @@ export const createVoiceCall = (deps: {
               startedAt ? Date.now() - startedAt : 0,
             )
             clearTranscript(active.voiceSessionId)
+            deps.onRecordWritten?.(active.threadId)
           } else {
             await deps.api.endSession(active.voiceSessionId)
           }

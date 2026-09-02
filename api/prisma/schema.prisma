@@ -6366,6 +6366,7 @@ model VoiceSession {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   installation VoiceInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  toolCalls    VoiceToolCall[]
 
   @@index([organizationId, status])
   @@index([userId, startedAt])
@@ -6745,4 +6746,29 @@ model AgentBrowserLogin {
   @@index([agentBrowserId])
   @@index([organizationId, userId])
   @@map("agent_browser_logins")
+}
+
+/// One tool call inside a voice conversation.
+///
+/// Gemini retries a tool call it did not see answered, and a retry must not
+/// run the work twice — so the provider's own call id is the claim, with the
+/// argument hash beside it: a replay carrying different arguments is a
+/// different action wearing the same id and is refused rather than served
+/// from cache.
+model VoiceToolCall {
+  id             String   @id @default(uuid()) @db.Uuid
+  voiceSessionId String   @map("voice_session_id") @db.Uuid
+  /// The id Gemini assigned the call; unique per session.
+  providerCallId String   @map("provider_call_id")
+  toolName       String   @map("tool_name")
+  argumentsHash  String   @map("arguments_hash")
+  /// The response already returned, replayed verbatim to a retry.
+  result         Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  session VoiceSession @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([voiceSessionId, providerCallId])
+  @@index([voiceSessionId])
+  @@map("voice_tool_calls")
 }
