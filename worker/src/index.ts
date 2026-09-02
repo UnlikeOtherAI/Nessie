@@ -1,3 +1,4 @@
+import { sweepDueGmailSends } from './control/gmail-send-sweep.js'
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
@@ -592,6 +593,24 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // The undo window only means anything if something eventually dispatches the
+  // held send. 5s so the wait a person sees is close to the window they were
+  // promised, not the window plus a sweep tick.
+  let gmailSendSweepInFlight = false
+  const gmailSendSweepInterval = setInterval(async () => {
+    if (gmailSendSweepInFlight || abortController.signal.aborted) return
+    const encryptionSecret = process.env.NESSIE_AUTH_SECRET
+    if (!encryptionSecret) return
+    gmailSendSweepInFlight = true
+    try {
+      await sweepDueGmailSends(prisma, { encryptionSecret })
+    } catch (error) {
+      console.error('[worker.gmail-send-sweep] failed', error)
+    } finally {
+      gmailSendSweepInFlight = false
+    }
+  }, 5_000)
+
   const maxActiveCallHours = (() => {
     const configured = Number(process.env.NESSIE_CALL_MAX_ACTIVE_HOURS)
     return Number.isFinite(configured) && configured > 0 ? configured : 8
@@ -823,6 +842,7 @@ export const startWorker = async (
   const stop = async () => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
+    clearInterval(gmailSendSweepInterval)
     clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
     clearInterval(workflowStepReapInterval)

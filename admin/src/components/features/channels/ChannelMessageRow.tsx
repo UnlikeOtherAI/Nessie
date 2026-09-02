@@ -24,6 +24,8 @@ import {
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
+import { GmailDraftCard } from './GmailDraftCard'
+import { GoogleScopeRequestCard } from './GoogleScopeRequestCard'
 import { AppSetupCard } from './AppSetupCard'
 import { AgentCardMessage } from './AgentCardMessage'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -397,6 +399,12 @@ export const ChannelMessageRow = ({
             : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <GmailDraftCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <GoogleScopeRequestCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <AppSetupCard metadata={message.metadata} />

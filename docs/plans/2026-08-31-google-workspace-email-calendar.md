@@ -1,8 +1,25 @@
 # Google Workspace in chat — Gmail, Calendar, Meet, negotiated scopes
 
 Date: 2026-08-31 (v2 — rewritten after cross-model review)
-Status: **P0 built and merged; P1–P3 planned**
+Status: **P0–P1 complete; P2–P3 partial (see §13 for what is not built)**
 
+> **Shipped 2026-09-02.** Gmail read/search/thread tools; drafts backed by a
+> real Gmail draft; the in-chat draft card with recipients, CC, subject, body
+> and Send/Discard/Undo; the in-chat permission-request card; Calendar read,
+> free/busy, and events with a Meet link; the structural send gate; standing
+> send consent with its own surface; and the undo-window sweep.
+>
+> §13 names what is **not** built — contacts, attachments, `gmail.modify`,
+> event RSVP, auto-review, the email trigger, and the generic approval card.
+>
+> Two things changed from the plan as written, both after finding the plan
+> wrong in the code:
+> - `gmail.send` cannot create or send a **draft** (`users.drafts.*` accept
+>   `gmail.compose`/`gmail.modify` only), so the draft flow requires
+>   `gmail.compose` and `gmail.send` backs a separate direct-send path.
+> - The free/busy `organization:` carve-out stayed withdrawn: a Nessie
+>   organisation is not proof of a shared Google Workspace domain.
+>
 > **P0 shipped 2026-08-31.** Capability catalog, capability-aware OAuth start,
 > incremental grant, bound OAuth state, all-of + local-block enforcement at the
 > credential chokepoint, and the Permissions section on `/settings/connections`.
@@ -443,9 +460,20 @@ send_authorization_grants new table                              (§8)
 | Phase | Ships |
 |---|---|
 | **P0** ✅ | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
-| **P1** | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
-| **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
-| **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType** |
+| **P1** ✅ | Gmail search/thread/message reads feeding the disclosure sink; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; the structural send gate |
+| **P2** ◐ | Calendar list/events/free-busy; `calendar_event_create` with `addMeet` (fresh `requestId`, `pending` handled), update, cancel |
+| **P3** ◐ | Standing `SendAuthorizationGrant` + undo window and its dispatch sweep; `gmail_draft_send` behind the gate |
+
+**Not built, and deliberately named rather than implied by a tick:**
+`contacts_search` (the `contacts.read` capability exists in the catalog with no
+tool behind it — Rule zero says that is a gap, not a feature); attachment
+read/write in either direction; `gmail.modify` tools (label, archive);
+`calendar_event_respond`; deterministic client-supplied event ids for
+create-retry idempotency; per-tool output caps beyond the chokepoint's 32k
+default; model auto-review; the `email_received` `event` eventType; and a
+renderer for the generic `metadata.approvalGate` card — send approval currently
+runs through the draft card's own Send button, which covers the flow this plan
+set out to deliver but leaves every *other* gated tool's approval unsurfaced.
 
 The "optional SMTP/IMAP transport" formerly listed in P3 is **ceded to
 [2026-09-02-agent-email.md](2026-09-02-agent-email.md) Model A** (a
