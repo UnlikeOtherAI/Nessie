@@ -139,9 +139,14 @@ tuple; the Designer work must **not** add a second one.)
 `dmKey = gagent:{slug}:{orgId}:{userId}`, `type='dm'`,
 `visibility='private'`, single member (forcibly reduced, PA-style), in a
 hidden system team, with a new `systemChannelType = 'system_agent'`. The DM
-key CHECK must admit the new prefix **in the same migration** (the
-`extagent:` lesson). Three things hang off the channel type, all mirroring
-the PA DM:
+key CHECK (`channels_personal_assistant_surface_chk`) must admit the new
+prefix **in the same migration**. The `extagent:` lesson is not hypothetical:
+`external_agent` was added to `ChannelSystemType` without that CHECK learning
+the key, so every external-agent DM insert violated it until migration
+`20260902170000_external_agent_surface_invariants` added its arm. Add
+`system_agent` the same way — an arm keyed to its own system-channel type,
+never a widened pattern. Three things hang off the channel type, all
+mirroring the PA DM:
 
 - `thread-message-create.ts` stamps `effectiveUserId = poster` (safe: one
   member), so the Designer acts as the person it is talking to.
