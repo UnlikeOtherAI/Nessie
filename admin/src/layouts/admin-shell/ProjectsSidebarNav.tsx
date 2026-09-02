@@ -10,6 +10,7 @@ import type { ProjectRecord } from '../../lib/api-client'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
+import { sidebarAriaCurrent } from './SidebarRow'
 
 type ProjectsSidebarNavProps = {
   pathname: string
@@ -132,6 +133,7 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
               return (
                 <div key={project.id} className="group relative">
                   <Link
+                    aria-current={sidebarAriaCurrent(isActive)}
                     className={[
                       'admin-sb-item sidebar-project-tile pr-10',
                       isActive ? 'active' : '',

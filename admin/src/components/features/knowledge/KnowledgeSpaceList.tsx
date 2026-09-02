@@ -1,4 +1,5 @@
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
+import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
 
 type KnowledgeSpaceListProps = {
   emptyLabel: string
@@ -31,6 +32,7 @@ export const KnowledgeSpaceList = ({
     <>
       {spaces.map((space) => (
         <button
+          aria-current={sidebarAriaCurrent(space.id === selectedSpaceId)}
           className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
           key={space.id}
           onClick={() => onSelect(space.id)}

@@ -96,7 +96,7 @@ export const UoaBillingCancellationDialog = ({
         aria-labelledby="uoa-billing-cancellation-title"
         aria-modal="true"
         className={[
-          'admin-card max-h-[min(760px,90vh)] w-full max-w-2xl',
+          'admin-card max-h-[min(760px,90dvh)] w-full max-w-2xl',
           'overflow-y-auto rounded-xl border border-[color:var(--sep)]',
           'bg-[color:var(--main)] p-6 text-[color:var(--tx)]',
         ].join(' ')}

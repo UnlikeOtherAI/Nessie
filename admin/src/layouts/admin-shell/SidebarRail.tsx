@@ -5,6 +5,7 @@ import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { RailTooltip } from './RailTooltip';
+import { sidebarAriaCurrent } from './SidebarRow';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
@@ -70,9 +71,11 @@ export const SidebarRail = ({
           // root, so switching tabs and coming back restores the exact page and
           // its URL state. The active section's own button resolves to the
           // current location, which is a harmless no-op navigation.
+          const isActive = item.isActive(pathname);
           return (
             <Link
-              className={`admin-rail-btn ${item.isActive(pathname) ? 'active' : ''}`}
+              aria-current={sidebarAriaCurrent(isActive)}
+              className={`admin-rail-btn ${isActive ? 'active' : ''}`}
               key={item.id}
               to={navigation?.sectionTarget(item.id, item.to) ?? item.to}
             >

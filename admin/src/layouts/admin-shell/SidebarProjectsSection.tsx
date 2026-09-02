@@ -4,6 +4,7 @@ import {
   channelHashClassName,
   projectSelectionClassName,
   renderUnreadCount,
+  sidebarAriaCurrent,
 } from './SidebarRow';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
@@ -191,6 +192,9 @@ export const SidebarProjectsSection = ({
               ].join(' ')}
             >
               <button
+                aria-current={sidebarAriaCurrent(
+                  projectSelectionClassName(project.id, currentProjectId, currentChannelId) === 'active',
+                )}
                 className="sidebar-project-link"
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
@@ -322,6 +326,7 @@ export const SidebarProjectsSection = ({
                   const isStarredChannel = starredChannelIds.has(channel.id);
                   return (
                     <button
+                      aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
                       key={channel.id}
                       className={[
                         'admin-sb-item sidebar-child group',

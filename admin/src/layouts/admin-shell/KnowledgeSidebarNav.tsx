@@ -8,9 +8,11 @@ import { KnowledgeSpaceList } from '../../components/features/knowledge/Knowledg
 import { StorageUsageMeter } from '../../components/features/knowledge/StorageUsageMeter'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
+import { useScrollMemory } from '../../hooks/useScrollMemory'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 import { shouldHighlightKnowledgeSidebarSelection } from './phone-navigation'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
+import { sidebarAriaCurrent } from './SidebarRow'
 
 // Same cookie-backed persistence the channels, projects and admin rails use.
 // The previous plain-label version was deliberate — collapse state was
@@ -80,6 +82,11 @@ export const KnowledgeSidebarNav = () => {
     return Object.fromEntries(projects.map((project) => [project.id, project.name]))
   }, [otherSpaces, projects])
 
+  // Shared across every route in the Knowledge section, so its position only
+  // needs to survive it swapping out for another section's sidebar and back
+  // — a constant key, not a per-route one (docs/navigation.md §4.13).
+  const treeScroll = useScrollMemory('sidebar:knowledge-tree')
+
   return (
     <aside
       className={[
@@ -88,7 +95,11 @@ export const KnowledgeSidebarNav = () => {
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto py-1"
+        onScroll={treeScroll.onScroll}
+        ref={treeScroll.ref}
+      >
         {myDocsSpace ? (
           <SidebarMenuSection
             className="border-b border-[color:var(--sep)] pb-1"
@@ -99,6 +110,9 @@ export const KnowledgeSidebarNav = () => {
             titleIcon={sectionIcon(faUser)}
           >
             <button
+              aria-current={sidebarAriaCurrent(
+                Boolean(!activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId),
+              )}
               className={[
                 'admin-sb-item',
                 !activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId ? 'active' : '',
@@ -153,6 +167,7 @@ export const KnowledgeSidebarNav = () => {
           >
             {documentsSections.map((section) => (
               <button
+                aria-current={sidebarAriaCurrent(activeProductView === section.view)}
                 className={[
                   'admin-sb-item',
                   activeProductView === section.view ? 'active' : '',

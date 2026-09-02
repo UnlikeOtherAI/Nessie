@@ -32,7 +32,7 @@ const PANEL_STYLE: Record<DialogSize, CSSProperties | undefined> = {
   md: undefined,
   lg: { maxWidth: 640, width: '100%' },
   xl: {
-    maxHeight: '88vh',
+    maxHeight: '88dvh',
     maxWidth: 'none',
     overflowY: 'auto',
     width: 'min(80vw, 1100px)',

@@ -970,13 +970,13 @@ a {
 .admin-topbar-results {
   right: 0;
   left: 0;
-  max-height: 60vh;
+  max-height: 60dvh;
   overflow-y: auto;
 }
 
 .admin-topbar-search--overlay .admin-topbar-results {
   top: calc(100% + 10px);
-  max-height: min(56vh, 520px);
+  max-height: min(56dvh, 520px);
 }
 
 .admin-topbar-menu {
@@ -2858,4 +2858,41 @@ button.reaction-pill-active:focus-visible {
 }
 .kb-prose a.kb-wikilink-unresolved:hover {
   background: var(--overlay-weak);
+}
+
+/* Windows High Contrast (docs/navigation.md §11): every colour token is
+   still respected in a forced-colors palette (browsers only replace
+   background/border/text colours with the OS-chosen system colours, on
+   elements we don't opt out with `forced-color-adjust: none`), but the four
+   places that carry state through colour ALONE — a colour-mix background, a
+   box-shadow, a border tinted from a token, an outline whose token flattens
+   into the same forced colour as everything else — get an explicit,
+   non-colour signal on top: `Highlight`/`CanvasText`, the two system colours
+   forced-colors guarantees stay distinguishable from the surrounding page. */
+@media (forced-colors: active) {
+  /* 1. Selection pills — TabBar's sliding indicator relies on a soft
+     drop-shadow ring (`box-shadow`) that forced-colors mode discards. */
+  .tabbar-indicator {
+    border: 1px solid Highlight;
+  }
+
+  /* 2. The rail's active tile — its `color-mix` background collapses to the
+     same forced background every other icon tile gets. */
+  .admin-rail-btn.active .admin-rail-btn-icon {
+    border: 2px solid Highlight;
+  }
+
+  /* 3. Focus rings — `outline-color: var(--accent)` forces to the same
+     colour as unrelated text, so state the system's own focus colour. */
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  /* 4. Card borders — a `var(--sep)` border can force to the same colour as
+     the card's own background, erasing the edge that separates panels. */
+  .admin-card,
+  .admin-input,
+  .admin-input-sm {
+    border-color: CanvasText;
+  }
 }

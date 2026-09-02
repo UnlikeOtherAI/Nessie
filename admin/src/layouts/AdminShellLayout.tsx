@@ -25,7 +25,9 @@ import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
+import { useKeyboardInset } from '../navigation/keyboard';
 import { SeededRoute, useShellRoutes } from '../navigation/SeededRoute';
+import { SHELL_MAIN_ID, SkipToContentLink } from '../navigation/SkipToContentLink';
 import {
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
@@ -103,6 +105,9 @@ const AuthenticatedAdminShellLayout = () => {
   const { focusModeEnabled } = useFocusMode();
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
+  // One listener for the whole shell — every composer reads --keyboard-inset
+  // rather than each mounting its own visualViewport watcher.
+  useKeyboardInset();
   const attention = useAttentionSummary();
   const threadActivity = useThreadActivity();
   const unreadDirectMessages = useUnreadDirectMessages();
@@ -254,11 +259,19 @@ const AuthenticatedAdminShellLayout = () => {
   // column is its own navigation stack: a detail → nested push slides inside
   // this column with the detail retained beneath, exactly as on a phone.
   const mainContent = phoneLayout ? (
-    <main className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
+    <main
+      className="min-w-0 flex-1 overflow-clip bg-[color:var(--main)]"
+      id={SHELL_MAIN_ID}
+      tabIndex={-1}
+    >
       {outlet}
     </main>
   ) : (
-    <main className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]">
+    <main
+      className="flex min-w-0 flex-1 overflow-clip bg-[color:var(--main)]"
+      id={SHELL_MAIN_ID}
+      tabIndex={-1}
+    >
       <PhoneNavigationViewport layout="split" pathname={shell.pathname} seed={seedScreen}>
         {outlet}
       </PhoneNavigationViewport>
@@ -323,6 +336,7 @@ const AuthenticatedAdminShellLayout = () => {
               showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
             >
               <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+                <SkipToContentLink />
                 <div className={frameClassName} data-navigation={navigationLayout}>
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                   {hideTopBar ? null : (

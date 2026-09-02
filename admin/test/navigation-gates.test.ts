@@ -32,7 +32,7 @@ test('stack containers clip rather than hide, so no descendant can scroll them',
   assert.doesNotMatch(viewportRule, /overflow: hidden/)
 
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
-  assert.match(shell, /<main className="min-w-0 flex-1 overflow-clip/)
+  assert.match(shell, /<main\s+className="min-w-0 flex-1 overflow-clip/)
 
   const columnBrowser = readSource(
     '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',

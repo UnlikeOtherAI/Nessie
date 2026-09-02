@@ -374,6 +374,10 @@ export const ChannelConversationComposePage = () => {
 
         <form
           className="admin-compose mt-auto flex-shrink-0"
+          // The soft-keyboard inset (docs/navigation.md §4.14) keeps this
+          // composer above an on-screen keyboard on hosts whose `dvh` does
+          // not itself shrink for it.
+          style={{ marginBottom: 'var(--keyboard-inset, 0px)' }}
           onSubmit={(event) => {
             event.preventDefault()
             void submit(mentionRef.current?.getText() ?? message)
