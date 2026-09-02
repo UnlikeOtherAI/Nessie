@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
+import { usePendingApprovalCount } from '../../facades/approvals/hooks';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 import { sidebarAriaCurrent } from './SidebarRow';
@@ -474,7 +475,11 @@ const AdminNavSection = ({
               {item.badgeCount ? (
                 <span
                   className="rounded-full bg-[color:var(--danger-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--danger-text)]"
-                  data-testid="nav-workflows-failed-count"
+                  data-testid={
+                    item.path === '/approvals'
+                      ? 'nav-approvals-pending-count'
+                      : 'nav-workflows-failed-count'
+                  }
                 >
                   {item.badgeCount}
                 </span>
@@ -510,6 +515,7 @@ export const AdminSidebarNav = ({
   // W29: the nav itself answers "did anything break?" — the count is the
   // entitlement-scoped failed-runs feed the triage column reads.
   const { data: failedWorkflowRuns = [] } = useFailedWorkflowRuns();
+  const { data: pendingApprovals } = usePendingApprovalCount();
   const groupsWithBadges = useMemo(
     () =>
       visibleGroups.map((group) => ({
@@ -517,10 +523,12 @@ export const AdminSidebarNav = ({
         items: group.items.map((item) =>
           item.path === '/agents/workflows'
             ? { ...item, badgeCount: failedWorkflowRuns.length }
+            : item.path === '/approvals'
+              ? { ...item, badgeCount: pendingApprovals?.count ?? 0 }
             : item,
         ),
       })),
-    [failedWorkflowRuns.length, visibleGroups],
+    [failedWorkflowRuns.length, pendingApprovals?.count, visibleGroups],
   );
 
   return (
