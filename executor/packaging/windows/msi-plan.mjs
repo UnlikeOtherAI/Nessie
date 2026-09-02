@@ -23,8 +23,10 @@ export const INSTALLED_FILES = [
  * Everything the Hyper-V sandbox backend resolves at session start, installed
  * under `resources\` beside the program. The executor's stored `vmHelperPath`
  * is `resources\nessie-hyperv-bridge.exe`, and the backend finds the pinned
- * scripts and mtools as its siblings — the same "find it beside me" rule the
- * Linux package's `build-initrd` uses to find `init`. `kernelPath` is
+ * scripts as its siblings — the same "find it beside me" rule the Linux
+ * package's `build-initrd` uses to find `init`. The guest's FAT32 boot disk is
+ * written in-process by the executor itself, so no filesystem tool ships here.
+ * `kernelPath` is
  * `resources\guest\bzImage` and `guestInitrdBuilderPath` is
  * `resources\guest\build-initrd.exe`.
  *
@@ -43,17 +45,6 @@ export const RESOURCE_FILES = [
   'scripts\\start.ps1',
   'scripts\\stop.ps1',
 ]
-
-/**
- * mtools builds the guest's FAT boot disk without a privilege, a loop device or
- * a mount — the same reason `mke2fs -d` builds the three data images. It is
- * GPL-3.0 and is not built from this repository, so it is staged from
- * `NESSIE_MTOOLS_DIR` when a release supplies it. A package built without it
- * still installs, pairs and serves the workspace bundle; the daemon refuses a
- * sandboxed session in words ("This computer has no mtools, so a sandboxed
- * guest cannot be given a boot disk") rather than failing somewhere nameless.
- */
-export const MTOOLS_FILES = ['mtools\\mformat.exe', 'mtools\\mmd.exe', 'mtools\\mcopy.exe']
 
 /** The two binaries built from this repository's Rust crates. */
 export const BUILT_BINARIES = ['nessie-executor-service.exe', 'nessie-executor-tray.exe']

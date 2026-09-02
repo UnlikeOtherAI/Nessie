@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
-import { HYPERV_HANDSHAKE_BOOT_ARGS, runGuestVmHandshake } from '../src/guest-vm-handshake.js'
 import {
   materializeGuestRuntimeBundle,
   removeGuestRuntimeBundleSnapshot,
@@ -35,119 +34,6 @@ test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown'
       /does not match/,
     )
     await releaseGuestWorkspaceLease(stateDir, lease)
-    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
-  } finally {
-    await rm(root, { force: true, recursive: true })
-    await rm(stateDir, { force: true, recursive: true })
-  }
-})
-
-test('the VM handshake receives only a current COW lease and passes its token through stdin', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-source-'))
-  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-state-'))
-  const runId = '00000000-0000-4000-8000-000000000111'
-  const builderPath = join(stateDir, 'builder')
-  const helperPath = join(stateDir, 'helper')
-  const kernelPath = join(stateDir, 'kernel')
-  try {
-    await writeFile(join(root, 'base.txt'), 'host source')
-    await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
-    ])
-    await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
-    const lease = await createGuestWorkspaceLease(stateDir, root, {
-      bindingFence: '1',
-      commandId: '00000000-0000-4000-8000-000000000112',
-      runId,
-    })
-    const calls: Array<{ argv: string[]; input: string; path: string }> = []
-    await runGuestVmHandshake({
-      guestInitrdBuilderPath: builderPath,
-      kernelPath,
-      lease,
-      stateDir,
-      vmHelperPath: helperPath,
-    }, {
-      // The macOS backend, named explicitly: this test exercises the shared
-      // handshake pipeline, not the host's own sandbox detection.
-      host: { platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 }, sandboxBackend: 'virtualization_framework', supervisor: 'service' },
-      runProcess: async (call) => { calls.push(call) },
-    })
-    assert.equal(calls.length, 2)
-    assert.equal(calls[0].path, await realpath(builderPath))
-    assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
-    assert.equal(calls[0].argv.includes('--boot-args'), false)
-    assert.equal(calls[0].argv.includes(calls[0].input), false)
-    assert.equal(calls[1].path, await realpath(helperPath))
-    assert.equal(calls[1].input, calls[0].input)
-    assert.equal(calls[1].argv.includes(lease.workspace), true)
-    await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
-    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
-  } finally {
-    await rm(root, { force: true, recursive: true })
-    await rm(stateDir, { force: true, recursive: true })
-  }
-})
-
-test('the VM handshake on a Hyper-V host selects that backend and puts its boot line in the initrd', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-source-'))
-  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-state-'))
-  const runId = '00000000-0000-4000-8000-000000000113'
-  const builderPath = join(stateDir, 'builder')
-  const helperPath = join(stateDir, 'helper')
-  const kernelPath = join(stateDir, 'kernel')
-  try {
-    await writeFile(join(root, 'base.txt'), 'host source')
-    await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
-    ])
-    await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
-    const lease = await createGuestWorkspaceLease(stateDir, root, {
-      bindingFence: '1',
-      commandId: '00000000-0000-4000-8000-000000000114',
-      runId,
-    })
-    const input = {
-      guestInitrdBuilderPath: builderPath,
-      kernelPath,
-      lease,
-      stateDir,
-      vmHelperPath: helperPath,
-    }
-    const platform = { architecture: 'x64' as const, os: 'windows' as const, osMajorVersion: 19_045 }
-    // A host with no backend is refused in the session's own words, before any
-    // child process runs and before the lease is touched.
-    await assert.rejects(
-      runGuestVmHandshake(input, {
-        host: { platform, sandboxBackend: 'none', supervisor: 'service' },
-        runProcess: async () => { throw new Error('no process may run') },
-      }),
-      /no sandbox backend/,
-    )
-    const calls: Array<{ argv: string[]; input: string; path: string }> = []
-    await runGuestVmHandshake(input, {
-      host: { platform, sandboxBackend: 'hyperv', supervisor: 'service' },
-      runProcess: async (call) => { calls.push(call) },
-    })
-    assert.equal(calls.length, 2)
-    assert.equal(calls[0].path, await realpath(builderPath))
-    // Hyper-V has no per-boot command line, so the handshake's own arguments
-    // travel in the initrd: the draft as a block share, no runtime, no gateway.
-    const bootArgsIndex = calls[0].argv.indexOf('--boot-args')
-    assert.equal(bootArgsIndex >= 0, true)
-    assert.equal(calls[0].argv[bootArgsIndex + 1], HYPERV_HANDSHAKE_BOOT_ARGS)
-    assert.equal(HYPERV_HANDSHAKE_BOOT_ARGS.includes('nessie.runtime'), false)
-    assert.equal(HYPERV_HANDSHAKE_BOOT_ARGS.includes('nessie.egress'), false)
-    assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
-    assert.equal(calls[0].argv.includes(calls[0].input), false)
-    assert.equal(calls[1].path, await realpath(helperPath))
-    assert.equal(calls[1].input, calls[0].input)
-    assert.equal(calls[1].argv.includes(lease.workspace), true)
-    await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
   } finally {
     await rm(root, { force: true, recursive: true })

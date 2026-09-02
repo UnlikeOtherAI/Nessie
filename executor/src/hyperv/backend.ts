@@ -1,7 +1,6 @@
 import { constants } from 'node:fs'
 import { open, mkdir, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { platform } from 'node:process'
 import type { Socket } from 'node:net'
 
 import {
@@ -20,7 +19,7 @@ import {
 import { GuestVmControlClient } from '../guest-vm-control.js'
 import { buildGuestBlockImages, type GuestImageDependencies } from '../guest-images.js'
 import { WorkspacePathError } from '../workspace-paths.js'
-import { buildGuestBootImage, type BootDiskDependencies, type MtoolsPaths } from './boot-disk.js'
+import { buildGuestBootImage } from './boot-disk.js'
 import {
   assertHyperVHostReady,
   hyperVLayout,
@@ -80,12 +79,6 @@ export const hyperVSessionBootArgs = (input: {
  */
 export const HYPERV_GUEST_IMAGE_IDENTITY = { gid: 1_000, uid: 1_000 }
 
-const mtoolsPaths = (resourcesDirectory: string): MtoolsPaths => {
-  const suffix = platform === 'win32' ? '.exe' : ''
-  const tool = (name: string): string => join(resourcesDirectory, 'mtools', `${name}${suffix}`)
-  return { mcopy: tool('mcopy'), mformat: tool('mformat'), mmd: tool('mmd') }
-}
-
 type HyperVSessionResources = {
   bridges?: HyperVBridge
   console?: { close: () => Promise<void> }
@@ -97,7 +90,6 @@ type HyperVSessionResources = {
 }
 
 export type HyperVBackendDependencies = {
-  bootDisk?: BootDiskDependencies
   /** Injected by the tests in place of the installed package manifest. */
   digests?: PinnedScriptDigests
   hostProbe?: HyperVHostProbe
@@ -170,9 +162,10 @@ const delay = (ms: number): Promise<void> => new Promise((resolvePromise) => { s
  * same forced-egress gateway it has on every other host.
  *
  * On Windows the executor's stored `vmHelperPath` is
- * `nessie-hyperv-bridge.exe`; the scripts, the kernel, the initrd builder and
- * mtools are its siblings under the installed resource root, the same way the
- * Linux package's `build-initrd` finds `init` beside itself.
+ * `nessie-hyperv-bridge.exe`; the scripts, the kernel and the initrd builder are
+ * its siblings under the installed resource root, the same way the Linux
+ * package's `build-initrd` finds `init` beside itself. The boot disk itself is
+ * written in-process by `fat32.ts`, so the package ships no filesystem tool.
  */
 export const createHyperVBackend = (
   dependencies: HyperVBackendDependencies = {},
@@ -204,8 +197,7 @@ export const createHyperVBackend = (
         imagePath: layout.bootImagePath,
         initrdPath: input.initrdPath,
         kernelPath: input.kernelPath,
-        tools: mtoolsPaths(resourcesDirectory),
-      }, dependencies.bootDisk ?? {})
+      })
       const disks = await wrapSessionDisks(layout, images)
       resources.console = await startConsoleSink(listen, layout.pipePrefix, input.consolePath)
       // Both guest channels listen before the machine exists, let alone runs.

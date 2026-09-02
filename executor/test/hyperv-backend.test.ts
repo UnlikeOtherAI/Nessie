@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,8 +9,7 @@ import test from 'node:test'
 import type { GuestChannelListener } from '../src/firecracker/index.js'
 import { newGuestVmSessionId, type GuestVmBackendStartInput } from '../src/guest-vm-backend.js'
 import {
-  bootDiskPlan,
-  bootDiskSizeBytes,
+  bootDiskTree,
   createHyperVBackend,
   guestVmDiskLocations,
   hyperVSessionBootArgs,
@@ -30,24 +29,18 @@ type ScriptCall = { argv: string[]; path: string }
 
 /**
  * Stands a resource root up the way the installer does: the four pinned
- * scripts, the mtools binaries beside them, and a manifest recording each
- * script's real digest. Nothing is faked about the pinning — the store hashes
- * these exact bytes.
+ * scripts, the bridge beside them, and a manifest recording each script's real
+ * digest. Nothing is faked about the pinning — the store hashes these exact
+ * bytes.
  */
 const stageResources = async (): Promise<{ digests: Record<string, string>; root: string }> => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-hyperv-'))
   await mkdir(join(root, 'scripts'), { mode: 0o700, recursive: true })
-  await mkdir(join(root, 'mtools'), { mode: 0o700, recursive: true })
   const digests: Record<string, string> = {}
   for (const name of HYPERV_SCRIPTS) {
     const body = `# ${name}\n`
     await writeFile(join(root, 'scripts', name), body)
     digests[`scripts/${name}`] = createHash('sha256').update(body).digest('hex')
-  }
-  for (const tool of ['mformat', 'mmd', 'mcopy']) {
-    const path = join(root, 'mtools', tool)
-    await writeFile(path, '#!/bin/sh\n')
-    await chmod(path, 0o700)
   }
   await writeFile(join(root, 'nessie-hyperv-bridge'), '')
   return { digests, root }
@@ -146,14 +139,8 @@ const startBackend = async (staged: Awaited<ReturnType<typeof stageBackend>>): P
   Awaited<ReturnType<ReturnType<typeof createHyperVBackend>['start']>>
 > => {
   const backend = createHyperVBackend({
-    bootDisk: {
-      spawnProcess: async ({ argv }) => {
-        // mformat's own `-C` creates the image; the stand-in creates a
-        // sector-aligned file so the VHD footer has something to wrap.
-        const imagePath = argv[argv.indexOf('-i') + 1]!
-        if (argv.includes('-C')) await writeFile(imagePath, Buffer.alloc(4 * SECTOR))
-      },
-    },
+    // The boot disk is not stubbed: `buildGuestBootImage` writes a real FAT32
+    // volume here, so the VHD wrapper and `Convert-VHD` see what a session does.
     digests: staged.resources.digests,
     hostProbe: { exists: async () => true },
     images: {
@@ -243,25 +230,19 @@ test('the block share images and the boot disk are named and ordered once', () =
   )
 })
 
-test('the boot disk is one FAT32 image carrying the kernel and this session initrd', () => {
-  const plan = bootDiskPlan({
-    imagePath: '/s/boot.img',
-    initrdPath: '/s/guest-initrd',
-    kernelPath: '/r/bzImage',
-    sizeBytes: bootDiskSizeBytes(20 * 1024 * 1024),
-    tools: { mcopy: '/r/mcopy', mformat: '/r/mformat', mmd: '/r/mmd' },
-  })
-  assert.deepEqual(plan.map((step) => step.path), ['/r/mformat', '/r/mmd', '/r/mmd', '/r/mcopy', '/r/mcopy'])
-  // FAT32 is forced rather than left to mtools' size heuristic: the disk is
-  // attached as a fixed drive, and a fixed disk's EFI System Partition is FAT32.
-  assert.ok(plan[0]!.argv.includes('-F'))
-  assert.ok(plan[0]!.argv.includes('-C'))
-  assert.equal(plan[0]!.argv[plan[0]!.argv.indexOf('-T') + 1], String(64 * 1024 * 1024 / SECTOR))
-  // The removable-media default path a UEFI firmware boots with no NVRAM entry.
-  assert.deepEqual(plan[3]!.argv.slice(-2), ['/r/bzImage', BOOT_DISK_LOADER_PATH])
-  assert.deepEqual(plan[4]!.argv.slice(-2), ['/s/guest-initrd', BOOT_DISK_INITRD_PATH])
-  // A boot payload larger than the disk is refused rather than truncated.
-  assert.throws(() => bootDiskSizeBytes(512 * 1024 * 1024), /exceed the boot disk limit/)
+test('the boot disk names the two paths a generation 2 firmware reads', () => {
+  const tree = bootDiskTree({ initrd: Buffer.alloc(1), kernel: Buffer.alloc(2) })
+  // The removable-media default path a UEFI firmware boots with no NVRAM entry,
+  // and the initrd the compiled-in command line names beside it.
+  assert.equal(BOOT_DISK_LOADER_PATH, 'EFI/BOOT/BOOTX64.EFI')
+  assert.equal(BOOT_DISK_INITRD_PATH, 'EFI/BOOT/initrd.img')
+  const efi = tree[0]!
+  assert.equal(efi.kind === 'directory' && efi.name, 'EFI')
+  const boot = efi.kind === 'directory' ? efi.children[0]! : efi
+  assert.deepEqual(
+    boot.kind === 'directory' ? boot.children.map((child) => child.name) : [],
+    ['BOOTX64.EFI', 'initrd.img'],
+  )
 })
 
 test('the built-in command line matches the kernel the package builds', async () => {

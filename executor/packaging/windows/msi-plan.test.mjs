@@ -15,7 +15,6 @@ import {
   GUEST_CONTROL_PORT,
   GUEST_EGRESS_PORT,
   HYPERV_SOCKET_PORTS,
-  MTOOLS_FILES,
   RESOURCE_FILES,
   HYPERV_ADMINISTRATORS_SID,
   HYPERV_SOCKET_ELEMENT_NAME,
@@ -63,19 +62,23 @@ test('every guest port the host opens a socket to is registered', () => {
   }
 })
 
-test('every sandbox resource has a component, and mtools is optional', () => {
+test('every sandbox resource has a component, and nothing else is installed', () => {
   for (const name of RESOURCE_FILES) {
     assert.ok(
       authoring.includes(`Source="$(var.StagingDir)\\resources\\${name}"`),
       `${name} must be installed by the authoring`,
     )
   }
-  // mtools is GPL-3.0 and is not built here, so a package without it still
-  // installs; the daemon refuses a sandboxed session in words instead.
-  const optional = /<\?ifdef MtoolsDir \?>([\s\S]*?)<\?endif\?>/.exec(authoring)?.[1] ?? ''
-  for (const name of MTOOLS_FILES) {
-    assert.ok(optional.includes(`resources\\${name}`), `${name} must be conditional`)
-  }
+  // The package ships no conditional component group: the guest's FAT32 boot
+  // disk is written by the executor itself, so there is no external filesystem
+  // tool a release might or might not have staged.
+  assert.equal(/<\?ifdef/.test(authoring), false, 'the authoring must be unconditional')
+  // `manifest.json` is installed beside them and excluded from its own listing.
+  const sources = [...authoring.matchAll(/Source="\$\(var\.StagingDir\)\\resources\\([^"]+)"/g)]
+  assert.deepEqual(
+    sources.map((match) => match[1]).sort(),
+    [...RESOURCE_FILES, 'manifest.json'].sort(),
+  )
 })
 
 test('the pinned scripts refuse a profile, a prompt, and a partial failure', async () => {

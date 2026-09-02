@@ -37,12 +37,13 @@
       <Directory Id="INSTALLFOLDER" Name="Nessie Executor">
         <!-- Everything the Hyper-V sandbox backend resolves at session start.
              The executor's stored vmHelperPath is the bridge below, and the
-             backend finds the pinned scripts and mtools as its siblings; its
-             kernelPath and guestInitrdBuilderPath are the two under guest\. -->
+             backend finds the pinned scripts as its siblings; its kernelPath
+             and guestInitrdBuilderPath are the two under guest\. The guest's
+             FAT32 boot disk is written in-process, so no filesystem tool
+             ships. -->
         <Directory Id="RESOURCESFOLDER" Name="resources">
           <Directory Id="GUESTFOLDER" Name="guest" />
           <Directory Id="SCRIPTSFOLDER" Name="scripts" />
-          <Directory Id="MTOOLSFOLDER" Name="mtools" />
         </Directory>
       </Directory>
     </StandardDirectory>
@@ -114,22 +115,6 @@
       </Component>
     </ComponentGroup>
 
-    <!-- mtools is GPL-3.0 and is not built here, so a release stages it from
-         NESSIE_MTOOLS_DIR. A package built without it installs and pairs; the
-         daemon then refuses a sandboxed session in words. -->
-    <?ifdef MtoolsDir ?>
-    <ComponentGroup Id="MtoolsResources" Directory="MTOOLSFOLDER">
-      <Component>
-        <File Id="MtoolsFormat" Source="$(var.StagingDir)\resources\mtools\mformat.exe" KeyPath="yes" />
-      </Component>
-      <Component>
-        <File Id="MtoolsMkdir" Source="$(var.StagingDir)\resources\mtools\mmd.exe" KeyPath="yes" />
-      </Component>
-      <Component>
-        <File Id="MtoolsCopy" Source="$(var.StagingDir)\resources\mtools\mcopy.exe" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
-    <?endif?>
 
     <ComponentGroup Id="ExecutorService" Directory="INSTALLFOLDER">
       <Component>
@@ -243,9 +228,6 @@
       <ComponentGroupRef Id="ExecutorService" />
       <ComponentGroupRef Id="MachineConfiguration" />
       <ComponentGroupRef Id="SandboxResources" />
-      <?ifdef MtoolsDir ?>
-      <ComponentGroupRef Id="MtoolsResources" />
-      <?endif?>
     </Feature>
   </Package>
 </Wix>

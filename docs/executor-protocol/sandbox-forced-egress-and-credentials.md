@@ -204,23 +204,22 @@ argument. A second lease or sandbox stop fails while it exists; release requires
 all four exact values. This makes VM teardown/recovery an explicit state change
 instead of allowing a new command to erase a live guest's draft.
 
-`runGuestVmHandshake` is the companion-only bridge between that lease and the
-signed helper. It re-reads the durable lease immediately before each child
-process, verifies owner-private builder/kernel/helper artifacts, creates a
-fresh private VM directory, and sends the random boot token only to each
-child's standard input. Its helper argv contains the lease's COW workspace and
-no other host root. It discards the token-bearing initrd/console directory and
-releases the lease in `finally`; a child timeout kills the helper first. This
-is still a handshake probe, not a model tool or an `ExecutorSession` launch.
+**There is one guest boot path, and it is the session.** A separate
+pairing-time handshake runner used to boot a second, cut-down guest from the
+same lease; nothing in the product ever called it, and two ways to start a
+guest is two places for the lease, the token and the artifact checks to
+disagree. It was deleted. Every backend now boots through `backend.start()`,
+which re-reads the durable lease immediately before each child process,
+verifies the owner-private builder/kernel/helper artifacts, creates a fresh
+private VM directory, and sends the random boot token only to a child's
+standard input — so the properties that paragraph described are the session's
+own, checked on every real launch rather than only in a probe.
 
-The signed helper's `handshake` command is the release-candidate integration
-check for that exact pair. It reads the same 43-byte token from standard input,
-starts one VM with the control socket enabled, requires the matching guest hello
-within its bounded timeout, invalidates the socket, and stops the VM. It prints
-only a verified/failure status, never the token, guest output, or a local path.
-It creates no `ExecutorSession`, binding, descriptor, or executor operation;
-`EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
-keep browser and coding profiles unavailable.
+The signed macOS helper keeps a `handshake` subcommand for manual
+release-candidate checking of a kernel/initrd pair. It creates no
+`ExecutorSession`, binding, descriptor, or executor operation, and the executor
+does not invoke it; `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local
+packaging/guest failure it can report on its own.
 
 ### Linux backend — Firecracker
 
@@ -427,9 +426,9 @@ snapshot, the forced-egress gateway, the control frames — and
 
 **Binaries.** The executor's stored `vmHelperPath` is
 `resources\nessie-hyperv-bridge.exe`; the backend finds everything else beside
-it — `resources\scripts\*.ps1`, `resources\guest\{bzImage,build-initrd.exe,init}`
-and `resources\mtools\*` — the same "find it beside me" rule the Linux
-package's `build-initrd` uses to find `init`. `kernelPath` is
+it — `resources\scripts\*.ps1` and
+`resources\guest\{bzImage,build-initrd.exe,init}` — the same "find it beside
+me" rule the Linux package's `build-initrd` uses to find `init`. `kernelPath` is
 `resources\guest\bzImage` and `guestInitrdBuilderPath` is
 `resources\guest\build-initrd.exe`. Every one of them is installed root-owned
 under `C:\Program Files\Nessie Executor\` by the MSI and has its SHA-256
@@ -489,10 +488,15 @@ UEFI, and the firmware boots `\EFI\BOOT\BOOTX64.EFI` from the first bootable
 device. That file is the guest kernel itself, built with `CONFIG_EFI_STUB` — "a
 kernel zImage/bzImage can masquerade as a PE/COFF image, thereby convincing EFI
 firmware loaders to load it as an EFI executable" — with this session's initrd
-beside it. The boot disk is a FAT32 image built per session with **mtools**
-(`mformat -C -F`, `mmd`, `mcopy`), which reads and writes a FAT image as an
-ordinary file: no loop device, no mount, no privileged helper, the same posture
-`mke2fs -d` gives the three data images. The guest never reads that disk —
+beside it. The boot disk is a FAT32 image the executor writes itself
+(`executor/src/hyperv/fat32.ts`, transcribed from Microsoft's FAT
+Specification): a whole-disk volume with no partition table, one BPB plus its
+FSInfo and the backup copy the specification requires at sector 6, two FATs,
+and 8.3 names carrying VFAT long entries where a name is not already its own
+short form. It writes an ordinary file — no loop device, no mount, no
+privileged helper, no third-party binary — the same posture `mke2fs -d` gives
+the three data images, and its output is deterministic, so two builds of one
+kernel and initrd are the same bytes. The guest never reads that disk —
 `CONFIG_VFAT_FS` is deliberately unset — because the firmware, not the kernel,
 is what loads from it.
 

@@ -239,17 +239,11 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
-          MTOOLS_DIR: ${{ secrets.WINDOWS_MTOOLS_DIR }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
           }
           $env:NESSIE_GUEST_KERNEL = "$PWD\guest-kernel\bzImage"
-          # mtools builds the guest's FAT boot disk without a privilege. It is
-          # GPL-3.0 and is not built from this repository, so a release stages
-          # it from a secret-supplied directory; without it the package still
-          # installs and the daemon refuses a sandboxed session in words.
-          if ($env:MTOOLS_DIR) { $env:NESSIE_MTOOLS_DIR = $env:MTOOLS_DIR }
           node executor/packaging/windows/build-msi.mjs
 
       - name: Sign the executor package
