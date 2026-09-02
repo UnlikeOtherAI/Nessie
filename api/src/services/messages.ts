@@ -9,6 +9,7 @@ import {
 import { resolveMessageViewer } from './disclosure-viewer.js'
 import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
+  isAgentCardResponseMessage,
   parseAgentId,
   parseChannelId,
   parseThreadId,
@@ -566,6 +567,7 @@ export type UpdateMessageResult =
   | { kind: 'updated'; message: MessageWithReactions }
   | { kind: 'not_found' }
   | { kind: 'forbidden' }
+  | { kind: 'immutable' }
 
 export const updateMessage = async (
   prisma: PrismaClient,
@@ -573,7 +575,7 @@ export const updateMessage = async (
 ): Promise<UpdateMessageResult> => {
   const existing = await prisma.message.findFirst({
     where: { id: input.messageId, threadId: input.threadId },
-    select: { id: true, userId: true, deletedAt: true },
+    select: { id: true, userId: true, deletedAt: true, metadata: true },
   })
   if (!existing || existing.deletedAt) {
     return { kind: 'not_found' }
@@ -581,6 +583,13 @@ export const updateMessage = async (
   // Author-only edit.
   if (existing.userId !== input.userId) {
     return { kind: 'forbidden' }
+  }
+  // A card press is a record, not a remark: the AgentCard row is the authority
+  // and this message is its rendering in the chat and in the agent's
+  // transcript. Editing it would put a "Deny" beside a card that says "Allow".
+  // Deleting stays allowed — a tombstone changes nothing on the card.
+  if (isAgentCardResponseMessage(existing.metadata)) {
+    return { kind: 'immutable' }
   }
 
   const message = await prisma.message.update({

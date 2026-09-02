@@ -58,8 +58,21 @@ export type CertificateFetch = (url: string) => Promise<{ ok: boolean; text: () 
 
 const CERT_HOST = /^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$/
 const MAX_CERT_BYTES = 32 * 1024
-/** SNS replays for up to an hour; anything older is a replayed capture. */
-const MAX_TIMESTAMP_SKEW_MS = 60 * 60 * 1000
+/**
+ * The cache is keyed by a URL from the message, so it is bounded: Amazon
+ * rotates through a handful of certificates, and anything beyond that is
+ * somebody feeding us distinct paths. The `TopicArn` check already rejects a
+ * stranger before we fetch at all — this is the second wall, not the first.
+ */
+const MAX_CACHED_CERTIFICATES = 8
+/**
+ * SNS retries for up to an hour, so a delivery genuinely can be that old.
+ * The future side is tighter: a real notification is never ahead of us by more
+ * than clock drift, and a wide future window would let one captured delivery be
+ * replayed for an hour in each direction.
+ */
+const MAX_TIMESTAMP_AGE_MS = 60 * 60 * 1000
+const MAX_TIMESTAMP_FUTURE_MS = 5 * 60 * 1000
 
 const SIGNABLE_FIELDS: Record<SnsMessageType, string[]> = {
   // Order is part of the spec, not a preference.
@@ -147,7 +160,8 @@ export const verifySnsMessage = async (input: {
 
   const timestamp = Date.parse(envelope.Timestamp)
   const now = (input.now ?? new Date()).getTime()
-  if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > MAX_TIMESTAMP_SKEW_MS) {
+  const age = now - timestamp
+  if (!Number.isFinite(timestamp) || age > MAX_TIMESTAMP_AGE_MS || -age > MAX_TIMESTAMP_FUTURE_MS) {
     return { ok: false, reason: 'stale_timestamp' }
   }
 
@@ -164,7 +178,12 @@ export const verifySnsMessage = async (input: {
       const body = await response.text()
       if (body.length > MAX_CERT_BYTES) return { ok: false, reason: 'certificate_fetch_failed' }
       pem = body
-      input.certificateCache?.set(certUrl as string, body)
+      if (input.certificateCache) {
+        if (input.certificateCache.size >= MAX_CACHED_CERTIFICATES) {
+          input.certificateCache.clear()
+        }
+        input.certificateCache.set(certUrl as string, body)
+      }
     } catch {
       return { ok: false, reason: 'certificate_fetch_failed' }
     }

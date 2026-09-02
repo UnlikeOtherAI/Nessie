@@ -5,6 +5,7 @@ const UUID = { type: 'string', format: 'uuid' }
 
 export const EXECUTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_list',
+  category: 'executors',
   summary: 'List paired executors available to the requesting user.',
   label: 'Executor List',
   description:
@@ -17,6 +18,7 @@ export const EXECUTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const EXECUTOR_INSPECT_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_inspect',
+  category: 'executors',
   summary: 'Inspect a reachable executor’s safe capabilities and scope.',
   label: 'Executor Inspect',
   description:
@@ -33,6 +35,7 @@ export const EXECUTOR_INSPECT_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const EXECUTOR_PAIR_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_pair',
+  category: 'executors',
   summary: 'Open the setup surface for pairing an executor.',
   label: 'Pair Executor',
   description:
@@ -50,6 +53,7 @@ const lifecycleTool = (
   summary: string,
 ): BuiltinToolDefinition => ({
   id,
+  category: 'executors',
   summary,
   label,
   description:
@@ -85,6 +89,7 @@ export const EXECUTOR_REVOKE_TOOL_DEFINITION = lifecycleTool(
 
 export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_descriptor_review_prepare',
+  category: 'executors',
   summary: 'Prepare a local executor-policy revision change for confirmation.',
   label: 'Prepare Executor Local Policy Review',
   description:
@@ -105,6 +110,7 @@ export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefi
 
 export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_agent_access_prepare',
+  category: 'executors',
   summary: 'Prepare an executor operation allow or deny for confirmation.',
   label: 'Prepare Executor Agent Access',
   description:
@@ -129,6 +135,7 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
 
 export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_private_assignment_prepare',
+  category: 'executors',
   summary: 'Prepare a private executor assignment change for confirmation.',
   label: 'Prepare Private Executor Assignment',
   description:
@@ -151,6 +158,7 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
 
 export const EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_workspace_promotion_prepare',
+  category: 'executors',
   summary: 'Prepare reviewed executor workspace promotion for confirmation.',
   label: 'Prepare Reviewed Workspace Promotion',
   description:

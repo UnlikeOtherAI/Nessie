@@ -3,6 +3,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const DEMONSTRATION_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'demonstration_start',
+    category: 'workflows',
     summary: 'Start recording this agent\'s structural actions in the current conversation.',
     label: 'Start Demonstration Recording',
     description:
@@ -13,6 +14,7 @@ export const DEMONSTRATION_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'demonstration_stop',
+    category: 'workflows',
     summary: 'Stop the current demonstration recording and keep its draft trace for review.',
     label: 'Stop Demonstration Recording',
     description:

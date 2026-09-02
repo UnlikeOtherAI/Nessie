@@ -5,6 +5,7 @@ import {
   AgentCardSpecSchema,
   CardPostToolInputSchema,
   AGENT_CARD_MAX_EXPIRY_SECONDS,
+  isAgentCardResponseMessage,
 } from '../agent-card.js'
 
 const baseSpec = {
@@ -142,4 +143,32 @@ test('respondents accept the three shapes and nothing else', () => {
     CardPostToolInputSchema.safeParse({ card: baseSpec, respondents: 'everyone' }).success,
     false,
   )
+})
+
+test('a card-press message is recognised structurally, and nothing else is', () => {
+  const response = {
+    agentCardResponse: {
+      actionKey: 'allow',
+      cardId: '11111111-1111-4111-8111-111111111111',
+      schemaVersion: 1,
+    },
+  }
+  assert.equal(isAgentCardResponseMessage(response), true)
+  // A later key beside it must not make the press unrecognisable — the strict
+  // whole-object schema would reject this, the predicate must not.
+  assert.equal(isAgentCardResponseMessage({ ...response, mentions: ['x'] }), true)
+
+  // The card message itself carries a different key and stays editable.
+  assert.equal(
+    isAgentCardResponseMessage({
+      agentCard: { cardId: '11111111-1111-4111-8111-111111111111', schemaVersion: 1 },
+    }),
+    false,
+  )
+  for (const metadata of [undefined, null, {}, { agentCardResponse: null }]) {
+    assert.equal(isAgentCardResponseMessage(metadata), false)
+  }
+  // Forged shapes are not presses: the key must carry a real card pointer.
+  assert.equal(isAgentCardResponseMessage({ agentCardResponse: { cardId: 'nope' } }), false)
+  assert.equal(isAgentCardResponseMessage({ agentCardResponse: true }), false)
 })

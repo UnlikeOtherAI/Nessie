@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { isAgentVisibleToUser } from '@nessie/workspace-admin'
 
 type AttachmentAccessRow = {
   id: string
@@ -64,12 +65,20 @@ export const canAccessMessageAttachment = async (
 }
 
 /**
- * A hosted-mailbox email attachment is readable by whoever can read the
- * mailbox, which is whoever can reach its backing channel — the same
- * public-or-membership predicate a message attachment uses. Deliberately not
- * the KB "deny on the generic endpoint" posture: an email attachment has no
- * second, narrower route of its own, and the mailbox channel already carries
- * the entitlement.
+ * A hosted-mailbox email attachment is readable by exactly whoever can read the
+ * mailbox — the SAME question `readableMailboxForAgent` asks, deliberately.
+ *
+ * The obvious shortcut is the backing channel's public-or-membership predicate,
+ * the way a message attachment works. That is a *different* question, and the
+ * two answers can disagree: a mailbox on an agent whose visibility narrows
+ * (a private agent, or one whose steward is deactivated) stops being readable
+ * through every conversation route while channel membership stays put, leaving
+ * the blobs reachable by bare id after the mail around them went dark. Asking
+ * agent visibility here keeps the conversation surface and the byte surface
+ * closing together.
+ *
+ * `retiredAt` is part of it for the same reason: retiring a mailbox 404s every
+ * read route, and its attachments must go with them.
  */
 export const canAccessEmailAttachment = async (
   prisma: PrismaClient,
@@ -82,17 +91,18 @@ export const canAccessEmailAttachment = async (
   const email = await prisma.emailMessage.findFirst({
     where: {
       id: input.emailMessageId,
-      mailbox: {
-        channel: {
-          OR: [{ visibility: 'public' }, { members: { some: { userId: input.userId } } }],
-          organizationId: input.organizationId,
-        },
-      },
+      mailbox: { retiredAt: null },
       organizationId: input.organizationId,
     },
-    select: { id: true },
+    select: { mailbox: { select: { agentId: true } } },
   })
-  return Boolean(email)
+  if (!email?.mailbox) return false
+  return isAgentVisibleToUser(
+    prisma,
+    input.userId,
+    input.organizationId,
+    email.mailbox.agentId,
+  )
 }
 
 export const canAccessAttachment = async (

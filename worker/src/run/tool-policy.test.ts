@@ -16,6 +16,7 @@ import { authorizeToolCall, resolveAgentTools } from './tool-policy.js'
 
 const dwTool: BuiltinToolDefinition = {
   id: 'deep_water_run_update',
+  category: 'web',
   summary: 'Record a Deep Water run update.',
   label: 'Deep Water Run Update',
   description: 'x',
@@ -26,6 +27,7 @@ const dwTool: BuiltinToolDefinition = {
 
 const plainTool: BuiltinToolDefinition = {
   id: 'web_search',
+  category: 'web',
   summary: 'Search the web.',
   label: 'Web Search',
   description: 'x',

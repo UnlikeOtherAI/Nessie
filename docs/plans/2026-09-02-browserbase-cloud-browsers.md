@@ -1,6 +1,7 @@
 # Browserbase cloud browsers for agents
 
-**Date:** 2026-09-02 (rev 2) · **Status:** proposal (not yet built)
+**Date:** 2026-09-02 (rev 3) · **Status:** phases 1 and 2 built; phase 3 open.
+As-built deltas in §5a (phase 1) and §5b (phase 2).
 
 Each agent gets **its own browser** that survives the run: a cloud Chromium
 "machine" from [Browserbase](https://www.browserbase.com) the agent can open,
@@ -716,7 +717,7 @@ CHECK, the composite tenancy FK) were each proven to refuse against live
 Postgres, and five DB-backed tests cover the lifecycle claims; neutralising
 the provider-stop call fails exactly the two tests that assert it.
 
-**Phase 2 — agent browsers + login handoff.**
+**Phase 2 — agent browsers + login handoff. — BUILT 2026-09-02**, deltas in §5b.
 `AgentBrowser` + `AgentBrowserLogin`, context create/attach
 (`persist: true`), single-session claim per agent browser + the connection
 rules (workspace agents on org connection only; private agents may use their
@@ -735,6 +736,51 @@ owners) and **`browser_download`** through `FileService` (§6.8).
 tomorrow's run reuses that login without asking, a concurrent run of the
 same agent gets a clean "browser busy" instead of a corrupted session — and
 Sign out & reset provably signs the agent out.
+
+### 5b. What phase 2 actually shipped, and where it differs
+
+Built 2026-09-02. Deliberate departures from the spec above, recorded rather
+than silently rewritten:
+
+- **The cross-origin write gate refuses rather than asks.** §6.1 specified a
+  one-tap approval; the shipped gate returns a refusal naming the origin and
+  telling the model to ask the person to take control. Stricter, and it
+  needed no approval plumbing — but it *will* block a legitimate
+  cross-origin hop (an OAuth redirect mid-task) that an approval would have
+  let through. Converting it to an approval is a contained follow-up: the
+  verdict is already computed in one place (`origin-gate.ts`).
+- **The gate's trigger is CDP cookie domains**, read once at open, exactly as
+  §6.1 required — never `serviceHint`, which is display text a person typed.
+  Its stated limits live in the module: page scripts act below the tool
+  layer, and material carried across runs in the model's own memory is the
+  generic model-knows-a-secret problem, shared with `http_fetch`.
+- **"Authenticated" is decided at open, not per read.** The session row's
+  `authenticated` flag is set when the durable browser already carries login
+  rows, and every later verb re-registers the `agent:<id>` basis from it.
+  The plan also wanted a control claim to flip it; a claim on a session that
+  was not already authenticated does not currently do so, which is a real
+  (small) gap: somebody could sign in during an ad-hoc control claim on an
+  unauthenticated browser and the run would not register a basis. Closing it
+  means writing a login row (or setting the flag) on hand-back.
+- **Sign-out is all-or-nothing**, as §6a said it would be: reset clears every
+  signer's login together, and the copy says so. Per-service cookie deletion
+  stays phase 3.
+- **The publish-transition and channel-bind guards are not built.** §4.2 puts
+  an obligation on any transition that widens an agent's audience; private →
+  workspace publishing still does not exist, and the channel-bind guard
+  (`BROWSER_LOGINS_PRESENT`) is not wired. A workspace agent bound into a
+  wider channel therefore widens its browser's audience with no prompt —
+  the highest-value thing left in this area.
+- **The browser panel lives on the agent's Tools tab**, not a new tab: a
+  browser is a tool, and an eighth tab is the drift Rule zero names.
+- **`browser_download` runs our own fixed script in the page** (a `fetch`
+  with the session's credentials), which the closed verb grammar otherwise
+  excludes. The distinction is that the script is ours and the model
+  supplies only a node id; bytes land through the one `FileService`.
+
+Not verified against a live Browserbase account: no key was available, so
+the durable-context path (create, attach with `persist`, delete) is covered
+by unit and Postgres tests against a faked client, not an end-to-end run.
 
 **Phase 3 — unattended logins + polish.**
 Per-login per-trigger opt-in for scheduled runs (org connection only),
