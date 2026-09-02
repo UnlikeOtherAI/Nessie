@@ -777,8 +777,13 @@ model resolution is decided in D1/D9 — blueprint pin, else org default,
   `input.pageContext` (`api/src/services/designer.ts`).
 - `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` lists `message_post`, which matches no
   tool (stale rename of `send_message`; harmless today, dead entry).
-- `CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
-  before `createAgentRecord`.
+- ~~`CreateAgentBodySchema` accepts `routingProfileId` but the route drops it
+  before `createAgentRecord`.~~ **Fixed 2026-09-02:** the field is removed from
+  `CreateAgentBodySchema` (and its never-emitted twin on `AgentRecordSchema`)
+  rather than wired through — `routingProfileId` is server/bootstrap-only per
+  the parameter map above, no client sends it, `UpdateAgentBodySchema` never
+  accepted it, and the run path passes a hardcoded `null` instead of reading
+  the column.
 - `updateMessage` (`api/src/services/messages.ts`) does not refuse editing a
   message stamped `agentCardResponse`, though the cards spec says a card
   response is immutable — a resolved card's decision text can be edited into
