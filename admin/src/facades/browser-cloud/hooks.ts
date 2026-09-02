@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
+  AgentBrowserRecord,
   CloudBrowserConnectionRecord,
   CloudBrowserScope,
   CloudBrowserSessionDetail,
   CloudBrowserSessionSummary,
+  MyBrowserLoginRecord,
 } from '../../lib/api-client'
 import { browserCloudKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -75,5 +77,37 @@ export const useCloudBrowserSession = (sessionId: string | null) => {
     enabled: sessionId !== null,
     refetchInterval: 15_000,
     staleTime: 0,
+  })
+}
+
+export const useAgentBrowser = (agentId: string | null) => {
+  const apiClient = useApiClient()
+  return useQuery<{ browser: AgentBrowserRecord | null }>({
+    queryKey: browserCloudKeys.agentBrowser(agentId ?? undefined),
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/browser`),
+    enabled: agentId !== null,
+  })
+}
+
+export const useResetAgentBrowser = (agentId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiClient.post<void>(`/api/agents/${agentId}/browser/reset`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.agentBrowser(agentId ?? undefined),
+      })
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.myLogins })
+    },
+  })
+}
+
+/** Every sign-in this person performed, so revoking never means hunting. */
+export const useMyBrowserLogins = () => {
+  const apiClient = useApiClient()
+  return useQuery<{ logins: MyBrowserLoginRecord[] }>({
+    queryKey: browserCloudKeys.myLogins,
+    queryFn: () => apiClient.get('/api/browser-cloud/my-logins'),
   })
 }

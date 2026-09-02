@@ -8,7 +8,21 @@ type AgentScreenViewerProps = {
   sessionId: string
   /** Full-screen gets more chrome and a bigger frame; the panel is compact. */
   variant: 'panel' | 'fullscreen'
+  /**
+   * The agent whose browser this is, when known. A workspace agent's browser
+   * is shared with everyone who can reach it, which the banner says before
+   * anybody types into it.
+   */
+  agent?: { id: string; visibility?: 'workspace' | 'private' }
 }
+
+/**
+ * Dismissal is per (viewer, agent) and deliberately client-local: it is a
+ * reminder, not a consent record, and the sentence returns undismissed in the
+ * sign-in handoff where it is actually load-bearing.
+ */
+const bannerStorageKey = (agentId: string): string =>
+  `nessie.browserShareBanner.${agentId}`
 
 const STATUS_LABEL: Record<string, string> = {
   allocating: 'Starting',
@@ -29,9 +43,27 @@ const STATUS_LABEL: Record<string, string> = {
  * boundary is who may fetch the live-view URL at all, which the detail route
  * decides.
  */
-export const AgentScreenViewer = ({ sessionId, variant }: AgentScreenViewerProps) => {
+export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
   const [activeTab, setActiveTab] = useState<string | null>(null)
+  const shared = agent !== undefined && agent.visibility !== 'private'
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    if (!agent) return true
+    try {
+      return window.localStorage.getItem(bannerStorageKey(agent.id)) === 'dismissed'
+    } catch {
+      return false
+    }
+  })
+  const dismissBanner = () => {
+    setBannerDismissed(true)
+    if (!agent) return
+    try {
+      window.localStorage.setItem(bannerStorageKey(agent.id), 'dismissed')
+    } catch {
+      // A viewer with storage blocked simply sees the sentence again.
+    }
+  }
 
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
@@ -81,6 +113,22 @@ export const AgentScreenViewer = ({ sessionId, variant }: AgentScreenViewerProps
             size="sm"
             value={activeTab ?? tabs[0]?.id ?? ''}
           />
+        </div>
+      ) : null}
+
+      {shared && !bannerDismissed ? (
+        <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 rounded-[var(--radius-sm)] border border-[color:var(--warning-border,var(--sep))] bg-[color:var(--warning-soft,var(--bg2))] px-3 py-2">
+          <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
+            Other people can use this agent’s browser. Anything you sign in to here is
+            shared with everyone who has access to this agent.
+          </p>
+          <button
+            className="text-xs text-[color:var(--lnk)] hover:underline"
+            onClick={dismissBanner}
+            type="button"
+          >
+            Got it
+          </button>
         </div>
       ) : null}
 
