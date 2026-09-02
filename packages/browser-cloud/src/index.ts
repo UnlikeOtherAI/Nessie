@@ -23,6 +23,7 @@ export { connectCdp, type CdpClient } from './cdp-client.js'
 
 export {
   actInBrowser,
+  currentPageUrl,
   observeBrowser,
   renderObservation,
   type BrowserActResult,

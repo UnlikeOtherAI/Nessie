@@ -219,17 +219,40 @@ const runOpen = async (
       touchedAuthenticated: false,
     }
     registerSession(opened.sessionId, opened.connectUrl, gate)
-    const cdp = await acquireCdp(opened.sessionId)
+    // Anything that fails from here on has a live remote session behind it,
+    // which would otherwise bill to its TTL and hold this run's only slot
+    // while the model is told the browser never opened.
+    const abandon = async (message: string): Promise<BrowserToolOutcome> => {
+      releaseCdp(opened.sessionId)
+      await releaseCloudBrowserSession(deps, {
+        sessionId: opened.sessionId,
+        releasedBy: 'open_failed',
+      }).catch(() => undefined)
+      return { output: message, success: false }
+    }
+
+    let cdp
+    try {
+      cdp = await acquireCdp(opened.sessionId)
+    } catch (error) {
+      return abandon(`The browser could not be reached after opening: ${
+        error instanceof Error ? error.message : String(error)}`)
+    }
     if (!cdp) {
-      return { output: 'The browser could not be reached after opening.', success: false }
+      return abandon('The browser could not be reached after opening.')
     }
-    if (agentBrowser?.hasLogins) {
-      // Read once, before the first page: which origins this browser can act
-      // as somebody on is a property of its cookies, not of what it visits.
-      gate.authenticatedOrigins = await readAuthenticatedOrigins(cdp)
+    try {
+      if (agentBrowser?.hasLogins) {
+        // Read once, before the first page: which origins this browser can act
+        // as somebody on is a property of its cookies, not of what it visits.
+        gate.authenticatedOrigins = await readAuthenticatedOrigins(cdp)
+      }
+      await cdp.call('Page.navigate', { url: parsed.data.url })
+      noteVisitedOrigin(gate, parsed.data.url)
+    } catch (error) {
+      return abandon(`That page could not be opened: ${
+        error instanceof Error ? error.message : String(error)}`)
     }
-    await cdp.call('Page.navigate', { url: parsed.data.url })
-    noteVisitedOrigin(gate, parsed.data.url)
     const observation = await observeBrowser(cdp)
     return {
       output: untrusted(renderObservation(observation)),
