@@ -49,6 +49,12 @@ export const AgentSpeechFieldset = ({
       <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
         Voice and manner
       </legend>
+      {/* A legend sits outside the grid flow, so without a line of prose under
+          it the heading collides with the first field's own label. */}
+      <p className="text-xs text-[color:var(--tx3)]">
+        The voice a call is spoken in, and how this agent talks to people
+        everywhere.
+      </p>
 
       <FormField
         help="Used when someone calls this agent. Falls back to the deployment default."
