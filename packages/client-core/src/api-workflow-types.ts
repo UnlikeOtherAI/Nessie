@@ -19,6 +19,28 @@ export type AgentTriggerRecord = {
   updatedAt: string
 }
 
+/**
+ * What a trigger is doing right now, read separately from the trigger record.
+ *
+ * `running` is a list, not a flag: a trigger fires by writing a delivery and a
+ * delivery carries at most one run, so two simultaneous executions are two
+ * entries with two delivery ids. A client renders the count it is given.
+ */
+export type AgentTriggerRun = {
+  runId: string
+  deliveryId: string | null
+  startedAt: string | null
+  status: 'pending' | 'running' | 'waiting_approval' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
+}
+
+export type AgentTriggerActivityRecord = {
+  triggerId: string
+  running: AgentTriggerRun[]
+  /** How the most recent *finished* run ended — what turns a row green. */
+  lastOutcome: 'completed' | 'failed' | 'cancelled' | null
+  lastFinishedAt: string | null
+}
+
 export type WorkflowRunStatus =
   | 'pending'
   | 'running'

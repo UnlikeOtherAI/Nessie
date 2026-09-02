@@ -14,7 +14,7 @@ import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPre
 /**
  * The Agents section of a *channel*: who works in this room, and the way
  * through to each one. It is a roster and nothing more — the agent's own
- * detail (identity, tools, to-dos, routines, editing) belongs to
+ * detail (identity, tools, to-dos, triggers, editing) belongs to
  * `/agents/:id`, which every row opens.
  */
 const AgentRow = ({ agent, onOpen }: { agent: AgentRecord; onOpen: () => void }) => {
@@ -76,7 +76,7 @@ export const ChannelAgentsPanel = ({
         <div>
           <SectionLabel>Agents in this channel</SectionLabel>
           <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-            Open one to see its identity, tools, to-dos, and routines.
+            Open one to see its identity, tools, to-dos, and triggers.
           </p>
         </div>
         <button

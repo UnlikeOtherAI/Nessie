@@ -5,7 +5,7 @@ import {
   CHANNEL_TABS,
   isAgentsTabAvailable,
   isConversationAgentTabAvailable,
-  isConversationRoutinesTabAvailable,
+  isConversationTriggersTabAvailable,
   isConversationTodosTabAvailable,
   resolveConversationAgent,
   type ChannelTab,
@@ -18,7 +18,7 @@ import {
 // channel rather than walking its sections.
 //
 // Most sections are conditional — Agents needs an agent to show, Automations is
-// not offered on a one-to-one conversation, and To-dos/Routines exist only when
+// not offered on a one-to-one conversation, and To-dos/Triggers exist only when
 // the conversation is with a single agent that has them — so the selected tab
 // and the *visible* tab are separate answers. The visible one is derived rather
 // than stored, so a channel swap re-decides it from that channel's own facts
@@ -42,7 +42,7 @@ export type ChannelTabState = {
   agentTabAvailable: boolean
   agentsTabAvailable: boolean
   conversationAgent: AgentRecord | null
-  routinesTabAvailable: boolean
+  triggersTabAvailable: boolean
   setActiveTab: (tab: ChannelTab) => void
   todosTabAvailable: boolean
   visibleActiveTab: ChannelTab
@@ -73,7 +73,7 @@ export const useChannelTab = ({
   })
   const agentTabAvailable = isConversationAgentTabAvailable(conversationAgent)
   const todosTabAvailable = isConversationTodosTabAvailable(conversationAgent)
-  const routinesTabAvailable = isConversationRoutinesTabAvailable({
+  const triggersTabAvailable = isConversationTriggersTabAvailable({
     conversationAgent,
     isOwner,
   })
@@ -87,7 +87,7 @@ export const useChannelTab = ({
     automations: !isConversationSurface,
     files: true,
     messages: true,
-    routines: routinesTabAvailable,
+    triggers: triggersTabAvailable,
     'to-dos': todosTabAvailable,
   }
   const selectedTabAvailable = tabAvailability[activeTab]
@@ -110,7 +110,7 @@ export const useChannelTab = ({
     agentTabAvailable,
     agentsTabAvailable,
     isConversationSurface,
-    routinesTabAvailable,
+    triggersTabAvailable,
     todosTabAvailable,
   ])
 
@@ -118,7 +118,7 @@ export const useChannelTab = ({
     agentTabAvailable,
     agentsTabAvailable,
     conversationAgent,
-    routinesTabAvailable,
+    triggersTabAvailable,
     setActiveTab,
     todosTabAvailable,
     visibleActiveTab,

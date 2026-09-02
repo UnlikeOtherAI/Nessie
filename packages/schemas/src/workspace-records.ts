@@ -5,6 +5,7 @@ import {
   AgentRunLimitsSchema,
   AgentStatusSchema,
   AgentTriggerTypeSchema,
+  RunStatusSchema,
   SystemChannelTypeSchema,
 } from './lifecycle.js'
 import {
@@ -255,3 +256,42 @@ export const CreateAgentTriggerBodySchema = z.object({
   targetThreadId: ThreadIdSchema.optional(),
 })
 export type CreateAgentTriggerBody = z.infer<typeof CreateAgentTriggerBodySchema>
+
+/**
+ * What a trigger is doing *right now*, kept apart from the trigger record
+ * itself: one is configuration a person edits, the other is run state that
+ * changes under them, and folding the second into the first would make every
+ * trigger read pay for a run aggregate.
+ *
+ * `running` is a list rather than a flag, and that is the whole answer to
+ * "what if two are executing at once". A trigger fires by writing an
+ * `AgentTriggerDelivery`, and `Run.triggerDeliveryId` is unique — so one
+ * delivery carries at most one run, two concurrent executions are two entries
+ * with two delivery ids, and nothing has to be inferred from timestamps. A
+ * surface renders the count it is given; it never decides whether "running"
+ * means one thing or two.
+ */
+export const AgentTriggerRunSchema = z.object({
+  // Plain uuids, like the trigger record's own `id` beside it: this is a
+  // read-only projection, not an identity the type system routes on.
+  runId: z.string().uuid(),
+  // Null only for a run predating delivery correlation; the run is still real.
+  deliveryId: z.string().uuid().nullable(),
+  startedAt: TimestampSchema.nullable(),
+  status: RunStatusSchema,
+})
+export type AgentTriggerRun = z.infer<typeof AgentTriggerRunSchema>
+
+export const AgentTriggerActivityRecordSchema = z.object({
+  triggerId: z.string().uuid(),
+  running: AgentTriggerRunSchema.array(),
+  /**
+   * How this trigger's most recent *finished* run ended — what turns a row
+   * green once its spinner stops. Deliberately the run's outcome and not the
+   * delivery's status: a delivery is `delivered` the moment the run is
+   * enqueued, which says the trigger fired, not that the work succeeded.
+   */
+  lastOutcome: z.enum(['completed', 'failed', 'cancelled']).nullable(),
+  lastFinishedAt: TimestampSchema.nullable(),
+})
+export type AgentTriggerActivityRecord = z.infer<typeof AgentTriggerActivityRecordSchema>

@@ -13,9 +13,11 @@ import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 // also uses (the assistant's `agent_trigger_create` tool parses the very same
 // create body), so these live in `@nessie/schemas`.
 export {
+  AgentTriggerActivityRecordSchema,
   AgentTriggerRecordSchema,
   AgentTriggerStatusSchema,
   CreateAgentTriggerBodySchema,
+  type AgentTriggerActivityRecord,
   type AgentTriggerRecord,
   type AgentTriggerStatus,
   type AgentTriggerType,
