@@ -4,6 +4,7 @@ import {
 } from '../../facades/connections/hooks'
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
@@ -100,6 +101,8 @@ export const ConnectionsPage = () => {
             )
           )}
         </QueryState>
+
+        <CloudBrowserPanel scope="user" />
       </div>
     </SettingsPanel>
   )

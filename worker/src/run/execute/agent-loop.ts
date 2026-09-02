@@ -127,6 +127,7 @@ export const runExecutionAgentLoop = async (
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    cloudBrowser: deps.cloudBrowser,
     consumedSources: context.consumedSources,
     documentStream: deps.documentStream,
     executorCommandEncryptionSecret: deps.executorCommandEncryptionSecret,

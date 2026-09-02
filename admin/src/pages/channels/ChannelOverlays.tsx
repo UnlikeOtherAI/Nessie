@@ -17,6 +17,7 @@ import {
   CallerCallDialog,
   StartCallFailureDialog,
 } from '../../components/features/channels/CallerCallDialog'
+import { AgentScreenPanel } from '../../components/features/browser-cloud/AgentScreenPanel'
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
 import type {
   ChannelAgentParticipant,
@@ -33,6 +34,9 @@ interface ChannelOverlaysProps {
   agents: AgentRecord[]
   allUsers: UserRecord[]
   boundAgents: AgentRecord[]
+  /** The agent browser session being watched, if any. */
+  browserSessionId: string | null
+  onCloseBrowserSession: () => void
   channelUsers: UserRecord[]
   callerCallActionError: unknown
   callerCallActionPending: boolean
@@ -122,6 +126,8 @@ export const ChannelOverlays = ({
   onCloseSettings,
   onGroupCreated,
   onInsertTrimmed,
+  browserSessionId,
+  onCloseBrowserSession,
   onCloseCallerDialog,
   onCloseStartCallFailure,
   onFinishCall,
@@ -150,6 +156,10 @@ export const ChannelOverlays = ({
         thread={replyThread}
         token={token}
       />
+    ) : null}
+
+    {browserSessionId && !replyThread.openRootMessageId ? (
+      <AgentScreenPanel onClose={onCloseBrowserSession} sessionId={browserSessionId} />
     ) : null}
 
     {deepWaterDialog}

@@ -1,5 +1,6 @@
 import type { ChannelSystemType, PrismaClient, RunReplyPlacement } from '@prisma/client'
 import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
+import type { CloudBrowserDeps } from '@nessie/browser-cloud'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
@@ -15,6 +16,11 @@ import type {
 } from '@nessie/runtime'
 
 export type ExecutionDependencies = {
+  /**
+   * Browserbase transport plumbing for the `browser_*` builtins. Absent on a
+   * deployment with no cloud browsing, which the tools report in words.
+   */
+  cloudBrowser?: CloudBrowserDeps
   deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
   /** Deployment secret used solely to encrypt executor payloads at rest. */
   /** Per-run live document stream, created alongside the thinking recorder. */

@@ -162,6 +162,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.2.0
         version: 11.2.0
+      '@nessie/browser-cloud':
+        specifier: workspace:*
+        version: link:../packages/browser-cloud
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../packages/comms-connect
@@ -401,6 +404,25 @@ importers:
       vitest:
         specifier: ^3.2.6
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.6.1)(jsdom@30.0.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  packages/browser-cloud:
+    dependencies:
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@prisma/client':
+        specifier: ^6.17.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
 
   packages/client-core:
     dependencies:
@@ -755,6 +777,9 @@ importers:
 
   worker:
     dependencies:
+      '@nessie/browser-cloud':
+        specifier: workspace:*
+        version: link:../packages/browser-cloud
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../packages/comms-connect
@@ -9992,7 +10017,7 @@ snapshots:
 
   '@types/adm-zip@0.5.8':
     dependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.20.1
 
   '@types/babel__core@7.20.5':
     dependencies:
@@ -10111,7 +10136,7 @@ snapshots:
 
   '@types/pg@8.20.0':
     dependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.20.1
       pg-protocol: 1.13.0
       pg-types: 2.2.0
 

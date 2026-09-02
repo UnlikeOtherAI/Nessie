@@ -498,3 +498,10 @@ export const workspaceKeys = {
   invitations: ['workspace', 'invitations'] as const,
   members: ['workspace', 'members'] as const,
 }
+
+export const browserCloudKeys = {
+  connections: ['browser-cloud', 'connections'] as const,
+  session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,
+  threadSessions: (threadId?: string) =>
+    ['browser-cloud', 'threads', threadId, 'sessions'] as const,
+}

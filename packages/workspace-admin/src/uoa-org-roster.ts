@@ -1,10 +1,15 @@
 import type { PrismaClient } from '@prisma/client'
 import type {
   CreateWorkspaceInvitationsRequest,
+  UoaSessionIdentity,
   WorkspaceInvitationRecord,
   WorkspaceInviteResult,
   WorkspaceMemberRecord,
 } from '@nessie/schemas'
+import {
+  createUoaSubjectAssertion,
+  type UoaDelegatedIdentitySettings,
+} from '@nessie/runtime'
 
 import {
   orgPath,
@@ -35,38 +40,24 @@ export {
  * `people_search` answers "who is X" from the same roster the Members page
  * shows, and the worker cannot import `api/src/services/*`.
  *
- * **Backend mode.** These routes are dual-mode: with an `X-UOA-Access-Token`
- * they act as the end user, and Nessie deliberately never holds a spendable
- * user access token (only a bound refresh credential). Omitting that header
- * entirely selects backend mode, authenticated by the domain-hash bearer plus
- * the signed config JWT, which must carry
- * `org_features.backend_org_management: true` (`api/src/services/uoa-auth.ts`). The
- * header must be *absent*, never blank — UOA treats an empty credential as
- * malformed and answers `401 MISSING_ACCESS_TOKEN`.
+ * **Signed subject mode.** Nessie never holds or forwards a spendable UOA
+ * access token. Each interactive call instead carries a one-minute RS256
+ * assertion of the current session's UOA subject and exact active org/team.
+ * UOA verifies the assertion through Nessie's published config JWKS and
+ * re-resolves the credential epoch and live membership before applying its
+ * ordinary user-mode roles and audit attribution. A missing or mismatched UOA
+ * session is an error, never a fallback to tenant-wide backend mode.
  *
- * **There is no acting user in backend mode**, so UOA applies no owner/admin
- * check of its own and records `actor_user_id: null` with
- * `uoa_actor: { via: "domain_backend" }`. The owner/admin gate in
- * `api/src/routes/workspace-members.ts` is therefore the only thing standing between an
- * ordinary member and a whole-workspace mutation — exactly as with the
- * workspace avatar relay.
- *
- * **Per-user authorization needs a UOA-side change, not a Nessie one.** The
- * load-bearing local gate above is not an oversight anyone can close from
- * here: UOA offers exactly two credentials for `/org/*` — the user's own
- * `X-UOA-Access-Token`, and the domain-hash bearer that selects backend mode
- * and "bypasses per-user checks entirely". There is no product-signed
- * assertion of the acting subject. An `X-UOA-Subject-Assertion` header was
- * built against on 2026-08-31 and abandoned unmerged; it would have been
- * ignored upstream while the code claimed the check now happened, so it is
- * deliberately not on `main`. Closing this properly means either forwarding a
- * real access token — which reverses the rule two paragraphs up, that Nessie
- * never holds a spendable user credential — or UOA adding an assertion
- * mechanism first. Do not re-attempt the header alone.
+ * The audience is derived from the configured base URL (`${authBaseUrl}/org`)
+ * while UOA pins the canonical constant, so a deployment pointed at a
+ * non-canonical UOA host fails closed with `401 INVALID_SUBJECT_TOKEN` rather
+ * than silently downgrading — deliberate, but worth knowing when a staging
+ * instance suddenly cannot read its own roster.
  *
  * Contract verified 2026-08-15 against https://authentication.unlikeotherai.com/llm
- * §4.6b/§4.7/§4.7a/§4.7b and the machine-readable `/api` endpoint list;
- * header set re-verified against both sources 2026-09-02.
+ * §4.6b/§4.7/§4.7a/§4.7b and the machine-readable `/api` endpoint list; the
+ * assertion header verified live against §4.6c and `/api` on 2026-09-02, after
+ * UOA deployed it (UnlikeOtherAuthenticator `42ece69`).
  */
 
 /** The invitee already belongs to another UOA org on this product domain. */
@@ -90,11 +81,70 @@ export class UoaInvitationAlreadyAcceptedError extends Error {
   }
 }
 
+/** The caller has no current UOA session for this workspace. */
+export class UoaRosterIdentityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UoaRosterIdentityError'
+  }
+}
+
 export type UoaRosterPrisma = Pick<PrismaClient, 'team'>
 
 export type WorkspaceMemberActivation = 'deactivate' | 'reactivate'
 
 export type WorkspaceInvitationReview = 'approve' | 'deny'
+
+const delegatedSettings = (): UoaDelegatedIdentitySettings => {
+  const settings = requireSettings()
+  return {
+    authBaseUrl: settings.baseUrl,
+    clientSecret: settings.clientSecret,
+    configUrl: settings.configUrl,
+    kid: settings.kid,
+    privateKeyPem: settings.privateKeyPem,
+    sourceDomain: settings.domain,
+  }
+}
+
+/**
+ * Attach an assertion of the signed-in UOA user to a roster operation.
+ *
+ * The session's selected UOA org/team must be precisely the mapped workspace;
+ * otherwise the caller is not entitled to ask UOA for this roster. UOA then
+ * verifies the product signature and repeats the live epoch and membership
+ * checks before it serves the request.
+ */
+export const withUoaRosterSubjectAssertion = (
+  workspace: UoaRosterWorkspace,
+  identity: UoaSessionIdentity | undefined,
+  deps: UoaRosterDeps = {},
+): UoaRosterDeps => {
+  if (
+    !identity
+    || identity.tokenVersion === null
+    || identity.organizationId !== workspace.externalOrgId
+    || identity.teamId !== workspace.externalTeamId
+  ) {
+    throw new UoaRosterIdentityError(
+      'A current UnlikeOtherAI session for this workspace is required.',
+    )
+  }
+  const settings = delegatedSettings()
+  return {
+    ...deps,
+    subjectAssertion: createUoaSubjectAssertion(
+      settings,
+      {
+        organizationId: identity.organizationId,
+        subject: identity.subject,
+        teamId: identity.teamId,
+        tokenVersion: identity.tokenVersion,
+      },
+      `${settings.authBaseUrl}/org`,
+    ),
+  }
+}
 
 /**
  * Resolve the UOA workspace behind the actor's own session team. A team with no

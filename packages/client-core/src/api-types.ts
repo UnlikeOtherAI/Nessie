@@ -427,3 +427,36 @@ export type SessionState =
       data: MeResponse
       kind: 'authenticated'
     }
+
+/** Cloud browsers (Browserbase). The API key never appears in a response. */
+export type CloudBrowserScope = 'organization' | 'user'
+
+export type CloudBrowserConnectionRecord = {
+  id: string
+  scope: CloudBrowserScope
+  projectId: string
+  status: 'active' | 'needs_attention' | 'disabled'
+  healthReason: string | null
+  healthDetail: string | null
+  createdAt: string
+  liveSessions: number
+  usedMinutes: number
+  isMine: boolean
+}
+
+export type CloudBrowserSessionSummary = {
+  id: string
+  agentId: string
+  agentName: string
+  runId: string
+  status: 'allocating' | 'active' | 'releasing' | 'released' | 'failed' | 'unknown'
+  startedAt: string
+  endedAt: string | null
+  controlledByUserId: string | null
+}
+
+export type CloudBrowserSessionDetail = CloudBrowserSessionSummary & {
+  /** Minted per read, never persisted: whoever holds it can drive the browser. */
+  liveViewUrl: string | null
+  tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }>
+}
