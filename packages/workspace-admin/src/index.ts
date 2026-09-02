@@ -58,3 +58,20 @@ export * from './sandboxed-jmespath.js'
 export * from './workflow-jmespath.js'
 export * from './workflow-template-validation.js'
 export * from "./workflow-concurrency.js"
+
+export {
+  GmailDraftError,
+  composeDraftForUser,
+  updateDraftForUser,
+  readDraftForUser,
+  sendDraftForUser,
+  dispatchClaimedDraft,
+  undoHeldSend,
+  discardDraftForUser,
+  attachDraftMessage,
+  fingerprintDraft,
+  type GmailDraftActionRecord,
+  type GmailDraftDeps,
+  type GmailDraftErrorCode,
+  type SendDraftResult,
+} from './gmail-drafts.js'

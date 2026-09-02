@@ -36,3 +36,28 @@ export {
   GoogleMeetApiError,
 } from './meet.js'
 export type { FetchLike, FetchResponse } from './http.js'
+
+export {
+  buildRawMessage,
+  canonicalDraftFingerprintInput,
+  MimeBuildError,
+  type OutboundMessage,
+  type OutboundAttachment,
+} from './gmail/mime-build.js'
+export {
+  createGmailDraft,
+  updateGmailDraft,
+  getGmailDraft,
+  deleteGmailDraft,
+  sendGmailDraft,
+  sendGmailMessage,
+  type GmailDraftRef,
+  type GmailDraftContent,
+} from './gmail/drafts.js'
+export {
+  searchGmailThreads,
+  getGmailMessage,
+  getGmailThread,
+  type GmailThreadSummary,
+  type GmailMessageDetail,
+} from './gmail/read.js'
