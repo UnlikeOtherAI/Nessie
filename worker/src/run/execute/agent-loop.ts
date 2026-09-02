@@ -21,6 +21,7 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
@@ -194,6 +195,11 @@ export const runExecutionAgentLoop = async (
         consumeApprovalProof: options.consumeApprovalProof,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
+        forceApproval: buildEmailSendApprovalHook(
+          deps.prisma,
+          context,
+          payload.interactive === true,
+        ),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         parentAgentId: context.agent.parentAgentId,
         resumeState: {

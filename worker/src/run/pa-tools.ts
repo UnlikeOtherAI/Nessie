@@ -94,3 +94,8 @@ export {
   runUpdatePreferencesTool,
 } from './pa-tools/people.js'
 export { runWorkflowTransformPreviewTool } from './pa-tools/workflow-transform.js'
+export {
+  runEmailListTool,
+  runEmailReadTool,
+  runEmailSendTool,
+} from './pa-tools/agent-email.js'

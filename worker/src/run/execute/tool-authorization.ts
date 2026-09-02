@@ -58,6 +58,21 @@ export type ToolAuthorizationContext = {
     interactive: boolean
     messageId: string
   }
+  /**
+   * A structural approval requirement the policy chain cannot express.
+   *
+   * `evaluateToolInvokePolicy` defaults to **allow** when no rule matches, and
+   * default seeding writes no rule for sending mail — so an outbound email gate
+   * that lived only in `PolicyRule` rows would be absent in every organisation
+   * that never configured one. A tool whose blast radius leaves the workspace
+   * therefore states its own requirement here, and the hook is consulted after
+   * the policy verdict so a *consumed* approval proof still lets the resumed
+   * call through instead of re-parking forever.
+   */
+  forceApproval?: (input: {
+    toolName: string
+    args: Record<string, unknown>
+  }) => Promise<{ approvalActionType: string; expiryMs?: number; requiredApproverUserId?: string | null } | null>
   toolPolicy: Record<string, boolean> | null
 }
 
@@ -174,6 +189,42 @@ export const authorizeToolExecution = async (
     args,
     { consumeApprovalProof: auth.consumeApprovalProof },
   )
+
+  // A structural gate only applies to a call the policy chain *allowed* and
+  // that carries no verified approval proof: an approved, resumed call arrives
+  // here allowed with its proof already consumed, and re-parking it would loop.
+  let structural: Awaited<ReturnType<NonNullable<typeof auth.forceApproval>>> = null
+  if (policyDecision.allowed && auth.forceApproval && !toolActorContext.approval?.approvalProof) {
+    structural = await auth.forceApproval({ args, toolName })
+  }
+  if (structural && auth.maySuspendForApproval && auth.resumeState) {
+    const approval = await createToolApprovalRequest(prisma, {
+      actorContext: auth.resumeState.actorContext,
+      approvalActionType: structural.approvalActionType,
+      args,
+      context,
+      expiryMs: structural.expiryMs,
+      interactive: auth.resumeState.interactive,
+      messageId: auth.resumeState.messageId,
+      requiredApproverUserId: structural.requiredApproverUserId ?? null,
+      toolCallId,
+      toolName,
+    })
+    return { approval: { id: approval.id, toolName }, decision: 'suspend' }
+  }
+  if (structural) {
+    // Nowhere to park it — an unattended run with no durable suspension point.
+    // Refusing is the only safe answer: the alternative is sending unreviewed.
+    return {
+      decision: 'deny',
+      result: toolDeniedResult(toolName, args, {
+        approvalActionType: structural.approvalActionType,
+        message: `Tool "${toolName}" requires approval before it can run.`,
+        reason: 'approval_required',
+      }),
+    }
+  }
+
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       approvalActionType: policyDecision.approvalActionType,
@@ -227,9 +278,11 @@ const createToolApprovalRequest = async (
     approvalActionType?: string
     args: Record<string, unknown>
     context: RunContext
+    expiryMs?: number
     interactive: boolean
     messageId: string
     policyRuleId?: string
+    requiredApproverUserId?: string | null
     toolCallId: string
     toolName: string
   },
@@ -252,11 +305,14 @@ const createToolApprovalRequest = async (
       toolName: input.toolName,
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),
-    expiresAt: new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_MS),
+    // Email is asynchronous: an overnight send parked behind the 30-minute
+    // default would expire before anyone woke up, stranding the conversation.
+    expiresAt: new Date(Date.now() + (input.expiryMs ?? DEFAULT_APPROVAL_EXPIRY_MS)),
     organizationId: input.context.channel.organizationId,
     projectId: input.context.channel.projectId,
     reason: `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
+    requiredApproverUserId: input.requiredApproverUserId ?? null,
     resumeState: {
       actorContext: input.actorContext,
       args: input.args,

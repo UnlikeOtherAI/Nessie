@@ -88,13 +88,37 @@ export const subtractImpliedScopes = (
 const impliedByDestination = (
   destination: DestinationScopeChain,
   boundAgentIds: readonly string[],
+  /**
+   * A hosted mailbox whose backing channel this destination *is*. Reading the
+   * conversation an agent is answering is not privileged in the room that
+   * exists to discuss it — without this, every email run would be restricted
+   * relative to its own operations thread, which would suppress its live
+   * stream and force an approval on every single reply.
+   */
+  impliedEmailMailboxId?: string | null,
 ): BasisScope[] => [
   { scopeId: destination.organizationId, scopeType: 'organization' },
   { scopeId: destination.projectId, scopeType: 'project' },
   { scopeId: destination.teamId, scopeType: 'team' },
   { scopeId: destination.channelId, scopeType: 'channel' },
   ...boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
+  ...(impliedEmailMailboxId
+    ? [{ scopeId: impliedEmailMailboxId, scopeType: EMAIL_SCOPE_TYPE }]
+    : []),
 ]
+
+/**
+ * Scope type for a hosted agent mailbox. A read of stored mail stamps
+ * `email:{mailboxId}` so the send gate can tell "answered from this
+ * correspondence" apart from "answered from a private space and then mailed it
+ * outside".
+ */
+export const EMAIL_SCOPE_TYPE = 'email'
+
+export const emailMailboxScope = (mailboxId: string): BasisScope => ({
+  scopeId: mailboxId,
+  scopeType: EMAIL_SCOPE_TYPE,
+})
 
 /**
  * The disclosure basis of a reply: the consumed sources the destination does not
@@ -111,6 +135,10 @@ export const computeReplyBasis = (
   consumed: readonly BasisScope[],
   destination: DestinationScopeChain,
   boundAgentIds: readonly string[],
+  impliedEmailMailboxId?: string | null,
 ): BasisScope[] => {
-  return subtractImpliedScopes(consumed, impliedByDestination(destination, boundAgentIds))
+  return subtractImpliedScopes(
+    consumed,
+    impliedByDestination(destination, boundAgentIds, impliedEmailMailboxId),
+  )
 }
