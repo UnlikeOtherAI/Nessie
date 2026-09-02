@@ -46,6 +46,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })
@@ -74,6 +75,29 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
 
     const body = parseInput(UpdateOrganizationRequestSchema, request.body, reply)
     if (!body) return reply
+
+    // The name of a UOA-bound organisation is UOA's, and `Organization.name` is
+    // only a mirror of it — `syncExternalOrganizationNames` overwrites it from
+    // the verified directory at every login and rotation. Accepting the write
+    // here made Nessie a second, losing authority: the value persisted, the
+    // person saw it saved, and a later refresh silently reverted it. Refuse in
+    // words instead, naming where the name actually lives. The logo and the
+    // metadata flag below are Nessie's own and stay editable.
+    if (body.name !== undefined) {
+      const bound = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { externalOrgId: true, name: true },
+      })
+      if (bound?.externalOrgId && body.name !== bound.name) {
+        sendApiError(
+          reply,
+          409,
+          'ORGANIZATION_NAME_MANAGED_BY_SSO',
+          'This organisation is named in UnlikeOtherAI. Rename it there and the change will appear here.',
+        )
+        return reply
+      }
+    }
 
     if (body.logoAttachmentId) {
       const attachment = await prisma.attachment.findUnique({
@@ -123,6 +147,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })
@@ -171,6 +196,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         conversationalSetupEnabled: organization.conversationalSetupEnabled,
+        nameManagedExternally: organization.externalOrgId !== null,
       }),
     )
   })

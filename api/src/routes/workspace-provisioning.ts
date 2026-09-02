@@ -5,6 +5,7 @@ import { writeAuditEntryInTransaction } from '@nessie/db'
 import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { forgetUoaWorkspaceDirectory } from '../services/uoa-directory-cache.js'
 import {
   createUoaOrganisation,
   createUoaWorkspaceTeam,
@@ -145,6 +146,12 @@ const provisionOnce = async (
     if (prior) return prior
 
     const workspace = await create()
+
+    // The caller's cached workspace directory predates what they just made.
+    // The switch that normally follows re-primes it, but if that call fails
+    // they would otherwise be told their own new workspace does not exist for
+    // up to the cache TTL.
+    forgetUoaWorkspaceDirectory(input.userId)
 
     await writeAuditEntryInTransaction(tx, {
       organizationId: input.organizationId,

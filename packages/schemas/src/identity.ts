@@ -251,6 +251,14 @@ export const OrganizationSummarySchema = z.object({
   logoAttachmentId: z.string().uuid().nullable(),
   stripImageMetadata: z.boolean(),
   conversationalSetupEnabled: z.boolean(),
+  /**
+   * True when this organisation is bound to an UnlikeOtherAI organisation, so
+   * its NAME is UOA's and the local column is only a mirror of it. The settings
+   * route refuses a local rename; this is what lets the surface say so instead
+   * of offering a field that can only fail. The logo and the metadata flag are
+   * Nessie's own and stay editable either way.
+   */
+  nameManagedExternally: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 

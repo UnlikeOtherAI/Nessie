@@ -177,7 +177,15 @@ export const createUoaWorkspaceTeam = async (
   const payload = await rosterRequest(
     requireSettings(),
     `${orgPath(workspace)}/teams`,
-    { method: 'POST', body: { name: input.name } },
+    {
+      method: 'POST',
+      // Put the caller in the workspace they are creating, as its owner, in
+      // UOA's own transaction. Without it UOA writes the team row alone, and
+      // every entry check — including the service-access confirm the switch
+      // grant runs — requires an ACTIVE TeamMember, so the person would create
+      // a workspace they could not open.
+      body: { name: input.name, join_creator: true },
+    },
     deps,
   )
 

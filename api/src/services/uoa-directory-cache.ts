@@ -78,6 +78,22 @@ export const readUoaWorkspaceDirectory = (
   return cached.directory
 }
 
+/**
+ * Drop this user's cached directory so the next read re-asks UOA.
+ *
+ * Creating an organisation or a workspace is the case this exists for. The
+ * happy path already re-primes, because the switch that follows creation is a
+ * rotation and rotations write a freshly verified directory — but if that
+ * switch fails, the person is left holding a directory that predates the thing
+ * they just made, and the 30-minute TTL is a long time to be told your own new
+ * workspace does not exist. Forgetting is safe at any moment: the entry is a
+ * cache, and a miss falls back to a UOA read or the local team-derived
+ * directory.
+ */
+export const forgetUoaWorkspaceDirectory = (userId: string): void => {
+  directoryByUserId.delete(userId)
+}
+
 /** Test seam: drop every cached directory. */
 export const clearUoaWorkspaceDirectoryCache = (): void => {
   directoryByUserId.clear()

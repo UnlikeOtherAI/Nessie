@@ -88,29 +88,46 @@ export const OrganizationSettingsPage = () => {
       <div className="grid max-w-3xl gap-4">
         <Card as="section">
           <SectionLabel>Profile</SectionLabel>
-          <form className="mt-4 grid gap-3" onSubmit={saveName}>
-            <FormField error={nameError} label="Organisation name">
-              <Input
-                disabled={isLoading || updateOrganization.isPending}
-                onChange={(event) => {
-                  setName(event.target.value)
-                  setSaved(false)
-                }}
-                placeholder="Organisation name"
-                value={name}
-              />
-            </FormField>
-            <FormSuccess>{saved ? 'Organisation name saved.' : undefined}</FormSuccess>
-            <FormActions>
-              <button
-                className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!canSave}
-                type="submit"
-              >
-                {updateOrganization.isPending ? 'Saving…' : 'Save name'}
-              </button>
-            </FormActions>
-          </form>
+          {/* An SSO-bound organisation is named in UnlikeOtherAI, and the local
+              column is only a mirror that every login and rotation overwrites.
+              Showing an editable field here offered a save that persisted just
+              long enough to look successful before a refresh reverted it, so
+              the name is stated rather than offered. The route refuses the
+              write either way; this is what stops a person meeting that
+              refusal. */}
+          {organization?.nameManagedExternally ? (
+            <div className="mt-4 grid gap-1">
+              <SectionLabel>Organisation name</SectionLabel>
+              <p className="text-sm text-[color:var(--tx)]">{organization.name}</p>
+              <p className="text-xs text-[color:var(--tx3)]">
+                Named in UnlikeOtherAI. Rename it there and the change appears here.
+              </p>
+            </div>
+          ) : (
+            <form className="mt-4 grid gap-3" onSubmit={saveName}>
+              <FormField error={nameError} label="Organisation name">
+                <Input
+                  disabled={isLoading || updateOrganization.isPending}
+                  onChange={(event) => {
+                    setName(event.target.value)
+                    setSaved(false)
+                  }}
+                  placeholder="Organisation name"
+                  value={name}
+                />
+              </FormField>
+              <FormSuccess>{saved ? 'Organisation name saved.' : undefined}</FormSuccess>
+              <FormActions>
+                <button
+                  className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!canSave}
+                  type="submit"
+                >
+                  {updateOrganization.isPending ? 'Saving…' : 'Save name'}
+                </button>
+              </FormActions>
+            </form>
+          )}
         </Card>
 
         <LogoPanel />

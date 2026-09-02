@@ -205,7 +205,12 @@ test('creating a workspace uses user mode and keeps the caller organisation', as
     assert.deepEqual(created, { externalOrgId: 'org_acme', externalTeamId: 'team_design' })
     assert.equal(calls[0]?.method, 'POST')
     assert.equal(calls[0]?.url, `https://uoa.test/org/organisations/org_acme/teams${query}`)
-    assert.deepEqual(calls[0]?.body, { name: 'Design' })
+    // `join_creator` is what puts the caller IN the workspace they just made.
+    // UOA otherwise writes the team row alone, and every entry check — the
+    // service-access confirm the switch grant runs included — demands an ACTIVE
+    // TeamMember, so without this the person creates a workspace they cannot
+    // open.
+    assert.deepEqual(calls[0]?.body, { name: 'Design', join_creator: true })
     // User mode, so UOA applies its own owner/admin gate and per-user limits.
     assert.equal(calls[0]?.hasSubjectAssertion, true)
   })
