@@ -1,7 +1,8 @@
 import { isDesktopApp } from '../../lib/desktop'
 import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
-import { RecentChannelsControl, useHistoryNav } from './topbar-navigation'
+import { RecentChannelsControl } from './topbar-navigation'
+import { usePhoneNavigation } from './PhoneNavigationProvider'
 import { UserMenuTrigger } from './UserMenuTrigger'
 
 const iconProps = {
@@ -36,7 +37,13 @@ type TopBarProps = {
 // drag regions around the interactive search field and buttons.
 export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
   const desktop = isDesktopApp()
-  const { goBack, goForward, canBack, canForward } = useHistoryNav()
+  // History controls read the one ledger the phone Back uses; they walk it
+  // across sections, which Back never does, and close an open owner first.
+  const history = usePhoneNavigation()?.history
+  const canBack = history?.canBack ?? false
+  const canForward = history?.canForward ?? false
+  const goBack = () => history?.goBack()
+  const goForward = () => history?.goForward()
 
   return (
     <header

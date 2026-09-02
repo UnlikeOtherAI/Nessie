@@ -79,7 +79,9 @@ const PROJECT_BOARD_PATH = new RegExp(
 )
 
 /** Maps only concrete, push-targetable routes to the structured API contract. */
-export const resolvePushSurface = (pathname: string, search = ''): PushSurface | null => {
+const KNOWLEDGE_SPACE_PATH = /^\/knowledge-base\/spaces\/([^/]+)\/?$/
+
+export const resolvePushSurface = (pathname: string): PushSurface | null => {
   const threadRoute = pathname.match(THREAD_PATH)
   const channelId = ChannelIdSchema.safeParse(threadRoute?.[1])
   const threadId = ThreadIdSchema.safeParse(threadRoute?.[2])
@@ -97,11 +99,13 @@ export const resolvePushSurface = (pathname: string, search = ''): PushSurface |
   if (projectId.success) {
     return { kind: 'project_board', projectId: projectId.data }
   }
-  if (pathname === '/knowledge-base' || /^\/projects\/[0-9a-f-]{36}\/docs\/?$/i.test(pathname)) {
-    const spaceId = new URLSearchParams(search).get('spaceId')
-    if (spaceId && z.string().uuid().safeParse(spaceId).success) {
-      return { kind: 'knowledge_space', spaceId }
-    }
+  // The space a person is reading is the route's own segment. `?spaceId=` is
+  // the document deep link's consumed intent (docs/navigation/overview.md §8) and is
+  // gone from the address the moment the page opens it, so it never said
+  // where the person was standing.
+  const space = pathname.match(KNOWLEDGE_SPACE_PATH)
+  if (space && z.string().uuid().safeParse(space[1]).success) {
+    return { kind: 'knowledge_space', spaceId: space[1] as string }
   }
   return pathname === '/ops/usage' ? { kind: 'ops_usage' } : null
 }

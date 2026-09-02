@@ -78,6 +78,20 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;
+  /* Navigation motion. The numbers live in admin/src/navigation/motion.ts
+     and are mirrored here for the static poses; a test pins them equal. */
+  --nav-duration: 300ms;
+  --nav-easing: cubic-bezier(0.22, 1, 0.36, 1);
+  --nav-parallax: 28%;
+  --nav-shadow: -12px 0 32px var(--scrim);
+  /* The overlay layer scale (docs/navigation/overview.md §7); mirrors OVERLAY_LAYER in
+     admin/src/navigation/overlay.ts. Nothing declares a z-index outside it. */
+  --layer-stack: 1;
+  --layer-card: 40;
+  --layer-popover: 50;
+  --layer-sheet: 60;
+  --layer-modal: 70;
+  --layer-blocking: 80;
 }
 
 [data-theme="midnight"] {
@@ -463,7 +477,13 @@ a {
 /* Phone list/detail navigation mirrors a native controller: the selected
    screen enters over the tab root, then slides back off to reveal it. The
    viewport is mounted only by the single-column phone branch; tablet and
-   desktop keep their adjacent columns and never receive these transforms. */
+   desktop keep their adjacent columns and never receive these transforms.
+
+   Motion between the poses below is never CSS. runStackTransition
+   (admin/src/navigation/motion.ts) animates the two layers on the Web
+   Animations API from exactly their current transform, so a route push, a
+   Back and a released edge swipe are one implementation reading one set of
+   numbers (the --nav-* tokens mirror them). */
 .phone-navigation-viewport {
   position: relative;
   isolation: isolate;
@@ -471,7 +491,11 @@ a {
   min-width: 0;
   min-height: 0;
   flex: 1 1 0%;
-  overflow: hidden;
+  /* clip, never hidden: a hidden box is still a scroll container, and a
+     descendant's scrollIntoView() or focus() while a screen sits off to the
+     right scrolls it sideways; the compositor then lands the slide short by
+     that offset until the next layout clamps it (the "bounce"). */
+  overflow: clip;
   background: var(--main);
 }
 
@@ -481,11 +505,8 @@ a {
   display: flex;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   background: var(--main);
-  animation-duration: 300ms;
-  animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   backface-visibility: hidden;
   will-change: transform;
 }
@@ -505,85 +526,110 @@ a {
   overscroll-behavior-y: contain;
 }
 
+/* The pull-to-refresh indicator a Root or Detail page scroller shows in the
+   native shell (docs/navigation/overview.md §13). Driven inline by the gesture; at
+   rest it is invisible and out of the way. */
+.phone-navigation-refresh {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  border: 3px solid var(--sep);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  background: var(--panel);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+}
+
+.phone-navigation-refresh[data-armed='true'] {
+  animation: phone-refresh-spin 800ms linear infinite;
+}
+
+@keyframes phone-refresh-spin {
+  to {
+    transform: translate3d(0, 90px, 0) rotate(360deg);
+  }
+}
+
+/* The scrim over a revealed lower layer. Each screen carries one; it shows
+   only while another screen rests over this one, and runStackTransition (or
+   the finger, during a swipe) lifts it in step with the slide. */
+.phone-navigation-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--scrim);
+  opacity: 0;
+}
+
+/* Static poses. A class names where a layer rests and which layer is on
+   top; the transition between two poses is scripted (see above). */
 .phone-navigation-screen--current {
   z-index: 1;
-  animation: none;
   will-change: auto;
 }
 
 .phone-navigation-screen--forward-out {
   z-index: 1;
-  animation-name: phone-navigation-forward-out;
   pointer-events: none;
+}
+
+.phone-navigation-screen--forward-out > .phone-navigation-dim {
+  opacity: 1;
 }
 
 .phone-navigation-screen--forward-source-ready {
   z-index: 1;
-  animation: none;
   transform: translate3d(0, 0, 0);
 }
 
+/* A forward push mounts its destination in this pose and lets the browser
+   paint it once before the scripted motion starts. */
 .phone-navigation-screen--forward-ready {
   z-index: 2;
-  animation: none;
   transform: translate3d(100%, 0, 0);
 }
 
 .phone-navigation-screen--forward-in {
   z-index: 2;
-  animation-name: phone-navigation-forward-in;
-  box-shadow: -12px 0 32px var(--scrim);
+  box-shadow: var(--nav-shadow);
 }
 
 .phone-navigation-screen--back-out {
   z-index: 2;
-  animation-name: phone-navigation-back-out;
-  box-shadow: -12px 0 32px var(--scrim);
+  box-shadow: var(--nav-shadow);
   pointer-events: none;
 }
 
 .phone-navigation-screen--back-in {
   z-index: 1;
-  animation-name: phone-navigation-back-in;
 }
 
 /* Interactive edge back-swipe. The retained stack renders every layer in a
    stable keyed sibling; the immediate lower layer rests live beneath the
-   current screen at the -28% parallax offset, and the gesture hook drives
-   both layers' inline transforms with the finger. While the finger is down
-   there is no CSS animation at all; on release the hook settles both layers
-   with Web Animations from exactly the released position (held by the inline
-   transforms) to the rest or revealed transform. The settle's finish — or
-   the hook's timer fallback — closes the lane: a cancel just drops the
-   inline transforms back on the current screen, and only then does a commit
-   fire its single route update, so the revealed layer becomes current
-   without a second animation. The underlay and a Back's outgoing screen stay
-   inert and aria-hidden; deeper retained layers are hidden entirely. */
+   current screen at the parallax offset, and the gesture hook drives both
+   layers' inline transforms with the finger. On release the hook runs the
+   same runStackTransition from exactly the released position to the rest or
+   revealed pose. The settle's finish — or the hook's timer fallback — closes
+   the lane: a cancel just drops the inline transforms back on the current
+   screen, and only then does a commit fire its single route update, so the
+   revealed layer becomes current without a second animation. The underlay
+   and a Back's outgoing screen stay inert and aria-hidden; deeper retained
+   layers are hidden entirely. */
 .phone-navigation-screen--underlay {
   z-index: 1;
-  animation: none;
-  transform: translate3d(-28%, 0, 0);
+  transform: translate3d(calc(-1 * var(--nav-parallax)), 0, 0);
   will-change: transform;
 }
 
-@keyframes phone-navigation-forward-out {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-28%, 0, 0); }
-}
-
-@keyframes phone-navigation-forward-in {
-  from { transform: translate3d(100%, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
-}
-
-@keyframes phone-navigation-back-out {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(100%, 0, 0); }
-}
-
-@keyframes phone-navigation-back-in {
-  from { transform: translate3d(-28%, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
+.phone-navigation-screen--underlay > .phone-navigation-dim {
+  opacity: 1;
 }
 
 /* The secondary navigation is a viewport-relative, per-device width on desktop
@@ -954,13 +1000,13 @@ a {
 .admin-topbar-results {
   right: 0;
   left: 0;
-  max-height: 60vh;
+  max-height: 60dvh;
   overflow-y: auto;
 }
 
 .admin-topbar-search--overlay .admin-topbar-results {
   top: calc(100% + 10px);
-  max-height: min(56vh, 520px);
+  max-height: min(56dvh, 520px);
 }
 
 .admin-topbar-menu {
@@ -988,6 +1034,34 @@ a {
 
 .admin-topbar-menu-item {
   font-size: 13px;
+}
+
+/* The one card region (docs/navigation/overview.md §7): toasts, and anything else that
+   arrives beside the work rather than over it. Which region is in use is a
+   TypeScript decision made from the shell's navigation layout — `data-region`
+   is that decision written down, never a second breakpoint. */
+.card-viewport {
+  position: fixed;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.card-viewport[data-region='top-right'] {
+  top: 16px;
+  right: 16px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+/* On one stack the cards sit above the tab bar, clear of the home indicator. */
+.card-viewport[data-region='bottom'] {
+  right: 12px;
+  bottom: calc(12px + var(--mobile-tabbar-h, 0px) + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+}
+
+.overlay-card {
+  pointer-events: auto;
 }
 
 .mobile-tabbar {
@@ -1808,12 +1882,9 @@ a {
   position: static;
 }
 
+/* Presentation only: the Popover primitive owns its position and its layer. */
 .admin-compose-emoji-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
-  z-index: 60;
-  width: min(20rem, 100%);
+  width: min(20rem, 100vw - 24px);
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--panel);
@@ -1966,13 +2037,9 @@ button.reaction-pill-active:focus-visible {
 }
 
 /* "Who reacted" popover: shown above the pill on hover / focus / long-press.
-   Left-anchored by default; flipped to the right edge (data-align="right")
-   when it would overflow the viewport. */
+   It is a Popover, so its position, its layer and its flip above/below the
+   pill all come from the primitive; this is presentation only. */
 .reaction-pill-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 50;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1988,11 +2055,6 @@ button.reaction-pill-active:focus-visible {
   line-height: 1.5;
   text-align: left;
   pointer-events: none;
-}
-
-.reaction-pill-popover[data-align='right'] {
-  left: auto;
-  right: 0;
 }
 
 .reaction-pill-popover-emoji {
@@ -2778,22 +2840,6 @@ button.reaction-pill-active:focus-visible {
   margin-bottom: 20px;
 }
 
-@keyframes kb-view-slide {
-  from {
-    opacity: 0.72;
-    transform: translateX(18px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.animate-kb-view-slide {
-  animation: kb-view-slide 220ms ease-out;
-}
-
 /* Knowledge rich text — the TipTap editor and the read-only renderer share
    .kb-prose so edited and published content look identical. */
 .kb-prose {
@@ -2951,4 +2997,41 @@ button.reaction-pill-active:focus-visible {
 }
 .kb-prose a.kb-wikilink-unresolved:hover {
   background: var(--overlay-weak);
+}
+
+/* Windows High Contrast (docs/navigation/overview.md §12): every colour token is
+   still respected in a forced-colors palette (browsers only replace
+   background/border/text colours with the OS-chosen system colours, on
+   elements we don't opt out with `forced-color-adjust: none`), but the four
+   places that carry state through colour ALONE — a colour-mix background, a
+   box-shadow, a border tinted from a token, an outline whose token flattens
+   into the same forced colour as everything else — get an explicit,
+   non-colour signal on top: `Highlight`/`CanvasText`, the two system colours
+   forced-colors guarantees stay distinguishable from the surrounding page. */
+@media (forced-colors: active) {
+  /* 1. Selection pills — TabBar's sliding indicator relies on a soft
+     drop-shadow ring (`box-shadow`) that forced-colors mode discards. */
+  .tabbar-indicator {
+    border: 1px solid Highlight;
+  }
+
+  /* 2. The rail's active tile — its `color-mix` background collapses to the
+     same forced background every other icon tile gets. */
+  .admin-rail-btn.active .admin-rail-btn-icon {
+    border: 2px solid Highlight;
+  }
+
+  /* 3. Focus rings — `outline-color: var(--accent)` forces to the same
+     colour as unrelated text, so state the system's own focus colour. */
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  /* 4. Card borders — a `var(--sep)` border can force to the same colour as
+     the card's own background, erasing the edge that separates panels. */
+  .admin-card,
+  .admin-input,
+  .admin-input-sm {
+    border-color: CanvasText;
+  }
 }

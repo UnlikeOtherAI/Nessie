@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Pill } from '../components/primitives/Pill'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { Card } from '../components/shared/Card'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { FormActions, FormError } from '../components/shared/FormActions'
@@ -11,6 +10,7 @@ import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { EMPTY_FORM_ERRORS, toFormErrors } from '../facades/form-errors'
 import { policyKeys } from '../lib/query-keys'
@@ -99,10 +99,11 @@ export const PolicyPage = () => {
   const pendingDeleteRule = rows.items.find((rule) => rule.id === pendingDeleteId) ?? null
 
   return (
-    <OwnerGate>
-      <section className="flex h-full min-h-0 flex-col">
-        <AdminPageHeader title="Policy Rules" />
-
+    <section className="flex h-full min-h-0 flex-col">
+      {/* The header is always rendered: a refusal is a state of this screen,
+          not a screen of its own, so Back never disappears with it. */}
+      <ScreenHeader title="Policy Rules" />
+      <OwnerGate>
         <PageBody width="regular">
           <Section title="Create rule">
             <Card variant="section">
@@ -229,7 +230,7 @@ export const PolicyPage = () => {
           pending={deleteRule.isPending}
           title="Delete this policy rule?"
         />
-      </section>
-    </OwnerGate>
+      </OwnerGate>
+    </section>
   )
 }

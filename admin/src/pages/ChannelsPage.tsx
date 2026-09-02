@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useRedirect } from '../navigation/redirect'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
@@ -13,7 +14,7 @@ import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
-import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
+import { useShellActions } from '../layouts/admin-shell/ShellActionsContext'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
@@ -22,18 +23,18 @@ import { useIsOwner } from '../components/shared/OwnerGate'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
 import {
   buildFeedItems,
-  isAgentsTabAvailable,
   type ChannelAgentParticipant,
-  type ChannelTab,
   type MessageUserIdentity,
 } from '../components/features/channels/channel-helpers'
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
+import { channelComposerDraftKey } from '../components/features/channels/composer-draft'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useShareRestrictedMessage } from '../facades/messages/hooks'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
 import { useChannelCall } from './channels/useChannelCall'
+import { useChannelTab } from './channels/useChannelTab'
 import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
 import { useExecutorRunLauncher } from './channels/useExecutorRunLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
@@ -48,10 +49,11 @@ import { useChannelParticipants } from './channels/useChannelParticipants'
 export const ChannelsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
-  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
+  const { onSelectAgent } = useShellActions()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const isOwner = useIsOwner()
@@ -74,14 +76,16 @@ export const ChannelsPage = () => {
     agents,
     allUsers,
   )
-  const { data: threadMessages = [], isFetched: threadMessagesFetched } =
-    useThreadMessages(activeChannel?.defaultThreadId)
+  const {
+    data: threadMessages = [],
+    isFetched: threadMessagesFetched,
+    isPlaceholderData: threadMessagesArePlaceholder,
+  } = useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
   const { documentSessions, documentStore, pendingMessages } = useThreadStream(
     activeChannel?.defaultThreadId,
   )
 
-  const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
   const [selectedMessageAgent, setSelectedMessageAgent] = useState<ChannelAgentParticipant | null>(null)
@@ -89,24 +93,13 @@ export const ChannelsPage = () => {
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
-  const agentsTabAvailable = isAgentsTabAvailable({
+  const { agentsTabAvailable, setActiveTab, visibleActiveTab } = useChannelTab({
+    activeChannel,
     boundAgentCount: boundAgents.length,
     isConversationSurface,
     isPersonalAssistantConversation,
-    personalAssistantPresenceCount: activeChannel?.personalAssistantPresences?.length ?? 0,
   })
-  const visibleActiveTab =
-    (activeTab === 'agents' && !agentsTabAvailable) ||
-    (activeTab === 'automations' && isConversationSurface)
-      ? 'messages'
-      : activeTab
 
-  useEffect(() => {
-    const requestedTab = new URLSearchParams(location.search).get('tab')
-    if (requestedTab === 'files' || requestedTab === 'messages') {
-      setActiveTab(requestedTab)
-    }
-  }, [location.search])
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
@@ -154,6 +147,9 @@ export const ChannelsPage = () => {
   }, [replyThread.openRootMessageId, replyThread.repliesQuery.data, replyThread.rootQuery.data, threadMessages])
   const conversationReadReady = isConversationReadReady({
     isReplyConversation: Boolean(replyThread.openRootMessageId),
+    messagesArePlaceholder: replyThread.openRootMessageId
+      ? replyThread.repliesQuery.isPlaceholderData || replyThread.rootQuery.isPlaceholderData
+      : threadMessagesArePlaceholder,
     repliesLoaded: replyThread.repliesQuery.isSuccess,
     rootLoaded: replyThread.rootQuery.isSuccess,
   })
@@ -201,6 +197,7 @@ export const ChannelsPage = () => {
     activeChannel,
     threadMessages,
     currentUserId: me?.user.id,
+    draftKey: channelComposerDraftKey(activeChannel?.id),
   })
   // Dropping files anywhere over the conversation column stages them in the
   // composer. The reply panel is a sibling with its own zone, so the two never
@@ -252,12 +249,6 @@ export const ChannelsPage = () => {
   const joinChannel = useJoinChannel()
 
   useEffect(() => {
-    if (activeTab === 'agents' && !agentsTabAvailable) {
-      setActiveTab('messages')
-    }
-  }, [activeTab, agentsTabAvailable])
-
-  useEffect(() => {
     cancelEdit()
     closeSearch()
     setShowChannelSettings(false)
@@ -291,9 +282,9 @@ export const ChannelsPage = () => {
     // existing convenience of opening the first conversation in the detail
     // pane because that list remains visible alongside it.
     if (!phoneLayout && !isComposeRoute && !channelId && activeChannel) {
-      void navigate(`/channels/${activeChannel.id}`, { replace: true })
+      redirect(`/channels/${activeChannel.id}`)
     }
-  }, [activeChannel, channelId, isComposeRoute, navigate, phoneLayout])
+  }, [activeChannel, channelId, isComposeRoute, phoneLayout, redirect])
 
   // Structural only: is there an agent here at all? Whether one engages is the
   // orchestrator's model-judged call. The Personal Assistant and external-agent

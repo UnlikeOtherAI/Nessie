@@ -1,5 +1,6 @@
 import type { ChannelRecord } from '../../lib/api-client';
-import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
+import { channelHashClassName, renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { CreateChannelTarget } from './types';
@@ -25,6 +26,8 @@ export const SidebarChannelsSection = ({
   starredChannelIds,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
+  const prewarm = usePrewarm();
+
   return (
     <SidebarMenuSection
       action={
@@ -46,6 +49,7 @@ export const SidebarChannelsSection = ({
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
             key={channel.id}
             className={[
               'admin-sb-item group',
@@ -54,6 +58,7 @@ export const SidebarChannelsSection = ({
             ].join(' ')}
             onClick={() => onNavigateChannel(channel.id)}
             type="button"
+            {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
           >
             <span className={channelHashClassName}>#</span>
             <GroupDmSidebarLabel label={channel.label} />

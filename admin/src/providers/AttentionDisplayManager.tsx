@@ -5,6 +5,7 @@ import { useChannels } from '../facades/channels/hooks'
 import { setDesktopBadgeCount } from '../facades/notifications/desktop-native-notification'
 import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
+import type { SurfaceSection } from '../navigation/page-types'
 import { useFocusMode } from './FocusModeProvider'
 
 type NativeShellWindow = Window & {
@@ -16,17 +17,19 @@ type BadgingNavigator = Navigator & {
   setAppBadge?: (count?: number) => Promise<void>
 }
 
+// Badges are keyed by the surface registry's section names, the same
+// vocabulary `nessie:screen` posts (docs/navigation/overview.md §9/§10), so the shell
+// reads one section language rather than a per-message one. A section the
+// admin does not count is simply absent, and the shell reads it as 0.
 export const attentionBadgeCounts = (
   channels: { unreadCount: number }[],
   attention: { assignedWork: { total: number }; knowledge: { total: number } } | undefined,
-) => {
+): { badges: Partial<Record<SurfaceSection, number>>; total: number } => {
   const channelCount = channels.reduce((total, channel) => total + channel.unreadCount, 0)
   const assignedWork = attention?.assignedWork.total ?? 0
   const knowledge = attention?.knowledge.total ?? 0
   return {
-    assignedWork,
-    channels: channelCount,
-    knowledge,
+    badges: { channels: channelCount, knowledge, projects: assignedWork },
     total: channelCount + assignedWork + knowledge,
   }
 }
@@ -51,11 +54,11 @@ export const AttentionDisplayManager = () => {
 
   useEffect(() => {
     const counts = focusModeEnabled
-      ? { assignedWork: 0, channels: 0, knowledge: 0, total: 0 }
+      ? { badges: { channels: 0, knowledge: 0, projects: 0 }, total: 0 }
       : attentionBadgeCounts(channels, attention)
     if (isReactNativeWebView()) {
       ;(window as NativeShellWindow).ReactNativeWebView?.postMessage(JSON.stringify({
-        ...counts,
+        badges: counts.badges,
         type: 'nessie:attention',
       }))
       return

@@ -51,7 +51,7 @@ const FullPageView = ({
 
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="animate-kb-view-slide px-4 py-4">
+      <div className="px-4 py-4">
         <div className="mb-3 flex min-h-8 items-center border-b border-[color:var(--sep)] pb-3">
           <KnowledgeBreadcrumb
             onBrowsePath={onBrowsePath}
@@ -184,7 +184,7 @@ const TreeView = ({
 
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="animate-kb-view-slide px-4 py-4">
+      <div className="px-4 py-4">
         {items.length === 0 ? (
           <EmptyFolder label="No pages yet." />
         ) : (

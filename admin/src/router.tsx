@@ -1,12 +1,10 @@
-import {
-  Navigate,
-  createBrowserRouter,
-  useLocation,
-} from 'react-router-dom'
+import { createBrowserRouter, useLocation } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
+import { consumeDesktopPendingPath } from './lib/desktop'
 import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
+import { RedirectRoute } from './navigation/RedirectRoute'
 import { SearchPage } from './pages/SearchPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
@@ -57,14 +55,18 @@ const RootRouteRedirect = () => {
   // The native shell injects a tapped notification route before this SPA
   // starts. Resolve it here, rather than first redirecting to /channels and
   // replacing the notification destination with the default conversation.
-  return <Navigate to={resolveRootLandingPath(search, readNativePendingPushPath())} replace />
+  return (
+    <RedirectRoute
+      to={resolveRootLandingPath(search, readNativePendingPushPath() ?? consumeDesktopPendingPath())}
+    />
+  )
 }
 
 // The Admin tab's first phone page is its existing navigation list. Wider
 // layouts preserve the established direct route to Profile & Session.
 const SettingsRootRoute = () => {
   const phoneLayout = usePhoneLayout()
-  return phoneLayout ? null : <Navigate to="/settings/profile" replace />
+  return phoneLayout ? null : <RedirectRoute to="/settings/profile" />
 }
 
 export const router = createBrowserRouter([
@@ -89,30 +91,30 @@ export const router = createBrowserRouter([
   },
   {
     path: '/workflows',
-    element: <Navigate to="/agents/workflows" replace />,
+    element: <RedirectRoute to="/agents/workflows" />,
   },
   {
     path: '/chats',
-    element: <Navigate to="/channels" replace />,
+    element: <RedirectRoute to="/channels" />,
   },
   {
     // Tool management consolidated onto the canonical /agents/tools registry;
     // these redirects keep old bookmarks and the mobile WebView shell working.
     path: '/workflows/tools',
-    element: <Navigate to="/agents/tools" replace />,
+    element: <RedirectRoute to="/agents/tools" />,
   },
   {
     path: '/settings/tools',
-    element: <Navigate to="/agents/tools" replace />,
+    element: <RedirectRoute to="/agents/tools" />,
   },
   {
     // /settings/agents folded into the Agents browser (/agents) + designer.
     path: '/settings/agents',
-    element: <Navigate to="/agents" replace />,
+    element: <RedirectRoute to="/agents" />,
   },
   {
     path: '/integrations',
-    element: <Navigate to="/settings/integrations" replace />,
+    element: <RedirectRoute to="/settings/integrations" />,
   },
   {
     element: <AdminShellLayout />,
@@ -195,7 +197,7 @@ export const router = createBrowserRouter([
         // /work folded into the project Kanban menu; redirect kept for the
         // shipped mobile WebView shell, which may deep-link the old path.
         path: '/work',
-        element: <Navigate to="/projects" replace />,
+        element: <RedirectRoute to="/projects" />,
       },
       {
         path: '/knowledge-base',

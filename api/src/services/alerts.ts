@@ -66,7 +66,12 @@ export const listUserAlerts = async (
     unreadOnly?: boolean
   },
 ): Promise<{
-  data: { alerts: UserAlertRecord[]; unreadCount: number }
+  // The paged-list contract: `data` IS the page of records and `meta` carries
+  // the cursors and the total (AGENTS.md → "big elements are one contract from
+  // the API to the pixel"). The unread count is its own fact and is served by
+  // `GET /api/alerts/summary`; returning it inside the page made this endpoint
+  // the one list `usePagedList` could not read.
+  data: UserAlertRecord[]
   meta: PaginationMeta
 }> => {
   const limit = resolvePageLimit(input.limit)
@@ -78,10 +83,7 @@ export const listUserAlerts = async (
   // The total is counted against the same filters but before the cursor is
   // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
   // after the one this page starts at.
-  const [total, unread] = await Promise.all([
-    prisma.userAlert.count({ where: { AND: conditions } }),
-    unreadCount(prisma, input),
-  ])
+  const total = await prisma.userAlert.count({ where: { AND: conditions } })
 
   const parsed = decodeKeysetCursor(input.cursor)
   if (parsed) {
@@ -106,7 +108,7 @@ export const listUserAlerts = async (
   })
 
   return {
-    data: { alerts: page.data.map(mapAlertRecord), unreadCount: unread },
+    data: page.data.map(mapAlertRecord),
     meta: page.meta,
   }
 }

@@ -1,7 +1,11 @@
 # Email Integration — SES
 
 **Date:** 2026-04-07
-**Status:** Design
+**Status:** Superseded — see [2026-09-02-agent-email.md](2026-09-02-agent-email.md).
+This predates the comms-connect stack, the `AgentTrigger`/delivery model, the
+approval machinery, `FileService`, and the encrypted secret store; its address
+scheme, BYO-SES AssumeRole path, `agents.email` column, and `integrations`
+table are all replaced by the 2026-09-02 plan.
 
 ---
 

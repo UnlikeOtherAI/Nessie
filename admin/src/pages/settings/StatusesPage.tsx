@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useRedirect } from '../../navigation/redirect'
 import { Switch } from '../../components/primitives/Switch'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -17,6 +18,7 @@ import {
   useUpdateStatus,
 } from '../../facades/statuses/hooks'
 import type { UserStatusRuleScope, UserStatusScheduleKind } from '../../lib/api-client'
+import { usePhoneLayout } from '../../lib/mobile-shell'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { toFormErrors } from '../../facades/form-errors'
 import { Card } from '../../components/shared/Card'
@@ -41,6 +43,8 @@ import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
 export const StatusesPage = () => {
   const { statusId } = useParams()
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
+  const redirect = useRedirect()
   const statuses = useStatuses()
   const statusRows = statuses.data ?? []
   const { data: channels = [] } = useChannels()
@@ -88,10 +92,15 @@ export const StatusesPage = () => {
   const [ruleError, setRuleError] = useState<string | undefined>(undefined)
 
   useEffect(() => {
-    if (!statusId && statusRows[0]) {
-      navigate(`/settings/statuses/${statusRows[0].id}`, { replace: true })
+    // A phone screen starts on the list: `/settings/statuses/:id` is a real
+    // pushed screen in the navigation stack (surface registry, depth 2), so
+    // auto-selecting the first status here would slide a detail in on arrival
+    // and then re-slide it on every Back — the reader could never leave.
+    // Wider layouts keep the convenience because the list stays beside it.
+    if (!phoneLayout && !statusId && statusRows[0]) {
+      redirect(`/settings/statuses/${statusRows[0].id}`)
     }
-  }, [navigate, statusId, statusRows])
+  }, [phoneLayout, redirect, statusId, statusRows])
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 

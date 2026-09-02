@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
@@ -147,11 +148,33 @@ test('keeps routes on the same screen from replaying a navigation transition', (
   )
 })
 
-test('does not animate cross-tab, compose, or unrelated routes', () => {
+test('does not animate cross-tab or unrelated routes', () => {
   assert.equal(getPhoneNavigationDirection('/channels', '/projects'), null)
-  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), null)
   assert.equal(getPhoneNavigationDirection('/projects', '/settings'), null)
-  assert.equal(getPhoneNavigationScreen('/channels/new'), null)
+  assert.equal(getPhoneNavigationDirection('/channels/chan_a', '/agents/agent_a'), null)
+  // Compose is a Flow inside Channels: it pushes over the root like any other
+  // depth-1 screen, and swaps in place beside a conversation.
+  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), 'forward')
+  assert.equal(getPhoneNavigationScreen('/channels/new')?.depth, 1)
+})
+
+test('pushes and pops the Agents family and the settings/ops nested details', () => {
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/agent_a'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/agents/agent_a', '/agents'), 'back')
+  assert.equal(getPhoneNavigationDirection('/agents', '/agents/designer/agent_a'), 'forward')
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses', '/settings/statuses/status_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/settings/statuses/status_a', '/settings/statuses'),
+    'back',
+  )
+  assert.equal(getPhoneNavigationDirection('/ops', '/ops/usage'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/ops/usage', '/ops'), 'back')
+  // /threads and /unread-messages sit one step inside Channels.
+  assert.equal(getPhoneNavigationDirection('/channels', '/threads'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/threads', '/channels'), 'back')
 })
 
 test('classifies channel project overviews before the generic channel pattern', () => {
@@ -203,8 +226,19 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     getPhoneNavigationBackTarget('/settings/security'),
     { label: 'Back to Admin', pathname: '/settings' },
   )
+  // Feedback and Alerts are reachable from every section, so their declared
+  // parent is Admin — where both are listed — and the ledger's real
+  // predecessor wins over it whenever there is one.
   assert.deepEqual(
     getPhoneNavigationBackTarget('/feedback'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/alerts'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/threads'),
     { label: 'Back to Channels', pathname: '/channels' },
   )
 })
@@ -251,11 +285,19 @@ test('shares the phone Back control across route headers and channel flows', () 
   const composePage = readSource('../src/pages/ChannelConversationComposePage.tsx')
   const infoFlow = readSource('../src/components/features/channels/ConversationInfoFlow.tsx')
 
-  assert.match(navigationButton, /getPhoneNavigationBackTarget/)
+  assert.match(navigationButton, /resolveBackAction\(/)
   assert.match(navigationButton, /<PhoneBackButton/)
   assert.match(backButton, /useNativeIOSPhoneApp/)
-  assert.match(channelHeader, /leading=\{<PhoneNavigationButton \/>\}/)
-  assert.match(composePage, /<PhoneBackButton label="Back to Channels" onBack=\{close\}/)
+  // Step 9: a screen's header no longer wires the doorway itself —
+  // `ScreenHeader` owns the leading lane and renders it on the single layout
+  // (docs/navigation/overview.md §9).
+  const screenHeader = readSource('../src/components/shared/ScreenHeader.tsx')
+  assert.match(screenHeader, /<PhoneNavigationButton \/>/)
+  assert.match(screenHeader, /<PhoneBackButton/)
+  assert.match(channelHeader, /<ScreenHeader/)
+  assert.doesNotMatch(channelHeader, /PhoneNavigationButton/)
+  assert.match(composePage, /backLabel="Back to Channels"/)
+  assert.match(composePage, /onBack=\{phoneLayout \? close : undefined\}/)
   assert.match(infoFlow, /<PhoneNavigationButton \/>/)
 })
 
@@ -271,14 +313,71 @@ test('mounts the transition viewport only in the shell phone branch', () => {
   assert.equal(shell.indexOf('<PhoneNavigationViewport', viewport + 1), -1)
 })
 
-test('defines paired push and pop animations under the global reduced-motion rule', () => {
+test('navigation motion is scripted from static poses, never a CSS keyframe', () => {
   const styles = readSource('../src/styles.css')
 
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
-  assert.match(styles, /\.phone-navigation-screen--forward-ready/)
-  assert.match(styles, /transform: translate3d\(100%, 0, 0\)/)
-  assert.match(styles, /@keyframes phone-navigation-forward-out/)
-  assert.match(styles, /@keyframes phone-navigation-forward-in/)
-  assert.match(styles, /@keyframes phone-navigation-back-out/)
-  assert.match(styles, /@keyframes phone-navigation-back-in/)
+  // The poses a layer rests in; the travel between them is runStackTransition.
+  assert.match(styles, /\.phone-navigation-screen--forward-ready \{[\s\S]*?transform: translate3d\(100%, 0, 0\)/)
+  assert.match(styles, /\.phone-navigation-screen--underlay \{[\s\S]*?calc\(-1 \* var\(--nav-parallax\)\)/)
+  // The revealed layer's scrim: present at rest under a top layer, absent
+  // otherwise; the travel between is runStackTransition's opacity lane.
+  assert.match(styles, /\.phone-navigation-dim \{[\s\S]*?pointer-events: none;[\s\S]*?opacity: 0;/)
+  assert.match(styles, /\.phone-navigation-screen--underlay > \.phone-navigation-dim \{\s*opacity: 1;/)
+  assert.match(styles, /\.phone-navigation-screen--forward-out > \.phone-navigation-dim \{\s*opacity: 1;/)
+  assert.equal((styles.match(/@keyframes phone-navigation-/g) ?? []).length, 0)
+  assert.doesNotMatch(styles, /\.phone-navigation-screen[^{]*\{[^}]*animation/)
+
+  const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const swipe = readSource('../src/layouts/admin-shell/use-phone-back-swipe.ts')
+  assert.match(viewport, /runStackTransition\(/)
+  assert.match(swipe, /runStackTransition\(/)
+  assert.doesNotMatch(swipe, /\.animate\(/)
+  assert.doesNotMatch(viewport, /onAnimationEnd/)
 })
+
+test('the column browser stacks on single and moves its track on the shared tokens', () => {
+  // docs/navigation/overview.md §6: on `single` a deeper column is a stack layer, so
+  // nothing in that path may translate or transition a screen of its own; the
+  // split track keeps its slide but reads the one motion spec's tokens.
+  const columnBrowser = readSource(
+    '../src/components/shared/column-browser/ColumnBrowserViewport.tsx',
+  )
+  assert.match(columnBrowser, /<NestedStage/)
+  assert.doesNotMatch(columnBrowser, /transition-transform|duration-300|ease-out/)
+  assert.match(
+    columnBrowser,
+    /transition: 'transform var\(--nav-duration\) var\(--nav-easing\)'/,
+  )
+  // The one translated track is the non-stacked branch's, and it is the only
+  // transform this component writes.
+  assert.equal((columnBrowser.match(/translateX\(/g) ?? []).length, 1)
+})
+
+test('nothing but the stack animates a stage: kb-view-slide is gone from the admin', () => {
+  // Knowledge's panes are nested stages now, so their 220 ms fade-slide would
+  // be a second motion for the same push (docs/navigation/overview.md §6).
+  const root = fileURLToPath(new URL('../src', import.meta.url))
+  const offenders = readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((path) => readFileSync(path, 'utf8').includes('kb-view-slide'))
+  assert.deepEqual(offenders, [])
+})
+
+test('a committed swipe is the one Back that gives a haptic', () => {
+  const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const commit = viewport.slice(
+    viewport.indexOf('const performGestureBack = useCallback('),
+    viewport.indexOf('onCommit: performGestureBack'),
+  )
+  assert.match(commit, /haptic\('light'\)/)
+  assert.equal((viewport.match(/haptic\(/g) ?? []).length, 1)
+  const button = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  assert.doesNotMatch(button, /haptic\(/)
+})
+
+
+// 'stack containers clip rather than hide, so no descendant can scroll
+// them' moved to admin/test/navigation-gates.test.ts (docs/navigation/overview.md §11
+// "Gates") — it is one of the step-15 source-regex gates, not a
+// transition-suite pin.

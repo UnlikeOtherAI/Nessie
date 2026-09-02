@@ -22,7 +22,7 @@ Read each of these once before auditing so you can say "uses X" vs "hand-rolls X
 
 ## OUT OF SCOPE — do not report on these (another session owns them)
 
-- Navigation: sidebar, rail, topbar, mobile tab bar, `AdminPageHeader`, `ResponsivePageHeader`, `PageHeaderMenu`, breadcrumbs, `TabBar` strips, page-title rows and their action buttons.
+- Navigation: sidebar, rail, topbar, mobile tab bar, `ScreenHeader` (which composes `ResponsivePageHeader`), `PageHeaderMenu`, breadcrumbs, `TabBar` strips, page-title rows and their action buttons. The header these audits recorded as `AdminPageHeader` is `ScreenHeader` now — [docs/navigation/overview.md](../../../navigation/overview.md) §9.
 - Button *styling* itself (`.admin-button*`). You MAY report *where* buttons sit inside content (e.g. form footer placement, a table's action column) but not how a button looks.
 - Chat: channel conversation feed, composer, message rows/bubbles, reply-thread panel, thinking bubbles, reactions, mentions.
 - Canvas interactions (workflow designer graph, kanban drag). Their side panels / property forms ARE in scope.

@@ -3,7 +3,7 @@ import { useIsOwner } from '../components/shared/OwnerGate'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useThreadActivity } from '../facades/threads/activity-hooks'
 import { useUsers } from '../facades/users/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -32,7 +32,7 @@ export const ThreadsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader actions={headerActions} title="Threads" />
+      <ScreenHeader actions={headerActions} title="Threads" />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {activity.isLoading ? <div className="py-8 text-center text-[color:var(--tx3)]">Loading threads…</div> : null}
         {activity.isError ? <div className="py-8 text-center text-[color:var(--danger-text)]">Threads could not be loaded. Try again.</div> : null}

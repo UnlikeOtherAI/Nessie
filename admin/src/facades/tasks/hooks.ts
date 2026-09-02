@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { iterationKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -44,6 +44,7 @@ export type AssignableUser = {
 export const useTasks = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<TaskRecord[]>({
+    placeholderData: keepPreviousData,
     queryKey: taskKeys.forProject(projectId),
     queryFn: () => apiClient.get(`/api/tasks${projectId ? `?project=${projectId}` : ''}`),
   })

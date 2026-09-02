@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { Pill } from '../components/primitives/Pill'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
 import { approvalKeys } from '../lib/query-keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -91,7 +91,7 @@ export const ApprovalsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Approvals" />
+      <ScreenHeader title="Approvals" />
 
       <PageBody width="regular">
         <Section

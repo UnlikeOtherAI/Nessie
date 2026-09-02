@@ -829,6 +829,54 @@ If MCP action and HTTP route diverge, both must share the same:
 - reason codes,
 - audit log shape.
 
+### Draft-safe write contracts (auto-saving editors)
+
+Every admin surface that holds unsent words auto-saves it
+(`docs/navigation/overview.md` §12), so the write endpoints behind them are idempotent
+or conditional rather than last-write-wins.
+
+**Client idempotency key — `POST /api/threads/{threadId}/messages`.** The body
+accepts `clientMessageId` (1–200 chars); the `Idempotency-Key` request header
+is accepted as the transport spelling of the same value and the body field wins
+when both are present. It is stored on `Message.clientMessageId` and is unique
+per thread — PostgreSQL treats NULLs as distinct, so every message posted
+without one, including every agent reply and every pre-existing row, is
+unaffected and no backfill is needed.
+
+- A first send behaves exactly as before: **201** with
+  `{ message, pendingAgentInvites }`.
+- A retry carrying a key the thread already holds returns **200** with that
+  same message and an empty `pendingAgentInvites`. The first attempt's
+  attachment linking, mention alerts, push dispatch and agent orchestration are
+  **not** replayed.
+- Two attempts racing past the pre-check are resolved by the unique index; the
+  loser replays the winner rather than surfacing a conflict.
+- The admin composers mint one key per unsent draft, hold it while the attempt
+  is unresolved, and mint a fresh one after a success or a channel switch.
+
+**Optimistic concurrency — `If-Match`.** Three update routes accept the
+revision the caller edited, as a bare number, a quoted one, or a weak ETag:
+
+| Route | Version token | Conflict code |
+| --- | --- | --- |
+| `PUT /api/dashboards/{id}/layout` | `Dashboard.revision` | `DASHBOARD_REVISION_CONFLICT` |
+| `PUT /api/workflows/{workflowTemplateId}` | `WorkflowTemplate.version` | `WORKFLOW_TEMPLATE_VERSION_CONFLICT` |
+| `PATCH /api/knowledge-base/pages/{pageId}` | `KnowledgePage.revision` | `KNOWLEDGE_PAGE_REVISION_CONFLICT` |
+
+- A mismatch answers **409** with `error.details.currentRevision`, so the
+  client can offer "take theirs" without a second round trip, and writes
+  nothing.
+- A header the server cannot parse is **400 `INVALID_IF_MATCH`** — never
+  silently treated as absent, because that would turn a client bug into an
+  overwrite.
+- A missing header, or `*`, means "no opinion" and saves unconditionally. That
+  is deliberately the "keep mine" answer a person chooses after seeing the
+  conflict.
+- `KnowledgePage.revision` is new (migration
+  `20260902130000_knowledge_page_revision`, default 0, incremented on every
+  update): `versionNumber` lives on the per-version row and cannot serve an
+  `If-Match`.
+
 Parity matrix:
 
 | Capability class | HTTP/transport target | MCP action | Chat command | Policy | Approval | Audit | Status |

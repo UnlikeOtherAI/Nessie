@@ -1,3 +1,4 @@
+import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
@@ -8,13 +9,13 @@ import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneBackButton } from '../layouts/admin-shell/PhoneBackButton'
+import { useOverlay } from '../components/overlays/useOverlay'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
-import { useModalA11y } from '../components/shared/useModalA11y'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type RecipientKind = 'agent' | 'user'
@@ -63,7 +64,6 @@ export const ChannelConversationComposePage = () => {
   const sendMessage = useSendMessageToThread()
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
-  const dialogRef = useRef<HTMLElement | null>(null)
 
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [query, setQuery] = useState('')
@@ -77,7 +77,19 @@ export const ChannelConversationComposePage = () => {
   const close = useCallback(() => {
     void navigate(returnTo, { replace: true })
   }, [navigate, returnTo])
-  useModalA11y(dialogRef, close, !phoneLayout, addressInputRef)
+  // A route, not a popup — the phone-navigation stack already owns Back for
+  // it there (docs/navigation/overview.md §6), so it registers as a modal overlay only
+  // on `split`, where it visually IS a centred dialog over the channel list.
+  // Never a breakpoint read of its own: `phoneLayout` is the layout question
+  // this page already answers for its own scrim/full-screen branch.
+  const overlay = useOverlay({
+    id: 'channel-conversation-compose',
+    initialFocusRef: addressInputRef,
+    kind: 'modal',
+    label: 'Close new message',
+    onClose: close,
+    open: !phoneLayout,
+  })
 
   const users = useMemo<UserRecord[]>(() => {
     return allUsers.filter((user) => user.id !== me?.user.id)
@@ -221,42 +233,43 @@ export const ChannelConversationComposePage = () => {
 
   return (
     <div
+      {...(phoneLayout ? {} : overlay.scrimProps)}
       className={phoneLayout
-        ? 'fixed inset-0 z-[90] bg-[color:var(--main)]'
-        : 'fixed inset-0 z-[90] flex items-center justify-center bg-[var(--scrim-strong)] p-6 backdrop-blur-sm'}
-      onMouseDown={(event) => {
-        if (!phoneLayout && event.target === event.currentTarget) close()
-      }}
+        ? 'fixed inset-0 bg-[color:var(--main)]'
+        : 'fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-6 backdrop-blur-sm'}
       role="presentation"
+      style={overlay.layerStyle}
     >
-      <section
+      <div
         aria-labelledby="channel-conversation-compose-title"
         aria-modal={phoneLayout ? undefined : true}
         className={phoneLayout
           ? 'flex h-[100dvh] min-h-0 w-full flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
           : 'flex h-[46rem] max-h-[calc(100dvh-3rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'}
-        ref={dialogRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={phoneLayout ? undefined : -1}
       >
-        <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-5">
-          {phoneLayout ? <PhoneBackButton label="Back to Channels" onBack={close} /> : null}
-          <h1 className="min-w-0 flex-1 text-[17px] font-bold text-[color:var(--tx)]" id="channel-conversation-compose-title">
-            New message
-          </h1>
-          {!phoneLayout ? (
-            <button
-              aria-label="Close new message"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
-              onClick={close}
-              type="button"
-            >
-              <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-              </svg>
-            </button>
-          ) : null}
-        </header>
+        {/* The one header, at the shell's height rather than this flow's own
+            58px. A Flow returning to an explicit address owns its Back, so on
+            the single layout the leading control is this page's close; on
+            split — where the flow is a centred dialog — the same action is a
+            Close in the actions lane. */}
+        <ScreenHeader
+          actions={phoneLayout ? [] : [{
+            compact: true,
+            icon: faXmark,
+            id: 'close-compose',
+            label: 'Close new message',
+            onSelect: close,
+            priority: 100,
+          }]}
+          backLabel="Back to Channels"
+          flowOwnsBack
+          onBack={phoneLayout ? close : undefined}
+          title="New message"
+          titleId="channel-conversation-compose-title"
+        />
 
         <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
         <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
@@ -359,6 +372,10 @@ export const ChannelConversationComposePage = () => {
 
         <form
           className="admin-compose mt-auto flex-shrink-0"
+          // The soft-keyboard inset (docs/navigation/overview.md §4.14) keeps this
+          // composer above an on-screen keyboard on hosts whose `dvh` does
+          // not itself shrink for it.
+          style={{ marginBottom: 'var(--keyboard-inset, 0px)' }}
           onSubmit={(event) => {
             event.preventDefault()
             void submit(mentionRef.current?.getText() ?? message)
@@ -411,7 +428,7 @@ export const ChannelConversationComposePage = () => {
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}
       />
-      </section>
+      </div>
     </div>
   )
 }

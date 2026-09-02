@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   useState,
 } from 'react'
 import type {
@@ -8,8 +7,7 @@ import type {
   BillingCancellationPreviewV1,
   BillingCancellationSelection,
 } from '@unlikeotherai/billing-statement-protocol'
-import { useModalA11y } from '../../shared/useModalA11y'
-import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
+import { useOverlay } from '../../overlays/useOverlay'
 
 type UoaBillingCancellationDialogProps = {
   confirmation: BillingCancellationConfirmationV1 | null
@@ -62,11 +60,13 @@ export const UoaBillingCancellationDialog = ({
   pending,
   preview,
 }: UoaBillingCancellationDialogProps) => {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  useModalA11y(dialogRef, onClose)
-  const overlayDismiss = useOverlayDismiss(() => {
-    if (pending) return
-    onClose()
+  const overlay = useOverlay({
+    dismissDisabled: pending,
+    id: 'uoa-billing-cancellation',
+    kind: 'modal',
+    label: 'Close',
+    onClose,
+    open: true,
   })
   const [selection, setSelection] =
     useState<BillingCancellationSelection | null>(null)
@@ -81,24 +81,27 @@ export const UoaBillingCancellationDialog = ({
   return (
     // Not the shared `Dialog`: a `max-w-2xl` `admin-card` on `--main` with its
     // own `data-testid` panel hook — a different panel family from the shell's
-    // `.create-channel-panel`. It already composes `useModalA11y`.
+    // `.create-channel-panel`. `useOverlay` still gives it the Back
+    // registration, focus trap, drag-safe scrim and layer every other overlay
+    // gets (docs/navigation/overview.md §7).
     <div
+      {...overlay.scrimProps}
       className={[
-        'fixed inset-0 z-[9999] flex items-center justify-center',
+        'fixed inset-0 flex items-center justify-center',
         'bg-[var(--scrim-strong)] px-4 backdrop-blur-sm',
       ].join(' ')}
-      {...overlayDismiss}
+      style={overlay.layerStyle}
     >
       <div
         aria-labelledby="uoa-billing-cancellation-title"
         aria-modal="true"
         className={[
-          'admin-card max-h-[min(760px,90vh)] w-full max-w-2xl',
+          'admin-card max-h-[min(760px,90dvh)] w-full max-w-2xl',
           'overflow-y-auto rounded-xl border border-[color:var(--sep)]',
           'bg-[color:var(--main)] p-6 text-[color:var(--tx)]',
         ].join(' ')}
         data-testid="uoa-cancellation-dialog"
-        ref={dialogRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={-1}
       >

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AgentCardPresenter } from '@nessie/schemas'
 
 import { agentCardKeys, threadKeys } from '../../lib/query-keys'
@@ -10,6 +10,7 @@ export const useAgentCard = (cardId: string | undefined) => {
 
   return useQuery<AgentCardPresenter>({
     enabled: Boolean(cardId),
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get(`/api/agent-cards/${cardId}`),
     queryKey: agentCardKeys.card(cardId),
   })

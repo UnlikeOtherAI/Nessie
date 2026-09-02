@@ -16,8 +16,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { DashboardWidgetProjection } from '@nessie/schemas'
 import { dashboardKeys } from '../../../lib/query-keys'
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import { useApiClient } from '../../../providers/ApiClientProvider'
-import { Skeleton } from '../../primitives/Skeleton'
 import { DashboardWidgetCard, type WidgetSurface } from './DashboardWidgetCard'
 
 type EmbedResponse =
@@ -53,7 +53,7 @@ export const EmbeddedWidget = ({
   if (isLoading) {
     return (
       <div style={{ maxWidth: surface === 'message' ? 520 : undefined }}>
-        <Skeleton className="rounded-lg border border-[color:var(--sep)]" height="h-32" />
+        <SkeletonBlock className="h-32 w-full rounded-lg border border-[color:var(--sep)]" />
       </div>
     )
   }

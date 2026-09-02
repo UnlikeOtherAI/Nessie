@@ -9,14 +9,16 @@ import type {
 import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
-  parseGlobalSearchMode,
+  GLOBAL_SEARCH_MODES,
+  readStoredSearchMode,
   useGlobalSearch,
-  usePersistedGlobalSearchMode,
+  writeStoredSearchMode,
   type KnowledgeSearchHit,
 } from '../facades/search/hooks'
 import { selectBestPassage } from '../lib/highlight-passage'
+import { useTabParam } from '../navigation/useTabParam'
 import {
   SearchResultMarker,
   type SearchMarkerSubject,
@@ -88,9 +90,11 @@ const knowledgeSecondary = (hit: KnowledgeSearchHit, query: string): ReactNode =
 export const SearchPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [mode, setMode] = usePersistedGlobalSearchMode(
-    parseGlobalSearchMode(searchParams.get('mode')),
-  )
+  // `?mode=` through the one tab-state hook, seeded from this device's last
+  // choice so plain `/search` opens the way the reader left it, while a link
+  // that names a mode wins (docs/navigation/overview.md §1, "Tab hosts").
+  const [storedMode] = useState(readStoredSearchMode)
+  const [mode, selectMode] = useTabParam('mode', GLOBAL_SEARCH_MODES, storedMode)
   const [query, setQuery] = useState(() => searchParams.get('query') ?? '')
   const results = useGlobalSearch(query, mode)
 
@@ -109,29 +113,17 @@ export const SearchPage = () => {
   const openKnowledge = (hit: KnowledgeSearchHit) =>
     navigate(`/knowledge-base?spaceId=${hit.page.spaceId}&pageId=${hit.page.id}`)
 
-  const updateSearchParams = (nextQuery: string, nextMode = mode) => {
+  const updateQuery = (nextQuery: string) => {
+    setQuery(nextQuery)
     const next = new URLSearchParams(searchParams)
-    if (nextQuery.trim()) {
-      next.set('query', nextQuery)
-    } else {
-      next.delete('query')
-    }
-    if (nextMode === 'semantic') {
-      next.set('mode', nextMode)
-    } else {
-      next.delete('mode')
-    }
+    if (nextQuery.trim()) next.set('query', nextQuery)
+    else next.delete('query')
     setSearchParams(next, { replace: true })
   }
 
-  const updateQuery = (nextQuery: string) => {
-    setQuery(nextQuery)
-    updateSearchParams(nextQuery)
-  }
-
   const updateMode = (nextMode: typeof mode) => {
-    setMode(nextMode)
-    updateSearchParams(query, nextMode)
+    writeStoredSearchMode(nextMode)
+    selectMode(nextMode)
   }
 
   // A person row jumps to their DM channel when one is already loaded for the
@@ -143,7 +135,7 @@ export const SearchPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Search" />
+      <ScreenHeader title="Search" />
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-[color:var(--sep)] p-5">

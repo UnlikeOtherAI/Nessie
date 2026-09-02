@@ -224,7 +224,7 @@ const seedAlerts = (store: TenantStore) =>
     ])
   }
 
-test('listUserAlerts returns only the caller org+user alerts with the unread count', async () => {
+test('listUserAlerts returns only the caller org+user alerts as its page', async () => {
   const store = new TenantStore()
   seedAlerts(store)
 
@@ -233,9 +233,10 @@ test('listUserAlerts returns only the caller org+user alerts with the unread cou
     userId: 'user-1',
   })
 
-  assert.equal(result.data.alerts.length, 3)
-  assert.equal(result.data.unreadCount, 2)
-  assert.ok(!result.data.alerts.some((alert) => alert.id === ALERT_FOREIGN))
+  // `data` is the page itself; the unread count belongs to the attention
+  // summary (`unreadCount` below), not inside a page of records.
+  assert.equal(result.data.length, 3)
+  assert.ok(!result.data.some((alert) => alert.id === ALERT_FOREIGN))
   assert.equal(result.meta.hasMore, false)
   assert.equal(result.meta.nextCursor, null)
 })
@@ -251,10 +252,9 @@ test('listUserAlerts unread filter returns only unread alerts', async () => {
   })
 
   assert.deepEqual(
-    result.data.alerts.map((alert) => alert.id),
+    result.data.map((alert) => alert.id),
     [ALERT_1, ALERT_2],
   )
-  assert.equal(result.data.unreadCount, 2)
 })
 
 test('listUserAlerts paginates with a keyset cursor', async () => {
@@ -266,7 +266,7 @@ test('listUserAlerts paginates with a keyset cursor', async () => {
     userId: 'user-1',
     limit: 2,
   })
-  assert.equal(page1.data.alerts.length, 2)
+  assert.equal(page1.data.length, 2)
   assert.equal(page1.meta.hasMore, true)
   assert.ok(page1.meta.nextCursor)
 
@@ -276,8 +276,8 @@ test('listUserAlerts paginates with a keyset cursor', async () => {
     limit: 2,
     cursor: page1.meta.nextCursor ?? undefined,
   })
-  assert.equal(page2.data.alerts.length, 1)
-  assert.equal(page2.data.alerts[0]?.id, ALERT_3)
+  assert.equal(page2.data.length, 1)
+  assert.equal(page2.data[0]?.id, ALERT_3)
   assert.equal(page2.meta.hasMore, false)
 })
 
@@ -410,11 +410,10 @@ test('GET /api/alerts returns the alerts envelope with unread count and meta', a
 
   assert.equal(res.statusCode, 200)
   const body = res.json() as {
-    data: { alerts: { id: string }[]; unreadCount: number }
+    data: { id: string }[]
     meta: { hasMore: boolean }
   }
-  assert.equal(body.data.alerts.length, 2)
-  assert.equal(body.data.unreadCount, 2)
+  assert.equal(body.data.length, 2)
   assert.equal(body.meta.hasMore, false)
   await app.close()
 })
@@ -428,12 +427,11 @@ test('GET /api/alerts?unread=true filters to unread alerts', async () => {
   const res = await app.inject({ method: 'GET', url: '/api/alerts?unread=true' })
 
   assert.equal(res.statusCode, 200)
-  const body = res.json() as { data: { alerts: { id: string }[]; unreadCount: number } }
+  const body = res.json() as { data: { id: string }[] }
   assert.deepEqual(
-    body.data.alerts.map((alert) => alert.id),
+    body.data.map((alert) => alert.id),
     [ROUTE_ALERT_2],
   )
-  assert.equal(body.data.unreadCount, 1)
   await app.close()
 })
 

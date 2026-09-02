@@ -11,7 +11,10 @@ import { QueryState } from '../components/shared/QueryState'
 import { ToolAgentAccessPanel } from '../components/features/workflow-tools/ToolAgentAccessPanel'
 import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-tools/ExplicitToolAgentAccessPanel'
 import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
-import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterBar'
+import {
+  ToolFilterBar,
+  TOOL_SOURCE_SEGMENTS,
+} from '../components/features/workflow-tools/ToolFilterBar'
 import { ToolList } from '../components/features/workflow-tools/ToolList'
 import { ToolReviewActions } from '../components/features/workflow-tools/ToolReviewActions'
 import { ToolReviewBar } from '../components/features/workflow-tools/ToolReviewBar'
@@ -29,6 +32,7 @@ import {
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
+import { useTabParam } from '../navigation/useTabParam'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
@@ -53,7 +57,16 @@ export const ToolsPage = () => {
   // one connection when setup identifies unreviewed tools.
   const instanceId = readMcpInstanceToolFilter(searchParams)
 
-  const [source, setSource] = useState<ToolRegistrySource | undefined>()
+  // The source narrowing is part of what the list shows, so it lives in the
+  // URL alongside `?status=` and `?search=` (docs/navigation/overview.md §1,
+  // "Tab hosts"). 'all' is the strip's name for no narrowing at all.
+  const [sourceSegment, setSourceSegment] = useTabParam(
+    'source',
+    TOOL_SOURCE_SEGMENTS,
+    'all',
+  )
+  const source: ToolRegistrySource | undefined =
+    sourceSegment === 'all' ? undefined : sourceSegment
   const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>(
     () => {
       const initial = searchParams.get('status')
@@ -196,10 +209,10 @@ export const ToolsPage = () => {
           value={searchQuery}
         />
         <ToolFilterBar
-          onSourceChange={setSource}
+          onSourceChange={setSourceSegment}
           onStatusChange={setStatus}
           onTagChange={setTag}
-          source={source}
+          source={sourceSegment}
           status={status}
           tag={tag}
           tagOptions={tagOptions}

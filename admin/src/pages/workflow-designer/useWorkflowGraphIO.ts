@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   useCreateWorkflowTemplate,
@@ -7,6 +8,8 @@ import {
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
+import { workflowKeys } from '../../lib/query-keys'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import {
   CANVAS_NODE_INSERT_OFFSET,
   CANVAS_NODE_INSERT_STEPS,
@@ -56,6 +59,8 @@ export const useWorkflowGraphIo = ({
   setWorkflowName,
 }: UseWorkflowGraphIoInput) => {
   const navigate = useNavigate()
+  const navigation = usePhoneNavigation()
+  const queryClient = useQueryClient()
   const location = useLocation()
   const { workflowTemplateId } = useParams<{ workflowTemplateId?: string }>()
   const isOwner = useIsOwner()
@@ -71,6 +76,13 @@ export const useWorkflowGraphIo = ({
   // the graph at their original position on save.
   const preservedStepsRef = useRef<WorkflowPreservedStep[]>([])
   const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
+  // The template version this designer hydrated from, advanced on every save it
+  // makes. Sent as `If-Match` so a second editor's save is refused rather than
+  // silently overwritten (docs/navigation/overview.md → "Drafts").
+  const expectedVersionRef = useRef<number | null>(null)
+  // Set when the server refused a save as stale: the header offers the choice
+  // in place — keep mine (save unconditionally) or take theirs (rehydrate).
+  const [versionConflict, setVersionConflict] = useState(false)
   const lastStoredDraftSignatureRef = useRef<string | null>(null)
   // Signature of the last graph the server rejected — autosave skips it so a
   // validation error doesn't turn into a request loop; manual save always retries.
@@ -97,28 +109,24 @@ export const useWorkflowGraphIo = ({
     }
   }, [location.state])
 
+  // The shared smart Back: an explicit return address wins, else a real
+  // previous entry is popped, else the list replaces the cold deep link.
   const handleBack = useCallback(() => {
-    if (workflowDesignerLocationState.returnTo) {
-      void navigate(workflowDesignerLocationState.returnTo, {
-        replace: true,
-        state: workflowDesignerLocationState.returnToState,
+    if (navigation) {
+      navigation.back({
+        returnTo: workflowDesignerLocationState.returnTo,
+        returnToState: workflowDesignerLocationState.returnToState,
+        fallback: '/agents/workflows',
       })
       return
     }
-
-    const historyIndex =
-      typeof window.history.state?.idx === 'number'
-        ? window.history.state.idx
-        : 0
-
-    if (historyIndex > 0) {
-      void navigate(-1)
-      return
-    }
-
-    void navigate('/agents/workflows', { replace: true })
+    void navigate(workflowDesignerLocationState.returnTo ?? '/agents/workflows', {
+      replace: true,
+      state: workflowDesignerLocationState.returnToState,
+    })
   }, [
     navigate,
+    navigation,
     workflowDesignerLocationState.returnTo,
     workflowDesignerLocationState.returnToState,
   ])
@@ -193,6 +201,8 @@ export const useWorkflowGraphIo = ({
     )
     preservedStepsRef.current = parsedWorkflow.preservedSteps
     hydratedWorkflowIdRef.current = workflowTemplateId
+    expectedVersionRef.current = workflowTemplate.version
+    setVersionConflict(false)
     setConnections(parsedWorkflow.connections)
     setNodes(parsedWorkflow.nodes)
     setWorkflowName(workflowTemplate.name)
@@ -210,7 +220,7 @@ export const useWorkflowGraphIo = ({
   }, [workflowTemplate, workflowTemplateId])
 
   const persistWorkflow = useCallback(
-    async (mode: 'auto' | 'manual') => {
+    async (mode: 'auto' | 'manual' | 'overwrite') => {
       if (!hasWorkflowToSave || isSavingWorkflow) {
         return null
       }
@@ -239,9 +249,22 @@ export const useWorkflowGraphIo = ({
           ? await updateWorkflowTemplate.mutateAsync({
               ...payload,
               workflowTemplateId,
+              // "Keep mine" is a person's explicit overwrite, so it drops the
+              // precondition rather than guessing at the current version.
+              ...(mode !== 'overwrite' && expectedVersionRef.current !== null
+                ? { expectedVersion: expectedVersionRef.current }
+                : {}),
             })
           : await createWorkflowTemplate.mutateAsync(payload)
       } catch (error) {
+        const code = (error as { code?: string }).code
+        if (code === 'WORKFLOW_TEMPLATE_VERSION_CONFLICT') {
+          // Not a failure of this draft: somebody else saved. The graph stays
+          // exactly as it is and the header asks which one wins.
+          lastFailedSignatureRef.current = workflowSignature
+          setVersionConflict(true)
+          throw error
+        }
         // Surface server-side validation (400 WORKFLOW_TEMPLATE_INVALID etc.)
         // in the header instead of dying as an unhandled rejection.
         lastFailedSignatureRef.current = workflowSignature
@@ -249,7 +272,9 @@ export const useWorkflowGraphIo = ({
         throw error
       }
 
+      expectedVersionRef.current = savedWorkflow.version
       lastFailedSignatureRef.current = null
+      setVersionConflict(false)
       setSaveError(null)
       lastSavedWorkflowSignatureRef.current = JSON.stringify({
         connections,
@@ -362,9 +387,31 @@ export const useWorkflowGraphIo = ({
     workflowTemplateId,
   ])
 
+  // The two answers to a refused save. "Take theirs" drops this designer's
+  // graph and rehydrates from the server; "keep mine" saves unconditionally.
+  const takeTheirWorkflow = useCallback(() => {
+    // Clearing the hydration guard is what lets the refetched template seed the
+    // canvas again; without the invalidate there would be nothing new to seed.
+    hydratedWorkflowIdRef.current = null
+    lastFailedSignatureRef.current = null
+    setVersionConflict(false)
+    clearWorkflowDraft(workflowTemplateId)
+    void queryClient.invalidateQueries({
+      queryKey: workflowKeys.template(workflowTemplateId),
+    })
+  }, [queryClient, workflowTemplateId])
+
+  const keepMyWorkflow = useCallback(
+    () => persistWorkflow('overwrite').catch(() => undefined),
+    [persistWorkflow],
+  )
+
   return {
     autoSaveDraft,
     setAutoSaveDraft,
+    keepMyWorkflow,
+    takeTheirWorkflow,
+    versionConflict,
     saveError,
     saveMessage,
     workflowTemplateId,

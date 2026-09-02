@@ -45,10 +45,12 @@ type AttentionSummarySection = {
   versions?: Record<string, string>
 }
 
-export type AlertsListResponse = {
-  alerts: UserAlertRecord[]
-  unreadCount: number
-}
+/**
+ * A page of alerts. The endpoint answers the shared paged-list contract, so
+ * `data` is the array itself; the unread count is the attention summary's
+ * answer (`useAttentionSummary`), never a field inside a page.
+ */
+export type AlertsListResponse = UserAlertRecord[]
 
 type MarkAlertsReadResponse = {
   read: number
@@ -79,7 +81,8 @@ const parseAlertEventData = (frameData: string): Record<string, unknown> | null 
 
 // The shared apiClient unwraps the { data, meta } envelope and returns only
 // `data`, so pagination cursors are not reachable through it — callers pick a
-// limit up front instead.
+// limit up front instead. The full-page list uses `usePagedList`, which reads
+// the same route through `getPage` and keeps the cursors.
 export const useAlerts = (options?: { limit?: number; unreadOnly?: boolean }) => {
   const apiClient = useApiClient()
   const limit = options?.limit ?? 50
