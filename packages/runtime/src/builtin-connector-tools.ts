@@ -14,6 +14,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const CONNECTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_list',
+  category: 'apps',
   summary: 'List reachable MCP connector installs and their setup state.',
   label: 'Connector List',
   description:
@@ -30,6 +31,7 @@ export const CONNECTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_library_search',
+  category: 'apps',
   summary: 'Find available MCP connectors by service name.',
   label: 'Connector Library Search',
   description:
@@ -50,6 +52,7 @@ export const CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_DISCOVER_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_discover',
+  category: 'apps',
   summary: 'Probe a URL or domain for an installable MCP endpoint.',
   label: 'Connector Discover',
   description:
@@ -70,6 +73,7 @@ export const CONNECTOR_DISCOVER_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_install',
+  category: 'apps',
   summary: 'Install an MCP connector from the catalog or a remote endpoint.',
   label: 'Connector Install',
   description:
@@ -125,6 +129,7 @@ export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_AUTHORIZE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_authorize',
+  category: 'apps',
   summary: 'Start OAuth authorization for an installed MCP connector.',
   label: 'Connector Authorize',
   description:
@@ -145,6 +150,7 @@ export const CONNECTOR_AUTHORIZE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_TEST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_test',
+  category: 'apps',
   summary: 'Test a connector and discover its available tools.',
   label: 'Connector Test',
   description:
@@ -163,6 +169,7 @@ export const CONNECTOR_TEST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_SET_SECRET_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_set_secret',
+  category: 'apps',
   summary: 'Store a write-only credential for an MCP connector.',
   label: 'Connector Set Secret',
   description:
@@ -191,6 +198,7 @@ export const CONNECTOR_SET_SECRET_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_UNINSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_uninstall',
+  category: 'apps',
   summary: 'Remove a manageable MCP connector and its registered tools.',
   label: 'Connector Uninstall',
   description:

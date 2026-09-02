@@ -5,6 +5,7 @@ import type {
   DesignerToolOption,
 } from '../../../../facades/designer/tool-catalog'
 import { isToolEnabled } from '../../../../facades/designer/tool-catalog'
+import { Pill } from '../../../primitives/Pill'
 import { Switch } from '../../../primitives/Switch'
 import { QueryState } from '../../../shared/QueryState'
 
@@ -13,12 +14,28 @@ import { QueryState } from '../../../shared/QueryState'
  * (builtin + connector tools) as collapsible groups with per-tool switches.
  * `toolState` is the sparse policy overlay; unset tools fall back to the
  * kind's default (builtin on, connector off).
+ *
+ * **Every group is closed at rest.** There are 116 builtins across sixteen
+ * categories, so an open-by-default list buries the rest of the agent's
+ * configuration under a page of switches nobody scrolled here to read. Closed,
+ * the strip is an index: each row names its category and says how many of its
+ * tools are on, which is the answer most visits need. Typing in the search box
+ * opens every group that still has a match, so finding one tool never costs a
+ * click through a section heading.
  */
 
 type ToolPickerProps = {
   groups: DesignerToolGroup[]
   onToggle: (toolKey: string, enabled: boolean) => void
   query: DesignerToolCatalogQuery
+  /**
+   * Render the resolved state without switches. The read-only view used to be
+   * a second component with its own grouping, its own cards and no search —
+   * the same list, drawn differently, which is how the two drifted. It is a
+   * mode of this one now: a viewer who cannot change a tool still gets the
+   * index, the counts and the search box.
+   */
+  readOnly?: boolean
   toolState: Record<string, boolean>
 }
 
@@ -31,6 +48,7 @@ type ToolGroupSectionProps = {
   group: DesignerToolGroup
   isFiltering: boolean
   onToggle: (toolKey: string, enabled: boolean) => void
+  readOnly: boolean
   toolState: Record<string, boolean>
 }
 
@@ -38,11 +56,15 @@ const ToolGroupSection = ({
   group,
   isFiltering,
   onToggle,
+  readOnly,
   toolState,
 }: ToolGroupSectionProps) => {
-  const [collapsed, setCollapsed] = useState(false)
+  const [open, setOpen] = useState(false)
   const enabledCount = group.tools.filter((tool) => isToolEnabled(tool, toolState)).length
-  const expanded = isFiltering || !collapsed
+  // A search result is not a section a person opened, so it expands without
+  // touching the group's own state: clearing the box returns the list to
+  // exactly the sections they had opened themselves.
+  const expanded = isFiltering || open
 
   return (
     <div className="rounded-lg border border-[color:var(--sep)]">
@@ -51,7 +73,8 @@ const ToolGroupSection = ({
           'flex w-full items-center justify-between px-3 py-2.5',
           'text-left transition-colors hover:bg-[var(--overlay-weak)]',
         ].join(' ')}
-        onClick={() => setCollapsed((prev) => !prev)}
+        aria-expanded={expanded}
+        onClick={() => setOpen((previous) => !previous)}
         type="button"
       >
         <div className="flex items-center gap-2">
@@ -67,7 +90,14 @@ const ToolGroupSection = ({
           >
             <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="text-sm font-medium text-[var(--tx)]">{group.name}</span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-[var(--tx)]">{group.name}</span>
+            {group.description ? (
+              <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
+                {group.description}
+              </span>
+            ) : null}
+          </span>
         </div>
         <span className="text-xs text-[color:var(--tx3)]">
           {enabledCount}/{group.tools.length} enabled
@@ -95,11 +125,17 @@ const ToolGroupSection = ({
                     {tool.description}
                   </div>
                 </div>
-                <Switch
-                  checked={enabled}
-                  label={`${enabled ? 'Disable' : 'Enable'} ${tool.label}`}
-                  onChange={(next) => onToggle(tool.key, next)}
-                />
+                {readOnly ? (
+                  <Pill tone={enabled ? 'success' : 'muted'}>
+                    {enabled ? 'enabled' : 'off'}
+                  </Pill>
+                ) : (
+                  <Switch
+                    checked={enabled}
+                    label={`${enabled ? 'Disable' : 'Enable'} ${tool.label}`}
+                    onChange={(next) => onToggle(tool.key, next)}
+                  />
+                )}
               </div>
             )
           })}
@@ -109,7 +145,13 @@ const ToolGroupSection = ({
   )
 }
 
-export const ToolPicker = ({ groups, onToggle, query, toolState }: ToolPickerProps) => {
+export const ToolPicker = ({
+  groups,
+  onToggle,
+  query,
+  readOnly = false,
+  toolState,
+}: ToolPickerProps) => {
   const [search, setSearch] = useState('')
   const normalizedQuery = search.trim().toLowerCase()
 
@@ -151,6 +193,7 @@ export const ToolPicker = ({ groups, onToggle, query, toolState }: ToolPickerPro
                 isFiltering={normalizedQuery.length > 0}
                 key={group.name}
                 onToggle={onToggle}
+                readOnly={readOnly}
                 toolState={toolState}
               />
             ))

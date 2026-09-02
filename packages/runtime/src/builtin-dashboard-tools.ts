@@ -21,6 +21,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_list',
+    category: 'dashboards',
     summary: 'List dashboards you can access and their IDs.',
     label: 'List Dashboards',
     description:
@@ -43,6 +44,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_create',
+    category: 'dashboards',
     summary: 'Create an empty dashboard at a chosen visibility home.',
     label: 'Create Dashboard',
     description:
@@ -73,6 +75,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_list',
+    category: 'dashboards',
     summary: 'List dashboard data sources and their declared columns.',
     label: 'List Data Sources',
     description:
@@ -86,6 +89,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_probe',
+    category: 'dashboards',
     summary: 'Probe dashboard-source data without saving it.',
     label: 'Probe A Data Source',
     description:
@@ -128,6 +132,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_create',
+    category: 'dashboards',
     summary: 'Create a dashboard data source from a probed HTTPS API.',
     label: 'Create A Data Source',
     description:
@@ -160,6 +165,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_source_set_credential',
+    category: 'dashboards',
     summary: 'Store a write-only credential for a dashboard data source.',
     label: 'Set A Data Source Credential',
     description:
@@ -188,6 +194,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_add',
+    category: 'dashboards',
     summary: 'Add a data-bound widget to a dashboard.',
     label: 'Add A Widget',
     description:
@@ -221,6 +228,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_update',
+    category: 'dashboards',
     summary: "Replace a dashboard widget's complete definition.",
     label: 'Update A Widget',
     description:
@@ -241,6 +249,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_move',
+    category: 'dashboards',
     summary: 'Set dashboard widget positions and sizes.',
     label: 'Move Or Resize Widgets',
     description:
@@ -268,6 +277,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_widget_remove',
+    category: 'dashboards',
     summary: 'Remove a widget from a dashboard.',
     label: 'Remove A Widget',
     description:
@@ -284,6 +294,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'dashboard_read',
+    category: 'dashboards',
     summary: 'Read dashboard widgets, current data, and freshness.',
     label: 'Read A Dashboard',
     description:
@@ -312,6 +323,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
 export const DASHBOARD_EMBED_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_widget_post',
+    category: 'dashboards',
     summary: 'Post a static or live dashboard widget in the current conversation.',
     label: 'Post A Widget Into A Conversation',
     description:

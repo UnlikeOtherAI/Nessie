@@ -3,6 +3,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const TODO_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'todo_template_propose',
+    category: 'todos',
     summary: 'Propose a reusable to-do template for owner review.',
     label: 'Propose To-do Template',
     description:
@@ -31,6 +32,7 @@ export const TODO_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'todo_start',
+    category: 'todos',
     summary: 'Start one of this agent\'s to-do checklists.',
     label: 'Start To-do',
     description:
@@ -70,6 +72,7 @@ export const TODO_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'todo_step_update',
+    category: 'todos',
     summary: 'Record progress on the active to-do checklist.',
     label: 'Update To-do Step',
     description:

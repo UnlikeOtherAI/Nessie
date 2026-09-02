@@ -56,6 +56,7 @@ export {
 
 const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_search',
+  category: 'web',
   summary: 'Search the public web for current results and answer snippets.',
   label: 'Web Search',
   description:
@@ -84,6 +85,7 @@ const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_fetch',
+  category: 'web',
   summary: 'Extract readable text from a public web page URL.',
   label: 'Web Fetch',
   description: 'Fetch and read a public URL. Returns the text content.',
@@ -107,6 +109,7 @@ const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 // on a DeepWater launch turn.
 const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'delegate',
+  category: 'agents',
   summary: 'Delegate focused discovery work to a sub-agent.',
   label: 'Delegate to Sub-agent',
   description:
@@ -137,6 +140,7 @@ const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'workspace_search',
+    category: 'workspace',
     summary: 'Search accessible workspace conversations, threads, and messages.',
     label: 'Workspace Search',
     description:
@@ -159,6 +163,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'authored_message_search',
+    category: 'conversation',
     summary: 'Search accessible messages written by the current user.',
     label: 'Authored Message Search',
     personalAssistantOnly: true,
@@ -182,6 +187,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'people_search',
+    category: 'workspace',
     summary: 'Find organization people by display name or email address.',
     label: 'People Search',
     description:
@@ -204,6 +210,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'send_message',
+    category: 'conversation',
     summary: 'Send a message as the current user.',
     label: 'Send Message',
     personalAssistantOnly: true,
@@ -236,6 +243,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'update_preferences',
+    category: 'workspace',
     summary: "Replace the current user's workspace preferences.",
     label: 'Update Preferences',
     personalAssistantOnly: true,
@@ -255,6 +263,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_transform_preview',
+    category: 'workflows',
     summary: 'Test a workflow JMESPath transform against sample JSON.',
     label: 'Workflow Transform Preview',
     description:
@@ -278,6 +287,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'document_read',
+    category: 'knowledge',
     summary: 'Read a project-local markdown document by path or topic.',
     label: 'Document Read',
     description: 'Read a project-local document by path or topic. Returns markdown content.',
@@ -295,6 +305,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'spawn_subtask',
+    category: 'agents',
     summary: 'Create a child agent for a specific subtask.',
     label: 'Spawn Sub-Task',
     description:
@@ -329,6 +340,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   // sp-messaging slice: full-text search + agent-authored message lifecycle
   {
     id: 'message_search',
+    category: 'conversation',
     summary: 'Search accessible channel messages, optionally within one channel.',
     label: 'Message Search',
     description:
@@ -358,6 +370,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'message_edit',
+    category: 'conversation',
     summary: 'Edit a message previously authored by this agent.',
     label: 'Message Edit',
     description:
@@ -381,6 +394,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'react',
+    category: 'conversation',
     summary: "Add or remove this agent's emoji reaction to a message.",
     label: 'React To Message',
     description:
@@ -412,6 +426,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'message_delete',
+    category: 'conversation',
     summary: 'Soft-delete a message previously authored by this agent.',
     label: 'Message Delete',
     description:

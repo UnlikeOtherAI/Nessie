@@ -35,6 +35,7 @@ export const CLOUD_BROWSER_TOOL_IDS = [
 export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: BROWSER_OPEN_TOOL_ID,
+    category: 'browser',
     label: 'Open Browser',
     summary: 'Open a cloud browser and load a page.',
     description:
@@ -59,6 +60,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_OBSERVE_TOOL_ID,
+    category: 'browser',
     label: 'Observe Browser',
     summary: 'Read the current page as a list of actionable elements.',
     description:
@@ -83,6 +85,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_ACT_TOOL_ID,
+    category: 'browser',
     label: 'Act In Browser',
     summary: 'Click, type, press a key, scroll, or navigate.',
     description:
@@ -123,6 +126,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_CLOSE_TOOL_ID,
+    category: 'browser',
     label: 'Close Browser',
     summary: 'Close the cloud browser and stop its meter.',
     description:
