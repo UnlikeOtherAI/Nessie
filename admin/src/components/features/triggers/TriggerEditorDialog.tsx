@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   useCreateAgentTrigger,
   useCreateWorkflowInstallationTrigger,
@@ -28,7 +28,7 @@ import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
 import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
-import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
+import { useOverlay } from '../../overlays/useOverlay'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -54,6 +54,7 @@ export const TriggerEditorDialog = ({
   workflowTemplates,
 }: TriggerEditorDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const titleId = useId()
   const createAgentTrigger = useCreateAgentTrigger()
   const createWorkflowTrigger = useCreateWorkflowInstallationTrigger()
   const updateTrigger = useUpdateTrigger()
@@ -97,7 +98,6 @@ export const TriggerEditorDialog = ({
   useEffect(() => {
     if (!open) return
 
-    nameInputRef.current?.focus()
     setFormError(null)
     setForm(
       trigger
@@ -162,9 +162,14 @@ export const TriggerEditorDialog = ({
     onClose()
   }
 
-  const overlayDismiss = useOverlayDismiss(() => {
-    if (isSubmitting) return
-    handleClose()
+  const overlay = useOverlay({
+    dismissDisabled: isSubmitting,
+    id: 'trigger-editor',
+    initialFocusRef: nameInputRef,
+    kind: 'modal',
+    label: 'Close',
+    onClose: handleClose,
+    open,
   })
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -242,7 +247,7 @@ export const TriggerEditorDialog = ({
     }
   }
 
-  if (!open) {
+  if (!overlay.mounted) {
     return null
   }
 
@@ -259,13 +264,15 @@ export const TriggerEditorDialog = ({
   return (
     // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
     // renders a description at `text-xs`, and its panel is 680px wide, which is
-    // not one of the three geometries the shell ships.
+    // not one of the shell's four panel geometries. `useOverlay` still gives it
+    // the Back registration, focus trap, drag-safe scrim and layer every other
+    // overlay gets (docs/navigation.md §7).
     <div
-      {...overlayDismiss}
+      {...overlay.scrimProps}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        ...overlay.layerStyle,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -274,12 +281,17 @@ export const TriggerEditorDialog = ({
       }}
     >
       <div
+        aria-labelledby={titleId}
+        aria-modal="true"
         className="create-channel-panel"
+        ref={overlay.panelRef}
+        role="dialog"
         style={{ maxWidth: 680 }}
+        tabIndex={-1}
       >
         <div className="create-channel-header">
           <div>
-            <h2 className="text-lg font-bold text-[var(--tx)]">
+            <h2 className="text-lg font-bold text-[var(--tx)]" id={titleId}>
               {mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
             </h2>
             <div className="mt-1 text-sm text-[color:var(--tx3)]">

@@ -1,11 +1,10 @@
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import type {
   DeepWaterResearchLauncherPreset,
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import { useDeepWaterAgentAccess } from '../../../facades/integrations/hooks'
-import { useModalA11y } from '../../shared/useModalA11y'
-import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
+import { useOverlay } from '../../overlays/useOverlay'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 
 type DeepWaterResearchLauncherDialogProps = {
@@ -43,34 +42,41 @@ export const DeepWaterResearchLauncherDialog = ({
   open,
   product,
 }: DeepWaterResearchLauncherDialogProps) => {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => onClose(), [onClose])
-  useModalA11y(dialogRef, close)
-  const overlayDismiss = useOverlayDismiss(close)
+  const overlay = useOverlay({
+    id: 'deep-water-research-launcher',
+    kind: 'modal',
+    label: 'Close research launcher',
+    onClose: close,
+    open,
+  })
   const accessQuery = useDeepWaterAgentAccess(open)
   const teamReady = product.teamEnablement?.enabled === true
   const connectorReady = product.mcpInstallation?.lifecycleState === 'active'
   const personalAssistantReady = accessQuery.data?.personalAssistant?.enabled === true
   const canLaunch = teamReady && connectorReady && personalAssistantReady
 
-  if (!open) {
+  if (!overlay.mounted) {
     return null
   }
 
   return (
     // Not the shared `Dialog`: a `max-w-3xl` / `--panel` / `shadow-2xl` card with
-    // a `text-base` heading — a different panel family from the shell's
-    // `.create-channel-panel`. It already composes `useModalA11y`.
+    // a `text-base` heading and a sticky in-scroll header, a different panel
+    // family from the shell's `.create-channel-panel`. `useOverlay` still gives
+    // it the Back registration, focus trap, drag-safe scrim and layer every
+    // other overlay gets (docs/navigation.md §7).
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-      {...overlayDismiss}
+      {...overlay.scrimProps}
+      className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
+      style={overlay.layerStyle}
     >
       <div
         aria-describedby="deep-water-launcher-description"
         aria-labelledby="deep-water-launcher-title"
         aria-modal="true"
         className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl"
-        ref={dialogRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={-1}
       >

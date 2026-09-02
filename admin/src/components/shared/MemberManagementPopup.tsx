@@ -1,8 +1,7 @@
-import { useCallback, useId, useRef, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 
+import { useOverlay } from '../overlays/useOverlay'
 import { CloseIcon, SearchIcon } from './channel-members/icons'
-import { useModalA11y } from './useModalA11y'
-import { useOverlayDismiss } from './useOverlayDismiss'
 
 type MemberManagementPopupProps = {
   children: ReactNode
@@ -17,6 +16,12 @@ type MemberManagementPopupProps = {
  * The shared people-management surface for channels and projects. Each host
  * owns its membership data and authorization, while this shell keeps the
  * modal, search, count, and dismissal behaviour visibly identical.
+ *
+ * Not the shared `Dialog`: a fixed-header + fixed-search + independently
+ * scrolling member list inside a `max-h-[80vh]` flex column, which none of
+ * the shell's four panel geometries express. `useOverlay` still gives it the
+ * Back registration, focus trap, drag-safe scrim and layer every other
+ * overlay gets (docs/navigation.md §7).
  */
 export const MemberManagementPopup = ({
   children,
@@ -26,22 +31,25 @@ export const MemberManagementPopup = ({
   search,
   totalMembers,
 }: MemberManagementPopupProps) => {
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const titleId = useId()
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
-  const requestClose = useCallback(() => onCloseRef.current(), [])
-  useModalA11y(panelRef, requestClose, true, searchInputRef)
-  const overlayDismiss = useOverlayDismiss(requestClose)
+  const overlay = useOverlay({
+    id: 'member-management',
+    initialFocusRef: searchInputRef,
+    kind: 'modal',
+    label: `Close ${entityLabel} members`,
+    onClose,
+    open: true,
+  })
+  const { requestClose } = overlay
 
   return (
     <div
-      {...overlayDismiss}
+      {...overlay.scrimProps}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        ...overlay.layerStyle,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -56,7 +64,7 @@ export const MemberManagementPopup = ({
           'flex max-h-[80vh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
           'border border-[color:var(--sep)] bg-[color:var(--main)]',
         ].join(' ')}
-        ref={panelRef}
+        ref={overlay.panelRef}
         role="dialog"
         style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
         tabIndex={-1}

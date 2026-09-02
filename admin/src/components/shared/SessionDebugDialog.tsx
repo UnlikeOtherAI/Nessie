@@ -1,6 +1,6 @@
 import { useId, useRef, type FormEvent } from 'react'
+import { useOverlay } from '../overlays/useOverlay'
 import { Notice } from '../primitives/Notice'
-import { useModalA11y } from './useModalA11y'
 
 export const SessionDebugIcon = () => (
   <svg
@@ -63,13 +63,20 @@ export const SessionDebugDialog = ({
   title,
   value,
 }: SessionDebugDialogProps) => {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const titleId = useId()
   const descriptionId = useId()
-  useModalA11y(dialogRef, onClose, open, textareaRef)
+  const overlay = useOverlay({
+    dismissDisabled: pending,
+    id: titleId,
+    initialFocusRef: textareaRef,
+    kind: 'modal',
+    label: `Close ${title}`,
+    onClose,
+    open,
+  })
 
-  if (!open) return null
+  if (!overlay.mounted) return null
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -79,14 +86,14 @@ export const SessionDebugDialog = ({
   return (
     // Not the shared `Dialog`: this one is tuned for phones — safe-area insets on
     // the scrim, a 44px close target instead of the shell's 28px, and a dvh
-    // max-height with a scrolling flex column. It already composes `useModalA11y`.
+    // max-height with a scrolling flex column. `useOverlay` still gives it the
+    // Back registration, focus trap, drag-safe scrim and layer every other
+    // overlay gets (docs/navigation.md §7).
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (!pending && event.target === event.currentTarget) onClose()
-      }}
-      role="presentation"
+      {...overlay.scrimProps}
+      className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
       style={{
+        ...overlay.layerStyle,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         paddingLeft: 'env(safe-area-inset-left, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',
@@ -99,7 +106,7 @@ export const SessionDebugDialog = ({
         aria-labelledby={titleId}
         aria-modal="true"
         className="create-channel-panel flex flex-col overflow-hidden"
-        ref={dialogRef}
+        ref={overlay.panelRef}
         role="dialog"
         style={{
           maxHeight: [

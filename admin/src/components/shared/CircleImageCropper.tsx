@@ -5,7 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
-import { useModalA11y } from './useModalA11y'
+import { Dialog } from './Dialog'
 
 // On-screen editing stage (square). The crop is inscribed in it, with either a
 // circular or rounded-square mask. The exported image is rendered at a fixed
@@ -46,8 +46,6 @@ export const CircleImageCropper = ({
   saveLabel = 'Save',
   shape = 'circle',
 }: CircleImageCropperProps) => {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  useModalA11y(dialogRef, onCancel)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
@@ -148,102 +146,84 @@ export const CircleImageCropper = ({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'var(--scrim-strong)' }}
-    >
-      <div
-        aria-labelledby="cropper-title"
-        aria-modal="true"
-        className="admin-card w-full max-w-md p-5"
-        ref={dialogRef}
-        role="dialog"
-        style={{ background: 'var(--panel)' }}
-        tabIndex={-1}
-      >
-        <div className="text-base font-semibold text-[color:var(--tx)]" id="cropper-title">
-          {title}
-        </div>
-        <div className="mt-1 text-sm text-[color:var(--tx2)]">{description}</div>
-
-        <div className="mt-4 flex justify-center">
-          <div
-            className="relative overflow-hidden rounded-xl bg-[color:var(--main)]"
-            onPointerCancel={endDrag}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={endDrag}
-            onWheel={handleWheel}
-            style={{ height: STAGE, width: STAGE, cursor: natural ? 'grab' : 'default', touchAction: 'none' }}
-          >
-            {url && (
-              <img
-                alt=""
-                className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
-                draggable={false}
-                onLoad={(event) => {
-                  const el = event.currentTarget
-                  setNatural({ w: el.naturalWidth, h: el.naturalHeight })
-                }}
-                ref={imgRef}
-                src={url}
-                style={{
-                  height: displayH,
-                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
-                  width: displayW,
-                }}
-              />
-            )}
-            {/* Semi-transparent mask with a transparent crop cut-out + accent ring. */}
-            <div
-              aria-hidden="true"
-              className={[
-                'pointer-events-none absolute left-1/2 top-1/2',
-                shape === 'circle' ? 'rounded-full' : 'rounded-[40px]',
-              ].join(' ')}
+    <Dialog description={description} dismissDisabled={busy} onClose={onCancel} open title={title}>
+      <div className="mt-4 flex justify-center">
+        <div
+          className="relative overflow-hidden rounded-xl bg-[color:var(--main)]"
+          onPointerCancel={endDrag}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={endDrag}
+          onWheel={handleWheel}
+          style={{ height: STAGE, width: STAGE, cursor: natural ? 'grab' : 'default', touchAction: 'none' }}
+        >
+          {url && (
+            <img
+              alt=""
+              className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
+              draggable={false}
+              onLoad={(event) => {
+                const el = event.currentTarget
+                setNatural({ w: el.naturalWidth, h: el.naturalHeight })
+              }}
+              ref={imgRef}
+              src={url}
               style={{
-                boxShadow: '0 0 0 9999px var(--scrim-strong), inset 0 0 0 2px var(--accent)',
-                height: STAGE,
-                transform: 'translate(-50%, -50%)',
-                width: STAGE,
+                height: displayH,
+                transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
+                width: displayW,
               }}
             />
-          </div>
-        </div>
-
-        <label className="mt-4 flex items-center gap-3">
-          <span className="text-xs text-[color:var(--tx3)]">Zoom</span>
-          <input
-            className="flex-1 accent-[color:var(--accent)]"
-            disabled={!natural}
-            max={MAX_ZOOM}
-            min={MIN_ZOOM}
-            onChange={(event) => applyZoom(Number(event.target.value))}
-            step={0.01}
-            type="range"
-            value={zoom}
+          )}
+          {/* Semi-transparent mask with a transparent crop cut-out + accent ring. */}
+          <div
+            aria-hidden="true"
+            className={[
+              'pointer-events-none absolute left-1/2 top-1/2',
+              shape === 'circle' ? 'rounded-full' : 'rounded-[40px]',
+            ].join(' ')}
+            style={{
+              boxShadow: '0 0 0 9999px var(--scrim-strong), inset 0 0 0 2px var(--accent)',
+              height: STAGE,
+              transform: 'translate(-50%, -50%)',
+              width: STAGE,
+            }}
           />
-        </label>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            className="admin-button admin-button-secondary"
-            disabled={busy}
-            onClick={onCancel}
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            className="admin-button admin-button-primary"
-            disabled={busy || !natural}
-            onClick={handleSave}
-            type="button"
-          >
-            {busy ? 'Saving…' : saveLabel}
-          </button>
         </div>
       </div>
-    </div>
+
+      <label className="mt-4 flex items-center gap-3">
+        <span className="text-xs text-[color:var(--tx3)]">Zoom</span>
+        <input
+          className="flex-1 accent-[color:var(--accent)]"
+          disabled={!natural}
+          max={MAX_ZOOM}
+          min={MIN_ZOOM}
+          onChange={(event) => applyZoom(Number(event.target.value))}
+          step={0.01}
+          type="range"
+          value={zoom}
+        />
+      </label>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          className="admin-button admin-button-secondary"
+          disabled={busy}
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="admin-button admin-button-primary"
+          disabled={busy || !natural}
+          onClick={handleSave}
+          type="button"
+        >
+          {busy ? 'Saving…' : saveLabel}
+        </button>
+      </div>
+    </Dialog>
   )
 }

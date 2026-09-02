@@ -10,11 +10,11 @@ import { agentGradient } from '../lib/avatar'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { PhoneBackButton } from '../layouts/admin-shell/PhoneBackButton'
+import { useOverlay } from '../components/overlays/useOverlay'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
-import { useModalA11y } from '../components/shared/useModalA11y'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type RecipientKind = 'agent' | 'user'
@@ -63,7 +63,6 @@ export const ChannelConversationComposePage = () => {
   const sendMessage = useSendMessageToThread()
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
-  const dialogRef = useRef<HTMLElement | null>(null)
 
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [query, setQuery] = useState('')
@@ -77,7 +76,19 @@ export const ChannelConversationComposePage = () => {
   const close = useCallback(() => {
     void navigate(returnTo, { replace: true })
   }, [navigate, returnTo])
-  useModalA11y(dialogRef, close, !phoneLayout, addressInputRef)
+  // A route, not a popup — the phone-navigation stack already owns Back for
+  // it there (docs/navigation.md §6), so it registers as a modal overlay only
+  // on `split`, where it visually IS a centred dialog over the channel list.
+  // Never a breakpoint read of its own: `phoneLayout` is the layout question
+  // this page already answers for its own scrim/full-screen branch.
+  const overlay = useOverlay({
+    id: 'channel-conversation-compose',
+    initialFocusRef: addressInputRef,
+    kind: 'modal',
+    label: 'Close new message',
+    onClose: close,
+    open: !phoneLayout,
+  })
 
   const users = useMemo<UserRecord[]>(() => {
     return allUsers.filter((user) => user.id !== me?.user.id)
@@ -221,21 +232,20 @@ export const ChannelConversationComposePage = () => {
 
   return (
     <div
+      {...(phoneLayout ? {} : overlay.scrimProps)}
       className={phoneLayout
-        ? 'fixed inset-0 z-[90] bg-[color:var(--main)]'
-        : 'fixed inset-0 z-[90] flex items-center justify-center bg-[var(--scrim-strong)] p-6 backdrop-blur-sm'}
-      onMouseDown={(event) => {
-        if (!phoneLayout && event.target === event.currentTarget) close()
-      }}
+        ? 'fixed inset-0 bg-[color:var(--main)]'
+        : 'fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-6 backdrop-blur-sm'}
       role="presentation"
+      style={overlay.layerStyle}
     >
-      <section
+      <div
         aria-labelledby="channel-conversation-compose-title"
         aria-modal={phoneLayout ? undefined : true}
         className={phoneLayout
           ? 'flex h-[100dvh] min-h-0 w-full flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
           : 'flex h-[46rem] max-h-[calc(100dvh-3rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'}
-        ref={dialogRef}
+        ref={overlay.panelRef}
         role="dialog"
         tabIndex={phoneLayout ? undefined : -1}
       >
@@ -416,7 +426,7 @@ export const ChannelConversationComposePage = () => {
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}
       />
-      </section>
+      </div>
     </div>
   )
 }
