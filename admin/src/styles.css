@@ -1713,6 +1713,46 @@ a {
   outline-offset: -2px;
 }
 
+/* The reply panel leaves as a layout move rather than a fade: it is the
+   conversation column's flex sibling, so pulling its footprint to nothing IS
+   the conversation expanding into the space and pushing the panel off the
+   edge. Its own `width` is deliberately left alone — animating that would
+   rewrap the whole thread on every frame, which reads as the panel being
+   crushed rather than pushed — so the footprint goes with a negative margin
+   while the panel itself rides out on a transform. Duration is mirrored in
+   `thread-panel-helpers.ts` THREAD_PANEL_CLOSE_MS, which holds the route
+   change until the move is done; change both together. */
+.thread-panel {
+  transition:
+    margin-inline-end 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 180ms ease-out;
+}
+
+.thread-panel[data-closing='true'] {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Only the in-flow third column has a footprint to give back. In the tablet
+   overlay the panel is fixed to the right edge, where a negative margin would
+   just double the distance it already slides. */
+@media (min-width: 1280px) {
+  .thread-panel[data-closing='true'] {
+    margin-inline-end: calc(-1 * var(--thread-panel-width));
+  }
+}
+
+.thread-panel-scrim {
+  transition: opacity 180ms ease-out;
+}
+
+.thread-panel-scrim[data-closing='true'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* At rest the composer is exactly one line high — placeholder text centred
    beside Send, and none of the toolbar glyphs. Focus (or anything staged)
    opens it: the editor grows and the toolbar unfolds beneath it. Because the

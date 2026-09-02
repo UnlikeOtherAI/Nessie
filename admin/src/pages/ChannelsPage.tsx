@@ -340,7 +340,15 @@ export const ChannelsPage = () => {
   }
 
   return (
-    <section className="relative flex h-full min-h-0">
+    // The leaving thread panel slides past the right edge, so the row clips
+    // for the length of that move — permanently would cut off the composer's
+    // own popovers.
+    <section
+      className={[
+        'relative flex h-full min-h-0',
+        replyThread.isClosing ? 'overflow-hidden' : '',
+      ].join(' ')}
+    >
       <ChannelConversationSurface
         activeCall={activeCall}
         activeChannel={activeChannel}

@@ -4,6 +4,12 @@ export const THREAD_PANEL_WIDTH_STORAGE_KEY = 'nessie.threadPanelWidth'
 export const THREAD_PANEL_DEFAULT_WIDTH = 400
 export const THREAD_PANEL_MIN_WIDTH = 320
 
+// How long the panel takes to leave. The route change is held until the end so
+// the panel keeps rendering its own thread on the way out — its queries are
+// keyed on the open root, so navigating first would empty it mid-animation.
+// `styles.css` `.thread-panel` carries the matching duration; change both.
+export const THREAD_PANEL_CLOSE_MS = 220
+
 // Drag-resize bounds for the reply-thread panel: never narrower than the
 // Slack-style minimum and never wider than half the viewport.
 export const clampThreadPanelWidth = (width: number, viewportWidth: number): number => {

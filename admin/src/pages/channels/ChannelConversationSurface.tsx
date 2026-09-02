@@ -224,6 +224,11 @@ export const ChannelConversationSurface = ({
   return (
     <div
       className="admin-chat-surface relative flex min-w-0 flex-1 flex-col"
+      // Tapping back into the conversation dismisses an open reply thread —
+      // the desktop equivalent of the scrim the tablet layout already has.
+      // Capture phase, so a reply control that opens a *different* thread runs
+      // afterwards and cancels this close rather than racing it.
+      onClickCapture={replyThread.closeThreadFromConversation}
       {...chatDrop.dropHandlers}
     >
       <ChannelHeader
