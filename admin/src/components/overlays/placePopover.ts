@@ -1,4 +1,4 @@
-// The one placement helper for anchored overlays (docs/navigation.md §7).
+// The one placement helper for anchored overlays (docs/navigation/overview.md §7).
 //
 // Five call sites hand-rolled the same flip/clamp arithmetic — the workspace
 // menu, the account menu, the create menu, the reaction "who reacted" popover

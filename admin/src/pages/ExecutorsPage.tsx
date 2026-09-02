@@ -46,7 +46,7 @@ const statusClass = (status: string): string => status === 'online'
 
 // A project's "add executor" doorway (`?create=project&scopeProjectId=`) and
 // a Personal Assistant review link (`#confirmationToken=`) are one-shot
-// intents the registry declares for this route (docs/navigation.md §8): both
+// intents the registry declares for this route (docs/navigation/overview.md §8): both
 // are captured once and stripped, so the token never survives in history or
 // a shared address. A token this page mints itself lives in state only.
 const CREATE_INTENTS = ['create', 'scopeProjectId'] as const

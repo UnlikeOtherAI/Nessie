@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-// docs/navigation.md §11/§4.14 — the soft keyboard. `visualViewport` shrinks
+// docs/navigation/overview.md §11/§4.14 — the soft keyboard. `visualViewport` shrinks
 // by roughly the keyboard's height when it opens (the layout viewport,
 // `window.innerHeight`, does not), so the gap between the two is the inset
 // to keep the active composer above. One listener for the whole shell:

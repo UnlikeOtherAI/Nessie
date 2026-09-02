@@ -21,7 +21,7 @@ type MemberManagementPopupProps = {
  * scrolling member list inside a `max-h-[80dvh]` flex column, which none of
  * the shell's four panel geometries express. `useOverlay` still gives it the
  * Back registration, focus trap, drag-safe scrim and layer every other
- * overlay gets (docs/navigation.md §7).
+ * overlay gets (docs/navigation/overview.md §7).
  */
 export const MemberManagementPopup = ({
   children,

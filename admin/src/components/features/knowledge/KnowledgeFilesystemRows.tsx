@@ -177,7 +177,7 @@ export const NewFolderRow = ({
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Not `autoFocus`: the browser's own initial focus scrolls whatever box it
-  // lands in, which is the sideways bounce docs/navigation.md §2 names.
+  // lands in, which is the sideways bounce docs/navigation/overview.md §2 names.
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true })
   }, [])

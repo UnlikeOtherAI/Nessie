@@ -9,7 +9,7 @@
  * is still never lost — it is buffered as a local draft under
  * `draft:dashboard-layout:<id>` — and Done carries `If-Match`, so a save that
  * lost a race is refused and the choice is offered in place
- * (docs/navigation.md → "Drafts").
+ * (docs/navigation/overview.md → "Drafts").
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -93,7 +93,7 @@ export const DashboardDetailPage = () => {
   const setDraftLayout = layoutDraft.setDraft
 
   // Guarded by id, not merely by presence: the query keeps the previous
-  // dashboard on screen during a sibling swap (docs/navigation.md §"Arriving
+  // dashboard on screen during a sibling swap (docs/navigation/overview.md §"Arriving
   // with content"), and seeding the draft from it would let a Save write one
   // dashboard's layout onto another.
   useEffect(() => {

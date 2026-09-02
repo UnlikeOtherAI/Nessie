@@ -209,7 +209,7 @@ export const ChannelSettingsDialog = (
         </form>
       </Dialog>
 
-      {/* The sanctioned nesting (docs/navigation.md §7): a confirm over the
+      {/* The sanctioned nesting (docs/navigation/overview.md §7): a confirm over the
           already-open settings dialog above, in the blocking layer. */}
       <ConfirmDialog
         blocking

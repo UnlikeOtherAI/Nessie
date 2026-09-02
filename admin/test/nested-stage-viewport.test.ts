@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mountPhoneNavigationViewport } from './support/phone-navigation-viewport-harness'
 
-// A nested stage (docs/navigation.md §6) is a state-driven screen a page
+// A nested stage (docs/navigation/overview.md §6) is a state-driven screen a page
 // pushes over its own route. In the stack it is a layer like a route: it
 // slides in, is retained under whatever is pushed over it, unwinds on Back,
 // and its content stays rendered by the page through a portal.
@@ -111,7 +111,7 @@ test('a route pushed over an open stage retains it, and Back returns to the stag
 // Knowledge's ladder is the case with more than one stage open at a time: a
 // folder browsed beyond the space root, the document opened from it, and that
 // document's version history are three layers, and Back unwinds exactly one
-// per press — the highest-priority owner first (docs/navigation.md §6).
+// per press — the highest-priority owner first (docs/navigation/overview.md §6).
 const KNOWLEDGE_STAGES = [
   { id: 'knowledge:folder', label: 'Back to parent folder', priority: 11 },
   { id: 'knowledge:document', label: 'Back to space', priority: 12 },

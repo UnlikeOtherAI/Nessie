@@ -69,7 +69,7 @@ export const ProjectView = () => {
         id: item.id,
         label: item.label,
         // A project section is a tab, and a tab is never a history entry
-        // (docs/navigation.md §1, "Tab hosts"). The seven sections stay real
+        // (docs/navigation/overview.md §1, "Tab hosts"). The seven sections stay real
         // routes so each is linkable, but the header switches them with
         // `replace` so Back leaves the project rather than walking the
         // sections the reader passed through. The registry folds all seven

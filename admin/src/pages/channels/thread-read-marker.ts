@@ -20,7 +20,7 @@ export const shouldMarkThreadRead = (input: {
 //
 // `messagesArePlaceholder` is the sibling-swap case: the thread queries keep
 // the previous conversation on screen while the new one loads
-// (docs/navigation.md §"Arriving with content"), so for one render `threadId`
+// (docs/navigation/overview.md §"Arriving with content"), so for one render `threadId`
 // is the new thread while the newest message id still belongs to the old one.
 // Acknowledging that pair would advance the new thread's cursor to a message
 // it has never held. `isSuccess` cannot answer this: a query serving

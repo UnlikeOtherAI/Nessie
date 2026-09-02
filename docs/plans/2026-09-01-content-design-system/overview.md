@@ -11,7 +11,7 @@ mobile tab bar), page headers (`ScreenHeader`, which composes
 Agents/Executors/Dashboards converged onto it),
 `TabBar`, button styling (`.admin-button*`), and every chat surface (feed,
 composer, message rows, reply panel, thinking bubbles). The header rule is
-[docs/navigation.md](../../navigation.md) §9.
+[docs/navigation/overview.md](../../navigation/overview.md) §9.
 
 Method: eleven parallel code audits, one per content area, against a common
 twelve-category brief (`audit/00-brief.md`). Every claim in the per-slice
@@ -664,7 +664,7 @@ Both sessions touch the same page files, so:
   hero headers it replaced (`AgentsList`, `AgentDetailPage`, `ExecutorsPage`,
   `DashboardsPage`, `DashboardDetailPage`). `PageBody` is a body-only
   component and composes under any header — one `ScreenHeader` above,
-  the kit's body beneath ([docs/navigation.md](../../navigation.md) §9).
+  the kit's body beneath ([docs/navigation/overview.md](../../navigation/overview.md) §9).
 - **Nothing outside the main content area is touched.** Existing header
   actions (the "Unread only" toggles on `AlertsPage`/`ThreadsPage`, the Save
   on `NotificationsPage`) stay exactly where they are; the page hero type size

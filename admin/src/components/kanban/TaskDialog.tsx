@@ -87,7 +87,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     [task],
   )
 
-  // Drafts (docs/navigation.md → "Drafts"): a task draft is keyed by the task,
+  // Drafts (docs/navigation/overview.md → "Drafts"): a task draft is keyed by the task,
   // so dismissing this dialog — by Escape, the scrim or the close cross — keeps
   // the words instead of asking whether to discard them.
   const taskDraft = useDraft<TaskDraft>(

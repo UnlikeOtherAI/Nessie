@@ -124,7 +124,7 @@ export const resolvePhoneNavigationBackAction = (
   // A screen pushed from another section (a channel opened from a project,
   // a result opened from Search) returns to where the person came from: the
   // stack seeded that origin beneath it, so Back and the swipe reveal the
-  // same screen the ledger pops to (docs/navigation.md §8).
+  // same screen the ledger pops to (docs/navigation/overview.md §8).
   if (previous && isCrossSectionOrigin(pathname, previous)) {
     return { mode: 'pop', to: previous }
   }

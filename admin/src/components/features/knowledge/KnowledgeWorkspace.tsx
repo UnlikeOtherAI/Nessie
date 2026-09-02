@@ -39,7 +39,7 @@ const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
 // The workspace's four inner screens — a folder browsed beyond the space root,
 // an open document or file, its version history, the page editor — are nested
-// stages (docs/navigation.md §6). Where a single-column stack hosts them each
+// stages (docs/navigation/overview.md §6). Where a single-column stack hosts them each
 // is a real layer: it slides in, Back unwinds exactly one level (the deepest
 // priority owns the doorway) and the edge swipe drives the top one. Where no
 // stack hosts stages (a split layout's detail column, an isolated render) they
@@ -89,7 +89,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   // layers over this route or panes composed in place.
   const stacked = useNestedStageHosted()
   // The view mode is `?view=` like every other in-page strip
-  // (docs/navigation.md §1, "Tab hosts") so a link to a space opens in the
+  // (docs/navigation/overview.md §1, "Tab hosts") so a link to a space opens in the
   // layout it was shared in. The cookie stays the *default* for a URL that
   // names no view, and is rewritten on every change, so the preference still
   // follows the reader across spaces and sessions. Read once per mount: the

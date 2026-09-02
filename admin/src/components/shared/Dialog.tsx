@@ -17,7 +17,7 @@ import { useOverlay } from '../overlays/useOverlay'
  * composes {@link useOverlay} unconditionally — Back registration, Escape,
  * focus trap and restore, the drag-safe scrim, the modal layer and the open /
  * close motion — so a dialog cannot be built without them
- * (docs/navigation.md §7).
+ * (docs/navigation/overview.md §7).
  *
  * `size` names the four panel geometries the admin actually ships. It is not a
  * general scale: a dialog whose panel is none of these keeps its own markup

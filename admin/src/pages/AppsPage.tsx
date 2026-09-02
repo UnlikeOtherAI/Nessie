@@ -81,7 +81,7 @@ export const AppsPage = () => {
   // at which re-requesting would churn.
   const debouncedQuery = useDebouncedValue(query, 150)
   // The catalogue view lives in `?filter=` through the one tab-state hook
-  // (docs/navigation.md §1, "Tab hosts"), seeded from the last view selected on
+  // (docs/navigation/overview.md §1, "Tab hosts"), seeded from the last view selected on
   // this device so the plain `/apps` doorway does not make someone re-select
   // Installed every time. A pasted URL still wins.
   const [filter, selectFilter] = useTabParam('filter', APP_FILTER_ORDER, storedFilter)

@@ -38,7 +38,7 @@ const noop = (): void => undefined
 // A column browser on the single layout is not a track: column 0 *is* the
 // page, and every column beyond it is a nested stage — a real layer in the
 // navigation stack, pushed with the one stack transition and unwound by the
-// one Back resolver (docs/navigation.md §6). Where no stack hosts stages —
+// one Back resolver (docs/navigation/overview.md §6). Where no stack hosts stages —
 // a split layout's detail column, a test without a viewport — this composes
 // the multi-column track itself, moved on the shared motion tokens.
 //

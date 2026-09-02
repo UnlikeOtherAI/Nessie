@@ -1,6 +1,6 @@
 /**
  * One skeleton, four shapes — the placeholder every screen shows on its first
- * load (docs/navigation.md §"Arriving with content").
+ * load (docs/navigation/overview.md §"Arriving with content").
  *
  * The stack slides for 300 ms and the destination has to have something to
  * show for it. Three unrelated skeleton systems used to answer that on two

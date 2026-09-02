@@ -70,7 +70,7 @@ export const TriggerEditorDialog = ({
     [agents, channels, defaultTarget, trigger, workflowInstallations],
   )
 
-  // Drafts (docs/navigation.md → "Drafts"): a half-configured schedule survives
+  // Drafts (docs/navigation/overview.md → "Drafts"): a half-configured schedule survives
   // a dismissal, keyed by the trigger being edited. Local only — a debounced
   // PUT would re-arm a live schedule on every keystroke, so Save stays the act
   // that changes when something fires.
@@ -270,7 +270,7 @@ export const TriggerEditorDialog = ({
     // `size="lg"` (640px) rather than a new size token for this dialog's
     // original 680px panel — close enough, per the kit. The scrolling form
     // sizes with `dvh`, the dynamic viewport a soft keyboard shrinks
-    // (docs/navigation.md §12).
+    // (docs/navigation/overview.md §12).
     <Dialog
       description={
         mode === 'edit'

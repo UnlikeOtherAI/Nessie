@@ -308,7 +308,7 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
   }
 
   // `?incomingCall=` / `?acceptCall=` on a channel path are the push
-  // notification's intents (docs/navigation.md §8): consumed once the channel
+  // notification's intents (docs/navigation/overview.md §8): consumed once the channel
   // and the signed-in user are known, then stripped, so Back never re-rings.
   const channelId = parseChannelIdFromPath(location.pathname)
   const callIntent = useConsumedIntents(CALL_INTENTS, {

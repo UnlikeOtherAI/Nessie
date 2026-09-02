@@ -39,7 +39,7 @@ const ToastContext = createContext<ToastApi | null>(null)
  *
  * The corner region, the layer and the motion belong to the one
  * {@link CardViewport} — a toast is the Card kind of overlay
- * (docs/navigation.md §7), so it never owns Back, never traps focus, keeps its
+ * (docs/navigation/overview.md §7), so it never owns Back, never traps focus, keeps its
  * `role="status"`, and waits for a stack transition to settle before it slides
  * in rather than running a second motion across a moving screen.
  */

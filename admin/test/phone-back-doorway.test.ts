@@ -69,7 +69,7 @@ test('app detail keeps Apps as its one visible return doorway', () => {
 // ─── Column browser doorway ──────────────────────────────────────────────────
 
 test('a pushed column browser column owns Back through its stage, registered once', () => {
-  // docs/navigation.md §6: on `single` the deeper columns are nested stages,
+  // docs/navigation/overview.md §6: on `single` the deeper columns are nested stages,
   // so the layer's own registration is the only one — a retained column can
   // no longer compete for the doorway because it is no longer rendered.
   const viewport = readSource('../src/components/shared/column-browser/ColumnBrowserViewport.tsx')

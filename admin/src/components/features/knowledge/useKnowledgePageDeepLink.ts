@@ -6,7 +6,7 @@ import { useKnowledge } from './KnowledgeProvider'
 // The document deep link: `?spaceId=&pageId=` (or `?pageId=` alone) opens
 // that document in whichever knowledge surface is mounted — the Knowledge
 // section or a project's Docs tab. The registry declares both names as
-// consumed on every knowledge row (docs/navigation.md §8), so the one intent
+// consumed on every knowledge row (docs/navigation/overview.md §8), so the one intent
 // hook captures them and strips them; navigating away and back never
 // re-triggers the jump. One implementation, because a second would drift.
 //

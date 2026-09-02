@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-// Step 6 adopter (docs/navigation.md §6): the dashboard side panels and the
+// Step 6 adopter (docs/navigation/overview.md §6): the dashboard side panels and the
 // executor pairing panel join the navigation stack as nested stages. Both
 // pages are verified by source pins — the exact ids, priorities, labels and
 // close paths a component-level render cannot see any more cheaply than

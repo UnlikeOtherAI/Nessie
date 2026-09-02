@@ -5,7 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { JSDOM } from 'jsdom'
 
-// One state model for every in-page tab strip (docs/navigation.md §1, "Tab
+// One state model for every in-page tab strip (docs/navigation/overview.md §1, "Tab
 // hosts"; plan §2.5 and §7). The tab lives in a URL search param written with
 // `replace`, so it is linkable and refresh-safe and never a history entry.
 // These cases pin the hook's three promises — validate, replace, preserve —

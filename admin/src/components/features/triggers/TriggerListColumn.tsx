@@ -128,7 +128,7 @@ export const TriggerListColumn = ({
       </select>
 
       {/* A list whose shape is already known shows that shape while it loads
-          rather than the word Loading (docs/navigation.md §14); the kit's
+          rather than the word Loading (docs/navigation/overview.md §14); the kit's
           QueryState still owns the error and empty lines below it. */}
       {isPending ? (
         <Skeleton className="py-4" count={4} variant="list" />

@@ -19,7 +19,7 @@ import {
 import { useOverlay } from './useOverlay'
 
 /**
- * The admin's one edge-anchored overlay shell (docs/navigation.md §7).
+ * The admin's one edge-anchored overlay shell (docs/navigation/overview.md §7).
  *
  * Eight drawers each hand-rolled the same three things — a fixed scrim, a
  * literal stacking pair, and a `transition-transform` slide — and none of
@@ -64,7 +64,7 @@ export const SHEET_SIZE_STYLE: Record<SheetSize, CSSProperties> = {
   sm: { width: 'min(360px, 100vw)' },
 }
 
-// The one allowed layout branch (docs/navigation.md §5): on a single-column
+// The one allowed layout branch (docs/navigation/overview.md §5): on a single-column
 // layout a side sheet covers the screen rather than leaving a scrim strip too
 // narrow to aim at. `auto` opts out — its child is a navigation column that is
 // deliberately narrower than the viewport so the scrim stays tappable.

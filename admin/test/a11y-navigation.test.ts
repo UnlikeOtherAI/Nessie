@@ -10,7 +10,7 @@ import { SHELL_MAIN_ID } from '../src/navigation/SkipToContentLink'
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
-// docs/navigation.md §12 — aria-current, the skip link, forced-colors, the
+// docs/navigation/overview.md §12 — aria-current, the skip link, forced-colors, the
 // keyboard inset and split scroll memory (step 11's remainder).
 
 test('the shared helper marks aria-current="page" only when active', () => {

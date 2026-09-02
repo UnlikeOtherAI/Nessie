@@ -40,9 +40,14 @@ test('GET /api/alerts never lists another org\'s alerts', async () => {
   const res = await app.inject({ method: 'GET', url: '/api/alerts' })
 
   assert.equal(res.statusCode, 200)
-  const body = res.json() as { data: { alerts: unknown[]; unreadCount: number } }
-  assert.deepEqual(body.data.alerts, [])
-  assert.equal(body.data.unreadCount, 0)
+  // `data` is the page itself (the shared paged-list contract); the unread
+  // count is `/api/alerts/summary`'s answer, asserted below beside it.
+  const body = res.json() as { data: unknown[] }
+  assert.deepEqual(body.data, [])
+
+  const summary = await app.inject({ method: 'GET', url: '/api/alerts/summary' })
+  assert.equal(summary.statusCode, 200)
+  assert.equal((summary.json() as { data: { unreadCount: number } }).data.unreadCount, 0)
   await app.close()
 })
 
@@ -71,9 +76,14 @@ test('GET /api/alerts never lists another user\'s alerts within the caller\'s or
   const res = await app.inject({ method: 'GET', url: '/api/alerts' })
 
   assert.equal(res.statusCode, 200)
-  const body = res.json() as { data: { alerts: unknown[]; unreadCount: number } }
-  assert.deepEqual(body.data.alerts, [])
-  assert.equal(body.data.unreadCount, 0)
+  // `data` is the page itself (the shared paged-list contract); the unread
+  // count is `/api/alerts/summary`'s answer, asserted below beside it.
+  const body = res.json() as { data: unknown[] }
+  assert.deepEqual(body.data, [])
+
+  const summary = await app.inject({ method: 'GET', url: '/api/alerts/summary' })
+  assert.equal(summary.statusCode, 200)
+  assert.equal((summary.json() as { data: { unreadCount: number } }).data.unreadCount, 0)
   await app.close()
 })
 
@@ -105,12 +115,15 @@ test('positive control: the recipient lists and marks their own alerts read', as
 
   const list = await app.inject({ method: 'GET', url: '/api/alerts' })
   assert.equal(list.statusCode, 200)
-  const listBody = list.json() as { data: { alerts: { id: string }[]; unreadCount: number } }
+  const listBody = list.json() as { data: { id: string }[] }
   assert.deepEqual(
-    listBody.data.alerts.map((alert) => alert.id),
+    listBody.data.map((alert) => alert.id),
     [ALERT_A],
   )
-  assert.equal(listBody.data.unreadCount, 1)
+
+  const summary = await app.inject({ method: 'GET', url: '/api/alerts/summary' })
+  assert.equal(summary.statusCode, 200)
+  assert.equal((summary.json() as { data: { unreadCount: number } }).data.unreadCount, 1)
 
   const read = await app.inject({
     method: 'POST',

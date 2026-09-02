@@ -8,7 +8,7 @@ type KnowledgeSpaceListProps = {
   /**
    * The spaces query has not settled yet. Without it an empty array read as
    * "no spaces yet" on every cold load, which is a different fact with a
-   * different next move (docs/navigation.md §"Arriving with content").
+   * different next move (docs/navigation/overview.md §"Arriving with content").
    */
   isPending: boolean
   onSelect: (spaceId: string) => void

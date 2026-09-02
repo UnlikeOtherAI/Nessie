@@ -9,6 +9,7 @@ import {
   getAlertLink,
   useAlertEvents,
   useAlerts,
+  useAttentionSummary,
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../../facades/alerts/hooks'
@@ -36,12 +37,15 @@ export const AlertsBell = () => {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const { data } = useAlerts({ limit: DROPDOWN_ALERT_COUNT })
+  const summary = useAttentionSummary()
   const markRead = useMarkAlertsRead()
   const acceptInvitation = useAcceptWorkspaceInvitation()
   useAlertEvents()
 
-  const alerts = data?.alerts ?? []
-  const unreadCount = data?.unreadCount ?? 0
+  const alerts = data ?? []
+  // The badge counts unread alerts, which is the attention summary's fact —
+  // the list route answers the paged-list contract and carries only its page.
+  const unreadCount = summary.data?.unreadCount ?? 0
 
   const openAlert = (alert: UserAlertRecord) => {
     setOpen(false)

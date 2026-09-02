@@ -19,7 +19,7 @@ import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext
 // renders inline, where it stands, and the page composes it.
 //
 // Keep a stage mounted and toggle `active`; an unmount leaves without
-// motion. Rulebook: docs/navigation.md §6.
+// motion. Rulebook: docs/navigation/overview.md §6.
 
 export type NestedStageHost = {
   activate: (id: string, container: HTMLElement) => void

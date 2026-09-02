@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 import { SURFACES } from '../src/navigation/surfaces'
 import { parseHashAnchor, parseHashParam, stripIntentParams } from '../src/navigation/intent'
 
-// Intent params are declared, not improvised (docs/navigation.md §8): every
+// Intent params are declared, not improvised (docs/navigation/overview.md §8): every
 // one-shot instruction a link can carry is listed on its registry row under
 // `intent.consume` (search) or `intent.hash` (fragment), and is read only
 // through `navigation/intent.ts`, which captures it and strips it with one

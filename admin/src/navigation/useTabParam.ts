@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 
-// One state model for every in-page tab strip (docs/navigation.md §1, "Tab
+// One state model for every in-page tab strip (docs/navigation/overview.md §1, "Tab
 // hosts"). A tab is never a history entry, but it is part of what the screen
 // currently shows, so it lives in a URL search param written with `replace`:
 // `?tab=files` is linkable and survives a refresh, and browser Back leaves the

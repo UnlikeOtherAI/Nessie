@@ -48,11 +48,11 @@ type PhoneNavigationViewportProps = {
   // `single` is the one stack over the whole content region; `split` is
   // the stack inside a pinned list column's detail area, where the root is
   // the column itself, in-parent nested rows swap in place, and no edge
-  // swipe arms (the column has no edge of its own; docs/navigation.md §5).
+  // swipe arms (the column has no edge of its own; docs/navigation/overview.md §5).
   layout?: NavigationLayout
   pathname: string
   // Renders a screen the stack seeds beneath a cold start's landing route
-  // (docs/navigation.md §8): the shell supplies the section's list for a
+  // (docs/navigation/overview.md §8): the shell supplies the section's list for a
   // root and the route table's page for anything else.
   seed?: (pathname: string) => ReactNode
 }
@@ -64,7 +64,7 @@ type ActiveTransition = {
   fromLayerKey: string
   id: number
   // Whether the leaving screen held focus when the transition began; the
-  // settle reads it to decide where focus lands (docs/navigation.md §12).
+  // settle reads it to decide where focus lands (docs/navigation/overview.md §12).
   outgoingHadFocus: boolean
   phase: 'preparing' | 'running'
   toLayerKey: string
@@ -80,7 +80,7 @@ const TRANSITION_FALLBACK_SLACK_MS = 100
 // immediate predecessor; Back slides the outgoing layer away from the
 // retained target; the edge swipe drives the same two layers with the
 // finger. One instance covers a phone's whole content region; on a split
-// layout one sits in each detail column (docs/navigation.md §4–§6).
+// layout one sits in each detail column (docs/navigation/overview.md §4–§6).
 export const PhoneNavigationViewport = ({
   children,
   layout = 'single',
@@ -190,7 +190,7 @@ export const PhoneNavigationViewport = ({
     // A navigation arriving mid-slide settles the running transition first
     // (its end pose commits, its released entries drop, its settle runs), so
     // the new one starts from a clean stack instead of preempting a half-
-    // finished pose (docs/navigation.md §13).
+    // finished pose (docs/navigation/overview.md §13).
     const running = transitionRef.current
     if (running) finishTransition(running.id)
     const base = stackRef.current
@@ -231,7 +231,7 @@ export const PhoneNavigationViewport = ({
     startTransition,
   ])
 
-  // Nested stages join the same stack (docs/navigation.md §6): activation
+  // Nested stages join the same stack (docs/navigation/overview.md §6): activation
   // pushes a layer over the current entry and runs the forward motion;
   // deactivation makes the entry beneath current and runs Back, unless the
   // edge swipe already animated it. Only a single-column layout hosts

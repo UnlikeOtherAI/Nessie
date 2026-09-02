@@ -65,7 +65,7 @@ export const PageEditor = ({
     [initialTitle, page],
   )
 
-  // Drafts (docs/navigation.md → "Drafts"): keyed by the page, so navigating
+  // Drafts (docs/navigation/overview.md → "Drafts"): keyed by the page, so navigating
   // away mid-rewrite keeps the words. Local only — every server save appends a
   // `KnowledgePageVersion`, so a debounced flush would turn one edit into
   // dozens of versions and bury the history the version panel exists for.

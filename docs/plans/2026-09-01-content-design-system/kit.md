@@ -8,7 +8,7 @@ Scope: the body of a page. **Not** navigation, page headers (`ScreenHeader`,
 which composes `ResponsivePageHeader`, plus `PageHeaderMenu`), `TabBar`,
 button styling (`.admin-button*`), or any chat surface. A control that
 already lives in a page header stays there. The header is the navigation
-framework's — [docs/navigation.md](../../navigation.md) §9.
+framework's — [docs/navigation/overview.md](../../navigation/overview.md) §9.
 
 ## The seven rules
 

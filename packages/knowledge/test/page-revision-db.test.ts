@@ -8,7 +8,7 @@ import { createNativeKnowledgeProvider } from '../src/native-provider.js'
 import { KnowledgePageRevisionConflictError } from '../src/types.js'
 
 // Optimistic concurrency for the auto-saving page editor
-// (docs/navigation.md → "Drafts"). `versionNumber` belongs to a per-version
+// (docs/navigation/overview.md → "Drafts"). `versionNumber` belongs to a per-version
 // row, so the page row carries its own `revision`, incremented on every update
 // and named by the caller's `If-Match`.
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -54,6 +54,7 @@ dbTest('a knowledge page revision advances per update and refuses a stale save',
     authorId: user.id,
     authorType: 'user',
     body: 'first',
+    createdBy: user.id,
     organizationId: organization.id,
     projectId: project.id,
     spaceId: space.id,

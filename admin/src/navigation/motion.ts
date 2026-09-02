@@ -5,7 +5,7 @@
 // mirrors these numbers as tokens (--nav-duration, --nav-easing,
 // --nav-parallax); admin/test/navigation-motion.test.ts pins the two equal.
 //
-// Rulebook: docs/navigation.md §3.
+// Rulebook: docs/navigation/overview.md §3.
 
 export const NAV_MOTION = Object.freeze({
   // A full-width push or pop.

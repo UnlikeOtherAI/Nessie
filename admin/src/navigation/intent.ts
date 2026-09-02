@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useRedirect } from './redirect'
 
-// The one consume path for intent params (docs/navigation.md §8). A link can
+// The one consume path for intent params (docs/navigation/overview.md §8). A link can
 // carry an instruction as well as an address — open this page, highlight
 // that message, accept this call, review this change — and the registry row
 // declares each such name under `intent.consume` (a search param) or

@@ -7,7 +7,7 @@ import {
 } from 'react-router-dom'
 
 // A screen the navigation stack seeds beneath a cold start's landing route
-// (docs/navigation.md §8). The page is rendered from the same route table
+// (docs/navigation/overview.md §8). The page is rendered from the same route table
 // the router uses — the children of the shell route — for the seeded
 // pathname, so a deep link into an agent shows the Agents list beneath it
 // exactly as a real navigation would have. It renders inert under the

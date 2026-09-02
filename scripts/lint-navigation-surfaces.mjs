@@ -194,7 +194,7 @@ const main = () => {
         'Every route in admin/src/router.tsx must resolve to a row in',
         'admin/src/navigation/surfaces.ts (or be listed in OUTSIDE_STACK_PATHS).',
         'A route with no row renders outside the navigation stack: no push, no',
-        'pop, no Back destination. See docs/navigation.md §4.',
+        'pop, no Back destination. See docs/navigation/overview.md §4.',
         '',
         ...unclassified.map((routerPath) => `  ${routerPath} has no surface row`),
       ].join('\n'),

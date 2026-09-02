@@ -100,7 +100,7 @@ const ColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) =
       aria-valuemin={min}
       aria-valuenow={width}
       // No z-index of its own: the layer scale is the only source of one
-      // (docs/navigation.md §7), and as the column's last positioned child
+      // (docs/navigation/overview.md §7), and as the column's last positioned child
       // this already paints over the in-flow content beside it.
       className="group absolute right-0 top-0 flex h-full w-4 translate-x-1/2 cursor-col-resize touch-none items-center justify-center focus:outline-none"
       onKeyDown={(event) => {

@@ -78,7 +78,7 @@ const AttachmentViewerDialog = ({
     // Not the shared `Dialog`: it locks page scroll behind the backdrop, which
     // the shell does not do. `useOverlay` still gives it the Back registration,
     // focus trap, drag-safe scrim and layer every other overlay gets
-    // (docs/navigation.md §7).
+    // (docs/navigation/overview.md §7).
     <div
       className={[
         'fixed inset-0 flex items-center justify-center p-4',

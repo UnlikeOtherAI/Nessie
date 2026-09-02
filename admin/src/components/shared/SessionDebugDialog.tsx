@@ -88,7 +88,7 @@ export const SessionDebugDialog = ({
     // the scrim, a 44px close target instead of the shell's 28px, and a dvh
     // max-height with a scrolling flex column. `useOverlay` still gives it the
     // Back registration, focus trap, drag-safe scrim and layer every other
-    // overlay gets (docs/navigation.md §7).
+    // overlay gets (docs/navigation/overview.md §7).
     <div
       {...overlay.scrimProps}
       className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"

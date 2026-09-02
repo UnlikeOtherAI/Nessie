@@ -21,7 +21,7 @@ type AgentIdentityBlockProps = {
   /**
    * The page's own heading vs. a panel's, for correct document structure.
    * `'none'` is for a caller whose screen header already renders the one `h1`
-   * (docs/navigation.md §9): a second heading here would be the second `h1`
+   * (docs/navigation/overview.md §9): a second heading here would be the second `h1`
    * the settle and the live region cannot choose between.
    */
   headingLevel?: 'h1' | 'h2' | 'none'

@@ -100,7 +100,7 @@ export const resolvePushSurface = (pathname: string): PushSurface | null => {
     return { kind: 'project_board', projectId: projectId.data }
   }
   // The space a person is reading is the route's own segment. `?spaceId=` is
-  // the document deep link's consumed intent (docs/navigation.md §8) and is
+  // the document deep link's consumed intent (docs/navigation/overview.md §8) and is
   // gone from the address the moment the page opens it, so it never said
   // where the person was standing.
   const space = pathname.match(KNOWLEDGE_SPACE_PATH)

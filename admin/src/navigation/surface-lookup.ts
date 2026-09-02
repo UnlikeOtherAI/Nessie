@@ -2,7 +2,7 @@
 // seeds beneath it, what Back returns to and which section owns it. They
 // read `surfaces.ts` and nothing else; the table stays in its own file so
 // the totality lint's textual reads and the row declarations are one place.
-// Rulebook: `docs/navigation.md` §1, §4, §5, §8.
+// Rulebook: `docs/navigation/overview.md` §1, §4, §5, §8.
 
 import type { NavigationLayout } from './layout'
 import type { SurfaceParent, SurfaceScreen } from './page-types'
@@ -12,7 +12,7 @@ import { CHANNELS_ROOT, matchSurface, normalizeNavigationPathname } from './surf
 // forwards without ever painting a stage, and an unknown path is not a
 // screen at all (the gates make an unknown path impossible for a real route).
 //
-// The layout changes two things (docs/navigation.md §5). On `split` the
+// The layout changes two things (docs/navigation/overview.md §5). On `split` the
 // section's list is the pinned column, not a screen, so a root and its
 // details share the stack floor (depth 1): a root → detail is an in-place
 // swap with nothing retained beneath, while a detail → nested still pushes
@@ -44,7 +44,7 @@ export const surfaceScreen = (
 }
 
 // The screens a cold start seeds beneath a route, nearest first
-// (docs/navigation.md §8): the registry's parent chain up to the section
+// (docs/navigation/overview.md §8): the registry's parent chain up to the section
 // root, with a `parent: 'origin'` row seeding only its section root (its real
 // origin is unknowable on a cold link). On `split` the chain keeps only
 // strictly shallower screens — a root shares the floor with its detail there

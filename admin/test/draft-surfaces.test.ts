@@ -6,7 +6,7 @@ const read = (relativePath: string): string =>
   readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8')
 
 // Every surface that holds a person's unsent words, and the entity its draft is
-// keyed by (docs/navigation.md → "Drafts"). A surface added to the admin that
+// keyed by (docs/navigation/overview.md → "Drafts"). A surface added to the admin that
 // keeps such state in `useState` alone belongs on this list, not beside it.
 const ADOPTED_SURFACES: { file: string; key: string; label: string }[] = [
   {

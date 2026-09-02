@@ -1,5 +1,5 @@
 // Phone, a cold deep link: the stack seeds the registry's parent chain
-// beneath the landed screen (docs/navigation.md §8), so header Back slides
+// beneath the landed screen (docs/navigation/overview.md §8), so header Back slides
 // the conversation away over the channel list a real navigation would have
 // left there.
 import { createChecks } from '../lib/expect.mjs'

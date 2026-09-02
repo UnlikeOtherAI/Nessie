@@ -19,7 +19,7 @@ import {
 } from './placePopover'
 
 /**
- * The admin's one anchored overlay (docs/navigation.md §7).
+ * The admin's one anchored overlay (docs/navigation/overview.md §7).
  *
  * Every menu, picker and suggestion list in the admin was hand-assembling the
  * same four things — a fixed panel, a `z-[6x]` of its own, an outside-press

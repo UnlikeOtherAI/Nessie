@@ -1,4 +1,4 @@
-// The page-type vocabulary (`docs/navigation.md` §1, plan §3): the closed set
+// The page-type vocabulary (`docs/navigation/overview.md` §1, plan §3): the closed set
 // of what a screen can be, and the shape of the row that declares it. The
 // registry (`surfaces.ts`) fills this in for every route; step 6's nested
 // stages register against the same vocabulary, which is why it lives beside
@@ -26,7 +26,7 @@ export type SurfaceParent = {
 // declaration rather than a heuristic.
 export type SurfaceFlowPresentation = 'panel' | 'screen'
 
-// The params a route reads beyond its path (`docs/navigation.md` §8). A name
+// The params a route reads beyond its path (`docs/navigation/overview.md` §8). A name
 // under `consume` is a one-shot instruction carried in the search string
 // (highlight this message, open this connect dialog); `hash` is the same in
 // the fragment (`#trigger-<id>`). Both are read only through

@@ -258,7 +258,7 @@ export type AddFileVersionInput = {
 /**
  * The caller's `If-Match` revision is not the page's current one: somebody
  * saved in between. The choice is the person's, never a last-write-wins
- * (docs/navigation.md → "Drafts").
+ * (docs/navigation/overview.md → "Drafts").
  */
 export class KnowledgePageRevisionConflictError extends Error {
   constructor(readonly currentRevision: number) {

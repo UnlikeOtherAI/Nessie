@@ -67,7 +67,7 @@ export const useAlertMessageHighlight = (
   )?.highlightMessageId
   // A push notification links `?messageId=`; the bell passes the id in
   // location state instead. The param is a consumed intent
-  // (docs/navigation.md §8): captured once and stripped, so Back and a
+  // (docs/navigation/overview.md §8): captured once and stripped, so Back and a
   // refresh do not re-scroll.
   const pushed = useConsumedIntent('messageId')
   const highlightMessageId = typeof alertMessageId === 'string'

@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Skeleton, SkeletonBlock } from '../src/components/primitives/Skeleton.js'
 
 // Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
-// docs/navigation.md §"Arriving with content".
+// docs/navigation/overview.md §"Arriving with content".
 
 // The production Vite transform injects the JSX runtime; node's tsx loader uses
 // the classic transform for imported TSX modules.
@@ -81,7 +81,7 @@ test('no file outside Skeleton.tsx declares shimmer markup of its own', () => {
     violations,
     [],
     'A loading placeholder is <Skeleton variant=…> or <SkeletonBlock> — see '
-      + 'docs/navigation.md §"Arriving with content".',
+      + 'docs/navigation/overview.md §"Arriving with content".',
   )
 })
 
@@ -132,7 +132,7 @@ test('every per-id facade query keeps its previous data', () => {
     violations,
     [],
     'A useQuery keyed by, or gated on, an entity id must pass '
-      + '`placeholderData: keepPreviousData` — see docs/navigation.md '
+      + '`placeholderData: keepPreviousData` — see docs/navigation/overview.md '
       + '§"Arriving with content".',
   )
 })

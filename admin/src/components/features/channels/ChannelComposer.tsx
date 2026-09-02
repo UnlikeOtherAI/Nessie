@@ -69,7 +69,7 @@ export const ChannelComposer = ({
     && !isSendPending
 
   return (
-    // Base 14px padding plus the soft-keyboard inset (docs/navigation.md
+    // Base 14px padding plus the soft-keyboard inset (docs/navigation/overview.md
     // §4.14): the active composer stays above an on-screen keyboard instead
     // of sliding under it.
     <div

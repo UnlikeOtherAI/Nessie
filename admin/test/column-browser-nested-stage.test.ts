@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mountPhoneNavigationViewport } from './support/phone-navigation-viewport-harness'
 
-// A column browser is an adopter of nested stages (docs/navigation.md §6): on
+// A column browser is an adopter of nested stages (docs/navigation/overview.md §6): on
 // the single layout column 0 is the page and every column beyond it is a real
 // layer in the navigation stack, so a deeper column slides in like a route and
 // Back unwinds exactly one level. Where no stack hosts stages — a split

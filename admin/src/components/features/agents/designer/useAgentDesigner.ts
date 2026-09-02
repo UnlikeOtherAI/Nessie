@@ -136,7 +136,7 @@ export const useAgentDesigner = (
     ...initialState,
   })
 
-  // Drafts (docs/navigation.md → "Drafts"): the form is buffered under
+  // Drafts (docs/navigation/overview.md → "Drafts"): the form is buffered under
   // `draft:agent-designer:<agentId | new>`, so leaving the designer — Back, a
   // reload, a tab close — no longer discards a half-written system prompt.
   // Local only: a debounced PUT would publish an agent's behaviour to every

@@ -26,7 +26,7 @@ export const SidePanel = ({ children, className, onClose, title }: SidePanelProp
     className={[
       // Full width where it stands alone — as a `NestedStage` layer on the
       // single-column layout, where the panel *is* the screen — and the fixed
-      // column beside the content everywhere else (docs/navigation.md §6).
+      // column beside the content everywhere else (docs/navigation/overview.md §6).
       'flex h-full min-h-0 w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--panel)] md:w-80',
       className ?? '',
     ]

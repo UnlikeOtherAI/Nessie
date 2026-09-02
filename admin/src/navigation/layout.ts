@@ -6,7 +6,7 @@
 // reads a breakpoint to decide its container, and `usePhoneLayout` survives
 // only as `navigation === 'single'`.
 //
-// Rulebook: docs/navigation.md §5.
+// Rulebook: docs/navigation/overview.md §5.
 
 export type NavigationLayout = 'single' | 'split'
 

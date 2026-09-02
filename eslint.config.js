@@ -1,7 +1,7 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
 
-// Shared with the navigation-gate blocks below (docs/navigation.md §4.18):
+// Shared with the navigation-gate blocks below (docs/navigation/overview.md §4.18):
 // ESLint flat config replaces a rule's whole value — including every
 // selector — when two matching config objects both set 'no-restricted-syntax'
 // for the same file (last one wins, arrays are never concatenated). The
@@ -26,7 +26,7 @@ const FORWARDED_HEADER_RESTRICTED_SYNTAX = [
 // Navigation stack containers are overflow: clip, never hidden — a
 // scrollIntoView() run while a screen is `useLayoutEffect`-mounted off to the
 // side (parked for a push) scrolls the clipped container itself, and the
-// transform animation then runs on a stale offset (docs/navigation.md §2, the
+// transform animation then runs on a stale offset (docs/navigation/overview.md §2, the
 // "bounce"). `useEffect` (post-paint) is fine; only the layout-effect timing
 // is the defect. Nested so a scrollIntoView() buried in a helper the effect
 // calls is still caught.
@@ -36,7 +36,7 @@ const SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX = {
   message:
     "scrollIntoView() inside useLayoutEffect can run while the screen is parked "
     + "off-screen mid-push and scroll the clipped stack container itself — see "
-    + 'docs/navigation.md §2. Move the call to useEffect, or drop the layout timing.',
+    + 'docs/navigation/overview.md §2. Move the call to useEffect, or drop the layout timing.',
 }
 
 export default [
@@ -130,7 +130,7 @@ export default [
       'admin/src/pages/channels/useReplyThread.ts',
       // Popover/overlay placement geometry (D11): they clamp coordinates to the
       // window, they do not classify the device. The list shrinks as call sites
-      // adopt the one placePopover helper (docs/navigation.md §7) — the account,
+      // adopt the one placePopover helper (docs/navigation/overview.md §7) — the account,
       // workspace, create and reaction menus and the wikilink suggestion list
       // came off it that way in step 8.
       'admin/src/components/overlays/placePopover.ts',
@@ -191,7 +191,7 @@ export default [
     },
   },
   {
-    // Navigation motion gate (docs/navigation.md §11 "Gates", plan §4.18, step
+    // Navigation motion gate (docs/navigation/overview.md §11 "Gates", plan §4.18, step
     // 15): scrollIntoView() inside useLayoutEffect, everywhere in admin/src
     // except pages/** and layouts/** — those two trees get the more specific
     // block below (screen roots), which repeats this selector for the reason
@@ -209,7 +209,7 @@ export default [
     },
   },
   {
-    // Screen-root focus gate (docs/navigation.md §11 "Gates", plan §4.18, step
+    // Screen-root focus gate (docs/navigation/overview.md §11 "Gates", plan §4.18, step
     // 15): a screen root (admin/src/pages/**, admin/src/layouts/** — the shell
     // chrome and every page a route can land on) must not steal focus on
     // mount in a way that scrolls the clipped stack container (§2's bounce):
@@ -238,26 +238,26 @@ export default [
           selector: "JSXAttribute[name.name='autoFocus']",
           message:
             'autoFocus on a screen root steals focus on mount and can scroll the '
-            + 'clipped stack container — see docs/navigation.md §2/§11.',
+            + 'clipped stack container — see docs/navigation/overview.md §2/§11.',
         },
         {
           selector: "CallExpression[callee.property.name='focus'][arguments.length=0]",
           message:
             'A screen-root .focus() call needs { preventScroll: true } — a plain '
-            + '.focus() can scroll the clipped stack container. See docs/navigation.md §2/§11.',
+            + '.focus() can scroll the clipped stack container. See docs/navigation/overview.md §2/§11.',
         },
         {
           selector: "CallExpression[callee.property.name='focus'] > "
             + "ObjectExpression.arguments:not(:has(Property[key.name='preventScroll']))",
           message:
             'A screen-root .focus({...}) call needs preventScroll: true in its options '
-            + '— see docs/navigation.md §2/§11.',
+            + '— see docs/navigation/overview.md §2/§11.',
         },
       ],
     },
   },
   {
-    // navigate()/useNavigate() admission rule (docs/navigation.md §11 "Gates",
+    // navigate()/useNavigate() admission rule (docs/navigation/overview.md §11 "Gates",
     // plan §4.18) — OFF. The controller API this rule will hold call sites to
     // (PhoneNavigationProvider's `push`) does not exist yet; enabled in step
     // 13 once controller.push exists. Left declared, not deleted, so the
@@ -272,13 +272,13 @@ export default [
           selector: "CallExpression[callee.name='navigate']",
           message:
             'navigate() belongs to admin/src/navigation/** — use the controller '
-            + '(push/back/redirect) once it exists. See docs/navigation.md §4.2.',
+            + '(push/back/redirect) once it exists. See docs/navigation/overview.md §4.2.',
         },
         {
           selector: "ImportSpecifier[imported.name='useNavigate']",
           message:
             'useNavigate() belongs to admin/src/navigation/** — use the controller '
-            + '(push/back/redirect) once it exists. See docs/navigation.md §4.2.',
+            + '(push/back/redirect) once it exists. See docs/navigation/overview.md §4.2.',
         },
       ],
     },

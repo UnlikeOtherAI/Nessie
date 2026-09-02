@@ -1,5 +1,5 @@
 // Tablet and desktop: a detail → nested push slides inside the detail column
-// (docs/navigation.md §5). Agents → the agent designer: the designer enters
+// (docs/navigation/overview.md §5). Agents → the agent designer: the designer enters
 // from the column's right edge and the list parallaxes beneath it, while the
 // pinned sidebar never moves.
 import { createChecks } from '../lib/expect.mjs'

@@ -188,7 +188,7 @@ export type PhoneNavigationViewportOptions = {
   // them with `render`, while `setStage` keeps serving the default fixture.
   renderDetail?: () => ReactNode
   // Seeds the registry's parent chain beneath a cold start's landing route
-  // with a labelled placeholder per seeded pathname (docs/navigation.md §8).
+  // with a labelled placeholder per seeded pathname (docs/navigation/overview.md §8).
   seed?: boolean
   // The detail screen's stage ladder; defaults to one `inspector` stage.
   stages?: readonly HarnessStage[]

@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { listUserAlerts, markUserAlertsRead } from '../src/services/alerts.js'
+import { getAttentionSummary, listUserAlerts, markUserAlertsRead } from '../src/services/alerts.js'
 import { createThreadMessage } from '../src/services/message-create.js'
 
 // DB-backed coverage for the user_alerts migration (#246): real FKs, the real
@@ -100,18 +100,28 @@ runDatabaseTest('mention alerts persist in the message-create transaction and dr
     organizationId: seed.organizationId,
     userId: seed.mentionedId,
   })
-  assert.equal(list.data.unreadCount, 1)
-  assert.equal(list.data.alerts.length, 1)
-  assert.equal(list.data.alerts[0]?.channelLabel, 'alerts-channel')
-  assert.equal(list.data.alerts[0]?.actorDisplayName, 'Author One')
+  assert.equal(list.data.length, 1)
+  // The unread count is the attention summary's fact, not a field inside the
+  // page — the list route answers the shared paged-list contract.
+  const summary = await getAttentionSummary(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.mentionedId,
+  })
+  assert.equal(summary.unreadCount, 1)
+  assert.equal(list.data[0]?.channelLabel, 'alerts-channel')
+  assert.equal(list.data[0]?.actorDisplayName, 'Author One')
 
   // The author sees no alert for their own message.
   const authorList = await listUserAlerts(prisma, {
     organizationId: seed.organizationId,
     userId: seed.authorId,
   })
-  assert.equal(authorList.data.alerts.length, 0)
-  assert.equal(authorList.data.unreadCount, 0)
+  assert.equal(authorList.data.length, 0)
+  const authorSummary = await getAttentionSummary(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.authorId,
+  })
+  assert.equal(authorSummary.unreadCount, 0)
 
   // Marking read persists readAt and zeroes the unread count.
   const marked = await markUserAlertsRead(prisma, {

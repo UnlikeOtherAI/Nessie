@@ -3,7 +3,7 @@ import { runOverlayTransition } from '../../navigation/overlay'
 import { useReducedMotion } from '../../navigation/reduced-motion'
 
 /**
- * The ambient overlay kind (docs/navigation.md §7): a toast, a call banner, a
+ * The ambient overlay kind (docs/navigation/overview.md §7): a toast, a call banner, a
  * ring — something that arrives beside the work rather than over it.
  *
  * A card is the one overlay that composes {@link runOverlayTransition} directly

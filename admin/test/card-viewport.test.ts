@@ -14,7 +14,7 @@ import {
 } from '../src/navigation/transition-state.js'
 
 /**
- * The ambient overlay region (docs/navigation.md §7).
+ * The ambient overlay region (docs/navigation/overview.md §7).
  *
  * Two promises: the region comes from the shell's own navigation layout rather
  * than a second breakpoint (the toast viewport used to carry its own

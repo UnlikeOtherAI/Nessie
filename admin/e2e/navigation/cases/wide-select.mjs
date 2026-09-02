@@ -1,5 +1,5 @@
 // Tablet and desktop, selecting a channel. Those layouts are `split`
-// (docs/navigation.md §5): the list column is pinned and the detail column
+// (docs/navigation/overview.md §5): the list column is pinned and the detail column
 // is its own navigation stack, in which a root → detail or a sibling swap is
 // an in-place change — nothing slides (§1: an unchanged identity key never
 // animates). This case pins that: the split stack is mounted, one layer only,

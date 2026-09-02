@@ -12,8 +12,23 @@ export const ADMIN_ROOT = resolve(SUITE_ROOT, '..', '..')
 export const REPO_ROOT = resolve(ADMIN_ROOT, '..')
 export const SCREENSHOT_ROOT = resolve(REPO_ROOT, 'e2e', 'screenshots', 'navigation')
 
-export const API_PORT = 5454
-export const ADMIN_PORT = 5455
+// The repo's fixed local-dev ports are the default, so a run beside `pnpm dev`
+// adopts those servers as it always has. `NAV_E2E_API_PORT` /
+// `NAV_E2E_ADMIN_PORT` move the suite off them, which is what a second
+// worktree needs: adopting a server on 5454/5455 would drive *another*
+// checkout's code and prove nothing about this one.
+const port = (name, fallback) => {
+  const raw = process.env[name]?.trim()
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error(`${name} must be a port number, got "${raw}"`)
+  }
+  return parsed
+}
+
+export const API_PORT = port('NAV_E2E_API_PORT', 5454)
+export const ADMIN_PORT = port('NAV_E2E_ADMIN_PORT', 5455)
 export const API_URL = `http://127.0.0.1:${API_PORT}`
 export const ADMIN_URL = `http://127.0.0.1:${ADMIN_PORT}`
 

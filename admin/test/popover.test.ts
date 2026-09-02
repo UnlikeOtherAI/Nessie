@@ -12,7 +12,7 @@ import { Popover } from '../src/components/overlays/Popover.js'
 import { OVERLAY_BACK_PRIORITY, OVERLAY_LAYER } from '../src/navigation/overlay.js'
 
 /**
- * The anchored-overlay primitive (docs/navigation.md §7). Every menu, picker and
+ * The anchored-overlay primitive (docs/navigation/overview.md §7). Every menu, picker and
  * suggestion list in the admin used to carry its own fixed panel, its own
  * `z-[6x]`, its own outside-press listener and (five times over) its own
  * flip/clamp routine. These pin what the primitive always emits, the close paths
