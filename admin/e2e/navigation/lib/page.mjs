@@ -29,6 +29,21 @@ export const gotoChannels = async (page) => {
   await page.waitForSelector('button.admin-sb-item', { timeout: 60_000 })
 }
 
+// Any in-shell path, settled: the stack has mounted and its first layer is
+// current.
+export const gotoPath = async (page, path) => {
+  await gotoStable(page, `${ADMIN_URL}${path}`)
+  await page.waitForSelector('[data-phone-navigation-viewport] [data-phone-navigation-layer="current"]', { timeout: 60_000 })
+}
+
+// A client-side push without a row to tap (the designer has no list entry):
+// the same history push a Link performs, followed by the popstate the router
+// listens to.
+export const pushPath = (page, path) => page.evaluate((next) => {
+  window.history.pushState({}, '', next)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}, path)
+
 export const gotoChannel = async (page, channelId) => {
   await gotoStable(page, `${ADMIN_URL}/channels/${channelId}`)
   await page.waitForSelector('[aria-label="Channel sections"] button', { timeout: 60_000 })

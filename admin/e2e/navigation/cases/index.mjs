@@ -3,6 +3,8 @@ import { phoneEdgeSwipe } from './phone-edge-swipe.mjs'
 import { phonePush } from './phone-push.mjs'
 import { phoneTabSwitch } from './phone-tab-switch.mjs'
 import { desktopSelect, tabletSelect } from './wide-select.mjs'
+import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
+import { phoneColdStart } from './phone-cold-start.mjs'
 
 export const CASES = [
   phonePush,
@@ -11,4 +13,7 @@ export const CASES = [
   phoneTabSwitch,
   tabletSelect,
   desktopSelect,
+  tabletSplitPush,
+  desktopSplitPush,
+  phoneColdStart,
 ]

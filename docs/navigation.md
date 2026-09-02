@@ -539,6 +539,8 @@ so the suite survived the step-2 rewrite unchanged. Every frame also asserts
 | `phone-tab-switch` | 390×844 | Messages → Files moves nothing: no layer animates, the screen's rect is unchanged |
 | `tablet-select` | 768×1024 | selecting a channel in the split stack is an in-place swap: one layer, nothing animates, the columns keep their geometry |
 | `desktop-select` | 1280×800 | the same at desktop width |
+| `tablet-split-push` / `desktop-split-push` | 768×1024 / 1280×800 | Agents → the designer pushes inside the detail column: the designer travels 100 % → 0 of the column, the list 0 → -28 %, the pinned sidebar never moves |
+| `phone-cold-start` | 390×844 | a cold link to a conversation seeds the channel list beneath it; header Back slides the conversation away over that list (0 → 100 %, -28 % → 0) |
 
 Each transition case navigates once per saved frame, deliberately: the stack
 closes its own transition on a fallback timer shortly after the animation's
