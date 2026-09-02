@@ -66,7 +66,7 @@ export const AlertsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader actions={headerActions} title="Alerts" />
 
-      <PageBody width="regular">
+      <PageBody>
         <QueryState
           emptyLabel={unreadOnly ? 'No unread alerts' : 'No alerts yet'}
           errorLabel="Alerts could not be loaded."

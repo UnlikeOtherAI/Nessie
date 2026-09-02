@@ -72,7 +72,7 @@ export const ProjectInsightsTab = ({ projectId }: ProjectInsightsTabProps) => {
   const insightsQuery = useProjectInsights(projectId)
 
   return (
-    <PageBody width="regular">
+    <PageBody>
       <QueryState
         errorLabel="Couldn't load insights."
         loadingLabel="Loading insights…"

@@ -11,7 +11,7 @@ export const TypePanel = () => {
   const { fontScale, scales, setFontScale } = useFontScale()
 
   return (
-    <section className="admin-card max-w-3xl p-4">
+    <section className="admin-card p-4">
       <SectionLabel>Text size</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Sets the text size across every page. Saved to your account.

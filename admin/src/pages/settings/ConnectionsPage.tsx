@@ -61,7 +61,7 @@ export const ConnectionsPage = () => {
 
   return (
     <SettingsPanel eyebrow="Account" title="Connected accounts">
-      <div className="flex max-w-3xl flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
           Link your Slack, Gmail, or Microsoft account so your Chief of Staff can
           work across your messages. You choose exactly what is imported, and you

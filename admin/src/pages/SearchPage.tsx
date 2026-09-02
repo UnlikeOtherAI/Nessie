@@ -138,7 +138,7 @@ export const SearchPage = () => {
       <ScreenHeader title="Search" />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="border-b border-[color:var(--sep)] p-5">
+        <div className="border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <input
               autoFocus
@@ -162,7 +162,7 @@ export const SearchPage = () => {
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-[var(--page-gutter)] py-5">
           {!active ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">
               {mode === 'semantic'

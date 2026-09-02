@@ -361,7 +361,7 @@ export const ResponsivePageHeader = ({
       className="relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
       ref={headerRef}
     >
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-3 px-4">
+      <div className="flex h-[50px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {leading || onBack ? (
             <div className="flex flex-shrink-0 items-center gap-3">
@@ -459,7 +459,7 @@ export const ResponsivePageHeader = ({
         ) : null}
       </div>
 
-      {below ? <div className="min-w-0 px-4 pb-2">{below}</div> : null}
+      {below ? <div className="min-w-0 px-[var(--page-gutter)] pb-2">{below}</div> : null}
 
       <div
         aria-hidden="true"

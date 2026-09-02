@@ -579,6 +579,23 @@ Screens, overlays, Back, and the motion between them are one framework:
   and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,
   its Back rules and the sanctioned carve-outs are stated once in
   [docs/navigation/overview.md](docs/navigation/overview.md) §7 — never restate them here.
+- **One page edge, and pages are full-width.** Every content page runs
+  edge-to-edge — a list, table, card grid or form fills the width it is given,
+  with no centred `max-w-*` reading column leaving a dead strip on the right.
+  The horizontal edge is one token, `--page-gutter` in `styles.css` (`:root`),
+  used by `ResponsivePageHeader`/`ScreenHeader`, the shared `PageBody` and
+  `SettingsPanel` bodies, and `ColumnBrowserColumn`, so the header title lines
+  up under the body on every screen and every page has the same gutter. Tune it
+  in that one place, never per page; a hand-rolled page body uses
+  `px-[var(--page-gutter)]`, never a bespoke `p-5`/`px-6`/`sm:px-6 lg:px-8`.
+  `PageBody` therefore has **no** width prop — it is always full-width. The
+  deliberate exceptions are the surfaces that are not reading columns and keep
+  their own shell: fixed-height self-scrolling regions (chat, the knowledge
+  workspace, boards, canvases, editors, the mailbox, the column-browser
+  viewport) and true modals (the `/channels/new` compose dialog). A short-line
+  form (e.g. a password field) still runs its section full-width but may cap the
+  individual input with an inner `max-w-sm` — the cap is on the control, never
+  the page.
 
 ## Ports — NON-NEGOTIABLE
 

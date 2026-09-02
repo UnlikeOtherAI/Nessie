@@ -186,7 +186,7 @@ export const ColumnBrowserColumn = ({
 
   return (
     <div className="relative flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
+      <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
         {leading}
         {showBack && onBack
           ? stacked
@@ -199,7 +199,7 @@ export const ColumnBrowserColumn = ({
         {headerAction}
       </div>
       <div
-        className="flex-1 overflow-y-auto p-3"
+        className="flex-1 overflow-y-auto px-[var(--page-gutter)] py-3"
         onScroll={scroll.onScroll}
         ref={scroll.ref}
       >
