@@ -272,6 +272,39 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
   organisation a principal id for a stranger. Spec:
   `docs/plans/2026-08-29-people-and-their-agents.md`.
+- **Ownership decides who may edit, and "edit" is field-sensitive.** Every
+  agent-mutation route gated on the ORGANISATION owner role, so no ordinary
+  member could edit any agent — not even the private one they own. It never
+  surfaced because the people editing were org owners. `canEditAgent` /
+  `assertAgentFieldAuthority` (`@nessie/workspace-admin`
+  `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
+  both avatar routes, and are the one rule chat tools consume too, so routes and
+  the Agent Designer cannot disagree. A **private** agent is its live owner's
+  alone (an org owner cannot see it, so cannot edit it); a **person-owned**
+  workspace agent takes its live owner plus org owners (without that override a
+  deactivated steward leaves an agent with no editor); a **team-owned** agent —
+  `ownerUserId` null — takes anyone entitled to it, plus org owners; a
+  `systemManaged` agent takes nobody, refused **in the service**
+  (`SYSTEM_AGENT_IMMUTABLE` in `updateAgentRecord` and the avatar service) rather
+  than only hidden by route invisibility. Owner-ness is re-derived from the live
+  `OrganizationMember` row on every call, never the session claim or a run's
+  enqueue-time snapshot. A null owner is therefore a **deliberate state**, not
+  missing history: "team-owned" means any member who can see the agent may
+  rewrite its prompt, model, tools and limits, while *placement*
+  (`agent_bind_channel`) keeps its stricter four gates — editing improves the
+  shared agent in place, binding changes who is exposed to it. One predicate over
+  the whole PUT body would be wrong, because that body also carries `ownerUserId`
+  and `todosEnabled`: ownership transitions belong to the current owner or an org
+  owner (so *claiming* a team-owned agent is org-owner-only by construction) and
+  `todosEnabled` keeps its own org-owner gate — both firing only on an actual
+  change, so a form echoing the stored value back stays an ordinary edit.
+  Unchanged by all of it: protected/explicit-grant policy keys
+  (`assertGenericAgentToolPolicyInput` is the law for every editor), immutable
+  `visibility`, `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the
+  `agent.owner_changed` audit on both transfer and release. Details:
+  `docs/plans/2026-08-29-people-and-their-agents.md` → "Ownership carries edit
+  authority"; decision:
+  `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
 - **An interactive card is one system, and its press is claimed once.** Every
   agent that can talk can post a card (`card_post`, default-on) whose buttons a
   person presses; `AgentCard` is the authority and the message carries only its

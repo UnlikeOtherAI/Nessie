@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Sheet } from '../../overlays/Sheet'
 import type { AgentRecord } from '../../../lib/api-client'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useCanEditAgent } from './agent-edit-authority'
 import { AgentIdentityBlock } from './AgentIdentityBlock'
 import { AgentDetailTabs } from './AgentDetailTabs'
 
@@ -17,7 +17,7 @@ export const AgentDetailDrawer = ({
   onSelectAgent,
 }: AgentDetailDrawerProps) => {
   const navigate = useNavigate()
-  const isOwner = useIsOwner()
+  const canEdit = useCanEditAgent(agent)
 
   if (!agent) {
     return null
@@ -39,10 +39,10 @@ export const AgentDetailDrawer = ({
           ].join(' ')}
         >
           <div className="flex items-center gap-3">
-            <AgentIdentityBlock agent={agent} canEditAvatar={isOwner} />
+            <AgentIdentityBlock agent={agent} canEditAvatar={canEdit} />
           </div>
           <div className="flex gap-2">
-            {isOwner ? (
+            {canEdit ? (
               <button
                 className="admin-button admin-button-secondary"
                 onClick={() => void navigate(`/agents/designer/${agent.id}`)}

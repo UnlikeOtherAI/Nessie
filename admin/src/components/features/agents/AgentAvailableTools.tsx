@@ -10,18 +10,22 @@ import { Card } from '../../shared/Card'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { QueryState } from '../../shared/QueryState'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useCanEditAgent } from './agent-edit-authority'
 import { ToolPicker } from './designer/ToolPicker'
 import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
 import { revealDesignerControl } from './designer/reveal-control'
 
 /**
  * The agent's Tools tab: the single place an agent's tool access is managed.
- * Owners get the enable/disable switches (the same ToolPicker the create-agent
- * designer uses) plus an inline Save; everyone else sees the resolved read-only
- * list — the same resolution the worker applies at run time. Protected
- * explicit-grant tools are never listed here; the server preserves them across
- * a save.
+ * Whoever may edit this agent gets the enable/disable switches (the same
+ * ToolPicker the create-agent designer uses) plus an inline Save; everyone else
+ * sees the resolved read-only list — the same resolution the worker applies at
+ * run time. Protected explicit-grant tools are never listed here; the server
+ * preserves them across a save.
+ *
+ * "May edit" is `canEditAgent`, not the organization owner role: the steward of
+ * a private or person-owned agent, and any entitled member of a team-owned one,
+ * may change its tools too.
  */
 
 type AgentAvailableToolsProps = {
@@ -172,9 +176,9 @@ const AgentToolsReadOnly = ({ agent }: { agent: AgentRecord }) => {
 }
 
 export const AgentAvailableTools = ({ agent, editable = true }: AgentAvailableToolsProps) => {
-  const isOwner = useIsOwner()
+  const canEdit = useCanEditAgent(agent)
 
-  return isOwner && editable ? (
+  return canEdit && editable ? (
     <AgentToolsEditor agent={agent} />
   ) : (
     <AgentToolsReadOnly agent={agent} />

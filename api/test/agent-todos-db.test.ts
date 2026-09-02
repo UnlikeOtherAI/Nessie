@@ -9,6 +9,8 @@ import Fastify from 'fastify'
 import { registerAgentRoutes } from '../src/routes/agents.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
 import {
+  AGENT_EDIT_AUTHORITY_ERROR_CODES,
+  AgentEditAuthorityError,
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,
   AGENT_MANAGEMENT_ERROR_CODES,
@@ -27,6 +29,12 @@ type Seed = {
   otherOrganizationId: string
   userId: string
 }
+
+/** The seeded person, who is an active organization owner. */
+const editorFor = (value: Seed) => ({
+  organizationId: value.organizationId,
+  userId: value.userId,
+})
 
 const templateSteps = [
   {
@@ -173,7 +181,7 @@ dbTest('POST /api/agents persists todosEnabled through the route', async () => {
 
 dbTest('a shared agent update persists and returns todosEnabled', async () => {
   await withDatabase(async (prisma, value) => {
-    const updated = await updateAgentRecord(prisma, value.agentId, {
+    const updated = await updateAgentRecord(prisma, value.agentId, editorFor(value), {
       organizationId: value.organizationId,
       todosEnabled: true,
     })
@@ -187,19 +195,25 @@ dbTest('a shared agent update persists and returns todosEnabled', async () => {
   })
 })
 
-dbTest('a system-managed agent update preserves its stored todosEnabled value', async () => {
+dbTest('a system-managed agent update is refused outright, not silently pinned', async () => {
   await withDatabase(async (prisma, value) => {
     await prisma.agent.update({
       where: { id: value.agentId },
       data: { systemManaged: true, todosEnabled: true },
     })
 
-    const updated = await updateAgentRecord(prisma, value.agentId, {
-      organizationId: value.organizationId,
-      todosEnabled: false,
-    })
+    // The service used to pin the protected columns from the existing row and
+    // return happily; only route invisibility kept a blueprint-managed agent out
+    // of reach. It now refuses in words, for an organization owner too.
+    await assert.rejects(
+      () => updateAgentRecord(prisma, value.agentId, editorFor(value), {
+        organizationId: value.organizationId,
+        todosEnabled: false,
+      }),
+      (error: unknown) => error instanceof AgentEditAuthorityError
+        && error.code === AGENT_EDIT_AUTHORITY_ERROR_CODES.SYSTEM_IMMUTABLE,
+    )
 
-    assert.equal(updated?.todosEnabled, true)
     const row = await prisma.agent.findUnique({
       where: { id: value.agentId },
       select: { todosEnabled: true },
@@ -239,7 +253,7 @@ dbTest('an enabled schedule blocks template archive and disabling to-dos until i
         && error.code === AGENT_TODO_ERROR_CODES.TEMPLATE_IN_USE,
     )
     await assert.rejects(
-      () => updateAgentRecord(prisma, value.agentId, {
+      () => updateAgentRecord(prisma, value.agentId, editorFor(value), {
         organizationId: value.organizationId,
         todosEnabled: false,
       }),
@@ -254,7 +268,7 @@ dbTest('an enabled schedule blocks template archive and disabling to-dos until i
       templateId: template.id,
     })
     assert.equal(archived?.status, 'archived')
-    const disabled = await updateAgentRecord(prisma, value.agentId, {
+    const disabled = await updateAgentRecord(prisma, value.agentId, editorFor(value), {
       organizationId: value.organizationId,
       todosEnabled: false,
     })

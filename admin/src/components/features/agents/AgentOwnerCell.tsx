@@ -9,8 +9,10 @@ type AgentOwnerCellProps = {
 /**
  * Who stewards this agent — their "virtual employee".
  *
- * Unowned is a real state, not a gap: nothing recorded who created the agents
- * that existed before stewardship did, so every one of them reads "Unowned"
+ * Team-owned is a real state, not a gap. Nothing recorded who created the
+ * agents that existed before stewardship did, and "no steward" is now a
+ * deliberate configuration rather than only missing history: a null owner means
+ * every member entitled to the agent may edit it. So it reads "Team-owned"
  * rather than guessing a name. A deactivated steward is said plainly, because
  * an agent whose owner has left keeps running and somebody has to notice.
  *
@@ -21,7 +23,7 @@ type AgentOwnerCellProps = {
 export const AgentOwnerCell = ({ owner, token }: AgentOwnerCellProps) => {
   if (!owner) {
     return (
-      <span className="text-xs text-[color:var(--tx3)]">Unowned</span>
+      <span className="text-xs text-[color:var(--tx3)]">Team-owned</span>
     )
   }
 

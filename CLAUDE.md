@@ -869,6 +869,14 @@ agent delete, policy-target mutation, or anything touching the DeepWater bundle.
 `schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
 is the owner action on *another* agent.
 
+Who may **edit** an agent is its ownership state, not the organisation owner
+role: private ⇒ the live owner alone, person-owned ⇒ the live owner plus org
+owners, team-owned (`ownerUserId` null) ⇒ anyone entitled plus org owners,
+`systemManaged` ⇒ nobody. Ownership transitions and `todosEnabled` keep their
+own narrower gates. Full rule: `AGENTS.md` → "Ownership decides who may edit";
+predicate: `@nessie/workspace-admin` `agent-edit-authority.ts`, mirrored for
+affordances by `admin/src/components/features/agents/agent-edit-authority.ts`.
+
 Private-agent transfer is deliberately unsupported: the owner-only home DM
 encodes the steward, so an `ownerUserId` change is refused with
 `AGENT_PRIVATE_TRANSFER_UNSUPPORTED` until the agent is published. When a
