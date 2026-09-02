@@ -1,5 +1,5 @@
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
-import type { BuiltinToolDefinition } from '@nessie/runtime'
+import { AGENT_HANDOFF_TOOL_ID, type BuiltinToolDefinition } from '@nessie/runtime'
 import {
   buildBuiltinToolsetView,
   resolveBuiltinInlineToolLimit,
@@ -57,10 +57,21 @@ const isWithheldFromPersonalAssistantPresence = (tool: BuiltinToolDefinition): b
 
 export type ToolDenialReason =
   | 'agent_policy_denied'
+  | 'global_agent_handoff_denied'
   | 'parent_agent_subtask_denied'
   | 'personal_assistant_only'
   | 'tool_not_granted'
   | 'unknown_tool'
+
+/**
+ * Tools a `spawn_subtask` child may never call, because calling one would
+ * re-enter the machinery that created it. `spawn_subtask` is the original: a
+ * child spawning children is unbounded recursion. `agent_handoff` is the same
+ * shape one level out — a child briefing a global agent starts a run whose own
+ * conversation could hand off again — and it is additionally meaningless there:
+ * a subtask has no live human requester to hand anywhere.
+ */
+const SUBTASK_CHILD_DENIED_TOOL_IDS = new Set(['spawn_subtask', AGENT_HANDOFF_TOOL_ID])
 
 export type ToolAuthorizationDecision =
   | { allowed: true }
@@ -81,6 +92,17 @@ export type ToolAuthorizationOptions = {
    * and risking disagreement.
    */
   identityToolIds?: ReadonlySet<string>
+  /**
+   * `Agent.systemSlug` — set only on a global agent's per-organisation row.
+   *
+   * The one input `agent_handoff`'s loop bound needs. A global agent cannot
+   * hand off: not to itself, and not to a future global peer, because the
+   * target's own conversation could hand back and the pair would trade
+   * briefings forever. Structural, in the authorization layer, exactly like
+   * `spawn_subtask`'s recursion refusal — never a string check inside the
+   * handler, which would leave the tool offered in the model's schema array.
+   */
+  agentSystemSlug?: string | null
 }
 
 const hasPolicyDeny = (agentToolPolicy: ToolPolicy | null, toolId: string): boolean =>
@@ -132,8 +154,12 @@ export const authorizeToolCall = (
     return { allowed: false, reason: 'tool_not_granted' }
   }
 
-  if (parentAgentId && toolId === 'spawn_subtask') {
+  if (parentAgentId && SUBTASK_CHILD_DENIED_TOOL_IDS.has(toolId)) {
     return { allowed: false, reason: 'parent_agent_subtask_denied' }
+  }
+
+  if (toolId === AGENT_HANDOFF_TOOL_ID && options.agentSystemSlug) {
+    return { allowed: false, reason: 'global_agent_handoff_denied' }
   }
 
   if (!enabledToolIds.has(toolId)) {
@@ -169,7 +195,10 @@ export const resolveAgentTools = (
         agentToolPolicy,
         parentAgentId,
         agentKind,
-        { ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}) },
+        {
+          ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}),
+          ...(options.agentSystemSlug ? { agentSystemSlug: options.agentSystemSlug } : {}),
+        },
       ).allowed
     ) {
       allowedIds.add(tool.id)

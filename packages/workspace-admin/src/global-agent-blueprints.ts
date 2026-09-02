@@ -25,6 +25,14 @@ export type GlobalAgentBlueprint = {
   name: string
   role: string
   /**
+   * One sentence naming the work this specialist owns, in the second person as
+   * another agent would read it. It is the entire content of the `agent_handoff`
+   * routing block every other agent carries (D8), so it is written here — once,
+   * beside the blueprint — rather than restated in a prompt string a new global
+   * agent could be forgotten from.
+   */
+  handoffSummary: string
+  /**
    * The stored system prompt. Phase 1 is a short persona; the generated
    * capability catalogue (D5) is assembled at run setup in phase 2.
    */
@@ -98,6 +106,9 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   slug: AGENT_DESIGNER_SLUG,
   name: 'Agent Designer',
   role: 'agent designer',
+  handoffSummary:
+    'designing, creating and reshaping agents — what an agent should do, what it '
+    + 'needs access to, the channel it works in and the schedule it runs on',
   buildSystemPrompt: () => AGENT_DESIGNER_PROMPT,
   // Deny-mode narrowing only. A design conversation needs neither fan-out verb,
   // and keeping them off keeps the (eventually catalogue-laden) context from

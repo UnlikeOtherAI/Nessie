@@ -217,7 +217,14 @@ export const authorizeToolExecution = async (
       auth.toolPolicy,
       auth.parentAgentId,
       auth.agentKind,
-      { ...(auth.identityToolIds ? { identityToolIds: auth.identityToolIds } : {}) },
+      {
+        ...(auth.identityToolIds ? { identityToolIds: auth.identityToolIds } : {}),
+        // Read straight off the run context rather than threaded through every
+        // caller: the same row toolset assembly consulted, so a stale schema
+        // (a deferred stub, a replayed call, a resumed approval) cannot smuggle
+        // `agent_handoff` back into a global agent's run.
+        ...(context.agent.systemSlug ? { agentSystemSlug: context.agent.systemSlug } : {}),
+      },
     )
 
   if (

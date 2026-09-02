@@ -808,8 +808,29 @@ pin → `NESSIE_DESIGNER_MODEL` → organisation default, one rule for both Desi
 faces; the sidebar finds the DM via `isGlobalAgentChannel`, and
 `AgentIdentityProvider` reads `scope=all`. **Phase 2a** gave the Designer the
 five identity-delegated provisioning tools on its own home DM, interactive turns
-only; the capability catalogue, `agent_read`/`agent_update`/`agent_tool_catalog`/
-`agent_avatar_update`, `agent_handoff` and the sidebar are phases 2b–4.
+only; **phase 3** shipped `agent_handoff`; the capability catalogue,
+`agent_read`/`agent_update`/`agent_tool_catalog`/`agent_avatar_update` and the
+sidebar are phases 2b–4.
+
+**`agent_handoff`** (`worker/src/run/pa-tools/agent-handoff.ts`) is default-on
+for every agent (`safe: false`, no grant) and takes `{ target: <slug>, brief }`
+— registry slugs only. Its invariants are in `AGENTS.md`; the mechanics:
+`ensureGlobalAgentBootstrap` opens the requester's home DM on demand (the origin
+channel's team only ever seeds the hidden system team); the target run carries
+the requester as actor **and** `effectiveUserId` with `interactive: true`, which
+is exactly what `resolveIdentityDelegatedToolIds` reads, and keeps the *origin*
+tenant because that decides Ledger attribution and a typed message in the DM
+carries the poster's session tenant too; `replyPlacement: 'channel'` is fused to
+the hidden `system` brief, or the reply would thread under a root nobody can
+see. Cooldown 10 min, row expiry 60 min (`AgentHandoffRequest`, advisory-locked
+on `(requester, slug)`); past the cooldown the old row is superseded and a fresh
+brief is written. The brief's basis is stamped by the tool itself, and
+`run-job.ts` now feeds the trigger message's own basis into the run's sink —
+`loadConversation` excludes `system` rows, so a hidden brief's restriction would
+otherwise leave the run and come back out through an empty-basis reply. The
+one structural routing line every other agent carries is rendered from the
+registry's `handoffSummary` (`execute/handoff-routing.ts`); the origin doorway
+renders as `AgentHandoffDoorway`.
 
 ## Personal assistant — workspace provisioning
 

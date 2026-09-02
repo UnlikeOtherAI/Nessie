@@ -1,7 +1,7 @@
 # The Agent Designer — the first global agent
 
-**Status:** phase 1 (Foundation) and phase 2a (the identity-delegation
-backbone) implemented 2026-09-02; phases 0, 2b and 3–4 remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
+**Status:** phases 0, 1 (Foundation), 2a (the identity-delegation backbone) and
+3 (`agent_handoff`) implemented 2026-09-02; phases 2b and 4 remain plan. Revised 2026-09-02 after independent Kimix and Codex Sol
 code-aware reviews (see "Cross-model review"); every adopted finding was
 re-verified against code first.
 **Date:** 2026-09-02
@@ -773,9 +773,42 @@ requiresExplicitGrant (owner-surface granted, never by the Designer).
    capability-catalogue prompt block; persona; card-driven collection (no-wait
    default). Verify end-to-end: describe → question → card → create → home DM
    link.
-3. **Handoff.** `agent_handoff` builtin (requester-keyed, loop-bounded,
-   slot-claimed, hidden-system brief, basis subtraction) + origin doorway
-   message + routing prompt block for all non-designer agents.
+3. **Handoff — implemented 2026-09-02.** `agent_handoff`
+   (`packages/runtime/src/builtin-handoff-tools.ts` +
+   `worker/src/run/pa-tools/agent-handoff.ts`), default-on for every agent,
+   `{ target: <registry slug>, brief }`. Migration
+   `20260902200000_agent_handoff_requests` adds `AgentHandoffRequest`
+   (`(requester, targetSlug)` convergence under a `pg_advisory_xact_lock`, no
+   unique constraint so superseded rows are retained; 10-minute cooldown,
+   60-minute row expiry). The requester is the actor, never `effectiveUserId`,
+   with `interactive === true` and a live `OrganizationMember` re-read — one
+   condition refusing unattended, trigger, subtask and agent-authored runs. The
+   loop bound is structural in `authorizeToolCall`: the tool is omitted from
+   any `systemSlug` agent's schema array (`agentSystemSlug` threaded from
+   `context.agent.systemSlug` at both `resolveAgentTools` and the per-call
+   gate) and from `spawn_subtask` children beside `spawn_subtask` itself; the
+   queue key `handoff:{originRunId}:{slug}` is the crash guard beneath the row.
+   The brief is a hidden `system` message carrying
+   `metadata.agentHandoff`, delivered through `claimThreadRunOrPend` with
+   `replyPlacement: 'channel'` fused to it; its basis is
+   `computeReplyBasis` against the DM then `subtractImpliedScopes` against the
+   requester's live disclosure viewer, and `run-job.ts` now feeds the trigger
+   message's basis into the run's sink so a restricted brief cannot launder
+   itself out through an empty-basis reply. The origin doorway is an ordinary
+   agent message carrying `metadata.agentHandoffDoorway`, rendered by
+   `admin/src/components/features/channels/AgentHandoffDoorway.tsx`. The
+   routing block (`worker/src/run/execute/handoff-routing.ts`) renders from the
+   registry's new `handoffSummary` field, so a second global agent is in every
+   agent's prompt the deploy it ships. Tests:
+   `worker/test/db/agent-handoff.test.ts` (one brief + one doorway + one run;
+   cooldown convergence with no duplicate; unattended/non-interactive/
+   agent-authored/unknown-target refusals; a PA-presence run opening the
+   *asking* member's DM and never the effective user's; a busy home DM pending
+   instead of double-running; a privileged-origin handoff leaving the brief
+   basis-free and the Designer readable by its one member; the bootstrapped
+   Designer row having no `agent_handoff`), plus
+   `worker/src/run/handoff-bounds.test.ts` and
+   `worker/src/run/pa-tools/handoff-basis.test.ts`.
 4. **Consolidation.** Retire PA `agent_create`; unify the sidebar onto the
    blueprint module (persona, catalogue, identity, Ledger search, model
    rule); config-only global-agent detail view; amend conversational-setup
