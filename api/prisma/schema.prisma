@@ -2430,6 +2430,11 @@ model AgentCard {
   /// `{ [fieldKey]: { kind, instanceId, placement } }` — the fact that a secret
   /// was stored and where it landed. Never a reference, never a value.
   secretOutcomes    Json?           @map("secret_outcomes")
+  /// `{ agentBrowserId, service, sessionId? }` for a browser sign-in handoff.
+  /// The press writes the `AgentBrowserLogin` row from this and releases the
+  /// human-only session, so a person who signs in and presses Done is
+  /// recorded even if the resumed run then fails.
+  browserLogin      Json?           @map("browser_login")
   resumedByRunId    String?         @unique @map("resumed_by_run_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")

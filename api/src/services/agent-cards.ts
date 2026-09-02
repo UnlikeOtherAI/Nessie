@@ -59,6 +59,7 @@ export const loadReadableCard = async (
       messageId: true,
       organizationId: true,
       resolutionValues: true,
+      browserLogin: true,
       resumeState: true,
       resolvedActionKey: true,
       resolvedAt: true,

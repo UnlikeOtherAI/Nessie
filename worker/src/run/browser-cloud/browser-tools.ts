@@ -14,6 +14,7 @@ import {
 import {
   BROWSER_ACT_TOOL_ID,
   BROWSER_CLOSE_TOOL_ID,
+  BROWSER_LOGIN_REQUEST_TOOL_ID,
   BROWSER_OBSERVE_TOOL_ID,
   BROWSER_OPEN_TOOL_ID,
 } from '@nessie/runtime'
@@ -26,10 +27,14 @@ import {
 import { isFatalToolExecutionError } from '../tool-execution-errors.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from '../tool-types.js'
 import { summarizeToolInput, truncateToolResult } from '../tool-util.js'
+import { requestBrowserLogin } from './login-request.js'
 import { acquireCdp, registerSession, releaseCdp } from './session-pool.js'
 
-/** What a browser verb reports. Failure is a value; ambiguity is a throw. */
-type BrowserToolOutcome = { output: string; success: boolean }
+/**
+ * What a browser verb reports. Failure is a value; ambiguity is a throw.
+ * `cardId` is set only by the sign-in request, which parks the run on a card.
+ */
+type BrowserToolOutcome = { output: string; success: boolean; cardId?: string }
 
 /**
  * The cloud browser builtins.
@@ -304,13 +309,29 @@ const runClose = async (
   }
 }
 
+const runLoginRequest = async (
+  deps: CloudBrowserDeps,
+  context: BrowserToolContext,
+  args: Record<string, unknown>,
+): Promise<BrowserToolOutcome & { cardId?: string }> => {
+  const service = typeof args.service === 'string' ? args.service.trim() : ''
+  const reason = typeof args.reason === 'string' ? args.reason.trim() : ''
+  if (!service || !reason) {
+    return {
+      output: 'browser_login_request needs a service and a one-sentence reason.',
+      success: false,
+    }
+  }
+  return requestBrowserLogin(deps, context, { reason, service })
+}
+
 const verbFor = (
   toolName: string,
 ): ((
   deps: CloudBrowserDeps,
   context: BrowserToolContext,
   args: Record<string, unknown>,
-) => Promise<BrowserToolOutcome>) | null => {
+) => Promise<BrowserToolOutcome & { cardId?: string }>) | null => {
   switch (toolName) {
     case BROWSER_OPEN_TOOL_ID:
       return runOpen
@@ -320,6 +341,8 @@ const verbFor = (
       return runAct
     case BROWSER_CLOSE_TOOL_ID:
       return (deps, context) => runClose(deps, context)
+    case BROWSER_LOGIN_REQUEST_TOOL_ID:
+      return runLoginRequest
     default:
       return null
   }
@@ -348,6 +371,9 @@ export const cloudBrowserTool = (
         inputSummary,
         output: truncateToolResult(outcome.output),
         success: outcome.success,
+        // Parks the run on the card: decided after dispatch, because the card
+        // has to exist before anybody can press it.
+        ...(outcome.cardId ? { pendingInput: { cardId: outcome.cardId } } : {}),
       }
     } catch (error) {
       // An ambiguous outcome aborts the batch instead of becoming model input.
