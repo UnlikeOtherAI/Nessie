@@ -1,33 +1,14 @@
-// Theming exception: deliberate avatar identity palette; revisit for full theming.
 /**
- * Shared avatar helpers — initials and gradient palettes used across the
- * admin UI (Avatar primitive, channel member lists, agent rows).
+ * Initials for a display name.
+ *
+ * The implementation lives with the tile that draws it
+ * (`components/primitives/identity-shape.ts`) so shape and fallback stay one
+ * decision; this re-export keeps the many existing import sites working.
+ *
+ * The agent gradient and the indexed DM gradients that used to live here are
+ * gone. They were a second identity palette competing with
+ * `AGENT_AVATAR_BACKGROUND_COLORS`, which is why one agent was a flat purple
+ * tile in the sidebar and a palette-coloured portrait in the channel; the DM
+ * gradients had no reader at all.
  */
-
-/**
- * Derive up to two uppercase initials from a display name. Returns `fallback`
- * when no usable characters are present.
- */
-export const getInitials = (value: string, fallback = 'N'): string =>
-  value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('') || fallback
-
-/** Fixed gradient used for agent avatars. */
-export const agentGradient = 'linear-gradient(135deg,#7c3aed,#6d28d9)'
-
-/** Index-based DM avatar gradients used by the sidebar rail. */
-export const dmGradients = [
-  'linear-gradient(135deg,#6d28d9,#4f46e5)',
-  'linear-gradient(135deg,#1d4ed8,#0284c7)',
-  'linear-gradient(135deg,#047857,#065f46)',
-  'linear-gradient(135deg,#9333ea,#7c3aed)',
-] as const
-
-/** Inline style for a DM avatar, cycling through {@link dmGradients}. */
-export const getDmStyle = (index: number) => ({
-  background: dmGradients[index % dmGradients.length],
-})
+export { identityInitials as getInitials } from '../components/primitives/identity-shape'

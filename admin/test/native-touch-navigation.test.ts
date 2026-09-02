@@ -130,11 +130,14 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   assert.match(starred, /showPresence=\{nativeTouchShell\}/)
   assert.match(starred, /showStatus=\{false\}/)
   assert.match(starred, /<UserStatusEmoji/)
-  assert.match(avatar, /rounded-md/)
-  assert.match(agentAvatar, /rounded-md/)
-  assert.match(workspaceAvatar, /rounded-md/)
-  assert.doesNotMatch(avatar, /shape/)
-  assert.doesNotMatch(agentAvatar, /shape/)
+  // The shape is no longer each primitive's own decision: all three route
+  // through IdentityTile, which derives the radius from the rendered size.
+  assert.match(avatar, /<IdentityTile/)
+  assert.match(agentAvatar, /<IdentityTile/)
+  assert.match(workspaceAvatar, /<IdentityTile/)
+  for (const source of [avatar, agentAvatar, workspaceAvatar]) {
+    assert.doesNotMatch(source, /rounded-(?:full|sm|md|lg|xl|2xl|3xl)/)
+  }
   assert.doesNotMatch(people, /shape=/)
   assert.doesNotMatch(starred, /shape=/)
   assert.match(badge, /ringWidth = 2/)

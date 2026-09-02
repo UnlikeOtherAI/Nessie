@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
-import { agentGradient, getInitials } from '../../../lib/avatar'
+import { AgentAvatar } from '../../shared/AgentAvatar'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentStatusDot } from '../agents/AgentStatusDot'
 import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
@@ -31,6 +32,7 @@ export const ProjectAgentsSection = ({ className, projectId }: ProjectAgentsSect
   const navigate = useNavigate()
   const { data: channels } = useChannels()
   const { data: agents, isError, isPending } = useAgents()
+  const { token } = useAuthSession()
 
   const projectChannels = projectChannelRows(channels ?? [], projectId)
   const rows = projectAgentRows(agents ?? [], projectChannels)
@@ -54,14 +56,7 @@ export const ProjectAgentsSection = ({ className, projectId }: ProjectAgentsSect
           title={`${agent.name} — ${agentStatusLabel(agent.status)}`}
           type="button"
         >
-          <span
-            aria-hidden="true"
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full
-              text-[10px] font-bold text-[color:var(--on-accent)]"
-            style={{ background: agentGradient }}
-          >
-            {getInitials(agent.name)}
-          </span>
+          <AgentAvatar agent={agent} size={28} token={token} />
           <span className="truncate text-sm text-[color:var(--tx)]">{agent.name}</span>
           <span className="ml-auto flex items-center gap-2">
             <span className="text-xs lowercase text-[color:var(--tx3)]">

@@ -7,6 +7,7 @@ import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigat
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
 import { UserAvatar } from '../../primitives/UserAvatar'
+import { IdentityTile } from '../../primitives/IdentityTile'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
@@ -90,13 +91,15 @@ const ConversationOverview = ({
   return (
     <>
       <div className="border-b border-[color:var(--sep)] px-5 py-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
-          <svg aria-hidden="true" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
+        <IdentityTile
+          background="var(--accent-soft)"
+          className="mx-auto"
+          color="var(--accent)"
+          fallback={{ kind: 'icon', icon: <GroupConversationMark /> }}
+          imageUrl={null}
+          label={activeChannel.label}
+          size={64}
+        />
         <p className="mt-3 text-sm font-semibold text-[color:var(--tx)]">{activeChannel.label}</p>
         <p className="mt-1 text-xs text-[color:var(--tx3)]">{heading} · {memberCount} member{memberCount === 1 ? '' : 's'}</p>
         {participantPreview.length > 0 ? (
@@ -255,6 +258,14 @@ const AddConversationMembers = ({
     </div>
   )
 }
+
+const GroupConversationMark = () => (
+  <svg aria-hidden="true" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
 
 export const ConversationInfoFlow = ({
   activeChannel,

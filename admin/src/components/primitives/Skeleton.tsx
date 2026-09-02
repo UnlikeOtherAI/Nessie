@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 /**
  * The placeholder shape a surface shows while its first load is in flight.
  *
@@ -17,11 +19,16 @@ type SkeletonProps = {
   className?: string
   /** Tailwind height utility. Defaults to a line of body text. */
   height?: string
+  /**
+   * For a placeholder standing in for a fixed-shape element — an avatar tile,
+   * most often — so the row does not change shape when the real thing loads.
+   */
+  style?: CSSProperties
   /** Tailwind width utility; omit for full width. */
   width?: string
 }
 
-export const Skeleton = ({ className, height = 'h-4', width }: SkeletonProps) => (
+export const Skeleton = ({ className, height = 'h-4', style, width }: SkeletonProps) => (
   <div
     className={[
       'animate-pulse rounded bg-[color:var(--overlay-weak)]',
@@ -31,6 +38,7 @@ export const Skeleton = ({ className, height = 'h-4', width }: SkeletonProps) =>
     ]
       .filter(Boolean)
       .join(' ')}
+    style={style}
   />
 )
 

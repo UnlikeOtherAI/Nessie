@@ -1,5 +1,6 @@
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useAuthedObjectUrlFromPath } from '../../../lib/uploads'
+import { IdentityTile } from '../../primitives/IdentityTile'
 import { appIconInitials } from './app-card-presentation'
 
 type AppIconProps = {
@@ -9,17 +10,11 @@ type AppIconProps = {
   size: 'badge' | 'card' | 'hero'
 }
 
-const TILE_SIZE: Record<AppIconProps['size'], string> = {
+const TILE_PX: Record<AppIconProps['size'], number> = {
   // The service mark in a chat card's top-left corner.
-  badge: 'h-6 w-6 rounded-[var(--radius-sm)]',
-  card: 'h-12 w-12 rounded-[var(--radius-md)]',
-  hero: 'h-16 w-16 rounded-[var(--radius-lg)]',
-}
-
-const INITIALS_SIZE: Record<AppIconProps['size'], string> = {
-  badge: 'text-[10px]',
-  card: 'text-sm',
-  hero: 'text-lg',
+  badge: 24,
+  card: 48,
+  hero: 64,
 }
 
 /**
@@ -41,34 +36,25 @@ const INITIALS_SIZE: Record<AppIconProps['size'], string> = {
  *
  * A null path, a 404 (the app has no icon), or a failed fetch all land on the
  * initials — which is the ordinary outcome for roughly half the catalogue, not
- * an error state.
+ * an error state. The tile itself is the shared `IdentityTile`, so an app mark
+ * is the same shape as the agent avatar beside it.
  */
 export const AppIcon = ({ displayName, iconUrl, size }: AppIconProps) => {
   const { token } = useAuthSession()
   const objectUrl = useAuthedObjectUrlFromPath(iconUrl, token)
+  const dimension = TILE_PX[size]
 
   return (
-    <span
-      className={[
-        'inline-flex shrink-0 items-center justify-center overflow-hidden',
-        'border border-[color:var(--line)] bg-[color:var(--panel-soft)]',
-        TILE_SIZE[size],
-      ].join(' ')}
-    >
-      {objectUrl ? (
-        <img
-          alt=""
-          className={`h-full w-full object-contain ${size === 'badge' ? 'p-0.5' : 'p-2'}`}
-          src={objectUrl}
-        />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={['font-semibold text-[color:var(--tx2)]', INITIALS_SIZE[size]].join(' ')}
-        >
-          {appIconInitials(displayName)}
-        </span>
-      )}
-    </span>
+    <IdentityTile
+      background="var(--panel-soft)"
+      border
+      color="var(--tx2)"
+      fallback={{ kind: 'initials', text: appIconInitials(displayName) }}
+      fit="contain"
+      imageUrl={objectUrl}
+      label={displayName}
+      pad={size === 'badge' ? 2 : 8}
+      size={dimension}
+    />
   )
 }
