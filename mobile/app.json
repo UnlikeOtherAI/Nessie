@@ -19,6 +19,7 @@
           "NSAllowsLocalNetworking": true
         },
         "NSCameraUsageDescription": "Nessie uses the camera so you can take a profile photo.",
+        "NSMicrophoneUsageDescription": "Nessie uses the microphone so you can talk to your Personal Assistant on a call.",
         "NSPhotoLibraryUsageDescription": "Nessie needs access to your photos so you can choose a profile photo.",
         "NSLocalNetworkUsageDescription": "AppReveal exposes a debug MCP server on the local network for AI-assisted testing.",
         "NSBonjourServices": [
@@ -33,7 +34,10 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
