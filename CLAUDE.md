@@ -953,6 +953,19 @@ derive a capability from a raw scope string at a call site. Plan and phasing:
   grant, so removing one capability is a local gate enforced at the chokepoint;
   the UI says "blocked locally — Disconnect to revoke at Google" and must not
   claim otherwise.
+- **A composed email is a durable row whose CONTENT an approval binds.**
+  Rule and rationale: `AGENTS.md` → "An approval over provider content binds
+  the content". Facts not restated there: `sendDraftForUser` holds a consented
+  send for `NESSIE_GMAIL_UNDO_WINDOW_MS` (default 15s) so the card can offer
+  Undo, and a worker sweep dispatches it when the window elapses — without the
+  sweep a held send would sit in `sending` forever. A provider failure returns
+  the row to `draft` so the person keeps an affordance.
+- **The draft card carries identifiers only.** Message metadata is readable by
+  everyone who can read the message, and a *dictated* draft involves no read at
+  all — so the run basis would be empty and the message unrestricted. The card
+  stores `{ draftActionId }` and fetches recipients, subject and body from an
+  owner-gated route that 404s indistinguishably; every mailbox card stamps the
+  owner's basis explicitly rather than relying on the run having read anything.
 - **OAuth state binds its target.** The state row carries the connection being
   widened, the expected provider account and the requested capabilities; the
   callback refuses `account_mismatch` when a different Google account completes

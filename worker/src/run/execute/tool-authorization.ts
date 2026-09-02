@@ -1,4 +1,9 @@
-import { BUILTIN_TOOL_DEFINITIONS, DEEP_WATER_START_FAILURE_DETAIL } from '@nessie/runtime'
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  DEEP_WATER_START_FAILURE_DETAIL,
+  STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
+} from '@nessie/runtime'
+import { resolveStandingConsentForToolCall } from '@nessie/workspace-admin'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -166,7 +171,7 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const policyDecision = await evaluateToolInvokePolicy(
+  const rawPolicyDecision = await evaluateToolInvokePolicy(
     prisma,
     toolActorContext,
     context,
@@ -174,6 +179,40 @@ export const authorizeToolExecution = async (
     args,
     { consumeApprovalProof: auth.consumeApprovalProof },
   )
+
+  // A tool may declare its approval requirement in CODE rather than relying on
+  // a `PolicyRule` row. The evaluator's default verdict is `allow`, so a purely
+  // data-driven gate is simply absent in any organization whose seed never ran
+  // — which is every organization created before the rule existed. Sending mail
+  // as a person is not something that may be ungated by accident.
+  //
+  // The one legitimate bypass is standing consent the mailbox owner gave for
+  // this exact agent, resolved here so the decision lives at the chokepoint
+  // every tool execution passes through rather than in each handler.
+  const policyDecision = await (async () => {
+    if (
+      !rawPolicyDecision.allowed
+      || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+      || toolActorContext.approval?.approvalProof
+    ) {
+      return rawPolicyDecision
+    }
+    const consented = await resolveStandingConsentForToolCall(prisma, {
+      toolName,
+      args,
+      organizationId: context.channel.organizationId,
+      agentId: context.agent.id,
+      requestingUserId: toolActorContext.actionContext.effectiveUserId ?? null,
+      interactive: auth.resumeState?.interactive ?? false,
+    })
+    if (consented) return rawPolicyDecision
+    return {
+      ...rawPolicyDecision,
+      allowed: false as const,
+      reason: 'approval_required' as const,
+    }
+  })()
+
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       approvalActionType: policyDecision.approvalActionType,
@@ -257,6 +296,14 @@ const createToolApprovalRequest = async (
     projectId: input.context.channel.projectId,
     reason: `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
+    // A send-as-you gate is resolvable ONLY by the person whose account it
+    // acts as. Approval visibility otherwise reaches any member who can read a
+    // public channel, so without this a colleague could authorise an email
+    // sent in somebody else's name.
+    requiredApproverUserId:
+      STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
+        ? input.actorContext.actionContext.effectiveUserId ?? null
+        : null,
     resumeState: {
       actorContext: input.actorContext,
       args: input.args,

@@ -21,10 +21,26 @@ export type FetchLike = (
   },
 ) => Promise<FetchResponse>
 
-/** Google host endpoints — fixed, never derived from user input. */
+/**
+ * Google host endpoints — fixed, never derived from caller or model input.
+ *
+ * `NESSIE_GOOGLE_API_BASE_URL` lets a deployment point the Gmail/Calendar reads
+ * at a local stand-in, which is how the end-to-end harness exercises the draft
+ * card without a real mailbox. It is operator env in exactly the same class as
+ * `NESSIE_MODEL_BASE_URL`, read once at module load so no request can redirect
+ * itself, and unset in production.
+ */
+const apiRoot = (): string =>
+  (process.env.NESSIE_GOOGLE_API_BASE_URL ?? '').replace(/\/$/, '')
+
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 export const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
-export const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
+export const GMAIL_API_BASE = apiRoot()
+  ? `${apiRoot()}/gmail/v1/users/me`
+  : 'https://gmail.googleapis.com/gmail/v1/users/me'
+export const CALENDAR_API_BASE = apiRoot()
+  ? `${apiRoot()}/calendar/v3`
+  : 'https://www.googleapis.com/calendar/v3'
 
 /**
  * Google reuses 403 for two unrelated things: "you are going too fast" and
