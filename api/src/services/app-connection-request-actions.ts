@@ -19,9 +19,14 @@ export const APP_CONNECTION_REQUEST_ACTION_ERROR_CODES = {
   NOT_FOUND: 'APP_CONNECTION_REQUEST_NOT_FOUND',
 } as const
 
+type AppConnectionRequestActionErrorCode =
+  (typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES)[
+    keyof typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES
+  ]
+
 export class AppConnectionRequestActionError extends Error {
   constructor(
-    readonly code: (typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES)[keyof typeof APP_CONNECTION_REQUEST_ACTION_ERROR_CODES],
+    readonly code: AppConnectionRequestActionErrorCode,
     message: string,
   ) {
     super(message)

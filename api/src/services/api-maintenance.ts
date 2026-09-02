@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 
+import { sweepExpiredAgentCards } from './agent-card-sweep.js'
 import { sweepExpiredApprovals } from './approvals.js'
 import { sweepStalePushSurfacePresence } from './push-surface-presence.js'
 import { sweepExpiredUoaSessionCredentials } from './refresh-session-management.js'
@@ -27,6 +28,14 @@ export const runRefreshCredentialSweep = async (
   }
 }
 
+const runAgentCardSweep = async (prisma: PrismaClient): Promise<void> => {
+  try {
+    await sweepExpiredAgentCards(prisma)
+  } catch {
+    console.error('[agent-card-sweep] Failed to expire lapsed cards')
+  }
+}
+
 const runPushSurfaceSweep = async (prisma: PrismaClient): Promise<void> => {
   try {
     await sweepStalePushSurfacePresence(prisma)
@@ -42,6 +51,9 @@ export const startApiMaintenance = (
   const approvalInterval = setInterval(() => {
     void runApprovalSweep(prisma)
   }, 60_000)
+  const agentCardInterval = setInterval(() => {
+    void runAgentCardSweep(prisma)
+  }, 60_000)
   const refreshCredentialInterval = setInterval(() => {
     void runRefreshCredentialSweep(prisma)
   }, 5 * 60_000)
@@ -49,6 +61,7 @@ export const startApiMaintenance = (
     void runPushSurfaceSweep(prisma)
   }, 5 * 60_000)
   return () => {
+    clearInterval(agentCardInterval)
     clearInterval(approvalInterval)
     clearInterval(refreshCredentialInterval)
     clearInterval(pushSurfaceInterval)
