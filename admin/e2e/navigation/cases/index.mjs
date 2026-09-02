@@ -5,6 +5,7 @@ import { phoneTabSwitch } from './phone-tab-switch.mjs'
 import { desktopSelect, tabletSelect } from './wide-select.mjs'
 import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
+import { phoneIntentStrip } from './phone-intent-strip.mjs'
 
 export const CASES = [
   phonePush,
@@ -16,4 +17,5 @@ export const CASES = [
   tabletSplitPush,
   desktopSplitPush,
   phoneColdStart,
+  phoneIntentStrip,
 ]

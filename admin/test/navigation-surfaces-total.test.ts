@@ -6,12 +6,11 @@ import {
   collectRouterPaths,
   toSamplePathname,
 } from '../../scripts/lint-navigation-surfaces.mjs'
+import { surfaceParent, surfaceScreen } from '../src/navigation/surface-lookup'
 import {
   OUTSIDE_STACK_PATHS,
   SURFACES,
   matchSurface,
-  surfaceParent,
-  surfaceScreen,
 } from '../src/navigation/surfaces'
 
 // The registry is total: this reads the real router and runs the real

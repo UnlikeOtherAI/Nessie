@@ -11,7 +11,7 @@ export const SkipToContentLink = () => (
   <a
     className={[
       'sr-only focus:not-sr-only',
-      'focus:fixed focus:left-2 focus:top-2 focus:z-[200]',
+      'focus:fixed focus:left-2 focus:top-2 focus:z-[var(--layer-blocking)]',
       'focus:rounded-md focus:px-4 focus:py-2 focus:text-sm focus:font-medium',
       'focus:bg-[color:var(--accent)] focus:text-[color:var(--on-accent)]',
       'focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[color:var(--accent)]',

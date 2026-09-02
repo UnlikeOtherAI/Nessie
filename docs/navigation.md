@@ -170,12 +170,13 @@ beside it. A row is: `pattern`, `type`
 (§1, plus `redirect`), `section`, `depth`, `root`, `identityOf` / `keyScope`
 (which screens are the *same* screen, so a sibling swap swaps content in
 place), `parentOf(match)` → `{ label, pathname }` (what Back returns to, and
-what it announces), and optionally `parent: 'origin'`, `contextualList` or
-`flowPresentation`. Everything else derives from it:
-`phone-navigation.ts` is now a thin adapter over
-`matchSurface` / `surfaceScreen` / `surfaceParent` / `surfaceRootPath`, so the
-stack, the ledger, `resolveBack()`, the Back doorway and the native bridge all
-read one table.
+what it announces), `intent` (the params the route reads beyond its path —
+§8), and optionally `parent: 'origin'`, `contextualList` or
+`flowPresentation`. Everything else derives from it: the lookups live in
+`navigation/surface-lookup.ts` (`surfaceScreen` / `surfaceSeedChain` /
+`surfaceParent` / `surfaceRootPath`, over `matchSurface`), and
+`phone-navigation.ts` is a thin adapter over them, so the stack, the ledger,
+`resolveBack()`, the Back doorway and the native bridge all read one table.
 
 - **It is total.** There is no catch-all row and no fallback classification.
   `admin/test/navigation-surfaces-total.test.ts` and
@@ -498,7 +499,7 @@ Pinned by `admin/test/navigation-overlay.test.ts`,
 `admin/test/place-popover.test.ts`, `admin/test/popover.test.ts` and
 `admin/test/card-viewport.test.ts`.
 
-## 8. Deep links and cold starts — **built** (step 13, the seeding; intent params follow)
+## 8. Deep links and cold starts — **built** (step 13)
 
 A cold start — a push notification, an auth return, a pasted link — lands on
 a screen with no stack beneath it. **The stack seeds the registry's parent
@@ -533,8 +534,51 @@ the floor with its details there.
   (`consumeDesktopPendingPath`), so a click that launched a quit app is no
   longer lost between the dispatch and the subscriber.
 
-Planned in this step: declared intent params (`consume` vs `state`) on the
-registry rows with one consume path.
+**Intent params are declared, not improvised.** A link can carry an
+instruction as well as an address — open this document, highlight that
+message, accept this call, review this change, announce this checkout. Each
+registry row lists what its route reads beyond the path under `intent`
+(`page-types.ts` `SurfaceIntent`):
+
+- **`consume`** — a one-shot instruction in the search string (`messageId`,
+  `incomingCall`, `acceptCall`, `spaceId`, `pageId`, `connect`, `create`,
+  `scopeProjectId`, `uoa_billing`) and **`hash`** — the same in the fragment
+  (`#trigger-<id>`, `#confirmationToken=`). A screen reads these only through
+  `navigation/intent.ts`: `useConsumedIntent(name)` / `useConsumedIntents(names)`
+  / `useConsumedHashIntent(name, parse)` capture the value into component state
+  and strip it with **one** replacing redirect (§4's `useRedirect`, so it waits
+  for a running slide) — Back and a refresh land on the address, never on the
+  instruction. Two hooks on one screen register into one strip, because two
+  independent redirects raced: the loser's param survived at a new key and it
+  captured the same link twice. Every capture carries a `serial`, so an effect
+  keyed on it acts once per link even when the same value arrives twice (two
+  pushes for one message). A consumer mounted above the screen that owns the
+  intent (the call provider) passes `enabled` and consumes only while the
+  screen is the one it belongs to. This replaced six hand-rolled effects — the
+  knowledge deep link, the app connect flag, the executors create flag and its
+  `hashchange` listener, the trigger anchor, the call and message-highlight
+  strips — and the executors page's four `window.history.replaceState` writes,
+  which had been changing the address behind the router. A confirmation token
+  the page mints itself now lives in state only, so it never enters history or
+  a shared address.
+- **`state`** — linkable params that describe what the screen shows (`tab`,
+  `view`, `filter`, `scope`, `status`, `search`, `query`, `mode`, `parentId`,
+  `executorId`, `accessChange`, `promotion`, …). They stay in the URL and read
+  through `useTabParam` (§1) or `useSearchParams`, written with `replace`.
+- **A name is one or the other on a row, never both.** `?view=` had been
+  both: the Knowledge view-mode strip *and* the Integrations page's product
+  deep link, so selecting the list view fired the product-view effect, which
+  cleared the page path and wiped the tab. The product view is its own route
+  (`/knowledge-base/views/:productView`) and the link now uses it.
+- **Presence reads the route, never an intent.** `resolvePushSurface` used
+  to identify a knowledge space from `?spaceId=`, which the deep link strips
+  the moment it opens the page; it reads `/knowledge-base/spaces/:id` now.
+- Gate: `admin/test/navigation-intent.test.ts` — every consumed name is
+  declared on a row and read nowhere but the hooks; every hook call names a
+  declared intent; no `history.replaceState`/`pushState` and no
+  `setSearchParams({})` (the whole-set wipe) anywhere in `admin/src`. The same
+  file pins the capture, the strip-with-replace, the forwarded state and the
+  per-arrival serial against a memory router.
 
 ## 9. Screen headers — **built** (step 9)
 
@@ -759,6 +803,7 @@ so the suite survived the step-2 rewrite unchanged. Every frame also asserts
 | `desktop-select` | 1280×800 | the same at desktop width |
 | `tablet-split-push` / `desktop-split-push` | 768×1024 / 1280×800 | Agents → the designer pushes inside the detail column: the designer travels 100 % → 0 of the column, the list 0 → -28 %, the pinned sidebar never moves |
 | `phone-cold-start` | 390×844 | a cold link to a conversation seeds the channel list beneath it; header Back slides the conversation away over that list (0 → 100 %, -28 % → 0) |
+| `phone-intent-strip` | 390×844 | `#trigger-<id>` and `?messageId=` are consumed and stripped with a replace: the address settles on the screen, the linkable `?tab=` stays, and browser Back lands on the stripped address |
 
 Each transition case navigates once per saved frame, deliberately: the stack
 closes its own transition on a fallback timer shortly after the animation's

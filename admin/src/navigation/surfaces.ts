@@ -19,8 +19,7 @@
 // `page-types.ts`. Rulebook: `docs/navigation.md`. Plan: step 3 of
 // `docs/plans/2026-09-01-navigation-motion-system.md` (§4.1).
 
-import type { NavigationLayout } from './layout'
-import type { Surface, SurfaceParent, SurfaceScreen } from './page-types'
+import type { Surface, SurfaceIntent, SurfaceParent } from './page-types'
 
 
 // Strip query/hash and trailing slashes so route-family checks compare the
@@ -30,7 +29,7 @@ export const normalizeNavigationPathname = (pathname: string): string => {
   return normalized || '/'
 }
 
-const CHANNELS_ROOT = '/channels'
+export const CHANNELS_ROOT = '/channels'
 const PROJECTS_ROOT = '/projects'
 const KNOWLEDGE_ROOT = '/knowledge-base'
 const ADMIN_ROOT = '/settings'
@@ -58,6 +57,15 @@ const redirect = (row: Pick<Surface, 'pattern' | 'root' | 'section'>): Surface =
 })
 
 // First match wins, so the order inside each section is specific → generic.
+// The knowledge workspace is one component parameterised by scope (the
+// section and a project's Docs tab), so its intent is one object too:
+// `?spaceId=&pageId=` opens a document from an approval, a search result or
+// a research run, and `?view=` is the view-mode strip.
+const KNOWLEDGE_INTENT: SurfaceIntent = {
+  consume: ['spaceId', 'pageId'],
+  state: ['view'],
+}
+
 export const SURFACES: Surface[] = [
   // ── Redirects ────────────────────────────────────────────────────────────
   // Listed first: several would otherwise be captured by a generic pattern
@@ -169,6 +177,10 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `channel:${match[1]}`,
     keyScope: () => 'channel',
+    intent: {
+      consume: ['messageId', 'incomingCall', 'acceptCall'],
+      state: ['tab', 'research'],
+    },
     parentOf: toChannels,
     pattern: /^\/channels\/([^/]+)(?:\/.*)?$/,
     root: CHANNELS_ROOT,
@@ -202,6 +214,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `project:${match[1]}`,
     keyScope: () => 'project',
+    intent: KNOWLEDGE_INTENT,
     parentOf: toProjects,
     pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
     root: PROJECTS_ROOT,
@@ -213,6 +226,7 @@ export const SURFACES: Surface[] = [
   {
     contextualList: true,
     depth: 0,
+    intent: KNOWLEDGE_INTENT,
     pattern: /^\/knowledge-base$/,
     root: KNOWLEDGE_ROOT,
     section: 'knowledge',
@@ -224,6 +238,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: () => 'space',
     keyScope: () => 'space',
+    intent: KNOWLEDGE_INTENT,
     parentOf: toKnowledge,
     pattern: /^\/knowledge-base\/spaces\/([^/]+)$/,
     root: KNOWLEDGE_ROOT,
@@ -234,6 +249,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `view:${match[1]}`,
     keyScope: (identity) => identity,
+    intent: KNOWLEDGE_INTENT,
     parentOf: toKnowledge,
     pattern: /^\/knowledge-base\/views\/([^/]+)$/,
     root: KNOWLEDGE_ROOT,
@@ -285,6 +301,7 @@ export const SURFACES: Surface[] = [
     // members, push. They share one screen identity, so page A → page B
     // swaps in place exactly as it does today.
     depth: 1,
+    intent: { state: ['tab'] },
     parentOf: toAdmin,
     pattern: /^\/settings\/([^/]+)$/,
     root: ADMIN_ROOT,
@@ -293,6 +310,7 @@ export const SURFACES: Surface[] = [
   },
   {
     depth: 1,
+    intent: { state: ['scope'] },
     parentOf: toAdmin,
     pattern: /^\/agents$/,
     root: ADMIN_ROOT,
@@ -304,6 +322,7 @@ export const SURFACES: Surface[] = [
     flowPresentation: 'screen',
     identityOf: (match) => `designer:${match[1] ?? 'new'}`,
     keyScope: () => 'agent-designer',
+    intent: { state: ['parentId'] },
     parentOf: toAgents,
     pattern: /^\/agents\/designer(?:\/([^/]+))?$/,
     root: ADMIN_ROOT,
@@ -325,6 +344,19 @@ export const SURFACES: Surface[] = [
     // The automation browsers. Their column stages are state, not routes;
     // they become nested stages in step 6.
     depth: 1,
+    intent: {
+      // Executors: a project's "add executor" doorway opens the create flow
+      // scoped to it; a Personal Assistant review link hands over its
+      // confirmation token in the fragment so it never survives in history.
+      // Triggers: a "scheduled" link selects one row. The rest is what each
+      // browser shows.
+      consume: ['create', 'scopeProjectId'],
+      hash: ['confirmationToken', 'trigger'],
+      state: [
+        'executorId', 'accessChange', 'promotion', 'tab',
+        'status', 'search', 'source', 'instance', 'deepWaterInstance',
+      ],
+    },
     parentOf: toAdmin,
     pattern: /^\/agents\/(?:workflows|triggers|tools|executors)$/,
     root: ADMIN_ROOT,
@@ -338,6 +370,7 @@ export const SURFACES: Surface[] = [
     depth: 2,
     identityOf: (match) => `agent:${match[1]}`,
     keyScope: () => 'agent',
+    intent: { state: ['agentTab'] },
     parentOf: toAgents,
     pattern: /^\/agents\/([^/]+)$/,
     root: ADMIN_ROOT,
@@ -346,6 +379,7 @@ export const SURFACES: Surface[] = [
   },
   {
     depth: 1,
+    intent: { state: ['filter'] },
     parentOf: toAdmin,
     pattern: /^\/apps$/,
     root: ADMIN_ROOT,
@@ -356,6 +390,7 @@ export const SURFACES: Surface[] = [
     depth: 2,
     identityOf: (match) => `app:${match[1]}`,
     keyScope: () => 'app',
+    intent: { consume: ['connect'], state: ['tab'] },
     parentOf: toApps,
     pattern: /^\/apps\/([^/]+)$/,
     root: ADMIN_ROOT,
@@ -366,6 +401,7 @@ export const SURFACES: Surface[] = [
     // Governance and billing pages sit beside the settings pages, one step in
     // from the Admin root.
     depth: 1,
+    intent: { consume: ['uoa_billing'] },
     parentOf: toAdmin,
     pattern: /^\/(?:audit|approvals|tokens|policy)$/,
     root: ADMIN_ROOT,
@@ -411,6 +447,7 @@ export const SURFACES: Surface[] = [
     // Its own section so its full-page outlet never animates as a Channels
     // transition. It renders the outlet, not a contextual list.
     depth: 0,
+    intent: { state: ['query', 'mode'] },
     pattern: /^\/search$/,
     root: SEARCH_ROOT,
     section: 'search',
@@ -437,83 +474,3 @@ export const matchSurface = (pathname: string): SurfaceMatch | null => {
   }
   return null
 }
-
-// The screen a route renders, or null when it renders none: a redirect
-// forwards without ever painting a stage, and an unknown path is not a
-// screen at all (the gates make an unknown path impossible for a real route).
-//
-// The layout changes two things (docs/navigation.md §5). On `split` the
-// section's list is the pinned column, not a screen, so a root and its
-// details share the stack floor (depth 1): a root → detail is an in-place
-// swap with nothing retained beneath, while a detail → nested still pushes
-// inside the column. And a `splitInline` nested row classifies as its
-// parent's screen there, because its parent's page renders it itself.
-export const surfaceScreen = (
-  pathname: string,
-  layout: NavigationLayout = 'single',
-): SurfaceScreen | null => {
-  const matched = matchSurface(pathname)
-  if (!matched || matched.surface.type === 'redirect') return null
-  const { match, surface } = matched
-  if (layout === 'split' && surface.splitInline && surface.parentOf) {
-    return surfaceScreen(surface.parentOf(match).pathname, layout)
-  }
-  const depth = layout === 'split' ? Math.max(surface.depth, 1) : surface.depth
-  if (!surface.identityOf || !surface.keyScope) {
-    return {
-      depth,
-      key: `root:${surface.section}:${surface.root}`,
-      section: surface.section,
-    }
-  }
-  return {
-    depth,
-    key: `${surface.section}:${surface.keyScope(surface.identityOf(match))}`,
-    section: surface.section,
-  }
-}
-
-// The screens a cold start seeds beneath a route, nearest first
-// (docs/navigation.md §8): the registry's parent chain up to the section
-// root, with a `parent: 'origin'` row seeding only its section root (its real
-// origin is unknowable on a cold link). On `split` the chain keeps only
-// strictly shallower screens — a root shares the floor with its detail there
-// and would be a swap, not a layer beneath. Roots seed nothing.
-export const surfaceSeedChain = (
-  pathname: string,
-  layout: NavigationLayout = 'single',
-): string[] => {
-  const chain: string[] = []
-  let screen = surfaceScreen(pathname, layout)
-  let cursor = pathname
-  const seen = new Set<string>([normalizeNavigationPathname(pathname)])
-  while (screen) {
-    const matched = matchSurface(cursor)
-    if (!matched || matched.surface.type === 'root') break
-    const next = matched.surface.parent === 'origin'
-      ? matched.surface.root
-      : matched.surface.parentOf?.(matched.match).pathname
-    if (!next || seen.has(next)) break
-    seen.add(next)
-    const nextScreen = surfaceScreen(next, layout)
-    if (!nextScreen) break
-    if (nextScreen.depth < screen.depth) chain.push(next)
-    screen = nextScreen
-    cursor = next
-  }
-  return chain
-}
-
-// The deterministic parent screen of a route: what Back returns to on a cold
-// deep link, and the label the Back control announces. Roots and redirects
-// have none.
-export const surfaceParent = (pathname: string): SurfaceParent | null => {
-  const matched = matchSurface(pathname)
-  if (!matched || matched.surface.type === 'redirect') return null
-  return matched.surface.parentOf ? matched.surface.parentOf(matched.match) : null
-}
-
-// Which section (tab) owns a route. Unknown paths fall back to Channels, the
-// first tab, so the tab bar always has one lit item.
-export const surfaceRootPath = (pathname: string): string =>
-  matchSurface(pathname)?.surface.root ?? CHANNELS_ROOT

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { deriveNavigationLayout } from '../src/navigation/layout'
-import { surfaceScreen, surfaceSeedChain } from '../src/navigation/surfaces'
+import { surfaceScreen, surfaceSeedChain } from '../src/navigation/surface-lookup'
 import {
   advancePhoneNavigationStack,
   createPhoneNavigationStack,

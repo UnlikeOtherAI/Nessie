@@ -1,13 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
 import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
 import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   getUoaBillingCheckoutReturnNotice,
-  readUoaBillingCheckoutReturn,
+  parseUoaBillingCheckoutReturn,
+  UOA_BILLING_CHECKOUT_RETURN_PARAMETER,
 } from '../facades/billing/checkout-return'
 import {
   billingCreditsKey,
@@ -15,16 +15,20 @@ import {
   billingStatementKey,
   useUoaBillingCapability,
 } from '../facades/billing/hooks'
+import { useConsumedIntent } from '../navigation/intent'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 export const TokenUsagePage = () => {
   const { me } = useAuthSession()
   const billingCapability = useUoaBillingCapability()
-  const location = useLocation()
   const queryClient = useQueryClient()
-  const refreshedCheckoutLocation = useRef<string | null>(null)
+  const refreshedCheckoutSerial = useRef(0)
   const canReadStatement = billingCapability.data?.canReadStatement === true
-  const checkoutReturn = readUoaBillingCheckoutReturn(location.search)
+  // UOA sends the person back here with the outcome; it is a consumed intent
+  // (docs/navigation.md §8), so the notice shows for this visit and a
+  // refresh or Back lands on plain /tokens without re-announcing it.
+  const checkoutIntent = useConsumedIntent(UOA_BILLING_CHECKOUT_RETURN_PARAMETER)
+  const checkoutReturn = parseUoaBillingCheckoutReturn(checkoutIntent.value)
   const checkoutNotice = checkoutReturn
     ? getUoaBillingCheckoutReturnNotice(checkoutReturn)
     : null
@@ -32,11 +36,11 @@ export const TokenUsagePage = () => {
   useEffect(() => {
     if (
       !checkoutReturn
-      || refreshedCheckoutLocation.current === location.key
+      || refreshedCheckoutSerial.current === checkoutIntent.serial
     ) {
       return
     }
-    refreshedCheckoutLocation.current = location.key
+    refreshedCheckoutSerial.current = checkoutIntent.serial
     const scope = billingCapability.data?.scope
     if (!scope) return
     for (const queryKey of [
@@ -50,7 +54,7 @@ export const TokenUsagePage = () => {
         type: 'all',
       })
     }
-  }, [billingCapability.data?.scope, canReadStatement, checkoutReturn, location.key, queryClient])
+  }, [billingCapability.data?.scope, canReadStatement, checkoutIntent.serial, checkoutReturn, queryClient])
 
   if (!me) {
     return (

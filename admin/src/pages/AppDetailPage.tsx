@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
@@ -15,6 +15,7 @@ import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 import { usePhoneLayout } from '../lib/mobile-shell'
+import { useConsumedIntent } from '../navigation/intent'
 import { useTabParam } from '../navigation/useTabParam'
 
 /**
@@ -33,7 +34,6 @@ import { useTabParam } from '../navigation/useTabParam'
 export const AppDetailPage = () => {
   const navigate = useNavigate()
   const { slug } = useParams<{ slug?: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { data: app, isPending } = useApp(slug)
   const [connectOpen, setConnectOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
@@ -55,13 +55,10 @@ export const AppDetailPage = () => {
   // A custom app's address is checked before it arrives here. Its first
   // connection still waits for this explicit review, so `?connect=true` opens
   // the dialog but never starts a connection by itself.
+  const connectIntent = useConsumedIntent('connect')
   useEffect(() => {
-    if (searchParams.get('connect') !== 'true') return
-    setConnectOpen(true)
-    const params = new URLSearchParams(searchParams)
-    params.delete('connect')
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    if (connectIntent.value === 'true') setConnectOpen(true)
+  }, [connectIntent])
 
   // Apps owns this detail's immediate parent. On a phone use the shell's
   // ledger-aware action so the labelled Apps doorway, an edge swipe, and

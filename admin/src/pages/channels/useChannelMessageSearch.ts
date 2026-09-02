@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useRedirect } from '../../navigation/redirect'
+import { useConsumedIntent } from '../../navigation/intent'
 import { useMessageSearch } from '../../facades/messages/hooks'
 
 /**
@@ -62,22 +62,23 @@ export const useAlertMessageHighlight = (
   jumpToMessage: (messageId: string) => void,
 ) => {
   const location = useLocation()
-  const redirect = useRedirect()
   const alertMessageId = (
     location.state as { highlightMessageId?: unknown } | null
   )?.highlightMessageId
-  const messageIdFromPush = new URLSearchParams(location.search).get('messageId')
+  // A push notification links `?messageId=`; the bell passes the id in
+  // location state instead. The param is a consumed intent
+  // (docs/navigation.md §8): captured once and stripped, so Back and a
+  // refresh do not re-scroll.
+  const pushed = useConsumedIntent('messageId')
   const highlightMessageId = typeof alertMessageId === 'string'
     ? alertMessageId
-    : messageIdFromPush
+    : pushed.value
 
   useEffect(() => {
     if (typeof highlightMessageId !== 'string' || !highlightMessageId || !messagesLoaded) {
       return
     }
     jumpToMessage(highlightMessageId)
-    const search = new URLSearchParams(location.search)
-    search.delete('messageId')
-    redirect({ pathname: location.pathname, search: search.size > 0 ? `?${search.toString()}` : '' })
-  }, [highlightMessageId, jumpToMessage, location.pathname, location.search, messagesLoaded, redirect])
+    // `pushed.serial` makes a second push for the same message jump again.
+  }, [highlightMessageId, jumpToMessage, messagesLoaded, pushed.serial])
 }

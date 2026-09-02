@@ -26,6 +26,21 @@ export type SurfaceParent = {
 // declaration rather than a heuristic.
 export type SurfaceFlowPresentation = 'panel' | 'screen'
 
+// The params a route reads beyond its path (`docs/navigation.md` §8). A name
+// under `consume` is a one-shot instruction carried in the search string
+// (highlight this message, open this connect dialog); `hash` is the same in
+// the fragment (`#trigger-<id>`). Both are read only through
+// `navigation/intent.ts`, which captures the value and strips it with one
+// replacing redirect. A name under `state` is linkable and stays in the URL
+// — a tab, a filter, a query — and reads through `useTabParam` or
+// `useSearchParams`. The gate (`admin/test/navigation-intent.test.ts`)
+// refuses a consumed name read anywhere else, or one no row declares.
+export type SurfaceIntent = {
+  consume?: readonly string[]
+  hash?: readonly string[]
+  state?: readonly string[]
+}
+
 export type Surface = {
   // Does this section's root render the section's contextual list (the
   // channels/projects/knowledge/admin sidebars) as its page? Search renders
@@ -38,6 +53,8 @@ export type Surface = {
   // Folds same-screen siblings onto one identity: a channel's whole info
   // chain, a project's tab routes, a designer's edit targets.
   identityOf?: (match: RegExpMatchArray) => string
+  // The intent params this route reads; absent when it reads none.
+  intent?: SurfaceIntent
   // Scopes that identity to a mounted screen. Where one page swaps its
   // content in place (channel A → B, space A → B), every sibling shares one
   // scope so the swap is not a route transition.

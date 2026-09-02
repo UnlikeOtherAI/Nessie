@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
 import { useTriggers } from '../../facades/triggers/hooks'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -8,6 +7,7 @@ import {
   useWorkflowTemplates,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../components/shared/OwnerGate'
+import { parseHashAnchor, useConsumedHashIntent } from '../../navigation/intent'
 import { useTabParam } from '../../navigation/useTabParam'
 import type {
   AgentRecord,
@@ -18,7 +18,6 @@ import type {
 } from '../../lib/api-client'
 import {
   formatTriggerTarget,
-  parseTriggerHash,
   type TriggerRegistryMaps,
 } from '../../components/features/triggers/trigger-presentation'
 
@@ -70,8 +69,9 @@ export type TriggersPageState = {
   workflowTemplates: WorkflowTemplateRecord[]
 }
 
+const parseTriggerHash = parseHashAnchor('trigger')
+
 export const useTriggersPageState = (): TriggersPageState => {
-  const location = useLocation()
   // The three owner-only reads below stay gated on this flag; the page's
   // refusal is <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
@@ -156,10 +156,13 @@ export const useTriggersPageState = (): TriggersPageState => {
     })
   }, [registry, searchQuery, sortedTriggers, statusFilter, typeFilter])
 
+  // A "scheduled" link (`/agents/triggers#trigger-<id>`) selects its row
+  // once; the fragment is consumed, so Back and a refresh keep the person's
+  // own later selection (docs/navigation.md §8).
+  const linkedTrigger = useConsumedHashIntent('trigger', parseTriggerHash)
   useEffect(() => {
-    const hashedTriggerId = parseTriggerHash(location.hash)
-    if (hashedTriggerId) setSelectedTriggerId(hashedTriggerId)
-  }, [location.hash])
+    if (linkedTrigger.value) setSelectedTriggerId(linkedTrigger.value)
+  }, [linkedTrigger])
 
   const statusCounts = useMemo<TriggerStatusCounts>(
     () => ({

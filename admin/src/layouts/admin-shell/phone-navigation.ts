@@ -1,13 +1,12 @@
 import type { NavigationLayout } from '../../navigation/layout'
 import type { SurfaceParent, SurfaceScreen } from '../../navigation/page-types'
 import {
-  matchSurface,
-  normalizeNavigationPathname,
   surfaceParent,
   surfaceRootPath,
   surfaceScreen,
   surfaceSeedChain,
-} from '../../navigation/surfaces'
+} from '../../navigation/surface-lookup'
+import { matchSurface, normalizeNavigationPathname } from '../../navigation/surfaces'
 
 // The phone shell's view of the surface registry. Every fact below comes from
 // `admin/src/navigation/surfaces.ts` — this module only adapts it to the

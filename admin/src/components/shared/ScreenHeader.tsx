@@ -4,7 +4,7 @@ import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
 import { useNavigationLayout } from '../../lib/mobile-shell'
 import { publishScreenTitle, retireScreenTitle } from '../../navigation/screen'
-import { surfaceParent } from '../../navigation/surfaces'
+import { surfaceParent } from '../../navigation/surface-lookup'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,

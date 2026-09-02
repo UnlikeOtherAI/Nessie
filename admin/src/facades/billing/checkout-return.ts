@@ -19,6 +19,13 @@ const normaliseSearch = (search: string): string => {
   return search.startsWith('?') ? search : `?${search}`
 }
 
+export const parseUoaBillingCheckoutReturn = (
+  value: string | null | undefined,
+): UoaBillingCheckoutReturn | null =>
+  value && checkoutReturnValues.has(value)
+    ? value as UoaBillingCheckoutReturn
+    : null
+
 export const readUoaBillingCheckoutReturn = (
   search: string,
 ): UoaBillingCheckoutReturn | null => {
@@ -26,11 +33,7 @@ export const readUoaBillingCheckoutReturn = (
     UOA_BILLING_CHECKOUT_RETURN_PARAMETER,
   )
   if (values.length !== 1) return null
-
-  const [value] = values
-  return value && checkoutReturnValues.has(value)
-    ? value as UoaBillingCheckoutReturn
-    : null
+  return parseUoaBillingCheckoutReturn(values[0])
 }
 
 // A notification destination is an explicit user action and must win over the

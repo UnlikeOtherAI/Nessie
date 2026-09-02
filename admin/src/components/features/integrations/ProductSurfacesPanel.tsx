@@ -55,7 +55,11 @@ export const ProductSurfacesPanel = ({
   }
 
   const resolveTarget = (surface: ProductSurface): string | null => {
-    if (surface.type === 'documents_section') return `/knowledge-base?view=${surface.view}`
+    // The product view is a route of its own; `?view=` is the workspace's
+    // view-mode strip and must not be overloaded with a product id.
+    if (surface.type === 'documents_section') {
+      return `/knowledge-base/views/${encodeURIComponent(surface.view)}`
+    }
     const channel = channels.find(
       (candidate) => isExternalAgentChannel(candidate) && candidate.label === product.name,
     )

@@ -8,7 +8,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useRedirect } from '../navigation/redirect'
+import { useConsumedIntents } from '../navigation/intent'
 import {
   WsEventSchema,
   parseChannelId,
@@ -153,12 +153,13 @@ const useRingtone = (enabled: boolean): void => {
  * is reconciled against the live call route before it can make sound; an event
  * stream proves delivery, never that a stale ring still deserves attention.
  */
+const CALL_INTENTS = ['incomingCall', 'acceptCall'] as const
+
 export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
   const apiClient = useApiClient()
   const { me, token } = useAuthSession()
   const { focusModeEnabled } = useFocusMode()
   const location = useLocation()
-  const redirect = useRedirect()
   const currentUserId = me?.user.id ?? null
   const [state, dispatch] = useReducer(incomingCallReducer, undefined, initialReducer)
   const [now, setNow] = useState(Date.now())
@@ -306,48 +307,46 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
     }
   }
 
+  // `?incomingCall=` / `?acceptCall=` on a channel path are the push
+  // notification's intents (docs/navigation.md §8): consumed once the channel
+  // and the signed-in user are known, then stripped, so Back never re-rings.
+  const channelId = parseChannelIdFromPath(location.pathname)
+  const callIntent = useConsumedIntents(CALL_INTENTS, {
+    enabled: channelId !== null && currentUserId !== null,
+  })
+  const { acceptCall: acceptCallId, incomingCall: incomingCallId } = callIntent.values
   useEffect(() => {
-    const parameters = new URLSearchParams(location.search)
-    const incomingCallId = parameters.get('incomingCall')
-    const acceptCallId = parameters.get('acceptCall')
     const requestedCallId = acceptCallId ?? incomingCallId
-    const channelId = parseChannelIdFromPath(location.pathname)
     if (!requestedCallId || !channelId || !currentUserId) return
 
     let cancelled = false
     const consumeUrlIntent = async () => {
-      try {
-        const call = await apiClient.get<CallRecord | null>(`/api/channels/${channelId}/call`)
-        if (cancelled || !call || call.id !== requestedCallId) return
-        const incoming = asIncomingCall(call)
-        if (!incoming) return
-        if (acceptCallId) {
-          try {
-            const result = await apiClient.post<CallAcceptResponse>(`/api/calls/${call.id}/accept`, {})
-            if (!cancelled) setPresentedCall({ call: incoming, presentation: mapAcceptResponse(result.code) })
-          } catch (error) {
-            if (!cancelled) setPresentedCall({
-              call: incoming,
-              presentation: mapAcceptResponse(error instanceof ApiClientError ? error.code : undefined),
-            })
-          }
-        } else if (isLiveInviteFor(call, currentUserId, Date.now()) && !cancelled) {
-          setDeepLinkedCall(incoming)
+      const call = await apiClient.get<CallRecord | null>(`/api/channels/${channelId}/call`)
+      if (cancelled || !call || call.id !== requestedCallId) return
+      const incoming = asIncomingCall(call)
+      if (!incoming) return
+      if (acceptCallId) {
+        try {
+          const result = await apiClient.post<CallAcceptResponse>(`/api/calls/${call.id}/accept`, {})
+          if (!cancelled) setPresentedCall({ call: incoming, presentation: mapAcceptResponse(result.code) })
+        } catch (error) {
+          if (!cancelled) setPresentedCall({
+            call: incoming,
+            presentation: mapAcceptResponse(error instanceof ApiClientError ? error.code : undefined),
+          })
         }
-      } finally {
-        if (!cancelled) {
-          const next = new URLSearchParams(location.search)
-          next.delete('incomingCall')
-          next.delete('acceptCall')
-          redirect({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' })
-        }
+      } else if (isLiveInviteFor(call, currentUserId, Date.now()) && !cancelled) {
+        setDeepLinkedCall(incoming)
       }
     }
-    void consumeUrlIntent()
+    void consumeUrlIntent().catch(() => {
+      // The call lookup failed; the strip already happened and nothing rings.
+    })
     return () => {
       cancelled = true
     }
-  }, [apiClient, currentUserId, location.pathname, location.search, redirect])
+    // `callIntent.serial` re-runs this for a second link to the same call.
+  }, [acceptCallId, apiClient, callIntent.serial, channelId, currentUserId, incomingCallId])
 
   const realtimeValue = useMemo(() => ({
     inviteUpdates: state.inviteUpdates,

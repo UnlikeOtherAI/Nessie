@@ -31,6 +31,7 @@ import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { NestedStage } from '../navigation/NestedStage'
+import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
 
 const statusClass = (status: string): string => status === 'online'
   ? 'text-emerald-600'
@@ -40,20 +41,25 @@ const statusClass = (status: string): string => status === 'online'
       ? 'text-[color:var(--danger-text)]'
       : 'text-[color:var(--tx3)]'
 
-const getConfirmationToken = (): string | null => {
-  if (typeof window === 'undefined') return null
-  return new URLSearchParams(window.location.hash.slice(1)).get('confirmationToken')
-}
+// A project's "add executor" doorway (`?create=project&scopeProjectId=`) and
+// a Personal Assistant review link (`#confirmationToken=`) are one-shot
+// intents the registry declares for this route (docs/navigation.md §8): both
+// are captured once and stripped, so the token never survives in history or
+// a shared address. A token this page mints itself lives in state only.
+const CREATE_INTENTS = ['create', 'scopeProjectId'] as const
+const parseConfirmationToken = parseHashParam('confirmationToken')
 
 export const ExecutorsPage = () => {
   const { me } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
-  const fixedProjectId = searchParams.get('create') === 'project'
-    ? searchParams.get('scopeProjectId') ?? undefined
+  const createIntent = useConsumedIntents(CREATE_INTENTS)
+  const fixedProjectId = createIntent.values.create === 'project'
+    ? createIntent.values.scopeProjectId ?? undefined
     : undefined
-  const [showCreate, setShowCreate] = useState(() => Boolean(fixedProjectId))
+  const [showCreate, setShowCreate] = useState(false)
   const [created, setCreated] = useState<ExecutorCreateResponse | null>(null)
-  const [confirmationToken, setConfirmationToken] = useState<string | null>(getConfirmationToken)
+  const linkedToken = useConsumedHashIntent('confirmationToken', parseConfirmationToken)
+  const [confirmationToken, setConfirmationToken] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
   const executorsQuery = useExecutors()
@@ -79,10 +85,11 @@ export const ExecutorsPage = () => {
   const rejectPromotion = useRejectExecutorWorkspacePromotion()
 
   useEffect(() => {
-    const updateToken = () => setConfirmationToken(getConfirmationToken())
-    window.addEventListener('hashchange', updateToken)
-    return () => window.removeEventListener('hashchange', updateToken)
-  }, [])
+    if (fixedProjectId) setShowCreate(true)
+  }, [createIntent.serial, fixedProjectId])
+  useEffect(() => {
+    if (linkedToken.value) setConfirmationToken(linkedToken.value)
+  }, [linkedToken])
 
   const reviewChange = changeQuery.data
   const promotionChange = promotionQuery.data
@@ -91,8 +98,7 @@ export const ExecutorsPage = () => {
     next.set('executorId', executorId)
     next.delete('accessChange')
     next.delete('promotion')
-    setSearchParams(next)
-    if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(null)
   }
   const openReview = (prepared: PreparedExecutorAccessChangeResponse) => {
@@ -100,24 +106,16 @@ export const ExecutorsPage = () => {
     next.set('accessChange', prepared.accessChangeId)
     next.set('executorId', prepared.executorId)
     next.delete('promotion')
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(prepared.confirmationToken)
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}?${next}#confirmationToken=${prepared.confirmationToken}`,
-      )
-    }
   }
   const clearReview = () => {
     const next = new URLSearchParams(searchParams)
     next.delete('accessChange')
     next.delete('promotion')
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(null)
     setCurrentPassword('')
-    if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
   }
   const openPromotion = (prepared: {
     confirmationToken: string
@@ -128,15 +126,8 @@ export const ExecutorsPage = () => {
     next.delete('accessChange')
     next.set('executorId', prepared.executorId)
     next.set('promotion', prepared.promotionId)
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
     setConfirmationToken(prepared.confirmationToken)
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}?${next}#confirmationToken=${prepared.confirmationToken}`,
-      )
-    }
   }
   const handleCreated = (result: ExecutorCreateResponse) => {
     setCreated(result)
