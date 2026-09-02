@@ -15,6 +15,11 @@ import { DashboardFetchError, DashboardNormalizeError } from '@nessie/dashboard'
 import { formatZodIssues } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  readIfMatchRevision,
+  sendMalformedIfMatch,
+  sendRevisionConflict,
+} from '../lib/if-match.js'
+import {
   DashboardServiceError,
   createDashboard,
   getDashboardWithWidgets,
@@ -208,9 +213,22 @@ export const registerDashboardRoutes = (
     if (!params) return reply
     const layout = parseInput(DashboardLayoutSchema, request.body, reply, 'body')
     if (!layout) return reply
+    // The admin's edit mode auto-saves, so it states the revision it edited.
+    // A stale editor is refused rather than silently overwriting a widget an
+    // agent moved a second ago; the client renders the choice in place.
+    const ifMatch = readIfMatchRevision(request)
+    if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply as never)
 
     try {
       const dashboard = await getDashboardWithWidgets(context, params.id)
+      if (ifMatch.kind === 'revision' && dashboard.revision !== ifMatch.revision) {
+        return sendRevisionConflict(
+          reply as never,
+          'DASHBOARD_REVISION_CONFLICT',
+          'This dashboard changed since you started editing',
+          dashboard.revision,
+        )
+      }
       const kinds = new Map(
         dashboard.widgets.map((widget) => [widget.id, widget.kind as never]),
       )

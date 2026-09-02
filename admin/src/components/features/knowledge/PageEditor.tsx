@@ -1,9 +1,19 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import type {
   KnowledgePageRecord,
   SavePageInput,
 } from '../../../facades/knowledge/hooks'
+import { draftKey, useDraft } from '../../../navigation/useDraft'
 import { RichTextEditor } from './RichTextEditor'
+
+// One unsent page edit. Kept whole so a dismissed editor loses nothing.
+type PageDraft = {
+  body: string
+  changeComment: string
+  labels: string
+  summary: string
+  title: string
+}
 
 type PageEditorProps = {
   // Prefills the title in 'create' mode — used when the editor is opened from
@@ -32,19 +42,38 @@ export const PageEditor = ({
   parentPageId,
   pending,
 }: PageEditorProps) => {
-  const [title, setTitle] = useState('')
-  const [summary, setSummary] = useState('')
-  const [labels, setLabels] = useState('')
-  const [body, setBody] = useState('')
-  const [changeComment, setChangeComment] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // The page as stored — the draft's baseline, so opening a page and leaving
+  // it untouched stores nothing.
+  const baseline = useMemo<PageDraft>(
+    () => ({
+      body: page?.latestVersion?.body ?? '',
+      changeComment: '',
+      labels: page?.labels.join(', ') ?? '',
+      summary: page?.summary ?? '',
+      title: page?.title ?? initialTitle ?? '',
+    }),
+    [initialTitle, page],
+  )
+
+  // Drafts (docs/navigation.md → "Drafts"): keyed by the page, so navigating
+  // away mid-rewrite keeps the words. Local only — every server save appends a
+  // `KnowledgePageVersion`, so a debounced flush would turn one edit into
+  // dozens of versions and bury the history the version panel exists for.
+  // "Save version" therefore stays the deliberate act.
+  const pageDraft = useDraft<PageDraft>(draftKey('kb-page', page?.id ?? 'new'), {
+    initial: baseline,
+  })
+  const { body, changeComment, labels, summary, title } = pageDraft.draft
+  const setDraft = pageDraft.setDraft
+  const patchDraft = useCallback(
+    (patch: Partial<PageDraft>) => setDraft((current) => ({ ...current, ...patch })),
+    [setDraft],
+  )
+  const setBody = useCallback((next: string) => patchDraft({ body: next }), [patchDraft])
+
   useEffect(() => {
-    setTitle(page?.title ?? initialTitle ?? '')
-    setSummary(page?.summary ?? '')
-    setLabels(page?.labels.join(', ') ?? '')
-    setBody(page?.latestVersion?.body ?? '')
-    setChangeComment('')
     setError(null)
   }, [page, initialTitle])
 
@@ -63,6 +92,8 @@ export const PageEditor = ({
       changeComment: changeComment.trim() || null,
       parentPageId: mode === 'create' ? parentPageId ?? null : undefined,
     })
+    // Saved: this edit is no longer unsent.
+    pageDraft.clear()
   }
 
   return (
@@ -72,7 +103,7 @@ export const PageEditor = ({
           Title
           <input
             className="admin-input mt-1"
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => patchDraft({ title: event.target.value })}
             value={title}
           />
         </label>
@@ -80,7 +111,7 @@ export const PageEditor = ({
           Summary
           <input
             className="admin-input mt-1"
-            onChange={(event) => setSummary(event.target.value)}
+            onChange={(event) => patchDraft({ summary: event.target.value })}
             value={summary}
           />
         </label>
@@ -88,7 +119,7 @@ export const PageEditor = ({
           Labels
           <input
             className="admin-input mt-1"
-            onChange={(event) => setLabels(event.target.value)}
+            onChange={(event) => patchDraft({ labels: event.target.value })}
             placeholder="runbook, onboarding"
             value={labels}
           />
@@ -107,7 +138,7 @@ export const PageEditor = ({
       <div className="grid gap-3 border-t border-[color:var(--sep)] p-4">
         <input
           className="admin-input"
-          onChange={(event) => setChangeComment(event.target.value)}
+          onChange={(event) => patchDraft({ changeComment: event.target.value })}
           placeholder="Change comment"
           value={changeComment}
         />

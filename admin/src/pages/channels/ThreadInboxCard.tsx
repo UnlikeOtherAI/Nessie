@@ -12,6 +12,7 @@ import {
   useThreadReplies,
 } from '../../facades/threads/hooks'
 import type { ThreadActivity } from '../../facades/threads/activity-hooks'
+import { replyComposerDraftKey } from '../../components/features/channels/composer-draft'
 import { useChannelComposer } from '../../components/features/channels/useChannelComposer'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
 import { ChannelMessageFeed } from '../../components/features/channels/ChannelMessageFeed'
@@ -80,6 +81,7 @@ export const ThreadInboxCard = ({
   const composer = useChannelComposer({
     activeChannel: channel,
     currentUserId: currentUser.id,
+    draftKey: replyComposerDraftKey(activity.rootMessageId),
     getSendExtras,
     threadMessages: messages,
   })

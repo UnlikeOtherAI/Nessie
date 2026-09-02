@@ -245,6 +245,11 @@ export const CreateThreadMessageBodySchema = z
     // PA presences are addressed through this id-keyed entity, never by a
     // display-name match against content. Ordinary agents keep their path.
     agentMentions: PersonalAssistantPresenceMentionSchema.array().optional(),
+    // Idempotency key minted by the client for one unsent draft. A retried send
+    // carrying the same key resolves to the message the first attempt created
+    // rather than posting a second copy. Also accepted as an `Idempotency-Key`
+    // request header; the body field wins when both are present.
+    clientMessageId: z.string().min(1).max(200).optional(),
   })
   .refine(
     (body) =>

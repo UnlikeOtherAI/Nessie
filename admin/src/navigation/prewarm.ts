@@ -18,7 +18,7 @@
 //    so a warm entry costs no request even if the set has expired.
 //
 // Rulebook: `docs/navigation.md` §"Arriving with content". Plan: step 10 of
-// `docs/plans/2026-09-01-navigation-motion-system.md` (§4.10).
+// `docs/done/2026-09-01-navigation-motion-system.md` (§4.10).
 
 import { useCallback, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'

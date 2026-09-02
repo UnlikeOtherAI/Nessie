@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Surface-registry totality gate
-// (docs/plans/2026-09-01-navigation-motion-system.md §4.1/§4.18, step 3):
+// (docs/done/2026-09-01-navigation-motion-system.md §4.1/§4.18, step 3):
 // every route declared in `admin/src/router.tsx` must resolve to a row in
 // `admin/src/navigation/surfaces.ts`, or be one of the few screens the
 // registry itself lists as outside the navigation stack

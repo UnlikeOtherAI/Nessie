@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { Skeleton, SkeletonBlock } from '../src/components/primitives/Skeleton.js'
 
-// Step 10 of docs/plans/2026-09-01-navigation-motion-system.md (§4.10),
+// Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
 // docs/navigation.md §"Arriving with content".
 
 // The production Vite transform injects the JSX runtime; node's tsx loader uses

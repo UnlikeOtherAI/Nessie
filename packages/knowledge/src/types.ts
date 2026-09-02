@@ -95,6 +95,10 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   latestVersion: KnowledgePageVersionRecord | null
   publishedVersion: KnowledgePageVersionRecord | null
   publishedVersionId: string | null
+  // Optimistic concurrency for the page row itself, incremented on every
+  // update. `versionNumber` belongs to a per-version row and cannot serve an
+  // `If-Match`; this is what the auto-saving editor states and the API checks.
+  revision: number
   createdBy: string
   deletedAt: string | null
   createdAt: string
@@ -251,6 +255,18 @@ export type AddFileVersionInput = {
   changeComment?: string | null
 }
 
+/**
+ * The caller's `If-Match` revision is not the page's current one: somebody
+ * saved in between. The choice is the person's, never a last-write-wins
+ * (docs/navigation.md → "Drafts").
+ */
+export class KnowledgePageRevisionConflictError extends Error {
+  constructor(readonly currentRevision: number) {
+    super('Knowledge page revision conflict')
+    this.name = 'KnowledgePageRevisionConflictError'
+  }
+}
+
 export type UpdatePageInput = Partial<{
   body: string | null
   bodyRef: string | null
@@ -265,6 +281,8 @@ export type UpdatePageInput = Partial<{
   authorId: string
   authorType: KnowledgeAuthorType
   organizationId: string
+  // The revision the caller edited, from `If-Match`. Undefined = no opinion.
+  expectedRevision?: number
 }
 
 export type MovePageInput = {

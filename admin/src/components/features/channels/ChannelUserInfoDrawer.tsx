@@ -21,6 +21,7 @@ import {
   buildFeedItems,
   type MessageUserIdentity,
 } from './channel-helpers'
+import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 
@@ -135,6 +136,7 @@ export const ChannelUserInfoDrawer = ({
   } = useChannelComposer({
     activeChannel: dmChannel,
     currentUserId: meUserId,
+    draftKey: channelComposerDraftKey(dmChannel?.id),
     threadMessages,
   })
   const {

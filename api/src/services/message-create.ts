@@ -19,6 +19,24 @@ import { messageInclude, type MessageWithReactions } from './messages.js'
 // reply (the copy never carries the attachments themselves).
 const ATTACHMENT_ONLY_BROADCAST_CONTENT = 'Shared an attachment'
 
+// The message a previous attempt with this idempotency key created, if any.
+const findMessageByClientKey = async (
+  prisma: PrismaClient,
+  threadId: string,
+  clientMessageId: string,
+): Promise<MessageWithReactions | null> =>
+  prisma.message.findFirst({
+    where: { threadId, clientMessageId },
+    include: messageInclude,
+  })
+
+// Two attempts of the same send can race past the pre-check; the unique index
+// `(thread_id, client_message_id)` then rejects the loser, and the losing
+// attempt replays the winner's row rather than surfacing a conflict a person
+// would read as "your message failed".
+const isDuplicateClientKey = (error: unknown): boolean =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+
 export type ChannelAgent = {
   id: string
   name: string
@@ -30,6 +48,13 @@ export type ChannelAgent = {
 }
 
 export type CreateThreadMessageResult =
+  | {
+      // The exact message this thread already holds for the caller's
+      // idempotency key. A retried send lands here instead of creating a
+      // second copy; the route replays the original response shape.
+      kind: 'replayed'
+      message: MessageWithReactions
+    }
   | {
       kind: 'created'
       message: MessageWithReactions
@@ -70,8 +95,24 @@ export const createThreadMessage = async (
     rootMessageId?: string
     alsoSendToChannel?: boolean
     agentMentions?: PersonalAssistantPresenceMention[]
+    clientMessageId?: string
   },
 ): Promise<CreateThreadMessageResult> => {
+  // Idempotent send: the same key in the same thread is the same message. The
+  // pre-check answers the common retry without a write; the unique index
+  // `(thread_id, client_message_id)` is what makes two simultaneous attempts
+  // resolve to one row, and the catch below turns that race into a replay.
+  if (input.clientMessageId) {
+    const existing = await findMessageByClientKey(
+      prisma,
+      input.threadId,
+      input.clientMessageId,
+    )
+    if (existing) {
+      return { kind: 'replayed', message: existing }
+    }
+  }
+
   const thread = await prisma.thread.findUnique({
     where: { id: input.threadId },
     select: {
@@ -170,6 +211,7 @@ export const createThreadMessage = async (
           role: 'user',
           content: input.content,
           rootMessageId,
+          ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
           metadata: { mentions } as Prisma.InputJsonValue,
         },
         include: messageInclude,
@@ -194,9 +236,18 @@ export const createThreadMessage = async (
         mentionedUserIds: mentions.userIds,
       })
       return { kind: 'created' as const, message: created, metadata, alertedUserIds: alerted }
+    }).catch(async (error: unknown) => {
+      if (input.clientMessageId && isDuplicateClientKey(error)) {
+        const won = await findMessageByClientKey(prisma, input.threadId, input.clientMessageId)
+        if (won) return { kind: 'raced' as const, message: won }
+      }
+      throw error
     })
     if (txResult.kind === 'invalid_root') {
       return { kind: 'invalid_root' }
+    }
+    if (txResult.kind === 'raced') {
+      return { kind: 'replayed', message: txResult.message }
     }
     message = txResult.message
     alertedUserIds = txResult.alertedUserIds
@@ -210,6 +261,7 @@ export const createThreadMessage = async (
           userId: input.userId,
           role: 'user',
           content: input.content,
+          ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
           metadata: { mentions } as Prisma.InputJsonValue,
         },
         include: messageInclude,
@@ -229,8 +281,17 @@ export const createThreadMessage = async (
         actorUserId: input.userId,
         mentionedUserIds: mentions.userIds,
       })
-      return { message: created, alertedUserIds: alerted }
+      return { message: created, alertedUserIds: alerted, raced: null }
+    }).catch(async (error: unknown) => {
+      if (input.clientMessageId && isDuplicateClientKey(error)) {
+        const won = await findMessageByClientKey(prisma, input.threadId, input.clientMessageId)
+        if (won) return { alertedUserIds: [] as string[], message: won, raced: won }
+      }
+      throw error
     })
+    if (txResult.raced) {
+      return { kind: 'replayed', message: txResult.raced }
+    }
     message = txResult.message
     alertedUserIds = txResult.alertedUserIds
   }

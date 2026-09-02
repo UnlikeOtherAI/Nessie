@@ -29,6 +29,7 @@ import { ChannelComposer } from '../ChannelComposer'
 import { ChannelMessageFeed } from '../ChannelMessageFeed'
 import { buildFeedItems } from '../channel-helpers'
 import { useAgentLivenessHint } from '../useAgentLivenessHint'
+import { replyComposerDraftKey } from '../composer-draft'
 import { useChannelComposer } from '../useChannelComposer'
 import { useChannelMessageActions } from '../useChannelMessageActions'
 
@@ -151,6 +152,9 @@ export const ThreadReplyPanel = ({
     activeChannel,
     threadMessages: replies,
     currentUserId: meUserId,
+    // A reply thread is its own conversation, so its draft is keyed by the root
+    // message — closing the panel keeps the half-written reply.
+    draftKey: replyComposerDraftKey(openRootMessageId),
     getSendExtras,
   })
   // The panel is its own drop target in every responsive mode (in-flow pane,

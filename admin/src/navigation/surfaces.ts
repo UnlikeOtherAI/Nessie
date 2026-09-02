@@ -17,7 +17,7 @@
 //
 // The page-type vocabulary a row is written in lives beside this table, in
 // `page-types.ts`. Rulebook: `docs/navigation.md`. Plan: step 3 of
-// `docs/plans/2026-09-01-navigation-motion-system.md` (§4.1).
+// `docs/done/2026-09-01-navigation-motion-system.md` (§4.1).
 
 import type { Surface, SurfaceIntent, SurfaceParent } from './page-types'
 

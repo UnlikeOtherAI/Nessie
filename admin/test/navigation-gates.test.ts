@@ -5,7 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 // The step-15 source-regex gates (docs/navigation.md §11 "Gates", plan
-// docs/plans/2026-09-01-navigation-motion-system.md §4.18): the shapes the
+// docs/done/2026-09-01-navigation-motion-system.md §4.18): the shapes the
 // script/ESLint gates cannot express precisely enough belong here instead.
 // Each allowlist is a plain list a later commit deletes lines from as the
 // parallel conversion work lands elsewhere — never a flag day, never grown
@@ -19,7 +19,7 @@ test('stack containers clip rather than hide, so no descendant can scroll them',
   // scrollIntoView() inside a screen parked at translate3d(100%) scrolled the
   // viewport sideways, and the compositor landed the slide short by that
   // offset until the next layout clamped it — the "bounce". `clip` is not a
-  // scroll container. Reproduction: docs/plans/2026-09-01-navigation-motion-system/repro.mjs
+  // scroll container. Reproduction: docs/done/2026-09-01-navigation-motion-system/repro.mjs
   // Moved from admin/test/phone-navigation-transition.test.ts — this is a
   // step-15 gate, not a transition-suite pin.
   const styles = readSource('../src/styles.css')

@@ -1,7 +1,7 @@
 // One place for every number, path and switch the navigation transition
 // suite depends on. Ports are the repo's fixed local-dev ports (CLAUDE.md →
 // "Ports — NON-NEGOTIABLE"); the viewports are the three widths §4.19 of
-// docs/plans/2026-09-01-navigation-motion-system.md names.
+// docs/done/2026-09-01-navigation-motion-system.md names.
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 

@@ -23,7 +23,7 @@ import {
   threadKeys,
 } from '../src/lib/query-keys.js'
 
-// Step 10 of docs/plans/2026-09-01-navigation-motion-system.md (§4.10),
+// Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
 // docs/navigation.md §"Arriving with content".
 
 const readSource = (relativePath: string): string =>

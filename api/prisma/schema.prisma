@@ -1853,6 +1853,12 @@ model Message {
   replyCount               Int                            @default(0) @map("reply_count")
   lastReplyAt              DateTime?                      @map("last_reply_at")
   replyParticipantIds      String[]                       @map("reply_participant_ids") @db.Uuid
+  // Client-minted idempotency key for one unsent draft. A composer retrying a
+  // send (double submit, a flaky network) sends the same key and the route
+  // resolves it to the message the first attempt created instead of a second
+  // copy. Unique per thread; NULLs are distinct in PostgreSQL, so every message
+  // posted without one is unaffected.
+  clientMessageId          String?                        @map("client_message_id")
   createdAt                DateTime                       @default(now()) @map("created_at")
   editedAt                 DateTime?                      @map("edited_at")
   deletedAt                DateTime?                      @map("deleted_at")
@@ -1876,6 +1882,7 @@ model Message {
   pushSurfacePresences     UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates   MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
+  @@unique([threadId, clientMessageId], map: "messages_thread_id_client_message_id_key")
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
   @@index([rootMessageId, createdAt])
@@ -4465,6 +4472,12 @@ model KnowledgePage {
   channelId      String?      @map("channel_id") @db.Uuid
   threadId       String?      @map("thread_id") @db.Uuid
   userId         String?      @map("user_id") @db.Uuid
+
+  // Optimistic concurrency for the page row, the counterpart of
+  // `Dashboard.revision` and `WorkflowTemplate.version`. `versionNumber` lives
+  // on the per-version row and cannot serve an `If-Match`, so the auto-saving
+  // editor needs a current-revision column here.
+  revision        Int               @default(0)
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")

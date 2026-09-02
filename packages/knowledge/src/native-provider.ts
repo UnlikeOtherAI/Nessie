@@ -9,6 +9,7 @@ import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
 import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
+import { KnowledgePageRevisionConflictError } from './types.js'
 import type {
   AddFileVersionInput,
   KnowledgePageRecord,
@@ -174,6 +175,7 @@ const getMutablePage = async (
       sensitivityTier: true,
       privateToAgentId: true,
       publishedVersionId: true,
+      revision: true,
       taskId: true,
     },
   })
@@ -409,6 +411,14 @@ const updatePage = async (
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
     const existing = await getMutablePage(tx, input.organizationId, pageId)
     if (!existing) return null
+    // Optimistic concurrency: an auto-saving editor states the revision it
+    // edited, and a stale one is refused rather than overwriting a colleague.
+    if (
+      input.expectedRevision !== undefined
+      && existing.revision !== input.expectedRevision
+    ) {
+      throw new KnowledgePageRevisionConflictError(existing.revision)
+    }
     const createsVersion = input.body !== undefined || input.bodyRef !== undefined
     if (createsVersion) {
       const version = await tx.knowledgePageVersion.create({
@@ -437,6 +447,7 @@ const updatePage = async (
           ? { sensitivityTier: input.sensitivityTier }
           : {}),
         ...(createsVersion ? { status: 'draft' as const } : {}),
+        revision: { increment: 1 },
       },
     })
     if (input.title !== undefined) {

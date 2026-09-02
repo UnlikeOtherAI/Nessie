@@ -153,8 +153,15 @@ export const useSaveLayout = (dashboardId: string) => {
   const client = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (layout: DashboardLayout) =>
-      client.put<DashboardRecord>(`/api/dashboards/${dashboardId}/layout`, layout),
+    // `If-Match` carries the revision the editor started from, so a save that
+    // lost a race is refused (409 DASHBOARD_REVISION_CONFLICT) rather than
+    // overwriting a widget somebody else moved.
+    mutationFn: ({ layout, revision }: { layout: DashboardLayout; revision?: number }) =>
+      client.put<DashboardRecord>(
+        `/api/dashboards/${dashboardId}/layout`,
+        layout,
+        revision === undefined ? undefined : { 'if-match': String(revision) },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboardId) })
       queryClient.invalidateQueries({ queryKey: dashboardKeys.versions(dashboardId) })

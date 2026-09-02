@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The navigation transition suite (docs/navigation.md → "Verification";
-// §4.19 of docs/plans/2026-09-01-navigation-motion-system.md).
+// §4.19 of docs/done/2026-09-01-navigation-motion-system.md).
 //
 //   pnpm --filter @nessie/admin test:e2e:navigation
 //

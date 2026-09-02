@@ -1,5 +1,5 @@
 // Run from the repo root after `pnpm install`:
-//   node docs/plans/2026-09-01-navigation-motion-system/repro.mjs
+//   node docs/done/2026-09-01-navigation-motion-system/repro.mjs
 // Needs Playwright's Chromium (PLAYWRIGHT_BROWSERS_PATH or the executablePath below).
 import { chromium } from 'playwright-core'
 import { fileURLToPath } from 'node:url'

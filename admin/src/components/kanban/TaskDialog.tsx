@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Notice } from '../primitives/Notice'
@@ -15,6 +15,7 @@ import {
   useTransitionTask,
   useUpdateTask,
 } from '../../facades/tasks/hooks'
+import { draftKey, useDraft } from '../../navigation/useDraft'
 import { ARCHIVED_STATUSES, statusLabel } from './kanban-config'
 import { TaskDocuments } from './TaskDocuments'
 import {
@@ -37,6 +38,18 @@ type TaskDialogProps = {
 
 const fieldLabel = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
+// One unsent task, kept whole: partial field state is what a person loses when
+// a dialog is dismissed, so it is what the draft has to hold.
+type TaskDraft = {
+  assignee: AssigneeValue
+  detail: string
+  due: string
+  formProjectId: string
+  priority: TaskPriority
+  purpose: string
+  title: string
+}
+
 export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: TaskDialogProps) => {
   const isEdit = Boolean(task)
   const { data: projects = [] } = useProjects()
@@ -48,14 +61,40 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const transition = useTransitionTask()
 
   const titleRef = useRef<HTMLInputElement>(null)
-  const [title, setTitle] = useState('')
-  const [purpose, setPurpose] = useState('')
-  const [detail, setDetail] = useState('')
-  const [priority, setPriority] = useState<TaskPriority>('medium')
-  const [due, setDue] = useState('')
-  const [assignee, setAssignee] = useState<AssigneeValue>(null)
-  const [formProjectId, setFormProjectId] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  // The task as it stands on the server (blank for a new one) — the draft's
+  // baseline, so a dialog opened and closed untouched stores nothing.
+  const baseline = useMemo<TaskDraft>(
+    () => ({
+      assignee: task?.assigneeAgentId
+        ? { id: task.assigneeAgentId, kind: 'agent' }
+        : task?.assigneeUserId
+          ? { id: task.assigneeUserId, kind: 'user' }
+          : null,
+      detail: task?.detail ?? '',
+      due: toDateInputValue(task?.dueDate ?? null),
+      formProjectId: '',
+      priority: task?.priority ?? 'medium',
+      purpose: task?.purpose ?? '',
+      title: task?.title ?? '',
+    }),
+    [task],
+  )
+
+  // Drafts (docs/navigation.md → "Drafts"): a task draft is keyed by the task,
+  // so dismissing this dialog — by Escape, the scrim or the close cross — keeps
+  // the words instead of asking whether to discard them.
+  const taskDraft = useDraft<TaskDraft>(
+    open ? draftKey('task', task?.id ?? 'new') : null,
+    { initial: baseline },
+  )
+  const { assignee, detail, due, formProjectId, priority, purpose, title } = taskDraft.draft
+  const setDraft = taskDraft.setDraft
+  const patchDraft = useCallback(
+    (patch: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...patch })),
+    [setDraft],
+  )
 
   const assigneeOptions = useMemo<AssigneeOption[]>(
     () => [
@@ -65,23 +104,12 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     [assignees, agents],
   )
 
-  // Seed the form whenever the dialog opens (or switches to a different task).
+  // The draft hook seeds the fields (from its stored row, else the baseline)
+  // whenever the key changes; opening only has to clear the last error and put
+  // the caret in the title.
   useEffect(() => {
     if (!open) return
     setError(null)
-    setTitle(task?.title ?? '')
-    setPurpose(task?.purpose ?? '')
-    setDetail(task?.detail ?? '')
-    setPriority(task?.priority ?? 'medium')
-    setDue(toDateInputValue(task?.dueDate ?? null))
-    setAssignee(
-      task?.assigneeAgentId
-        ? { id: task.assigneeAgentId, kind: 'agent' }
-        : task?.assigneeUserId
-          ? { id: task.assigneeUserId, kind: 'user' }
-          : null,
-    )
-    setFormProjectId('')
     const id = window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 0)
     return () => window.clearTimeout(id)
   }, [open, task])
@@ -138,6 +166,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           assigneeAgentId: assigneeAgentId ?? undefined,
         })
       }
+      taskDraft.clear()
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Something went wrong')
@@ -194,7 +223,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
               autoComplete="off"
               className="admin-input"
               id="task-title"
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => patchDraft({ title: event.target.value })}
               placeholder="What needs doing?"
               value={title}
             />
@@ -207,7 +236,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
             <textarea
               className="admin-input"
               id="task-purpose"
-              onChange={(event) => setPurpose(event.target.value)}
+              onChange={(event) => patchDraft({ purpose: event.target.value })}
               placeholder="A short summary…"
               rows={2}
               value={purpose}
@@ -221,7 +250,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
             <textarea
               className="admin-input"
               id="task-detail"
-              onChange={(event) => setDetail(event.target.value)}
+              onChange={(event) => patchDraft({ detail: event.target.value })}
               placeholder="The full description, context, acceptance criteria…"
               rows={10}
               value={detail}
@@ -244,7 +273,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                         ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
                         : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
                     ].join(' ')}
-                    onClick={() => setPriority(value)}
+                    onClick={() => patchDraft({ priority: value })}
                     type="button"
                   >
                     <FontAwesomeIcon
@@ -264,7 +293,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
             </label>
             <AssigneePicker
               id="task-assignee"
-              onChange={setAssignee}
+              onChange={(next) => patchDraft({ assignee: next })}
               options={assigneeOptions}
               value={assignee}
             />
@@ -277,7 +306,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
             <input
               className="admin-input"
               id="task-due"
-              onChange={(event) => setDue(event.target.value)}
+              onChange={(event) => patchDraft({ due: event.target.value })}
               type="date"
               value={due}
             />
@@ -291,7 +320,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
               <select
                 className="admin-input"
                 id="task-project"
-                onChange={(event) => setFormProjectId(event.target.value)}
+                onChange={(event) => patchDraft({ formProjectId: event.target.value })}
                 value={formProjectId}
               >
                 <option value="">No project</option>

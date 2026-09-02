@@ -101,7 +101,7 @@ test('forced-colors gives the four colour-only signals a non-colour fallback', (
   assert.match(block, /\.admin-card,[\s\S]*?\{[^}]*border-color:\s*CanvasText/)
 })
 
-// The plan (docs/plans/2026-09-01-navigation-motion-system.md §4.14) counts
+// The plan (docs/done/2026-09-01-navigation-motion-system.md §4.14) counts
 // nine overlay panels and two stylesheet rules using a bare `vh` unit; all
 // eleven move to `dvh` so the dynamic viewport (not the layout viewport,
 // which a soft keyboard does not shrink) drives their sizing.
