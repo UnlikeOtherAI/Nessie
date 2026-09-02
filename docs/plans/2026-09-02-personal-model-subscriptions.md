@@ -184,6 +184,15 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   `keyVersion` — sealed with the shared `secret-crypto` primitives.
   For API-key adapters the key lives in `accessTokenCiphertext` and never
   expires; credential material is NEVER part of any response schema.
+  **Tokens live here and nowhere else.** Server-side storage is not optional:
+  unattended runs execute with no user machine present, and the
+  single-refresh-owner rule (§2.5) requires the server to hold and rotate the
+  refresh token. And it is this encrypted table, **never** the
+  `Secret`/`SecretGrant` external-vault-reference model — that model forbids
+  ciphertext by design, and OAuth material is runtime-mutable (every refresh
+  persists a rotated token), so vault-referenced OAuth would split mutable
+  state across stores and reintroduce the multi-owner race. OpenClaw encodes
+  the same refusal (SecretRef is rejected for `type: "oauth"` credentials).
 - OAuth state reuses the `comms_oauth_states` shape (own table
   `model_subscription_oauth_states`, single-use atomic consume, 10-min TTL).
 
