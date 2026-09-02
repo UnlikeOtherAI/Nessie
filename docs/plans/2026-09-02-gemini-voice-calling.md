@@ -80,6 +80,67 @@ endpoint grant, an active Gemini service, and a positive daily budget.
 `LEDGER_PROXY_TOKEN` before any of this works — that is a Ledger-side
 configuration task, not code.
 
+### Cost tracking — verified against Ledger main (2026-09-02)
+
+The question was whether call spend can actually be tracked through Ledger
+so billing shows appropriately. Verified in code
+(`api/src/repositories/gemini-live-repository.ts`,
+`services/gemini-live-service.ts`, `services/usage-metering.ts`,
+`repositories/metering-usage-aggregate.ts`):
+
+**What works today, end to end:**
+
+- **Every reported turn is priced.** Per-modality USD/1M-token rates are
+  pinned onto the session at mint time (`GEMINI_LIVE_PRICING`: text-in
+  $0.75, audio-in $3, visual-in $1, text-out $4.50, audio-out $12) and each
+  accepted usage report becomes one idempotent `LedgerEntry` with
+  `estimated` = the priced amount, plus session-level cumulative token
+  counters and `clientReportedAmount`. Costed spend per call/user/day is a
+  query away on Ledger's side.
+- **Per-user attribution works — and is mandatory.** The mint attributes
+  the session to `uoaSubject ?? nessieSubject ?? token.provisionedForSub`,
+  and each usage row's metering attribution requires — for a product-bound
+  token like Nessie's — a **signed UOA subject + organization + team, or
+  the call 401s** (`usage-metering.ts` `identity()`). So the Nessie relay
+  must attach `X-UOA-Delegation` + `X-Nessie-Context` on both the mint and
+  every usage relay, and on a signing deployment **voice calls are only
+  available to users with a linked UOA identity** — the same fail-closed
+  rule ordinary inference already follows. Per-user session concurrency
+  (`PROXY_TOKEN_USER_MAX_CONCURRENT_SESSIONS`) comes free with that
+  attribution.
+- **Rows land in the UOA-read portfolio dimensions.** The entries carry
+  `billingProduct` / `billingOrganizationId` / `billingTeamId` /
+  `billingUserId`, `serviceId`, units in/out, and
+  `costProvenance: "client_reported"` / `billingStatus: "telemetry_only"`,
+  so the `metering-portfolio-v1` `group_by=user` snapshot shows the calls
+  and token units under the right user.
+
+**The gap — customer-statement dollars:**
+
+- The portfolio's cost aggregation sums **only**
+  `rawProviderEstimatedCost` / `rawProviderActualCost`
+  (`metering-usage-aggregate.ts`), and `deriveUsageMetering` deliberately
+  nulls both unless the basis is `provider_cost` — client-reported
+  telemetry is not provider-verified spend, and Ledger refuses to present
+  it as such. Net effect: **Gemini Live usage appears in the customer
+  statement's portfolio with calls and units but NULL cost.** UOA cannot
+  rate it from the snapshot either, because the portfolio's `unitsIn` /
+  `unitsOut` collapse the modality split (audio vs text differ 4–16× in
+  price), so the dollars are not reconstructible downstream.
+- **Required follow-up (Ledger + UOA, not Nessie):** carry the
+  client-reported estimated cost into the portfolio for telemetry-basis
+  rows — most naturally by populating `rawProviderEstimatedCost` for them
+  and letting the existing `costProvenance: "client_reported"` dimension
+  label its trust level, leaving UOA to decide how to rate it into
+  credits. Until that lands, Nessie's `/tokens` statement will show voice
+  calls as usage without charges; Nessie-side there is nothing to build or
+  work around (rendering UOA-authored models only is the invariant).
+- Trust note, for the record: usage is client-reported because Google
+  exposes no server-side metering for ephemeral Live sessions — a
+  compromised client could under-report. Exposure is bounded by the $5/day
+  per-device reservation and the Google project spend controls; that
+  bound, not the telemetry, is the financial backstop.
+
 ## Where Nessie must differ from Coder
 
 ### 1. The device never holds a Ledger credential — the API relays
