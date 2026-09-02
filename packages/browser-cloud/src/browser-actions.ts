@@ -227,3 +227,24 @@ export const renderObservation = (observation: BrowserObservation): string => {
 }
 
 export const __testing = { boundedText, MAX_AX_NODES, MAX_AX_TEXT_BYTES }
+
+
+/**
+ * The page the browser is actually on, right now.
+ *
+ * The origin gate cannot trust a cached value: client-side redirects, meta
+ * refreshes and page scripts move the page with no tool call in between, and
+ * a gate keyed on the last URL *we* navigated to would judge a foreign origin
+ * to be the signed-in one. One cheap CDP call, not a full observation.
+ */
+export const currentPageUrl = async (cdp: CdpClient): Promise<string | null> => {
+  try {
+    const history = await cdp.call('Page.getNavigationHistory', {})
+    const entries = Array.isArray(history.entries) ? history.entries : []
+    const index = typeof history.currentIndex === 'number' ? history.currentIndex : -1
+    const current = (entries[index] ?? {}) as { url?: unknown }
+    return typeof current.url === 'string' && current.url.length > 0 ? current.url : null
+  } catch {
+    return null
+  }
+}

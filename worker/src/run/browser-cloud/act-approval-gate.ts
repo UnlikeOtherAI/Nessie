@@ -1,11 +1,11 @@
-import { findLiveSessionForRun } from '@nessie/browser-cloud'
+import { currentPageUrl, findLiveSessionForRun } from '@nessie/browser-cloud'
 import { BROWSER_ACT_TOOL_ID } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import { ExecutorBrowserActArgumentsSchema } from '@nessie/schemas'
 
 import type { RunContext } from '../execute/types.js'
-import { evaluateOriginGate } from './origin-gate.js'
-import { originGateFor } from './session-pool.js'
+import { evaluateOriginGate, noteVisitedOrigin } from './origin-gate.js'
+import { acquireCdp, originGateFor } from './session-pool.js'
 
 /**
  * The cross-origin write gate, as an approval rather than a refusal.
@@ -37,9 +37,19 @@ export const buildBrowserActApprovalHook = (
     // No pooled state means this worker cannot drive the session at all, so
     // there is nothing to gate — the handler will say the connection is lost.
     const gate = originGateFor(session.id)
-    if (!gate?.currentUrl) return { escalate: false }
+    if (!gate) return { escalate: false }
 
-    const verdict = evaluateOriginGate(gate, gate.currentUrl, parsed.data)
+    // Asked, not remembered: a page can redirect itself between two tool
+    // calls, and a gate keyed on the last URL *we* navigated to would judge
+    // an attacker's origin to be the signed-in one. Falls back to the cached
+    // value only if the browser cannot answer.
+    const cdp = await acquireCdp(session.id).catch(() => null)
+    const liveUrl = cdp ? await currentPageUrl(cdp) : null
+    const url = liveUrl ?? gate.currentUrl
+    if (!url) return { escalate: false }
+    if (liveUrl) noteVisitedOrigin(gate, liveUrl)
+
+    const verdict = evaluateOriginGate(gate, url, parsed.data)
     if (verdict.allowed) return { escalate: false }
 
     return {
@@ -49,7 +59,7 @@ export const buildBrowserActApprovalHook = (
       // person's page content, and the approvals surface is read by owners.
       contextExtra: {
         browserAction: parsed.data.action,
-        targetOrigin: new URL(gate.currentUrl).origin,
+        targetOrigin: new URL(url).origin,
       },
       // The person whose ask started the run is the one who can say whether
       // this crossing is part of what they wanted.
