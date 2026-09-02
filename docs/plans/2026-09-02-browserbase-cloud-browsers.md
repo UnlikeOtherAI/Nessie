@@ -456,13 +456,24 @@ surfaces belong to the executor's own UI, not this panel.)
   `/channels/:id/threads/:threadId/browser/:sessionId`, the reply-panel URL
   discipline. All three open the panel; the panel's expand control (and any
   tap under 900px) goes full-screen.
-- **Watch vs control.** The thumbnail and the panel are watch-only
-  (`pointer-events: none`). Full-screen shows **Take control** — only to the
-  run's requester, only on sessions their run owns — which flips the iframe
-  interactive, suppresses `browser_observe`/`browser_screenshot` for the
-  session (§4.4), and shows a persistent "Hand back" bar; handing back lifts
-  the suppression and the agent resumes. The login handoff card opens
-  straight into this state.
+- **Watch vs control — and control is a claimed semaphore.** The thumbnail
+  and the panel are watch-only (`pointer-events: none`). Full-screen shows
+  **Take control**, and because a shared agent's session can render to many
+  entitled viewers at once, control is serialized exactly like every other
+  one-winner transition in the codebase: `CloudBrowserSession` carries
+  `controlledByUserId` + `controlClaimedAt`, claimed by a conditional UPDATE
+  (`controlledByUserId IS NULL` in the WHERE), so two simultaneous presses
+  have one winner. While claimed: the claimant's iframe is interactive,
+  every other viewer stays watch-only and sees "«name» is at the controls",
+  and `browser_observe`/`browser_screenshot` are suppressed for the session
+  (§4.4) — the agent, the claimant, and other viewers can never drive at
+  once. Release is explicit ("Hand back", which lifts the suppression and
+  resumes the agent) and also structural: session end releases it, and the
+  claim expires after a short keepalive timeout so a closed laptop lid never
+  holds a team's browser hostage. Eligibility to claim at all: the run's
+  requester always; on a browser holding only `team`-declared logins, any
+  viewer the session's basis already admits. The login handoff card opens
+  straight into the claimed state for the pressing user.
 - **Who may watch is the session's disclosure basis, reused.** A session on
   a human-authenticated agent browser renders only for viewers who satisfy
   every recorded login's `user:` scope; an unauthenticated or ephemeral
