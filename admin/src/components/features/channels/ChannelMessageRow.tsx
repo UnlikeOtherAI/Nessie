@@ -26,6 +26,7 @@ import {
 import { CommsConnectCard } from './CommsConnectCard'
 import { GmailDraftCard } from './GmailDraftCard'
 import { GoogleScopeRequestCard } from './GoogleScopeRequestCard'
+import { AllowedByRuleCard } from './AllowedByRuleCard'
 import { AppSetupCard } from './AppSetupCard'
 import { AgentCardMessage } from './AgentCardMessage'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -406,6 +407,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <GoogleScopeRequestCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <AllowedByRuleCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <AppSetupCard metadata={message.metadata} />
