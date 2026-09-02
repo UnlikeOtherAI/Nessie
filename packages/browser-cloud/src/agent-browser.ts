@@ -1,0 +1,312 @@
+import { Prisma, type PrismaClient } from '@prisma/client'
+
+import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
+import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
+import { resolveConnectionForRun, type CloudBrowserDeps } from './session-lifecycle.js'
+
+/**
+ * An agent's own durable browser.
+ *
+ * The browser belongs to the agent — its machine — which is what makes
+ * clashes structurally impossible: no two agents ever share browser state.
+ * What a person signs into it is shared with everyone who can reach that
+ * agent, which the viewer says out loud before the first keystroke and the
+ * disclosure basis enforces afterwards.
+ */
+
+export type AgentBrowserRow = {
+  id: string
+  connectionId: string
+  browserbaseContextId: string
+  loginCount: number
+}
+
+/**
+ * Which connection may hold an agent's durable browser.
+ *
+ * A workspace agent's browser lives on the organisation connection only: on
+ * somebody's personal account its state would be reachable through runs that
+ * account's owner never requested, and their Browserbase dashboard would hold
+ * a colleague's browsing. A private agent — owner-only home DM, owner-only
+ * runs by construction — may use its owner's personal connection, which is
+ * exactly the free-tier on-ramp.
+ */
+export const resolveDurableBrowserConnection = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserConnection'>,
+  input: {
+    organizationId: string
+    agentVisibility: 'workspace' | 'private'
+    agentOwnerUserId: string | null
+  },
+): Promise<{ id: string; scope: 'organization' | 'user'; projectId: string; apiKeyRef: string }> => {
+  const rows = await prisma.cloudBrowserConnection.findMany({
+    where: { organizationId: input.organizationId, status: 'active' },
+    select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },
+  })
+  const organization = rows.find((row) => row.scope === 'organization')
+
+  if (input.agentVisibility === 'private' && input.agentOwnerUserId) {
+    // Preferred over the organisation account even when one exists: a private
+    // agent's browsing would otherwise be replayable by the company's
+    // Browserbase administrator, which is not the privacy the label implies.
+    const personal = rows.find(
+      (row) => row.scope === 'user' && row.userId === input.agentOwnerUserId,
+    )
+    if (personal) return personal
+  }
+
+  if (!organization) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      input.agentVisibility === 'private'
+        ? 'No Browserbase account is connected. Connect your own in settings, or ask an owner to connect the company account.'
+        : 'This agent needs the company Browserbase account, which is not connected. A personal account cannot hold a shared agent’s browser.',
+    )
+  }
+  return organization
+}
+
+const loadClientForConnection = async (
+  deps: CloudBrowserDeps,
+  connection: { projectId: string; apiKeyRef: string },
+): Promise<BrowserbaseClient> => {
+  const apiKey = await deps.resolveSecret(connection.apiKeyRef)
+  if (!apiKey) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.AUTH_FAILED,
+      'The stored Browserbase key could not be read. Reconnect the account.',
+    )
+  }
+  const credentials = { apiKey, projectId: connection.projectId }
+  return deps.clientFactory ? deps.clientFactory(credentials) : createBrowserbaseClient(credentials)
+}
+
+/**
+ * Find or create the agent's browser.
+ *
+ * The remote context is created *before* the row, because a context with no
+ * row is reconcilable (the sweep deletes it) while a row pointing at a
+ * context that was never created is a browser that can never open. If two
+ * runs race, the partial unique index picks one winner and the loser's
+ * freshly created context is released immediately.
+ */
+export const ensureAgentBrowser = async (
+  deps: CloudBrowserDeps,
+  input: {
+    organizationId: string
+    agentId: string
+    agentVisibility: 'workspace' | 'private'
+    agentOwnerUserId: string | null
+  },
+): Promise<AgentBrowserRow & { connection: { projectId: string; apiKeyRef: string } }> => {
+  const connection = await resolveDurableBrowserConnection(deps.prisma, input)
+
+  const existing = await deps.prisma.agentBrowser.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      agentId: input.agentId,
+      connectionId: connection.id,
+      status: 'active',
+    },
+    select: {
+      id: true,
+      connectionId: true,
+      browserbaseContextId: true,
+      _count: { select: { logins: true } },
+    },
+  })
+  if (existing) {
+    return {
+      id: existing.id,
+      connectionId: existing.connectionId,
+      browserbaseContextId: existing.browserbaseContextId,
+      loginCount: existing._count.logins,
+      connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+    }
+  }
+
+  const client = await loadClientForConnection(deps, connection)
+  const context = await client.createContext()
+
+  try {
+    const created = await deps.prisma.agentBrowser.create({
+      data: {
+        organizationId: input.organizationId,
+        agentId: input.agentId,
+        connectionId: connection.id,
+        browserbaseContextId: context.id,
+      },
+      select: { id: true, connectionId: true, browserbaseContextId: true },
+    })
+    return {
+      ...created,
+      loginCount: 0,
+      connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+    }
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      // Another run won the race. Release the context we just made rather
+      // than leaving it for the reconciler, and use theirs.
+      await client.deleteContext(context.id).catch(() => undefined)
+      const winner = await deps.prisma.agentBrowser.findFirstOrThrow({
+        where: {
+          organizationId: input.organizationId,
+          agentId: input.agentId,
+          connectionId: connection.id,
+          status: 'active',
+        },
+        select: {
+          id: true,
+          connectionId: true,
+          browserbaseContextId: true,
+          _count: { select: { logins: true } },
+        },
+      })
+      return {
+        id: winner.id,
+        connectionId: winner.connectionId,
+        browserbaseContextId: winner.browserbaseContextId,
+        loginCount: winner._count.logins,
+        connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+      }
+    }
+    await client.deleteContext(context.id).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Record that a person signed this browser into a service.
+ *
+ * Audit and revocation only — whether a *session* counts as authenticated is
+ * a monotone fact on the session row, because somebody can also sign in
+ * during an ad-hoc control claim that writes no login row at all.
+ */
+export const recordAgentBrowserLogin = async (
+  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
+  input: {
+    organizationId: string
+    agentBrowserId: string
+    userId: string
+    serviceHint: string
+  },
+): Promise<void> => {
+  await prisma.agentBrowserLogin.create({
+    data: {
+      organizationId: input.organizationId,
+      agentBrowserId: input.agentBrowserId,
+      userId: input.userId,
+      serviceHint: input.serviceHint.slice(0, 200),
+    },
+  })
+}
+
+/**
+ * Sign the agent out of everything: tombstone the row so no run can reach the
+ * context again, then let the reconciler delete it remotely.
+ *
+ * Two honest limits the copy must state. Deleting a context does not revoke
+ * the *service's* own server-side session — fully signing out means the
+ * service's security page too. And it is all-or-nothing: per-service cookie
+ * deletion is phase-3 polish, so this clears every signer's login at once.
+ */
+export const resetAgentBrowser = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; agentBrowserId: string },
+): Promise<{ tombstoned: boolean }> => {
+  const live = await prisma.cloudBrowserSession.count({
+    where: {
+      agentBrowserId: input.agentBrowserId,
+      status: { in: ['allocating', 'active', 'releasing'] },
+    },
+  })
+  if (live > 0) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.CAPACITY,
+      'This browser is open right now. Close it, or wait for the run to finish, before resetting.',
+    )
+  }
+  const updated = await prisma.agentBrowser.updateMany({
+    where: {
+      id: input.agentBrowserId,
+      organizationId: input.organizationId,
+      status: 'active',
+    },
+    data: { status: 'tombstoned', tombstonedAt: new Date() },
+  })
+  if (updated.count === 1) {
+    // The logins go with the browser: they describe state that no longer
+    // exists, and leaving them would misreport who the agent is signed in as.
+    await prisma.agentBrowserLogin.deleteMany({
+      where: { agentBrowserId: input.agentBrowserId },
+    })
+  }
+  return { tombstoned: updated.count === 1 }
+}
+
+/**
+ * Delete the Browserbase contexts behind tombstoned rows.
+ *
+ * The row is only removed once the provider confirms — a local delete while
+ * the context still exists would orphan encrypted login state in somebody's
+ * Browserbase account with nothing pointing at it.
+ */
+export const reconcileTombstonedAgentBrowsers = async (
+  deps: CloudBrowserDeps,
+  options: { limit?: number } = {},
+): Promise<number> => {
+  const rows = await deps.prisma.agentBrowser.findMany({
+    where: { status: 'tombstoned' },
+    select: {
+      id: true,
+      browserbaseContextId: true,
+      connection: { select: { projectId: true, apiKeyRef: true } },
+    },
+    take: options.limit ?? 20,
+    orderBy: { tombstonedAt: 'asc' },
+  })
+  let deleted = 0
+  for (const row of rows) {
+    try {
+      const client = await loadClientForConnection(deps, row.connection)
+      await client.deleteContext(row.browserbaseContextId)
+      await deps.prisma.agentBrowser.delete({ where: { id: row.id } })
+      deleted += 1
+    } catch (error) {
+      await deps.prisma.agentBrowser.update({
+        where: { id: row.id },
+        data: { lastError: (error as Error).message.slice(0, 500) },
+      }).catch(() => undefined)
+    }
+  }
+  return deleted
+}
+
+/**
+ * Facts about an agent's browser for the structural prompt block, so the
+ * model knows whether it has one and what it is signed into without being
+ * told by message content.
+ */
+export const describeAgentBrowser = async (
+  prisma: Pick<PrismaClient, 'agentBrowser' | 'cloudBrowserSession'>,
+  input: { organizationId: string; agentId: string },
+): Promise<{ exists: boolean; services: string[]; inUse: boolean } | null> => {
+  const browser = await prisma.agentBrowser.findFirst({
+    where: { organizationId: input.organizationId, agentId: input.agentId, status: 'active' },
+    select: { id: true, logins: { select: { serviceHint: true }, take: 20 } },
+  })
+  if (!browser) return { exists: false, services: [], inUse: false }
+  const live = await prisma.cloudBrowserSession.count({
+    where: {
+      agentBrowserId: browser.id,
+      status: { in: ['allocating', 'active', 'releasing'] },
+    },
+  })
+  return {
+    exists: true,
+    services: [...new Set(browser.logins.map((row) => row.serviceHint))],
+    inUse: live > 0,
+  }
+}
+
+export { resolveConnectionForRun, isCloudBrowserError }

@@ -516,4 +516,6 @@ export const browserCloudKeys = {
   session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,
   threadSessions: (threadId?: string) =>
     ['browser-cloud', 'threads', threadId, 'sessions'] as const,
+  agentBrowser: (agentId?: string) => ['browser-cloud', 'agents', agentId] as const,
+  myLogins: ['browser-cloud', 'my-logins'] as const,
 }

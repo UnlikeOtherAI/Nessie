@@ -86,6 +86,12 @@ export type BuiltinToolRuntimeContext = {
    * absent means the deployment has no cloud browsing and the tools say so.
    */
   cloudBrowser?: CloudBrowserDeps
+  /**
+   * Visibility and stewardship, which decide whether this agent's durable
+   * browser may live on its owner's personal Browserbase account or must use
+   * the organisation's.
+   */
+  agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
   /** Deployment secret used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
   executorCommandEncryptionSecret?: string

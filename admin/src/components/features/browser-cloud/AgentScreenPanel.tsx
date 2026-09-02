@@ -12,6 +12,8 @@ const SCREEN_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentScreenPanelWidth'
 type AgentScreenPanelProps = {
   sessionId: string
   onClose: () => void
+  /** Drives the shared-browser banner; absent simply omits it. */
+  agent?: { id: string; visibility?: 'workspace' | 'private' }
 }
 
 /**
@@ -23,7 +25,7 @@ type AgentScreenPanelProps = {
  * Tapping the expand control takes it full-screen, which is where a person
  * actually watches a browser.
  */
-export const AgentScreenPanel = ({ sessionId, onClose }: AgentScreenPanelProps) => {
+export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanelProps) => {
   const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY)
   const phoneLayout = usePhoneLayout()
   const [fullscreen, setFullscreen] = useState(false)
@@ -71,7 +73,7 @@ export const AgentScreenPanel = ({ sessionId, onClose }: AgentScreenPanelProps) 
             </button>
           </div>
         </header>
-        <AgentScreenViewer sessionId={sessionId} variant="fullscreen" />
+        <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
       </div>
     )
   }
@@ -112,7 +114,7 @@ export const AgentScreenPanel = ({ sessionId, onClose }: AgentScreenPanelProps) 
           </button>
         )}
       </header>
-      <AgentScreenViewer sessionId={sessionId} variant="panel" />
+      <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
     </SidePanelShell>
   )
 }

@@ -777,6 +777,15 @@ The NSIS installer is written below
 Windows device and launch **Nessie** from Start. Tauri's Windows configuration
 also supports WiX when an operator requests `--bundles msi`.
 
+For a clean hosted Windows build, use the **Desktop (Windows)** GitHub Actions
+workflow from `main`. A manual dispatch can set **source ref** to a delivery
+branch or commit; the workflow checks out that ref in every job, builds the
+guest kernel and both installers, runs the installer smoke checks, and uploads
+the resulting files and SHA-256 sums as `desktop-windows-<workflow-sha>`.
+The self-hosted Hyper-V conformance job remains pending until a runner with the
+`self-hosted`, `windows`, and `hyperv` labels is available; it is not replaced
+by a hosted-runner simulation.
+
 An unsigned build is a desktop-shell test build only: it retains hosted
 workspace access, browser SSO/deep links, notifications, and single-instance
 behaviour, but deliberately refuses local executor pairing and daemon control.
