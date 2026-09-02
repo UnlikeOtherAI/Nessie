@@ -1,12 +1,7 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from 'react'
+import { useId, useRef, useState } from 'react'
 import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Popover } from '../../../components/overlays/Popover'
 import { EmojiPickerPanel } from '../../../components/shared/EmojiPickerPanel'
 
 type StatusEmojiPickerProps = {
@@ -18,31 +13,15 @@ type StatusEmojiPickerProps = {
 export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerProps) => {
   const [open, setOpen] = useState(false)
   const pickerId = useId()
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClickAway = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickAway)
-    return () => document.removeEventListener('mousedown', onClickAway)
-  }, [open])
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const pick = (nextValue: string) => {
     onChange(nextValue)
     setOpen(false)
   }
 
-  const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation()
-      setOpen(false)
-    }
-  }
-
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative">
       <button
         aria-controls={open ? pickerId : undefined}
         aria-expanded={open}
@@ -50,7 +29,7 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
         aria-label={label}
         className="admin-input flex items-center justify-between gap-2 text-left"
         onClick={() => setOpen((current) => !current)}
-        onKeyDown={closeOnEscape}
+        ref={triggerRef}
         type="button"
       >
         <span
@@ -67,31 +46,32 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
           icon={faChevronDown}
         />
       </button>
-      {open ? (
-        <div
-          className="absolute left-0 z-50 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-2 shadow-lg"
-          id={pickerId}
-          onKeyDown={closeOnEscape}
-          role="dialog"
-        >
-          <div className="mb-2 flex justify-end">
-            <button
-              aria-label="Clear icon"
-              className={[
-                'flex h-8 w-8 items-center justify-center rounded text-sm',
-                'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-                value ? '' : 'bg-[color:var(--accent-soft)] text-[color:var(--tx)]',
-              ].join(' ')}
-              onClick={() => pick('')}
-              title="Clear icon"
-              type="button"
-            >
-              <FontAwesomeIcon icon={faCircleXmark} />
-            </button>
-          </div>
-          <EmojiPickerPanel onSelect={pick} />
+      <Popover
+        anchorRef={triggerRef}
+        className="w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-2 shadow-lg"
+        id={pickerId}
+        label={label}
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="bottom-start"
+      >
+        <div className="mb-2 flex justify-end">
+          <button
+            aria-label="Clear icon"
+            className={[
+              'flex h-8 w-8 items-center justify-center rounded text-sm',
+              'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
+              value ? '' : 'bg-[color:var(--accent-soft)] text-[color:var(--tx)]',
+            ].join(' ')}
+            onClick={() => pick('')}
+            title="Clear icon"
+            type="button"
+          >
+            <FontAwesomeIcon icon={faCircleXmark} />
+          </button>
         </div>
-      ) : null}
+        <EmojiPickerPanel onSelect={pick} />
+      </Popover>
     </div>
   )
 }

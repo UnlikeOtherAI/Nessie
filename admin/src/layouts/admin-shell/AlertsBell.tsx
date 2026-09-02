@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Popover } from '../../components/overlays/Popover'
 import { AlertRow } from '../../components/shared/AlertRow'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { UnreadBadge } from '../../components/primitives/UnreadBadge'
@@ -33,7 +34,7 @@ export const AlertsBell = () => {
   const { focusModeEnabled } = useFocusMode()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const { data } = useAlerts({ limit: DROPDOWN_ALERT_COUNT })
   const markRead = useMarkAlertsRead()
   const acceptInvitation = useAcceptWorkspaceInvitation()
@@ -41,15 +42,6 @@ export const AlertsBell = () => {
 
   const alerts = data?.alerts ?? []
   const unreadCount = data?.unreadCount ?? 0
-
-  useEffect(() => {
-    if (!open) return
-    const onClick = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
 
   const openAlert = (alert: UserAlertRecord) => {
     setOpen(false)
@@ -67,11 +59,14 @@ export const AlertsBell = () => {
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        aria-expanded={open}
+        aria-haspopup="menu"
         aria-label="Alerts"
         className="admin-topbar-btn relative"
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
         title="Alerts"
         type="button"
       >
@@ -82,60 +77,64 @@ export const AlertsBell = () => {
           </span>
         ) : null}
       </button>
-      {open ? (
-        <div
-          className="admin-topbar-menu max-h-96 overflow-y-auto"
-          style={{ left: 'auto', right: 0, width: 320 }}
-        >
-          <div className="flex items-center justify-between px-2 py-1">
-            <SectionLabel as="span">Alerts</SectionLabel>
-            <button
-              className="text-xs text-[color:var(--accent)] disabled:cursor-default disabled:text-[color:var(--tx3)]"
-              disabled={unreadCount === 0 || markRead.isPending}
-              onClick={() => markRead.mutate({ all: true })}
-              type="button"
-            >
-              Mark all read
-            </button>
-          </div>
-          {alerts.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No alerts yet</p>
-          ) : (
-            alerts.map((alert) => {
-              const invite = alert.metadata
-              const accepting = acceptInvitation.isPending
-                && acceptInvitation.variables?.inviteId === invite?.inviteId
-              const acceptError = acceptInvitation.isError
-                && acceptInvitation.variables?.inviteId === invite?.inviteId
-                ? acceptInvitation.error.message
-                : null
-              return (
-                <AlertRow
-                  acceptError={acceptError}
-                  accepting={accepting}
-                  alert={alert}
-                  className="admin-topbar-menu-item"
-                  key={alert.id}
-                  onAcceptInvitation={invite
-                    ? () => acceptInvitation.mutate(invite)
-                    : undefined}
-                  onOpen={() => openAlert(alert)}
-                />
-              )
-            })
-          )}
+      <Popover
+        anchorRef={triggerRef}
+        className="admin-topbar-menu max-h-96 overflow-y-auto"
+        label="Alerts"
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="bottom-end"
+        role="menu"
+        style={{ width: 320 }}
+      >
+        <div className="flex items-center justify-between px-2 py-1">
+          <SectionLabel as="span">Alerts</SectionLabel>
           <button
-            className="admin-topbar-menu-item justify-center text-[color:var(--accent)]"
-            onClick={() => {
-              setOpen(false)
-              void navigate('/alerts')
-            }}
+            className="text-xs text-[color:var(--accent)] disabled:cursor-default disabled:text-[color:var(--tx3)]"
+            disabled={unreadCount === 0 || markRead.isPending}
+            onClick={() => markRead.mutate({ all: true })}
             type="button"
           >
-            See all
+            Mark all read
           </button>
         </div>
-      ) : null}
+        {alerts.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No alerts yet</p>
+        ) : (
+          alerts.map((alert) => {
+            const invite = alert.metadata
+            const accepting = acceptInvitation.isPending
+              && acceptInvitation.variables?.inviteId === invite?.inviteId
+            const acceptError = acceptInvitation.isError
+              && acceptInvitation.variables?.inviteId === invite?.inviteId
+              ? acceptInvitation.error.message
+              : null
+            return (
+              <AlertRow
+                acceptError={acceptError}
+                accepting={accepting}
+                alert={alert}
+                className="admin-topbar-menu-item"
+                key={alert.id}
+                onAcceptInvitation={invite
+                  ? () => acceptInvitation.mutate(invite)
+                  : undefined}
+                onOpen={() => openAlert(alert)}
+              />
+            )
+          })
+        )}
+        <button
+          className="admin-topbar-menu-item justify-center text-[color:var(--accent)]"
+          onClick={() => {
+            setOpen(false)
+            void navigate('/alerts')
+          }}
+          type="button"
+        >
+          See all
+        </button>
+      </Popover>
     </div>
   )
 }

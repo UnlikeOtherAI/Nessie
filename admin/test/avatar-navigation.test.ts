@@ -4,7 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { workspaceAvatarPath } from '../src/components/primitives/WorkspaceAvatar.js'
-import { resolveWorkspaceMenuPosition } from '../src/layouts/admin-shell/workspace-menu-position.js'
+import { placePopover } from '../src/components/overlays/placePopover.js'
 import { workspaceSwitchFailureMessage } from '../src/layouts/admin-shell/workspace-switch-message.js'
 
 const sourceRoot = fileURLToPath(new URL('../src', import.meta.url))
@@ -16,37 +16,45 @@ const sourceFiles = (directory: string): string[] =>
     return entry.isFile() && entry.name.endsWith('.tsx') ? [path] : []
   })
 
+// The workspace menu no longer owns any placement arithmetic: it declares a
+// preferred side and its width, and the one placePopover helper keeps it on
+// screen. These pin that the rail's geometry still lands where it used to.
+const placeWorkspaceMenu = (
+  anchor: { right: number; top: number },
+  viewport: { width: number; height: number },
+  panelHeight = 320,
+) => placePopover({
+  anchor: { bottom: anchor.top + 32, left: anchor.right - 32, right: anchor.right, top: anchor.top },
+  bounds: { bottom: viewport.height, left: 0, right: viewport.width, top: 0 },
+  panel: { height: panelHeight, width: 390 },
+  placement: 'right',
+})
+
 test('workspace menu stays within the viewport when opened near the top edge', () => {
-  const position = resolveWorkspaceMenuPosition(
-    { right: 65, top: -24 },
-    { width: 1_280, height: 720 },
-  )
+  const position = placeWorkspaceMenu({ right: 65, top: -24 }, { width: 1_280, height: 720 })
 
   assert.equal(position.left, 73)
   assert.equal(position.top, 8)
-  assert.equal(position.width, 390)
-  assert.ok(position.maxHeight <= 720 * 0.7)
   assert.ok(position.top + position.maxHeight <= 720 - 8)
 })
 
-test('workspace menu stays within the right edge of a narrow viewport', () => {
-  const position = resolveWorkspaceMenuPosition(
-    { right: 780, top: 32 },
-    { width: 800, height: 600 },
-  )
+// The old arithmetic had no flip: against a narrow window it clamped the menu
+// left until it lay across the rail button that opened it. It now opens on the
+// other side of the anchor instead.
+test('workspace menu flips to the other side of its trigger rather than covering it', () => {
+  const position = placeWorkspaceMenu({ right: 780, top: 32 }, { width: 800, height: 600 })
 
-  assert.equal(position.width, 390)
-  assert.equal(position.left, 800 - 390 - 8)
+  assert.equal(position.placement, 'left')
+  assert.equal(position.left, 748 - 8 - 390)
+  assert.ok(position.left >= 8)
 })
 
-test('workspace menu is capped at eighty percent of the available width', () => {
-  const position = resolveWorkspaceMenuPosition(
-    { right: 40, top: 32 },
-    { width: 400, height: 600 },
-  )
-
-  assert.equal(position.width, 320)
-  assert.equal(position.left, 48)
+// Width is the menu's own design constraint and is now stated in CSS, so no
+// code re-reads the viewport for it.
+test('the workspace menu caps its own width in CSS, not from a window read', () => {
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
+  assert.match(menu, /const MENU_WIDTH = 'min\(390px, 80vw\)'/)
+  assert.doesNotMatch(menu, /innerWidth/)
 })
 
 test('workspace pictures prefer the team relay and accept the UOA public fallback', () => {
@@ -72,11 +80,12 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
   assert.match(switcher, /<FontAwesomeIcon[\s\S]*?className=\{\[[\s\S]*?rotate-180/)
   assert.match(switcher, /icon=\{faChevronDown\}/)
   assert.match(switcher, /open \? 'rotate-180' : 'rotate-0'/)
-  assert.match(
-    menu,
-    /transition-\[opacity,transform\] duration-150 ease-out/,
-  )
-  assert.match(switcher, /setMenuMounted\(false\), 150/)
+  // The menu's own fade/mount timer is gone: opening and closing is the
+  // Popover primitive's motion, on the overlay scale's popover token.
+  assert.match(menu, /<Popover/)
+  assert.doesNotMatch(menu, /transition-\[opacity,transform\]/)
+  assert.doesNotMatch(switcher, /setMenuMounted/)
+  assert.match(switcher, /open=\{open\}/)
 })
 
 test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted sign-in', () => {

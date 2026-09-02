@@ -358,11 +358,47 @@ registration it did not have. Two edge cases stay outside it deliberately: the
 thread reply panel's 900–1279 px overlay mode, whose three presentations are
 one element switched by CSS breakpoints that no `single`/`split` branch can
 express, and the design-assistant panel, which is docked in flow rather than
-edge-anchored over a scrim. Planned in this step: `Popover` with one
-`placePopover` helper, `Card` with one `CardViewport`,
-`presentation: 'panel' | 'full'` for Flows, and the adoption of every
-remaining bespoke overlay. Pinned by `admin/test/navigation-overlay.test.ts`,
-`admin/test/dialog-shell.test.ts` and `admin/test/sheet.test.ts`.
+edge-anchored over a scrim.
+
+**`Popover`** (`components/overlays/Popover.tsx`) is the anchored primitive on
+the same hook: `anchorRef` (or an `anchorRect`, for a text caret), `placement`,
+`label`, `role` (`menu | listbox | dialog | tooltip`), outside press on
+`mousedown`/`touchstart`, Escape from the hook, and the popover layer — no CSS
+transition of its own. It places itself through **one** `placePopover`
+(`components/overlays/placePopover.ts`): given an anchor rect, the panel's
+measured size, a preferred placement (`bottom-start | bottom-end | top-start |
+top-end | right | left`) and the clipping bounds (`viewportBounds()`, or a
+container rect), it flips to the opposite side when the preferred one does not
+fit and clamps the panel inside the bounds, returning `{ left, top, placement,
+maxHeight }`. It replaced the five private flip/clamp routines
+(`WorkspaceMenu`, `UserMenuPopover`, `CreateMenuTrigger`, `ReactionPills`,
+`WikilinkSuggestionMenu`, plus `ResponsivePageHeader`'s CSS anchoring), three of
+which had no flip at all. Adopted by the account, workspace, create, header and
+overflow menus, the alerts bell, the reaction "who reacted" popover, the status
+and composer emoji pickers, the assignee picker, the model combobox and the
+wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
+hover hint, not a dismissible anchored surface.
+
+**`Card`** (`components/overlays/Card.tsx`) is the ambient kind, and one
+**`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives
+in: top-right on `split`, above the tab bar on `single`, decided from
+`useNavigationLayout()` — which is what replaced the toast viewport's own
+`max-width: 639.98px` media query. A card composes `runOverlayTransition({ kind:
+'card' })` directly rather than `useOverlay`, because the three things it must
+not do are the point: it never owns Back, never traps focus, and keeps
+`role="status"`. A card arriving during a stack transition waits on
+`whenStackSettled()` before it appears, so two motions never run at once; the
+auto-dismiss timer and tap-to-open are unchanged, and dismissal marks the card
+leaving so its motion plays before the owner drops the row. The toast stack is
+its first adopter. The in-conversation call banner stays in flow in its
+conversation and the incoming-call ring stays a dialog — it asks for a decision
+and needs focus, which is exactly what a card refuses to take.
+
+Still planned in this step: `presentation: 'panel' | 'full'` for Flows.
+Pinned by `admin/test/navigation-overlay.test.ts`,
+`admin/test/dialog-shell.test.ts`, `admin/test/sheet.test.ts`,
+`admin/test/place-popover.test.ts`, `admin/test/popover.test.ts` and
+`admin/test/card-viewport.test.ts`.
 
 ## 8. Deep links and cold starts — **built** (step 13, the seeding; intent params follow)
 
