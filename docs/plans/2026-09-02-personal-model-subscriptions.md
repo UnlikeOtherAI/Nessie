@@ -97,11 +97,11 @@ storage) forces the difference. Concretely:
   owner, re-read-inside-the-lock adoption, the lock-timeout-vs-stale
   invariant, the `refresh_token_reused` recovery ladder, the 5-minute
   proactive margin, no transport-failure retry of refresh grants (§2.5).
-- **What deliberately differs:** storage (Nessie's encrypted per-user
-  Postgres tables instead of per-agent SQLite; the server is the one refresh
-  owner), tenancy (rows scoped `(organizationId, userId)`), and surface (the
-  admin settings page instead of a CLI). Behaviour at the provider boundary
-  stays byte-alike.
+- **What deliberately differs:** storage (token values in the deployment's
+  Infisical vault with metadata-only Postgres rows, instead of per-agent
+  SQLite; the server is the one refresh owner), tenancy (rows scoped
+  `(organizationId, userId)`), and surface (the admin settings page instead
+  of a CLI). Behaviour at the provider boundary stays byte-alike.
 - **License check before porting code verbatim:** confirm OpenClaw's license
   permits it at implementation time; otherwise reimplement from its observed
   behaviour, which this plan and the discovery report already capture.
@@ -179,28 +179,60 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   identity the way they do (id_token email, else a stable subject claim).
   The dropdown shows the account label only when a person holds more than
   one link for a provider.
-- `ModelSubscriptionCredential`: `subscriptionId @unique`,
-  `accessTokenCiphertext`, `refreshTokenCiphertext?`, `expiresAt?`,
-  `keyVersion` — sealed with the shared `secret-crypto` primitives.
-  For API-key adapters the key lives in `accessTokenCiphertext` and never
-  expires; credential material is NEVER part of any response schema.
-  **Tokens live here and nowhere else.** Server-side storage is not optional:
-  unattended runs execute with no user machine present, and the
-  single-refresh-owner rule (§2.5) requires the server to hold and rotate the
-  refresh token. And it is this encrypted table, **never** the
-  `Secret`/`SecretGrant` external-vault-reference model — that model forbids
-  ciphertext by design, and OAuth material is runtime-mutable (every refresh
-  persists a rotated token), so vault-referenced OAuth would split mutable
-  state across stores and reintroduce the multi-owner race. OpenClaw encodes
-  the same refusal (SecretRef is rejected for `type: "oauth"` credentials).
+- **Token values live in the Nessie vault** — the deployment's own Infisical
+  at `vault.unlikeotherai.com` (`docs/secret-management-spec.md`,
+  `api/src/services/infisical-vault.ts`) — **never in PostgreSQL.** The
+  secret-management spec is explicit that new secret-capture flows must not
+  add values to Nessie's Postgres database; the encrypted comms/MCP token
+  tables are its named legacy-migration concern, so this feature does not
+  extend that pattern. The bundle (access token, refresh token, expiry,
+  account id — one self-describing JSON value, so the vault alone is
+  authoritative) is written under the personal scope partition
+  `/nessie/<organizationId>/personal/<userId>` with a server-minted opaque
+  name.
+- `ModelSubscriptionCredential` is therefore **metadata only**:
+  `subscriptionId @unique`, `vaultReference @unique`, advisory `expiresAt`
+  (cheap "refresh soon" queries; the vault bundle is the truth), timestamps.
+  No ciphertext columns. It is a purpose-specific pointer like
+  `McpServerInstance.credentialRef`, deliberately **not** a
+  `Secret`/`SecretGrant` row — those are the user-visible secret-management
+  surface with grant semantics, and a subscription credential is
+  system-managed: it must never appear in the secrets UI, take `use`/`reveal`
+  grants, or be mentionable to a model. Values never enter model context,
+  responses, logs, or audit metadata — the token goes from the coordinator
+  straight into the provider `Authorization` header, exactly like today's
+  provider API keys.
+- **Why vault-referenced OAuth is safe here** (where OpenClaw refuses it):
+  OpenClaw has no central lock, so splitting mutable OAuth state across
+  stores would create two refresh owners. Nessie's single refresh owner is
+  the server behind the Postgres row lock (§2.5); the vault `replace` and
+  the advisory metadata update happen inside that locked section, so the
+  vault is a value store behind one serialized writer, not a second
+  authority.
+- **Worker access is a deliberate, narrow amendment to the vault deployment
+  contract.** Today only the API container holds the Infisical
+  machine-identity token, and the worker/executor/sandboxes deliberately do
+  not. Inference runs in the worker, so the worker gets its **own dedicated
+  machine identity**, scoped to read+replace on the model-subscription paths
+  only (its own Docker secret in
+  `infrastructure/compose/docker-compose.prod.yml`), used solely by the
+  subscription credential coordinator. The executor and agent sandboxes
+  still receive nothing. `docs/secret-management-spec.md` and
+  `docs/deployment.md` are updated in the same change that introduces it.
+  In local dev the worker runs embedded in the API process, so a compose'd
+  local Infisical (or the API's identity) covers it; a deployment without
+  the vault configured cannot link subscriptions — the settings surface says
+  so plainly and linking fails loudly, never a silent Postgres fallback.
 - OAuth state reuses the `comms_oauth_states` shape (own table
   `model_subscription_oauth_states`, single-use atomic consume, 10-min TTL).
 
-Refresh follows the comms coordinator exactly: `FOR UPDATE` row lock,
-re-read, refresh via the adapter, re-seal in the same transaction; a
-provider-rejected credential flips `status = 'needs_reauthorization'`
-atomically. (Not the MCP resolver's lockless refresh — two concurrent runs on
-one subscription must not race a one-shot refresh token.)
+Refresh follows the comms coordinator's shape: `FOR UPDATE` row lock on the
+metadata row, re-read the vault bundle inside the lock, refresh via the
+adapter, `replace` the vault bundle and update the advisory metadata inside
+the locked section; a provider-rejected credential flips
+`status = 'needs_reauthorization'` atomically. (Not the MCP resolver's
+lockless refresh — two concurrent runs on one subscription must not race a
+one-shot refresh token.)
 
 ### 2.3 The dropdown: a "Your subscriptions" group
 
