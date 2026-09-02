@@ -98,7 +98,7 @@ const AttachmentViewerDialog = ({
         aria-labelledby="attachment-viewer-title"
         aria-modal="true"
         className={[
-          'flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
+          'flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
           'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
         ].join(' ')}
         data-testid="attachment-viewer"
@@ -144,14 +144,14 @@ const AttachmentViewerDialog = ({
             <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
           ) : pdf ? (
             <iframe
-              className="h-[calc(100vh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
+              className="h-[calc(100dvh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
               src={url}
               title={attachment.filename}
             />
           ) : (
             <img
               alt={attachment.filename}
-              className="max-h-[calc(100vh-9rem)] max-w-full object-contain"
+              className="max-h-[calc(100dvh-9rem)] max-w-full object-contain"
               src={url}
             />
           )}

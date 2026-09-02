@@ -326,7 +326,7 @@ export const TriggerEditorDialog = ({
           </button>
         </div>
 
-        <form className="grid max-h-[80vh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
+        <form className="grid max-h-[80dvh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
           <TriggerMetaFields
             agentChannels={agentChannels}
             agents={agents}

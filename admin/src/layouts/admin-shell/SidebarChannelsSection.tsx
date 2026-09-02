@@ -1,5 +1,5 @@
 import type { ChannelRecord } from '../../lib/api-client';
-import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { channelHashClassName, renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { CreateChannelTarget } from './types';
@@ -46,6 +46,7 @@ export const SidebarChannelsSection = ({
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
             key={channel.id}
             className={[
               'admin-sb-item group',

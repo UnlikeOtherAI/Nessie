@@ -76,7 +76,7 @@ test('the scrim sits in the modal layer of the one scale, or the blocking layer 
 test('the three shipped panel geometries are the only widths on offer', () => {
   assert.match(render(), /class="create-channel-panel" role="dialog"/)
   assert.match(render({ size: 'lg' }), /class="create-channel-panel" role="dialog" style="max-width:640px;width:100%"/)
-  assert.match(render({ size: 'xl' }), /style="max-height:88vh;max-width:none;overflow-y:auto;width:min\(80vw, 1100px\)"/)
+  assert.match(render({ size: 'xl' }), /style="max-height:88dvh;max-width:none;overflow-y:auto;width:min\(80vw, 1100px\)"/)
 })
 
 // ---------------------------------------------------------------------------

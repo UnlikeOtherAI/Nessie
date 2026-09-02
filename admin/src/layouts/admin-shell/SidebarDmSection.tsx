@@ -8,7 +8,7 @@ import type { AgentRecord } from '../../lib/api-client';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
-import { renderUnreadCount } from './SidebarRow';
+import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
@@ -116,6 +116,7 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(assistant.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === assistant.dmChannelId)}
             key={assistant.productSlug}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(assistant.dmChannelId)}
@@ -141,6 +142,7 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === agent.dmChannelId)}
             key={agent.id}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(agent.dmChannelId)}
@@ -166,6 +168,7 @@ export const SidebarDmSection = ({
         const unreadCount = unreadCountByChannelId.get(group.dmChannelId) ?? 0;
         return (
           <button
+            aria-current={sidebarAriaCurrent(currentChannelId === group.dmChannelId)}
             key={group.dmChannelId}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === group.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateChannel(group.dmChannelId)}
@@ -200,6 +203,9 @@ export const SidebarDmSection = ({
         const presence = getPresence(person.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(
+              Boolean(person.dmChannelId && activeDmChannelId === person.dmChannelId),
+            )}
             key={person.id}
             className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}

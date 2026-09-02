@@ -739,6 +739,58 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   starts at 0. Per-layer `useScrollMemory` on `split` and the second-scroller
   lint follow with the header work.
 - Pinned by `admin/test/navigation-settle.test.ts`.
+- **`aria-current="page"`**: the rail item and every section-sidebar row that
+  carries an `active` class set it through one shared helper,
+  `sidebarAriaCurrent` (`layouts/admin-shell/SidebarRow.tsx`) — the rail,
+  `SidebarNav` and its four section components, `AdminSidebarNav`,
+  `KnowledgeSidebarNav` (plus `KnowledgeSpaceList`, shared with the project
+  Docs tab), `ProjectsSidebarNav`, and the personal-assistant sidebar entry.
+  The one `NavLink` row (Knowledge's "All dashboards") already gets it for
+  free — React Router stamps `aria-current="page"` on an active `NavLink`
+  itself, so that row needed no change.
+- **Skip link**: `<SkipToContentLink />` (`navigation/SkipToContentLink.tsx`)
+  is the first element inside the authenticated shell, before the top bar and
+  rail. Visually hidden (Tailwind `sr-only`) until it receives focus
+  (`focus:not-sr-only`), styled from theme tokens only per CLAUDE.md →
+  Theming. It targets `#admin-shell-main` — both `<main>` branches in
+  `AdminShellLayout` (phone and split) carry `id={SHELL_MAIN_ID}` and
+  `tabIndex={-1}` so a non-heading landmark can still take programmatic
+  focus.
+- **`forced-colors`** (Windows High Contrast): `styles.css` carries one
+  `@media (forced-colors: active)` block giving the four places that carried
+  their state through colour alone a `Highlight`/`CanvasText` border or
+  outline instead — `TabBar`'s `.tabbar-indicator` (its ring was a
+  `box-shadow`, which forced-colors discards), the rail's active tile (its
+  `color-mix` background collapses to every other tile's forced background),
+  every `:focus-visible` ring (an accent outline forces to ordinary text
+  colour otherwise), and `.admin-card` / `.admin-input` borders (a
+  `var(--sep)` border can force to the same colour as the card's own
+  background).
+- **Soft keyboard inset**: one `visualViewport` resize listener for the
+  whole shell (`navigation/keyboard.ts` `useKeyboardInset`, mounted once in
+  `AdminShellLayout`) sets `--keyboard-inset` (px) on the root while an
+  on-screen keyboard is open — the gap between `window.innerHeight` and the
+  shrunk `visualViewport`, ignoring deltas under 60px (browser chrome, not a
+  keyboard). The channel composer's container and the standalone
+  new-conversation composer read it (`padding-bottom` /
+  `margin-bottom: var(--keyboard-inset, 0px)`) so the active composer stays
+  above the keyboard instead of sliding under it; the message composer's
+  editable region carries `enterKeyHint="send"`. Every overlay panel that
+  sized with a bare `vh` unit — nine dialogs/popups plus two `styles.css`
+  rules — now sizes with `dvh` (the dynamic viewport, which a soft keyboard
+  can shrink; the static `vh` cannot), including the shared `Dialog`'s `xl`
+  size.
+- **Scroll owners on split**: `useScrollMemory` already covered the two
+  lists that swap for their own detail at stack depth 1 on `split`
+  (`ColumnBrowserColumn`, `AgentsList`, keyed per list identity). The channel
+  list and the knowledge tree — the persistent per-section sidebars
+  (`SidebarNav`, `KnowledgeSidebarNav`) — get the same treatment, keyed by a
+  constant per-section id (`sidebar:channel-list`,
+  `sidebar:knowledge-tree`) rather than a pathname: unlike a route's own
+  screen, these single scrollers are shared across every route inside their
+  section and only lose position when the section itself swaps out for
+  another (Channels → Knowledge → Channels) and back.
+- Pinned by `admin/test/a11y-navigation.test.ts`.
 
 ## 12. Interruption and visibility — **built** (step 14, the stack's part)
 

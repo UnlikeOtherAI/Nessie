@@ -102,7 +102,7 @@ export const ThoughtProcessDialog = ({
         aria-labelledby="thought-process-title"
         aria-modal="true"
         className={[
-          'flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
+          'flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
           'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
         ].join(' ')}
         data-testid="thought-process-dialog"

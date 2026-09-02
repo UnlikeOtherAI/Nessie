@@ -69,7 +69,13 @@ export const ChannelComposer = ({
     && !isSendPending
 
   return (
-    <div className="flex-shrink-0 px-5 pb-[14px]">
+    // Base 14px padding plus the soft-keyboard inset (docs/navigation.md
+    // §4.14): the active composer stays above an on-screen keyboard instead
+    // of sliding under it.
+    <div
+      className="flex-shrink-0 px-5"
+      style={{ paddingBottom: 'calc(14px + var(--keyboard-inset, 0px))' }}
+    >
       {pendingAgentInvites.length > 0 && (
         <div className="admin-card mb-2 flex flex-col gap-2 p-3">
           {pendingAgentInvites.map((agent) => (

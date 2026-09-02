@@ -10,6 +10,7 @@ import {
   channelHashClassName,
   projectSelectionClassName,
   renderUnreadCount,
+  sidebarAriaCurrent,
 } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -78,6 +79,7 @@ export const SidebarStarredSection = ({
             && personalAssistantChannelId === currentChannelId;
           return (
             <button
+              aria-current={sidebarAriaCurrent(isActivePersonalAssistant)}
               key={`starred-agent-${agent.id}`}
               className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
@@ -101,6 +103,7 @@ export const SidebarStarredSection = ({
           const { channel } = item;
           return (
             <button
+              aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
               key={`starred-ch-${channel.id}`}
               className={`admin-sb-item group ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
               onClick={() => onNavigateChannel(channel.id)}
@@ -130,6 +133,9 @@ export const SidebarStarredSection = ({
           return (
             <div key={`starred-prj-${project.id}`} className="mt-1">
               <button
+                aria-current={sidebarAriaCurrent(
+                  projectSelectionClassName(project.id, currentProjectId, currentChannelId) === 'active',
+                )}
                 className={[
                   'admin-sb-item sidebar-project-tile group',
                   unreadCount > 0 ? 'unread' : '',
@@ -161,6 +167,7 @@ export const SidebarStarredSection = ({
 
               {starredProjectChannels.map((channel) => (
                 <button
+                  aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
                   key={`starred-prj-${project.id}-ch-${channel.id}`}
                   className={[
                     'admin-sb-item sidebar-child group',
@@ -194,6 +201,9 @@ export const SidebarStarredSection = ({
         const presence = getPresence(person.id);
         return (
           <button
+            aria-current={sidebarAriaCurrent(
+              Boolean(person.dmChannelId && activeDmChannelId === person.dmChannelId),
+            )}
             key={`starred-usr-${person.id}`}
             className={`admin-sb-item group ${personUnreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
             onClick={() => onNavigateDm(person.id)}

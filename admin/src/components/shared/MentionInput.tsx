@@ -401,6 +401,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ].join(' ')}
           contentEditable
           data-placeholder={placeholder}
+          enterKeyHint="send"
           onCompositionEnd={() => {
             composingRef.current = false
             sync()

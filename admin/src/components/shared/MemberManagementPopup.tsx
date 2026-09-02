@@ -18,7 +18,7 @@ type MemberManagementPopupProps = {
  * modal, search, count, and dismissal behaviour visibly identical.
  *
  * Not the shared `Dialog`: a fixed-header + fixed-search + independently
- * scrolling member list inside a `max-h-[80vh]` flex column, which none of
+ * scrolling member list inside a `max-h-[80dvh]` flex column, which none of
  * the shell's four panel geometries express. `useOverlay` still gives it the
  * Back registration, focus trap, drag-safe scrim and layer every other
  * overlay gets (docs/navigation.md §7).
@@ -61,7 +61,7 @@ export const MemberManagementPopup = ({
         aria-labelledby={titleId}
         aria-modal="true"
         className={[
-          'flex max-h-[80vh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
+          'flex max-h-[80dvh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
           'border border-[color:var(--sep)] bg-[color:var(--main)]',
         ].join(' ')}
         ref={overlay.panelRef}
