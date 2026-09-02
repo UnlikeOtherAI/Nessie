@@ -71,6 +71,45 @@ Anthropic models through Ledger. No adapter, no exception.
 
 ## 2. Shape of the feature
 
+### 2.0 Reference implementation: replicate OpenClaw, don't reinvent
+
+**Decision (Ondrej, 2026-09-02): replicate what OpenClaw does.** It runs
+these exact flows for millions of users; its auth layer has already absorbed
+the field failures (rotation races, burned refresh tokens, consent-screen
+quirks, `slow_down` polling, Cloudflare challenges) that a fresh design would
+rediscover one incident at a time. The sibling checkout at
+`/Volumes/External/Projects/OpenClaw` (keep it pulled to origin/main) is the
+reference; where this plan and OpenClaw disagree on a *mechanism*, OpenClaw
+wins unless a Nessie invariant (tenancy, disclosure, encrypted-at-rest
+storage) forces the difference. Concretely:
+
+- **Flows, endpoints, client ids, and vendor-specific parameters are copied
+  from OpenClaw's extensions, not re-derived** — e.g. OpenAI's
+  `id_token_add_organizations=true` + `codex_cli_simplified_flow=true` +
+  `originator` params, xAI's OIDC discovery + trusted-host check +
+  `slow_down` handling, the per-provider token-failure reason tables.
+  Reference files: `extensions/openai/openai-chatgpt-oauth-*.runtime.ts`,
+  `extensions/openai/openai-chatgpt-device-code.ts`,
+  `extensions/xai/xai-oauth.ts`, and the shared primitives in
+  `src/plugin-sdk/provider-oauth-runtime.ts`.
+- **Refresh semantics are copied wholesale** from
+  `src/agents/auth-profiles/oauth-manager.ts` + `oauth.ts`: single refresh
+  owner, re-read-inside-the-lock adoption, the lock-timeout-vs-stale
+  invariant, the `refresh_token_reused` recovery ladder, the 5-minute
+  proactive margin, no transport-failure retry of refresh grants (§2.5).
+- **What deliberately differs:** storage (Nessie's encrypted per-user
+  Postgres tables instead of per-agent SQLite; the server is the one refresh
+  owner), tenancy (rows scoped `(organizationId, userId)`), and surface (the
+  admin settings page instead of a CLI). Behaviour at the provider boundary
+  stays byte-alike.
+- **License check before porting code verbatim:** confirm OpenClaw's license
+  permits it at implementation time; otherwise reimplement from its observed
+  behaviour, which this plan and the discovery report already capture.
+- Their roster also proves device-code adapters for GitHub Copilot and
+  MiniMax and PKCE-loopback for OpenRouter — out of scope now, but the
+  framework mirrors OpenClaw's shape precisely so any of them is one adapter
+  away later.
+
 ### 2.1 One framework, pluggable provider adapters
 
 New package **`@nessie/model-subscriptions`** (mirroring how
@@ -134,7 +173,12 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   discipline), `provider` (enum), `status`
   (`active | needs_reauthorization | disconnected | error`),
   `providerAccountId`, `accountLabel`, `keyVersion`, timestamps. Unique
-  `(organizationId, userId, provider)` — one link per provider per member.
+  `(organizationId, userId, provider, providerAccountId)` — OpenClaw keys
+  profiles as `provider:profileName` and supports several accounts per
+  provider (work + personal); we replicate that, deriving the account
+  identity the way they do (id_token email, else a stable subject claim).
+  The dropdown shows the account label only when a person holds more than
+  one link for a provider.
 - `ModelSubscriptionCredential`: `subscriptionId @unique`,
   `accessTokenCiphertext`, `refreshTokenCiphertext?`, `expiresAt?`,
   `keyVersion` — sealed with the shared `secret-crypto` primitives.
@@ -189,6 +233,19 @@ deployment/org chain: if `agent.provider` parses as `subscription/<key>`:
 3. Signing needs no change: the effective URL is non-Ledger, so
    `createProviderRequestHeadersResolver` already returns `undefined` and no
    Nessie/UOA identity leaves the deployment.
+
+**This is not a parallel connection to Ledger — it is a second egress lane
+that never touches Ledger at all.** A subscription-routed run opens no
+Ledger connection, sends no `X-Nessie-Context`/`X-UOA-Delegation`, and
+produces no Ledger-side metering or UOA rating; its usage is recorded only
+locally (`token_ledger_events`, §2.6). Ledger remains the one chokepoint for
+every non-subscription run, byte-identical to today. The rejected
+alternative — proxying subscription traffic *through* Ledger — would put
+personal credentials on UOA infrastructure and invite commercial rating of
+spend that is not the org's; it is out. A run is entirely one lane or the
+other, decided once at provider resolution: its delegates, compaction, and
+utility calls follow the same lane, so no single run mixes Ledger-signed and
+personal traffic.
 
 **Who pays is who owns.** Any run of the agent — a shared channel answering a
 colleague, a trigger, a delegate — spends the owner's plan, because the agent
