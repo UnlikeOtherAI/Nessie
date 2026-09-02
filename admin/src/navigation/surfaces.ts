@@ -369,7 +369,7 @@ export const SURFACES: Surface[] = [
     // query so a link into one message survives a reload.
     depth: 3,
     identityOf: (match) => `agent-mailbox:${match[1]}`,
-    intent: { state: ['conversation'] },
+    intent: { state: ['conversation', 'mailboxFilter'] },
     keyScope: () => 'agent-mailbox',
     parentOf: (match) => ({
       label: 'Back to agent',

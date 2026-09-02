@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import type { EmailMessageRecord } from '@nessie/schemas'
 
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { QueryState } from '../components/shared/QueryState'
 import { TabBar } from '../components/primitives/TabBar'
+import { useTabParam } from '../navigation/useTabParam'
 import {
   useAgentMailbox,
   useMailboxConversation,
@@ -27,7 +28,13 @@ type MailboxFilter = 'all' | 'inbox' | 'sent'
 export const AgentMailboxPage = () => {
   const { agentId } = useParams<{ agentId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [filter, setFilter] = useState<MailboxFilter>('all')
+  // In the URL, not component state: a filtered mailbox is a place, so it
+  // survives a reload and can be linked to.
+  const [filter, setFilter] = useTabParam<MailboxFilter>(
+    'mailboxFilter',
+    ['all', 'inbox', 'sent'],
+    'all',
+  )
 
   const agentsQuery = useAgents()
   const mailboxQuery = useAgentMailbox(agentId)

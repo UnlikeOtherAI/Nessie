@@ -892,70 +892,22 @@ them.
 
 ## Agent email — an agent's own mailbox
 
-Every agent can hold its own address (`support@nessie.works`), so people CC it
-into a thread and it replies. **Amazon SES is integrated directly** — the
+Every agent can hold its own address (`support@nessie.works`): people CC it into
+a thread and it replies. **Amazon SES is integrated directly** — the
 deployment's own account sends and receives, an address is unique per
-deployment, and the feature is OFF unless `NESSIE_EMAIL_SES_REGION`,
-`NESSIE_EMAIL_DOMAIN`, `NESSIE_EMAIL_INBOUND_S3_BUCKET` and
-`NESSIE_EMAIL_SNS_TOPIC_ARN` are all set (partial configuration is *named*, never
-degraded). Plan:
+deployment, and the feature is OFF unless four `NESSIE_EMAIL_*` variables are
+set (partial configuration is *named*, never degraded). Mail is **its own
+store**, not `Message` rows; each mailbox owns one backing channel
+(`ChannelSystemType.agent_email`) with one `Thread` per `EmailConversation` —
+the *operations room* for run reports and approval gates, while
+`/agents/:agentId/mailbox` is the mail itself. Invariants: `AGENTS.md` → "An
+agent's mailbox is its own store"; plan and build detail (the `email:{mailboxId}`
+disclosure scope and its non-deadlock property, the `forceApproval` send gate,
+the rendered-draft approval route, attachment linking):
 [docs/plans/2026-09-02-agent-email.md](docs/plans/2026-09-02-agent-email.md);
-AWS setup, IAM and operating notes: [docs/deployment.md](docs/deployment.md) →
-"Agent email (Amazon SES)".
-
-Mail is **its own store**, not `Message` rows — delivery state, MIME identity
-and external participants are not a chat thread's semantics. Each mailbox owns
-one backing channel (`ChannelSystemType.agent_email`, a standard channel with no
-`dmKey`) with one `Thread` per `EmailConversation`: that thread is the
-*operations room* where run reports, approval gates and the human conversation
-about the correspondence live, while `/agents/:agentId/mailbox` is the mail.
-
-- **Routing is the SES receipt envelope, never MIME headers.** `To:`/`Cc:` are
-  written by the sender, omit Bcc destinations entirely, and can name another
-  tenant's mailbox.
-- **Delivery is claimed exactly once**, on the SES receipt id (`EmailMessage.
-  receiptId`), and the wake happens in that same transaction — persist-and-wake
-  is one decision, so an SNS retry cannot produce a second run. The forgeable
-  RFC `Message-ID` is an *index* for threading only: absent, duplicated or
-  forged, it degrades to a new conversation rather than dropping or mis-merging.
-- **Waking is structural.** `bulk`/`dsn` (from `Auto-Submitted`, `Precedence`,
-  `List-Id`, a null return-path) and mail whose SES spam/virus/SPF/DKIM/DMARC
-  verdicts failed are stored and readable but spend no run. Never a keyword list.
-- **Sending is three gates**: the explicit `email_send` grant, the mailbox's
-  `sendPolicy` (`approval` default / `auto_reply` / `auto`), and structural
-  floors no policy relaxes — an unattended run never opens new correspondence,
-  suppressed recipients refuse, the hourly cap parks overflow as approvals, and
-  **any privileged source the run read beyond its own mailbox and thread forces
-  an approval naming those sources**. That gate lives in
-  `worker/src/run/execute/email-send-gate.ts` and is wired through
-  `ToolAuthorizationInput.forceApproval`, because `evaluateToolInvokePolicy`
-  defaults to *allow* and seeds no send rule — a policy-only gate would be
-  absent wherever nobody configured one.
-- **`email:{mailboxId}` is a disclosure scope**, stamped by every mailbox read
-  and *implied by* the mailbox's own operations thread. Without that implication
-  every email run would be restricted against its own thread — suppressing its
-  live stream and forcing approval on every reply. Four tests pin it.
-- **Approvals show the whole draft.** `GET /api/agent-email/approvals/:id/draft`
-  renders the frozen `resumeState` args to the pinned approver
-  (`ApprovalRequest.requiredApproverUserId` = the agent's live steward), with a
-  7-day expiry because the 30-minute tool default would strand an overnight
-  send. Resolved reply recipients ride the server-authored approval context — a
-  reply passes no `to`.
-- **A send is crash-safe**: `queued` → conditional `sending` claim → SES →
-  `sent`; a death in between resolves to `delivery_unknown` and is **never**
-  retried, because a retry is a duplicate in someone's inbox.
-- Attachments hang off the `EmailMessage` (`Attachment.emailMessageId` +
-  `FileService` destination + its own ACL arm), never off the compact chat
-  reference message — chat visibility must not become an email attachment's
-  authority. Inbound HTML is sanitized once at ingest and remote images are
-  withheld until a reader asks (a remote image in mail is a tracking pixel).
-- Deleting a mailbox **retires the address permanently**, so a recycled local
-  part can never inherit an old correspondent's trust.
-
-Model A of the plan — an agent operating an *existing* mailbox over the Gmail
-API or SMTP/IMAP, with no interface at all — is deliberately not built here; see
-the plan's §2 and
-[docs/plans/2026-08-31-google-workspace-email-calendar.md](docs/plans/2026-08-31-google-workspace-email-calendar.md).
+operator guide: [docs/agent-email.md](docs/agent-email.md). Model A of that plan
+— an agent operating an *existing* mailbox over Gmail or SMTP/IMAP, with no
+interface — is deliberately not built.
 
 ## Individual Communications Connector
 

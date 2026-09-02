@@ -146,9 +146,8 @@ export type OutboundEmail = {
 }
 
 const encodeHeaderValue = (value: string): string => {
-  // RFC 2047 only when needed: an ASCII subject must stay readable in the raw
-  // MIME, which is what an operator reads when debugging a delivery.
-  // eslint-disable-next-line no-control-regex
+  // RFC 2047 only when needed: a printable-ASCII subject stays readable in the
+  // raw MIME, which is what an operator reads when debugging a delivery.
   if (/^[\x20-\x7E]*$/.test(value)) return value
   return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
 }

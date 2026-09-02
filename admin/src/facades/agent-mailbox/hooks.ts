@@ -48,6 +48,9 @@ export const useAgentMailbox = (agentId: string | undefined) => {
   const apiClient = useApiClient()
   return useQuery<AgentMailboxRecord | null>({
     enabled: Boolean(agentId),
+    // Arriving with content: switching agents keeps the previous mailbox on
+    // screen instead of flashing an empty section.
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       try {
         return await apiClient.get<AgentMailboxRecord>(`/api/agents/${agentId}/mailbox`)
@@ -90,6 +93,7 @@ export const useMailboxConversation = (
   const apiClient = useApiClient()
   return useQuery<EmailMessageRecord[]>({
     enabled: Boolean(agentId && conversationId),
+    placeholderData: keepPreviousData,
     queryFn: () =>
       apiClient.get(
         `/api/agents/${agentId}/mailbox/conversations/${conversationId}/messages`,
