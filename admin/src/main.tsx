@@ -21,7 +21,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // The navigation stack owns scroll: retained layers keep their position and
-// a fresh push starts at 0 (docs/navigation.md §11). The browser's own
+// a fresh push starts at 0 (docs/navigation.md §12). The browser's own
 // restoration would fight that on every history step.
 if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'
 

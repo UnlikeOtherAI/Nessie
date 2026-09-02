@@ -1,5 +1,3 @@
-import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
@@ -7,6 +5,7 @@ import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
 import { Skeleton } from '../components/primitives/Skeleton'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   appDetailTabIds,
   appDetailTabs,
@@ -14,7 +13,6 @@ import {
 } from '../components/features/apps/app-detail-view'
 import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { useTabParam } from '../navigation/useTabParam'
@@ -77,22 +75,16 @@ export const AppDetailPage = () => {
     void navigate('/apps')
   }
 
+  // One header for every state of this screen — loading, not found, and the
+  // app itself — so Back never disappears with the content. The wide-layout
+  // Back is the page's own, because Apps owns this detail's parent; on a
+  // phone the shared doorway resolves it through the one Back resolver.
   const header = (
-    <header className="flex items-center gap-3 px-6 pt-6 pb-4">
-      {/* This is the one visible phone Back doorway. Rendering the shell's
-          circular control beside it created two actions with different
-          destinations (Admin and Apps). */}
-      {!phoneLayout ? <PhoneNavigationButton /> : null}
-      <button
-        className="admin-button admin-button-secondary gap-1.5"
-        data-testid="app-detail-back"
-        onClick={backToList}
-        type="button"
-      >
-        <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-        Apps
-      </button>
-    </header>
+    <ScreenHeader
+      backLabel="Back to Apps"
+      onBack={backToList}
+      title={app?.name ?? 'App'}
+    />
   )
 
   if (!app) {

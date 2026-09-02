@@ -21,7 +21,7 @@ import {
   useWidgetData,
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { dashboardKeys } from '../lib/query-keys'
 import { NestedStage } from '../navigation/NestedStage'
@@ -116,86 +116,68 @@ export const DashboardDetailPage = () => {
     }
   }, [draftLayout, dashboard, widgetKinds])
 
-  if (isLoading) {
-    // A dashboard is a grid of cards, so its first load shows one — the slide
-    // used to land on the word "Loading…" alone (plan §4.10).
-    return <Skeleton className="p-6" count={6} variant="board" />
-  }
-  if (!dashboard) {
+  // Both waiting states render under the same header, so a phone keeps its
+  // Back while a dashboard loads or turns out not to exist. A dashboard is a
+  // grid of cards, so its first load shows one rather than the word Loading.
+  if (isLoading || !dashboard) {
     return (
-      <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
-        This dashboard is not available.
-      </p>
+      <div className="flex h-full min-h-0 flex-col" data-testid="dashboard-detail">
+        <ScreenHeader title="Dashboard" />
+        {isLoading ? (
+          <Skeleton className="p-6" count={6} variant="board" />
+        ) : (
+          <p className="p-6 text-sm" style={{ color: 'var(--tx3)' }}>
+            This dashboard is not available.
+          </p>
+        )}
+      </div>
     )
   }
 
   return (
     <div className="flex h-full min-h-0" data-testid="dashboard-detail">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Left hand-rolled: AdminPageHeader has no subtitle slot for
-            `dashboard.description` under the title — its only secondary line is
-            `eyebrow`, a 10px uppercase tracking-[0.2em] rail above the title,
-            which is not the same element. */}
-        <header
-          className="flex items-center gap-3 border-b px-6 py-3"
-          style={{ borderColor: 'var(--sep)' }}
-        >
-          <PhoneNavigationButton />
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold" style={{ color: 'var(--tx)' }}>
-              {dashboard.title}
-            </h1>
-            {dashboard.description ? (
-              <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
-                {dashboard.description}
-              </p>
-            ) : null}
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              className="rounded px-2.5 py-1.5 text-xs"
-              onClick={() => setShowVersions((open) => !open)}
-              style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-              type="button"
-            >
-              History
-            </button>
-            {editing ? (
-              <button
-                className="rounded px-2.5 py-1.5 text-xs"
-                onClick={() => setShowAddWidget(true)}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-                type="button"
-                data-testid="dashboard-add-widget"
-              >
-                + Add widget
-              </button>
-            ) : null}
-            {editing ? (
-              <button
-                className="rounded px-3 py-1.5 text-xs font-medium"
-                disabled={saveLayout.isPending}
-                onClick={() => {
+        {/* The description line is the header's subtitle slot; History,
+            Add widget and Edit/Done are its measured actions. */}
+        <ScreenHeader
+          actions={[
+            {
+              id: 'dashboard-history',
+              label: 'History',
+              onSelect: () => setShowVersions((open) => !open),
+              priority: 30,
+            },
+            ...(editing ? [{
+              id: 'dashboard-add-widget',
+              label: '+ Add widget',
+              onSelect: () => setShowAddWidget(true),
+              priority: 60,
+            }] : []),
+            editing
+              ? {
+                disabled: saveLayout.isPending,
+                id: 'dashboard-done',
+                label: saveLayout.isPending ? 'Saving…' : 'Done',
+                onSelect: () => {
                   saveLayout.mutate(layout, { onSuccess: () => setEditing(false) })
-                }}
-                style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
-                type="button"
-              >
-                {saveLayout.isPending ? 'Saving…' : 'Done'}
-              </button>
-            ) : (
-              <button
-                className="rounded px-3 py-1.5 text-xs font-medium"
-                onClick={() => setEditing(true)}
-                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
-                type="button"
-                data-testid="dashboard-edit"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-        </header>
+                },
+                primary: true,
+                priority: 100,
+              }
+              : {
+                id: 'dashboard-edit',
+                label: 'Edit',
+                onSelect: () => setEditing(true),
+                priority: 100,
+              },
+          ]}
+          subtitle={dashboard.description ? (
+            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
+              {dashboard.description}
+            </p>
+          ) : null}
+          title={dashboard.title}
+        />
 
         <div
           className="min-h-0 flex-1 overflow-auto p-4"

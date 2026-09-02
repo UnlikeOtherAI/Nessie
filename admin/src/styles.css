@@ -527,7 +527,7 @@ a {
 }
 
 /* The pull-to-refresh indicator a Root or Detail page scroller shows in the
-   native shell (docs/navigation.md §12). Driven inline by the gesture; at
+   native shell (docs/navigation.md §13). Driven inline by the gesture; at
    rest it is invisible and out of the way. */
 .phone-navigation-refresh {
   position: absolute;
@@ -2890,7 +2890,7 @@ button.reaction-pill-active:focus-visible {
   background: var(--overlay-weak);
 }
 
-/* Windows High Contrast (docs/navigation.md §11): every colour token is
+/* Windows High Contrast (docs/navigation.md §12): every colour token is
    still respected in a forced-colors palette (browsers only replace
    background/border/text colours with the OS-chosen system colours, on
    elements we don't opt out with `forced-color-adjust: none`), but the four

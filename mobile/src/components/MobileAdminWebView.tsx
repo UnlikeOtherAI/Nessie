@@ -89,7 +89,7 @@ export const MobileAdminWebView = ({
       onRenderProcessGone={onRenderProcessGone}
       onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
       originWhitelist={['*']}
-      // Pull-to-refresh is the web's (docs/navigation.md §12): the WebView's
+      // Pull-to-refresh is the web's (docs/navigation.md §13): the WebView's
       // own gesture was iOS-only, forced bounces, reloaded the document from
       // any screen and told the page nothing. The admin owns the pull at the
       // top of a root or detail scroller and posts nessie:full-refresh.

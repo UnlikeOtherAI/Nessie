@@ -1,5 +1,3 @@
-import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
@@ -8,10 +6,9 @@ import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgent
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents, useAgentStatus } from '../facades/agents/hooks'
 import type { AgentRecord } from '../lib/api-client'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import { usePhoneLayout } from '../lib/mobile-shell'
 import { Pill } from '../components/primitives/Pill'
 import { useIsOwner } from '../components/shared/OwnerGate'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
@@ -43,25 +40,15 @@ export const AgentDetailPage = () => {
   // the list — this page registers no owner of its own, which used to outrank
   // the Knowledge stages inside its Documents tab and leave the agent instead
   // of unwinding the open document. Wider layouts keep their own Back button
-  // beside the title.
-  const phoneLayout = usePhoneLayout()
+  // beside the title, which `ScreenHeader` renders from `onBack` because the
+  // registry says this screen has a parent.
 
   if (!agent) {
+    // The header is rendered here too: loading and not-found are states of
+    // this screen, and a phone with no header has no Back at all.
     return (
       <div className="flex h-full flex-col">
-        <header className="flex items-center gap-3 px-6 pt-6 pb-4">
-          <PhoneNavigationButton />
-          {!phoneLayout ? (
-            <button
-              className="admin-button admin-button-secondary gap-1.5"
-              onClick={backToList}
-              type="button"
-            >
-              <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-              Agents
-            </button>
-          ) : null}
-        </header>
+        <ScreenHeader backLabel="Back to Agents" onBack={backToList} title="Agent" />
         <div className="flex flex-1 items-center justify-center text-sm text-[color:var(--tx3)]">
           {isPending ? 'Loading agent…' : 'This agent could not be found.'}
         </div>
@@ -73,34 +60,20 @@ export const AgentDetailPage = () => {
     <DesignerAssistantPanelProvider>
       <div className="flex h-full min-w-0 flex-col lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Hand-rolled: AdminPageHeader can express neither the avatar in
-              the leading lane (it hardcodes `leading` to PhoneNavigationButton
-              and takes no `onBack` for the desktop-only Back) nor the
-              three-line identity block — name + status dot + status Pill, role,
-              current tool/last activity — under one title. */}
-          <header className="flex items-start gap-3 px-6 pt-6 pb-4">
-            <PhoneNavigationButton />
-            {!phoneLayout ? (
-              <button
-                className="admin-button admin-button-secondary mt-1 gap-1.5"
-                onClick={backToList}
-                type="button"
-              >
-                <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-                Agents
-              </button>
-            ) : null}
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
+          {/* The identity block the hero used to carry — status dot, status
+              pill, role, home link, current tool — is the header's subtitle
+              slot, and the avatar its leading slot. */}
+          <ScreenHeader
+            backLabel="Back to Agents"
+            leading={<AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />}
+            onBack={backToList}
+            subtitle={
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="truncate text-2xl font-semibold text-[color:var(--tx)]">
-                    {agent.name}
-                  </h1>
                   <AgentStatusDot status={agent.status} />
                   <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
+                  <span className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</span>
                 </div>
-                <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
                 <PrivateAgentHomeLink
                   agent={agent}
                   className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
@@ -111,8 +84,9 @@ export const AgentDetailPage = () => {
                     : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
                 </div>
               </div>
-            </div>
-          </header>
+            }
+            title={agent.name}
+          />
 
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
             <AgentDetailTabs

@@ -288,8 +288,16 @@ test('shares the phone Back control across route headers and channel flows', () 
   assert.match(navigationButton, /resolveBackAction\(/)
   assert.match(navigationButton, /<PhoneBackButton/)
   assert.match(backButton, /useNativeIOSPhoneApp/)
-  assert.match(channelHeader, /leading=\{<PhoneNavigationButton \/>\}/)
-  assert.match(composePage, /<PhoneBackButton label="Back to Channels" onBack=\{close\}/)
+  // Step 9: a screen's header no longer wires the doorway itself —
+  // `ScreenHeader` owns the leading lane and renders it on the single layout
+  // (docs/navigation.md §9).
+  const screenHeader = readSource('../src/components/shared/ScreenHeader.tsx')
+  assert.match(screenHeader, /<PhoneNavigationButton \/>/)
+  assert.match(screenHeader, /<PhoneBackButton/)
+  assert.match(channelHeader, /<ScreenHeader/)
+  assert.doesNotMatch(channelHeader, /PhoneNavigationButton/)
+  assert.match(composePage, /backLabel="Back to Channels"/)
+  assert.match(composePage, /onBack=\{phoneLayout \? close : undefined\}/)
   assert.match(infoFlow, /<PhoneNavigationButton \/>/)
 })
 
@@ -370,6 +378,6 @@ test('a committed swipe is the one Back that gives a haptic', () => {
 
 
 // 'stack containers clip rather than hide, so no descendant can scroll
-// them' moved to admin/test/navigation-gates.test.ts (docs/navigation.md §10
+// them' moved to admin/test/navigation-gates.test.ts (docs/navigation.md §11
 // "Gates") — it is one of the step-15 source-regex gates, not a
 // transition-suite pin.

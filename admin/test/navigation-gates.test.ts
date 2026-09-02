@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-// The step-15 source-regex gates (docs/navigation.md §10 "Gates", plan
+// The step-15 source-regex gates (docs/navigation.md §11 "Gates", plan
 // docs/plans/2026-09-01-navigation-motion-system.md §4.18): the shapes the
 // script/ESLint gates cannot express precisely enough belong here instead.
 // Each allowlist is a plain list a later commit deletes lines from as the

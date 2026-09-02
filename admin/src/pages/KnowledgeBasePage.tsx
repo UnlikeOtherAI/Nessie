@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useKnowledge } from '../components/features/knowledge/KnowledgeProvider'
 import { useKnowledgePageDeepLink } from '../components/features/knowledge/useKnowledgePageDeepLink'
 import { KnowledgeWorkspace } from '../components/features/knowledge/KnowledgeWorkspace'
-import { MobileSectionHeader } from '../layouts/admin-shell/MobileSectionHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 
 export const KnowledgeBasePage = () => {
   const { productView, spaceId } = useParams<{
@@ -49,7 +49,12 @@ export const KnowledgeBasePage = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <MobileSectionHeader title="Knowledge" />
+      {/* singleLayoutOnly: on a split layout the section's own list is the
+          pinned column and the workspace's panes carry their own chrome, so
+          the bar paints only where it is the screen's own header. The screen
+          is published either way, so the tab title and the native shell name
+          it on both. */}
+      <ScreenHeader singleLayoutOnly title="Knowledge" />
       <div className="min-h-0 flex-1">
         <KnowledgeWorkspace />
       </div>

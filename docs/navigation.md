@@ -252,7 +252,7 @@ authenticated shell; the name follows in a later rename). It owns:
   inline with the finger — the same three callers, the same numbers, so a
   push, a pop and a released swipe dim identically.
 
-- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §9) at
+- **A committed swipe gives one `light` haptic** (`lib/haptics.ts`, §10) at
   the moment the settle lands and the route is about to change. A cancelled
   swipe and a tapped Back give none.
 
@@ -536,13 +536,102 @@ the floor with its details there.
 Planned in this step: declared intent params (`consume` vs `state`) on the
 registry rows with one consume path.
 
-## 9. Native shell contract — **built** (the two bridge pieces, screen/attention, step 9)
+## 9. Screen headers — **built** (step 9)
 
-The `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7) calls out
-as their own pieces are **built**; pull-to-refresh and every haptic *call
-site* other than the one below stay **planned** until the pieces that call
-them (§4 gesture finish, step 14 shell polish) land.
+One header, `admin/src/components/shared/ScreenHeader.tsx`, on every screen.
+It replaced `AdminPageHeader`, `MobileSectionHeader` and the hand-rolled hero
+and 58 px bars the pages had grown: nine shapes at three heights and seven
+title sizes, disagreeing on the doorway, the heading level and whether a
+header rendered at all. Five states returned *before* any header — the
+`OwnerGate` refusals, the agent-designer loading branch, the dashboard's
+loading and not-found branches — so a phone standing on one had no Back.
+- **`ScreenHeader` composes `ResponsivePageHeader`, never forks it.** The
+  measured leading/actions partition, the overflow-into-More and the popover
+  menus stay exactly where they were; `ScreenHeader` adds the leading lane,
+  the heading contract, the two slots and the publication.
+  `ResponsivePageHeader` gained a `below` slot (the subtitle and tabs live
+  inside the one bordered block), a `heading` prop and a `titleId`. It stays
+  the primitive for the bars that are **not** a route's screen header — the
+  Knowledge panes, which are their own stack layers on `single` and the
+  deepest inline pane on `split`, and the workflow toolbar, a panel inside a
+  screen that renders `h2` through the same component.
+- **The leading lane.** On the `single` layout it is the shared Back doorway,
+  `PhoneNavigationButton`, which renders the one Back resolver's answer: an
+  open owner, the route's parent, or the menu at a root (§4). On a wide layout
+  the shell keeps its pinned sidebar, so a Back paints only where the page
+  supplies an `onBack` **and** the registry says the screen has a parent — the
+  page-owned "Agents" and "Apps" controls the detail pages already had, moved
+  into the lane. A Flow that returns to an address the registry cannot know
+  (the designer's edit origin, the compose flow's `returnTo`) declares
+  `flowOwnsBack` and owns the control on both layouts; it is still one
+  control, never a second doorway beside the shared one.
+- **Every screen has exactly one `h1`, and it is the header's title.** The
+  settle focuses it and the live region announces it (§12), so a screen with
+  no `h1` — or with two, as the Agents root had on a phone — silently loses
+  both. `title` is required for that reason. Hero content (an avatar, a status
+  line, a description) is the `leading` and `subtitle` slots, and a Tab host's
+  strip is the `tabs` slot, which takes the existing `TabBar` element
+  unchanged.
+- **The header is always rendered.** Loading, empty, not-found and refused
+  states render *inside* the screen body under the same header: `OwnerGate`
+  now wraps the body, not the page (Audit Log, Policy, Operational usage), and
+  the agent, app and dashboard details render their header on every branch.
+- **The header names the screen everywhere.** The registry classifies a route
+  but cannot name it, so the rendered title is published to
+  `navigation/screen.ts`, keyed by the pathname of the layer that rendered it
+  — retained and seeded layers stay mounted under their own location, so
+  several headers publish at once and the shell reads the one for the live
+  route. `applyScreen` then does the two things outside the document together,
+  so the browser tab and the native chrome can never disagree:
+  `document.title` becomes `<screen title> · Nessie` (an unpublished screen
+  keeps `Nessie` alone rather than a leading separator), and the native shell
+  receives `nessie:screen` (§10).
+- Pinned by `admin/test/screen-header.test.ts`: the SSR shape (one `h1`, the
+  doorway at a screen with a parent and the menu at a root, the optional
+  slots), `document.title`, the posted message's six fields, and the source
+  gates — `AdminPageHeader` and `MobileSectionHeader` do not exist, nothing
+  imports or renders them, and no file under `admin/src/pages/**` paints a
+  `<header>` of its own.
 
+## 10. Native shell contract — **built** (step 9 and the bridge pieces)
+
+The `mobile/` ↔ admin bridge facts the plan (§4.7, §4.15, §4.16, §7) calls
+out are **built**: Android hardware Back on every form factor, the haptic
+bridge, `nessie:screen` and `nessie:attention`, and pull-to-refresh handed to
+the web. The haptic call sites beyond the swipe commit (a sheet snap, a tab
+change) stay **planned**.
+
+- **`nessie:screen` — what screen the person is on.** Posted by
+  `NativePhoneNavigationBridge` beside the unchanged `nessie:route` and
+  `nessie:back-state`, so the shell stops re-deriving the tab from a
+  hand-copied prefix list and can name the screen in its own chrome:
+
+  ```
+  nessie:screen {
+    type: 'nessie:screen',
+    path: string,
+    title: string,
+    section: 'channels' | 'projects' | 'knowledge' | 'admin' | 'search',
+    screenType: 'root' | 'detail' | 'nested' | 'tabHost' | 'flow',
+    depth: number,
+    hasBack: boolean,
+  }
+  ```
+
+  `section`, `screenType` and `depth` are read straight off the surface
+  registry (§4.1) — the page type is `screenType`, not `type`, because `type`
+  is the bridge's own message discriminant and one key cannot be both.
+  `hasBack` is the one Back resolver's answer (§4) and `title` is the header's
+  rendered title (§9). It is posted on every settled change of any field and
+  on no re-render that changes none. The shell keeps a **last-known section**
+  from the latest message, so its tab index is right before the first message
+  on a cold start and after the search overlay closes.
+- **`nessie:attention { badges }`** carries one unread count per section, keyed
+  by the same registry section names (`{ channels, knowledge, projects }`
+  today; a section the admin does not count is absent and reads as 0). It
+  replaced the old `{ assignedWork, channels, knowledge, total }` shape, whose
+  keys were a vocabulary of their own; `total` stays local to the admin, where
+  the desktop and browser app badges read it.
 - **Android hardware Back installs on every Android form factor.**
   `shouldInstallNativeBackHandler` (`mobile/src/lib/native-phone-navigation.ts`)
   is just `isAndroid` now — it used to also require the iOS-only
@@ -623,7 +712,7 @@ them (§4 gesture finish, step 14 shell polish) land.
   | assignedWork | knowledge` mapping, so every section — including Admin and
   Search — can carry a badge once the admin posts one.
 
-## 10. Verification — the transition suite — **built** (step 2)
+## 11. Verification — the transition suite — **built** (step 2)
 
 The JSDOM harness cannot see an animation and cannot see a layout, so the
 motion itself is pinned in a real browser:
@@ -720,7 +809,7 @@ day.
 | a facade `useQuery` keyed by, or gated on, an entity id without `placeholderData: keepPreviousData` | source-regex test, `admin/test/skeleton.test.ts` | an array in the test file (billing only, §12) |
 | a `/api/` URL literal inside `navigation/prewarm.ts`, and every wired row spreading `prewarmRowHandlers` | source-regex test, `admin/test/prewarm.test.ts` | the wired-row list in the test file |
 
-## 11. Focus, announcement and scroll — **built** (step 11, the settle)
+## 12. Focus, announcement and scroll — **built** (step 11, the settle)
 
 The stack settles a slide, never mid-slide (`navigation/settle.ts`):
 
@@ -740,7 +829,7 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
 - **Scroll**: the browser's restoration is `manual` at the root
   (`main.tsx`); retained layers keep their position for free, a fresh push
   starts at 0. Per-layer `useScrollMemory` on `split` and the second-scroller
-  lint follow with the header work.
+  lint are still planned.
 - Pinned by `admin/test/navigation-settle.test.ts`.
 - **`aria-current="page"`**: the rail item and every section-sidebar row that
   carries an `active` class set it through one shared helper,
@@ -795,7 +884,7 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   another (Channels → Knowledge → Channels) and back.
 - Pinned by `admin/test/a11y-navigation.test.ts`.
 
-## 12. Interruption and visibility — **built** (step 14, the stack's part)
+## 13. Interruption and visibility — **built** (step 14, the stack's part)
 
 - **A navigation arriving mid-slide settles the running slide first**: its
   end pose commits, its released entries drop and its settle runs, then the
@@ -815,7 +904,7 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
 - Pinned by `admin/test/navigation-interruption.test.ts` and
   `admin/test/pull-to-refresh.test.ts`.
 
-## 13. Arriving with content — **built** (step 10)
+## 14. Arriving with content — **built** (step 10)
 
 The stack slides for 300 ms; the destination has to have something to show
 for it. Four pieces, plus one cache underneath them all.
@@ -884,7 +973,7 @@ for it. Four pieces, plus one cache underneath them all.
   used to re-fetch every image on screen — and it is cleared with the query
   cache when the session ends.
 
-## 14. Everything else — **planned**
+## 15. Everything else — **planned**
 
 Nested stages, overlay kinds and layers, screen headers, drafts (auto-save,
 no confirm dialogs), focus and announcements, scroll, keyboard, haptics,

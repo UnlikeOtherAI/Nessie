@@ -11,8 +11,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { QueryState } from '../components/shared/QueryState'
 import { useCreateDashboard, useDashboards } from '../facades/dashboards/hooks'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { prewarmRowHandlers, usePrewarm } from '../navigation/prewarm'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 
 const HOME_LABEL: Record<string, string> = {
   organization: 'Organisation',
@@ -38,23 +38,30 @@ export const DashboardsPage = () => {
   }, [dashboards, search])
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6" data-testid="dashboards-page">
-      {/* Hand-rolled: AdminPageHeader renders a page title at text-[17px]
-          font-bold in an h-[50px] bordered bar, and cannot express this
-          text-lg font-semibold title, the subtitle beneath it, or the search
-          field sharing the title row. */}
-      <header className="flex items-center gap-3">
-        <PhoneNavigationButton />
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--tx)' }}>
-            Dashboards
-          </h1>
+    <div className="flex h-full min-h-0 flex-col" data-testid="dashboards-page">
+      {/* The hero's title and subtitle are the one header's; the search field
+          moved out of the title row into the body, where a text input belongs
+          — the actions lane measures buttons, not fields. */}
+      <ScreenHeader
+        actions={[{
+          disabled: createDashboard.isPending,
+          id: 'create-dashboard',
+          label: 'Create dashboard',
+          onSelect: () => createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' }),
+          primary: true,
+          priority: 100,
+        }]}
+        subtitle={
           <p className="text-xs" style={{ color: 'var(--tx3)' }}>
             Live data from the services you connect.
           </p>
-        </div>
+        }
+        title="Dashboards"
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
         <input
-          className="ml-auto w-56 rounded border px-2 py-1.5 text-sm"
+          className="w-56 rounded border px-2 py-1.5 text-sm"
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search dashboards"
           style={{
@@ -64,18 +71,6 @@ export const DashboardsPage = () => {
           }}
           value={search}
         />
-        <button
-          className="rounded px-3 py-1.5 text-sm font-medium"
-          disabled={createDashboard.isPending}
-          onClick={() =>
-            createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' })
-          }
-          style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
-          type="button"
-        >
-          Create dashboard
-        </button>
-      </header>
 
       {/* This page had no error branch at all: a failed read fell straight
           through to "Ask your assistant to build one", which states that the
@@ -148,7 +143,8 @@ export const DashboardsPage = () => {
             </ul>
           )
         }
-      </QueryState>
+        </QueryState>
+      </div>
     </div>
   )
 }

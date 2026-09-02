@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mountPhoneNavigationViewport } from './support/phone-navigation-viewport-harness'
 
-// Interruption and visibility (docs/navigation.md §12): a navigation that
+// Interruption and visibility (docs/navigation.md §13): a navigation that
 // lands mid-slide settles the running slide first; a hidden document never
 // holds a half-finished pose.
 

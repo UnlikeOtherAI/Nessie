@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import type {
   ExecutorCreateResponse,
   PreparedExecutorAccessChangeResponse,
@@ -27,8 +27,8 @@ import {
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { NestedStage } from '../navigation/NestedStage'
 
@@ -208,39 +208,38 @@ export const ExecutorsPage = () => {
     : null, [created])
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
-        {/* Hand-rolled, and inside the max-w-7xl column so the title aligns with
-            the body: AdminPageHeader fixes the title at text-[17px] font-bold in
-            an h-[50px] full-bleed bar and cannot express this 24px font-semibold
-            hero, its 0.18em eyebrow, or the paragraph beneath it.
-            The cost of keeping it: this action row gets no measured overflow, so
-            the two buttons never fold into a "More" menu. The header wraps, so
-            at 375px they drop to their own line and still fit; below roughly
-            350px of content width — a 320px-class phone, a narrow split view, or
-            any browser zoom — their labels wrap inside the buttons into a ragged
-            two-height row. Fixable by measuring this row without touching the
-            title. */}
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <PhoneNavigationButton />
-            <div>
-              {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
-              <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
-              <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">
-                Pair governed sandboxes and coding sessions. Executors are separate from connectors:
-                connectors provide remote services; executors run approved work on a paired machine or guest runtime.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Link className="admin-button admin-button-secondary" to="/apps">Manage apps</Link>
-            <button className="admin-button admin-button-primary" onClick={() => setShowCreate((open) => !open)} type="button">
-              {showCreate ? 'Close pairing' : 'Pair executor'}
-            </button>
-          </div>
-        </header>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* The hero's eyebrow, title and paragraph are the one header's
+          eyebrow, title and subtitle; its two buttons are measured actions
+          that fold into More rather than wrapping into a ragged row. */}
+      <ScreenHeader
+        actions={[
+          {
+            href: '/apps',
+            id: 'manage-apps',
+            kind: 'link',
+            label: 'Manage apps',
+            priority: 40,
+          },
+          {
+            id: 'pair-executor',
+            label: showCreate ? 'Close pairing' : 'Pair executor',
+            onSelect: () => setShowCreate((open) => !open),
+            primary: true,
+            priority: 100,
+          },
+        ]}
+        eyebrow="Agents"
+        subtitle={
+          <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
+            Pair governed sandboxes and coding sessions. Executors are separate from connectors:
+            connectors provide remote services; executors run approved work on a paired machine or guest runtime.
+          </p>
+        }
+        title="Executors"
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
 
         <NestedStage
           active={showCreate && Boolean(me)}
@@ -349,6 +348,7 @@ export const ExecutorsPage = () => {
             {pendingPairing.data ? <><code className="text-xs">{pendingPairing.data.fingerprint}</code><button className="admin-button admin-button-primary" disabled={confirmPairing.isPending} onClick={() => void confirmPairing.mutateAsync({ executorId: selected.id, fingerprint: pendingPairing.data!.fingerprint })} type="button">Confirm fingerprint</button></> : null}
           </section>
         ) : null}
+        </div>
       </div>
     </div>
   )

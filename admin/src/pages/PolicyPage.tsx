@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Pill } from '../components/primitives/Pill'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { policyKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -81,10 +81,11 @@ export const PolicyPage = () => {
   }
 
   return (
-    <OwnerGate>
-      <section className="flex h-full min-h-0 flex-col">
-        <AdminPageHeader title="Policy Rules" />
-
+    <section className="flex h-full min-h-0 flex-col">
+      {/* The header is always rendered: a refusal is a state of this screen,
+          not a screen of its own, so Back never disappears with it. */}
+      <ScreenHeader title="Policy Rules" />
+      <OwnerGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <form className="admin-card mb-4 grid gap-3 p-4" onSubmit={handleCreate}>
             <SectionLabel>Create Rule</SectionLabel>
@@ -177,7 +178,7 @@ export const PolicyPage = () => {
             )}
           </div>
         </div>
-      </section>
-    </OwnerGate>
+      </OwnerGate>
+    </section>
   )
 }

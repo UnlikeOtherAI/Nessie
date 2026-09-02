@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
 import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   getUoaBillingCheckoutReturnNotice,
   readUoaBillingCheckoutReturn,
@@ -62,7 +62,7 @@ export const TokenUsagePage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Credits & Billing" />
+      <ScreenHeader title="Credits & Billing" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {checkoutNotice && (

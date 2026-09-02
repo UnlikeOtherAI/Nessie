@@ -64,7 +64,7 @@ type ActiveTransition = {
   fromLayerKey: string
   id: number
   // Whether the leaving screen held focus when the transition began; the
-  // settle reads it to decide where focus lands (docs/navigation.md §11).
+  // settle reads it to decide where focus lands (docs/navigation.md §12).
   outgoingHadFocus: boolean
   phase: 'preparing' | 'running'
   toLayerKey: string
@@ -190,7 +190,7 @@ export const PhoneNavigationViewport = ({
     // A navigation arriving mid-slide settles the running transition first
     // (its end pose commits, its released entries drop, its settle runs), so
     // the new one starts from a clean stack instead of preempting a half-
-    // finished pose (docs/navigation.md §12).
+    // finished pose (docs/navigation.md §13).
     const running = transitionRef.current
     if (running) finishTransition(running.id)
     const base = stackRef.current

@@ -53,13 +53,17 @@ test('admin column-browser pages delegate Back to the shared column, with no ad-
   }
 })
 
-test('app detail keeps Apps as its one visible phone return doorway', () => {
+test('app detail keeps Apps as its one visible return doorway', () => {
+  // Step 9: the page's own Back moved into `ScreenHeader`'s leading lane. On
+  // a phone the shared doorway resolves it; on a wide layout the header
+  // renders this `onBack` because the registry says the screen has a parent.
   const page = readSource('../src/pages/AppDetailPage.tsx')
   assert.match(page, /usePhoneLayout/)
   assert.match(page, /usePhoneNavigation/)
   assert.match(page, /phoneNavigation\.performBack\(\)/)
-  assert.match(page, /!phoneLayout \? <PhoneNavigationButton \/> : null/)
-  assert.match(page, /data-testid="app-detail-back"/)
+  assert.match(page, /<ScreenHeader/)
+  assert.match(page, /backLabel="Back to Apps"/)
+  assert.doesNotMatch(page, /<header/, 'no second header beside the ScreenHeader')
 })
 
 // ─── Column browser doorway ──────────────────────────────────────────────────
