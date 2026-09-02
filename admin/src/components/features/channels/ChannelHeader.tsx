@@ -1,4 +1,5 @@
 import {
+  faCircleDot,
   faCircleInfo,
   faGear,
   faMagnifyingGlass,
@@ -147,6 +148,8 @@ export const ChannelHeader = ({
       priority: 60,
     } satisfies PageHeaderAction] : []),
     ...(boundAgents.length > 0 ? [{
+      compact: true,
+      icon: faCircleDot,
       id: 'record-routine',
       label: routineRecording ? 'Recording routine' : 'Record routine',
       onSelect: onToggleRoutineRecording,

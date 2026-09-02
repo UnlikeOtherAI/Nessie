@@ -20,6 +20,7 @@ unbuilt.
 | --- | --- |
 | Credential broker + call lifecycle | `api/src/routes/voice.ts`, `api/src/services/voice/*` |
 | Wire contract | `packages/schemas/src/voice.ts` |
+| Voice list + speaking-style presets | `packages/schemas/src/voice.ts`, `packages/schemas/src/agent-speech.ts` |
 | Durable state | `voice_installations`, `voice_sessions` (migration `20260902160000_voice_calling`) |
 | Browser client | `admin/src/facades/voice/*`, worklet at `admin/public/voice-capture-worklet.js` |
 | The one call button | `admin/src/components/features/channels/ChannelHeader.tsx` |
@@ -309,6 +310,28 @@ authority exists client-side**: every tool executes server-side through the
 shared tool implementations and gates, with its own explicitly designed
 lifecycle rather than a pretended reuse of `Run`.
 
+- **The voice and the manner are the agent's, not the deployment's**
+  *(shipped 2026-09-02).* `Agent.voiceName` names one of the eight curated
+  `GEMINI_LIVE_VOICES` (`packages/schemas/src/voice.ts`) and
+  `Agent.speakingStyle` holds the person's own words for how it talks; both
+  are set in the Agent Designer ("Voice and manner"). The session response
+  resolves `resolveVoiceName(agent.voiceName)` — the agent's choice, else
+  `NESSIE_VOICE_GEMINI_VOICE`, else `Charon` — and both fallbacks are
+  validated against the same list, because Gemini rejects an unknown
+  `voiceName` at `setup` and an operator typo would otherwise kill every call
+  on the deployment. The list is hardcoded on purpose and there is exactly
+  one copy: Google publishes no API that enumerates Live voices, so the
+  picker reads the constant rather than an endpoint. The speaking style joins
+  `setup.systemInstruction` through the *same* `buildSpeakingStyleBlock`
+  the typed agent's system prompt uses (`@nessie/schemas`), so the two
+  surfaces cannot describe the same choice differently — and it belongs at
+  that tier because it is agent configuration written by someone entitled to
+  edit the agent, never conversation content. **Caveat, deliberate:** a call
+  today is always with the Personal Assistant, which is `systemManaged` and
+  therefore not editable in the Agent Designer, so the PA's own call still
+  falls back to the deployment voice with no style. The wiring is in place
+  for the moment calling a designed agent ships; the speaking style already
+  takes effect on every ordinary typed run.
 - **Context seeding — role-preserving, never system-tier.** The session
   response carries a server-rendered context bundle: a bounded recent DM
   slice (Gemini Live re-bills accumulated context every turn, so the seed
