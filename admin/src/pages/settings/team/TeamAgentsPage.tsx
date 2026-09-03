@@ -10,7 +10,7 @@ import type { TeamRecord } from '../../../lib/api-client'
 export const TeamAgentsPage = ({ tabs, team }: SettingsTabHostProps & { team?: TeamRecord }) => (
   <SettingsPanel eyebrow="Team" title="Agents">
     {tabs}
-    <div className="grid max-w-3xl gap-4">
+    <div className="grid gap-4">
       {team ? <CloudBrowserPanel scope="team" teamId={team.id} /> : null}
     </div>
   </SettingsPanel>

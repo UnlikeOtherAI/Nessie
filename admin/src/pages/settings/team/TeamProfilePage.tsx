@@ -49,7 +49,7 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
   return (
     <SettingsPanel eyebrow="Team" title="Profile">
       {tabs}
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Name</SectionLabel>
           {externallyManaged ? (

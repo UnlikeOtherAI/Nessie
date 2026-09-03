@@ -272,6 +272,7 @@ export const updateDraftForUser = async (
       contentFingerprint: fingerprint,
       revision: { increment: 1 },
       state: 'draft',
+      claimedAt: null,
     },
   })
   return toRecord(row)
@@ -407,18 +408,59 @@ export const sendDraftForUser = async (
 }
 
 /**
- * Dispatch a draft already claimed as `sending`. Used by the immediate path and
- * by the undo-window sweep, so both share one provider call and one state flip.
+ * A row still `dispatching` this long after its claim means the worker that
+ * claimed it died mid-send, and the sweep may claim it again.
+ *
+ * Two minutes, because the normal `dispatching` window is one Gmail API round
+ * trip — a few seconds — and two minutes also covers a worker killed during a
+ * slow deploy overlap. The undo window is only seconds, so by the time a sweep
+ * could even see the row its `sendAfter` has already elapsed. The failure mode
+ * this guards is a reclaimed send whose dead claimer actually reached Gmail
+ * before dying; the odds are far better than stranding the draft forever, but
+ * they are not zero.
+ */
+export const STALE_CLAIM_WINDOW_MS = 2 * 60 * 1000
+
+/**
+ * Dispatch a draft the caller believes is ready to send.
+ *
+ * The claim is the first thing this function does: an atomic conditional
+ * update flips `sending → dispatching` and stamps `claimedAt`, and only the
+ * caller that wins it proceeds. Anything before the flip — a `findUnique`
+ * plus a state check — is read-then-check, and with two worker replicas
+ * ticking the same sweep both pass it and both call Gmail, so the recipient
+ * gets the email twice. Irreversible. The conditional update is the ONLY
+ * gate, and it also admits a stale `dispatching` row whose `claimedAt` has
+ * passed {@link STALE_CLAIM_WINDOW_MS}, so a worker that died mid-send does
+ * not strand the draft.
  */
 export const dispatchClaimedDraft = async (
   prisma: PrismaClient,
   draftActionId: string,
   deps: GmailDraftDeps,
 ): Promise<SendDraftResult> => {
+  const now = deps.now?.() ?? new Date()
+  const claimed = await prisma.gmailDraftAction.updateMany({
+    where: {
+      id: draftActionId,
+      OR: [
+        { state: 'sending' },
+        {
+          state: 'dispatching',
+          claimedAt: { lt: new Date(now.getTime() - STALE_CLAIM_WINDOW_MS) },
+        },
+      ],
+    },
+    data: { state: 'dispatching', claimedAt: now },
+  })
+  if (claimed.count !== 1) {
+    // The loser is never an error: another dispatcher owns the row, or it was
+    // already sent/undone — either way this caller must no-op, NOT send.
+    throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+  }
   const row = await prisma.gmailDraftAction.findUniqueOrThrow({
     where: { id: draftActionId },
   })
-  if (row.state !== 'sending') throw new GmailDraftError('DRAFT_NOT_SENDABLE')
   const credential = await loadCredential(
     prisma,
     {
@@ -438,10 +480,11 @@ export const dispatchClaimedDraft = async (
     )
   } catch (error) {
     // Return the row to `draft` so the person can retry or edit; leaving it in
-    // `sending` would strand the draft with no affordance.
+    // `dispatching` would strand the draft with no affordance. The condition
+    // matches the claim above, so this only clears a claim this caller holds.
     await prisma.gmailDraftAction.updateMany({
-      where: { id: row.id, state: 'sending' },
-      data: { state: 'draft', sendAfter: null },
+      where: { id: row.id, state: 'dispatching' },
+      data: { state: 'draft', sendAfter: null, claimedAt: null },
     })
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
@@ -449,9 +492,10 @@ export const dispatchClaimedDraft = async (
     where: { id: row.id },
     data: {
       state: 'sent',
-      sentAt: deps.now?.() ?? new Date(),
+      sentAt: now,
       sentMessageId: sent.messageId,
       sendAfter: null,
+      claimedAt: null,
     },
   })
   return { status: 'sent', sentMessageId: sent.messageId, action: toRecord(updated) }
@@ -469,7 +513,7 @@ export const undoHeldSend = async (
       ownerUserId: input.userId,
       state: 'sending',
     },
-    data: { state: 'draft', sendAfter: null },
+    data: { state: 'draft', sendAfter: null, claimedAt: null },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
   const row = await prisma.gmailDraftAction.findUniqueOrThrow({
@@ -513,7 +557,7 @@ export const discardDraftForUser = async (
   }
   const row = await prisma.gmailDraftAction.update({
     where: { id: existing.id },
-    data: { state: 'discarded', sendAfter: null },
+    data: { state: 'discarded', sendAfter: null, claimedAt: null },
   })
   return toRecord(row)
 }

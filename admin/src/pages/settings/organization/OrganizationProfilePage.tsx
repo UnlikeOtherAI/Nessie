@@ -48,7 +48,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   return (
     <SettingsPanel eyebrow="Organization" title="Profile">
       {tabs}
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Name</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
