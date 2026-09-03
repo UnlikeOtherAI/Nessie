@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
 import Fastify from 'fastify'
@@ -16,6 +17,9 @@ const teamId = '00000000-0000-4000-8000-000000000003'
 const localTeamId = '00000000-0000-4000-8000-000000000004'
 const userId = '00000000-0000-4000-8000-00000000000a'
 const externalTeamId = 'uoa-team-42'
+const externalOrgId = 'uoa-org-7'
+const otherTeamId = '00000000-0000-4000-8000-000000000005'
+const otherExternalTeamId = 'uoa-team-99'
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
@@ -25,13 +29,30 @@ const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 // failing a lookup for a name that does not exist.
 const UOA_TEST_BASE_URL = 'https://93.184.216.34'
 
+// A real key: the `/org/*` relay signs a subject assertion with it, so a
+// placeholder would fail before any request was made.
+const uoaPrivateKeyPem = String(
+  generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+    format: 'pem',
+    type: 'pkcs8',
+  }),
+)
+
+// The UOA session the signed-in person holds, for the workspace they are in.
+const uoaIdentity = {
+  organizationId: externalOrgId,
+  subject: 'usr_ondra',
+  teamId: externalTeamId,
+  tokenVersion: 3,
+}
+
 const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
   const previous = { ...process.env }
   Object.assign(process.env, {
     UOA_BASE_URL: UOA_TEST_BASE_URL,
     UOA_CLIENT_SECRET: 'test-client-secret',
     UOA_CONFIG_JWT_KID: 'test-kid',
-    UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
+    UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(uoaPrivateKeyPem).toString('base64'),
     UOA_CONFIG_URL: 'https://nessie.test/uoa/config.jwt',
     UOA_DOMAIN: 'nessie.test',
     UOA_JWKS_URL: 'https://nessie.test/.well-known/jwks.json',
@@ -50,31 +71,68 @@ const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
 type TeamRow = {
   id: string
   organizationId: string
+  externalOrgId: string | null
   externalWorkspaceId: string | null
   name: string
 }
 
 const teams: TeamRow[] = [
-  { id: teamId, organizationId, externalWorkspaceId: externalTeamId, name: 'Design' },
+  {
+    id: teamId,
+    organizationId,
+    externalOrgId,
+    externalWorkspaceId: externalTeamId,
+    name: 'Design',
+  },
+  // Another workspace in the same organisation, which the picker may read but
+  // the session is not standing in.
+  {
+    id: otherTeamId,
+    organizationId,
+    externalOrgId,
+    externalWorkspaceId: otherExternalTeamId,
+    name: 'Support',
+  },
   // Bound to no UOA workspace — a purely local team.
-  { id: localTeamId, organizationId, externalWorkspaceId: null, name: 'Local only' },
+  {
+    id: localTeamId,
+    organizationId,
+    externalOrgId: null,
+    externalWorkspaceId: null,
+    name: 'Local only',
+  },
 ]
 
 const makePrisma = (): PrismaClient =>
   ({
     team: {
+      // Two shapes reach this: the current-workspace routes scope by the
+      // actor's organisation, the picker route by the signed-in user's
+      // membership. Honour both `where`s — a fake that ignored one would widen
+      // the result set past what production returns.
       findFirst: async ({
         where,
       }: {
-        where: { id: string; project: { organizationId: string } }
+        where: {
+          id: string
+          project?: { organizationId: string }
+          members?: { some: { userId: string } }
+        }
       }) => {
         const team = teams.find(
           (candidate) =>
             candidate.id === where.id &&
-            candidate.organizationId === where.project.organizationId,
+            (where.project
+              ? candidate.organizationId === where.project.organizationId
+              : true) &&
+            (where.members ? where.members.some.userId === userId : true),
         )
         return team
-          ? { externalWorkspaceId: team.externalWorkspaceId, name: team.name }
+          ? {
+            externalOrgId: team.externalOrgId,
+            externalWorkspaceId: team.externalWorkspaceId,
+            name: team.name,
+          }
           : null
       },
     },
@@ -82,7 +140,7 @@ const makePrisma = (): PrismaClient =>
 
 const actorContextFor = (
   roles: string[],
-  overrides: { teamId?: string } = {},
+  overrides: { teamId?: string; uoa?: boolean } = {},
 ): AuthorizedActionContext => ({
   actor: { actorType: 'user', actorId: userId, roles },
   tenant: {
@@ -90,8 +148,13 @@ const actorContextFor = (
     projectId,
     teamId: overrides.teamId ?? teamId,
   },
-  actionContext: { requestId: 'req-workspace-avatar' },
-})
+  actionContext: {
+    requestId: 'req-workspace-avatar',
+    // Absent by default: a session with no assertable UOA identity is exactly
+    // the case that still has to take the `/domain/*` relay.
+    ...(overrides.uoa ? { uoaIdentity } : {}),
+  },
+} as unknown as AuthorizedActionContext)
 
 const makeApp = async (actorContext: AuthorizedActionContext) => {
   const app = Fastify({ logger: false })
@@ -122,17 +185,24 @@ const multipartBody = (
   }
 }
 
-type StubCall = { url: string; method: string; authorization?: string }
+type StubCall = {
+  url: string
+  method: string
+  authorization?: string
+  subjectAssertion?: string
+}
 
 const stubFetch = (
   calls: StubCall[],
   respond: (call: StubCall) => Response,
 ): typeof fetch =>
   (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const headers = new Headers(init?.headers)
     const call: StubCall = {
       url: String(input),
       method: init?.method ?? 'GET',
-      authorization: new Headers(init?.headers).get('authorization') ?? undefined,
+      authorization: headers.get('authorization') ?? undefined,
+      subjectAssertion: headers.get('x-uoa-subject-assertion') ?? undefined,
     }
     calls.push(call)
     return respond(call)
@@ -143,7 +213,7 @@ test('resolveUoaWorkspace maps the session team to its UOA workspace', async () 
 
   assert.deepEqual(
     await resolveUoaWorkspace(prisma, { organizationId, teamId }),
-    { externalTeamId, name: 'Design' },
+    { externalOrgId, externalTeamId, name: 'Design' },
   )
   // A team with no UOA binding, no team in context, and a team in another
   // organization all resolve to nothing.
@@ -454,4 +524,107 @@ test('workspace avatar routes are inert when UOA is not configured', async () =>
     else process.env.UOA_DOMAIN = previous
     await app.close()
   }
+})
+
+/**
+ * The `/org/*` relay is the whole reason a workspace picture can be overridden
+ * at all for a tenant whose UOA organisation was founded somewhere other than
+ * Nessie's own domain: `/domain/teams/:teamId/avatar` scopes to organisations
+ * *created on* the calling domain and answers the generic 404 for every other
+ * one — GET included, which is what drew initials in settings while the rail
+ * showed the workspace's real SSO icon from UOA's public image. `/org/*` is
+ * scoped by the acting person instead, so the assertion is the fix, not a
+ * decoration.
+ */
+const ORG_AVATAR_PATH =
+  `/org/organisations/${externalOrgId}/teams/${externalTeamId}/avatar`
+
+test('a UOA session relays the workspace avatar as the signed-in person', async () => {
+  await withUoaEnv(async () => {
+    const app = await makeApp(actorContextFor(['member'], { uoa: true }))
+    const calls: StubCall[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = stubFetch(
+      calls,
+      () => new Response(PNG_BYTES, { headers: { 'content-type': 'image/png' } }),
+    )
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/api/workspace/avatar' })
+
+      assert.equal(response.statusCode, 200)
+      const url = new URL(calls[0]?.url ?? '')
+      assert.equal(url.pathname, ORG_AVATAR_PATH)
+      // `/org/*` runs the config verifier, so the signed config must be named.
+      assert.equal(url.searchParams.get('config_url'), 'https://nessie.test/uoa/config.jwt')
+      assert.ok(calls[0]?.subjectAssertion, 'the person is asserted, not the tenant')
+      assert.match(calls[0]?.authorization ?? '', /^Bearer [0-9a-f]{64}$/)
+    } finally {
+      globalThis.fetch = originalFetch
+      await app.close()
+    }
+  })
+})
+
+test('a UOA session uploads and clears through the org-scoped route', async () => {
+  await withUoaEnv(async () => {
+    const app = await makeApp(actorContextFor(['admin'], { uoa: true }))
+    const calls: StubCall[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = stubFetch(calls, () => new Response(JSON.stringify({ ok: true })))
+
+    const body = multipartBody('file', 'logo.png', 'image/png', PNG_BYTES)
+    try {
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/api/workspace/avatar',
+        payload: body.payload,
+        headers: body.headers,
+      })
+      assert.equal(put.statusCode, 200)
+
+      const removed = await app.inject({ method: 'DELETE', url: '/api/workspace/avatar' })
+      assert.equal(removed.statusCode, 200)
+
+      assert.deepEqual(
+        calls.map((call) => [call.method, new URL(call.url).pathname]),
+        [['PUT', ORG_AVATAR_PATH], ['DELETE', ORG_AVATAR_PATH]],
+      )
+      for (const call of calls) {
+        assert.ok(call.subjectAssertion, `${call.method} must assert the person`)
+      }
+    } finally {
+      globalThis.fetch = originalFetch
+      await app.close()
+    }
+  })
+})
+
+test('a UOA session still takes the domain relay for another workspace', async () => {
+  await withUoaEnv(async () => {
+    // The picker reads workspaces the session is not standing in. UOA pins an
+    // assertion to the asserted workspace, so a foreign team id can never ride
+    // one — the read has to fall back to the domain-scoped route.
+    const app = await makeApp(actorContextFor(['owner'], { teamId: otherTeamId, uoa: true }))
+    const calls: StubCall[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = stubFetch(
+      calls,
+      () => new Response(PNG_BYTES, { headers: { 'content-type': 'image/png' } }),
+    )
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${otherTeamId}/avatar`,
+      })
+
+      assert.equal(response.statusCode, 200)
+      assert.equal(new URL(calls[0]?.url ?? '').pathname, `/domain/teams/${otherExternalTeamId}/avatar`)
+      assert.equal(calls[0]?.subjectAssertion, undefined)
+    } finally {
+      globalThis.fetch = originalFetch
+      await app.close()
+    }
+  })
 })
