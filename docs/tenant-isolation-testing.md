@@ -1,7 +1,8 @@
 # Tenant-isolation conformance suite
 
 Nessie is multi-tenant: the whole data model hangs off
-`Organisation → Project → Team → Channel`, and every child table carries an
+`Organisation → Workspace → Project → Channel` (see
+[standards/workspace-model.md](standards/workspace-model.md)), and every child table carries an
 `organization_id`. The single most important security invariant is therefore
 **tenant isolation**: a caller authenticated in organisation B must never be
 able to read or mutate organisation A's rows, no matter how privileged they are
