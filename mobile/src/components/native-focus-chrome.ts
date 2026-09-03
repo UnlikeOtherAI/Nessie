@@ -1,3 +1,4 @@
+import { mixColor } from '../lib/chrome-transition'
 import type { NativeShellPresentation } from './native-shell-presentation'
 
 /**
@@ -36,3 +37,40 @@ export const applyNativeFocusChrome = (
   presentation.nativeAccount.focusModeEnabled
     ? { ...presentation, ...NATIVE_FOCUS_CHROME }
     : presentation
+
+/** The chrome colours focus swaps, and the only ones that animate. */
+export const NATIVE_CHROME_KEYS = [
+  'accent',
+  'chromeSurface',
+  'inactive',
+  'phoneHeaderSurface',
+  'phoneHeaderText',
+  'phoneText',
+  'phoneTextMuted',
+  'strongAccent',
+] as const
+
+export type NativeChromeColors = Pick<
+  NativeShellPresentation,
+  (typeof NATIVE_CHROME_KEYS)[number]
+>
+
+export const pickNativeChrome = (
+  presentation: NativeShellPresentation,
+): NativeChromeColors =>
+  Object.fromEntries(
+    NATIVE_CHROME_KEYS.map((key) => [key, presentation[key]]),
+  ) as NativeChromeColors
+
+export const nativeChromeKey = (chrome: NativeChromeColors): string =>
+  NATIVE_CHROME_KEYS.map((key) => chrome[key]).join('|')
+
+/** Every chrome colour, one step along the transition. */
+export const blendNativeChrome = (
+  from: NativeChromeColors,
+  to: NativeChromeColors,
+  progress: number,
+): NativeChromeColors =>
+  Object.fromEntries(
+    NATIVE_CHROME_KEYS.map((key) => [key, mixColor(from[key], to[key], progress)]),
+  ) as NativeChromeColors
