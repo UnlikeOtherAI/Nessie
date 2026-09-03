@@ -67,6 +67,7 @@ export const IpadNativeAccountButton = ({
       imageUrl={avatarUrl}
       initialsFallback="U"
       label={name ?? ''}
+      shape="circle"
       size={ACCOUNT_AVATAR_SIZE}
       textColor="#ffffff"
     />

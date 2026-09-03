@@ -12,6 +12,14 @@ type NativeIdentityAvatarProps = {
   textColor: string
   /** Initials shown before any picture resolves, and when none exists. */
   initialsFallback?: string
+  /**
+   * 'tile' (the default) draws the shared rounded square used for a workspace
+   * mark; 'circle' draws a person as a full circle. A workspace is a rounded
+   * square and a person is a circle, matching the circular account button the
+   * person's picture sits inside — a tile there left square corners inside the
+   * ring.
+   */
+  shape?: 'tile' | 'circle'
 }
 
 type AvatarImageSource =
@@ -75,6 +83,7 @@ export const NativeIdentityAvatar = ({
   label,
   size,
   textColor,
+  shape = 'tile',
 }: NativeIdentityAvatarProps): React.JSX.Element => {
   const [failedRasterUrl, setFailedRasterUrl] = useState<string | null>(null)
   const source = useAvatarImageSource(imageUrl)
@@ -84,7 +93,12 @@ export const NativeIdentityAvatar = ({
     <View
       style={[
         styles.avatar,
-        { backgroundColor, borderRadius: identityTileRadius(size), height: size, width: size },
+        {
+          backgroundColor,
+          borderRadius: shape === 'circle' ? size / 2 : identityTileRadius(size),
+          height: size,
+          width: size,
+        },
       ]}
     >
       {source.kind === 'svg' ? (

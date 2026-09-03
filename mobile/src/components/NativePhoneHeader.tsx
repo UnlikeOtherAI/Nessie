@@ -207,6 +207,7 @@ export const NativePhoneHeader = ({
             imageUrl={accountAvatarUrl}
             initialsFallback="U"
             label={accountName ?? ''}
+            shape="circle"
             size={avatarDiameter}
             textColor={headerText}
           />
