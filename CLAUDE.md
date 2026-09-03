@@ -811,11 +811,10 @@ blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
 one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
 through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
-facts). It is also **placeable in ordinary channels** like any other shared
-agent — and so in projects, whose reach is their channels — under the ordinary
-bind gates; a shared room is advice-only, because the identity-delegated tools
-stay gated on its own home DM. Bootstrap runs beside the PA's at login and user
-provisioning but
+facts), and **placeable in ordinary channels** like any other shared agent — so
+in projects too, whose reach is their channels — under the ordinary bind gates;
+a shared room is advice-only, the identity-delegated tools staying gated on its
+own home DM. Bootstrap runs beside the PA's at login and user provisioning but
 **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
 lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
 binding, trigger and run-placement refusals, the un-gated list arm, the
@@ -829,27 +828,25 @@ the disabled detail surface: [docs/global-agents.md](docs/global-agents.md). Spe
 **Direct messages lists conversations, not a directory.** Every DM channel there
 is provisioned before anybody speaks — a person's DM, a private agent's home, a
 global agent's home the moment the account exists — so listing provisioned
-channels made the section a roster of the workspace, with the Agent Designer
-pinned in it from day one. A row appears once its channel carries a message,
-plus the channel the viewer is standing in, so opening a fresh conversation
-never pulls its own row out from under them
-(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
-it resolves through the full people directory, because starring somebody *is*
-adding them. The doorways stay named: **Create → Message** (and the section's
-`+`) reaches a person, **Create → Agent** opens the Designer's **chat**, the
-form staying for field edits — the create menu's last row, and on the phone
-sheet the last row *above* its morphing Message button
-(`mobile/src/lib/native-creation-menu.ts`). One `openAgentDesignerChat` serves
-every client via `POST /api/global-agents/:slug/home`, which *ensures* that DM.
+channels made the section a roster of the workspace. A row appears once its
+channel carries a message, plus the channel the viewer is standing in, so
+opening a fresh conversation never pulls its own row out from under them
+(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected.
+The doorways stay named: **Create → Message** (and the section's `+`) reaches a
+person, **Create → Agent** opens the Designer's **chat**, the form staying for
+field edits — the create menu's last row, and on the phone sheet the last row
+*above* its morphing Message button (`mobile/src/lib/native-creation-menu.ts`).
+One `openAgentDesignerChat` serves every client via
+`POST /api/global-agents/:slug/home`, which *ensures* that DM.
 
 ## Personal assistant — workspace provisioning
 
 Four `personalAssistantOnly` builtins reach the PA
 (`worker/src/run/pa-tools/provisioning.ts`), each mirroring one REST route's
 authorization — no weaker, no stronger — and calling the same service function
-the route calls. The pattern, visible-refusal for owner-gated tools, the
-tool-ships-with-its-resolving-read rule, and the one arm that also opens them to
-a global agent on its own home DM are in `AGENTS.md`. Per-tool facts:
+the route calls. The pattern, visible-refusal, the tool-ships-with-its-read
+rule, and the arm that also opens them to a global agent on its own home DM:
+`AGENTS.md`. Per-tool facts:
 
 - `agent_list` → `listAgentsForUser` (`safe: true`). Any active member, matching
   `GET /api/agents` and scoped by the same entitlement the Agents page uses —
@@ -988,18 +985,16 @@ itself in `AGENTS.md`. Plan and phasing:
 
 ## MDNS
 
-The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. This feature is part of the legacy `src/` runtime; the new `api/` server does not yet register mDNS. Clients on the same network can discover the legacy server automatically without hardcoded IPs.
+The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch — part of the legacy `src/` runtime; the new `api/` server does not register mDNS.
 
 ## Docs
 
-- [brief.md](docs/brief.md) — Historical architecture brief (see banner)
-- [build-ai-coworker.md](docs/done/build-ai-coworker.md) — Historical macOS app build plan (moved to done/)
-- [context-window-optimization-audit.md](docs/context-window-optimization-audit.md) — Audit + prioritized roadmap for LLM context-window usage in the agentic run pipeline
-- [known-limitations.md](docs/known-limitations.md) — Code-verified register of current limitations (status taxonomy; two fixes in flight as of 2026-07-23)
-- Finished documents belong in `docs/done/`.
+- [brief.md](docs/brief.md) (historical),
+  [context-window-optimization-audit.md](docs/context-window-optimization-audit.md),
+  [known-limitations.md](docs/known-limitations.md). Finished documents belong
+  in `docs/done/`.
 
 ## Documentation & Goals — update with every change
 
-Docs and stated goals stay in sync with the code in the same turn — part of
-the definition of done, not a follow-up. Authoritative rule: `AGENTS.md` →
-"Documentation & Goals".
+Docs and stated goals stay in sync with the code in the same turn — part of the
+definition of done. Rule: `AGENTS.md` → "Documentation & Goals".
