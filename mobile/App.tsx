@@ -69,7 +69,7 @@ import {
   DEFAULT_NATIVE_SHELL_PRESENTATION,
   reduceNativeShellPresentation,
 } from './src/components/native-shell-presentation'
-import { applyNativeFocusChrome } from './src/components/native-focus-chrome'
+import { useNativeFocusChrome } from './src/lib/use-native-focus-chrome'
 import {
   createNativeTabNavigationState,
   DEFAULT_LAST_KNOWN_SCREEN,
@@ -124,8 +124,9 @@ const Shell = (): React.JSX.Element => {
   )
   // Focus mode is monochrome, and the native header and tab bar are chrome the
   // page no longer draws, so they take that palette here rather than reading
-  // it back out of the document.
-  const focusedPresentation = applyNativeFocusChrome(presentation)
+  // it back out of the document -- travelling to it on the page's own 300ms
+  // curve instead of snapping ahead of the surface behind them.
+  const focusedPresentation = useNativeFocusChrome(presentation)
   const {
     accent,
     attentionBadges,
