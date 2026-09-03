@@ -223,6 +223,7 @@ export const AgentDesignerForm = ({
       {/* Voice and manner — how this agent sounds on a call, and how it talks
           everywhere. */}
       <AgentSpeechFieldset
+        disabled={readOnly}
         onSpeakingStyleChange={actions.setSpeakingStyle}
         onVoiceNameChange={actions.setVoiceName}
         speakingStyle={state.speakingStyle}

@@ -36,18 +36,16 @@ export type DelegatedRunFacts = {
 const NO_IDENTITY_TOOLS: ReadonlySet<string> = new Set<string>()
 
 /**
- * The single-member private DMs whose one bound agent acts as the person it is
- * talking to: the Personal Assistant's, and a DM-homed global agent's home.
- *
  * The channel-type-only half of the delegation fact, for the places that hold a
  * channel and no agent (realtime narrowing for a destination, the orchestrator's
- * structural fast path). Mirrors `isDelegatedSystemDmChannelType` on the api
- * side deliberately — one sentence, two processes, and neither may drift.
+ * structural fast path).
+ *
+ * It used to be defined here *and* on the api side, each with a comment saying
+ * the other must not drift. It is now one definition in `@nessie/schemas`,
+ * beside the stamping helper the api's wake paths call, and re-exported here so
+ * worker call sites keep their import path.
  */
-export const isDelegatedSystemDmChannelType = (
-  systemChannelType: string | null | undefined,
-): boolean =>
-  systemChannelType === 'personal_assistant' || systemChannelType === 'system_agent'
+export { isDelegatedSystemDmChannelType } from '@nessie/schemas'
 
 /**
  * The blueprint behind a `systemSlug`, when it is one this deployment still

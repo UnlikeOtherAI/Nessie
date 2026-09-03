@@ -1,8 +1,6 @@
 import {
   AgentIdSchema,
   ChannelIdSchema,
-  OrganizationIdSchema,
-  ProjectIdSchema,
   TeamIdSchema,
   UserIdSchema,
 } from '@nessie/schemas'
@@ -10,12 +8,17 @@ import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
-// The channel record is produced by `@nessie/workspace-admin`, which the worker
-// also uses, so its schema lives in `@nessie/schemas`.
+// The channel, project and team records are produced by
+// `@nessie/workspace-admin`, which the worker also uses, so their schemas live
+// in `@nessie/schemas`.
 export {
   ChannelRecordSchema,
+  ProjectRecordSchema,
+  TeamRecordSchema,
   type ChannelRecord,
   type PersonalAssistantPresenceParticipant,
+  type ProjectRecord,
+  type TeamRecord,
 } from '@nessie/schemas'
 
 // sp-channels: body for PATCH /api/channels/:channelId
@@ -33,19 +36,6 @@ export const UpdateChannelBodySchema = z
     { message: 'At least one of label, topic, or description is required' },
   )
 export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
-
-export const ProjectRecordSchema = z.object({
-  id: ProjectIdSchema,
-  name: NonEmptyStringSchema,
-  avatarEmoji: z.string().min(1).max(32).nullable(),
-  avatarAttachmentId: z.string().uuid().nullable(),
-  organizationId: OrganizationIdSchema,
-  memberCount: z.number().int().nonnegative(),
-  teamCount: z.number().int().nonnegative().optional(),
-  channelCount: z.number().int().nonnegative().optional(),
-  createdAt: TimestampSchema,
-})
-export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
 
 export const ProjectMemberRecordSchema = z.object({
   userId: UserIdSchema,
