@@ -85,7 +85,7 @@ import type { RouteDeps } from './types.js'
  * the call's own and is never named by the caller, which is what keeps the
  * scope from widening into "write to any thread this person can see".
  *
- * Spec: docs/plans/2026-09-02-gemini-voice-calling.md
+ * Spec: docs/plans/2026-09-02-gemini-voice-calling/overview.md
  */
 export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {

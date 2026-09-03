@@ -6,7 +6,7 @@ import { z } from 'zod'
  * The server brokers a one-use Gemini Live credential from Ledger and hands
  * the client everything it needs to open the socket itself: audio flows
  * device↔Google, and the deployment's `LEDGER_PROXY_TOKEN` never leaves the
- * server. Spec: `docs/plans/2026-09-02-gemini-voice-calling.md`.
+ * server. Spec: `docs/plans/2026-09-02-gemini-voice-calling/overview.md`.
  */
 
 /**

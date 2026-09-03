@@ -1,6 +1,6 @@
 # Android voice calling — Personal Assistant on the Gemini Live socket
 
-Date: 2026-09-02. Parent spec: `docs/plans/2026-09-02-gemini-voice-calling.md`
+Date: 2026-09-02. Parent spec: `docs/plans/2026-09-02-gemini-voice-calling/overview.md`
 (shipped; browser client in production). This document plans the Android build.
 
 The browser already places Gemini Live voice calls to the Personal Assistant:
