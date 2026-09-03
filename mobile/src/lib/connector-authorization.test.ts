@@ -29,6 +29,7 @@ test('the narrow bridge message launches connector authorization, never a call l
     dismissNativeMenus: () => undefined,
     dismissNotifications: () => undefined,
     dispatchPresentation: () => undefined,
+    endNativeVoiceCall: () => undefined,
     ensureNativePushRegistration: () => undefined,
     flushExternalAuthDelivery: () => undefined,
     lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN,
@@ -44,6 +45,8 @@ test('the narrow bridge message launches connector authorization, never a call l
     setCurrentPath: () => undefined,
     setIndex: () => undefined,
     setLastKnownScreen: () => undefined,
+    setNativeVoiceCallMuted: () => undefined,
+    startNativeVoiceCall: () => undefined,
     triggerHaptic: () => undefined,
   }
   const message = {
@@ -70,6 +73,7 @@ test('the haptic bridge message routes to the native trigger, never a connector 
     dismissNativeMenus: () => undefined,
     dismissNotifications: () => undefined,
     dispatchPresentation: () => undefined,
+    endNativeVoiceCall: () => undefined,
     ensureNativePushRegistration: () => undefined,
     flushExternalAuthDelivery: () => undefined,
     lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN,
@@ -85,6 +89,8 @@ test('the haptic bridge message routes to the native trigger, never a connector 
     setCurrentPath: () => undefined,
     setIndex: () => undefined,
     setLastKnownScreen: () => undefined,
+    setNativeVoiceCallMuted: () => undefined,
+    startNativeVoiceCall: () => undefined,
     triggerHaptic: (kind: string) => hapticKinds.push(kind),
   }
 

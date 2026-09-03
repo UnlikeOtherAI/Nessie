@@ -3,8 +3,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { VoiceCapability } from '@nessie/schemas'
 
+import { getBaseUrl } from '../../lib/api-client'
 import { threadKeys, voiceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import {
+  asVoiceCallState,
+  endNativeCall,
+  handOffCallToNative,
+  isNativeVoiceCallShell,
+  setNativeCallMuted,
+  useNativeVoiceCallState,
+} from './native-voice-call'
 import { createVoiceApi } from './voice-api'
 import { createVoiceCall, type VoiceCall, type VoiceCallState } from './voice-call-client'
 import { drainTranscriptOutbox, drainUsageOutbox } from './voice-usage-outbox'
@@ -113,5 +122,60 @@ export const useVoiceCall = () => {
     end,
     setMuted,
     isActive: state.phase === 'connecting' || state.phase === 'live' || state.phase === 'ending',
+  }
+}
+
+/**
+ * The Personal Assistant call, placed natively where the shell can.
+ *
+ * One hook, so the page holds one call object regardless of where the call
+ * actually runs: inside the mobile app the button hands off to CallKit and this
+ * mirrors what native reports; everywhere else it is the browser call,
+ * unchanged. Two hooks would put the branch in the page, and the branch would
+ * drift.
+ */
+export const usePersonalAssistantCall = () => {
+  const apiClient = useApiClient()
+  const browser = useVoiceCall()
+  const nativeState = useNativeVoiceCallState()
+  const [handOffError, setHandOffError] = useState<string | null>(null)
+  const native = isNativeVoiceCallShell()
+
+  const api = useMemo(() => createVoiceApi(apiClient), [apiClient])
+
+  const startNative = useCallback(async () => {
+    setHandOffError(null)
+    try {
+      const installationId = await api.ensureNativeInstallation('ios', 'iPhone')
+      const token = await api.mintDeviceToken(installationId)
+      // The API origin, not the page's: the admin is served from `app.` and the
+      // API from `api.`, and the native side has no relative base to resolve
+      // a path against.
+      handOffCallToNative({
+        agentName: 'Personal Assistant',
+        apiBaseUrl: getBaseUrl() || window.location.origin,
+        installationId,
+        refreshAfter: token.refreshAfter,
+        token: token.token,
+        tokenExpiresAt: token.expiresAt,
+      })
+    } catch (error) {
+      setHandOffError(error instanceof Error ? error.message : 'The call could not be started.')
+    }
+  }, [api])
+
+  const nativeCallState = asVoiceCallState(nativeState)
+  const state: VoiceCallState = handOffError
+    ? { ...nativeCallState, phase: 'failed', error: handOffError }
+    : nativeCallState
+
+  if (!native) return browser
+
+  return {
+    end: async (): Promise<void> => endNativeCall(),
+    isActive: state.phase !== 'idle' && state.phase !== 'failed',
+    setMuted: (muted: boolean): void => setNativeCallMuted(muted),
+    start: startNative,
+    state,
   }
 }

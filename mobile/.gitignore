@@ -1,9 +1,16 @@
 # Expo / RN native projects are generated via `expo prebuild`.
+#
+# The two native-project ignores are anchored with a leading slash on purpose:
+# an unanchored `ios/` matches a directory of that name at *any* depth, which
+# silently swallowed every Swift file of the local Expo module under
+# `modules/*/ios/` — the module compiled and shipped on the device while its
+# source was never committed. Only the generated projects at this level are
+# derived; a module's own native source is not.
 node_modules/
 .gems/
 .expo/
 dist/
-ios/
-android/
+/ios/
+/android/
 *.log
 .DS_Store

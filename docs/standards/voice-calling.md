@@ -68,12 +68,67 @@ glyph. Spec and phasing:
   transcript** control opening the attachment in the shared `Dialog` — never a
   navigating link, which is how a `blob:` URL destroyed mobile's nav state.
 - **`pa_send` adds no authority.** The one declared function posts an ordinary
-  user message through the normal message route, so the run is
-  indistinguishable from a typed one and every existing gate applies. It acks
-  `working` immediately (Gemini Live blocks until a tool responds) and the reply
-  is spoken later; replies are polled through a viewer-entitled read rather than
-  the thread SSE stream, which is cut structurally when a run consumes a
-  privileged source.
+  user message, so the run is indistinguishable from a typed one and every
+  existing gate applies. It acks `working` immediately (Gemini Live blocks
+  until a tool responds) and the reply is spoken later; replies are polled
+  through a viewer-entitled read rather than the thread SSE stream, which is
+  cut structurally when a run consumes a privileged source. Both halves are
+  **voice-scoped routes** (`…/pa-send`, `…/replies`) rather than the generic
+  message routes, because the device credential is refused on those by design:
+  a native call needs them and a stolen phone token must not become a write to
+  any thread the person can see. What keeps that scope real is that the thread
+  is the call's own and is never named by the caller. Web and native use the
+  same two routes — one path, so neither can drift.
+- **The post-commit work of a message is one service, not one route's tail.**
+  A message row on its own does nothing; `deliverCreatedMessage`
+  (`api/src/services/message-delivery.ts`) is what wakes the agent, pushes to
+  phones, alerts whoever was named, and announces it to open feeds. Both the
+  composer's route and `pa-send` call it. Forking that sequence into the voice
+  path is how you get a hand-off that writes a message, looks like it worked,
+  and answers nothing.
+- **A hand-off spends from the call's tool budget.** `maxToolCalls` is the only
+  bound on how much work one call can start, and a hand-off starts a real
+  billable run — far more than a web search. It is counted for the run it
+  begins, not for the fixed ack it returns. Gemini's own call id arrives as the
+  `Idempotency-Key`, so a retried tool call is one message, one run and one
+  unit of budget.
+- **On iPhone the call is native, and the seam is the call lifecycle — not
+  CallKit.** `mobile/modules/nessie-voice-call/` is a local Expo module whose
+  `AgentCallSession` protocol states four moments a platform reports: connect
+  (which must start **no** audio I/O), audio activated, audio deactivated, and
+  held. CallKit drives them today; Android's self-managed `ConnectionService`
+  drives the same four, which is why everything above the audio layer — the
+  Gemini protocol client, the credential relay, rotation, the usage relay, the
+  transcript — is written once. Adding a CallKit-shaped parameter to that
+  protocol is how the second platform stops being a port and becomes a fork.
+- **Held is not muted.** Muting keeps a silent stream flowing so Gemini's VAD
+  can still see the end of an utterance; holding — a cellular call arriving, or
+  `didDeactivate` without an end action — stops sending altogether, because
+  silence is a real audio stream that is billed and answered into an output
+  nobody can hear.
+- **A route change rebuilds the audio pipeline, not just the route.** The
+  platform picks the route; `AVAudioEngine` does not follow it — the input
+  node's hardware format changes, so the installed tap and the sample-rate
+  converter are stale and the playback graph's connections are broken. Build
+  the converter inside capture from the *current* input format and rebuild on
+  both `AVAudioSession.routeChangeNotification` and
+  `.AVAudioEngineConfigurationChange`. A converter built once at init is the
+  bug: it points at a format the session had not chosen yet.
+- **The call belongs to the process, not the JS bundle.** A reload tears down
+  the Expo module and every listener while the CallKit call, the socket and the
+  microphone keep running, so the call lives on `VoiceCallController.shared`
+  and `getActiveCallState()` reads a lock-guarded snapshot off the main actor —
+  the shell asks during its first render, and the queue it would otherwise wait
+  on is the one painting. Without it a reload leaves the UI blind mid-call.
+- **The WebView provisions once; the phone renews itself.** The SPA mints the
+  voice-scoped device credential on its ordinary session and hands it over the
+  shell bridge. Everything after that is the native side's, against
+  `POST /api/voice/device-token/refresh` — a locked phone has no foreground
+  WebView to ask. The credential lives in
+  memory for one call, because the WebView mints a fresh one every time; when
+  phase 3 makes the phone place calls with no WebView to mint from, a stored
+  one has to be `AfterFirstUnlock` — a locked-phone call *rewrites* it, and the
+  stricter class fails that write.
 - **Local-dev constraint:** the Ledger call goes through `safeFetch`, which
   refuses loopback and private addresses, so a local Ledger cannot be used —
   point `LEDGER_PUBLIC_URL` at the hosted service.

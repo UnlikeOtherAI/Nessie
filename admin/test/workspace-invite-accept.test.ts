@@ -4,10 +4,13 @@ import test from 'node:test'
 import type { MeResponse } from '@nessie/schemas'
 import { JSDOM } from 'jsdom'
 
+import { stubResizeObserver } from './support/resize-observer-stub'
+
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
   url: 'http://localhost:5455/channels',
 })
+stubResizeObserver(dom.window as unknown as Window & typeof globalThis)
 
 const React = await import('react')
 const { act, createElement: h } = React

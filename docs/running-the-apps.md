@@ -62,11 +62,32 @@ pnpm --filter @nessie/desktop dev
 
 The Nessie desktop window opens and loads the local admin app.
 
+The production config intentionally loads the hosted admin for same-site
+session renewal. The explicit `frontendDist` override above is the supported
+exception: it embeds that freshly built local admin in a release package, so
+the executable being tested contains the local UI changes.
+
+On Windows and Linux, the top-left of that window carries 18px mac-style red,
+yellow, and green controls for close, minimise, and maximise/restore. Their
+inset marks appear together on hover. Holding the pointer over the green
+control opens a translucent glass **Window layouts** popover: it can place the
+window into halves or thirds, fill the current display's usable work area, or
+enter full screen. Those choices use Tauri-native monitor, position and size
+actions rather than imitating a browser panel. Windows and Linux remove the
+native title-bar buttons so this strip is the only window chrome; macOS keeps
+its system traffic lights instead.
+
 The desktop script first bundles the local `nessie-executor` CLI and the exact
 Node runtime into private app resources. It records their hashes and the Node
 license in the bundle; use the package scripts below rather than invoking the
 Tauri binary directly, so the companion cannot launch a stale or missing
 executor runtime.
+
+`packages/billing-statement-protocol/` is a byte-for-byte vendored UOA
+contract. Git preserves its upstream LF bytes on every platform, including
+Windows, without applying `core.autocrlf`; its generated-artifact and SHA-256
+verification gates therefore remain valid. Do not edit or regenerate that
+package locally; update its upstream pin instead.
 
 ## Connected Chrome tab foundation
 
@@ -192,8 +213,18 @@ the app was built against the admin web origin instead of the API origin.
 
 ## Mobile app — WebView shell
 
-The mobile app is a **WebView shell around the admin web UI** wrapped in native
-chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
+One thing in the app is deliberately **not** the WebView: calling the Personal
+Assistant. On iPhone the header call button hands off to a local Expo native
+module (`mobile/modules/nessie-voice-call/`) that places a real CallKit call, so
+it reaches the lock screen, Recents, AirPods and CarPlay and keeps running with
+the app in the background. The WebView mints the voice-scoped device credential
+once and passes it over the shell bridge; everything after that is native,
+because a locked phone has no foreground WebView. The module is iOS-only —
+Android answers "unavailable" and keeps the in-page web call. Rules and rationale:
+[docs/standards/voice-calling.md](standards/voice-calling.md).
+
+The rest of the mobile app is a **WebView shell around the admin web UI** wrapped
+in native chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
 `react-native-webview` that loads the admin, passing beneath a **native bottom tab
 bar** (`react-native-bottom-tabs`; iOS 26 Liquid Glass on iPhone, Material on
 Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
@@ -437,13 +468,36 @@ On Xcode 26 the Expo installer can hang at "Connecting to device". If so, build
 and install manually after `expo prebuild`:
 
 ```sh
-cd mobile/ios
-xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Debug \
-  -destination "id=<DEVICE-UDID>" -allowProvisioningUpdates build
-# then locate Nessie.app from the build log and:
-xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
-xcrun devicectl device process launch --device <DEVICE-UDID> com.km.nessie
+cd mobile
+npx expo prebuild --platform ios --no-install --clean
+cd ios
+# CocoaPods reads the Podfile path through `unicode_normalize`, which raises
+# `Encoding::CompatibilityError` under a non-UTF-8 locale. Set one explicitly
+# rather than debugging the backtrace it prints instead of an error message.
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Release \
+  -destination "id=<DEVICE-UDID>" -derivedDataPath <build-dir> \
+  -allowProvisioningUpdates build
+xcrun devicectl device install app --device <DEVICE-UDID> \
+  <build-dir>/Build/Products/Release-iphoneos/Nessie.app
+xcrun devicectl device process launch --device <DEVICE-UDID> \
+  --terminate-existing com.km.nessie
 ```
+
+`Release` rather than `Debug`: the release configuration embeds the JS bundle,
+which is what makes the installed app self-contained and Metro-free — the
+default-delivery policy at the top of this guide. **Launch needs the device
+unlocked.** A locked phone refuses with
+`FBSOpenApplicationErrorDomain error 7 … Locked`; the install itself succeeds,
+so the fix is to unlock the phone and re-run the launch command, never to treat
+a successful install as a completed deployment.
+
+`xcodebuild` buffers its output heavily when it is not attached to a terminal,
+so a build driven from a script can look completely silent for ten minutes and
+then print everything at once. Pipe it through a `grep` for
+`error:|BUILD SUCCEEDED|BUILD FAILED` rather than concluding it has hung — and
+note that the summary at the end names the *failed build commands*, while the
+compiler diagnostics themselves appear far earlier in the stream.
 
 ### Direct device deployment requests
 

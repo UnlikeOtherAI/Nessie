@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { faNoteSticky } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TextQuoteAnchor } from '@nessie/schemas'
@@ -12,6 +12,7 @@ import { CommentThread } from '../comments/CommentThread'
 import { useAnnotationActions } from '../comments/useAnnotationActions'
 import { useAnnotationAuthors } from '../comments/useAnnotationAuthors'
 import { RichTextContent, type SelectionPoint } from '../RichTextContent'
+import { usePopoverPlacement } from '../../../../lib/popover-placement-hook'
 import type { NoteAnchorInput } from './note-highlight-extension'
 
 const RIGHT_CARD_CLASS = [
@@ -51,6 +52,7 @@ export const PageNotesLayer = ({
   // can be copied. Only clicking it opens the (autofocusing) composer.
   const [composing, setComposing] = useState(false)
   const addNoteRef = useRef<HTMLButtonElement>(null)
+  const composerRef = useRef<HTMLElement>(null)
 
   const closeComposer = () => {
     setPending(null)
@@ -85,12 +87,27 @@ export const PageNotesLayer = ({
   )
   const activeNote = notes.find((note) => note.id === activeNoteId) ?? null
 
-  const popoverLeft = pending
-    ? Math.min(
-        Math.max(pending.at.left, POPOVER_WIDTH / 2 + 8),
-        window.innerWidth - POPOVER_WIDTH / 2 - 8,
-      )
-    : 0
+  // D11: clamp the selection popover against the reader's clipping box (not
+  // the window, read once) and follow the selection when the shell reflows.
+  const placed = usePopoverPlacement({
+    anchor: pending
+      ? {
+          kind: 'rect',
+          rect: {
+            bottom: pending.at.top,
+            left: pending.at.left,
+            right: pending.at.left,
+            top: pending.at.top,
+          },
+        }
+      : null,
+    open: pending !== null,
+    panelRef: (composing ? composerRef : addNoteRef) as RefObject<HTMLElement | null>,
+    placement: 'bottom-start',
+  })
+  // Both pending surfaces are centred on the selection; the placement helper
+  // returns the panel's left edge, so hand the centre to translateX(-50%).
+  const popoverCenter = placed ? placed.left + placed.panelWidth / 2 : 0
 
   return (
     <div className="mt-6">
@@ -119,9 +136,10 @@ export const PageNotesLayer = ({
           onClick={() => setComposing(true)}
           ref={addNoteRef}
           style={{
-            top: `${pending.at.top + 8}px`,
-            left: `${popoverLeft}px`,
             transform: 'translateX(-50%)',
+            ...(placed
+              ? { top: `${placed.top}px`, left: `${popoverCenter}px` }
+              : { top: 0, left: 0, visibility: 'hidden' as const }),
           }}
           type="button"
         >
@@ -138,11 +156,13 @@ export const PageNotesLayer = ({
           />
           <aside
             className="fixed z-50 flex flex-col gap-2 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 shadow-[0_16px_40px_var(--scrim-strong)]"
+            ref={composerRef}
             style={{
-              top: `${pending.at.top + 8}px`,
-              left: `${popoverLeft}px`,
               width: `${POPOVER_WIDTH}px`,
               transform: 'translateX(-50%)',
+              ...(placed
+                ? { top: `${placed.top}px`, left: `${popoverCenter}px` }
+                : { top: 0, left: 0, visibility: 'hidden' as const }),
             }}
           >
             <blockquote className="border-l-2 border-[color:var(--accent)] pl-2 text-xs italic text-[color:var(--tx2)]">

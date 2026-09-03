@@ -10,17 +10,36 @@ mod executor_companion;
 
 const DESKTOP_INIT_SCRIPT: &str = concat!(
     include_str!("desktop_notifications_init.js"),
-    "\n",
+    // Both files end in an IIFE. A semicolon prevents the second one from
+    // being parsed as a call on the first one's undefined return value.
+    "\n;\n",
     include_str!("desktop_build_freshness_init.js")
 );
+#[cfg(test)]
+const DEFAULT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/default.json");
+#[cfg(test)]
+const DEVELOPMENT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/development.json");
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
+const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
+    "linux"
+} else if cfg!(target_os = "macos") {
+    "macos"
+} else if cfg!(target_os = "windows") {
+    "windows"
+} else {
+    "unknown"
+};
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
 // api.nessie.works are third-party in macOS WebKit, which blocks the HttpOnly
-// refresh cookie that keeps a short-lived access JWT renewable. Release windows
-// must therefore load the hosted admin as their top-level, same-site document.
+// refresh cookie that keeps a short-lived access JWT renewable. A normal
+// release therefore loads the hosted admin as its top-level, same-site document.
 fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
-    if !release {
+    // A normal release points at the hosted same-site admin so its HttpOnly
+    // session cookie remains renewable in the desktop WebView. The explicit
+    // frontendDist override used for a local package becomes an App URL,
+    // though, and must stay embedded or a freshly built UI can never run.
+    if !release || matches!(configured, WebviewUrl::App(_)) {
         return configured;
     }
 
@@ -73,9 +92,17 @@ pub fn run() {
 
             let mut window_config = main_window.clone();
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
+            // macOS provides its own traffic lights. Windows and Linux get the
+            // matching controls in the app chrome, so remove their native
+            // title-bar buttons instead of showing two competing control sets.
+            if cfg!(any(target_os = "linux", target_os = "windows")) {
+                window_config.decorations = false;
+            }
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
-                .initialization_script(DESKTOP_INIT_SCRIPT)
+                .initialization_script(format!(
+                    "{DESKTOP_INIT_SCRIPT}\n;window.__nessieDesktopPlatform = {DESKTOP_PLATFORM:?};"
+                ))
                 .build()?;
 
             Ok(())
@@ -91,13 +118,49 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{desktop_webview_url, PRODUCTION_ADMIN_URL};
+    use super::{
+        desktop_webview_url, DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_INIT_SCRIPT,
+        DEVELOPMENT_DESKTOP_CAPABILITIES, PRODUCTION_ADMIN_URL,
+    };
     use tauri::utils::config::WebviewUrl;
 
     #[test]
     fn release_window_uses_the_hosted_same_site_admin() {
-        let url = desktop_webview_url(WebviewUrl::App("index.html".into()), true);
+        let configured = WebviewUrl::External(PRODUCTION_ADMIN_URL.parse().unwrap());
+        let url = desktop_webview_url(configured, true);
         assert_eq!(url.to_string(), PRODUCTION_ADMIN_URL);
+    }
+
+    #[test]
+    fn release_window_keeps_an_explicitly_embedded_admin() {
+        let configured = WebviewUrl::App("index.html".into());
+        assert_eq!(desktop_webview_url(configured.clone(), true), configured);
+    }
+
+    #[test]
+    fn desktop_init_scripts_are_statement_separated() {
+        assert!(DESKTOP_INIT_SCRIPT.contains("\n;\n"));
+    }
+
+    #[test]
+    fn custom_window_controls_have_the_native_actions_they_need() {
+        let actions = [
+            "core:window:allow-close",
+            "core:window:allow-minimize",
+            "core:window:allow-is-maximized",
+            "core:window:allow-maximize",
+            "core:window:allow-unmaximize",
+            "core:window:allow-current-monitor",
+            "core:window:allow-set-position",
+            "core:window:allow-set-size",
+            "core:window:allow-is-fullscreen",
+            "core:window:allow-set-fullscreen",
+        ];
+        for capabilities in [DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES] {
+            for action in actions {
+                assert!(capabilities.contains(action), "missing native window permission: {action}");
+            }
+        }
     }
 
     #[test]
@@ -110,11 +173,6 @@ mod tests {
     fn this_build_uses_the_same_origin_selection_as_app_startup() {
         let configured = WebviewUrl::App("index.html".into());
         let selected = desktop_webview_url(configured.clone(), !cfg!(debug_assertions));
-
-        if cfg!(debug_assertions) {
-            assert_eq!(selected, configured);
-        } else {
-            assert_eq!(selected.to_string(), PRODUCTION_ADMIN_URL);
-        }
+        assert_eq!(selected, configured);
     }
 }

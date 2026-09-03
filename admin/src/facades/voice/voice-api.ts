@@ -1,13 +1,18 @@
 import type {
   ReportVoiceUsageResponse,
   SubmitVoiceTranscriptResponse,
+  VoiceAssistantRepliesResponse,
+  VoiceAssistantReply,
+  VoiceDeviceToken,
+  VoiceInstallationPlatform,
   VoiceInstallationRecord,
+  VoiceSendToAssistantResponse,
   VoiceSessionCredential,
   VoiceSessionRotation,
   VoiceTranscriptLine,
 } from '@nessie/schemas'
 
-import type { ApiClient, ThreadMessageRecord } from '../../lib/api-client'
+import type { ApiClient } from '../../lib/api-client'
 import type { UsageReport } from './voice-usage-outbox'
 
 /**
@@ -19,6 +24,7 @@ import type { UsageReport } from './voice-usage-outbox'
  */
 
 const INSTALLATION_STORAGE_KEY = 'nessie.voice.installation-id'
+const NATIVE_INSTALLATION_STORAGE_KEY = 'nessie.voice.native-installation-id'
 
 export type VoiceApi = ReturnType<typeof createVoiceApi>
 
@@ -31,15 +37,47 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
    * is cached locally, and a stale one is re-registered rather than trusted.
    */
   ensureInstallation: async (): Promise<string> => {
-    const cached = readCachedInstallationId()
+    const cached = readCachedInstallationId(INSTALLATION_STORAGE_KEY)
     if (cached) return cached
     const installation = await apiClient.post<VoiceInstallationRecord>(
       '/api/voice/installations',
       { platform: 'web', label: describeBrowser() },
     )
-    writeCachedInstallationId(installation.id)
+    writeCachedInstallationId(INSTALLATION_STORAGE_KEY, installation.id)
     return installation.id
   },
+
+  /**
+   * Registers a slot for the device the *native* layer will call from.
+   *
+   * Separate from the browser's own installation because Ledger reserves daily
+   * budget per slot and the two are different devices as far as that budget is
+   * concerned — the phone's app and the phone's browser can each hold a call.
+   * Cached under its own key for the same reason.
+   */
+  ensureNativeInstallation: async (
+    platform: VoiceInstallationPlatform,
+    label: string,
+  ): Promise<string> => {
+    const cached = readCachedInstallationId(NATIVE_INSTALLATION_STORAGE_KEY)
+    if (cached) return cached
+    const installation = await apiClient.post<VoiceInstallationRecord>(
+      '/api/voice/installations',
+      { platform, label },
+    )
+    writeCachedInstallationId(NATIVE_INSTALLATION_STORAGE_KEY, installation.id)
+    return installation.id
+  },
+
+  /**
+   * Mints the voice-scoped credential the native layer holds during a call.
+   *
+   * Session auth, from the WebView, once: a credential that could mint its
+   * successor would outlive the sign-out that should have ended it, so renewal
+   * is the native side's own refresh exchange rather than another trip here.
+   */
+  mintDeviceToken: (installationId: string): Promise<VoiceDeviceToken> =>
+    apiClient.post<VoiceDeviceToken>('/api/voice/device-token', { installationId }),
 
   forgetInstallation: (): void => {
     try {
@@ -92,15 +130,25 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
   /**
    * Hands a request to the assistant as an ordinary typed message.
    *
-   * Deliberately the same route the composer uses: the run it starts is
-   * indistinguishable from one the person typed, so every existing gate —
-   * approvals, policy, disclosure — applies without the voice path adding any
-   * authority of its own.
+   * The voice-scoped route rather than the generic composer one, so the
+   * browser and a native call share a single code path. It writes the message
+   * through the same service the composer's route uses, into the call's own
+   * thread — which the caller never names — so the run it starts is
+   * indistinguishable from a typed one and every existing gate applies
+   * without the voice path adding any authority of its own.
    */
-  sendToAssistant: (threadId: string, text: string): Promise<{ message: ThreadMessageRecord }> =>
-    apiClient.post<{ message: ThreadMessageRecord }>(`/api/threads/${threadId}/messages`, {
-      content: text,
-    }),
+  sendToAssistant: (
+    voiceSessionId: string,
+    text: string,
+    providerCallId: string,
+  ): Promise<VoiceSendToAssistantResponse> =>
+    apiClient.post<VoiceSendToAssistantResponse>(
+      `/api/voice/sessions/${voiceSessionId}/pa-send`,
+      { text },
+      // Gemini retries a call it did not see answered; its own id is what
+      // keeps one spoken request from becoming two runs.
+      { 'Idempotency-Key': providerCallId },
+    ),
 
   /**
    * Reads replies that landed after a given message.
@@ -111,27 +159,28 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
    * with the reply if the caller may see it, without it if not.
    */
   repliesAfter: async (
-    threadId: string,
+    voiceSessionId: string,
     afterMessageId: string,
-  ): Promise<ThreadMessageRecord[]> => {
-    const page = await apiClient.get<ThreadMessageRecord[]>(
-      `/api/threads/${threadId}/messages?after=${encodeURIComponent(afterMessageId)}&limit=20`,
+  ): Promise<VoiceAssistantReply[]> => {
+    const page = await apiClient.get<VoiceAssistantRepliesResponse>(
+      `/api/voice/sessions/${voiceSessionId}/replies`
+      + `?after=${encodeURIComponent(afterMessageId)}`,
     )
-    return page.filter((message) => message.role === 'assistant' && !message.deletedAt)
+    return page.replies
   },
 })
 
-const readCachedInstallationId = (): string | null => {
+const readCachedInstallationId = (key: string): string | null => {
   try {
-    return window.localStorage.getItem(INSTALLATION_STORAGE_KEY)
+    return window.localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-const writeCachedInstallationId = (id: string): void => {
+const writeCachedInstallationId = (key: string, id: string): void => {
   try {
-    window.localStorage.setItem(INSTALLATION_STORAGE_KEY, id)
+    window.localStorage.setItem(key, id)
   } catch {
     // A private-mode browser re-registers next call; that is a wasted row,
     // not a failure, and the per-user cap still bounds it.

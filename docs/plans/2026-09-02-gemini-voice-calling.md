@@ -6,13 +6,22 @@ with your assistant, and audio flows straight between your device and Google.
 It works in the web admin, in the desktop shell, and in the iOS app in the
 foreground. Verified end to end on 2026-09-02 against the real services.
 
-Two things it is not yet. **A call cannot survive a locked screen** — there is
-no CallKit or Telecom integration, so backgrounding the app ends it; that is
-what makes it a voice feature rather than a phone call, and it is the largest
-remaining gap. And **the assistant cannot act mid-call** beyond handing work
-to itself: the only declared function is `pa_send`, which posts an ordinary
-message into the DM and starts a normal run. Live tools are designed but
-unbuilt.
+**On an iPhone it is a real phone call** *(built 2026-09-03, and not yet placed
+— see "What 1b's verification did and did not cover")*: the mobile app's header
+button hands off to a local Expo native module that places a CallKit call, so
+it reaches the lock screen, Recents, and the CarPlay in-call screen, and keeps
+running with the phone locked. Android is still the web
+call in a WebView — the lifecycle seam the iOS module is built on was written
+against the call lifecycle rather than against CallKit, so its `ConnectionService`
+successor reuses everything above the audio layer.
+
+Two things it is not yet. **A locked-phone call is capped under 30 minutes**:
+credential rotation from a backgrounded, locked phone is implemented but has
+not been observed working, and the default call ceiling ends the call before
+rotation would ever be needed. And **the assistant cannot act mid-call** beyond
+handing work to itself: the only declared function is `pa_send`, which posts an
+ordinary message into the DM and starts a normal run. Live tools are designed
+but unbuilt.
 
 ## Where the code is
 
@@ -25,6 +34,8 @@ unbuilt.
 | Durable state | `voice_installations`, `voice_sessions` (migration `20260902160000_voice_calling`) |
 | Browser client | `admin/src/facades/voice/*`, worklet at `admin/public/voice-capture-worklet.js` |
 | The one call button | `admin/src/components/features/channels/ChannelHeader.tsx` |
+| iPhone CallKit call | `mobile/modules/nessie-voice-call/` (local Expo module, Swift) |
+| The hand-off to it | `admin/src/facades/voice/native-voice-call.ts`, `mobile/src/lib/native-voice-call.ts` |
 | In-call surface | `admin/src/components/features/channels/VoiceCallDialog.tsx` |
 | Android build plan | [2026-09-02-voice-android.md](2026-09-02-voice-android.md) *(drafted, unreviewed)* |
 
@@ -464,11 +475,18 @@ which carries the original sign-in forward and revokes its predecessor under a
 conditional update, so two racing refreshes cannot leave two live credentials.
 The credential lives two hours against a 30-minute default call cap.
 
-Not yet built, and the rest of what a native call needs: the voice-scoped
-`pa-send` and reply-poll routes (their wire contracts exist in
-`packages/schemas/src/voice.ts`; the routes do not), and the Expo module
-itself. Nothing calls the mint route yet — it is inert until the native
-client lands.
+**The conversation bridge shipped 2026-09-03 too.** `POST
+…/sessions/:id/pa-send` and `GET …/sessions/:id/replies` are the voice-scoped
+equivalents of the generic message routes, marked `duringACall` and living in
+`api/src/routes/voice-conversation.ts`. `pa-send` writes the message through
+the same `createThreadMessage` the composer uses and then the same
+`deliverCreatedMessage` — the post-commit work (orchestration, push, realtime,
+alerts, memory) extracted out of `thread-message-create.ts` so both routes run
+one copy of it. The poll reads through `listThreadMessages` with the caller as
+viewer, in both lanes a run can answer in. The browser client was moved onto
+the same two routes in the same change, so there is one code path rather than
+two that can drift. Still to build for a native call: the Expo module itself.
+Nothing calls the mint route yet — it is inert until the native client lands.
 
 ### 4. The web admin gets the same call — no CallKit, same everything else
 
@@ -586,20 +604,117 @@ server work in the plan and is what turns the call from a relay into
 "actually doing stuff while you talk" — sequenced right after the basic
 call loop proves out so the plumbing lands on a working audio path.
 
-**Phase 1b — the iPhone call (CallKit)**
-Note a hard server dependency the phase must carry: the browser client reaches
-the assistant through the *generic* message routes on ordinary session auth,
-and the voice-scoped device credential is deliberately not accepted there. So
-the voice-scoped `pa-send` and reply-poll endpoints named in §3 do not exist
-yet and are part of this phase, with the authorization matrix updated in the
-same change — a native call cannot hand anything to the assistant without
-them.
+**Phase 1b — the iPhone call (CallKit)** *(built 2026-09-03; see
+"What shipped in 1b" and "What 1b's verification did and did not cover" below)*
+The server dependency this phase used to carry is **done** (2026-09-03): the
+voice-scoped `pa-send` and reply-poll routes named in §3 exist, the
+authorization matrix lists them, and the browser client uses them too, so the
+native layer inherits a path that is already exercised rather than a second one
+written blind.
 Mobile: local Expo module with the ported `GeminiLiveClient` +
 `AgentCallCoordinator` + `AgentCallSession` seam; credential source swapped
 to the Nessie routes; the same header call button in the mobile WebView
 hands off to native via the shell bridge so the call becomes a CallKit
 call. Verify on a physical iPhone: place call, lock screen, AirPods, mute
 from lock screen, end from lock screen.
+
+### What shipped in 1b
+
+The module is `mobile/modules/nessie-voice-call/` — a local Expo module
+(`expo-module.config.json`, autolinked through CocoaPods), Swift, iOS only.
+Android declares no platform and `requireOptionalNativeModule` answers `null`,
+so the header button asks and gets a clean "unavailable" rather than throwing.
+
+| Piece | File |
+| --- | --- |
+| The lifecycle seam | `ios/AgentCallSession.swift` |
+| CallKit provider + call controller | `ios/AgentCallCoordinator.swift` |
+| Gemini Live protocol client | `ios/GeminiLiveClient.swift` + `+Connection` / `+Protocol` / `+Audio` |
+| The concrete session (credential, socket, transcript) | `ios/VoiceCallSession.swift` + `+Tools` |
+| Nessie voice routes, and the credential's own refresh | `ios/NessieVoiceApi.swift` |
+| Per-turn usage relay | `ios/VoiceUsageRelay.swift` |
+| Process-owned call + JS boundary | `ios/VoiceCallController.swift`, `ios/NessieVoiceCallModule.swift` |
+| Shell bridge | `mobile/src/lib/native-voice-call.ts` |
+| The hand-off, and the one call object | `admin/src/facades/voice/native-voice-call.ts`, `facades/voice/hooks.ts` (`usePersonalAssistantCall`) |
+
+Four decisions the browser client never had to make:
+
+- **A cellular call arriving mid-call puts the agent call on hold, and hold is
+  not mute.** `CXSetHeldCallAction` (which Coder's coordinator does not
+  implement) pauses input *entirely*; `didDeactivate` arriving without an end
+  action holds too, because iOS can take the audio session without a hold
+  action following. Muting deliberately keeps a silent stream flowing so
+  Gemini's VAD can still see the end of an utterance — doing that while held
+  would stream silence into a turn that is billed and answered into an output
+  nobody can hear. The person hears the agent call go quiet and finds it live
+  again when the phone call ends; nothing is spoken into the gap.
+- **Route changes rebuild the audio pipeline, not just the route.** The
+  platform picks the route; `AVAudioEngine` does not follow it. Its input node
+  reports a new hardware format, so the installed tap and the sample-rate
+  converter are both stale and the playback graph's connections are broken —
+  which is exactly how audio dies mid-call with no error anywhere. Coder builds
+  its converter once at init, from a format the session has not chosen yet; here
+  it is built inside `startCapture()` and rebuilt on both
+  `AVAudioSession.routeChangeNotification` and
+  `.AVAudioEngineConfigurationChange`, with `playbackEngine.connect` re-run on
+  every start rather than only the first.
+- **Credential rotation is implemented, and on a default deployment it never
+  runs.** `NESSIE_VOICE_MAX_DURATION_MS` defaults to 30 minutes — the same
+  lifetime as Google's credential — so `VoiceCallSession` ends the call at that
+  ceiling before the rotation timer (expiry minus one minute) fires. Rotation
+  exists for a deployment that raises the cap, and **it has not been observed
+  working from a locked, backgrounded phone.** That is the honest state: the
+  code path is the browser's, proven there, and the locked-phone execution
+  window is not something a 30-minute cap ever exercises. Until somebody runs a
+  35-minute locked call on cellular, a locked-phone call is capped under 30
+  minutes and the product says so.
+- **The call belongs to the process, not to the JS bundle.**
+  `VoiceCallController.shared` owns the coordinator and session, and mirrors
+  every change into a lock-guarded snapshot. `getActiveCallState()` reads that
+  snapshot without hopping to the main actor, because the shell asks it during
+  its first render — the queue it would otherwise wait on is the one painting.
+  A JS reload therefore remounts into a call that is still running, with its
+  timer and its End button intact.
+
+Two smaller things worth recording. The native socket uses `?access_token=`
+rather than Coder's `Authorization: Token` header: native could use either, and
+one form across both clients is one contract to keep true. And the device
+credential lives **in memory for the length of one call** — the WebView mints a
+fresh one every time, so a Keychain copy would be a credential nothing ever
+reads. Phase 3, where the assistant places the call and there is no WebView to
+mint from, is where a durable one starts to matter; that is also where the
+`AfterFirstUnlock` accessibility class becomes the deciding detail, because a
+locked-phone call has to *rewrite* it and the stricter `WhenUnlocked` class
+fails that write with `errSecInteractionNotAllowed`.
+
+### What 1b's verification did and did not cover
+
+**Built and installed, on the named hardware.** A Release build for
+`iPhone17,2` compiles clean (SwiftLint strict, zero violations), the module's
+classes are in the shipped binary and registered in Expo's generated
+`ExpoModulesProvider.swift`, the installed `Info.plist` carries
+`UIBackgroundModes: [audio]`, and that exact artifact was installed with
+`xcrun devicectl`, launched, and confirmed still running. A simulator build was
+installed and screenshotted as well. `@nessie/mobile` and `@nessie/admin` pass
+`tsc`, `eslint --max-warnings 0`, and their suites; the bridge tests were shown
+to fail with the handler branch removed.
+
+**No call was placed.** Every acceptance criterion below the audio layer is
+therefore *unverified against the live service* — a real incoming call, a route
+change on real hardware, credential rotation on cellular, the transcript and
+the usage relay, `pa_send`, and rehydration after a JS reload. Reaching them
+needs a signed-in session on the phone and Ledger's Gemini grants, which the
+build alone cannot supply. Nothing in "What shipped in 1b" should be read as
+"seen working"; it describes code that compiles, ships, and runs as a process.
+
+**Known gaps in 1b, stated plainly.** The transcript is submitted at hang-up
+inside a `beginBackgroundTask`, which buys seconds, not certainty: the browser
+client's persistent outbox has no native counterpart yet, so an app killed
+between hang-up and delivery loses that call's record. `pa_send` reaches the
+voice-scoped `pa-send` and `replies` routes, which now exist and which the
+browser client uses too — but no hand-off has been made from the phone, so the
+native half of that path is written against a contract rather than against an
+answer it has seen.
 
 **Phase 1c — the Android call (Telecom)**
 The same local Expo module, second platform. Android's equivalent of CallKit

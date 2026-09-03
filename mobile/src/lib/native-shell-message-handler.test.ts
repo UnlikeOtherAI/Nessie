@@ -11,6 +11,7 @@ const buildInput = () => {
     index: 0,
     lastBackDepth: undefined as boolean | undefined,
     lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN as LastKnownScreen,
+    voiceCalls: [] as Array<{ action: string; detail?: unknown }>,
   }
   const screenActiveRef = { current: false }
   const input = {
@@ -20,6 +21,7 @@ const buildInput = () => {
     dismissNativeMenus: () => undefined,
     dismissNotifications: () => undefined,
     dispatchPresentation: () => undefined,
+    endNativeVoiceCall: () => { state.voiceCalls.push({ action: 'end' }) },
     ensureNativePushRegistration: () => undefined,
     flushExternalAuthDelivery: () => undefined,
     get lastKnownScreen() { return state.lastKnownScreen },
@@ -37,6 +39,12 @@ const buildInput = () => {
       state.index = typeof value === 'function' ? value(state.index) : value
     },
     setLastKnownScreen: (screen: LastKnownScreen) => { state.lastKnownScreen = screen },
+    setNativeVoiceCallMuted: (muted: boolean) => {
+      state.voiceCalls.push({ action: 'mute', detail: muted })
+    },
+    startNativeVoiceCall: (provisioning: unknown) => {
+      state.voiceCalls.push({ action: 'start', detail: provisioning })
+    },
     triggerHaptic: (kind: string) => state.hapticKinds.push(kind),
   }
   return { input, screenActiveRef, state }
@@ -138,4 +146,47 @@ test('nessie:search-overlay closing restores the last-known section\'s tab, not 
 
   handleNativeShellMessage({ active: false, type: 'nessie:search-overlay' }, input)
   assert.equal(state.index, TABS.findIndex((tab) => tab.key === 'admin'))
+})
+
+const VOICE_CALL_PROVISIONING = {
+  agentName: 'Personal Assistant',
+  apiBaseUrl: 'https://api.nessie.works',
+  installationId: '8f2e6d9a-1c3b-4a5e-9f70-2b6c8d1e4a30',
+  refreshAfter: '2026-09-03T11:30:00.000Z',
+  token: 'nvc1_abc',
+  tokenExpiresAt: '2026-09-03T12:00:00.000Z',
+}
+
+test('nessie:voice-call-start hands the credential to the native call', () => {
+  const { input, state } = buildInput()
+
+  handleNativeShellMessage(
+    { type: 'nessie:voice-call-start', voiceCall: VOICE_CALL_PROVISIONING },
+    input,
+  )
+
+  assert.deepEqual(state.voiceCalls, [{ action: 'start', detail: VOICE_CALL_PROVISIONING }])
+})
+
+test('a malformed voice-call-start is ignored rather than started', () => {
+  const { input, state } = buildInput()
+
+  handleNativeShellMessage(
+    { type: 'nessie:voice-call-start', voiceCall: { token: 'nvc1_abc' } },
+    input,
+  )
+
+  assert.deepEqual(state.voiceCalls, [])
+})
+
+test('the two in-call controls reach the native call', () => {
+  const { input, state } = buildInput()
+
+  handleNativeShellMessage({ muted: true, type: 'nessie:voice-call-mute' }, input)
+  handleNativeShellMessage({ type: 'nessie:voice-call-end' }, input)
+
+  assert.deepEqual(state.voiceCalls, [
+    { action: 'mute', detail: true },
+    { action: 'end' },
+  ])
 })

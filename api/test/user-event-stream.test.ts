@@ -7,9 +7,10 @@ import type { WsScope } from '@nessie/schemas'
 import {
   listRealtimeEventsAfterCursor,
   parseLastRealtimeEventId,
-  resolveUserChannelRealtimeScopes,
   type RealtimeReplayEvent,
-} from '../src/services/realtime-events.js'
+} from '@nessie/runtime'
+
+import { resolveUserChannelRealtimeScopes } from '../src/services/realtime-events.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const otherOrganizationId = '00000000-0000-4000-8000-000000000002'
@@ -17,16 +18,6 @@ const userId = '00000000-0000-4000-8000-000000000003'
 const channelA = '00000000-0000-4000-8000-00000000000a'
 const channelB = '00000000-0000-4000-8000-00000000000b'
 const channelC = '00000000-0000-4000-8000-00000000000c'
-
-type FindManyArgs = {
-  where: {
-    organizationId: string
-    id: { gt: bigint }
-    OR: Array<{ channelId?: { in: string[] }; recipientUserId?: string }>
-  }
-  orderBy: { id: 'asc' }
-  take: number
-}
 
 type ReplayTestRow = RealtimeReplayEvent & { payloadOrganizationId: string }
 
@@ -38,28 +29,41 @@ test('realtime replay query returns only accessible channel events after the cur
     makeEvent(3n, channelA, otherOrganizationId),
     makeEvent(2n, channelB, organizationId),
   ]
-  let capturedArgs: FindManyArgs | null = null
-  const prisma = {
-    realtimeEvent: {
-      findMany: async (args: FindManyArgs) => {
-        capturedArgs = args
-        const channelIds = args.where.OR
-          .flatMap((clause) => clause.channelId?.in ?? [])
-        const recipientUserIds = args.where.OR
-          .flatMap((clause) => clause.recipientUserId ? [clause.recipientUserId] : [])
-        return rows
-          .filter((row) => row.id > args.where.id.gt)
+  let capturedSql: string | null = null
+  let capturedParams: unknown[] | null = null
+  const pool = {
+    query: async (sql: string, params: unknown[]) => {
+      capturedSql = sql
+      capturedParams = params
+      const [rowOrganizationId, afterEventId, channelIds, recipientUserId] = params as [
+        string,
+        bigint,
+        string[],
+        string,
+      ]
+      return {
+        rows: rows
+          .filter((row) => row.id > afterEventId)
           .filter((row) =>
             (row.channelId !== null && channelIds.includes(row.channelId))
-            || (row.recipientUserId !== null && recipientUserIds.includes(row.recipientUserId)),
+            || row.recipientUserId === recipientUserId,
           )
-          .filter((row) => row.payloadOrganizationId === args.where.organizationId)
+          .filter((row) => row.payloadOrganizationId === rowOrganizationId)
           .sort((left, right) => (left.id < right.id ? -1 : 1))
-      },
+          .map((row) => ({
+            id: row.id,
+            organization_id: row.payloadOrganizationId,
+            channel_id: row.channelId,
+            recipient_user_id: row.recipientUserId,
+            event_type: row.eventType,
+            payload: row.payload,
+            created_at: row.createdAt,
+          })),
+      }
     },
-  } as unknown as PrismaClient
+  }
 
-  const result = await listRealtimeEventsAfterCursor(prisma, {
+  const result = await listRealtimeEventsAfterCursor(pool as never, {
     afterEventId: 2n,
     channelIds: [channelA, channelB],
     organizationId,
@@ -67,18 +71,13 @@ test('realtime replay query returns only accessible channel events after the cur
   })
 
   assert.deepEqual(result.map((row) => row.id), [5n])
-  assert.deepEqual(capturedArgs, {
-    where: {
-      organizationId,
-      id: { gt: 2n },
-      OR: [
-        { channelId: { in: [channelA, channelB] } },
-        { recipientUserId: userId },
-      ],
-    },
-    orderBy: { id: 'asc' },
-    take: 5000,
-  })
+  assert.match(capturedSql ?? '', /FROM realtime_events/)
+  assert.match(capturedSql ?? '', /organization_id = \$1/)
+  assert.match(capturedSql ?? '', /id > \$2/)
+  assert.match(capturedSql ?? '', /channel_id = ANY\(\$3::uuid\[\]\)/)
+  assert.match(capturedSql ?? '', /recipient_user_id = \$4/)
+  assert.match(capturedSql ?? '', /LIMIT \$5/)
+  assert.deepEqual(capturedParams, [organizationId, 2n, [channelA, channelB], userId, 5000])
 })
 
 test('realtime membership resolution returns the union of channel scopes', async () => {

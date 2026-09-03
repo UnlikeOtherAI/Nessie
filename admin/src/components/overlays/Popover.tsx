@@ -11,13 +11,12 @@ import {
 } from 'react'
 import { OverlayPortal } from './OverlayPortal'
 import { useOverlay } from './useOverlay'
+import { placePopover, viewportBounds } from './placePopover'
+import type { PopoverAnchorRect, PopoverPlacement } from './placePopover'
 import {
-  placePopover,
-  viewportBounds,
-  type PopoverAnchorRect,
-  type PopoverBounds,
-  type PopoverPlacement,
-} from './placePopover'
+  usePopoverPlacement,
+  type PopoverAnchorInput,
+} from '../../lib/popover-placement-hook'
 
 /**
  * The admin's one anchored overlay (docs/navigation/overview.md §7).
@@ -78,8 +77,6 @@ const samePlacement = (a: Placed | null, b: Placed): boolean =>
   && a.maxHeight === b.maxHeight
   && a.width === b.width
 
-const readBounds = (): PopoverBounds => viewportBounds()
-
 export const Popover = ({
   anchorRef,
   anchorRect = null,
@@ -104,7 +101,21 @@ export const Popover = ({
     open,
   })
   const { panelRef, requestClose } = overlay
-  const [placed, setPlaced] = useState<Placed | null>(null)
+  const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
+
+  // The anchor for D11's observer path is the trigger element; `anchorRect`
+  // anchors (the editor caret) are already recomputed by their owner.
+  const anchorInput: PopoverAnchorInput | null =
+    !anchorRect && anchorRef.current
+      ? { kind: 'element', element: anchorRef.current }
+      : null
+  const elementPlaced = usePopoverPlacement({
+    anchor: anchorInput,
+    matchAnchorWidth,
+    open: open && !anchorRect,
+    panelRef,
+    placement,
+  })
 
   const measure = useCallback(() => {
     const panel = panelRef.current
@@ -118,7 +129,7 @@ export const Popover = ({
       : null
     const next = placePopover({
       anchor,
-      bounds: readBounds(),
+      bounds: viewportBounds(),
       panel: { height: rect.height, width: width ?? rect.width },
       placement,
     })
@@ -128,12 +139,16 @@ export const Popover = ({
       top: next.top,
       width,
     }
-    setPlaced((current) => (samePlacement(current, value) ? current : value))
+    setRectPlaced((current) => (samePlacement(current, value) ? current : value))
   }, [anchorRect, anchorRef, matchAnchorWidth, panelRef, placement])
 
+  // A rect anchor (the editor caret) has no element to observe: it is
+  // recomputed on every editor transaction by its owner, so the old
+  // measure-on-scroll/resize path stays for it. An element anchor goes through
+  // the D11 hook — the observer already covers reflow and window resize.
   useLayoutEffect(() => {
-    if (!open) {
-      setPlaced(null)
+    if (!open || !anchorRect) {
+      if (!open) setRectPlaced(null)
       return undefined
     }
     measure()
@@ -145,7 +160,20 @@ export const Popover = ({
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
-  }, [measure, open])
+  }, [anchorRect, measure, open])
+
+  const placed: Placed | null = anchorRect
+    ? rectPlaced
+    : elementPlaced
+      ? {
+          left: elementPlaced.left,
+          maxHeight: elementPlaced.maxHeight,
+          top: elementPlaced.top,
+          width: matchAnchorWidth
+            ? anchorRef.current?.getBoundingClientRect().width ?? null
+            : null,
+        }
+      : null
 
   // Outside press. `mousedown`/`touchstart` rather than `click`, so a press
   // that starts outside dismisses before the release lands on something else.
