@@ -42,11 +42,14 @@ const project: ProjectRecord = {
   organizationId: 'org-1',
 }
 
+const precedenceContext = { userId: 'user-1', teamId: 'team-1', projectId: 'project-1' }
+
 const renderTable = (props: Partial<Parameters<typeof SecretMetadataTable>[0]> = {}): string =>
   renderToStaticMarkup(
     createElement(SecretMetadataTable, {
       isLoading: false,
       onRevoke: () => undefined,
+      precedenceContext,
       revokingReference: null,
       secrets: [secret],
       ...props,
@@ -153,6 +156,7 @@ test('copying a secret reference announces useful feedback', async () => {
       root.render(h(SecretMetadataTable, {
         isLoading: false,
         onRevoke: () => undefined,
+        precedenceContext,
         revokingReference: null,
         secrets: [secret],
       }))
@@ -187,6 +191,7 @@ test('a table opens in a near-fullscreen dialog and closes again', async () => {
       root.render(h(SecretMetadataTable, {
         isLoading: false,
         onRevoke: () => undefined,
+        precedenceContext,
         revokingReference: null,
         secrets: [secret],
       }))

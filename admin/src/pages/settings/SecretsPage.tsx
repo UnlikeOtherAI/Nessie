@@ -10,11 +10,18 @@ import {
   useRevokeSecret,
   useSecrets,
 } from '../../facades/secrets/hooks'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { FeedbackBanner, SettingsPanel, type SettingsFeedback } from './settings-shared'
 
 export const SecretsPage = () => {
   const { data: secrets = [], isLoading } = useSecrets()
   const { data: projects = [] } = useProjects()
+  const { me } = useAuthSession()
+  const precedenceContext = {
+    userId: me?.user.id ?? '',
+    teamId: me?.context.teamId ?? '',
+    projectId: me?.context.projectId ?? '',
+  }
   const createSecret = useCreateSecret()
   const revokeSecret = useRevokeSecret()
   const [createOpen, setCreateOpen] = useState(false)
@@ -57,6 +64,12 @@ export const SecretsPage = () => {
           <p className="text-sm text-[color:var(--tx3)]">
             Copy a secret key or reference when you need to bind it elsewhere.
           </p>
+          <p className="text-sm text-[color:var(--tx3)]">
+            A secret with the same key at a narrower scope overrides a broader
+            one — personal beats project, project beats team, team beats
+            organisation. The Precedence column shows which one currently
+            applies to you.
+          </p>
         </div>
         <FeedbackBanner feedback={feedback} />
         <section className="admin-card overflow-hidden">
@@ -67,6 +80,7 @@ export const SecretsPage = () => {
           <SecretMetadataTable
             isLoading={isLoading}
             onRevoke={(reference) => setPendingRevoke(reference)}
+            precedenceContext={precedenceContext}
             revokingReference={revokeSecret.isPending ? revokeSecret.variables : null}
             secrets={secrets}
           />

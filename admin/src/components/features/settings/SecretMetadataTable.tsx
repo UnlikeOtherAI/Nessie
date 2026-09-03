@@ -2,6 +2,11 @@ import { useEffect, useId, useState } from 'react'
 
 import { Pill, type PillTone } from '../../primitives/Pill'
 import type { SecretRecord, SecretScopeType } from '../../../facades/secrets/hooks'
+import {
+  computeSecretPrecedence,
+  type SecretPrecedenceContext,
+  type SecretWithPrecedence,
+} from '../../../lib/secret-precedence'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { DataTable, type DataTableColumn } from '../../shared/DataTable'
 import { EmptyState } from '../../shared/EmptyState'
@@ -11,6 +16,7 @@ type SecretMetadataTableProps = {
   onRevoke: (reference: string) => void
   revokingReference: string | null
   secrets: SecretRecord[]
+  precedenceContext: SecretPrecedenceContext
 }
 
 const scopeLabel: Record<SecretScopeType, string> = {
@@ -106,10 +112,12 @@ export const SecretMetadataTable = ({
   onRevoke,
   revokingReference,
   secrets,
+  precedenceContext,
 }: SecretMetadataTableProps) => {
-  const [pendingRevoke, setPendingRevoke] = useState<SecretRecord | null>(null)
+  const [pendingRevoke, setPendingRevoke] = useState<SecretWithPrecedence | null>(null)
+  const rows = computeSecretPrecedence(secrets, precedenceContext)
 
-  const columns: DataTableColumn<SecretRecord>[] = [
+  const columns: DataTableColumn<SecretWithPrecedence>[] = [
     {
       header: 'Secret key',
       key: 'name',
@@ -124,6 +132,22 @@ export const SecretMetadataTable = ({
       header: 'Scope',
       key: 'scope',
       render: (secret) => scopeLabel[secret.scopeType],
+      secondary: true,
+    },
+    {
+      header: 'Precedence',
+      key: 'precedence',
+      render: (secret) => (
+        secret.isEffective ? (
+          <Pill radius="chip" size="sm" tone="success" uppercase={false}>Effective</Pill>
+        ) : secret.overriddenBy ? (
+          <span className="text-sm text-[color:var(--tx3)]">
+            Overridden by {scopeLabel[secret.overriddenBy.scopeType]}
+          </span>
+        ) : (
+          <span className="text-sm text-[color:var(--tx3)]">—</span>
+        )
+      ),
       secondary: true,
     },
     {
@@ -164,7 +188,7 @@ export const SecretMetadataTable = ({
         loading={isLoading}
         minWidth="46rem"
         rowKey={(secret) => secret.reference}
-        rows={secrets}
+        rows={rows}
         skeletonRows={4}
       />
 
