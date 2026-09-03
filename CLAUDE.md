@@ -800,7 +800,11 @@ blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
 one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
 through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
-facts). Bootstrap runs beside the PA's at login and user provisioning but
+facts). It is also **placeable in ordinary channels** like any other shared
+agent — and so in projects, whose reach is their channels — under the ordinary
+bind gates; a shared room is advice-only, because the identity-delegated tools
+stay gated on its own home DM. Bootstrap runs beside the PA's at login and user
+provisioning but
 **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
 lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
 binding, trigger and run-placement refusals, the un-gated list arm, the
