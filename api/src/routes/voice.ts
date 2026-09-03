@@ -54,27 +54,33 @@ import type { RouteDeps } from './types.js'
  * then flows straight between the client and Google. `LEDGER_PROXY_TOKEN`
  * never leaves this process.
  *
- * Authorization matrix for these routes, all ordinary session auth in phase 1
- * (the voice-scoped device credential arrives with the native client, phase
- * 1b, and will be accepted *only* here — never on the generic message or
- * thread routes):
+ * Authorization matrix. `session` is ordinary cookie/bearer auth; `device` is
+ * the voice-scoped credential the native layer holds during a call, which the
+ * global auth hook accepts on exactly the rows marked for it and refuses with
+ * `403 VOICE_CREDENTIAL_OUT_OF_SCOPE` everywhere else in the API — never on
+ * the generic message or thread routes:
  *
- * | Method | Path                                   | Who                       |
- * |--------|----------------------------------------|---------------------------|
- * | GET    | /api/voice/capability                  | any active member         |*
- * | POST   | /api/voice/installations               | any active member         |*
- * | DELETE | /api/voice/installations/:id           | its owner                 |*
- * | POST   | /api/voice/sessions                    | any active member         |
- * | POST   | /api/voice/sessions/:id/rotate         | the call's own user       |
- * | POST   | /api/voice/sessions/:id/usage          | the call's own user       |
- * | POST   | /api/voice/sessions/:id/tool-call      | the call's own user       |
- * | POST   | /api/voice/sessions/:id/transcript     | the call's own user       |
- * | POST   | /api/voice/sessions/:id/end            | the call's own user       |
+ * | Method | Path                                 | Who                 | Auth            |
+ * |--------|--------------------------------------|---------------------|-----------------|
+ * | GET    | /api/voice/capability                | any active member   | session         |*
+ * | POST   | /api/voice/installations             | any active member   | session         |*
+ * | DELETE | /api/voice/installations/:id         | its owner           | session         |*
+ * | POST   | /api/voice/device-token              | any active member   | session         |*
+ * | POST   | /api/voice/device-token/refresh      | the device itself   | device          |*
+ * | POST   | /api/voice/sessions                  | any active member   | session, device |
+ * | POST   | /api/voice/sessions/:id/rotate       | the call's own user | session, device |
+ * | POST   | /api/voice/sessions/:id/usage        | the call's own user | session, device |
+ * | POST   | /api/voice/sessions/:id/tool-call    | the call's own user | session, device |
+ * | POST   | /api/voice/sessions/:id/transcript   | the call's own user | session, device |
+ * | POST   | /api/voice/sessions/:id/end          | the call's own user | session, device |
  *
- * The three marked * are enrolment rather than calling — whether this
- * deployment can call, and which device is calling — and live in
- * `voice-enrolment.ts`. They are listed here because this is the subsystem's
- * front door and the matrix is only useful whole.
+ * The rows marked * are enrolment rather than calling — whether this
+ * deployment can call, which device is calling, and what that device holds —
+ * and live in `voice-enrolment.ts`. They are listed here because this is the
+ * subsystem's front door and the matrix is only useful whole. Minting is
+ * `session` on purpose: a credential that could mint its successor would
+ * outlive the sign-out that should have ended it, so renewal is the refresh
+ * row, which carries the original sign-in forward.
  *
  * Spec: docs/plans/2026-09-02-gemini-voice-calling.md
  */
@@ -89,9 +95,20 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     requireUserActor,
   } = deps
 
+  /**
+   * The routes a native call reaches while the phone is locked.
+   *
+   * Marking them here is the scope itself: the voice-scoped device credential
+   * is accepted on exactly these, and rejected everywhere else in the API —
+   * there is no generic route-scoping machinery to lean on, so widening the
+   * scope has to be a visible edit at a route. Enrolment is deliberately not
+   * on this list: provisioning is the WebView's job, on an ordinary session.
+   */
+  const duringACall = { config: { voiceCredential: true } } as const
+
   registerVoiceEnrolmentRoutes(app, deps)
 
-  app.post('/api/voice/sessions', async (request, reply) => {
+  app.post('/api/voice/sessions', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !requireUserActor(actorContext, reply)) return reply
 
@@ -176,7 +193,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
   })
 
-  app.post('/api/voice/sessions/:sessionId/rotate', async (request, reply) => {
+  app.post('/api/voice/sessions/:sessionId/rotate', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { sessionId } = request.params as { sessionId: string }
@@ -208,7 +225,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
   })
 
-  app.post('/api/voice/sessions/:sessionId/usage', async (request, reply) => {
+  app.post('/api/voice/sessions/:sessionId/usage', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { sessionId } = request.params as { sessionId: string }
@@ -268,7 +285,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
    * key, because it retries a call it did not see answered and the work must
    * not run twice.
    */
-  app.post('/api/voice/sessions/:sessionId/tool-call', async (request, reply) => {
+  app.post('/api/voice/sessions/:sessionId/tool-call', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !requireUserActor(actorContext, reply)) return reply
     const { sessionId } = request.params as { sessionId: string }
@@ -355,7 +372,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
   })
 
-  app.post('/api/voice/sessions/:sessionId/transcript', async (request, reply) => {
+  app.post('/api/voice/sessions/:sessionId/transcript', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !requireUserActor(actorContext, reply)) return reply
     const { sessionId } = request.params as { sessionId: string }
@@ -415,7 +432,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
   })
 
-  app.post('/api/voice/sessions/:sessionId/end', async (request, reply) => {
+  app.post('/api/voice/sessions/:sessionId/end', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { sessionId } = request.params as { sessionId: string }

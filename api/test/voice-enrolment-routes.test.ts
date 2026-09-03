@@ -57,6 +57,8 @@ test('the voice subsystem still registers every route in its authorization matri
 
   assert.deepEqual(paths, [
     '/api/voice/capability',
+    '/api/voice/device-token',
+    '/api/voice/device-token/refresh',
     '/api/voice/installations',
     '/api/voice/installations/:installationId',
     '/api/voice/sessions',
@@ -72,6 +74,8 @@ test('enrolment registers on its own, so the split is a real seam rather than a 
   const paths = await routePaths((app) => registerVoiceEnrolmentRoutes(app, enrolmentDeps))
   assert.deepEqual(paths, [
     '/api/voice/capability',
+    '/api/voice/device-token',
+    '/api/voice/device-token/refresh',
     '/api/voice/installations',
     '/api/voice/installations/:installationId',
   ])

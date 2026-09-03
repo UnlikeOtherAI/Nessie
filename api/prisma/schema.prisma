@@ -1253,8 +1253,9 @@ model Organization {
   agentBrowsers           AgentBrowser[]
   agentBrowserLogins      AgentBrowserLogin[]
 
-  voiceInstallations VoiceInstallation[]
-  voiceSessions      VoiceSession[]
+  voiceInstallations     VoiceInstallation[]
+  voiceSessions          VoiceSession[]
+  voiceDeviceCredentials VoiceDeviceCredential[]
 
   @@map("organizations")
 }
@@ -6332,12 +6333,46 @@ model VoiceInstallation {
   lastSeenAt     DateTime                  @default(now()) @map("last_seen_at")
   createdAt      DateTime                  @default(now()) @map("created_at")
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions     VoiceSession[]
+  credentials  VoiceDeviceCredential[]
 
   @@index([organizationId])
   @@index([userId, revokedAt])
   @@map("voice_installations")
+}
+
+/// The credential the native layer holds during a call.
+///
+/// The Expo shell's rule is that the native app never sees an authenticated
+/// Nessie session. A CallKit call outlives the WebView, so the native side
+/// needs its own — narrowed to the voice routes, and backed by server state so
+/// every request can recheck revocation exactly as an ordinary session does.
+/// Only the token's digest is stored; `sessionId` binds it to the sign-in it
+/// came from, so it cannot outlive that.
+model VoiceDeviceCredential {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  installationId String    @map("installation_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  sessionId      String    @map("session_id")
+  /// The tenant scope the WebView held when it provisioned this device — cost
+  /// attribution is scoped by project/team, so the phone must carry the same.
+  projectId      String    @map("project_id") @db.Uuid
+  teamId         String    @map("team_id") @db.Uuid
+  tokenVersion   Int       @map("token_version")
+  expiresAt      DateTime  @map("expires_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  installation VoiceInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+  @@index([userId, sessionId])
+  @@map("voice_device_credentials")
 }
 
 /// One call.

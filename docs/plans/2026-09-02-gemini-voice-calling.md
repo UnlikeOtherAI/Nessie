@@ -414,7 +414,7 @@ no-string-matching standard. From Coder's security doc we keep the logging
 discipline verbatim: no tool argument or transcript values in device
 diagnostics, shape only.
 
-### 3. The native layer needs a credential it deliberately never had
+### 3. The native layer needs a credential it deliberately never had *(shipped 2026-09-03)*
 
 The Expo shell's standing rule is "the native app never sees an
 authenticated Nessie token" (`mobile/src/lib/push-notifications.ts`) — auth
@@ -447,6 +447,28 @@ credential. Amend the invariant deliberately, not by accident:
 - The invariant's new wording: the native app never sees a *general*
   Nessie session; it may hold the voice-scoped device credential, which
   only the enumerated voice routes accept.
+
+**What shipped.** `voice_device_credentials` holds one live credential per
+device slot; only the token's SHA-256 digest is stored, and the row carries
+the minting session's `sid` plus the user's token generation and workspace
+scope. `verifyVoiceDeviceCredential` re-runs every check an ordinary session
+runs on *each* request — generation, that exact sign-in, live membership, the
+device slot — so signing out on the web, deactivating the member, or revoking
+the device ends a call in progress rather than at token expiry. The scope is a
+per-route `voiceCredential` flag read by the one global auth hook, because
+Nessie has no generic route-scoping machinery: presenting the credential
+anywhere else is `403 VOICE_CREDENTIAL_OUT_OF_SCOPE`, and a test asserts that
+against a real route table with the generic message route as the negative
+case. Minting is session-only; renewal is `POST /api/voice/device-token/refresh`,
+which carries the original sign-in forward and revokes its predecessor under a
+conditional update, so two racing refreshes cannot leave two live credentials.
+The credential lives two hours against a 30-minute default call cap.
+
+Not yet built, and the rest of what a native call needs: the voice-scoped
+`pa-send` and reply-poll routes (their wire contracts exist in
+`packages/schemas/src/voice.ts`; the routes do not), and the Expo module
+itself. Nothing calls the mint route yet — it is inert until the native
+client lands.
 
 ### 4. The web admin gets the same call — no CallKit, same everything else
 

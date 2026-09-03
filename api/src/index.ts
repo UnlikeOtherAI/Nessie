@@ -292,7 +292,7 @@ export const buildApp = async () => {
     await disconnectPrismaClient()
   })
 
-  registerGlobalAuthHook(app, { authenticateRequest, checkRateLimit })
+  registerGlobalAuthHook(app, { authenticateRequest, checkRateLimit, prisma })
 
   // Per-domain route modules. Each `register<Domain>Routes(app, deps)` closes
   // over the shared `RouteDeps` (server context + buildApp-local resources),

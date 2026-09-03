@@ -305,3 +305,24 @@ export const VoiceAssistantRepliesResponseSchema = z.object({
   replies: z.array(VoiceAssistantReplySchema),
 })
 export type VoiceAssistantRepliesResponse = z.infer<typeof VoiceAssistantRepliesResponseSchema>
+
+/**
+ * The credential the native layer holds during a call.
+ *
+ * Minted by the WebView on an ordinary session and handed to the native side,
+ * which refreshes it itself — a locked phone has no foreground WebView to ask.
+ * The token is returned exactly once; the server keeps only its digest.
+ */
+export const VoiceDeviceTokenRequestSchema = z
+  .object({ installationId: z.string().uuid() })
+  .strict()
+export type VoiceDeviceTokenRequest = z.infer<typeof VoiceDeviceTokenRequestSchema>
+
+export const VoiceDeviceTokenSchema = z.object({
+  token: z.string().min(1),
+  expiresAt: z.string().min(1),
+  installationId: z.string().uuid(),
+  /** When the native side should start refreshing, not when it must. */
+  refreshAfter: z.string().min(1),
+})
+export type VoiceDeviceToken = z.infer<typeof VoiceDeviceTokenSchema>

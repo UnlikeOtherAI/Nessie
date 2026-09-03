@@ -1,12 +1,30 @@
 import type { FastifyInstance } from 'fastify'
+import type { PrismaClient } from '@prisma/client'
 
+import {
+  isVoiceCredentialToken,
+  touchVoiceDeviceCredential,
+  verifyVoiceDeviceCredential,
+} from '../services/voice/voice-device-credential.js'
 import { sendApiError } from './api.js'
 import type { ServerContext } from './server-context.js'
 
 type GlobalAuthHookDeps = Pick<
   ServerContext,
   'authenticateRequest' | 'checkRateLimit'
->
+> & { prisma: PrismaClient }
+
+/**
+ * Reads the bearer without verifying it.
+ *
+ * Only used to choose which verifier runs. The token is a credential either
+ * way and neither path trusts it before checking it.
+ */
+const bearerToken = (header: string | undefined): string | null => {
+  if (!header?.startsWith('Bearer ')) return null
+  const token = header.slice('Bearer '.length).trim()
+  return token.length > 0 ? token : null
+}
 
 /**
  * Apply the API-wide rate-limit and authentication gate.
@@ -18,7 +36,7 @@ type GlobalAuthHookDeps = Pick<
  */
 export const registerGlobalAuthHook = (
   app: FastifyInstance,
-  { authenticateRequest, checkRateLimit }: GlobalAuthHookDeps,
+  { authenticateRequest, checkRateLimit, prisma }: GlobalAuthHookDeps,
 ): void => {
   app.addHook('preHandler', async (request, reply) => {
     const rateLimit = checkRateLimit(request)
@@ -29,6 +47,39 @@ export const registerGlobalAuthHook = (
     }
 
     if (request.routeOptions.config.public === true) {
+      return
+    }
+
+    // The voice-scoped device credential, accepted only where a route opts in.
+    //
+    // A phone on a locked screen cannot reach the WebView session, so the
+    // native layer holds this instead. It is recognised by its own prefix
+    // rather than by trying the JWT verifier first and falling through: a
+    // credential that fails here must produce a voice-specific 401 the native
+    // client can act on (re-provision, or stop) rather than a generic one.
+    const presented = bearerToken(request.headers.authorization)
+    if (presented && isVoiceCredentialToken(presented)) {
+      if (request.routeOptions.config.voiceCredential !== true) {
+        // The scope, enforced. Presenting it anywhere else is not a partial
+        // success to be retried — it is a route this credential cannot reach.
+        sendApiError(
+          reply,
+          403,
+          'VOICE_CREDENTIAL_OUT_OF_SCOPE',
+          'This credential is only accepted on voice call routes.',
+        )
+        return
+      }
+      const verified = await verifyVoiceDeviceCredential(prisma, presented)
+      if (!verified.ok) {
+        sendApiError(reply, 401, verified.code, verified.message)
+        return
+      }
+      request.actorContext = verified.actorContext
+      request.voiceCredential = verified.credential
+      // Best-effort: an operator looking at a device list wants to see which
+      // one is on a call, and a failed bookkeeping write must not fail a call.
+      void touchVoiceDeviceCredential(prisma, verified.credential.id)
       return
     }
 
