@@ -72,12 +72,24 @@ export const DEFAULT_REVOCATION_CACHE_TTL_MS = 30_000
  * the revoke keeps accepting its access tokens for up to `ttlMs`. Workstream
  * 1's pg-NOTIFY push invalidation replaces this TTL-only bound later.
  */
+export type AuthSessionRevocationChecker = {
+  (sessionId: string): Promise<boolean>
+  /**
+   * Drop a sid from THIS process's cache. The replica handling a revocation
+   * knows exactly which session it just ended, so it must not keep honouring
+   * that token for the rest of the TTL — on a single-replica deployment that
+   * would be the entire observable delay. Other replicas still converge at
+   * their own TTL until push invalidation lands.
+   */
+  invalidate: (sessionId: string) => void
+}
+
 export const createAuthSessionRevocationChecker = (
   prisma: Pick<PrismaClient, 'authSession'>,
   ttlMs = DEFAULT_REVOCATION_CACHE_TTL_MS,
-): ((sessionId: string) => Promise<boolean>) => {
+): AuthSessionRevocationChecker => {
   const cache = new Map<string, { expiresAt: number; revoked: boolean }>()
-  return async (sessionId) => {
+  const check = (async (sessionId: string) => {
     const now = Date.now()
     const cached = cache.get(sessionId)
     if (cached && cached.expiresAt > now) {
@@ -86,7 +98,11 @@ export const createAuthSessionRevocationChecker = (
     const revoked = await isAuthSessionRevoked(prisma, sessionId)
     cache.set(sessionId, { expiresAt: now + ttlMs, revoked })
     return revoked
+  }) as AuthSessionRevocationChecker
+  check.invalidate = (sessionId: string) => {
+    cache.delete(sessionId)
   }
+  return check
 }
 
 /**

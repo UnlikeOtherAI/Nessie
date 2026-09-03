@@ -451,6 +451,10 @@ export const createServerContext = () => {
     isTimingSafeMatch,
     buildLocalSession,
     buildSessionForUser,
+    // Exposed so the route that revokes a session can drop it from this
+    // process's cache immediately, instead of honouring the token for the
+    // rest of the TTL on the very replica that performed the revocation.
+    invalidateSessionRevocationCache: isSessionRevokedById.invalidate,
     checkRateLimit,
     rateLimiter,
     disconnectPrismaClient,
