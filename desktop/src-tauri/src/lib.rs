@@ -15,6 +15,10 @@ const DESKTOP_INIT_SCRIPT: &str = concat!(
     "\n;\n",
     include_str!("desktop_build_freshness_init.js")
 );
+#[cfg(test)]
+const DEFAULT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/default.json");
+#[cfg(test)]
+const DEVELOPMENT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/development.json");
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
 const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
     "linux"
@@ -114,7 +118,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{desktop_webview_url, DESKTOP_INIT_SCRIPT, PRODUCTION_ADMIN_URL};
+    use super::{
+        desktop_webview_url, DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_INIT_SCRIPT,
+        DEVELOPMENT_DESKTOP_CAPABILITIES, PRODUCTION_ADMIN_URL,
+    };
     use tauri::utils::config::WebviewUrl;
 
     #[test]
@@ -133,6 +140,21 @@ mod tests {
     #[test]
     fn desktop_init_scripts_are_statement_separated() {
         assert!(DESKTOP_INIT_SCRIPT.contains("\n;\n"));
+    }
+
+    #[test]
+    fn custom_window_controls_have_the_native_actions_they_need() {
+        let actions = [
+            "core:window:allow-close",
+            "core:window:allow-minimize",
+            "core:window:allow-is-maximized",
+            "core:window:allow-toggle-maximize",
+        ];
+        for capabilities in [DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES] {
+            for action in actions {
+                assert!(capabilities.contains(action), "missing native window permission: {action}");
+            }
+        }
     }
 
     #[test]
