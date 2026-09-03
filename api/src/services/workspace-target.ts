@@ -49,15 +49,31 @@ export const syncExternalWorkspaceNames = async (
     if (label) labelByExternalWorkspaceId.set(entry.teamId, label)
   }
   for (const [externalWorkspaceId, label] of labelByExternalWorkspaceId) {
-    await prisma.team.updateMany({
-      where: { externalWorkspaceId, name: { not: label } },
-      data: { name: label },
-    })
-    await prisma.project.updateMany({
-      where: { teams: { some: { externalWorkspaceId } }, name: { not: label } },
-      data: { name: label },
-    })
+    await mirrorExternalWorkspaceName(prisma, externalWorkspaceId, label)
   }
+}
+
+/**
+ * Write one UOA workspace label onto the local rows that mirror it: the Team
+ * and the Project fabricated to hold it, which `createWorkspaceEnvironment`
+ * names identically (`docs/standards/workspace-model.md`). Shared with the
+ * rename relay so a rename lands on exactly the rows the next directory sync
+ * would heal — a rename that touched only the Team would be half-reverted the
+ * moment either row was read for a label.
+ */
+export const mirrorExternalWorkspaceName = async (
+  prisma: Pick<PrismaClient, 'team' | 'project'>,
+  externalWorkspaceId: string,
+  label: string,
+): Promise<void> => {
+  await prisma.team.updateMany({
+    where: { externalWorkspaceId, name: { not: label } },
+    data: { name: label },
+  })
+  await prisma.project.updateMany({
+    where: { teams: { some: { externalWorkspaceId } }, name: { not: label } },
+    data: { name: label },
+  })
 }
 
 // The environment a login resolves to: the project/team plus its #general

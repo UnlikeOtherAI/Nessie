@@ -7,10 +7,17 @@ import { Input } from '../../../components/shared/FormControls'
 import { LogoPanel } from './LogoPanel'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
-import { WorkspaceAvatarPanel } from './WorkspaceAvatarPanel'
 import { toFormErrors } from '../../../facades/form-errors'
 
-/** Who the organisation is: its name, its logo, its workspace avatar. */
+/**
+ * Who the organisation is: its name and its logo.
+ *
+ * Not its workspace picture. That belongs to a workspace, not to the tenant —
+ * one organisation holds many — and it is edited on the workspace's own Profile
+ * screen. Offering it here as well was a second surface for one capability, and
+ * put a control that rewrites one workspace's identity on a page about all of
+ * them.
+ */
 export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
@@ -48,7 +55,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   return (
     <SettingsPanel eyebrow="Organization" title="Profile">
       {tabs}
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Name</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
@@ -87,7 +94,6 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
         </Card>
 
         <LogoPanel />
-        <WorkspaceAvatarPanel />
       </div>
     </SettingsPanel>
   )

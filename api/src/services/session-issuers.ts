@@ -5,6 +5,7 @@ import {
   issueSessionToken,
   type SessionTokenClaims,
 } from '../auth/session.js'
+import { recordAuthSession } from './auth-session-registry.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { LOCAL_AUTH_PROVIDER_ID } from './auth.js'
 import { nextPushRegistrationGeneration } from './push-registration-generation.js'
@@ -23,10 +24,14 @@ export const createSessionIssuers = (input: {
       providerId: string
       providerType: SessionTokenClaims['providerType']
     },
-    // A refresh keeps the stable session id; a fresh login mints a new one.
-    sessionId?: string,
-    uoaIdentity?: UoaSessionIdentity,
+    options?: {
+      // A refresh keeps the stable session id; a fresh login mints a new one.
+      sessionId?: string
+      uoaIdentity?: UoaSessionIdentity
+      userAgent?: string | null
+    },
   ) => {
+    const { sessionId, uoaIdentity, userAgent } = options ?? {}
     const user = await input.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -56,7 +61,7 @@ export const createSessionIssuers = (input: {
       : [user?.organizationMembers[0]?.role ?? 'member']
 
     const pushRegistrationVersion = (await nextPushRegistrationGeneration(input.prisma)).toString()
-    return issueSessionToken(
+    const issued = issueSessionToken(
       {
         sub: userId,
         org: organizationId,
@@ -73,6 +78,14 @@ export const createSessionIssuers = (input: {
       input.tokenTtlSeconds,
       sessionId,
     )
+    // The AuthSession row makes this sid revocable (workstream 1e): upsert,
+    // since a refresh rotation reissues the same sid.
+    await recordAuthSession(input.prisma, {
+      sessionId: issued.sessionId,
+      userAgent,
+      userId,
+    })
+    return issued
   }
 
   const buildSessionForUser = async (session: {
@@ -84,6 +97,7 @@ export const createSessionIssuers = (input: {
     sessionId?: string
     teamId: string
     uoaIdentity?: UoaSessionIdentity
+    userAgent?: string | null
     userId: string
   }) => {
     // Stamp the current revocation generation so a logout that happened between
@@ -93,7 +107,7 @@ export const createSessionIssuers = (input: {
       select: { tokenVersion: true },
     })
     const pushRegistrationVersion = (await nextPushRegistrationGeneration(input.prisma)).toString()
-    return issueSessionToken(
+    const issued = issueSessionToken(
       {
         sub: session.userId,
         org: session.organizationId,
@@ -110,6 +124,14 @@ export const createSessionIssuers = (input: {
       input.tokenTtlSeconds,
       session.sessionId,
     )
+    // Same registry write as buildLocalSession — both issuance funnels record
+    // the sid they mint so DELETE /sessions and password change can revoke it.
+    await recordAuthSession(input.prisma, {
+      sessionId: issued.sessionId,
+      userAgent: session.userAgent,
+      userId: session.userId,
+    })
+    return issued
   }
 
   return { buildLocalSession, buildSessionForUser }

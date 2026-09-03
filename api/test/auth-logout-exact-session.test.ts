@@ -128,10 +128,17 @@ test('revoking A immediately denies A while the newer session B stays active', a
       && row.revokedAt === null
       && where.userId === USER_ID) ?? null,
   }
+  const revokedAuthSessions: Array<{ sessionId: string; userId: string }> = []
   const prisma = {
     refreshToken,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({
       $queryRaw: async () => [{ locked: true }],
+      authSession: {
+        updateMany: async ({ where }: { where: { id: string; userId: string } }) => {
+          revokedAuthSessions.push({ sessionId: where.id, userId: where.userId })
+          return { count: 1 }
+        },
+      },
       refreshToken,
       uoaSessionCredential: { deleteMany: async () => ({ count: 0 }) },
     }),
@@ -140,4 +147,7 @@ test('revoking A immediately denies A while the newer session B stays active', a
   assert.equal(await revokeUserSession(prisma, USER_ID, SESSION_A), 1)
   assert.equal(await hasActiveUserSession(prisma, USER_ID, SESSION_A, now), false)
   assert.equal(await hasActiveUserSession(prisma, USER_ID, SESSION_B, now), true)
+  // The AuthSession row for the targeted sid is revoked in the same transaction,
+  // so its access JWT dies immediately rather than at TTL expiry (S9/SB-04).
+  assert.deepEqual(revokedAuthSessions, [{ sessionId: SESSION_A, userId: USER_ID }])
 })

@@ -117,7 +117,8 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
   const css = injectedSafeAreaCss('ios', 'phone', 34)
 
   assert.doesNotMatch(css, /padding-top: env\(safe-area-inset-top\)/)
-  assert.match(css, /padding-bottom: env\(safe-area-inset-bottom\)/)
+  assert.doesNotMatch(css, /padding-bottom: env\(safe-area-inset-bottom\)/)
+  assert.doesNotMatch(css, /admin-shell/)
   assert.match(css, /body \{ background: var\(--main\); \}/)
   assert.match(
     css,
@@ -215,15 +216,18 @@ test('iPad and Android keep top safe-area ownership in the native frame', () => 
   assert.doesNotMatch(androidCss, /padding-top: env/)
   assert.doesNotMatch(ipadCss, /body \{ background: var\(--main\); \}/)
   assert.doesNotMatch(androidCss, /body \{ background: var\(--main\); \}/)
-  assert.match(ipadCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
-  assert.match(androidCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
+  // The selectors that consume the native insets belong to the app
+  // (admin/src/styles.css): only it knows which wrapper — ResizableSidebar,
+  // ResizableThreadPanel — holds the surface. The injection publishes the
+  // values as :root custom properties and nothing else.
+  assert.doesNotMatch(ipadCss, /padding-bottom/)
+  assert.doesNotMatch(androidCss, /padding-bottom/)
+  assert.doesNotMatch(ipadCss, /admin-shell/)
+  assert.doesNotMatch(androidCss, /admin-shell/)
+  assert.doesNotMatch(ipadCss, /--nessie-native-bottom-overlay/)
   assert.match(
     androidCss,
     new RegExp(`--nessie-native-bottom-overlay: ${ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE}px`),
-  )
-  assert.match(
-    androidCss,
-    /padding-bottom: calc\(var\(--nessie-native-bottom-overlay\) \+ env\(safe-area-inset-bottom\)\)/,
   )
   assert.match(androidCss, /\.admin-topbar \{ height: var\(--topbar-h\); padding-top: 0; \}/)
   assert.match(androidCss, /\[data-testid="channel-content-scroll"\] \{ overflow-x: hidden; \}/)
