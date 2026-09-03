@@ -28,6 +28,15 @@ import { Select, Textarea } from '../../../shared/FormControls'
 const DEFAULT_VOICE_VALUE = ''
 
 type AgentSpeechFieldsetProps = {
+  /**
+   * Read-only rendering, for an agent the viewer may not edit (a global agent
+   * ships with the deployment). Carried on the `<fieldset>` rather than each
+   * control: the native attribute disables every descendant, including one
+   * added here later, which is exactly the drift a per-control prop invites —
+   * this section shipped after the read-only mode and stayed live on a
+   * blueprint agent's page until a browser pass caught it.
+   */
+  disabled?: boolean
   onSpeakingStyleChange: (style: string) => void
   onVoiceNameChange: (voiceName: string) => void
   speakingStyle: string
@@ -35,6 +44,7 @@ type AgentSpeechFieldsetProps = {
 }
 
 export const AgentSpeechFieldset = ({
+  disabled = false,
   onSpeakingStyleChange,
   onVoiceNameChange,
   speakingStyle,
@@ -43,7 +53,11 @@ export const AgentSpeechFieldset = ({
   const selectedPreset = presetForText(speakingStyle)
 
   return (
-    <fieldset className="grid gap-3 border-0 p-0" data-testid="agent-speech">
+    <fieldset
+      className="grid gap-3 border-0 p-0"
+      data-testid="agent-speech"
+      disabled={disabled}
+    >
       {/* A `<legend>` cannot be a `<label htmlFor>`, so it carries FieldLabel's
           classes directly — the same exception `RunLimitsFieldset` documents. */}
       <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
