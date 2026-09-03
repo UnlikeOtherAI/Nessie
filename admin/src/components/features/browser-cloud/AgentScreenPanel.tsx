@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
 import { AgentScreenViewer } from './AgentScreenViewer'
@@ -45,36 +46,38 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
 
   if (overlay.mounted) {
     return (
-      <div
-        aria-label="Agent's screen"
-        aria-modal="true"
-        className="fixed inset-0 flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
-        ref={overlay.panelRef}
-        role="dialog"
-        style={overlay.layerStyle}
-        tabIndex={-1}
-      >
-        <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
-          <h2 className="text-sm font-semibold text-[color:var(--tx)]">Agent’s screen</h2>
-          <div className="flex items-center gap-2">
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              onClick={overlay.requestClose}
-              type="button"
-            >
-              Exit full screen
-            </button>
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              onClick={onClose}
-              type="button"
-            >
-              Close
-            </button>
-          </div>
-        </header>
-        <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
-      </div>
+      <OverlayPortal>
+        <div
+          aria-label="Agent's screen"
+          aria-modal="true"
+          className="fixed inset-0 flex flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
+          ref={overlay.panelRef}
+          role="dialog"
+          style={overlay.layerStyle}
+          tabIndex={-1}
+        >
+          <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
+            <h2 className="text-sm font-semibold text-[color:var(--tx)]">Agent’s screen</h2>
+            <div className="flex items-center gap-2">
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={overlay.requestClose}
+                type="button"
+              >
+                Exit full screen
+              </button>
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={onClose}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+          </header>
+          <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
+        </div>
+      </OverlayPortal>
     )
   }
 

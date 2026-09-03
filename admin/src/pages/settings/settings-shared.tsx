@@ -60,6 +60,6 @@ export type SettingsTabHostProps = { tabs?: ReactNode }
 export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPanelProps) => (
   <section className="flex h-full min-h-0 flex-col">
     <ScreenHeader actions={actions} eyebrow={eyebrow} title={title} />
-    <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">{children}</div>
   </section>
 )

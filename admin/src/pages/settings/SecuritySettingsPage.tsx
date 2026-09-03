@@ -115,7 +115,7 @@ export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
           </div>
         </section>
 
-        <div className="max-w-3xl">
+        <div>
           {isLocalAccount ? (
             <ChangePasswordCard />
           ) : (

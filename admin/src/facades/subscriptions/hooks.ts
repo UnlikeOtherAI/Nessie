@@ -84,3 +84,63 @@ export const useDisconnectModelSubscription = () => {
     },
   })
 }
+
+export type DeviceStart = {
+  stateToken: string
+  userCode: string
+  verificationUri: string
+  verificationUriComplete?: string
+  expiresAt: string
+  intervalMs: number
+}
+
+export type DevicePoll =
+  | { status: 'pending'; intervalMs: number }
+  | { status: 'awaiting_confirmation'; accountId: string; accountLabel?: string }
+  | { status: 'denied'; reason: string }
+  | { status: 'expired' }
+
+/**
+ * Device-code sign-in. The client only ever handles a short code, a link, and
+ * the identity that came back — the token exchange happens server-side, so no
+ * credential passes through the browser.
+ */
+export const useStartDeviceLink = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (input: { provider: string; subscriptionId?: string }) =>
+      apiClient.post<DeviceStart>('/api/model-subscriptions/device/start', input),
+  })
+}
+
+export const usePollDeviceLink = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (stateToken: string) =>
+      apiClient.post<DevicePoll>('/api/model-subscriptions/device/poll', { stateToken }),
+  })
+}
+
+export const useConfirmDeviceLink = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (stateToken: string) =>
+      apiClient.post<{ subscriptionId: string }>(
+        '/api/model-subscriptions/device/confirm',
+        { stateToken },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: subscriptionKeys.list })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.models })
+    },
+  })
+}
+
+export const useCancelDeviceLink = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (stateToken: string) =>
+      apiClient.post('/api/model-subscriptions/device/cancel', { stateToken }),
+  })
+}

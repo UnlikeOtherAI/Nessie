@@ -53,6 +53,7 @@ export * from './call-start.js'
 export * from './comms-credential-coordinator.js'
 export * from './ledger-agent-model-catalog.js'
 export * from './policy-check.js'
+export * from './project-structure.js'
 export * from './private-agent-home.js'
 export * from './personal-assistant-presence.js'
 export * from './trigger-config-identity.js'
@@ -61,6 +62,7 @@ export * from './trigger-create.js'
 export * from './trigger-launch-origin.js'
 export * from './roster-local-identity.js'
 export * from './uoa-org-profile.js'
+export * from './uoa-org-provisioning.js'
 export * from './uoa-org-roster.js'
 export * from './uoa-settings.js'
 export * from './workflow-binding-grammar.js'
@@ -117,3 +119,35 @@ export {
   type SendGrantDuration,
   type SendGrantRecord,
 } from './send-authorization.js'
+
+export {
+  MailboxConnectionError,
+  createMailboxConnection,
+  deleteMailboxConnection,
+  isCredentialRejection,
+  listMailboxConnectionsForUser,
+  loadManageableMailboxConnection,
+  presentMailboxConnection,
+  setMailboxAgentAccess,
+  verifyMailboxConnection,
+  type ActingMember as MailboxActingMember,
+  type CreateMailboxConnectionInput,
+  type MailboxConnectionRefusal,
+} from './mailbox-connections.js'
+
+export {
+  MailboxCredentialMissingError,
+  mailboxDialOptions,
+  mailboxEndpointsFor,
+  type MailboxConnectionRow,
+} from './mailbox-connection-endpoints.js'
+
+export {
+  MailboxAccessError,
+  listReachableMailboxes,
+  markMailboxNeedsReauthorization,
+  openMailboxEndpoints,
+  resolveMailboxForToolCall,
+  type MailboxAccessErrorCode,
+  type ReachableMailbox,
+} from './mailbox-connection-access.js'

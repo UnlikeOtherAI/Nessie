@@ -1,25 +1,19 @@
 import type { ColumnCategory, PrismaClient } from '@prisma/client'
 import { parseProjectId } from '@nessie/schemas'
+import {
+  DEFAULT_BOARD_COLUMNS,
+  defaultColumnCreateData,
+} from '@nessie/workspace-admin'
 import type { BoardColumnRecord, ProjectBoardRecord } from '../contracts.js'
 
 // The columns every project starts with — also seeded for existing projects in
-// the add_board_columns migration and at bootstrap.
-export const DEFAULT_COLUMNS: { name: string; category: ColumnCategory }[] = [
-  { name: 'To do', category: 'todo' },
-  { name: 'In progress', category: 'in_progress' },
-  { name: 'Review', category: 'review' },
-  { name: 'Done', category: 'done' },
-]
-
-// Nested-create rows for a project's default columns (projectId is supplied by
-// the parent project create, so it is omitted here).
-export const defaultColumnCreateData = (organizationId: string) =>
-  DEFAULT_COLUMNS.map((column, index) => ({
-    organizationId,
-    name: column.name,
-    category: column.category,
-    position: index,
-  }))
+// the add_board_columns migration and at bootstrap. They live in
+// `@nessie/workspace-admin` because project creation is shared with the worker
+// (the Agent Designer's `project_create`), and a project created from chat must
+// get the same board a clicked one gets.
+export const DEFAULT_COLUMNS: { name: string; category: ColumnCategory }[] =
+  DEFAULT_BOARD_COLUMNS
+export { defaultColumnCreateData }
 
 const mapColumn = (column: {
   id: string

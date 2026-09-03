@@ -23,6 +23,7 @@ import { registerCommsConnectionRoutes } from './routes/comms-connections.js'
 import { registerAgentEmailDraftRoutes } from './routes/agent-email-draft.js'
 import { registerAgentEmailInboundRoutes } from './routes/agent-email-inbound.js'
 import { registerAgentMailboxRoutes } from './routes/agent-mailbox.js'
+import { registerMailboxConnectionRoutes } from './routes/mailbox-connections.js'
 import { registerModelSubscriptionRoutes } from './routes/model-subscriptions.js'
 import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
@@ -78,6 +79,7 @@ import { registerWorkflowRoutes } from './routes/workflows.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
 import { registerWorkspaceInvitationAcceptanceRoute } from './routes/workspace-invitations.js'
 import { registerWorkspaceMembersRoutes } from './routes/workspace-members.js'
+import { registerWorkspaceProvisioningRoutes } from './routes/workspace-provisioning.js'
 import {
   buildDashboardEgressPolicy,
   createDashboardCredentialStore,
@@ -112,6 +114,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentEmailInboundRoutes(app, deps)
   registerAgentEmailDraftRoutes(app, deps)
   registerAgentMailboxRoutes(app, deps)
+  registerMailboxConnectionRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
@@ -132,6 +135,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerWorkspaceAvatarRoutes(app, deps)
   registerProfileAvatarRoutes(app, deps)
   registerWorkspaceMembersRoutes(app, deps)
+  registerWorkspaceProvisioningRoutes(app, deps)
   registerWorkspaceInvitationAcceptanceRoute(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)

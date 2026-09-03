@@ -214,7 +214,7 @@ export const AppsPage = () => {
         (AGENTS.md rule zero #3).
       */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-[color:var(--main)]">
-        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        <div className="w-full px-[var(--page-gutter)] py-6">
           <AppsToolbar
             activeCategory={activeCategory}
             filter={filter}

@@ -7,6 +7,7 @@ import {
   parseThreadId,
   parseUserId,
   withActionContext,
+  withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
   type RunStatus,
 } from '@nessie/schemas'
@@ -182,15 +183,26 @@ export const continueRun = async (
     const queued = await enqueueRunExecution(
       tx,
       {
-        actorContext: withActionContext(actorContext, {
-          agentId: parseAgentId(run.agentId),
-          channelId: parseChannelId(run.channelId),
-          ...(run.principalUserId
-            ? { effectiveUserId: parseUserId(run.principalUserId) }
-            : {}),
-          taskId: parseTaskId(newTask.id),
-          threadId: parseThreadId(run.threadId),
-        }),
+        // A PA shared-channel presence keeps its own principal, so it is
+        // stamped last; otherwise a single-member system DM stamps the person
+        // who is continuing, who is necessarily that DM's one member (the
+        // route gates on the same channel access that could have triggered the
+        // run). Without this a continued Agent Designer run loses every
+        // identity-delegated tool the original had.
+        actorContext: withActionContext(
+          withDelegatedSystemDmIdentity(actorContext, {
+            systemChannelType: run.channelSystemChannelType,
+          }),
+          {
+            agentId: parseAgentId(run.agentId),
+            channelId: parseChannelId(run.channelId),
+            ...(run.principalUserId
+              ? { effectiveUserId: parseUserId(run.principalUserId) }
+              : {}),
+            taskId: parseTaskId(newTask.id),
+            threadId: parseThreadId(run.threadId),
+          },
+        ),
         agentId: parseAgentId(run.agentId),
         ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
         interactive: actorContext.actor.actorType === 'user',

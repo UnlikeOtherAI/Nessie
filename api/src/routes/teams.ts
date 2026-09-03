@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import {
   CallLinkProviderSchema,
+  createTeamForUser,
   isCallLinkProviderConfigured,
+  listTeamsForOrganization,
+  ProjectValidationError,
   type CallLinkProvider,
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
@@ -49,32 +52,19 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!actorContext) return reply
 
     const query = request.query as { projectId?: string }
-    const where: Record<string, unknown> = {
-      project: { organizationId: actorContext.tenant.organizationId },
-      systemManaged: false,
-    }
-    if (query.projectId) {
-      where['projectId'] = query.projectId
-    }
-
-    const teams = await prisma.team.findMany({
-      where,
-      include: { members: { select: { userId: true, role: true } } },
-      orderBy: { createdAt: 'asc' },
+    // The shared reader, so the `project_list` tool resolves a team name to the
+    // same ids this page shows. Provider *availability* is a deployment fact the
+    // API owns, so it is decorated here rather than baked into the record.
+    const teams = await listTeamsForOrganization(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      ...(query.projectId ? { projectIds: [query.projectId] } : {}),
     })
 
     const callProviderAvailability = configuredCallProviders()
 
-    return createApiResponse(teams.map((t) => ({
-      callProvider: t.callProvider as CallLinkProvider,
+    return createApiResponse(teams.map((team) => ({
+      ...team,
       callProviderAvailability,
-      id: t.id,
-      name: t.name,
-      /** UOA holds this workspace's name, so it cannot be renamed here. */
-      externallyManaged: t.externalWorkspaceId !== null,
-      projectId: t.projectId,
-      memberCount: t.members.length,
-      createdAt: t.createdAt.toISOString(),
     })))
   })
 
@@ -89,27 +79,27 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const project = await prisma.project.findFirst({
-      where: {
-        channelRoot: false,
-        id: body.projectId,
+    // The same function the `team_create` tool calls, including the
+    // project-belongs-to-this-organisation check behind the 404.
+    let team
+    try {
+      team = await createTeamForUser(prisma, {
+        name: body.name,
         organizationId: actorContext.tenant.organizationId,
-      },
-    })
-    if (!project) {
+        projectId: body.projectId,
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      if (error instanceof ProjectValidationError) {
+        sendApiError(reply, 400, 'INVALID_INPUT', error.message)
+        return reply
+      }
+      throw error
+    }
+    if (!team) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
       return reply
     }
-
-    const team = await prisma.team.create({
-      data: {
-        name: body.name,
-        projectId: body.projectId,
-        members: {
-          create: { userId: actorContext.actor.actorId, role: 'owner' },
-        },
-      },
-    })
 
     await emitAuditEvent(prisma, {
       actorContext,
@@ -120,12 +110,8 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({
-      callProvider: team.callProvider as CallLinkProvider,
+      ...team,
       callProviderAvailability: configuredCallProviders(),
-      id: team.id,
-      name: team.name,
-      projectId: team.projectId,
-      createdAt: team.createdAt.toISOString(),
     }))
   })
 

@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto'
 import { safeFetch } from '@nessie/runtime'
 import {
+  createCodexDeviceFlow,
+  createGrokDeviceFlow,
+  OPENAI_AUTH_BASE_URL,
+  OPENAI_CODEX_CLIENT_ID,
+  readIdTokenIdentity,
+  XAI_OAUTH_CLIENT_ID,
+  XAI_OAUTH_ISSUER,
+  type DeviceAuthorizationFlow,
+} from './device-auth.js'
+import {
   ModelSubscriptionError,
   SUBSCRIPTION_ERROR_CODES,
   type SubscriptionAccountIdentity,
@@ -176,10 +186,6 @@ const glmAdapter: SubscriptionProviderAdapter = {
     }),
 }
 
-const ADAPTERS: Partial<Record<SubscriptionProviderKey, SubscriptionProviderAdapter>> = {
-  glm: glmAdapter,
-  kimi: kimiAdapter,
-}
 
 /** Adapters a person can link today. Codex and Grok land with phase 2. */
 export const listSubscriptionAdapters = (): SubscriptionProviderAdapter[] =>
@@ -203,4 +209,211 @@ export const requireSubscriptionAdapter = (
     )
   }
   return adapter
+}
+
+// ─── OAuth device-code adapters (phase 2) ────────────────────────────────────
+
+/**
+ * Refresh an OAuth grant.
+ *
+ * A refresh grant is never retried on a transport failure: the provider may
+ * already have consumed and rotated the token, and a resend would burn the
+ * family. The caller (the coordinator) parks the link for recovery instead.
+ */
+const refreshOAuthGrant = async (input: {
+  bundle: SubscriptionCredentialBundle
+  clientId: string
+  displayName: string
+  tokenEndpoint: string
+  extraHeaders?: Record<string, string>
+}): Promise<SubscriptionCredentialBundle> => {
+  const refreshToken = input.bundle.refreshToken
+  if (!refreshToken) {
+    throw new ModelSubscriptionError(
+      SUBSCRIPTION_ERROR_CODES.VERIFY_FAILED,
+      `${input.displayName} cannot be refreshed without a refresh token.`,
+    )
+  }
+  let response: Response
+  try {
+    response = await safeFetch(
+      input.tokenEndpoint,
+      {
+        body: new URLSearchParams({
+          client_id: input.clientId,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+        }).toString(),
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(input.extraHeaders ?? {}),
+        },
+        method: 'POST',
+        signal: AbortSignal.timeout(30_000),
+      },
+      { credentialsPresent: true, maxRedirects: 0 },
+    )
+  } catch {
+    throw new ModelSubscriptionError(
+      SUBSCRIPTION_ERROR_CODES.REFRESH_INDETERMINATE,
+      `${input.displayName} could not be refreshed.`,
+    )
+  }
+  const text = await response.text().catch(() => '')
+  let body: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (parsed && typeof parsed === 'object') body = parsed as Record<string, unknown>
+  } catch {
+    body = {}
+  }
+  if (!response.ok) {
+    throw new ModelSubscriptionError(
+      SUBSCRIPTION_ERROR_CODES.VERIFY_FAILED,
+      `${input.displayName} rejected the refresh; reconnect the subscription.`,
+    )
+  }
+  const accessToken = typeof body.access_token === 'string' ? body.access_token : ''
+  if (!accessToken) {
+    throw new ModelSubscriptionError(
+      SUBSCRIPTION_ERROR_CODES.VERIFY_FAILED,
+      `${input.displayName} returned no access token on refresh.`,
+    )
+  }
+  const expiresIn = typeof body.expires_in === 'number' ? body.expires_in : undefined
+  return {
+    accessToken,
+    // A provider that omits `refresh_token` on refresh means "unchanged"; one
+    // that rotates it hands back a new one, and dropping that would strand the
+    // family at the next refresh.
+    ...(typeof body.refresh_token === 'string' && body.refresh_token.trim()
+      ? { refreshToken: body.refresh_token }
+      : { refreshToken }),
+    ...(typeof body.id_token === 'string' ? { idToken: body.id_token } : input.bundle.idToken ? { idToken: input.bundle.idToken } : {}),
+    ...(expiresIn ? { expiresAt: Date.now() + expiresIn * 1000 } : {}),
+  }
+}
+
+/**
+ * OpenAI Codex on a ChatGPT plan. Nessie runs its own device-code grant against
+ * OpenAI's public Codex client and identifies itself with `originator=nessie` —
+ * it never reads the Codex CLI's stored credentials, because two apps sharing
+ * one grant rotate each other out.
+ */
+const codexAdapter: SubscriptionProviderAdapter = {
+  authStrategy: 'oauth_device',
+  classifyFailure: classifyOpenAiShapedFailure,
+  displayName: 'ChatGPT Codex',
+  key: 'openai_codex',
+  models: [
+    { description: 'OpenAI’s Codex model.', displayName: 'GPT-5 Codex', model: 'gpt-5-codex' },
+  ],
+  refresh: async (bundle) =>
+    refreshOAuthGrant({
+      bundle,
+      clientId: OPENAI_CODEX_CLIENT_ID,
+      displayName: 'OpenAI',
+      extraHeaders: { originator: 'nessie' },
+      tokenEndpoint: `${OPENAI_AUTH_BASE_URL}/oauth/token`,
+    }),
+  termsNote:
+    'Signs in to your own ChatGPT account and runs against your plan’s limits, not your organisation’s credits. Nessie keeps its own sign-in, separate from the Codex CLI, so the two never sign each other out. Check that your plan permits use from other tools.',
+  transport: {
+    baseUrl: 'https://chatgpt.com/backend-api/codex',
+    runtimeProvider: 'codex-subscription',
+  },
+  transportHeaders: (bundle) => {
+    const accountId = bundle.idToken
+      ? readChatgptAccountId(bundle.idToken)
+      : undefined
+    return {
+      'OpenAI-Beta': 'responses=experimental',
+      originator: 'nessie',
+      ...(accountId ? { 'chatgpt-account-id': accountId } : {}),
+    }
+  },
+  // The device flow already proved the account through the id_token; a second
+  // probe would spend a generation to learn nothing new.
+  verify: async (bundle) =>
+    bundle.idToken
+      ? readIdTokenIdentity(bundle.idToken, {
+        audience: OPENAI_CODEX_CLIENT_ID,
+        issuer: OPENAI_AUTH_BASE_URL,
+      })
+      : { providerAccountId: fingerprintApiKey(bundle.refreshToken ?? bundle.accessToken) },
+}
+
+/** ChatGPT routes Codex requests per workspace account, named in the id_token. */
+const readChatgptAccountId = (idToken: string): string | undefined => {
+  const payloadPart = idToken.split('.')[1]
+  if (!payloadPart) return undefined
+  try {
+    const claims = JSON.parse(
+      Buffer.from(payloadPart, 'base64url').toString('utf8'),
+    ) as Record<string, unknown>
+    const auth = (claims['https://api.openai.com/auth'] ?? {}) as Record<string, unknown>
+    const id = auth.chatgpt_account_id
+    return typeof id === 'string' && id.trim().length > 0 ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * xAI Grok on a SuperGrok plan. Standard OIDC discovery plus RFC 8628 device
+ * code — no loopback listener anywhere. xAI's consent screen may name "Grok
+ * Build", because this is xAI's shared public client; the linking copy says so.
+ */
+const grokAdapter: SubscriptionProviderAdapter = {
+  authStrategy: 'oauth_device',
+  classifyFailure: classifyOpenAiShapedFailure,
+  displayName: 'Grok (SuperGrok)',
+  key: 'grok',
+  models: [
+    { description: 'xAI’s flagship Grok model.', displayName: 'Grok 4', model: 'grok-4' },
+    { description: 'Fast Grok model for coding.', displayName: 'Grok Code Fast', model: 'grok-code-fast-1' },
+  ],
+  refresh: async (bundle) =>
+    refreshOAuthGrant({
+      bundle,
+      clientId: XAI_OAUTH_CLIENT_ID,
+      displayName: 'xAI',
+      tokenEndpoint: `${XAI_OAUTH_ISSUER}/oauth/token`,
+    }),
+  termsNote:
+    'Signs in to your own xAI account and runs against your SuperGrok plan’s limits, not your organisation’s credits. xAI may show “Grok Build” on the consent screen, because Nessie uses xAI’s shared sign-in app. Your account needs an eligible subscription.',
+  transport: {
+    baseUrl: 'https://cli-chat-proxy.grok.com/v1',
+    runtimeProvider: 'openai-compatible',
+  },
+  transportHeaders: () => ({ 'X-XAI-Token-Auth': 'xai-grok-cli' }),
+  verify: async (bundle) =>
+    bundle.idToken
+      ? readIdTokenIdentity(bundle.idToken, {
+        audience: XAI_OAUTH_CLIENT_ID,
+        issuer: XAI_OAUTH_ISSUER,
+      })
+      : { providerAccountId: fingerprintApiKey(bundle.refreshToken ?? bundle.accessToken) },
+}
+
+/** The device flow for an adapter, or null for a pasted-key provider. */
+export const deviceFlowForAdapter = (
+  key: SubscriptionProviderKey,
+): DeviceAuthorizationFlow | null => {
+  if (key === 'openai_codex') return createCodexDeviceFlow()
+  if (key === 'grok') return createGrokDeviceFlow()
+  return null
+}
+
+/**
+ * The adapters this deployment can link. Declared after every adapter above so
+ * the phase-2 OAuth providers can sit beside the pasted-key ones without a
+ * forward reference.
+ */
+const ADAPTERS: Partial<Record<SubscriptionProviderKey, SubscriptionProviderAdapter>> = {
+  glm: glmAdapter,
+  grok: grokAdapter,
+  kimi: kimiAdapter,
+  openai_codex: codexAdapter,
 }

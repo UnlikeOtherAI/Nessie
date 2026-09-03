@@ -1,4 +1,11 @@
 import type { FastifyInstance } from 'fastify'
+import {
+  createProjectForUser,
+  listProjectsForUser,
+  mapProjectRecord,
+  projectCountsInclude,
+  ProjectValidationError,
+} from '@nessie/workspace-admin'
 
 import {
   ProjectMemberRecordSchema,
@@ -7,38 +14,11 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { defaultColumnCreateData } from '../services/board.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
-const projectCountsInclude = {
-  members: { select: { userId: true, role: true } },
-  teams: { select: { _count: { select: { channels: true } } } },
-} as const
-
-type ProjectWithCounts = {
-  id: string
-  name: string
-  avatarEmoji: string | null
-  avatarAttachmentId: string | null
-  organizationId: string
-  createdAt: Date
-  members: { userId: string; role: string }[]
-  teams: { _count: { channels: number } }[]
-}
-
-const toProjectRecord = (project: ProjectWithCounts) => ({
-  id: project.id,
-  name: project.name,
-  avatarEmoji: project.avatarEmoji,
-  avatarAttachmentId: project.avatarAttachmentId,
-  organizationId: project.organizationId,
-  memberCount: project.members.length,
-  teamCount: project.teams.length,
-  channelCount: project.teams.reduce((total, team) => total + team._count.channels, 0),
-  createdAt: project.createdAt.toISOString(),
-})
+const toProjectRecord = mapProjectRecord
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -49,28 +29,21 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     resolveMembershipRole,
     MEMBERSHIP_ROLES,
     isProjectAccessibleToActor,
-    listAccessibleProjectIds,
   } = deps
 
   app.get('/api/projects', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    // Non-owners only see the projects they are a member of.
-    const accessible = await listAccessibleProjectIds(actorContext)
-    const projects = await prisma.project.findMany({
-      where: {
-        channelRoot: false,
-        organizationId: actorContext.tenant.organizationId,
-        ...(accessible === 'all' ? {} : { id: { in: accessible } }),
-      },
-      include: projectCountsInclude,
-      orderBy: { createdAt: 'asc' },
+    // Non-owners only see the projects they are a member of. The shared reader
+    // is the one the `project_list` tool asks too.
+    const projects = await listProjectsForUser(prisma, {
+      isOwner: actorContext.actor.roles?.includes('owner') === true,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
     })
 
-    return createApiResponse(
-      ProjectRecordSchema.array().parse(projects.map(toProjectRecord)),
-    )
+    return createApiResponse(ProjectRecordSchema.array().parse(projects))
   })
 
   app.get('/api/projects/:projectId', async (request, reply) => {
@@ -144,18 +117,22 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const project = await prisma.project.create({
-      data: {
+    // The same function the `project_create` tool calls: the owner membership
+    // row and the default board columns are written in one place.
+    let project
+    try {
+      project = await createProjectForUser(prisma, {
         name: body.name,
         organizationId: actorContext.tenant.organizationId,
-        members: {
-          create: { userId: actorContext.actor.actorId, role: 'owner' },
-        },
-        boardColumns: {
-          create: defaultColumnCreateData(actorContext.tenant.organizationId),
-        },
-      },
-    })
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      if (error instanceof ProjectValidationError) {
+        sendApiError(reply, 400, 'NAME_REQUIRED', error.message)
+        return reply
+      }
+      throw error
+    }
 
     await emitAuditEvent(prisma, {
       actorContext,
@@ -165,17 +142,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       outcome: 'success',
     })
 
-    return reply.code(201).send(createApiResponse(ProjectRecordSchema.parse({
-      id: project.id,
-      name: project.name,
-      avatarEmoji: project.avatarEmoji,
-      avatarAttachmentId: project.avatarAttachmentId,
-      organizationId: project.organizationId,
-      memberCount: 1,
-      teamCount: 0,
-      channelCount: 0,
-      createdAt: project.createdAt.toISOString(),
-    })))
+    return reply.code(201).send(
+      createApiResponse(ProjectRecordSchema.parse(project)),
+    )
   })
 
   app.patch('/api/projects/:projectId', async (request, reply) => {
@@ -193,10 +162,29 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        teams: { where: { externalWorkspaceId: { not: null } }, select: { id: true }, take: 1 },
+      },
     })
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    // A project backing a UOA workspace takes its name from that workspace:
+    // `syncExternalWorkspaceNames` rewrites it from the verified directory on
+    // every login and rotation. Accepting a local rename made the value persist
+    // just long enough to look saved before a refresh silently reverted it.
+    // The avatar below is Nessie's own and stays editable.
+    if (body.name !== undefined && project.teams.length > 0 && body.name !== project.name) {
+      sendApiError(
+        reply,
+        409,
+        'WORKSPACE_NAME_MANAGED_BY_SSO',
+        'This workspace is named in UnlikeOtherAI. Rename it there and the change will appear here.',
+      )
       return reply
     }
 

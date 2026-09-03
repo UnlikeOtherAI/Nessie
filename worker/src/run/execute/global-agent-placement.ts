@@ -8,18 +8,40 @@ export class GlobalAgentPlacementError extends Error {
   readonly code = 'GLOBAL_AGENT_INVALID_PLACEMENT'
 
   constructor() {
-    super('A global agent may only run in its own per-user home DM.')
+    super(
+      'A global agent may only run in its own per-user home DM or in an '
+      + 'ordinary channel it is bound to.',
+    )
   }
 }
 
 /**
- * A DM-homed global agent runs in its own home DM and nowhere else.
+ * Where a DM-homed global agent may run: its own home DM, or an ordinary
+ * channel it is genuinely bound to.
  *
- * The bootstrap writes the only binding and `bindAgentToChannel` refuses every
- * system channel, but old or manual rows survive deployments — and the
- * consequences here are identity, not just placement: the home DM is where
- * `effectiveUserId = poster` is stamped, so a global agent speaking anywhere
- * else would be delegating from a person who is not the sole member.
+ * The two arms are not the same permission and must not collapse into one.
+ *
+ * - **Its own home DM** is where identity delegation lives. The home DM is
+ *   where `effectiveUserId = poster` is stamped and where the sole-membership
+ *   trigger holds at rest, so `isGlobalAgentHomeSurface` — the same predicate
+ *   the delegation gate and the identity-tool gate ask — is what admits it.
+ *   Placement and identity can therefore never disagree about "its own home".
+ * - **A bound ordinary channel** is the reachability arm (Rule zero): a global
+ *   agent is an app-provided colleague and a workspace can put it in a room.
+ *   The check is the *binding*, not the channel kind: `boundAgentIds` is the
+ *   destination's live `AgentBinding` set, loaded once with the run context, so
+ *   an unbound agent enqueued into a channel by a stale job still fails closed.
+ *   It carries no identity — the identity gate keeps asking for the home DM, so
+ *   a global agent in a shared room advises and cannot write agents.
+ *
+ * A system channel is never the second arm. Reaching that test already means
+ * the first arm said no, so any `systemChannelType` here belongs to somebody
+ * else's single-agent surface (another person's home of this blueprint, a PA
+ * DM, an external product's DM) — exactly the case that must stay closed.
+ *
+ * An unknown slug is a row whose blueprint a deploy withdrew: it runs nowhere,
+ * bound or not, rather than running a definition this deployment no longer
+ * holds.
  *
  * Trigger threads are deliberately NOT in the allowed set, unlike the
  * private-agent rule: v1 blueprints declare `allowsSelfTriggers: false` and
@@ -31,20 +53,12 @@ export const assertGlobalAgentRunPlacement = (context: RunContext): void => {
   if (!slug) return
 
   const blueprint = getGlobalAgentBlueprint(slug)
-  // An unknown slug is a row whose blueprint was withdrawn by a deploy. Fail
-  // closed rather than running a definition this deployment no longer holds.
   if (!blueprint || blueprint.home !== 'per_user_dm') {
     throw new GlobalAgentPlacementError()
   }
 
-  // The encoded person is whoever this home belongs to; the sole-membership
-  // trigger proves they are its only member. What is checked here is that the
-  // destination is *a* home of *this* blueprint in *this* organisation — the
-  // same surface condition the delegation predicate and the identity-tool gate
-  // ask, so placement and identity can never disagree about what "its own home"
-  // means.
   if (
-    !isGlobalAgentHomeSurface({
+    isGlobalAgentHomeSurface({
       agentKind: context.agent.agentKind,
       dmKey: context.channel.dmKey,
       organizationId: context.channel.organizationId,
@@ -52,6 +66,15 @@ export const assertGlobalAgentRunPlacement = (context: RunContext): void => {
       systemSlug: slug,
     })
   ) {
-    throw new GlobalAgentPlacementError()
+    return
   }
+
+  if (
+    !context.channel.systemChannelType
+    && context.boundAgentIds.includes(context.agent.id)
+  ) {
+    return
+  }
+
+  throw new GlobalAgentPlacementError()
 }

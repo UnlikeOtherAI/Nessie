@@ -1,7 +1,8 @@
 # Live document streaming
 
 The mechanics behind `CLAUDE.md` → "Live document streaming". The
-invariants themselves are in `AGENTS.md`, and the spec is
+invariants themselves are in [standards/live-document-streaming.md](standards/live-document-streaming.md),
+and the spec is
 [plans/2026-08-13-live-document-streaming/overview.md](plans/2026-08-13-live-document-streaming/overview.md).
 Split out of `CLAUDE.md` when that file passed its structure-lint cap; no
 content changed in the move.
@@ -15,8 +16,9 @@ watches the tokens arrive in a centered popup that renders markdown
 progressively. Core invariants (two lanes, synchronous recorder, session
 identity `(runId, invocationId, toolCallId)`, partial-JSON scanner, byte-match
 save, interruption saves nothing, edits are deltas with independent
-preview/save implementations): `AGENTS.md` → "Live document streaming". Spec:
-[docs/plans/2026-08-13-live-document-streaming/overview.md](docs/plans/2026-08-13-live-document-streaming/overview.md).
+preview/save implementations):
+[standards/live-document-streaming.md](standards/live-document-streaming.md). Spec:
+[docs/plans/2026-08-13-live-document-streaming/overview.md](plans/2026-08-13-live-document-streaming/overview.md).
 
 Mechanics beyond those invariants:
 

@@ -1,31 +1,48 @@
 # Personal model subscriptions — run your own agents on your own plan
 
-**Status: phase 1 BUILT (2026-09-02) — Kimi + GLM linking, routing, budgets,
-metering and surfaces are on `main`. Phase 2 (Codex + Grok device-code OAuth)
-and phase 3 remain proposed.**
+**Status: phases 1 and 2 BUILT (2026-09-02). Phase 3 remains proposed.**
 
-What shipped in phase 1: the `@nessie/model-subscriptions` package (adapters,
-vault-backed secret store, credential coordinator), the four Prisma tables plus
+Phase 1 shipped the framework and the pasted-key adapters (Kimi, GLM): the
+`@nessie/model-subscriptions` package, the four Prisma tables plus
 `Agent.modelSubscriptionId`, the `Run` lane pin and
-`TokenLedgerEvent.billingSource`; the run-admission binding with fail-closed
+`TokenLedgerEvent.billingSource`; run-admission binding with fail-closed
 routing, the budget-gate and mid-run-probe skips, the explicit-null utility
-model, and owner-attributed metering; `assertAgentModelSelection` as the one
-validator across create/update/clone/PA-create with transfer and clone
-stripping the selection; `/api/model-subscriptions*` routes; and the settings
-section plus the Designer's "Your subscriptions" group and link doorway.
-Deliberately deferred with phase 2: the per-subscription concurrency lease and
-the health-sweep alert (§4 phase 3).
+model, owner-attributed metering; `assertAgentModelSelection` as the one
+validator across create/update/clone/PA-create; `/api/model-subscriptions*`;
+the settings section and the Designer's "Your subscriptions" group.
 
-A person who already pays for a consumer AI subscription — OpenAI Codex
-(ChatGPT Plus/Pro), Kimi for Coding, a GLM coding plan, Grok — links it to
-Nessie once, and the agents *they own* can run on it. After linking, the Agent
-Designer model dropdown grows a **"Your subscriptions"** group beside the
-Ledger catalogue. The organisation's Ledger billing is untouched: these runs
-spend the person's own plan, not org credits.
+Phase 2 shipped the OAuth adapters (**OpenAI Codex, xAI Grok**), each on
+Nessie's own device-code grant:
 
-**Anthropic is deliberately excluded.** Claude subscription credentials are
-not licensed for third-party agent platforms, and Nessie already serves
-Anthropic models through Ledger. No adapter, no exception.
+- **Device flow, server-side.** `POST /api/model-subscriptions/device/start`
+  → `/poll` → `/confirm` (+ `/cancel`), rate-limited on IP *and* account, with
+  one poll lease per state row honouring the provider's interval and
+  `slow_down`. The browser never handles a token; the exchange happens on the
+  server. OpenAI's flow is its bespoke `deviceauth/usercode` → `deviceauth/token`
+  → `oauth/token` sequence; xAI's is OIDC discovery + RFC 8628, with every
+  discovered endpoint required to be on `x.ai`.
+- **A first link is confirmed before it can spend.** The credential is parked
+  in the vault under a pending name and the subscription is created only after
+  the person is shown *which* account signed in — the device-flow confused
+  deputy is somebody else entering your code. A relink binds the expected
+  `providerAccountId` and refuses a different one.
+- **id_token validation is a spec, not a vibe:** exact issuer, audience = the
+  client id, expiry, and a stable subject, all fail-closed. A grant returning
+  no refresh token is refused at link time rather than dying at the first
+  expiry.
+- **Connectors.** Codex speaks the **Responses API** through a new
+  `codex-subscription` runtime provider (`store: false`, streaming mapped onto
+  the existing `output_text.delta` / `tool_call.delta` / `reasoning_text.delta`
+  vocabulary, so the loop, thinking recorder and document streaming see nothing
+  new). Grok rides the existing `openai-compatible` connector at
+  `cli-chat-proxy.grok.com/v1`; both carry adapter-declared transport headers
+  through a new `ModelProviderConfig.extraHeaders` that only code can populate.
+- **Refresh** uses the same claim/CAS coordinator as phase 1, never retried on
+  a transport failure, keeping a rotated refresh token when the provider sends
+  one and the previous one when it does not.
+
+Deliberately still deferred to phase 3: the per-subscription concurrency lease
+and the health-sweep alert (§4).
 
 ---
 

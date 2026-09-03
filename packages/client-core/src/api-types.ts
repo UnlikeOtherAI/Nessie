@@ -3,6 +3,9 @@ import type {
   AgentRunLimits,
   AgentStatusResponse,
   AgentVisibility,
+  MailboxConnectionRecord,
+  MailboxConnectionScope,
+  MailboxTransportSecurity,
   MeResponse,
 } from '@nessie/schemas'
 
@@ -181,6 +184,14 @@ export type AgentRecord = {
    * structurally instead of matching a display name.
    */
   systemSlug?: string | null
+  /**
+   * Server-decided: addressing this system agent resolves to the caller's own
+   * pre-provisioned home DM instead of binding it into a new conversation.
+   * Present only when true — it is what puts the Personal Assistant and a
+   * global agent in the "New message" address book without a client naming a
+   * slug.
+   */
+  dmAddressable?: boolean
   todosEnabled: boolean
   /** Gemini Live voice for calls; null/absent = the deployment default. */
   voiceName?: string | null
@@ -514,3 +525,10 @@ export type MyBrowserLoginRecord = {
   serviceHint: string
   createdAt: string
 }
+
+/**
+ * Connected SMTP/IMAP mailboxes (agent email Model A). The record type is the
+ * server's own contract, re-exported rather than restated so the two cannot
+ * drift; there is no password field to strip because the shape has none.
+ */
+export type { MailboxConnectionRecord, MailboxConnectionScope, MailboxTransportSecurity }

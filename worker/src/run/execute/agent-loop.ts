@@ -24,6 +24,7 @@ import { executeBuiltinTool } from '../tools.js'
 import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
 import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
+import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
@@ -225,6 +226,11 @@ export const runExecutionAgentLoop = async (
         structuralGate: composeStructuralGates([
           buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
           buildBrowserActApprovalHook(deps.prisma, context),
+          buildMailboxSendApprovalHook(
+            deps.prisma,
+            context,
+            payload.actorContext.actionContext.effectiveUserId ?? null,
+          ),
         ]),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         // The send-boundary judge. Inference the run paid for, so its

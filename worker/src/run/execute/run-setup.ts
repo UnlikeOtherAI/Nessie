@@ -359,8 +359,10 @@ export const prepareRunExecution = async (
         isHandoffTurn: input.isHandoffTurn,
       },
       mailbox: {
-        hasMailboxTools: resolvedToolIds.has('gmail_search')
+        hasGoogleMailTools: resolvedToolIds.has('gmail_search')
           || resolvedToolIds.has('gmail_draft_create'),
+        hasConnectedMailboxTools: resolvedToolIds.has('mailbox_search')
+          || resolvedToolIds.has('mailbox_send'),
         hasCalendarTools: resolvedToolIds.has('calendar_events_list')
           || resolvedToolIds.has('calendar_event_create'),
         hasDelegate: resolvedToolIds.has('delegate'),

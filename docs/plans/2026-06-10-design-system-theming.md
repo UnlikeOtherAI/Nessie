@@ -181,7 +181,7 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
   The logo replaces the workspace mark in `SidebarRail`, and brands the login
   screen via the public `GET /api/brand/logo` **only for the organisation the
   instance operator designated** (`Organization.instanceBrand`, set by
-  `nessie set-instance-brand`; see `docs/deployment.md` → "Branding the sign-in
+  `nessie set-instance-brand`; see `docs/deployment/first-deploy.md` → "Branding the sign-in
   screen"). The unauthenticated screen is instance state, so no org admin can
   claim it by uploading a logo.
 - Review pass: remaining component CSS and `.ts` style-helper color escapes are

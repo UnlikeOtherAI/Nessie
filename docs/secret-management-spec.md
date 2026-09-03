@@ -19,7 +19,7 @@ identity: the Secrets project's personal partition holds a person's ordinary
 captured secrets, so an identity scoped there could read all of them. A
 subscriptions token must be refused (403) against the Secrets project.
 Provisioning, the isolation check, and rotation are in
-[deployment.md](./deployment.md) → "Personal model subscriptions vault" and
+[deployment/why-these-choices.md](./deployment/why-these-choices.md) → "Personal model subscriptions vault" and
 "Infisical vault". In Compose, Infisical only runs with
 `COMPOSE_PROFILES=secrets`.
 

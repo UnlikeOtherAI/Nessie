@@ -1,5 +1,6 @@
 import { CallProviderSettingsPanel } from './CallProviderSettingsPanel'
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
+import { MailboxConnectionsPanel } from '../../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
 
@@ -16,6 +17,7 @@ export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
       {tabs}
       <div className="grid max-w-3xl gap-4">
         <CallProviderSettingsPanel />
+        <MailboxConnectionsPanel scope="team" />
         {organization?.role === 'owner' ? <CloudBrowserPanel scope="organization" /> : null}
       </div>
     </SettingsPanel>

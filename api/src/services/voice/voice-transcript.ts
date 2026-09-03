@@ -129,7 +129,6 @@ export const renderCompactedCallSummary = (input: {
 export const renderCallSummary = (input: {
   durationMs: number
   lines: VoiceTranscriptLine[]
-  hasAttachment: boolean
 }): string => {
   const turns = input.lines.length
   const opening = [renderCallHeader(input.durationMs, turns)]
@@ -152,8 +151,12 @@ export const renderCallSummary = (input: {
     used += entry.length + 2
   }
 
-  const tail = input.hasAttachment ? ['', 'Full transcript attached.'] : []
-  return [...opening, ...rendered, ...tail].join('\n')
+  // No closing note about the attachment. The card carries a **Full
+  // transcript** button that says it better, and printing the sentence one
+  // line above that button said it twice; the model learns the transcript
+  // exists from the attachment inventory line appended at render time, not
+  // from prose here.
+  return [...opening, ...rendered].join('\n')
 }
 
 export type WriteCallRecordInput = {
@@ -250,7 +253,6 @@ export const writeVoiceCallRecord = async (
     : renderCallSummary({
       durationMs: input.durationMs,
       lines: input.lines,
-      hasAttachment: hasTranscript,
     })
 
   const message = await prisma.$transaction(async (tx) => {

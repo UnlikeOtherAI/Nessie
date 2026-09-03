@@ -135,7 +135,12 @@ test('a call still gets its record when the model call throws', async () => {
   assert.equal(result.messageId, 'message-1')
   assert.match(record?.content ?? '', /^Voice call · 12s · 4 turns/u)
   assert.match(record?.content ?? '', /You: Um, hi, can you hear me\?/u)
-  assert.match(record?.content ?? '', /Full transcript attached\./u)
+  // The fallback is the spoken turns verbatim — the filler included, which is
+  // the whole reason compaction exists — and never a sentence about the
+  // attachment: the card's own control says that, and saying it here printed
+  // it one line above the button.
+  assert.match(record?.content ?? '', /Assistant: Moved to Friday 15:00/u)
+  assert.doesNotMatch(record?.content ?? '', /transcript attached/iu)
   assert.equal(voiceCallMetadata(record)['compacted'], false)
   // The fallback is reported rather than silent.
   assert.equal(failures.length, 1)

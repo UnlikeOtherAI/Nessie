@@ -4,6 +4,7 @@ import {
 } from '../../facades/connections/hooks'
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
@@ -59,7 +60,7 @@ export const ConnectionsPage = () => {
 
   return (
     <SettingsPanel eyebrow="User" title="Connected accounts">
-      <div className="flex max-w-3xl flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
           Link your Slack, Gmail, or Microsoft account so your Chief of Staff can
           work across your messages. You choose exactly what is imported, and you
@@ -105,6 +106,7 @@ export const ConnectionsPage = () => {
         <div className="h-px bg-[color:var(--bd1)]" />
 
         <ModelSubscriptionSection />
+        <MailboxConnectionsPanel scope="user" />
       </div>
     </SettingsPanel>
   )

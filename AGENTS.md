@@ -259,6 +259,15 @@ when one changes, the same turn updates it, not this section.
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
   organisation id (`Organization.externalOrgId`, unique), and one UOA workspace
   is one `Team` (with its Project and `#general`) inside that organisation.
+  **Creating** either happens in-app against UOA's org API rather than by
+  redirecting a person into its chooser for a second interactive login; the
+  local rows are still born only in `materializeUoaWorkspace`, from what the
+  silent switch grant proved
+  (`docs/plans/2026-09-02-in-app-organisation-creation.md`). The standing gap
+  between that and "no duplicated data at all" — three local membership tables
+  against UOA's two, a Project level UOA has no concept of, and the delta/
+  revocation machinery UOA still lacks — is mapped in
+  `docs/plans/2026-09-02-uoa-as-a-service-unification.md`.
   Flattening several UOA organisations into one local container — the
   pre-2026-08-15 shared-org model — or keeping any second local copy of the org
   hierarchy is the same violation as duplicating identity rows, and gets the
@@ -315,6 +324,12 @@ when one changes, the same turn updates it, not this section.
   and the send gate are all structural.
   Read [`docs/standards/agent-email.md`](docs/standards/agent-email.md)
   before writing code here.
+- **A connected mailbox is somebody else's store.** An agent working in a
+  mailbox somebody connected over SMTP/IMAP reaches it only through two
+  separate decisions — a per-`(connection, agent)` access row and, for a
+  personal mailbox, the effective user — and every send is approved and pinned.
+  Read [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md)
+  before writing code here.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and
@@ -326,6 +341,18 @@ when one changes, the same turn updates it, not this section.
   Current callers: MCP OAuth exchange/refresh/discovery/registration, the MCP
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
+  Raw sockets get the same policy through the same rules rather than a second
+  copy of them: `resolveVettedAddresses` is the shared host check, and the
+  IMAP/SMTP dialer (`packages/agent-mail/src/dial.ts`) calls it on every dial,
+  then connects to the returned literal address — there is no second resolution
+  to rebind — with TLS verified against the configured hostname, not the
+  address.
+  Raw sockets get the same policy through the same rules rather than a second
+  copy of them: `resolveVettedAddresses` is the shared host check, and the
+  IMAP/SMTP dialer (`packages/agent-mail/src/dial.ts`) calls it on every dial,
+  then connects to the returned literal address — there is no second resolution
+  to rebind — with TLS verified against the configured hostname, not the
+  address.
   See `docs/security-audit-2026-06.md`.
 - **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the
@@ -374,6 +401,9 @@ A person links a consumer AI plan they already pay for and the agents **they
 own** run on it instead of the organisation's Ledger credits. The lane is
 pinned at run admission and never falls back to Ledger, token values live in a
 dedicated vault project, and organisation budgets deliberately do not gate it.
+Codex and Grok link through Nessie's own server-side device-code sign-in —
+never an import of a vendor CLI's grant — and a first link is confirmed
+against the account that actually signed in.
 Read [`docs/standards/personal-model-subscriptions.md`](docs/standards/personal-model-subscriptions.md)
 before writing code here.
 
@@ -383,7 +413,7 @@ before writing code here.
 - **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s native width). Never write the number anywhere else — not in a producer, a validator, a test fixture, or the mock-LLM harness. The three pgvector columns (`thoughts.embedding`, `thought_recalls.query_embedding`, `knowledge_page_chunks.embedding`) are declared at that width, and every embed request sends `dimensions` so a provider answering differently fails loudly. Changing the embedding model to another width = edit the constant + one Prisma migration re-typing the columns + re-embedding; vectors of different widths are not convertible, so the migration nulls them rather than truncating (a truncated vector is neither model's output and poisons later comparisons).
 - The model that produced a vector is `ModelClient.embeddingModel`, resolved from deployment config — not a constant. It is what gets written to `embedding_model` and what keys the query-embedding cache, so the two sides of a similarity comparison agree by construction rather than by two constants happening to match.
 - a width-change migration drops the HNSW index, nulls the vectors, `ALTER COLUMN`s, and recreates the index (see `20260811120000_embeddings_1024_dimensions`); the `match_thoughts_*` functions need no change — PostgreSQL discards the typmod on function parameters.
-- Spec: `docs/deployment.md` "Embedding model and vector width".
+- Spec: [docs/deployment/inference-and-embeddings.md](docs/deployment/inference-and-embeddings.md).
 
 ## File storage & accounting — single chokepoint
 
@@ -422,20 +452,13 @@ Agents drive a real Chromium in the cloud (Browserbase) as well as the one the e
 
 A setting that exists at more than one level resolves through `ScopedSetting`
 (`@nessie/runtime` `scoped-settings.ts`): organisation → team → person, most
-specific wins, stopping at the first level marked `locked`. Cascading
-resolution was bespoke four times over before this (budgets, policy rules,
-`Team.callProvider`, the cloud browser's hardcoded organisation-first order),
-so a fifth hand-rolled ordering is the defect, not the pattern.
+specific wins, stopping at the first level marked `locked`. A lock may carry no
+value, pinning whatever resolved above it, and the level that locked it comes
+back with the answer so the surface greys the control and names it rather than
+accepting an edit the server would refuse.
+Read [`docs/standards/scoped-settings.md`](docs/standards/scoped-settings.md)
+before writing code here.
 
-A row may carry a lock with no value, pinning whatever resolved above it —
-which is how a setting whose value lives in its own table (cloud browser
-credentials) is governed by this cascade rather than a second one.
-`isLockedAbove` is the read-only condition, strictly above, so the locking
-level still edits and a lock never binds upwards; the surface greys the
-control and names the level (`ScopedSettingGate`) instead of accepting an edit
-the server would refuse. Scopes are the three people work in — projects are
-walked past, not through. Plan and as-built:
-[docs/plans/2026-09-03-scoped-settings.md](docs/plans/2026-09-03-scoped-settings.md).
 
 ## Message reply threads (#233)
 

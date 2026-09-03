@@ -88,25 +88,21 @@ export type SafeUrlResolution = {
   url: URL
 }
 
-// Single source of truth: validate scheme/credentials/host, resolve the
-// hostname ONCE, and return both the URL and the vetted addresses. Handing the
-// addresses back lets callers pin the socket to exactly what was validated,
-// which is what closes the DNS-rebinding TOCTOU (validate here, re-resolve to
-// a private address at connect time).
-const resolveAndValidate = async (
-  rawUrl: string | URL,
+/**
+ * Vet a bare hostname and hand back the addresses it resolved to.
+ *
+ * The private-range, special-use and literal-address rules live here once and
+ * are shared by every outbound protocol — HTTP through `resolveAndValidate`
+ * below, and IMAP/SMTP through the mail dialer, which is not URL-shaped and
+ * would otherwise have had to restate them. Resolution happens ONCE and the
+ * addresses come back so the caller can dial exactly what was vetted; that is
+ * what closes the DNS-rebinding window between the check and the socket.
+ */
+export const resolveVettedAddresses = async (
+  rawHostname: string,
   options?: AssertSafeUrlOptions,
-): Promise<SafeUrlResolution> => {
-  const url = typeof rawUrl === 'string' ? new URL(rawUrl) : rawUrl
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new UrlSafetyError(`Unsupported URL scheme: ${url.protocol}`)
-  }
-  if (url.username || url.password) {
-    throw new UrlSafetyError('Authenticated URLs are not allowed.')
-  }
-
-  const hostname = url.hostname.toLowerCase()
+): Promise<string[]> => {
+  const hostname = rawHostname.toLowerCase()
   if (
     BLOCKED_HOSTNAMES.has(hostname) ||
     hostname.endsWith('.localhost') ||
@@ -119,7 +115,7 @@ const resolveAndValidate = async (
     if (isBlockedIpAddress(hostname)) {
       throw new UrlSafetyError('Private or local network URLs are not allowed.')
     }
-    return { addresses: [hostname], url }
+    return [hostname]
   }
 
   const resolveHost = options?.resolveHost ?? defaultResolveHost
@@ -135,7 +131,25 @@ const resolveAndValidate = async (
   ) {
     throw new UrlSafetyError('Private or local network URLs are not allowed.')
   }
-  return { addresses, url }
+  return addresses
+}
+
+// Single source of truth for URLs: validate scheme/credentials, then vet the
+// host through the shared resolver above.
+const resolveAndValidate = async (
+  rawUrl: string | URL,
+  options?: AssertSafeUrlOptions,
+): Promise<SafeUrlResolution> => {
+  const url = typeof rawUrl === 'string' ? new URL(rawUrl) : rawUrl
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new UrlSafetyError(`Unsupported URL scheme: ${url.protocol}`)
+  }
+  if (url.username || url.password) {
+    throw new UrlSafetyError('Authenticated URLs are not allowed.')
+  }
+
+  return { addresses: await resolveVettedAddresses(url.hostname, options), url }
 }
 
 export const assertSafeUrl = async (

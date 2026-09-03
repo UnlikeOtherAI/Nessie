@@ -314,6 +314,12 @@ export const AuditActionSchema = z.enum([
   'gmail.draft.sent',
   'gmail.send_grant.created',
   'gmail.send_grant.revoked',
+  // Connected SMTP/IMAP mailboxes (agent email Model A). The address and the
+  // scope are recorded; the username and password never are.
+  'mailbox.connection.created',
+  'mailbox.connection.deleted',
+  'mailbox.access.granted',
+  'mailbox.access.revoked',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

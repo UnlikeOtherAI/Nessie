@@ -88,7 +88,7 @@ export const AppDetailPage = () => {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         {header}
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 pb-8">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-[var(--page-gutter)] pb-8">
           {isPending ? (
             <Skeleton variant="detail" />
           ) : (
@@ -118,7 +118,7 @@ export const AppDetailPage = () => {
         genuinely want the width.
       */}
       <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <div className="grid min-w-0 w-full gap-6 px-4 pb-10 sm:px-6 lg:px-8">
+        <div className="grid min-w-0 w-full gap-6 px-[var(--page-gutter)] pb-10">
           <AppDetailHero
             app={app}
             onConnect={() => setConnectOpen(true)}

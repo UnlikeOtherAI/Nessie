@@ -25,7 +25,8 @@ test('an overlay outranks every nested stage and column for Back, and blocking o
   assert.ok(OVERLAY_BACK_PRIORITY.sheet > OVERLAY_BACK_PRIORITY.popover)
   assert.ok(OVERLAY_BACK_PRIORITY.modal > OVERLAY_BACK_PRIORITY.sheet)
   assert.ok(OVERLAY_BACK_PRIORITY.blocking > OVERLAY_BACK_PRIORITY.modal)
-  assert.ok(OVERLAY_LAYER.card < OVERLAY_LAYER.popover && OVERLAY_LAYER.popover < OVERLAY_LAYER.sheet)
+  assert.ok(OVERLAY_LAYER.card < OVERLAY_LAYER.tooltip && OVERLAY_LAYER.tooltip < OVERLAY_LAYER.popover)
+  assert.ok(OVERLAY_LAYER.popover < OVERLAY_LAYER.sheet)
   assert.ok(OVERLAY_LAYER.sheet < OVERLAY_LAYER.modal && OVERLAY_LAYER.modal < OVERLAY_LAYER.blocking)
 })
 
@@ -55,4 +56,16 @@ test('without a Web Animations API an overlay transition resolves at once', asyn
   assert.equal(run.durationMs, OVERLAY_MOTION.modalMs)
   await run.finished
   run.cancel()
+})
+
+
+test('a hover hint sits on the scale, below every kind a person interacts with', () => {
+  // Both fixed hints had picked their own number (90 and 80), which put a rail
+  // tooltip over an open dialog. They now read the token.
+  assert.doesNotMatch(styles, /\.rail-tooltip \{[^}]*z-index: \d/)
+  assert.doesNotMatch(styles, /\.group-dm-sidebar-tooltip \{[^}]*z-index: \d/)
+  for (const rule of ['.rail-tooltip', '.group-dm-sidebar-tooltip']) {
+    const block = styles.slice(styles.indexOf(`${rule} {`))
+    assert.match(block.slice(0, block.indexOf('}')), /z-index: var\(--layer-tooltip\)/, rule)
+  }
 })

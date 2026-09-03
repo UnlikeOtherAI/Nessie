@@ -19,6 +19,7 @@ unbuilt.
 | Piece | Lives in |
 | --- | --- |
 | Credential broker + call lifecycle | `api/src/routes/voice.ts`, `api/src/services/voice/*` |
+| Enrolment (capability + device slots) | `api/src/routes/voice-enrolment.ts` |
 | Wire contract | `packages/schemas/src/voice.ts` |
 | Voice list + speaking-style presets | `packages/schemas/src/voice.ts`, `packages/schemas/src/agent-speech.ts` |
 | Durable state | `voice_installations`, `voice_sessions` (migration `20260902160000_voice_calling`) |
@@ -775,11 +776,15 @@ folded-card requirement:
     shipped carry no flag and read as the fallback shape, which is what
     they are.
 - **The card opens the transcript in place, never by navigating.** The
-  "Full transcript attached." line used to be dead text. It is now a
-  control on `VoiceCallMessage` that opens the shared `Dialog` and renders
-  the attachment's markdown through `MessageMarkdown`, with bytes fetched
-  by the shared `TextFilePreview` (an authed fetch — an `<a href>` misses
-  both the `Authorization` header and the cross-origin `api.` host).
+  record used to end "Full transcript attached." — dead text, and once the
+  control existed it printed the same sentence one line above the button, so
+  neither shape of record says it any more: the model learns the file exists
+  from the attachment inventory line the run pipeline appends, and the person
+  gets a control. That control lives on `VoiceCallMessage`, opens the shared
+  `Dialog`, and renders the attachment's markdown through `MessageMarkdown`
+  with bytes fetched by the shared `TextFilePreview` (an authed fetch — an
+  `<a href>` misses both the `Authorization` header and the cross-origin
+  `api.` host).
   Deliberately not a link: a `blob:`/`data:` URL inherits the page origin,
   and following one replaces the SPA with the raw file and destroys the
   mobile shell's navigation state (fixed in

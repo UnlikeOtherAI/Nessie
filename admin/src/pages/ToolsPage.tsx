@@ -238,7 +238,7 @@ export const ToolsPage = () => {
         showBack
         title={selectedTool.label}
       >
-        <div className="grid max-w-3xl gap-6">
+        <div className="grid gap-6">
           <ToolDetailDrawer tool={selectedTool} />
           <ToolReviewActions tool={selectedTool} />
           <section>

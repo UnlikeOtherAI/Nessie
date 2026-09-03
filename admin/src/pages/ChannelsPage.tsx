@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
-import { useAgents } from '../facades/agents/hooks'
+import { useChannelPlaceableAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
 import {
@@ -63,7 +63,11 @@ export const ChannelsPage = () => {
   const { me, token } = useAuthSession()
   const { onSelectAgent } = useShellActions()
   const { data: channels = [], isPending: channelsPending } = useChannels()
-  const { data: agents = [], isPending: agentsPending } = useAgents()
+  // Not `useAgents()`: a global agent is placeable in an ordinary channel, and
+  // `GET /api/agents` omits every system-managed row — so the members popup,
+  // the roster and the @mention typeahead would each have been blind to one
+  // that is standing right there. See `useChannelPlaceableAgents`.
+  const { data: agents = [], isPending: agentsPending } = useChannelPlaceableAgents()
   const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
 

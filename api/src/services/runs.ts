@@ -7,6 +7,7 @@ import {
   parseThreadId,
   parseUserId,
   withActionContext,
+  withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
   type RunStatus,
 } from '@nessie/schemas'
@@ -292,15 +293,23 @@ export const restartRun = async (
     const queued = await enqueueRunExecution(
       tx,
       {
-        actorContext: withActionContext(actorContext, {
-          agentId: parseAgentId(run.agentId),
-          channelId: parseChannelId(run.channelId),
-          ...(run.principalUserId
-            ? { effectiveUserId: parseUserId(run.principalUserId) }
-            : {}),
-          taskId: parseTaskId(newTask.id),
-          threadId: parseThreadId(run.threadId),
-        }),
+        // Same precedence as the continue path: a PA shared-channel presence
+        // keeps its own principal, and otherwise a single-member system DM
+        // stamps the person restarting, who is that DM's one member.
+        actorContext: withActionContext(
+          withDelegatedSystemDmIdentity(actorContext, {
+            systemChannelType: run.channelSystemChannelType,
+          }),
+          {
+            agentId: parseAgentId(run.agentId),
+            channelId: parseChannelId(run.channelId),
+            ...(run.principalUserId
+              ? { effectiveUserId: parseUserId(run.principalUserId) }
+              : {}),
+            taskId: parseTaskId(newTask.id),
+            threadId: parseThreadId(run.threadId),
+          },
+        ),
         agentId: parseAgentId(run.agentId),
         ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
         interactive: actorContext.actor.actorType === 'user',

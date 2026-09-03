@@ -7,6 +7,7 @@ import {
   type ModelSubscription,
   type ModelSubscriptionProviderOption,
 } from '../../../facades/subscriptions/hooks'
+import { DeviceLinkDialog } from './DeviceLinkDialog'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Dialog } from '../../../components/shared/Dialog'
 import { EmptyState } from '../../../components/shared/EmptyState'
@@ -249,9 +250,13 @@ export const ModelSubscriptionSection = () => {
         )}
       </QueryState>
 
-      {linking ? (
-        <LinkDialog onClose={() => setLinking(null)} provider={linking} />
-      ) : null}
+      {/* Which dialog a provider gets is the adapter's own declaration: a
+          pasted console key, or Nessie's own device-code sign-in. */}
+      {linking
+        ? linking.authStrategy === 'oauth_device'
+          ? <DeviceLinkDialog onClose={() => setLinking(null)} provider={linking} />
+          : <LinkDialog onClose={() => setLinking(null)} provider={linking} />
+        : null}
     </section>
   )
 }

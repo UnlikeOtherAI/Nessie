@@ -14,6 +14,7 @@ import {
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
+import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
 import type { AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelMessageRow } from './ChannelMessageRow'
 import type { DisclosureDuration } from './RestrictedMessageCard'
@@ -173,15 +174,21 @@ export const ChannelMessageFeed = ({
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
   const lastPointerDownAt = useRef(0)
   // One identity resolution for both the streaming reply rows and the bubbles.
+  // The identity directory is consulted for exactly the agents `agentById`
+  // omits — the system-managed tier, which posts into its own DMs. Without it
+  // a global agent's thinking bubble and streaming reply carried `⚡` and
+  // "Agent" while its persisted rows, which pass an id to `AgentAvatar`,
+  // showed the real portrait one line below.
+  const lookupAgentIdentity = useAgentIdentityLookup()
   const resolveAgentIdentity = useCallback(
     (agentId: string) => {
-      const agent = agentById.get(agentId) ?? null
+      const agent = agentById.get(agentId) ?? lookupAgentIdentity(agentId) ?? null
       return {
         agent,
         name: isDedicatedAgentConversation ? assistantFallbackName : agent?.name ?? 'Agent',
       }
     },
-    [agentById, assistantFallbackName, isDedicatedAgentConversation],
+    [agentById, assistantFallbackName, isDedicatedAgentConversation, lookupAgentIdentity],
   )
   // Full-size attachment viewer, owned here so it works identically from the
   // channel feed, the reply panel, and the info drawers — same seam as the

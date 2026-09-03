@@ -3,7 +3,8 @@
 **Date:** 2026-09-02 (reframed twice, then hardened by two independent
 reviews the same day — §6; supersedes
 [2026-04-07-email-integration.md](2026-04-07-email-integration.md))
-**Status:** P1 built and merged (Model B — hosted mailbox); P2–P3 planned.
+**Status:** P1 built and merged (Model B — hosted mailbox); P3 built (Model A —
+SMTP/IMAP connected mailboxes, §2.2 and §2.3); P2 planned.
 
 ---
 
@@ -131,10 +132,65 @@ there is no MCP transport, no external product, no Ledger leg.
   (user scope) or installer-else-org-owner (team scope), standing grants
   keyed `(connectionId, agentId)`. Reads may run unattended; sends never do
   without a standing grant.
-- **Home and doorways (Rule zero):** the Integrations page hosts the
-  connector card (connect, per-scope list, per-agent access rows, status,
-  test, disconnect); the Tools page shows the tool-level switch;
-  `/settings/connections` links across for the user scope.
+- **Home and doorways (Rule zero):** one panel, parameterised by scope, on the
+  two surfaces that already own connections of that kind — a person's own
+  mailboxes beside their Slack/Gmail accounts on `/settings/connections`, and a
+  team's shared ones beside the other workspace connections on
+  `/settings/organization`. The Agent Designer's tool list shows the tool-level
+  switch. (The earlier plan put the card on the Integrations page; that page is
+  a column browser over registered *products*, and a mailbox connection is not
+  one — `CloudBrowserPanel` already established the two-homes-one-panel shape
+  for exactly this.)
+
+### 2.3 As built (2026-09-02)
+
+Deltas from the design above, each with its reason:
+
+- **Scope is which owner column is set**, not a `scopeType`/`scopeId` pair:
+  `MailboxConnection.ownerUserId` and `.teamId`, exactly one non-null under a
+  CHECK. A polymorphic `scopeId` could carry no foreign key; the split columns
+  carry real ones, including the composite
+  `(organization_id, owner_user_id) → organization_members` that puts tenancy in
+  the database the way `Agent.ownerUserId` does. `scope` is derived by the
+  presenter, so there is no second statement of the fact to drift.
+- **The protocol clients are ours** (`packages/agent-mail`: `dial.ts`, `wire.ts`,
+  `smtp.ts`, `imap.ts`, `mailbox-client.ts`), not a mail library. The dial has to
+  open to a just-vetted literal address with SNI pinned to the configured
+  hostname, and a client that owns its own socket cannot be given that. They live
+  beside the SES transport because MIME building, address normalisation, parsing
+  and sanitising are transport-neutral and already there — `buildOutboundMime`
+  serves both models, and two message builders would drift.
+- **Vetting is shared, not restated.** `resolveVettedAddresses` was factored out
+  of `url-safety.ts` so the private-range and special-use rules have one home;
+  `resolveAndValidate` (HTTP) and the mail dialer both call it. Resolving once
+  and dialling the returned address is stronger than a custom lookup: there is no
+  second resolution to rebind.
+- **Every untrusted value is a counted IMAP literal** — folder names, search
+  terms, the credential. IMAP has no escaping that survives a hostile string,
+  and these values come from a model reading somebody's mail. Length-prefixing
+  makes injection structurally impossible rather than a validation to remember.
+- **Search is structured, not a query string.** `from`/`subject`/`text`/`since`/
+  `unseenOnly` map to IMAP SEARCH keys; the model never writes IMAP syntax.
+- **Three tool families stay disjoint**: `gmail_*` (a person's Google account),
+  `mailbox_*` (a connected SMTP/IMAP mailbox), `email_*` (the agent's own hosted
+  mailbox). An agent holding two must never have an ambiguous send path.
+- **Standing send grants are deliberately not built.** Every `mailbox_send` is
+  approved. `SendAuthorizationGrant` is keyed to `CommsConnection` and its
+  exact-key discipline rests on a grant being the mailbox *owner's* to give
+  about their own account; a shared team mailbox has no such owner, and one
+  grant table meaning two things is how that property is lost. What the gate
+  does add is *who* is asked — the personal owner, or a shared mailbox's
+  installer, live-checked — and *why*, naming any source the recipient cannot
+  reach. Reads still run unattended.
+- **`STRUCTURALLY_APPROVAL_GATED_TOOL_IDS` moved** out of `builtin-google-tools.ts`
+  into `builtin-approval-gates.ts`: it spans families, and each new mail family
+  made the Google file's name less true.
+- **The structural gate is composed**, not extended: `composeStructuralGates`
+  takes the hosted-mailbox hook and the connected-mailbox hook, each returning
+  null for tools it does not own.
+- **Not built here**: outbound attachments, folder listing, marking mail read,
+  and any import into `CommsEvent`. Operator guide:
+  [../connected-mailboxes.md](../connected-mailboxes.md).
 
 ## 3. Model B — the hosted mailbox (Nessie is the mailbox)
 
@@ -556,11 +612,14 @@ driving + settings surface + health alerts; `auto_reply`/`auto` unlocked
 with the structural floors and loop caps; `email_send.attachmentIds` with
 the per-attachment disclosure rule; bounce/complaint rendering polish.
 
-**P3 — SMTP/IMAP native connector (Model A).** `MailboxConnection` +
-separate credential row, per-agent access rows, Integrations card,
+**P3 — SMTP/IMAP native connector (Model A). Built 2026-09-02; see §2.3
+for the as-built deltas.** `MailboxConnection` + separate credential row,
+per-agent access rows, the connection panel on both connection surfaces, a
 connection test enforcing the TLS/egress discipline, live IMAP/SMTP tools
-joining the Google plan's mailbox tool family and send-gate machinery
-(sequence with that plan's P1), disclosure-sink wiring for connection reads.
+(`mailbox_search`/`mailbox_read`/`mailbox_send`) beside the Google plan's
+mailbox tool family, the structural send gate with a pinned approver, and
+disclosure-sink wiring for connection reads. Standing send grants and outbound
+attachments are explicitly deferred.
 
 **Later, deliberately unplanned:** human "send as the agent" from the
 mailbox; multiple mailboxes per agent; private-agent mailboxes (placement +

@@ -254,10 +254,15 @@ const tabBarElements = (content: string): string[] => {
   return elements
 }
 
+// Transient overlays, where the strip picks a branch of a form the person is
+// filling in right now rather than a view they might link someone to. A URL
+// param would outlive the dialog it belongs to and address nothing once it
+// closed. Everything that survives a reload stays on `useTabParam`.
 const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppConnectDialog.tsx',
   'admin/src/components/features/apps/AppSecretDialog.tsx',
   'admin/src/components/features/channels/RunApprovalGate.tsx',
+  'admin/src/layouts/admin-shell/CreateWorkspaceDialog.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {

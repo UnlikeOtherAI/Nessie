@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { UoaPendingWorkspaceInvite } from '@nessie/schemas'
+import { isAdminRole, type UoaPendingWorkspaceInvite } from '@nessie/schemas'
 import { useAuthProviders } from '../../facades/auth/hooks'
+import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { useAcceptWorkspaceInvitation } from '../../facades/workspace/invitations'
@@ -13,6 +14,7 @@ import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
 import { recoverWorkspaceSwitchFailure } from './workspace-switch-recovery'
 import { workspaceSwitchFailureMessage } from './workspace-switch-message'
 import { WorkspaceMenu } from './WorkspaceMenu'
@@ -28,8 +30,10 @@ type NativeWorkspaceWindow = Window & {
  * `switch-context`; renewable UOA sessions use a server-authorized in-app
  * workspace switch, so local and signed UOA workspace scopes cannot drift.
  * The desktop rail and mobile web header render triggers; native iPad and
- * iPhone controls open this same menu. "Add a workspace" opens UOA's full
- * chooser.
+ * iPhone controls open this same menu. "Add a workspace" opens the in-app
+ * creation dialog: founding an organisation used to redirect through UOA's
+ * chooser and cost a second interactive login, and now runs against UOA's org
+ * API with the same silent switch a rail selection uses.
  */
 type WorkspaceSwitcherProps = {
   variant?: 'mobile-header' | 'native-bridge' | 'rail'
@@ -45,6 +49,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
     token,
   } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
+  const { data: organization } = useCurrentOrganization()
   const avatarRevision = useWorkspaceAvatarRevision()
   const { theme } = useTheme()
   const navigate = useNavigate()
@@ -56,6 +61,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
   const invitations = me?.uoaPendingInvites ?? []
@@ -67,6 +73,16 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const ssoProviderId =
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
+  // Creating in place needs the bound UOA refresh credential the switch grant
+  // spends. Any other session still takes the provider redirect, which is the
+  // only way it can end up holding one.
+  const isUoaSession = me?.auth.providerType === 'uoa'
+  // Adding a workspace writes into the current organisation, so UOA gates it on
+  // owner/admin and the route mirrors that. Offering the tab to a member would
+  // be offering a form that can only 403. Founding an organisation carries no
+  // such condition — it creates a separate tenancy — so the dialog itself is
+  // never withheld.
+  const canCreateWorkspace = isAdminRole(organization?.role)
 
   const toggleMenu = (): void => {
     if (busyTeamId !== null || busyInviteId !== null) return
@@ -173,8 +189,17 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
     }
   }
 
+  /**
+   * A UOA-backed session creates in place; anything else still has to go
+   * through the provider, because the in-app path needs a bound UOA refresh
+   * credential to switch onto whatever it just created.
+   */
   const handleAddWorkspace = (providerId: string): void => {
     close()
+    if (isUoaSession) {
+      setCreateOpen(true)
+      return
+    }
     void startExternalSignIn(providerId, resolveAppliedTheme(theme))
   }
 
@@ -298,6 +323,12 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
         ssoProviderId={ssoProviderId}
         token={token}
         workspaces={workspaces}
+      />
+      <CreateWorkspaceDialog
+        canCreateWorkspace={canCreateWorkspace && Boolean(active?.uoaWorkspace)}
+        onClose={() => setCreateOpen(false)}
+        open={createOpen}
+        organizationName={active?.orgName ?? null}
       />
     </>
   )

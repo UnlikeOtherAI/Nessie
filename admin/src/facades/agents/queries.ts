@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type {
   AgentModelOption,
@@ -33,6 +34,46 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
     queryFn: () =>
       apiClient.get(scope === 'all' ? '/api/agents?scope=all' : '/api/agents'),
   })
+}
+
+/**
+ * The agents a channel can hold: the ordinary list, plus the app-provided
+ * shared agents (the Agent Designer, the Librarian) that `bindAgentToChannel`
+ * now places like any other.
+ *
+ * `GET /api/agents` omits every `systemManaged` row, so the members popup, the
+ * channel roster and the @mention typeahead were all structurally blind to a
+ * global agent — the same defect class as the address book. `?scope=all` is the
+ * superset, and the identity directory already holds that exact query, so this
+ * costs no extra request.
+ *
+ * The filter is `surfacePolicy`, which is precisely this question in the
+ * record: `dm_only` is the Personal Assistant (added through its own presence
+ * control) and an external-agent product (added by its integration), which are
+ * exactly the two agents `isChannelBindableAgent` refuses on the server. One
+ * sentence, both sides.
+ */
+export const useChannelPlaceableAgents = () => {
+  const visible = useAgents()
+  const allScopes = useAgents({ scope: 'all' })
+
+  const data = useMemo(() => {
+    const rows = visible.data ?? []
+    if (!allScopes.data) return rows
+    const known = new Set(rows.map((agent) => agent.id))
+    return [
+      ...rows,
+      ...allScopes.data.filter((agent) =>
+        !known.has(agent.id)
+        && agent.systemManaged === true
+        && agent.surfacePolicy !== 'dm_only'),
+    ]
+  }, [allScopes.data, visible.data])
+
+  // Only the ordinary list decides pending/error: the system tier is additive,
+  // so a failed `scope=all` read must degrade to today's list rather than blank
+  // a channel roster that has nothing to do with global agents.
+  return { data, isError: visible.isError, isPending: visible.isPending }
 }
 
 /** Owner-only aggregate for the Members tree; it never fetches private rows. */
