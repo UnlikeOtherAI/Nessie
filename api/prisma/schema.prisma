@@ -5536,6 +5536,10 @@ model GmailDraftAction {
   messageId          String?               @map("message_id") @db.Uuid
   /// Set when a send is held for the undo window; the job fires at this time.
   sendAfter          DateTime?             @map("send_after")
+  /// Set when a dispatcher claims the row (`sending → dispatching`). Cleared
+  /// on every terminal transition. A row still `dispatching` long after this
+  /// timestamp means the claiming worker died mid-send and may be reclaimed.
+  claimedAt          DateTime?             @map("claimed_at")
   sentAt             DateTime?             @map("sent_at")
   sentMessageId      String?               @map("sent_message_id")
   createdAt          DateTime              @default(now()) @map("created_at")
@@ -5552,8 +5556,14 @@ model GmailDraftAction {
 
 enum GmailDraftActionState {
   draft
-  /// Held for the undo window, or handed to the provider and not yet confirmed.
+  /// Held for the undo window, ready for the send sweep to claim.
   sending
+  /// Atomically claimed by a dispatcher (the API's immediate send or the
+  /// worker's send sweep) ahead of the provider call. The flip
+  /// `sending → dispatching` is the cross-worker ownership claim, so two
+  /// worker replicas can never both pass it and send the same email twice.
+  /// Not user-visible — a row should sit here only for a send's duration.
+  dispatching
   sent
   discarded
 }

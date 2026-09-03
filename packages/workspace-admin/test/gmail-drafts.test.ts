@@ -6,6 +6,8 @@ import { sealSecret } from '@nessie/comms-connect'
 
 import {
   GmailDraftError,
+  STALE_CLAIM_WINDOW_MS,
+  dispatchClaimedDraft,
   fingerprintDraft,
   sendDraftForUser,
   undoHeldSend,
@@ -47,6 +49,7 @@ type Row = {
   revision: number
   state: string
   sendAfter: Date | null
+  claimedAt: Date | null
 }
 
 const baseFingerprint = fingerprintDraft({
@@ -64,12 +67,24 @@ const makePrisma = (row: Row) => {
       findUnique: async () => state.row,
       findUniqueOrThrow: async () => state.row,
       updateMany: async (input: {
-        where: { state?: string }
+        where: {
+          state?: string
+          OR?: Array<{
+            state: string
+            claimedAt?: { lt: Date }
+          }>
+        }
         data: Record<string, unknown>
       }) => {
-        if (input.where.state && input.where.state !== state.row.state) {
-          return { count: 0 }
-        }
+        const matches = input.where.OR
+          ? input.where.OR.some((condition) => {
+              if (condition.state !== state.row.state) return false
+              if (!condition.claimedAt) return true
+              return state.row.claimedAt !== null
+                && state.row.claimedAt < condition.claimedAt.lt
+            })
+          : !input.where.state || input.where.state === state.row.state
+        if (!matches) return { count: 0 }
         state.row = { ...state.row, ...input.data } as Row
         return { count: 1 }
       },
@@ -115,6 +130,7 @@ const row = (overrides: Partial<Row> = {}): Row => ({
   revision: 1,
   state: 'draft',
   sendAfter: null,
+  claimedAt: null,
   ...overrides,
 })
 
@@ -292,4 +308,138 @@ test('a draft belonging to somebody else is not found', async () => {
     (error: unknown) =>
       error instanceof GmailDraftError && error.code === 'DRAFT_NOT_FOUND',
   )
+})
+
+
+// ── The cross-worker claim ────────────────────────────────────────────────
+// These tests simulate two worker replicas racing one row through the same
+// fake, which honours the conditional update's where clause exactly.
+
+const claimedRow = (overrides: Partial<Row> = {}) =>
+  row({
+    state: 'sending',
+    sendAfter: new Date('2026-09-02T09:59:59.000Z'),
+    ...overrides,
+  })
+
+test('two concurrent dispatches on one row produce exactly ONE Gmail send', async () => {
+  const { prisma, state } = makePrisma(claimedRow())
+  let sendCalls = 0
+  // Hold the provider call open so the second dispatcher attempts its claim
+  // while the first is genuinely mid-send — the exact double-send window.
+  let releaseSend!: () => void
+  const sendGate = new Promise<void>((resolve) => { releaseSend = resolve })
+  const fake = deps(routes(liveDraft(), () => { sendCalls += 1 }))
+  const gatedDeps = {
+    ...fake,
+    fetchImpl: (async (url: string, init?: { method?: string }) => {
+      if (url.includes('/drafts/send')) await sendGate
+      return fake.fetchImpl(url, init)
+    }) as never,
+  }
+
+  const first = dispatchClaimedDraft(prisma, ACTION, gatedDeps)
+  // The claim update resolves before the provider call starts.
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(state.row.state, 'dispatching')
+  const second = dispatchClaimedDraft(prisma, ACTION, gatedDeps)
+  releaseSend()
+
+  const firstResult = await first
+  await assert.rejects(
+    second,
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+  )
+  assert.equal(firstResult.status, 'sent')
+  assert.equal(sendCalls, 1, 'the losing replica must never reach Gmail')
+  assert.equal(state.row.state, 'sent')
+})
+
+test('the loser no-ops and leaves the row in the winner\'s state', async () => {
+  const { prisma, state } = makePrisma(claimedRow())
+  let sendCalls = 0
+  const winner = dispatchClaimedDraft(
+    prisma,
+    ACTION,
+    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  )
+  await new Promise((resolve) => setImmediate(resolve))
+  await assert.rejects(
+    dispatchClaimedDraft(prisma, ACTION, deps(routes(liveDraft()))),
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+  )
+  await winner
+  assert.equal(state.row.state, 'sent')
+  assert.equal(sendCalls, 1)
+})
+
+test('a send failure returns the claimed row to draft, sendable again', async () => {
+  const { prisma, state } = makePrisma(claimedRow())
+  await assert.rejects(
+    dispatchClaimedDraft(
+      prisma,
+      ACTION,
+      deps((url) => {
+        if (url.includes('/drafts/send')) {
+          return { status: 500, body: { error: { message: 'gmail down' } } }
+        }
+        return { status: 200, body: liveDraft() }
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'PROVIDER_FAILED',
+  )
+  assert.equal(state.row.state, 'draft')
+  assert.equal(state.row.claimedAt, null)
+
+  // And the person can send it again — today's behaviour, preserved.
+  let sendCalls = 0
+  const retry = await sendDraftForUser(
+    prisma,
+    { organizationId: ORG, userId: USER, draftActionId: ACTION },
+    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  )
+  assert.equal(retry.status, 'sent')
+  assert.equal(sendCalls, 1)
+})
+
+test('a fresh dispatching row cannot be stolen mid-send', async () => {
+  const { prisma } = makePrisma(
+    claimedRow({
+      state: 'dispatching',
+      claimedAt: new Date('2026-09-02T09:59:58.000Z'),
+    }),
+  )
+  let sendCalls = 0
+  await assert.rejects(
+    dispatchClaimedDraft(
+      prisma,
+      ACTION,
+      deps(routes(liveDraft(), () => { sendCalls += 1 })),
+    ),
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+  )
+  assert.equal(sendCalls, 0)
+})
+
+test('a stale claim is reclaimed after the window and sends exactly once', async () => {
+  const staleClaim = new Date(
+    new Date('2026-09-02T10:00:00.000Z').getTime() - STALE_CLAIM_WINDOW_MS - 1,
+  )
+  const { prisma, state } = makePrisma(
+    claimedRow({ state: 'dispatching', claimedAt: staleClaim }),
+  )
+  let sendCalls = 0
+  const result = await dispatchClaimedDraft(
+    prisma,
+    ACTION,
+    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  )
+  assert.equal(result.status, 'sent')
+  assert.equal(sendCalls, 1)
+  assert.equal(state.row.state, 'sent')
+  assert.equal(state.row.claimedAt, null)
 })
