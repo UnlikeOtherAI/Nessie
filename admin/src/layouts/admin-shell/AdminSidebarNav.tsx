@@ -256,6 +256,22 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
+      {
+        path: '/settings/team/members',
+        label: 'Members',
+        // Same shape as Organization's Members entry: on a UOA session the
+        // roster read is entitlement-scoped to any active member, so
+        // everyone gets the doorway and the page renders mutation controls
+        // for owners/admins only. A local session keeps the owner-only page.
+        visibleTo: ({ isOwner, isUoaSession }) => isUoaSession || isOwner,
+        icon: icon(
+          <>
+            <circle cx="9" cy="8" r="3.2" />
+            <path d="M3.5 19c0-3 2.46-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16 5.2a3 3 0 010 5.6M18 19c0-2.2-.9-4-2.4-5" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
     ],
   },
   {
