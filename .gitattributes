@@ -1,4 +1,4 @@
-# This package is vendored byte-for-byte from its pinned UOA revision. Keep
-# text in its upstream LF form so its generated-artifact check and SHA gate
-# behave identically on every development platform.
-packages/billing-statement-protocol/** text eol=lf
+# This package is vendored byte-for-byte from its pinned UOA revision. Prevent
+# core.autocrlf from altering its upstream LF bytes, so its generated-artifact
+# and SHA-256 gates behave identically on every development platform.
+packages/billing-statement-protocol/** -text
