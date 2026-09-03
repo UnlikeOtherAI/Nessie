@@ -295,7 +295,12 @@ export const registerAuthCoreRoutes = (
       return reply
     }
     clearBootstrapState()
-    const session = await buildLocalSession(result.user.id, ['owner'])
+    const session = await buildLocalSession(
+      result.user.id,
+      ['owner'],
+      undefined,
+      { userAgent: request.headers['user-agent'] ?? null },
+    )
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue bootstrap session')
@@ -362,7 +367,12 @@ export const registerAuthCoreRoutes = (
       sendApiError(reply, 500, 'NO_MEMBERSHIP', 'User has no organization membership')
       return reply
     }
-    const session = await buildLocalSession(user.id, [organizationMember.role])
+    const session = await buildLocalSession(
+      user.id,
+      [organizationMember.role],
+      undefined,
+      { userAgent: request.headers['user-agent'] ?? null },
+    )
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue dev session')

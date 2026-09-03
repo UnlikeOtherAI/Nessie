@@ -95,6 +95,20 @@ access-model decision.
   per-request check. Non-UOA switch-context mints a new sid without family
   rotation today; the new algorithm is specified around the session row, with
   concurrent refresh/switch behaviour under the existing family locks.
+  **Landed (workstream 1e, 2026-09-03):** the revocation foundation —
+  `AuthSession` (sid pk, userId, createdAt, lastSeenAt, revokedAt, userAgent;
+  selected-org/project/team columns are a later batch), the issuance upsert in
+  `createSessionIssuers` (the one issuance funnel; a refresh rotation reuses
+  the same sid, so the upsert is idempotent), `revokedAt` written inside the
+  same transaction as the refresh-family revocation on
+  `DELETE /api/auth/sessions/:sessionId` and password change, and central
+  auth rejecting any token whose sid carries a `revokedAt`. Rollout-safety
+  tradeoff: a sid with NO row is accepted (fail-open on absence, fail-closed
+  only on an explicit revoked row) until issuance coverage is proven. The
+  per-request check is one indexed lookup behind a ~30s per-process TTL cache
+  — per-replica staleness bound up to the TTL until the pg NOTIFY push
+  invalidation above replaces it. Still open: selection storage, switch-context
+  sid behaviour, and the NOTIFY invalidation.
 - **Membership writers** call `assertTenantHierarchy` (which subsumes the
   existing `validateTenantHierarchy` — v1's "only correct copy" claim was
   wrong, Kimix §4.6) *inside* their transactions, and re-check entitlement

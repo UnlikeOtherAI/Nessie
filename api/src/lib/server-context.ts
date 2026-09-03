@@ -22,6 +22,7 @@ import {
   buildMeResponse,
   createActorContextFromClaims,
 } from '../services/auth.js'
+import { createAuthSessionRevocationChecker } from '../services/auth-session-registry.js'
 import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import { createSessionIssuers } from '../services/session-issuers.js'
 import { createRequestRateLimitChecker } from './rate-limit.js'
@@ -198,6 +199,21 @@ export const createServerContext = () => {
     // Revocation: a forced sign-out bumps User.tokenVersion, which
     // invalidates every access token minted at an older generation.
     if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
+      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
+      return null
+    }
+
+    // Session-row revocation (workstream 1e, S9/SB-04): DELETE /sessions and
+    // password change set AuthSession.revokedAt for the targeted sids, so a
+    // revoked session's access JWT stops working now instead of surviving its
+    // full ~30-minute TTL. Deliberate rollout-safety tradeoff: a sid with NO
+    // AuthSession row is ACCEPTED — pre-migration tokens and any issuance
+    // path not yet writing rows keep working; the check fails closed only on
+    // an explicit revoked row and tightens to fail-closed-on-absence once
+    // issuance is proven to cover every path. Staleness: the checker caches
+    // the revoked boolean per process for ~30s, so across replicas a revoked
+    // sid can keep authenticating on one replica for up to the TTL.
+    if (await isSessionRevokedById(verification.claims.sid)) {
       sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
       return null
     }
@@ -396,6 +412,8 @@ export const createServerContext = () => {
 
     return timingSafeEqual(leftBuffer, rightBuffer)
   }
+
+  const isSessionRevokedById = createAuthSessionRevocationChecker(prisma)
 
   const { buildLocalSession, buildSessionForUser } = createSessionIssuers({
     authSecret,
