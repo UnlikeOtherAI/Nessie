@@ -4,6 +4,7 @@ import type {
   ModelProviderName,
   ProviderConnector,
 } from '../types.js'
+import { createCodexConnector } from './codex.js'
 import { createKimiConnector } from './kimi.js'
 import { createOpenAiLikeConnector } from './openai.js'
 
@@ -12,6 +13,7 @@ export const createConnectorRegistry = (): ConnectorRegistry => {
     ModelProviderName,
     (config: ModelProviderConfig) => ProviderConnector
   >([
+    ['codex-subscription', createCodexConnector],
     ['kimi', createKimiConnector],
     ['deepseek', (config) => createOpenAiLikeConnector('deepseek', {
       ...config,

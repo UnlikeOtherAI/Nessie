@@ -23,6 +23,11 @@ export const RATE_LIMIT_BUCKETS = {
   executorDaemonIp: 'executor.daemon.ip',
   stepUpIp: 'auth.step_up.ip',
   stepUpAccount: 'auth.step_up.account',
+  // Personal model subscriptions. `start` mints a device code at a shared
+  // public client, and `poll` reaches the provider on Nessie's server IP —
+  // unbounded, one member could get that client throttled for everyone.
+  subscriptionDeviceIp: 'model_subscription.device.ip',
+  subscriptionDeviceAccount: 'model_subscription.device.account',
 } as const
 
 /**

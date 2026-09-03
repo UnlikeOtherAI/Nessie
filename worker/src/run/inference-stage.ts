@@ -232,6 +232,9 @@ export const executeStage = async (
     const serviceConfig: ModelProviderConfig = {
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.extraHeaders
+        ? { extraHeaders: providerConfig.extraHeaders }
+        : {}),
       modelName: providerConfig.model,
       provider: runtimeProvider,
       serviceId: providerConfig.providerKey,

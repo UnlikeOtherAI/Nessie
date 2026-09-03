@@ -27,6 +27,8 @@ export type SubscriptionAuthStrategy = 'api_key' | 'oauth_device'
 export type SubscriptionCredentialBundle = {
   accessToken: string
   refreshToken?: string
+  /** OIDC identity token, kept so a relink can prove the same account. */
+  idToken?: string
   /** Epoch milliseconds. Absent for a key that does not expire. */
   expiresAt?: number
   tokenType?: string
@@ -58,13 +60,23 @@ export type SubscriptionProviderAdapter = {
   authStrategy: SubscriptionAuthStrategy
   transport: {
     /** Which compiled connector carries this provider's wire protocol. */
-    runtimeProvider: 'openai' | 'openai-compatible' | 'kimi' | 'deepseek'
+    runtimeProvider:
+      | 'openai'
+      | 'openai-compatible'
+      | 'kimi'
+      | 'deepseek'
+      | 'codex-subscription'
     /** Code constant. The one allowed origin for this adapter's dispatch. */
     baseUrl: string
   }
   models: SubscriptionModelOption[]
   /** Rendered verbatim in the linking UI before a person commits. */
   termsNote: string
+  /**
+   * Extra request headers this provider's backend requires beyond bearer auth.
+   * Code-declared per adapter, so no stored record or model output can add one.
+   */
+  transportHeaders?: (bundle: SubscriptionCredentialBundle) => Record<string, string>
   /**
    * Probe the credential and learn whose account it is. Deliberately takes no
    * injectable fetch: every adapter reaches its provider through `safeFetch`,

@@ -42,6 +42,7 @@ const bundleFromJson = (raw: string): SubscriptionCredentialBundle => {
   }
   return {
     accessToken: record.accessToken,
+    ...(typeof record.idToken === 'string' ? { idToken: record.idToken } : {}),
     ...(typeof record.refreshToken === 'string' ? { refreshToken: record.refreshToken } : {}),
     ...(typeof record.expiresAt === 'number' ? { expiresAt: record.expiresAt } : {}),
     ...(typeof record.tokenType === 'string' ? { tokenType: record.tokenType } : {}),

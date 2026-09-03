@@ -383,6 +383,9 @@ A person links a consumer AI plan they already pay for and the agents **they
 own** run on it instead of the organisation's Ledger credits. The lane is
 pinned at run admission and never falls back to Ledger, token values live in a
 dedicated vault project, and organisation budgets deliberately do not gate it.
+Codex and Grok link through Nessie's own server-side device-code sign-in —
+never an import of a vendor CLI's grant — and a first link is confirmed
+against the account that actually signed in.
 Read [`docs/standards/personal-model-subscriptions.md`](docs/standards/personal-model-subscriptions.md)
 before writing code here.
 

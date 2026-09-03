@@ -1,16 +1,13 @@
 import type { Prisma } from '@prisma/client'
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 
 import {
   parseAgentId,
   parseChannelId,
   parseThreadId,
-  RegisterVoiceInstallationRequestSchema,
   ReportVoiceUsageRequestSchema,
   StartVoiceSessionRequestSchema,
   SubmitVoiceTranscriptRequestSchema,
-  VoiceCapabilitySchema,
-  VoiceInstallationRecordSchema,
   VoiceSessionCredentialSchema,
   VoiceSessionRotationSchema,
   VoiceToolCallRequestSchema,
@@ -18,11 +15,7 @@ import {
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import {
-  isVoiceConfigured,
-  LedgerVoiceError,
-  relayVoiceUsage,
-} from '../services/voice/ledger-gemini-live.js'
+import { relayVoiceUsage } from '../services/voice/ledger-gemini-live.js'
 import {
   buildVoiceFunctionDeclarations,
   buildVoiceSystemInstruction,
@@ -32,13 +25,11 @@ import {
 } from '../services/voice/voice-context.js'
 import {
   endVoiceSession,
-  registerVoiceInstallation,
   requireActiveSession,
   requireOwnedInstallation,
   requireRecordableSession,
   rotateVoiceSession,
   startVoiceSession,
-  VoiceSessionError,
 } from '../services/voice/voice-session.js'
 import {
   assertTranscriptPlausible,
@@ -49,6 +40,9 @@ import {
   isVoiceTool,
   runVoiceTool,
 } from '../services/voice/voice-tools.js'
+
+import { registerVoiceEnrolmentRoutes } from './voice-enrolment.js'
+import { sendVoiceError } from './voice-route-errors.js'
 
 import type { RouteDeps } from './types.js'
 
@@ -67,15 +61,20 @@ import type { RouteDeps } from './types.js'
  *
  * | Method | Path                                   | Who                       |
  * |--------|----------------------------------------|---------------------------|
- * | GET    | /api/voice/capability                  | any active member         |
- * | POST   | /api/voice/installations               | any active member         |
- * | DELETE | /api/voice/installations/:id           | its owner                 |
+ * | GET    | /api/voice/capability                  | any active member         |*
+ * | POST   | /api/voice/installations               | any active member         |*
+ * | DELETE | /api/voice/installations/:id           | its owner                 |*
  * | POST   | /api/voice/sessions                    | any active member         |
  * | POST   | /api/voice/sessions/:id/rotate         | the call's own user       |
  * | POST   | /api/voice/sessions/:id/usage          | the call's own user       |
  * | POST   | /api/voice/sessions/:id/tool-call      | the call's own user       |
  * | POST   | /api/voice/sessions/:id/transcript     | the call's own user       |
  * | POST   | /api/voice/sessions/:id/end            | the call's own user       |
+ *
+ * The three marked * are enrolment rather than calling — whether this
+ * deployment can call, and which device is calling — and live in
+ * `voice-enrolment.ts`. They are listed here because this is the subsystem's
+ * front door and the matrix is only useful whole.
  *
  * Spec: docs/plans/2026-09-02-gemini-voice-calling.md
  */
@@ -90,73 +89,7 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     requireUserActor,
   } = deps
 
-  /** Maps a service refusal onto its response; unknown errors keep bubbling. */
-  const sendVoiceError = (reply: FastifyReply, error: unknown): FastifyReply | null => {
-    if (error instanceof VoiceSessionError || error instanceof LedgerVoiceError) {
-      return sendApiError(reply, error.status, error.code, error.message)
-    }
-    return null
-  }
-
-  // Asked before the call button is offered, so a deployment with no Ledger
-  // shows no control instead of one that always fails.
-  app.get('/api/voice/capability', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    return createApiResponse(VoiceCapabilitySchema.parse({ available: isVoiceConfigured() }))
-  })
-
-  app.post('/api/voice/installations', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const body = parseInput(RegisterVoiceInstallationRequestSchema, request.body ?? {}, reply)
-    if (!body) return reply
-
-    try {
-      const installation = await registerVoiceInstallation(prisma, {
-        organizationId: actorContext.tenant.organizationId,
-        userId: actorContext.actor.actorId,
-        platform: body.platform,
-        label: body.label,
-      })
-      return reply.code(201).send(
-        createApiResponse(
-          VoiceInstallationRecordSchema.parse({
-            id: installation.id,
-            platform: installation.platform,
-            ...(installation.label ? { label: installation.label } : {}),
-            lastSeenAt: installation.lastSeenAt.toISOString(),
-            createdAt: installation.createdAt.toISOString(),
-          }),
-        ),
-      )
-    } catch (error) {
-      return sendVoiceError(reply, error) ?? Promise.reject(error)
-    }
-  })
-
-  app.delete('/api/voice/installations/:installationId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { installationId } = request.params as { installationId: string }
-
-    // Revoked rather than deleted: sessions reference it, and the row is how
-    // an owner sees which device held a Ledger reservation today.
-    const revoked = await prisma.voiceInstallation.updateMany({
-      where: {
-        id: installationId,
-        organizationId: actorContext.tenant.organizationId,
-        userId: actorContext.actor.actorId,
-        revokedAt: null,
-      },
-      data: { revokedAt: new Date() },
-    })
-    if (revoked.count === 0) {
-      return sendApiError(reply, 404, 'VOICE_INSTALLATION_NOT_FOUND', 'Device not found.')
-    }
-    return reply.code(204).send()
-  })
+  registerVoiceEnrolmentRoutes(app, deps)
 
   app.post('/api/voice/sessions', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

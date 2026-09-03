@@ -23,7 +23,7 @@ test('the call summary stays inside the message content cap', () => {
   const lines = Array.from({ length: 400 }, (_, index) =>
     line(index % 2 === 0 ? 'user' : 'assistant', 'x'.repeat(200), index * 1_000),
   )
-  const summary = renderCallSummary({ durationMs: 400_000, lines, hasAttachment: true })
+  const summary = renderCallSummary({ durationMs: 400_000, lines })
 
   // Messages cap at 4,000 characters, so a long call must summarise rather
   // than fail the write at hang-up.
@@ -33,7 +33,7 @@ test('the call summary stays inside the message content cap', () => {
 })
 
 test('a call where nobody spoke still produces an honest record', () => {
-  const summary = renderCallSummary({ durationMs: 3_000, lines: [], hasAttachment: false })
+  const summary = renderCallSummary({ durationMs: 3_000, lines: [] })
   assert.match(summary, /Voice call · 3s · 0 turns/u)
   assert.match(summary, /Nothing was said/u)
   // Nothing to attach, so nothing may claim there is.
@@ -44,12 +44,13 @@ test('a short call keeps its whole exchange in the summary', () => {
   const summary = renderCallSummary({
     durationMs: 65_000,
     lines: [line('user', 'What is on my calendar?'), line('assistant', 'Two meetings.')],
-    hasAttachment: true,
   })
   assert.match(summary, /1 min 5s · 2 turns/u)
   assert.match(summary, /You: What is on my calendar\?/u)
   assert.match(summary, /Assistant: Two meetings\./u)
-  assert.match(summary, /Full transcript attached\./u)
+  // Never a sentence about the attachment: the card offers a real control, and
+  // the model learns of the file from the attachment inventory line.
+  assert.doesNotMatch(summary, /transcript attached/iu)
 })
 
 test('the transcript file labels speakers as text, never as roles', () => {
