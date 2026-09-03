@@ -3,6 +3,7 @@ import {
   parseChannelId,
   parseOrganizationId,
 } from '@nessie/schemas'
+import { isDelegatedSystemDmChannelType } from '../delegated-identity.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
@@ -400,7 +401,11 @@ export const buildRealtimeScopesForChannel = (input: {
   organizationId: string
   systemChannelType: ChannelSystemType | null
 }) =>
-  input.systemChannelType === 'personal_assistant'
+  // Any single-member delegated system DM — the PA's or a global agent's home —
+  // publishes on its channel lane alone. Keying this on `personal_assistant`
+  // alone would have put a global agent's home DM on the organisation lane the
+  // moment a tool posted into one.
+  isDelegatedSystemDmChannelType(input.systemChannelType)
     ? [{ kind: 'channel' as const, channelId: parseChannelId(input.channelId) }]
     : [
         {

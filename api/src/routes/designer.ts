@@ -1,16 +1,22 @@
 import type { FastifyInstance } from 'fastify'
 
 import { checkBudget } from '@nessie/runtime'
-import { DesignerChatBodySchema } from '../contracts.js'
+import { AGENT_DESIGNER_SLUG } from '@nessie/workspace-admin'
+import { DesignerChatBodySchema, DesignerContinueBodySchema } from '../contracts.js'
 import { parseInput, sendApiError } from '../lib/api.js'
 import { buildStreamCorsHeaders } from '../lib/server-context.js'
-import { streamDesignerChat } from '../services/designer.js'
+import { resolveDesignerModel, streamDesignerChat } from '../services/designer.js'
+import {
+  continueDesignInChat,
+  GlobalAgentChatError,
+} from '../services/global-agent-chat.js'
 import type { RouteDeps } from './types.js'
 
 export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     config,
     allowedCorsOrigins,
+    ledgerIdentity,
     prisma,
     requireActorContext,
     sharedModelClient,
@@ -44,9 +50,10 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
       sendApiError(reply, 402, 'BUDGET_EXCEEDED', budgetDecision.reason)
       return reply
     }
-    // A 'degrade' decision is intentionally a no-op here: the designer already runs
-    // on a fixed cheap model (DESIGNER_MODEL = gpt-5-mini), so there is no more
-    // economical model to fall back to. Only a hard block stops this endpoint.
+    // A 'degrade' decision is intentionally a no-op here: the Designer already
+    // resolves the cheapest model the deployment offers it (blueprint pin, else
+    // `NESSIE_DESIGNER_MODEL`, else the organisation default), so there is
+    // nothing more economical to fall back to. Only a hard block stops this.
 
     await streamDesignerChat(
       reply,
@@ -54,8 +61,10 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
       sharedModelClient,
       {
         actorContext,
-        designerModel:
-          process.env['NESSIE_DESIGNER_MODEL']?.trim() || sharedModelClient.chatModel,
+        // The blueprint's rule, so the usage record names the model actually
+        // called and both faces of the Designer resolve it the same way.
+        designerModel: resolveDesignerModel(sharedModelClient),
+        ledgerIdentity,
         modelProvider: config.model.provider,
         prisma,
       },
@@ -66,5 +75,32 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
       }),
     )
     return reply
+  })
+
+  // The sidebar's doorway into the full conversation. It hands the current
+  // draft over the way `agent_handoff` hands a brief over — one shared
+  // delivery, a hidden server-authored `system` message — and answers with the
+  // channel to navigate to.
+  app.post('/api/designer/continue-in-chat', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(DesignerContinueBodySchema, request.body, reply)
+    if (!body) return reply
+
+    try {
+      const result = await continueDesignInChat(prisma, {
+        actorContext,
+        body,
+        slug: AGENT_DESIGNER_SLUG,
+      })
+      return reply.send(result)
+    } catch (error) {
+      if (error instanceof GlobalAgentChatError) {
+        sendApiError(reply, error.status, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
   })
 }

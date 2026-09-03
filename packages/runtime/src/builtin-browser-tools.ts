@@ -39,6 +39,7 @@ export const CLOUD_BROWSER_TOOL_IDS = [
 export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: BROWSER_OPEN_TOOL_ID,
+    category: 'browser',
     label: 'Open Browser',
     summary: 'Open a cloud browser and load a page.',
     description:
@@ -74,6 +75,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_OBSERVE_TOOL_ID,
+    category: 'browser',
     label: 'Observe Browser',
     summary: 'Read the current page as a list of actionable elements.',
     description:
@@ -98,6 +100,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_ACT_TOOL_ID,
+    category: 'browser',
     label: 'Act In Browser',
     summary: 'Click, type, press a key, scroll, or navigate.',
     description:
@@ -134,10 +137,19 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['action'],
     },
     requiresExplicitGrant: true,
+    /**
+     * Conditional, decided in code: an ordinary action is not gated at all.
+     * The ask happens only for a write on an origin this browser is not
+     * signed in to, once it has visited one that it is — the exfiltration
+     * shape the disclosure basis cannot see, because those bytes leave
+     * through the browser rather than through a message.
+     */
+    requiresApproval: true,
     safe: false,
   },
   {
     id: BROWSER_CLOSE_TOOL_ID,
+    category: 'browser',
     label: 'Close Browser',
     summary: 'Close the cloud browser and stop its meter.',
     description:
@@ -150,6 +162,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_LOGIN_REQUEST_TOOL_ID,
+    category: 'browser',
     label: 'Ask For A Sign-In',
     summary: 'Ask the person to sign your browser into a service.',
     description:
@@ -181,6 +194,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: BROWSER_DOWNLOAD_TOOL_ID,
+    category: 'browser',
     label: 'Download From Browser',
     summary: 'Save a file from the open browser into this workspace.',
     description:

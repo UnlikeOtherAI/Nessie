@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import {
-  isExternalAgentChannel,
-  isPersonalAssistantChannel,
-  isUserDmChannel,
-} from '../../facades/personal-assistant/hooks';
+import { isExternalAgentChannel } from '../../facades/personal-assistant/channel-kinds';
 import type { ResolvedChatAssistantSurface } from '../../facades/integrations/useProductSurfaces';
 import type { AgentRecord, ChannelRecord, MeResponse, UserRecord } from '../../lib/api-client';
+import {
+  resolveAgentDms,
+  resolvePeopleDirectory,
+  resolvePeopleWithConversations,
+} from './sidebar-dm-lists';
 import type {
   SidebarAgentDm,
   SidebarGroupDm,
@@ -17,11 +18,27 @@ type UseSidebarDmsInput = {
   agents: AgentRecord[];
   channels: ChannelRecord[];
   chatAssistants: ResolvedChatAssistantSurface[];
+  /**
+   * The conversation the viewer is standing in, if any — kept listed even
+   * before its first message. See `sidebar-dm-lists`.
+   */
+  currentChannelId?: string;
   me: MeResponse | null;
+  /**
+   * The read-only system tier (`GET /api/agents?scope=all`). `agents` above
+   * deliberately excludes it, so a global agent's home DM would otherwise
+   * resolve to no agent at all and be dropped from the list entirely.
+   */
+  systemAgents: AgentRecord[];
   users: UserRecord[];
 };
 
 type UseSidebarDmsResult = {
+  /**
+   * Every person the viewer could hold a DM with, whether or not one has been
+   * started. It backs the starred lookup and is not the Direct-messages list.
+   */
+  peopleDirectory: SidebarPerson[];
   sidebarAgentDms: SidebarAgentDm[];
   sidebarGroupDms: SidebarGroupDm[];
   sidebarPeople: SidebarPerson[];
@@ -29,55 +46,31 @@ type UseSidebarDmsResult = {
 };
 
 /**
- * Derives the Direct-messages section lists: the people row, the product chat
+ * Derives the Direct-messages section lists: the people rows, the product chat
  * assistants pinned under the Personal Assistant, and the generic agent DMs.
  * A channel surfaced as a pinned product assistant is de-duped out of the
- * generic agent-DM list so it never appears twice.
+ * generic agent-DM list so it never appears twice. The derivations themselves
+ * are pure and live in `sidebar-dm-lists`, which is also where the rule that a
+ * DM is listed only once it holds a conversation is stated.
  */
 export const useSidebarDms = ({
   agents,
   channels,
   chatAssistants,
+  currentChannelId,
   me,
+  systemAgents,
   users,
 }: UseSidebarDmsInput): UseSidebarDmsResult => {
-  const sidebarPeople = useMemo<SidebarPerson[]>(() => {
-    if (!me) {
-      return [];
-    }
+  const peopleDirectory = useMemo<SidebarPerson[]>(
+    () => resolvePeopleDirectory(me, users, channels),
+    [channels, me, users],
+  );
 
-    const currentUser = users.find((u) => u.id === me.user.id);
-    const people = [
-      {
-        id: me.user.id,
-        label: me.user.displayName,
-        avatarUrl: currentUser?.avatarUrl ?? me.user.avatarUrl ?? null,
-        avatarAttachmentId: currentUser?.avatarAttachmentId ?? me.user.avatarAttachmentId ?? null,
-        channelIds: currentUser?.channelIds ?? [],
-      },
-      ...users
-        .filter((u) => u.id !== me.user.id)
-        .map((user) => ({
-          id: user.id,
-          label: user.displayName,
-          avatarUrl: user.avatarUrl,
-          avatarAttachmentId: user.avatarAttachmentId,
-          channelIds: user.channelIds,
-        })),
-    ];
-
-    return people.slice(0, 4).map((person) => ({
-      id: person.id,
-      label: person.label,
-      avatarUrl: person.avatarUrl,
-      avatarAttachmentId: person.avatarAttachmentId,
-      dmChannelId: person.id === me.user.id
-        ? undefined
-        : channels.find(
-          (c) => isUserDmChannel(c) && person.channelIds.includes(c.id),
-        )?.id,
-    }));
-  }, [me, users, channels]);
+  const sidebarPeople = useMemo<SidebarPerson[]>(
+    () => resolvePeopleWithConversations(peopleDirectory, channels, currentChannelId),
+    [channels, currentChannelId, peopleDirectory],
+  );
 
   // Product chat assistants declared by the surface registry, resolved to their
   // per-user external-agent channel. The external-agent channel carries no
@@ -109,36 +102,14 @@ export const useSidebarDms = ({
 
   const sidebarAgentDms = useMemo<SidebarAgentDm[]>(
     () =>
-      channels
-        .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
-        .filter((channel) => channel.isGroupDm !== true)
-        // A channel pinned as a product assistant under the PA is never also
-        // listed in the generic agent-DM list.
-        .filter((channel) => !productAssistantChannelIds.has(channel.id))
-        .flatMap((channel): SidebarAgentDm[] => {
-          const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
-          if (agent) {
-            return [{
-              dmChannelId: channel.id,
-              id: agent.id,
-              agentId: agent.id,
-              label: agent.name,
-            }];
-          }
-          // External agents (DeepSignal, ...) bind a system-managed `Agent`
-          // row that the general agent list excludes, so it never resolves
-          // above — fall back to the channel's own label, keyed by channel id.
-          if (isExternalAgentChannel(channel)) {
-            return [{
-              dmChannelId: channel.id,
-              id: channel.id,
-              agentId: null,
-              label: channel.label,
-            }];
-          }
-          return [];
-        }),
-    [agents, channels, productAssistantChannelIds],
+      resolveAgentDms({
+        agents,
+        channels,
+        currentChannelId,
+        pinnedChannelIds: productAssistantChannelIds,
+        systemAgents,
+      }),
+    [agents, channels, currentChannelId, productAssistantChannelIds, systemAgents],
   );
 
   const sidebarGroupDms = useMemo<SidebarGroupDm[]>(
@@ -149,5 +120,11 @@ export const useSidebarDms = ({
     [channels],
   );
 
-  return { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants };
+  return {
+    peopleDirectory,
+    sidebarAgentDms,
+    sidebarGroupDms,
+    sidebarPeople,
+    sidebarProductAssistants,
+  };
 };

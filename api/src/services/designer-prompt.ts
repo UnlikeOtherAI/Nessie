@@ -1,6 +1,29 @@
+import {
+  AGENT_DESIGNER_BLUEPRINT,
+  buildGlobalAgentCatalogueBlock,
+  type AgentToolCatalog,
+} from '@nessie/workspace-admin'
 import type { z } from 'zod'
 
 import type { DesignerChatBodySchema } from '../contracts.js'
+
+/**
+ * The Agent Designer's second face: the sidebar on the Agent Designer page.
+ *
+ * One brain, two doorways (D9). The persona and the generated capability
+ * catalogue come from the blueprint module the DM face uses — this file adds
+ * only what is genuinely different about *this transport*: the form is open in
+ * front of the person, so the Designer changes it control-by-control with
+ * `set_*` / `toggle_tool` instead of writing an agent, and nothing is saved
+ * until the person saves it.
+ *
+ * What must never diverge is what the Designer knows and sounds like. The
+ * hand-written "expert AI agent designer" persona and its numbered principles
+ * that used to live here were a second definition of the same specialist, and
+ * the tool list came from whatever the browser happened to send.
+ *
+ * Spec: docs/plans/2026-09-02-agent-designer-global-agent.md (D9).
+ */
 
 export type DesignerChatInput = z.infer<typeof DesignerChatBodySchema>
 
@@ -49,7 +72,7 @@ export const DESIGNER_TOOLS = [
       name: 'set_model',
       description:
         'Set the model this agent runs on. Both fields come from one entry of'
-        + ' the "Available models" list in the system prompt and must be'
+        + ' the "Models available here" list in the system prompt and must be'
         + ' copied verbatim — a pair outside that list cannot be saved.'
         + ' Pick one yourself: the list leads with the deployment\'s strongest'
         + ' model, so choose it unless the task calls for something cheaper or'
@@ -81,8 +104,8 @@ export const DESIGNER_TOOLS = [
           toolId: {
             type: 'string',
             description:
-              'Tool identifier — must be one of the ids in the'
-              + ' "Available tools" list from the system prompt',
+              'Tool policy key — must be one of the keys in the design'
+              + ' catalogue from the system prompt',
           },
           enabled: { type: 'boolean' },
         },
@@ -136,50 +159,21 @@ export const DESIGNER_TOOLS = [
   },
 ]
 
-const buildAvailableToolLines = (
-  availableTools: DesignerChatInput['availableTools'],
-  formStateTools: Record<string, boolean>,
-): string[] => {
-  if (availableTools && availableTools.length > 0) {
-    return availableTools.map((tool) => {
-      const kind = tool.kind === 'mcp' ? ' [connector]' : ''
-      const description = tool.description ? ` — ${tool.description.slice(0, 120)}` : ''
-      return `- ${tool.id}${kind}: ${tool.label}${description}`
-    })
-  }
-
-  const knownIds = Object.keys(formStateTools)
-  return knownIds.length > 0 ? knownIds.map((id) => `- ${id}`) : ['(none registered)']
-}
-
-/**
- * `set_model` only lands if the pair it names is one the form can resolve
- * against the same catalogue, so the pair is what each line leads with; the
- * human-readable part follows for choosing between them. Order is the
- * catalogue's own — provider ascending, newest model of each provider first.
- */
-export const buildAvailableModelLines = (
-  availableModels: DesignerChatInput['availableModels'],
-): string[] => {
-  if (!availableModels || availableModels.length === 0) {
-    return ['(catalogue unavailable — leave the model alone)']
-  }
-
-  return availableModels.map((option) => {
-    const description = option.description
-      ? ` — ${option.description.slice(0, 120)}`
-      : ''
-    return `- model=${option.model} provider=${option.provider}`
-      + ` — ${option.displayName} (${option.providerDisplayName})${description}`
-  })
+export type DesignerPromptInput = {
+  /** This organisation's live tool catalogue — the member-safe projection. */
+  catalogue: AgentToolCatalog
+  formState: DesignerChatInput['formState']
+  availableModels: DesignerChatInput['availableModels']
+  organizationId: string
+  pageContext?: DesignerChatInput['pageContext']
+  /** True when the deployment can actually reach the Ledger search route. */
+  webSearchAvailable: boolean
 }
 
 export const buildDesignerSystemPrompt = (
-  formState: DesignerChatInput['formState'],
-  availableTools: DesignerChatInput['availableTools'],
-  availableModels: DesignerChatInput['availableModels'],
-  pageContext?: DesignerChatInput['pageContext'],
+  input: DesignerPromptInput,
 ): string => {
+  const { formState } = input
   const enabledTools = Object.entries(formState.tools)
     .filter(([, value]) => value)
     .map(([key]) => key)
@@ -194,10 +188,19 @@ export const buildDesignerSystemPrompt = (
     : '(empty)'
 
   return [
-    'You are an expert AI agent designer.',
-    'You help users create agents by configuring form fields via tool calls.',
+    // The persona, from the blueprint. Identical wording to the DM face.
+    AGENT_DESIGNER_BLUEPRINT.buildSystemPrompt({ organizationId: input.organizationId }),
     '',
-    'Current form state:',
+    buildGlobalAgentCatalogueBlock({
+      catalogue: input.catalogue,
+      // The browser's own list, in the model picker's order: `set_model` only
+      // lands if the pair it names is one the open form can resolve, and the
+      // picker's order is what makes "the leading model" mean anything.
+      models: input.availableModels ?? null,
+      writeSurface: 'designer_form',
+    }),
+    '',
+    'The form open in front of you right now:',
     `- Name: ${formState.name || '(empty)'}`,
     `- Role: ${formState.role || '(empty)'}`,
     `- System prompt: ${summarizedSystemPrompt}`,
@@ -205,55 +208,30 @@ export const buildDesignerSystemPrompt = (
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
     '',
     'Current page:',
-    `- ${pageContext?.title ?? 'Agent configuration'}: ${pageContext?.description ?? 'Edit this agent’s configuration.'}`,
-    `- Controls available on this page: ${pageContext?.actions.join(', ') || 'none'}`,
+    `- ${input.pageContext?.title ?? 'Agent configuration'}: ${
+      input.pageContext?.description ?? 'Edit this agent’s configuration.'}`,
+    `- Controls available on this page: ${input.pageContext?.actions.join(', ') || 'none'}`,
     '',
-    'Available tools (use the exact id with toggle_tool / batch_toggle_tools):',
-    ...buildAvailableToolLines(availableTools, formState.tools),
-    '',
-    'Available models (use the exact model + provider pair with set_model):',
-    ...buildAvailableModelLines(availableModels),
-    '',
-    '# Your principles',
-    '',
-    '1. START SIMPLE. Match the complexity of the system prompt to the task.',
-    '   - A "name day checker" needs 3-5 lines, not 50.',
-    '   - A code reviewer with linting rules needs more depth.',
-    '   - Default to concise. Only add detail when the domain demands it.',
-    '',
-    '2. BE CONVERSATIONAL. You are a collaborator, not a form-filler.',
-    '   - If the user says "make a bot that tells jokes" — set it up, done.',
-    '   - If the user says "I need a medical triage assistant" — that\'s',
-    '     complex. Suggest what you plan to include and ask if they want',
-    '     to refine before you write it.',
-    '',
-    '3. DO NOT ASK UNNECESSARY QUESTIONS.',
-    '   - If you can infer a reasonable answer, just do it.',
-    '   - Only ask when the answer genuinely changes the output AND you',
-    '     cannot infer it. One question max per turn, never a list.',
-    '   - Never ask questions just to seem thorough.',
-    '',
-    '4. RESEARCH WHEN USEFUL. You have web_search.',
-    '   - If the user asks for a domain-specific agent (Czech name days,',
-    '     Japanese tax law, etc.), search first, then write a grounded',
-    '     prompt based on real information.',
-    '   - Do NOT search for generic topics you already know well.',
-    '',
-    '5. ITERATE. The first version does not need to be final.',
-    '   - Set up a working agent quickly.',
-    '   - The user can refine in follow-up messages.',
-    '',
-    '# Output rules',
-    '',
-    '- Use multiple tool calls in one response when setting several fields.',
+    'How you work here:',
+    '- You fill the form in: set_name, set_role, set_system_prompt, set_model,',
+    '  toggle_tool and batch_toggle_tools each change one control the person is',
+    '  looking at. Use several in one response when you are setting several',
+    '  fields.',
     '- A model is part of a working agent: if none is selected, call set_model',
     '  yourself. Leave an existing selection alone unless the user asks for a',
     '  different one.',
-    '- ALWAYS include a short text reply explaining what you did.',
-    '  Never respond with only tool calls.',
-    '- Discuss the current page directly. Only call a UI-changing tool when',
-    '  the current page lists the relevant control as available.',
-    '- System prompts should be direct instructions to the agent.',
-    '  No preamble, no meta-commentary. Write as if you ARE the system.',
+    '- Always include a short text reply saying what you changed. Never respond',
+    '  with only tool calls.',
+    '- Only call a control-changing tool when the current page lists that',
+    '  control as available; otherwise discuss the page directly.',
+    '- A system prompt is direct instruction to the agent. No preamble, no',
+    '  meta-commentary — write as if you ARE the system.',
+    input.webSearchAvailable
+      ? '- web_search is available for grounding a domain you do not know well.'
+        + ' Do not search for generic topics you already know.'
+      : '- web_search is not configured on this deployment. Say so if research'
+        + ' would have helped, and never invent results.',
+    '- The person can move this conversation into a full chat with you at any',
+    '  time with "Continue in chat", which carries the current draft over.',
   ].join('\n')
 }

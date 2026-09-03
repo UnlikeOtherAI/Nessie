@@ -23,7 +23,7 @@ type CreatedRun = {
 export const publishReplyRunStarted = async ({
   channelId,
   content,
-  isPersonalAssistantChannel,
+  isSingleAgentSystemDm,
   messageId,
   realtimeTransport,
   role,
@@ -32,14 +32,18 @@ export const publishReplyRunStarted = async ({
 }: {
   channelId: string
   content: string
-  isPersonalAssistantChannel: boolean
+  isSingleAgentSystemDm: boolean
   messageId: string
   realtimeTransport: PgRealtimeTransport
   role: string
   run: CreatedRun
   scopes: WsScope[]
 }): Promise<void> => {
-  const publishScopes = isPersonalAssistantChannel
+  // A single-agent system DM (the PA's, a global agent's home) is private to
+  // one person. The org-wide `agent` scope would broadcast its preview to every
+  // subscriber of that agent — and a global agent's subscribers are the whole
+  // organisation — so those DMs publish to their channel scope alone.
+  const publishScopes = isSingleAgentSystemDm
     ? scopes
     : [...scopes, { kind: 'agent' as const, agentId: parseAgentId(run.agentId) }]
 

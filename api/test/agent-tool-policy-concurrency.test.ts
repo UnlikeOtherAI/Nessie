@@ -9,6 +9,7 @@ import { setAgentToolPolicyForRegistryEntry } from '../src/services/agent-tool-p
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const agentId = '00000000-0000-4000-8000-000000000002'
 const explicitToolId = '00000000-0000-4000-8000-000000000003'
+const editorUserId = '00000000-0000-4000-8000-000000000004'
 
 test('targeted grant and stale generic PUT serialize without losing either change', async () => {
   let agent = {
@@ -22,6 +23,7 @@ test('targeted grant and stale generic PUT serialize without losing either chang
     model: 'gpt-5',
     name: 'Researcher',
     organizationId,
+    ownerUserId: null,
     parentAgentId: null,
     provider: 'openai',
     role: 'assistant',
@@ -30,8 +32,10 @@ test('targeted grant and stale generic PUT serialize without losing either chang
     surfacePolicy: 'shared' as const,
     systemManaged: false,
     systemPrompt: null,
+    todosEnabled: false,
     toolPolicy: {} as Record<string, boolean>,
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    visibility: 'workspace' as const,
   }
   let locked = false
   const lockWaiters: Array<() => void> = []
@@ -91,6 +95,12 @@ test('targeted grant and stale generic PUT serialize without losing either chang
         return agent
       },
     },
+    // Edit authority re-reads the LIVE membership row inside the same
+    // transaction, so the fake has to model it: a cast fake is unityped, and a
+    // delegate it omits is a runtime TypeError, not a type error.
+    organizationMember: {
+      findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),
+    },
     toolRegistryEntry: {
       findFirst: async () => registryEntry,
       findMany: async ({ where }: {
@@ -128,6 +138,9 @@ test('targeted grant and stale generic PUT serialize without losing either chang
   })
   await firstReadEntered
   const staleGenericPut = updateAgentRecord(prisma, agentId, {
+    organizationId,
+    userId: editorUserId,
+  }, {
     organizationId,
     toolPolicy: { web_search: false },
   })

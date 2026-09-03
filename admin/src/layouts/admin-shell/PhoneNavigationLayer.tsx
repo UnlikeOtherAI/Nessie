@@ -1,10 +1,20 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
+import { sharedQueryClient } from '@nessie/client-core'
 import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
 import { matchSurface } from '../../navigation/surfaces'
 import type { PhoneNavigationDirection } from './phone-navigation'
 import type { PhoneNavigationStackEntry } from './phone-navigation-stack'
+
+// The pull-to-refresh content refresh: re-fetch the mounted queries (the visible
+// page's data, plus any live query the shell keeps warm) on the one app-wide
+// client, without reloading the SPA. The shell, nav and route/scroll stay put —
+// a full reload stays the tablet "Full refresh" button and Cmd/Ctrl-R. Reading
+// the shared client directly, rather than `useQueryClient()`, keeps this
+// navigation-layer component renderable without a provider (its isolation tests
+// mount no data layer), and it is the very instance `QueryProvider` mounts.
+const refreshVisiblePage = (): Promise<unknown> => sharedQueryClient.refetchQueries({ type: 'active' })
 
 // What a layer holds: a route's captured subtree, or a nested stage's
 // container that its page fills through a portal.
@@ -82,14 +92,24 @@ const offersRefresh = (pathname: string): boolean => {
   return type === 'root' || type === 'detail'
 }
 
+// A full-height surface (the chat conversation) owns its own inner scroller, so
+// its page shell must be a non-scrolling flex column it can fill rather than the
+// default block scroller — otherwise its `flex-1` column collapses to content
+// height and the composer floats up under the last message. Declared on the
+// surface registry (`Surface.fillsViewport`), never inferred from a breakpoint.
+const pageClassName = (pathname: string): string =>
+  matchSurface(pathname)?.surface.fillsViewport
+    ? 'phone-navigation-page phone-navigation-page--fill'
+    : 'phone-navigation-page'
+
 const RoutedScreen = ({ payload, pathname }: { payload: ScreenPayload; pathname: string }) => {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const indicatorRef = useRef<HTMLDivElement | null>(null)
-  usePullToRefresh({ enabled: offersRefresh(pathname), indicatorRef, scrollerRef })
+  usePullToRefresh({ enabled: offersRefresh(pathname), indicatorRef, onRefresh: refreshVisiblePage, scrollerRef })
   return (
     <UNSAFE_LocationContext.Provider value={payload.locationContext}>
       <div aria-hidden className="phone-navigation-refresh" data-phone-navigation-refresh ref={indicatorRef} />
-      <div className="phone-navigation-page" data-phone-navigation-page ref={scrollerRef}>
+      <div className={pageClassName(pathname)} data-phone-navigation-page ref={scrollerRef}>
         {payload.screen}
       </div>
     </UNSAFE_LocationContext.Provider>
@@ -101,7 +121,7 @@ const NavigationScreen = ({ payload, pathname }: { payload: LayerPayload; pathna
   if (payload.kind === 'screen') return <RoutedScreen pathname={pathname} payload={payload} />
   return (
     <UNSAFE_LocationContext.Provider value={seededLocationContext(payload.pathname)}>
-      <div className="phone-navigation-page" data-phone-navigation-page>
+      <div className={pageClassName(payload.pathname)} data-phone-navigation-page>
         {payload.screen}
       </div>
     </UNSAFE_LocationContext.Provider>

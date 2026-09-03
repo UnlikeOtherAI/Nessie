@@ -16,13 +16,17 @@ export {
   type HttpFetchOutput,
   HttpFetchError,
 } from './http-fetch.js'
+// The Ledger Serper route moved into `@nessie/runtime` so the API's Agent
+// Designer sidebar calls the same code path rather than keeping the DuckDuckGo
+// scrape it had (D9). Re-exported here because the worker's builtin handler
+// index is where its call sites look for it.
 export {
   runWebSearch,
   WebSearchError,
   type WebSearchOptions,
   type WebSearchOutput,
   type WebSearchResult,
-} from './web-search.js'
+} from '@nessie/runtime'
 export {
   assertInsideSandbox,
   extractSandboxConfig,

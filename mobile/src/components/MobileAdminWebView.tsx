@@ -75,6 +75,12 @@ export const MobileAdminWebView = ({
       injectedJavaScriptBeforeContentLoaded={wrapNativeWebViewScript(nativeShellInfoScript(shellInfo))}
       injectedJavaScript={wrapNativeWebViewScript(`${nativeShellInfoScript(shellInfo)}\n${INJECTED}`)}
       key={webviewKey}
+      // Calling the Personal Assistant captures audio in the WebView. Without
+      // this the capture request is refused even once the OS has granted the
+      // app microphone access, because WKWebView asks separately on the page's
+      // behalf. Same-host only: the WebView's origin whitelist is open, so a
+      // navigation away from the admin must not inherit the microphone.
+      mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
       mediaPlaybackRequiresUserAction={false}
       onContentProcessDidTerminate={() => webRef.current?.reload()}
       onError={onError}
@@ -91,7 +97,9 @@ export const MobileAdminWebView = ({
       // Pull-to-refresh is the web's (docs/navigation/overview.md §13): the WebView's
       // own gesture was iOS-only, forced bounces, reloaded the document from
       // any screen and told the page nothing. The admin owns the pull at the
-      // top of a root or detail scroller and posts nessie:full-refresh.
+      // top of a root or detail scroller and does a content-only refetch of the
+      // visible page; the full WebView remount stays the "Full refresh" nav
+      // button (nessie:full-refresh).
       pullToRefreshEnabled={false}
       ref={webRef}
       sharedCookiesEnabled

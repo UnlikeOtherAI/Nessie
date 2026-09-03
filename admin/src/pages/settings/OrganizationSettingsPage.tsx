@@ -90,7 +90,17 @@ export const OrganizationSettingsPage = () => {
         <Card as="section">
           <SectionLabel>Profile</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
-            <FormField error={nameError} label="Organisation name">
+            <FormField
+              error={nameError}
+              help={
+                organization?.nameManagedExternally
+                  ? 'This name belongs to your UnlikeOtherAI organisation. Saving renames it '
+                    + 'there, so it changes on the sign-in screen and in every other '
+                    + 'UnlikeOtherAI product too.'
+                  : undefined
+              }
+              label="Organisation name"
+            >
               <Input
                 disabled={isLoading || updateOrganization.isPending}
                 onChange={(event) => {

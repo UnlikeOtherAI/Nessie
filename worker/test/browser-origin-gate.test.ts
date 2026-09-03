@@ -17,6 +17,7 @@ import {
 
 const gateWith = (origins: string[], touched: boolean): OriginGateState => ({
   authenticatedOrigins: new Set(origins),
+  currentUrl: null,
   touchedAuthenticated: touched,
 })
 
@@ -85,12 +86,29 @@ test('clicking on a foreign origin is refused too — a submit is a click', () =
   assert.equal(verdict.allowed, false)
 })
 
+test('pressing Enter on a foreign origin is a write — it submits the form', () => {
+  // Without this the gate refused `type` and `click` and then let the model
+  // submit the very form it had just protected.
+  const gate = gateWith(['https://mail.example.com'], true)
+  for (const key of ['Enter', 'Space']) {
+    assert.equal(
+      evaluateOriginGate(gate, 'https://attacker.example.net/collect', {
+        action: 'press',
+        key,
+      }).allowed,
+      false,
+      `${key} must be treated as an activation`,
+    )
+  }
+})
+
 test('reads and movement are never gated — narrowing them would kill the capability', () => {
   const gate = gateWith(['https://mail.example.com'], true)
   for (const action of [
     { action: 'navigate' as const, url: 'https://anywhere.example.net/' },
     { action: 'scroll' as const, deltaY: 200 },
     { action: 'press' as const, key: 'PageDown' },
+    { action: 'press' as const, key: 'Escape' },
   ]) {
     assert.equal(
       evaluateOriginGate(gate, 'https://anywhere.example.net/', action).allowed,
@@ -100,10 +118,14 @@ test('reads and movement are never gated — narrowing them would kill the capab
   }
 })
 
-test('visiting a signed-in origin arms the gate', () => {
+test('visiting a signed-in origin arms the gate and tracks the page', () => {
   const gate = gateWith(['https://mail.example.com'], false)
   noteVisitedOrigin(gate, 'https://news.example.org/')
   assert.equal(gate.touchedAuthenticated, false)
+  // Tracked so the approval gate can decide without a second CDP round trip
+  // before every action.
+  assert.equal(gate.currentUrl, 'https://news.example.org/')
   noteVisitedOrigin(gate, 'https://mail.example.com/inbox')
   assert.equal(gate.touchedAuthenticated, true)
+  assert.equal(gate.currentUrl, 'https://mail.example.com/inbox')
 })

@@ -174,7 +174,12 @@ export const SURFACES: Surface[] = [
   {
     // The conversation. Its Messages / Files / Automations / Agents strip is
     // component state, not routes, so there is nothing to classify beneath it.
+    // It fills the viewport: a fixed header and bottom-anchored composer with a
+    // scrolling feed between them, so on `single` its page shell must be a
+    // non-scrolling flex column rather than the block scroller (see
+    // `fillsViewport`).
     depth: 1,
+    fillsViewport: true,
     identityOf: (match) => `channel:${match[1]}`,
     keyScope: () => 'channel',
     intent: {

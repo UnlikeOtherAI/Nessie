@@ -12,6 +12,7 @@ import { useFocusMode } from '../../providers/FocusModeProvider';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
 type SidebarRailProps = {
+  onCreateAgent: () => void;
   onCreateChannel: () => void;
   onCreateMessage: () => void;
   onCreateProject: () => void;
@@ -20,6 +21,7 @@ type SidebarRailProps = {
 };
 
 export const SidebarRail = ({
+  onCreateAgent,
   onCreateChannel,
   onCreateMessage,
   onCreateProject,
@@ -124,6 +126,7 @@ export const SidebarRail = ({
         />
 
         <CreateMenuTrigger
+          onCreateAgent={onCreateAgent}
           onCreateChannel={onCreateChannel}
           onCreateMessage={onCreateMessage}
           onCreateProject={onCreateProject}

@@ -75,7 +75,20 @@ model Organization {
   the verified `orgName` the directory supplies and never edited into a second
   authority. An organisation materialized before any name is known carries the
   placeholder `Organisation <id-prefix>` until the directory supplies the real
-  one. A local edit of an SSO-owned org name is not a supported operation.
+  one.
+- **Renaming an SSO-owned organisation is a write to UOA, never to the mirror.**
+  `PATCH /api/organizations/current` relays the new name to
+  `PUT /org/organisations/:orgId` (`renameUoaOrganization`, behind the caller's
+  short-lived subject assertion, so UOA re-resolves their live
+  `organisation.manage` capability) and mirrors the record UOA echoes back —
+  before the local row is touched, so a refusal or an outage upstream changes
+  nothing locally. Until 2026-09-02 the route wrote `Organization.name` and
+  stopped there: the new name showed inside Nessie alone, UOA's own workspace
+  chooser and every other UOA-integrated product kept the old one, and the next
+  login's `syncExternalOrganizationNames` silently reverted the row. A
+  local-mode organisation (`externalOrgId` null) has no upstream authority and
+  keeps writing locally. `OrganizationSummary.nameManagedExternally` is what
+  lets the settings page say so; the external id itself stays server-side.
 
 ## Provisioning and session semantics
 

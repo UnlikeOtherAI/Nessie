@@ -10,6 +10,7 @@ import type {
   AgentOwnerState,
   AgentRecord,
   AgentRunLimits,
+  VoiceName,
 } from '@nessie/schemas'
 import {
   AgentAvatarBackgroundColorSchema,
@@ -17,8 +18,11 @@ import {
   parseAgentId,
   parseChannelId,
   parseRunId,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
+
+import { getGlobalAgentBlueprint } from './global-agent-blueprints.js'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 
@@ -51,6 +55,28 @@ export const isSystemManagedAgent = (agent: {
   systemManaged: boolean
 }): boolean =>
   agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
+/**
+ * A system agent somebody can *address*: the Personal Assistant, and every
+ * global agent whose blueprint homes it in a per-person DM.
+ *
+ * Such an agent is never bound into a new conversation — `bindAgentToChannel`
+ * refuses every `systemManaged` agent and every system channel by design.
+ * It already owns one channel per person, so addressing it resolves to that
+ * home DM. This one predicate decides it for the server (the branch in
+ * `POST /api/channels/conversations`) and, through `dmAddressable` on the
+ * record, for every client's address book — so a picker offers exactly what
+ * the route will accept, and neither side hand-names a slug.
+ */
+export const isDmAddressableSystemAgent = (agent: {
+  agentKind: string
+  systemManaged: boolean
+  systemSlug?: string | null
+}): boolean => {
+  if (!isSystemManagedAgent(agent)) return false
+  if (agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND) return true
+  return getGlobalAgentBlueprint(agent.systemSlug)?.home === 'per_user_dm'
+}
 
 /**
  * A stored `ownerUserId` names a membership row that exists — the composite
@@ -112,6 +138,17 @@ const readAgentAvatarBackgroundColor = (
 }
 
 /**
+ * Read the stored `Agent.voiceName` back through the curated voice list.
+ *
+ * The column is plain text because the set of voices is Google's, so a stored
+ * value can stop being one. An unrecognised name reads as no choice at all.
+ */
+export const readAgentVoiceName = (value: string | null | undefined): VoiceName | null => {
+  const parsed = VoiceNameSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * Read the stored `Agent.runLimits` JSON back through the shared schema. A row
  * written before the column existed (or hand-edited into a shape the contract
  * no longer accepts) reads as "no explicit limits" rather than leaking an
@@ -154,6 +191,7 @@ export const mapAgentRecord = (agent: {
   effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
+  systemSlug?: string | null
   visibility: 'private' | 'workspace'
   homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
@@ -169,6 +207,8 @@ export const mapAgentRecord = (agent: {
   systemPrompt: string | null
   runLimits?: unknown
   todosEnabled: boolean
+  voiceName?: string | null
+  speakingStyle?: string | null
   toolPolicy?: unknown
   updatedAt: Date
 }): AgentRecord => {
@@ -197,6 +237,9 @@ export const mapAgentRecord = (agent: {
     owner,
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
+    systemSlug: agent.systemSlug ?? null,
+    // Present only when true, so an ordinary agent's payload is unchanged.
+    ...(isDmAddressableSystemAgent(agent) ? { dmAddressable: true } : {}),
     visibility: agent.visibility,
     ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,
@@ -220,6 +263,12 @@ export const mapAgentRecord = (agent: {
     effort: agent.effort,
     runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
     todosEnabled: agent.todosEnabled,
+    // Read back through the curated list: a row written before a voice was
+    // retired (or hand-edited) reads as "no choice" and falls back to the
+    // deployment default, rather than sending Gemini a name it will reject at
+    // setup and failing the call.
+    voiceName: readAgentVoiceName(agent.voiceName),
+    speakingStyle: agent.speakingStyle?.trim() ? agent.speakingStyle : null,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     avatarBackgroundColor: readAgentAvatarBackgroundColor(agent.avatarBackgroundColor),

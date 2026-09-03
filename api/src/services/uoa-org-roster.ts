@@ -27,3 +27,8 @@ export {
   type WorkspaceInvitationReview,
   type WorkspaceMemberActivation,
 } from '@nessie/workspace-admin'
+
+// The organisation object itself is UOA-owned too: a rename is relayed, never
+// stored locally as an independent value. Same seam, same package, same reason
+// the roster lives there.
+export { renameUoaOrganization } from '@nessie/workspace-admin'

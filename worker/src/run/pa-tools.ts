@@ -80,6 +80,12 @@ export {
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
 export {
+  runAgentAvatarUpdateTool,
+  runAgentReadTool,
+  runAgentToolCatalogTool,
+  runAgentUpdateTool,
+} from './pa-tools/agent-config.js'
+export {
   runTodoStartTool,
   runTodoStepUpdateTool,
   runTodoTemplateProposeTool,

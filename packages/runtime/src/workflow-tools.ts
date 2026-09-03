@@ -8,6 +8,7 @@ export const buildWorkflowToolDefinitions = (
   webFetchToolDefinition,
   {
     id: 'state_get',
+    category: 'workflows',
     summary: 'Read a workflow installation checkpoint value.',
     label: 'State Get',
     description:
@@ -29,6 +30,7 @@ export const buildWorkflowToolDefinitions = (
   },
   {
     id: 'state_put',
+    category: 'workflows',
     summary: 'Store a workflow installation checkpoint value.',
     label: 'State Put',
     description:
@@ -55,6 +57,7 @@ export const buildWorkflowToolDefinitions = (
   },
   {
     id: 'message_send',
+    category: 'conversation',
     summary: 'Post a deterministic workflow message to a channel.',
     label: 'Message Send',
     description:
@@ -81,6 +84,7 @@ export const buildWorkflowToolDefinitions = (
   },
   {
     id: 'change_detect',
+    category: 'web',
     summary: 'Compare a value with its saved workflow checkpoint.',
     label: 'Change Detect',
     description:

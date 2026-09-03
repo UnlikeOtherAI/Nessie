@@ -176,7 +176,25 @@ export type AgentRecord = {
   runLimits?: AgentRunLimits | null
   surfacePolicy?: 'shared' | 'dm_only'
   systemManaged?: boolean
+  /**
+   * The global-agent blueprint this row instantiates, when it is one. Read-only
+   * and server-written: it is how a client says "this is the Agent Designer"
+   * structurally instead of matching a display name.
+   */
+  systemSlug?: string | null
+  /**
+   * Server-decided: addressing this system agent resolves to the caller's own
+   * pre-provisioned home DM instead of binding it into a new conversation.
+   * Present only when true — it is what puts the Personal Assistant and a
+   * global agent in the "New message" address book without a client naming a
+   * slug.
+   */
+  dmAddressable?: boolean
   todosEnabled: boolean
+  /** Gemini Live voice for calls; null/absent = the deployment default. */
+  voiceName?: string | null
+  /** How the agent talks to people — prompt text, never a preset id. */
+  speakingStyle?: string | null
   status: AgentStatusResponse['status']
   systemPrompt?: string
   toolPolicy?: Record<string, boolean>
@@ -394,8 +412,24 @@ export type PersonalAssistantBootstrapResponse = {
   thread: ThreadRecord
 }
 
+// A global agent's per-user home DM — the Agent Designer's chat. One call
+// ensures and resolves it, so every client reaches that conversation the same
+// way (see api/src/routes/global-agents.ts).
+export type GlobalAgentHomeResponse = {
+  agentId: string
+  channel: ChannelRecord
+  threadId: string
+}
+
 export type ToolDescriptor = {
   builtin?: boolean
+  /**
+   * Where the tool belongs in every surface that lists tools, declared by the
+   * tool itself (`ToolCategoryId` in `@nessie/schemas`). Optional on the wire
+   * only because an organization-local registry entry is not a builtin and has
+   * none; every builtin carries one.
+   */
+  category?: string
   description: string
   enabled?: boolean
   handlerKind?: string

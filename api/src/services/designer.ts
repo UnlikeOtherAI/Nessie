@@ -8,9 +8,17 @@ import {
   completeLedgerAttribution,
   isCreditsExhaustedError,
   recordInferenceUsage,
+  runWebSearch,
+  WebSearchError,
+  type LedgerIdentityService,
   type LedgerInvocation,
   type ModelClient,
 } from '@nessie/runtime'
+import {
+  AGENT_DESIGNER_BLUEPRINT,
+  loadAgentToolCatalog,
+  resolveGlobalAgentModel,
+} from '@nessie/workspace-admin'
 import type { FastifyReply } from 'fastify'
 import {
   buildDesignerSystemPrompt,
@@ -22,6 +30,8 @@ type DesignerUsageContext = {
   actorContext: AuthorizedActionContext
   /** Resolved once per request so usage records name the model actually called. */
   designerModel: string
+  /** Signs `X-Nessie-Context` / `X-UOA-Delegation` on the Ledger search call. */
+  ledgerIdentity: LedgerIdentityService | null
   modelProvider: string
   prisma: PrismaClient
 }
@@ -33,16 +43,18 @@ type DesignerUsageChunk = {
 }
 
 /**
- * The designer's model.
+ * The Designer's model, by the blueprint's own rule (D1/D9): a blueprint pin,
+ * else `NESSIE_DESIGNER_MODEL`, else the organisation's default. One resolution
+ * for both faces — the DM face reads it at bootstrap, this face at request
+ * time — so the sidebar cannot quietly answer on a different model than the
+ * chat.
  *
- * `NESSIE_DESIGNER_MODEL` names a cheaper one where the deployment has a
- * choice; otherwise it uses whatever chat model the deployment is configured
- * with. It used to be the literal `gpt-5-mini`, which is a guaranteed
- * `403 gpt-5-mini is not allowed for deepseek` on any deployment whose
- * provider is not OpenAI — the Design Assistant was dead on this one.
+ * It used to be the literal `gpt-5-mini`, which is a guaranteed
+ * `403 gpt-5-mini is not allowed for deepseek` on any deployment whose provider
+ * is not OpenAI — the Design Assistant was dead on this one.
  */
-const resolveDesignerModel = (modelClient: ModelClient): string =>
-  process.env['NESSIE_DESIGNER_MODEL']?.trim() || modelClient.chatModel
+export const resolveDesignerModel = (modelClient: ModelClient): string =>
+  resolveGlobalAgentModel(AGENT_DESIGNER_BLUEPRINT).model ?? modelClient.chatModel
 const MAX_TOOL_ROUNDS = 5
 
 export const userMessageForDesignerError = (error: unknown): string =>
@@ -69,42 +81,56 @@ const writeSseEvent = (
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
-const stripHtml = (value: string): string =>
-  value
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
+/**
+ * The sidebar's web search is the builtin's, not a second one.
+ *
+ * It used to scrape DuckDuckGo's HTML results page directly — a third-party
+ * call with no Ledger provenance, predating and violating the Ledger-only rule
+ * `AGENTS.md` states for `web_search`. It now posts to the same
+ * `${LEDGER_PUBLIC_URL}/v1/serper/search` route the builtin does, through the
+ * same `runWebSearch` (moved into `@nessie/runtime` so both processes call one
+ * implementation), carrying `LEDGER_PROXY_TOKEN` and the signed identity
+ * headers. A deployment without Ledger degrades honestly: no results and a
+ * sentence saying why. There is deliberately no scraping fallback.
+ */
+export const isDesignerWebSearchConfigured = (
+  ledgerIdentity: LedgerIdentityService | null,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean =>
+  Boolean(env.LEDGER_PUBLIC_URL?.trim())
+  && Boolean(env.LEDGER_PROXY_TOKEN?.trim())
+  && ledgerIdentity !== null
 
-const executeWebSearch = async (query: string): Promise<string> => {
-  const searchUrl
-    = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-  const response = await fetch(searchUrl, {
-    headers: { 'user-agent': 'NessieDesigner/1.0' },
-  })
-  const html = await response.text()
-  const matches = Array.from(
-    html.matchAll(
-      /result__a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?result__snippet[^>]*>(.*?)<\/a/g,
-    ),
-  ).slice(0, 5)
+const WEB_SEARCH_UNAVAILABLE =
+  'Web search is not configured on this deployment, so there are no results. '
+  + 'Say so plainly rather than guessing.'
 
-  if (matches.length === 0) {
-    return `No results found for "${query}".`
+const executeWebSearch = async (
+  query: string,
+  usageContext: DesignerUsageContext,
+  toolCallId: string,
+): Promise<string> => {
+  if (!isDesignerWebSearchConfigured(usageContext.ledgerIdentity)) {
+    return WEB_SEARCH_UNAVAILABLE
   }
-
-  return matches
-    .map((m, i) => {
-      const title = stripHtml(m[2] ?? 'Result')
-      const snippet = stripHtml(m[3] ?? '')
-      return `${i + 1}. ${title}\n   ${snippet}`
+  try {
+    const output = await runWebSearch(query, {
+      attribution: completeLedgerAttribution(
+        attributionFromActorContext(usageContext.actorContext, {
+          systemComponent: 'designer',
+        }),
+      ),
+      ledgerIdentity: usageContext.ledgerIdentity,
+      toolCallId,
     })
-    .join('\n\n')
+    return output.text
+  } catch (error) {
+    if (error instanceof WebSearchError) {
+      return `The web search for "${query}" failed just now, so there are no `
+        + 'results. Say so rather than guessing.'
+    }
+    throw error
+  }
 }
 
 const recordDesignerLedgerUsage = async (
@@ -308,6 +334,15 @@ export const streamDesignerChat = async (
   usageContext: DesignerUsageContext,
   corsHeaders: Record<string, string>,
 ): Promise<void> => {
+  // The organisation's live tool catalogue, read here rather than trusted from
+  // the browser: the two faces of the Designer must enumerate tools from one
+  // source, and this is the member-safe projection `agent_tool_catalog` uses.
+  // Read BEFORE the stream opens, so a database failure is an ordinary route
+  // error rather than a half-written event stream.
+  const catalogue = await loadAgentToolCatalog(usageContext.prisma, {
+    organizationId: usageContext.actorContext.tenant.organizationId,
+  })
+
   // Writing to reply.raw directly bypasses @fastify/cors, so the cross-origin
   // allow-origin header must be merged in here (computed by the route).
   reply.raw.writeHead(200, {
@@ -323,12 +358,16 @@ export const streamDesignerChat = async (
   const messages: OpenAIMessage[] = [
     {
       role: 'system',
-      content: buildDesignerSystemPrompt(
-        input.formState,
-        input.availableTools,
-        input.availableModels,
-        input.pageContext,
-      ),
+      content: buildDesignerSystemPrompt({
+        availableModels: input.availableModels,
+        catalogue,
+        formState: input.formState,
+        organizationId: usageContext.actorContext.tenant.organizationId,
+        ...(input.pageContext ? { pageContext: input.pageContext } : {}),
+        webSearchAvailable: isDesignerWebSearchConfigured(
+          usageContext.ledgerIdentity,
+        ),
+      }),
     },
     ...input.messages.map((m) => ({
       role: m.role as 'assistant' | 'user',
@@ -384,7 +423,7 @@ export const streamDesignerChat = async (
             message: `Searching: ${query}`,
           })
 
-          const results = await executeWebSearch(query)
+          const results = await executeWebSearch(query, usageContext, tc.id)
           messages.push({
             role: 'tool',
             content: results,

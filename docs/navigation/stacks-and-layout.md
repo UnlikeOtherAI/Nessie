@@ -15,8 +15,9 @@ beside it. A row is: `pattern`, `type`
 (which screens are the *same* screen, so a sibling swap swaps content in
 place), `parentOf(match)` → `{ label, pathname }` (what Back returns to, and
 what it announces), `intent` (the params the route reads beyond its path —
-§8), and optionally `parent: 'origin'`, `contextualList` or
-`flowPresentation`. Everything else derives from it: the lookups live in
+§8), and optionally `parent: 'origin'`, `contextualList`,
+`flowPresentation` or `fillsViewport` (a full-height surface that owns its own
+inner scroller — see `page-types-and-motion.md` §2). Everything else derives from it: the lookups live in
 `navigation/surface-lookup.ts` (`surfaceScreen` / `surfaceSeedChain` /
 `surfaceParent` / `surfaceRootPath`, over `matchSurface`), and
 `phone-navigation.ts` is a thin adapter over them, so the stack, the ledger,

@@ -293,6 +293,22 @@ export const AgentCardResponseMetadataSchema = z
   .strict()
 export type AgentCardResponseMetadata = z.infer<typeof AgentCardResponseMetadataSchema>
 
+/**
+ * Does this message record a card press? The one predicate for that question —
+ * the message-edit service refuses these (a "Deny" edited into "Allow" would
+ * lie beside a card that says otherwise) and the admin hides the edit
+ * affordance on them, and those two must never disagree.
+ *
+ * Only the key's presence is structural; the metadata around it is not this
+ * predicate's business, so a card response is recognised even when a future
+ * key sits beside it and the strict schema above would reject the whole
+ * object.
+ */
+export const isAgentCardResponseMessage = (metadata: unknown): boolean =>
+  AgentCardResponseMetadataSchema.shape.agentCardResponse.safeParse(
+    (metadata as { agentCardResponse?: unknown } | null | undefined)?.agentCardResponse,
+  ).success
+
 export const AgentCardStatusSchema = z.enum(['open', 'resolved', 'expired', 'cancelled'])
 export type AgentCardStatus = z.infer<typeof AgentCardStatusSchema>
 

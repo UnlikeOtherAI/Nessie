@@ -37,8 +37,10 @@ const actions: AgentDesignerActions = {
   setName: () => undefined,
   setRole: () => undefined,
   setRunLimit: () => undefined,
+  setSpeakingStyle: () => undefined,
   setSystemPrompt: () => undefined,
   setTodosEnabled: () => undefined,
+  setVoiceName: () => undefined,
   toggleTool: () => undefined,
 }
 
@@ -49,10 +51,12 @@ const state: AgentFormState = {
   provider: '',
   role: 'assistant',
   runLimits: emptyRunLimitsForm,
+  speakingStyle: '',
   streamingField: null,
   systemPrompt: '',
   todosEnabled: false,
   tools: {},
+  voiceName: '',
 }
 
 test('the Designer renders the persisted to-dos switch and visibility caveat', () => {

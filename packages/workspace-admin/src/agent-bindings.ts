@@ -11,10 +11,17 @@ type AgentChannelBindingInput = {
   channelId: string
   organizationId: string
   userId?: string
+  /**
+   * The person has been shown what this agent's browser is signed in to and
+   * has accepted that the new channel's members inherit those sessions.
+   * Required only when there is something to inherit.
+   */
+  confirmBrowserSharing?: boolean
 }
 
 export const AGENT_BINDING_ERROR_CODES = {
   PRIVATE_VISIBILITY: 'AGENT_VISIBILITY_PRIVATE',
+  BROWSER_LOGINS_PRESENT: 'AGENT_BROWSER_LOGINS_PRESENT',
 } as const
 
 export class AgentBindingError extends Error {
@@ -76,10 +83,43 @@ export const bindAgentToChannel = async (
     return null
   }
 
-  if (
-    isSystemManagedAgent(agent)
-    || channel.systemChannelType === 'personal_assistant'
-  ) return null
+  // No second agent may ever join a system DM. A system channel is a
+  // single-agent surface by construction — one bound agent, one member — and
+  // everything built on that (the `effectiveUserId = poster` stamp, the
+  // orchestrator's single-candidate fast path, the design transcript staying
+  // private) breaks the moment another agent can read and answer in it. The
+  // refusal is therefore any non-null `systemChannelType`, not just the PA's.
+  if (isSystemManagedAgent(agent) || channel.systemChannelType) return null
+
+  // Binding widens who can reach this agent, and its browser's sign-ins are
+  // shared with exactly that audience — so a bind is the moment to confront
+  // them, not something to discover afterwards. Checked only for a *new*
+  // binding: re-binding a channel the agent is already in widens nothing.
+  if (!input.confirmBrowserSharing) {
+    const alreadyBound = await prisma.agentBinding.findFirst({
+      where: { agentId: input.agentId, channelId: input.channelId },
+      select: { id: true },
+    })
+    if (!alreadyBound) {
+      const browser = await prisma.agentBrowser.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          agentId: input.agentId,
+          status: 'active',
+        },
+        select: { logins: { select: { serviceHint: true } } },
+      })
+      const services = [...new Set(browser?.logins.map((login) => login.serviceHint) ?? [])]
+      if (services.length > 0) {
+        throw new AgentBindingError(
+          AGENT_BINDING_ERROR_CODES.BROWSER_LOGINS_PRESENT,
+          `This agent's browser is signed in to ${services.join(', ')}. Everyone in `
+          + 'that channel will be able to use those sessions through it, and to read '
+          + 'what it reads. Reset the browser first, or confirm to go ahead.',
+        )
+      }
+    }
+  }
 
   await prisma.agentBinding.createMany({
     data: [{

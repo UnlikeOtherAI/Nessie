@@ -26,6 +26,12 @@ export type OriginGateState = {
   authenticatedOrigins: Set<string>
   /** Whether this session has actually loaded one of them. */
   touchedAuthenticated: boolean
+  /**
+   * The page the session is on, tracked as it navigates so the approval gate
+   * can decide without a CDP round trip of its own — the gate runs before
+   * every `browser_act`, and a second observe per action would be felt.
+   */
+  currentUrl: string | null
 }
 
 const originOf = (url: string): string | null => {
@@ -84,12 +90,21 @@ export type BrowserWriteAction =
   | { action: 'scroll'; nodeId?: number; deltaY: number }
 
 /**
- * Typing and clicking are writes; scrolling and key presses that only move
- * focus are not. `navigate` is a read — going somewhere is how browsing works,
- * and the decision was explicitly not to narrow what the agent may look at.
+ * Typing and clicking are writes, and so is pressing a key that *activates*:
+ * Enter submits the form that has focus and Space presses the focused
+ * control, so treating every `press` as navigation left the gate open to
+ * submitting a form it had just refused to let the agent type into.
+ *
+ * Scrolling and the movement keys are reads. `navigate` is a read too — going
+ * somewhere is how browsing works, and the decision was explicitly not to
+ * narrow what the agent may look at.
  */
+const ACTIVATING_KEYS = new Set(['Enter', 'Space'])
+
 const isWrite = (action: BrowserWriteAction): boolean =>
-  action.action === 'type' || action.action === 'click'
+  action.action === 'type'
+  || action.action === 'click'
+  || (action.action === 'press' && ACTIVATING_KEYS.has(action.key))
 
 export type GateVerdict =
   | { allowed: true }
@@ -123,6 +138,7 @@ export const evaluateOriginGate = (
 export const noteVisitedOrigin = (state: OriginGateState, url: string): void => {
   const origin = originOf(url)
   if (!origin) return
+  state.currentUrl = url
   if (originIsAuthenticated(origin, state.authenticatedOrigins)) {
     state.touchedAuthenticated = true
   }

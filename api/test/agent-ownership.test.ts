@@ -258,9 +258,17 @@ dbTest('private agent transfer is refused before its owner-only home can break',
       visibility: 'private',
     })
 
-    for (const ownerUserId of [memberUserId, null]) {
+    // The agent's own live owner is the ONE person who may edit a private
+    // agent, so this refusal is about the transfer itself rather than about who
+    // is asking.
+    for (const nextOwnerUserId of [memberUserId, null]) {
       await assert.rejects(
-        () => updateAgentRecord(prisma, privateAgent.id, { organizationId: orgId, ownerUserId }),
+        () => updateAgentRecord(
+          prisma,
+          privateAgent.id,
+          { organizationId: orgId, userId: ownerUserId },
+          { organizationId: orgId, ownerUserId: nextOwnerUserId },
+        ),
         (error: unknown) =>
           error instanceof AgentManagementError
           && error.code === AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,

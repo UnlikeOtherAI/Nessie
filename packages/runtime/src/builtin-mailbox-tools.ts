@@ -29,6 +29,7 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'subject, date and UID. Every field narrows the search and they combine, '
       + 'so prefer a precise search over listing everything. Omit all of them to '
       + 'get the most recent mail.',
+    category: 'email-calendar',
     id: MAILBOX_SEARCH_TOOL_ID,
     label: 'Search Mailbox',
     parameters: {
@@ -60,6 +61,7 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Read one message from a connected mailbox in full, by the UID that '
       + 'mailbox_search returned. Reading does not mark it as read for the person '
       + 'whose mailbox it is.',
+    category: 'email-calendar',
     id: MAILBOX_READ_TOOL_ID,
     label: 'Read Mailbox Message',
     parameters: {
@@ -80,6 +82,7 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Send an email from a connected mailbox. It goes out as that mailbox’s own '
       + 'address — you cannot send as anybody else. A person is asked to approve '
       + 'it before it leaves; you will be told when that happens.',
+    category: 'email-calendar',
     id: MAILBOX_SEND_TOOL_ID,
     label: 'Send From Mailbox',
     parameters: {

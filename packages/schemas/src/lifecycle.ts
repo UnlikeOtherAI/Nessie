@@ -70,6 +70,8 @@ export const SystemChannelTypeSchema = z.enum([
   // Backing operations room for a hosted agent mailbox: one channel per
   // AgentMailbox, one thread per email conversation.
   'agent_email',
+  // The per-user private home DM of a global agent (Agent Designer, ...).
+  'system_agent',
 ])
 export type SystemChannelType = z.infer<typeof SystemChannelTypeSchema>
 

@@ -54,6 +54,23 @@ test('acting agent is told its own name in the system prompt', () => {
   assert.match(systemContent(messages), /^You are Aria\./)
 })
 
+test('the agent’s speaking style lands in the system prompt, once', () => {
+  const context = makeContext('Aria')
+  const withStyle: RunContext = {
+    ...context,
+    agent: { ...context.agent, speakingStyle: 'Keep it short and skip the pleasantries.' },
+  }
+  const system = systemContent(buildModelPrompt([], withStyle, 'hi', null))
+  assert.match(system, /How to talk to this person:/)
+  assert.match(system, /skip the pleasantries/)
+  assert.equal(system.split('How to talk to this person:').length - 1, 1)
+})
+
+test('an agent with no speaking style carries no block at all', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+  assert.doesNotMatch(system, /How to talk to this person/)
+})
+
 test('the system prompt tells the agent to link to tool-sourced locations, not describe them', () => {
   const messages = buildModelPrompt([], makeContext('Aria'), 'hi', null)
   assert.match(systemContent(messages), /link directly to it/)

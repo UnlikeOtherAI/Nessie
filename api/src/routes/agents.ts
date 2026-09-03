@@ -14,8 +14,8 @@ import { parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
-  AgentAvatarGenerationError,
   generateAgentAvatar,
+  generateAvatarForNewAgent,
 } from '../services/agent-avatar-generation.js'
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -38,6 +38,8 @@ import {
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
 import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
+  assertAgentEditAuthority,
+  assertAgentFieldAuthority,
   assertAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
@@ -45,6 +47,7 @@ import {
 } from '@nessie/workspace-admin'
 import { checkPolicy } from '../services/policy.js'
 import {
+  sendAgentEditAuthorityError,
   sendAgentManagementError,
   sendAgentAvatarGenerationError,
   sendAgentModelCatalogError,
@@ -228,24 +231,29 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }
-      let generatedAvatar
-      if (!body.avatarAttachmentId) {
-        if (!deps.sharedModelClient) {
-          throw new AgentAvatarGenerationError('The model service is not configured.')
-        }
-        generatedAvatar = await generateAgentAvatar({
-          actorContext,
-          agent: {
-            name: body.name,
-            role: body.role ?? 'assistant',
-            systemPrompt: body.systemPrompt,
-          },
-          config: deps.config.model,
-          fileService: deps.fileService,
-          ledgerIdentity: deps.ledgerIdentity,
-          modelClient: deps.sharedModelClient,
-        })
-      }
+      // The one shared generate-then-attach seam, so a chat-created agent gets
+      // the same face this route gives. A failed picture never fails the
+      // creation — the agent works without one, and the person can generate one
+      // from the detail page.
+      const generatedAvatar = await generateAvatarForNewAgent({
+        actorContext,
+        agent: {
+          name: body.name,
+          role: body.role ?? 'assistant',
+          systemPrompt: body.systemPrompt,
+        },
+        config: deps.config.model,
+        existingAvatarAttachmentId: body.avatarAttachmentId,
+        fileService: deps.fileService,
+        ledgerIdentity: deps.ledgerIdentity,
+        modelClient: deps.sharedModelClient,
+        onFailure: (error) => {
+          request.log.warn(
+            { err: error },
+            'agent avatar generation failed; creating the agent without one',
+          )
+        },
+      })
       agent = await createAgentRecord(prisma, {
         modelSubscriptionId,
         avatarAttachmentId: body.avatarAttachmentId ?? generatedAvatar?.avatarAttachmentId,
@@ -265,6 +273,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
         todosEnabled: body.todosEnabled,
+        voiceName: body.voiceName,
+        speakingStyle: body.speakingStyle,
         toolPolicy: body.toolPolicy,
         visibility: body.visibility,
       })
@@ -310,11 +320,15 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         organizationId: actorContext.tenant.organizationId,
       },
       select: {
+        id: true,
         model: true,
         modelSubscriptionId: true,
+        organizationId: true,
         ownerUserId: true,
         provider: true,
         systemManaged: true,
+        todosEnabled: true,
+        visibility: true,
       },
     })
     if (
@@ -324,12 +338,32 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    // Seeing a shared agent is not permission to rewrite it. Visibility comes
-    // from a channel binding, so any member of a public channel the agent is
-    // bound to could otherwise change its systemPrompt, toolPolicy or model —
-    // a same-tenant takeover of an agent other people rely on.
-    if (!requireOwner(actorContext, reply)) {
-      return reply
+    // Who may rewrite this agent is decided by the agent's ownership state and
+    // the actor's LIVE membership row — not by the organization owner role this
+    // route used to demand, which locked every ordinary member out of even the
+    // private agent they own themselves.
+    //
+    // Asked here as well as inside the service so an unauthorized editor is
+    // refused BEFORE the billed Ledger model-catalogue call, exactly as the
+    // create route validates before spending on avatar generation. The service's
+    // own check, taken under the policy lock against the row it writes, remains
+    // the authoritative one.
+    try {
+      await assertAgentFieldAuthority(
+        prisma,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+        existingAgent,
+        {
+          ...(body.ownerUserId === undefined ? {} : { ownerUserId: body.ownerUserId }),
+          ...(body.todosEnabled === undefined ? {} : { todosEnabled: body.todosEnabled }),
+        },
+      )
+    } catch (error) {
+      if (sendAgentEditAuthorityError(reply, error)) return reply
+      throw error
     }
 
     let agent
@@ -363,12 +397,21 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }
-      agent = await updateAgentRecord(prisma, agentId, {
-        ...body,
-        ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
-        organizationId: actorContext.tenant.organizationId,
-      })
+      agent = await updateAgentRecord(
+        prisma,
+        agentId,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+        {
+          ...body,
+          ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
+          organizationId: actorContext.tenant.organizationId,
+        },
+      )
     } catch (error) {
+      if (sendAgentEditAuthorityError(reply, error)) return reply
       if (sendProtectedPolicyError(reply, error)) return reply
       if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
@@ -427,10 +470,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    // Same rule as the main edit route: visibility is not edit permission.
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
+    // Same rule as the main edit route: seeing an agent is not permission to
+    // rewrite it, and being an organization owner is not the only way to have
+    // that permission. `updateAgentAvatar` asks `canEditAgent` itself.
 
     if (
       body.avatarAttachmentId
@@ -444,14 +486,24 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await updateAgentAvatar(
-      prisma,
-      agentId,
-      body.avatarAttachmentId,
-      body.avatarAttachmentId
-        ? body.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor()
-        : body.avatarBackgroundColor,
-    )
+    let agent
+    try {
+      agent = await updateAgentAvatar(
+        prisma,
+        agentId,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+        body.avatarAttachmentId,
+        body.avatarAttachmentId
+          ? body.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor()
+          : body.avatarBackgroundColor,
+      )
+    } catch (error) {
+      if (sendAgentEditAuthorityError(reply, error)) return reply
+      throw error
+    }
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -470,13 +522,36 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     const { agentId } = request.params as { agentId: string }
     const existingAgent = await prisma.agent.findFirst({
       where: { id: agentId, organizationId: actorContext.tenant.organizationId },
-      select: { id: true, name: true, role: true, systemPrompt: true },
+      select: {
+        id: true,
+        name: true,
+        organizationId: true,
+        ownerUserId: true,
+        role: true,
+        systemManaged: true,
+        systemPrompt: true,
+        visibility: true,
+      },
     })
     if (!existingAgent || !(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    if (!requireOwner(actorContext, reply)) return reply
+    // Generation is billed work on somebody else's agent, so authority is
+    // checked before the model call rather than at the PATCH that confirms it.
+    try {
+      await assertAgentEditAuthority(
+        prisma,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+        existingAgent,
+      )
+    } catch (error) {
+      if (sendAgentEditAuthorityError(reply, error)) return reply
+      throw error
+    }
     if (!deps.sharedModelClient) {
       sendApiError(reply, 503, 'AGENT_AVATAR_GENERATION_UNAVAILABLE', 'The model service is not configured')
       return reply
@@ -524,12 +599,14 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType === 'personal_assistant') {
+    // Every system DM is a single-agent surface (see `bindAgentToChannel`), so
+    // the refusal covers all of them, not only the Personal Assistant's.
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'Agents cannot be bound to the Personal Assistant DM',
+        'Agents cannot be bound to a system-managed conversation',
       )
       return reply
     }
@@ -557,6 +634,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         channelId: body.channelId,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        ...(body.confirmBrowserSharing === undefined
+          ? {}
+          : { confirmBrowserSharing: body.confirmBrowserSharing }),
       })
     } catch (error) {
       if (
@@ -564,6 +644,15 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY
       ) {
         sendApiError(reply, 403, error.code, error.message)
+        return reply
+      }
+      if (
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.BROWSER_LOGINS_PRESENT
+      ) {
+        // 409, not 403: the caller may proceed, but only after being told
+        // what the channel's members would inherit.
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error
@@ -602,12 +691,12 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType === 'personal_assistant') {
+    if (channel.systemChannelType) {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
-        'The Personal Assistant DM binding is system managed',
+        'System-managed conversation bindings are owned by their bootstrap',
       )
       return reply
     }

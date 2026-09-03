@@ -42,6 +42,9 @@ const makeAgent = (avatarAttachmentId: string | null) => ({
   messages: [],
   model: null,
   name: 'QA Agent',
+  organizationId,
+  // Team-owned: no steward, so any member entitled to the agent may edit it.
+  ownerUserId: null,
   parentAgentId: null,
   provider: null,
   role: 'assistant',
@@ -61,17 +64,29 @@ const makeApp = (attachments: AttachmentRow[]) => {
     agent: {
       findUnique: async ({ where, select }: { where: { id: string }; select?: Record<string, true> }) => {
         if (where.id !== agentId) return null
-        if (select?.systemManaged) return { systemManaged: false }
-        if (select?.id) return { id: agentId }
-        return makeAgent(savedAvatarAttachmentId)
+        const row = makeAgent(savedAvatarAttachmentId)
+        // A `select` is honoured field by field. The avatar service reads the
+        // whole edit-authority shape (organization, steward, visibility), not
+        // just `systemManaged`, and a fake that answered the old narrow select
+        // handed it an agent with no organization at all.
+        if (!select) return row
+        return Object.fromEntries(
+          Object.keys(select).map((key) => [key, row[key as keyof typeof row]]),
+        )
       },
       update: async ({ data, where }: { data: { avatarAttachmentId: string | null }; where: { id: string } }) => {
         assert.equal(where.id, agentId)
         savedAvatarAttachmentId = data.avatarAttachmentId
         return makeAgent(savedAvatarAttachmentId)
       },
-      count: async ({ where }: { where: { avatarAttachmentId: string } }) =>
-        savedAvatarAttachmentId === where.avatarAttachmentId ? 1 : 0,
+      // Two callers: the attachment-reference check (keyed by attachment), and
+      // the entitlement probe `canEditAgent` composes for a team-owned agent.
+      count: async ({ where }: { where: { avatarAttachmentId?: string; id?: string } }) => {
+        if (where.avatarAttachmentId !== undefined) {
+          return savedAvatarAttachmentId === where.avatarAttachmentId ? 1 : 0
+        }
+        return where.id === agentId ? 1 : 0
+      },
     },
     attachment: {
       findUnique: async ({ where }: { where: { id: string } }) =>
@@ -84,7 +99,11 @@ const makeApp = (attachments: AttachmentRow[]) => {
     },
     // A not-yet-published upload is readable only by its uploader, so the
     // published-asset lookups all miss for these fixtures.
-    user: { count: async () => 0 },
+    user: { count: async () => 0, findUnique: async () => ({ displayName: 'QA member' }) },
+    // Edit authority re-derives the acting role from the live membership row.
+    organizationMember: {
+      findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
+    },
     organization: { count: async () => 0 },
     feedback: { count: async () => 0 },
   } as unknown as PrismaClient

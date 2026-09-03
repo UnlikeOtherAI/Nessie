@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { TOOL_CATEGORIES, findToolCategory } from '@nessie/schemas'
 import { useMcpToolRegistry } from '../tool-grants/hooks'
 import { useTools } from '../tools/hooks'
 
@@ -37,60 +38,51 @@ export type DesignerToolOption = {
    * explicit-grant builtins use this; ordinary builtins use deny-mode.
    */
   allowMode: boolean
+  /** Display name of the section this tool renders under. */
   group: string
 }
 
 export type DesignerToolGroup = {
+  /** One line on what belongs here, so a closed section still explains itself. */
+  description?: string
   name: string
   tools: DesignerToolOption[]
 }
 
-const BUILTIN_GROUPS: Array<{ name: string; match: (toolId: string) => boolean }> = [
+/**
+ * Groups are what the tools declare, not what their ids look like.
+ *
+ * This used to be a list of id-prefix rules (`file_`, `web_`, `kb_`…) with an
+ * "Agent & workspace" fallback, and that fallback had grown to hold 75 of 116
+ * builtins — a new tool joined it by default and only a new prefix rule got it
+ * out. `BuiltinToolDefinition.category` is now required, so the catalogue
+ * renders a decision its author made rather than guessing one here.
+ *
+ * `Connectors (MCP)` and `Other` are the two categories this layer still
+ * decides, because neither is a builtin: a connector tool's home is the
+ * connector, and an organization-local registry entry genuinely has no
+ * declared category. No builtin can reach `Other`.
+ */
+const CONNECTOR_GROUP = 'Connectors (MCP)'
+const UNCATEGORISED_GROUP = 'Other'
+
+const GROUP_ORDER: ReadonlyArray<{ description?: string; name: string }> = [
+  ...TOOL_CATEGORIES.map((category) => ({
+    description: category.description,
+    name: category.label,
+  })),
   {
-    name: 'Files & documents',
-    match: (id) => id.startsWith('file_') || id.startsWith('document_'),
+    description: 'Tools projected from the apps this organisation has installed.',
+    name: CONNECTOR_GROUP,
   },
   {
-    name: 'Web',
-    match: (id) => id.startsWith('web_') || id.startsWith('http_'),
-  },
-  {
-    name: 'Messaging',
-    match: (id) => id.startsWith('message_') || id === 'send_message',
-  },
-  { name: 'Channels', match: (id) => id.startsWith('channel_') },
-  {
-    // Before the `_search` rule below, which `gmail_search` and
-    // `mailbox_search` would otherwise match first and be filed under people.
-    // Three mail families reach three different resources — a person's Google
-    // account, a connected SMTP/IMAP mailbox, and the agent's own hosted one —
-    // and an owner deciding what an agent may touch needs them side by side.
-    name: 'Email & calendar',
-    match: (id) =>
-      id.startsWith('gmail_')
-      || id.startsWith('calendar_')
-      || id.startsWith('mailbox_')
-      || id.startsWith('email_')
-      || id === 'contacts_search',
-  },
-  { name: 'Search & people', match: (id) => id.endsWith('_search') },
-  { name: 'Knowledge base', match: (id) => id.startsWith('kb_') },
-  {
-    name: 'Scheduling',
-    match: (id) => id.includes('schedule') || id.includes('scheduled'),
+    description: 'Registered for this organisation without a declared category.',
+    name: UNCATEGORISED_GROUP,
   },
 ]
 
-const FALLBACK_GROUP = 'Agent & workspace'
-
-const groupForBuiltin = (toolId: string): string =>
-  BUILTIN_GROUPS.find((group) => group.match(toolId))?.name ?? FALLBACK_GROUP
-
-const GROUP_ORDER = [
-  ...BUILTIN_GROUPS.map((group) => group.name),
-  FALLBACK_GROUP,
-  'Connectors (MCP)',
-]
+const groupForBuiltin = (category: string | undefined): string =>
+  (category ? findToolCategory(category)?.label : undefined) ?? UNCATEGORISED_GROUP
 
 export const useDesignerToolCatalog = (includeConnectors: boolean) => {
   const builtinQuery = useTools()
@@ -113,7 +105,7 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
         // allow, exactly like connectors.
         defaultEnabled: !tool.requiresExplicitGrant,
         allowMode: tool.requiresExplicitGrant === true,
-        group: groupForBuiltin(tool.id),
+        group: groupForBuiltin(tool.category),
       }))
 
     const connectors: DesignerToolOption[] = (
@@ -133,7 +125,7 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
         kind: 'mcp' as const,
         defaultEnabled: false,
         allowMode: true,
-        group: 'Connectors (MCP)',
+        group: CONNECTOR_GROUP,
       }))
 
     return [...builtin, ...connectors]
@@ -147,11 +139,12 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
       byName.set(option.group, bucket)
     }
 
-    return GROUP_ORDER.flatMap((name) => {
-      const tools = byName.get(name)
+    return GROUP_ORDER.flatMap((group) => {
+      const tools = byName.get(group.name)
       if (!tools || tools.length === 0) return []
       return [{
-        name,
+        description: group.description,
+        name: group.name,
         tools: [...tools].sort((a, b) => a.label.localeCompare(b.label)),
       }]
     })

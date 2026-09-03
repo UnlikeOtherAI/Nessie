@@ -21,13 +21,11 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
+import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
-import {
-  authorizeToolExecution,
-  composeStructuralGates,
-  type ToolAuthorizationDecision,
-} from './tool-authorization.js'
+import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
@@ -58,6 +56,12 @@ export const runExecutionAgentLoop = async (
     checkBudgetBlocked: () => Promise<boolean>
     deepWaterHandoffGuard: DeepWaterHandoffGuard
     executorToolset: ExecutorToolset
+    /**
+     * D3 identity-tool admission, resolved once at run setup. Empty for every
+     * ordinary run; a non-empty set means a DM-homed global agent on its own
+     * home DM, on an interactive turn from a live human requester.
+     */
+    identityToolIds: ReadonlySet<string>
     initialMessages: ProviderMessage[]
     inference: RunInference
     /** DeepWater turns retain their own recovery matrix and never suspend. */
@@ -209,22 +213,24 @@ export const runExecutionAgentLoop = async (
         agentKind: context.agent.agentKind,
         allowedToolIds: input.allowedToolIds,
         consumeApprovalProof: options.consumeApprovalProof,
+        identityToolIds: input.identityToolIds,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
         externalToolNames,
-        // Two families, one hook: the hosted mailbox and connected SMTP/IMAP
-        // mailboxes each own their own send decision and neither belongs on the
-        // send-as-you standing-consent path.
-        structuralGate: composeStructuralGates(
+        // One hook per family, tried in order: each returns null for tools it
+        // does not own, so adding a family costs one comparison rather than a
+        // second gate the next family could forget to consult.
+        structuralGate: composeStructuralGates([
           buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
+          buildBrowserActApprovalHook(deps.prisma, context),
           buildMailboxSendApprovalHook(
             deps.prisma,
             context,
             payload.actorContext.actionContext.effectiveUserId ?? null,
           ),
-        ),
+        ]),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
         // The send-boundary judge. Inference the run paid for, so its
         // invocations count in the run's totals like compaction's do.
@@ -292,6 +298,11 @@ export const runExecutionAgentLoop = async (
             {
               agentKind: context.agent.agentKind,
               allowedToolIds: input.allowedToolIds,
+              // `identityToolIds` is deliberately NOT passed to a sub-agent: a
+              // delegated turn is not the person's interactive turn, and the
+              // identity tools are the person's own authority. (The one global
+              // agent that has them denies `delegate` outright, so this arm is
+              // unreachable today — it stays correct if that ever changes.)
               resolvedBuiltinToolIds: input.resolvedToolIds,
               externalToolNames: new Set([
                 ...subAgentMcpView.handledNames,

@@ -1,9 +1,14 @@
 import { Readable } from 'node:stream'
 
-import type { PrismaClient, VoiceSession } from '@prisma/client'
-import { attributionFromActorContext, type FileService } from '@nessie/runtime'
+import type { Prisma, PrismaClient, VoiceSession } from '@prisma/client'
+import {
+  attributionFromActorContext,
+  type FileService,
+  type ModelClient,
+} from '@nessie/runtime'
 import type { AuthorizedActionContext, VoiceTranscriptLine } from '@nessie/schemas'
 
+import { compactCallTranscript } from './voice-compaction.js'
 import { VoiceSessionError } from './voice-session.js'
 
 /**
@@ -25,6 +30,14 @@ import { VoiceSessionError } from './voice-session.js'
  *
  * So: a short summary in the message, the full transcript beside it as a
  * markdown file, and one collapsed call card in the feed that expands to it.
+ *
+ * Two artefacts, on purpose. The **attachment** is the verbatim ground truth,
+ * read on demand. The **message content** is a generated compaction — what was
+ * discussed and decided, every substantive detail kept and the conversational
+ * noise dropped — because that text is what the assistant carries in every
+ * later context window, and raw turns meant carrying the filler forever.
+ * Compaction fails open to the verbatim summary below (see
+ * {@link ./voice-compaction.ts}).
  */
 
 /** Inline summary ceiling, comfortably under the 4,000-character message cap. */
@@ -83,12 +96,35 @@ export const renderTranscriptMarkdown = (input: {
 }
 
 /**
- * The message body: what the call was, at a glance.
+ * The first line of every call record: what this was, at a glance.
  *
- * This is the part that enters the assistant's later context windows, so it
- * stays short and leads with the opening exchange — enough for "as we
- * discussed on the call" to resolve, without the whole transcript riding along
- * in every future prompt.
+ * The admin's call card reads it as the card's title, so both shapes of record
+ * — compacted and fallback — have to open with it.
+ */
+const renderCallHeader = (durationMs: number, turns: number): string =>
+  `Voice call · ${formatDuration(durationMs)} · ${turns} ${turns === 1 ? 'turn' : 'turns'}`
+
+/**
+ * The message body when compaction succeeded: the header, then prose.
+ *
+ * Nothing here says the transcript is attached. The attachment inventory line
+ * the run pipeline appends already tells the model that, and the card offers a
+ * real control rather than a sentence about one.
+ */
+export const renderCompactedCallSummary = (input: {
+  compaction: string
+  durationMs: number
+  turnCount: number
+}): string =>
+  [renderCallHeader(input.durationMs, input.turnCount), '', input.compaction].join('\n')
+
+/**
+ * The message body when compaction is unavailable: the spoken turns, verbatim,
+ * until the cap.
+ *
+ * Noisier than a compaction and the reason compaction exists — but a record
+ * that carries the filler is enormously better than no record at all, so this
+ * is what every failure falls back to.
  */
 export const renderCallSummary = (input: {
   durationMs: number
@@ -96,9 +132,7 @@ export const renderCallSummary = (input: {
   hasAttachment: boolean
 }): string => {
   const turns = input.lines.length
-  const opening = [
-    `Voice call · ${formatDuration(input.durationMs)} · ${turns} ${turns === 1 ? 'turn' : 'turns'}`,
-  ]
+  const opening = [renderCallHeader(input.durationMs, turns)]
   if (turns === 0) {
     opening.push('', 'Nothing was said before the call ended.')
     return opening.join('\n')
@@ -128,9 +162,37 @@ export type WriteCallRecordInput = {
   durationMs: number
   fileService: FileService
   lines: VoiceTranscriptLine[]
+  /** Absent on a deployment with no model service; the record still lands. */
+  modelClient: ModelClient | null
   session: VoiceSession
   userDisplayName: string
+  /** Surfaces a failed compaction in the log rather than only in metadata. */
+  onCompactionFailure?: (error: unknown) => void
 }
+
+/**
+ * The record's `metadata.voiceCall`, written identically on both passes.
+ *
+ * `compacted` is what lets the card — and any later reader — tell a generated
+ * record from a fallback one. They are different shapes of text: prose in the
+ * assistant's voice versus a list of spoken turns, and the card renders each
+ * as what it is.
+ */
+const callMetadata = (input: {
+  compacted: boolean
+  durationMs: number
+  session: VoiceSession
+  transcriptAttachmentId: string | null
+  turnCount: number
+}): Prisma.InputJsonValue => ({
+  voiceCall: {
+    voiceSessionId: input.session.id,
+    durationMs: input.durationMs,
+    turnCount: input.turnCount,
+    transcriptAttachmentId: input.transcriptAttachmentId,
+    compacted: input.compacted,
+  },
+})
 
 /**
  * Writes the call record, once.
@@ -161,25 +223,50 @@ export const writeVoiceCallRecord = async (
   // re-evaluates `transcriptMessageId: null` once the first commits, matches
   // nothing, and rolls its own message away with the transaction.
   const hasTranscript = input.lines.length > 0
+
+  // Fail open, always. The compaction is a nicety on top of a record that must
+  // exist: no model client, a provider error, an empty or unusable answer all
+  // resolve to null here, and the verbatim summary is written instead. The
+  // call is over and unreproducible — losing its record to a failed
+  // summarisation would be the worst possible trade.
+  const compaction = await compactCallTranscript({
+    agentName: input.agentName,
+    lines: input.lines,
+    modelClient: input.modelClient,
+    usage: attributionFromActorContext(input.actorContext, {
+      agentId: input.session.agentId,
+      agentKind: 'personal_assistant',
+      systemComponent: 'voice-call-compaction',
+    }),
+    userDisplayName: input.userDisplayName,
+    ...(input.onCompactionFailure ? { onFailure: input.onCompactionFailure } : {}),
+  })
+  const content = compaction
+    ? renderCompactedCallSummary({
+      compaction,
+      durationMs: input.durationMs,
+      turnCount: input.lines.length,
+    })
+    : renderCallSummary({
+      durationMs: input.durationMs,
+      lines: input.lines,
+      hasAttachment: hasTranscript,
+    })
+
   const message = await prisma.$transaction(async (tx) => {
     const created = await tx.message.create({
       data: {
         threadId: input.session.threadId,
         agentId: input.session.agentId,
         role: 'assistant',
-        content: renderCallSummary({
+        content,
+        metadata: callMetadata({
+          compacted: compaction !== null,
           durationMs: input.durationMs,
-          lines: input.lines,
-          hasAttachment: hasTranscript,
+          session: input.session,
+          transcriptAttachmentId: null,
+          turnCount: input.lines.length,
         }),
-        metadata: {
-          voiceCall: {
-            voiceSessionId: input.session.id,
-            durationMs: input.durationMs,
-            turnCount: input.lines.length,
-            transcriptAttachmentId: null,
-          },
-        },
       },
     })
     const claimed = await tx.voiceSession.updateMany({
@@ -226,14 +313,13 @@ export const writeVoiceCallRecord = async (
     await prisma.message.update({
       where: { id: message.id },
       data: {
-        metadata: {
-          voiceCall: {
-            voiceSessionId: input.session.id,
-            durationMs: input.durationMs,
-            turnCount: input.lines.length,
-            transcriptAttachmentId: attachmentId,
-          },
-        },
+        metadata: callMetadata({
+          compacted: compaction !== null,
+          durationMs: input.durationMs,
+          session: input.session,
+          transcriptAttachmentId: attachmentId,
+          turnCount: input.lines.length,
+        }),
       },
     })
   }

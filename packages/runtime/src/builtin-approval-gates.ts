@@ -1,3 +1,4 @@
+import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
 import { GOOGLE_TOOL_DEFINITIONS } from './builtin-google-tools.js'
 import { MAILBOX_TOOL_DEFINITIONS } from './builtin-mailbox-tools.js'
@@ -19,6 +20,7 @@ export const STRUCTURALLY_APPROVAL_GATED_TOOL_IDS = new Set(
   [
     ...GOOGLE_TOOL_DEFINITIONS,
     ...EMAIL_TOOL_DEFINITIONS,
+    ...BROWSER_TOOL_DEFINITIONS,
     ...MAILBOX_TOOL_DEFINITIONS,
   ]
     .filter((tool) => tool.requiresApproval)

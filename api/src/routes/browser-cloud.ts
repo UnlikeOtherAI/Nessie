@@ -70,6 +70,7 @@ const loadViewableSession = async (
     select: {
       id: true,
       threadId: true,
+      agentBrowserId: true,
       authenticated: true,
       requestedByUserId: true,
     },
@@ -82,8 +83,20 @@ const loadViewableSession = async (
     input.actorContext.tenant.organizationId,
   )
   if (!thread) return null
-  if (session.authenticated && session.requestedByUserId !== input.actorContext.actor.actorId) {
-    return null
+  if (session.authenticated) {
+    // The requester is not the only person with a claim here: somebody who
+    // took the controls and signed in is looking at *their* logged-in page,
+    // and narrowing to the requester alone would both hide it from them and
+    // show it to somebody who never signed in.
+    const viewer = input.actorContext.actor.actorId
+    if (session.requestedByUserId !== viewer) {
+      const signedIn = session.agentBrowserId
+        ? await prisma.agentBrowserLogin.count({
+          where: { agentBrowserId: session.agentBrowserId, userId: viewer },
+        })
+        : 0
+      if (signedIn === 0) return null
+    }
   }
   return { id: session.id, threadId: session.threadId }
 }
@@ -268,6 +281,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         status: true,
         startedAt: true,
         endedAt: true,
+        agentBrowserId: true,
         authenticated: true,
         requestedByUserId: true,
         controlledByUserId: true,
@@ -292,7 +306,15 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     )
     if (!thread) return notFound()
     if (session.authenticated && session.requestedByUserId !== actorContext.actor.actorId) {
-      return notFound()
+      const signedIn = session.agentBrowserId
+        ? await prisma.agentBrowserLogin.count({
+          where: {
+            agentBrowserId: session.agentBrowserId,
+            userId: actorContext.actor.actorId,
+          },
+        })
+        : 0
+      if (signedIn === 0) return notFound()
     }
 
     let liveViewUrl: string | null = null

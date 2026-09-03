@@ -526,6 +526,27 @@ a {
   overscroll-behavior-y: contain;
 }
 
+/* A full-height surface (the chat conversation, `Surface.fillsViewport`) owns
+   its own inner scroller, so the shell must be a non-scrolling flex column it
+   can fill — not the block scroller above, in which a `flex-1`/`h-full` child
+   has no bounded height and collapses to content height, floating the composer
+   up under the last message. This bounds the surface so its feed scrolls and
+   its composer stays pinned to the bottom, matching the split/desktop layout. */
+.phone-navigation-page--fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The surface host (`main#shell-main`) is a main-axis flex child here, not the
+   cross-axis-stretched child it is on `split`, so its default `min-height:auto`
+   would let a long feed grow the column past the viewport and push the composer
+   off-screen. Zero it so the surface's own `overflow-y:auto` feed does the
+   scrolling and the composer stays pinned. */
+.phone-navigation-page--fill > * {
+  min-height: 0;
+}
+
 /* The pull-to-refresh indicator a Root or Detail page scroller shows in the
    native shell (docs/navigation/overview.md §13). Driven inline by the gesture; at
    rest it is invisible and out of the way. */
@@ -553,6 +574,23 @@ a {
 @keyframes phone-refresh-spin {
   to {
     transform: translate3d(0, 90px, 0) rotate(360deg);
+  }
+}
+
+/* Pinned while the content-only refresh runs: the gesture is released, the data
+   is re-fetching, and the spinner holds at the pull offset and spins in place
+   until the refetch settles. */
+.phone-navigation-refresh[data-refreshing='true'] {
+  opacity: 1;
+  animation: phone-refresh-active 800ms linear infinite;
+}
+
+@keyframes phone-refresh-active {
+  from {
+    transform: translate3d(0, 48px, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 48px, 0) rotate(360deg);
   }
 }
 
@@ -1652,6 +1690,11 @@ a {
   color: #a96400;
 }
 
+.create-menu-icon-agent {
+  background: color-mix(in srgb, #7a5af8 18%, transparent);
+  color: #5b3ed6;
+}
+
 /* The one single-select strip in the admin (components/primitives/TabBar).
    The selected item is a single sliding pill rather than a per-item background,
    so a tab change reads as one object moving to what was tapped. Every colour
@@ -2172,6 +2215,17 @@ button.reaction-pill-active:focus-visible {
   box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
+/* Disabled state, matching `.admin-button:disabled` below. A field with no rule
+   of its own falls back to the browser's grey, which on a themed panel reads as
+   a broken control rather than one that is simply not the reader's to change —
+   and that difference is the whole point of a read-only form (a global agent's
+   configuration) being the same form, dimmed. `:disabled` is inherited from an
+   enclosing `<fieldset disabled>`, so the run-limits fieldset gets it too. */
+.admin-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .admin-button {
   display: inline-flex;
   align-items: center;
@@ -2251,6 +2305,14 @@ button.reaction-pill-active:focus-visible {
    secondary buttons and a filled red would over-weight the row. */
 .admin-button.admin-button-danger {
   color: var(--danger-text);
+}
+
+/* A header action whose mark turns red under the pointer: the channel's
+   routine-recording control, where red is what a record button means. Only
+   the icon is tinted — the box keeps the neutral header treatment every
+   other action in the row shares. */
+.page-header-action-danger:hover:not(:disabled) svg {
+  color: var(--danger);
 }
 
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the

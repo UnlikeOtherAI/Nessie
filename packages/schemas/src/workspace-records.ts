@@ -19,6 +19,8 @@ import {
   UserIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+import { AgentSpeakingStyleSchema } from './agent-speech.js'
+import { VoiceNameSchema } from './voice.js'
 
 /**
  * Records the API returns for channels, agents, and triggers.
@@ -180,6 +182,23 @@ export const AgentRecordSchema = z.object({
   owner: AgentOwnerSchema.nullish(),
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
+  /**
+   * The global-agent blueprint this row instantiates, when it is one.
+   *
+   * Read-only and server-written — no create or update body accepts it. It is
+   * here so a client can say "this is the Agent Designer" structurally instead
+   * of matching a display name, which is what the sidebar's identity and its
+   * "Continue in chat" doorway need.
+   */
+  systemSlug: z.string().nullish(),
+  /**
+   * Server-decided: this system agent is reached through the caller's own
+   * pre-provisioned home DM, so addressing it opens that conversation instead
+   * of binding it into a new one. Present only when true. It is what puts the
+   * Personal Assistant and a global agent such as the Agent Designer in the
+   * "New message" address book without any client naming a slug.
+   */
+  dmAddressable: z.boolean().optional(),
   visibility: AgentVisibilitySchema,
   /** Owner-only DM provisioned together with a private agent. */
   homeChannelId: ChannelIdSchema.optional(),
@@ -199,6 +218,16 @@ export const AgentRecordSchema = z.object({
   // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §1).
   runLimits: AgentRunLimitsSchema.optional(),
   todosEnabled: z.boolean(),
+  /**
+   * The Gemini Live voice this agent speaks in on a call. Absent = the
+   * deployment default; the value is one of `GEMINI_LIVE_VOICES`.
+   */
+  voiceName: VoiceNameSchema.nullish(),
+  /**
+   * How this agent talks to people, in the person's own words. Reaches both the
+   * typed system prompt and the voice call's system instruction.
+   */
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),

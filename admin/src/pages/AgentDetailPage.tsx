@@ -2,28 +2,53 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
 import { AgentIdentityBlock } from '../components/features/agents/AgentIdentityBlock'
+import { AgentOwnershipState } from '../components/features/agents/AgentOwnershipState'
 import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents } from '../facades/agents/hooks'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useCanEditAgent } from '../components/features/agents/agent-edit-authority'
+import { Card } from '../components/shared/Card'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
-// The agent detail surface. Tapping an agents-list row lands here. For an owner
-// it opens on an inline **Edit** tab (the full Agent Designer, embedded), with
-// the Activity / Sub-Agents / Tools / Messages panels behind it; a non-owner,
-// who cannot edit, gets those read-only panels only. No floating drawer.
+/**
+ * Why the form below cannot be changed. It is a lead-in note inside the
+ * ordinary form layout rather than a card that replaces the form: the reader
+ * should see the same sections everyone else sees, and be told why they are
+ * inert — not be handed a different screen about a different thing.
+ */
+const GlobalAgentNote = () => (
+  <Card>
+    <SectionLabel size="sm">Provided by Nessie</SectionLabel>
+    <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+      This agent ships with Nessie. It is the same in every workspace and changes only when
+      the deployment is updated — nobody edits it here, organisation owners included.
+    </p>
+  </Card>
+)
+
+// The agent detail surface. Tapping an agents-list row lands here. For someone
+// who may edit this agent it opens on an inline **Edit** tab (the full Agent
+// Designer, embedded), with the Activity / Sub-Agents / Tools / Messages panels
+// behind it; everybody else gets those read-only panels only. No floating
+// drawer.
+//
+// "May edit" is the agent's ownership state, not the organization owner role
+// this page used to ask for: the owner of a private or person-owned agent, any
+// entitled member of a team-owned one, plus organization owners on workspace
+// agents. See `agent-edit-authority.ts`.
 export const AgentDetailPage = () => {
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
-  const isOwner = useIsOwner()
   // `scope: 'all'` so a system/global agent (or a sub-agent) resolves too — the
   // same list the Agents page renders.
   const agentsQuery = useAgents({ scope: 'all' })
   const agents = agentsQuery.data ?? []
   const agent = agentId ? agents.find((candidate) => candidate.id === agentId) : undefined
+  const canEdit = useCanEditAgent(agent)
 
   const backToList = () => void navigate('/agents')
 
@@ -66,15 +91,16 @@ export const AgentDetailPage = () => {
               withheld because `ScreenHeader` owns the screen's single `h1`. */}
           <ScreenHeader
             backLabel="Back to Agents"
-            leading={<AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />}
+            leading={<AgentAvatarQuickEdit agent={agent} canEdit={canEdit} />}
             onBack={backToList}
             subtitle={
               <AgentIdentityBlock
                 agent={agent}
                 avatar={false}
-                canEditAvatar={isOwner}
+                canEditAvatar={canEdit}
                 headingLevel="none"
               >
+                <AgentOwnershipState agent={agent} />
                 <PrivateAgentHomeLink
                   agent={agent}
                   className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
@@ -84,12 +110,25 @@ export const AgentDetailPage = () => {
             title={agent.name}
           />
 
+          {/* A Nessie-managed agent (the Personal Assistant, the Agent
+              Designer) goes down this same path, with the designer disabled
+              and no Save. It used to get a bespoke read-only card instead — a
+              second implementation of a view that already existed, which is
+              the defect Rule zero #4 names. Which sections it actually has is
+              `AgentDetailTabs`' own structural rule, not a decision made
+              here. */}
           <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
             <AgentDetailTabs
               agent={agent}
               editSlot={
-                isOwner ? (
-                  <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
+                canEdit || agent.systemManaged ? (
+                  <AgentDesignerContent
+                    agents={agents}
+                    editingAgent={agent}
+                    embedded
+                    leadIn={agent.systemManaged ? <GlobalAgentNote /> : undefined}
+                    readOnly={!canEdit}
+                  />
                 ) : undefined
               }
               key={agent.id}
@@ -97,7 +136,7 @@ export const AgentDetailPage = () => {
             />
           </div>
         </div>
-        {isOwner ? <DesignerAssistantDrawer /> : null}
+        {canEdit ? <DesignerAssistantDrawer /> : null}
       </div>
     </DesignerAssistantPanelProvider>
   )

@@ -1,16 +1,11 @@
-import { useState, type ReactNode } from 'react'
 import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import {
-  downloadAuthedPath,
-  useAuthedObjectUrlFromPath,
-  useAuthedTextFromPath,
-} from '../../../lib/uploads'
+import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { EmptyState } from '../../shared/EmptyState'
-import { QueryState } from '../../shared/QueryState'
+import { RetryableTextFilePreview } from '../../shared/TextFilePreview'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
 import {
@@ -22,38 +17,6 @@ import {
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
-
-// `useAuthedTextFromPath` fetches on mount and has no `refetch` of its own —
-// Retry here works by discarding this body and mounting a fresh one (a new
-// `key` from the parent), which re-runs the fetch exactly like a first load.
-const TextFilePreview = ({
-  downloadPath,
-  onRetry,
-  render,
-  token,
-}: {
-  downloadPath: string
-  onRetry: () => void
-  render: (state: { text: string; truncated: boolean }) => ReactNode
-  token: string | null
-}) => {
-  const textPreview = useAuthedTextFromPath(downloadPath, token)
-  return (
-    <QueryState
-      className="py-12"
-      errorLabel="Preview unavailable."
-      loadingLabel="Loading preview…"
-      query={{ isError: textPreview.error, isLoading: textPreview.loading, refetch: onRetry }}
-    >
-      {() => render({ text: textPreview.text ?? '', truncated: textPreview.truncated })}
-    </QueryState>
-  )
-}
-
-const RetryableTextFilePreview = (props: Omit<Parameters<typeof TextFilePreview>[0], 'onRetry'>) => {
-  const [retryKey, setRetryKey] = useState(0)
-  return <TextFilePreview key={retryKey} {...props} onRetry={() => setRetryKey((value) => value + 1)} />
-}
 
 type FileNodeViewerProps = {
   canWrite: boolean

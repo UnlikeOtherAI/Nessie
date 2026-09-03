@@ -1,11 +1,15 @@
 import {
   AgentAvatarBackgroundColorSchema,
   AgentEffortSchema,
+  AgentIdSchema,
   AgentRecordSchema,
   AgentRunLimitsSchema,
+  AgentSpeakingStyleSchema,
   AgentVisibilitySchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
+  ThreadIdSchema,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -51,6 +55,11 @@ export const CreateAgentBodySchema = z.object({
   runLimits: AgentRunLimitsSchema.nullish(),
   visibility: AgentVisibilitySchema.optional(),
   todosEnabled: z.boolean().optional(),
+  // The voice a call is spoken in, and how the agent talks in every surface.
+  // Both nullable: `null` is "back to the deployment default" / "no style",
+  // which is a choice a person can make and `undefined` cannot express.
+  voiceName: VoiceNameSchema.nullish(),
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
 })
 
 export const UpdateAgentBodySchema = z.object({
@@ -84,6 +93,8 @@ export const UpdateAgentBodySchema = z.object({
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   todosEnabled: z.boolean().optional(),
+  voiceName: VoiceNameSchema.nullish(),
+  speakingStyle: AgentSpeakingStyleSchema.nullish(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({
@@ -114,6 +125,12 @@ export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
   /** Original @mention to replay after a successful invitation. */
   triggerMessageId: z.string().uuid().optional(),
+  /**
+   * Accepts that the channel's members inherit whatever this agent's browser
+   * is signed in to. Only consulted when there is something to inherit, and
+   * only after the refusal has named the services.
+   */
+  confirmBrowserSharing: z.boolean().optional(),
 })
 
 export const PersonalAssistantStateResponseSchema = z.object({
@@ -126,6 +143,16 @@ export const PersonalAssistantStateResponseSchema = z.object({
 export type PersonalAssistantStateResponse = z.infer<
   typeof PersonalAssistantStateResponseSchema
 >
+
+// A global agent's per-user home DM (the Agent Designer's chat). The reply
+// carries the channel record so a client can patch its cached channel list and
+// navigate in one step, exactly as the PA bootstrap reply does.
+export const GlobalAgentHomeResponseSchema = z.object({
+  agentId: AgentIdSchema,
+  channel: ChannelRecordSchema,
+  threadId: ThreadIdSchema,
+})
+export type GlobalAgentHomeResponse = z.infer<typeof GlobalAgentHomeResponseSchema>
 
 export const PersonalAssistantBootstrapResponseSchema = z.object({
   agent: AgentRecordSchema,

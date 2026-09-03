@@ -188,13 +188,23 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   starts while the tab is hidden commits at once (0 ms through the same
   path), and hiding the tab mid-slide finishes it, so a tab that comes back
   is already settled. `redirect()` (§4) already waits for the stack.
-- **Pull-to-refresh is the web's.** In the native shell a Root or Detail
-  page scroller that holds no message feed (`data-message-feed`) offers a
-  pull from its top; past the threshold it asks the shell for the one full
-  refresh it already has (`nessie:full-refresh`), the same on iOS and
-  Android. Nested screens, flows, stages, seeded layers, boards, editors
-  and feeds never offer it. The native WebView's own pull-to-refresh is
-  turned off with the mobile step (`navigation/pull-to-refresh.ts`).
+- **Pull-to-refresh is the web's, and it refreshes content, not the shell.**
+  In the native shell a Root or Detail page scroller that holds no message
+  feed (`data-message-feed`) offers a pull from its top; past the threshold it
+  does a **content-only refresh** — `RoutedScreen` hands the hook an
+  `onRefresh` that runs `sharedQueryClient.refetchQueries({ type: 'active' })`
+  on the one app-wide client, so the visible page's data (and any live query
+  the shell keeps warm) re-fetches while the shell, nav and route/scroll state
+  stay put, the same on iOS and Android. (It reads the shared client directly
+  rather than `useQueryClient()` so the navigation layer still renders in its
+  provider-less isolation tests.) The spinner is pinned and spins (`[data-refreshing]`) until the
+  refetch settles. The **full** app refresh stays a deliberate act elsewhere:
+  the tablet "Full refresh" nav button (`requestNativeFullRefresh` →
+  `nessie:full-refresh` → native cache-busting WebView remount) and Cmd/Ctrl-R
+  in the shells (`installReloadShortcut` → `location.reload()`). Nested
+  screens, flows, stages, seeded layers, boards, editors and feeds never offer
+  the pull. The native WebView's own pull-to-refresh is turned off with the
+  mobile step (`navigation/pull-to-refresh.ts`).
 - Pinned by `admin/test/navigation-interruption.test.ts` and
   `admin/test/pull-to-refresh.test.ts`.
 

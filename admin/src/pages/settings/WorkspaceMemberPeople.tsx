@@ -166,11 +166,11 @@ export const WorkspaceAgentBuckets = ({ tree }: { tree: PeopleAgentsTree }) => {
       data-testid="workspace-unassigned-agents"
     >
       <PausedPrivateAgentsBucket count={tree.pausedPrivateAgentCount} />
-      {tree.unowned.length > 0 ? (
+      {tree.teamOwned.length > 0 ? (
         <UnassignedAgents
-          agents={tree.unowned}
+          agents={tree.teamOwned}
           emptyLabel="None"
-          title="Unowned agents"
+          title="Team-owned agents"
           token={token}
         />
       ) : null}

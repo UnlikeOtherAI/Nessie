@@ -742,41 +742,85 @@ Sign out & reset provably signs the agent out.
 Built 2026-09-02. Deliberate departures from the spec above, recorded rather
 than silently rewritten:
 
-- **The cross-origin write gate refuses rather than asks.** §6.1 specified a
-  one-tap approval; the shipped gate returns a refusal naming the origin and
-  telling the model to ask the person to take control. Stricter, and it
-  needed no approval plumbing — but it *will* block a legitimate
-  cross-origin hop (an OAuth redirect mid-task) that an approval would have
-  let through. Converting it to an approval is a contained follow-up: the
-  verdict is already computed in one place (`origin-gate.ts`).
+- **The cross-origin write gate is the approval §6.1 specified** (converted
+  2026-09-02, after shipping first as a flat refusal). Refusing was safer but
+  wrong in one common case: an agent signed in to one service, asked to carry
+  something into a form on another — "find the invoice number in my mail, put
+  it in the vendor portal" — which only the person can judge. It now rides
+  the existing structural-approval seam (`requiresApproval` in code, not
+  policy data), so the ask is a one-tap approval addressed to whoever started
+  the run. The decision moved out of the tool handler entirely: one place
+  decides, and that place can escalate rather than dead-end.
+  `composeStructuralGates` lets the mail and browser families each own their
+  tools without an `if` chain inside the authorizer.
 - **The gate's trigger is CDP cookie domains**, read once at open, exactly as
   §6.1 required — never `serviceHint`, which is display text a person typed.
   Its stated limits live in the module: page scripts act below the tool
   layer, and material carried across runs in the model's own memory is the
   generic model-knows-a-secret problem, shared with `http_fetch`.
-- **"Authenticated" is decided at open, not per read.** The session row's
-  `authenticated` flag is set when the durable browser already carries login
-  rows, and every later verb re-registers the `agent:<id>` basis from it.
-  The plan also wanted a control claim to flip it; a claim on a session that
-  was not already authenticated does not currently do so, which is a real
-  (small) gap: somebody could sign in during an ad-hoc control claim on an
-  unauthenticated browser and the run would not register a basis. Closing it
-  means writing a login row (or setting the flag) on hand-back.
+- **"Authenticated" is monotone and set at three moments**: a durable browser
+  that already carries login rows at open, a completed sign-in handoff, and
+  **hand-back of a control claim** — a person takes the controls largely in
+  order to sign in, and the agent resumes into whatever they left behind, so
+  the flag is set on release. Over-restricting is the safe direction.
 - **Sign-out is all-or-nothing**, as §6a said it would be: reset clears every
   signer's login together, and the copy says so. Per-service cookie deletion
   stays phase 3.
-- **The publish-transition and channel-bind guards are not built.** §4.2 puts
-  an obligation on any transition that widens an agent's audience; private →
-  workspace publishing still does not exist, and the channel-bind guard
-  (`BROWSER_LOGINS_PRESENT`) is not wired. A workspace agent bound into a
-  wider channel therefore widens its browser's audience with no prompt —
-  the highest-value thing left in this area.
+- **The channel-bind guard is built; the publish one still cannot be.**
+  Binding an agent whose browser holds sign-ins is refused with
+  `AGENT_BROWSER_LOGINS_PRESENT`, naming the services, until the caller
+  passes `confirmBrowserSharing`. A browser with nothing signed in binds
+  silently — asking would be noise. Private → workspace publishing still does
+  not exist in the codebase, so its guard remains an obligation on whoever
+  builds it (§4.2).
 - **The browser panel lives on the agent's Tools tab**, not a new tab: a
   browser is a tool, and an eighth tab is the drift Rule zero names.
 - **`browser_download` runs our own fixed script in the page** (a `fetch`
   with the session's credentials), which the closed verb grammar otherwise
   excludes. The distinction is that the script is ours and the model
   supplies only a node id; bytes land through the one `FileService`.
+
+### 5c. Adversarial code review (Kimix, 2026-09-02) — what it found
+
+Nine defects confirmed and fixed; the review paid for itself twice over.
+The two that mattered most were both cases where a guard existed but did not
+cover the path that reached it:
+
+- **A scheduled run could bill somebody's personal Browserbase account.** The
+  durable-browser path loaded its connection by id and skipped the requester
+  check the ephemeral path makes, and the only unattended guard keyed on
+  login *count* — zero logins meant no refusal. Now the durable arm requires
+  organisation scope whenever there is no requester: whose money it is does
+  not depend on what is signed in.
+- **`press` was not a write**, so the gate refused `type` and `click` on a
+  foreign origin and then let the model press Enter to submit the very form
+  it had just protected. Enter and Space are activations; the rest of the
+  closed key list stays a read.
+
+Also fixed: the release claim was not exclusive (`releasing` was itself
+claimable, so two of the three writers could both call Browserbase and the
+loser's failure path overwrote the winner's row); `unknown` — the state a
+*failed* remote stop leaves — was never reaped, so the row most likely to be
+costing money was the one nothing retried; the origin gate trusted a cached
+URL that a self-redirecting page invalidates, and now asks the browser;
+concurrent `acquireCdp` opened rival sockets, and a second automation
+connection can itself end the session; a reset could tombstone a browser
+between check and insert, so both the session insert and the reconciler now
+re-check; a post-open failure stranded a live session while telling the model
+nothing had opened; and hand-back marked a session authenticated, after which
+only the *run requester* could see it — hiding a signer's own logged-in page
+from them while showing it to somebody who never signed in.
+
+One finding was rejected: `authSecret ?? ''` is unreachable (the API exits in
+hosted mode without a secret and generates one in local), so it is not a
+known-empty encryption key. Three were noted rather than changed — the
+optional-chained disclosure sink is fail-open by shape but its optionality
+belongs to a shared type, and the bind-guard TOCTOU and null approver on
+unattended runs are real but narrow.
+
+The orphaned-context claim was fixed by making the comment honest: no sweep
+can find a context with no row, so a failed cleanup now logs the context id
+loudly for the account holder rather than pretending to be recoverable.
 
 Not verified against a live Browserbase account: no key was available, so
 the durable-context path (create, attach with `persist`, delete) is covered

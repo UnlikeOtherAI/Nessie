@@ -21,6 +21,10 @@ export const useCreateAgent = () => {
       runLimits?: AgentRunLimits
       systemPrompt?: string
       todosEnabled?: boolean
+      // `null` on either is the explicit "no choice": the deployment default
+      // voice, and no speaking-style block.
+      voiceName?: string | null
+      speakingStyle?: string | null
       toolPolicy?: Record<string, boolean>
       visibility?: AgentRecord['visibility']
     }) =>
@@ -41,12 +45,20 @@ export const useUpdateAgent = () => {
       effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       name?: string
+      /**
+       * Ownership transitions: a user id transfers stewardship, `null` releases
+       * the agent to the team. Narrower than the rest of this body — the server
+       * accepts it only from the current owner or an organisation owner.
+       */
+      ownerUserId?: string | null
       provider?: string
       role?: string
       // Omitted leaves the stored limits untouched; `null` clears them.
       runLimits?: AgentRunLimits | null
       systemPrompt?: string
       todosEnabled?: boolean
+      voiceName?: string | null
+      speakingStyle?: string | null
       toolPolicy?: Record<string, boolean>
     }) => {
       const { agentId, ...body } = input

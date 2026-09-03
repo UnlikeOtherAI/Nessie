@@ -6,6 +6,7 @@ import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
 import {
   isExternalAgentChannel,
+  isGlobalAgentChannel,
   isPersonalAssistantChannel,
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
@@ -75,6 +76,7 @@ export const ChannelsPage = () => {
     channels.find((channel) => channel.id === backgroundChannelId) ?? channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
+  const isGlobalAgentActiveChannel = isGlobalAgentChannel(activeChannel)
   // Function-first identity + conversation starters for the active external
   // agent, sourced from its plugin manifest (null for any other channel).
   const externalAgentIdentity = useExternalAgentIdentity(activeChannel)
@@ -342,6 +344,9 @@ export const ChannelsPage = () => {
     || (activeChannel?.personalAssistantPresences?.length ?? 0) > 0
     || isPersonalAssistantActiveChannel
     || isExternalAgentActiveChannel
+    // A global agent owns its home DM without appearing in `boundAgents`,
+    // exactly like the two above: `GET /api/agents` omits system agents.
+    || isGlobalAgentActiveChannel
   // Ambient liveness for the channel surface. `pendingMessages` is the full set
   // this feed renders bubbles for — top-level runs at the bottom, thread-anchored
   // ones compactly under their root — so a bubble anywhere in the feed hides the

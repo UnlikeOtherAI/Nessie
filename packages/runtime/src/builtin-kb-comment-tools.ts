@@ -5,6 +5,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 // both kinds. Backed by the same access-checked service the REST API uses.
 export const KB_COMMENTS_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comments_list',
+  category: 'knowledge',
   summary: 'List comments and notes on an accessible knowledge page.',
   label: 'KB Comments List',
   description:
@@ -28,6 +29,7 @@ export const KB_COMMENTS_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_add',
+  category: 'knowledge',
   summary: 'Add a page-level comment to a knowledge page.',
   label: 'KB Comment Add',
   description:
@@ -46,6 +48,7 @@ export const KB_COMMENT_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_REPLY_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_reply',
+  category: 'knowledge',
   summary: 'Reply to a knowledge-page comment or note.',
   label: 'KB Comment Reply',
   description:
@@ -64,6 +67,7 @@ export const KB_COMMENT_REPLY_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_COMMENT_RESOLVE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_comment_resolve',
+  category: 'knowledge',
   summary: 'Resolve or reopen a knowledge-page comment or note.',
   label: 'KB Comment Resolve',
   description:
@@ -86,6 +90,7 @@ export const KB_COMMENT_RESOLVE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_NOTE_ADD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_note_add',
+  category: 'knowledge',
   summary: 'Add an inline note anchored to a knowledge-page passage.',
   label: 'KB Note Add',
   description:
