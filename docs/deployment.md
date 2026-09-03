@@ -50,21 +50,18 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   (`@nessie/api` depends on `@nessie/worker`, both need the Prisma client). A
   single full-workspace image (`Dockerfile.app`) builds everything once; the
   worker container overrides the command to `node worker/dist/index.js`.
-- **Admin is built static.** `Dockerfile.admin` bakes
-  `VITE_API_BASE_URL=https://api.nessie.works` into the Vite bundle and serves it
-  with nginx. The admin therefore calls the API cross-origin; the API's
-  `NESSIE_CORS_ORIGINS` allowlists `https://app.nessie.works` plus the legacy
-  admin alias during migration.
-- **Admin origin and API origin are not interchangeable.** The web app lives at
-  `https://app.nessie.works`; the API lives at `https://api.nessie.works`. Any
-  built admin artifact, including the Tauri desktop app when it embeds
-  `admin/dist`, must use `VITE_API_BASE_URL=https://api.nessie.works`. Building
-  with `https://app.nessie.works` makes `/api/auth/providers` resolve to the
-  admin HTML shell, which leaves login stuck at "Loading providers...".
+- **Admin is built static, and the two origins are not interchangeable.**
+  `Dockerfile.admin` bakes `VITE_API_BASE_URL=https://api.nessie.works` into the
+  Vite bundle and serves it with nginx, so the admin calls the API
+  cross-origin and `NESSIE_CORS_ORIGINS` allowlists `https://app.nessie.works`
+  plus the legacy admin alias. Every built admin artifact — including the Tauri
+  desktop app when it embeds `admin/dist` — must use the **api** origin:
+  building with `https://app.nessie.works` makes `/api/auth/providers` resolve
+  to the admin HTML shell, leaving login stuck at "Loading providers...".
 - **Desktop CORS is deliberate.** The Fastify CORS policy always allows the
-  fixed Tauri app origins (`tauri://localhost` and `http://tauri.localhost`) in
-  addition to the configured web admin origin, so embedded desktop builds can
-  call `https://api.nessie.works` directly.
+  fixed Tauri app origins (`tauri://localhost` and `http://tauri.localhost`)
+  alongside the configured web admin origin, so embedded desktop builds can call
+  `https://api.nessie.works` directly.
 - **Proxy trust is explicit.** The API uses Fastify's configured proxy trust
   rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
@@ -286,39 +283,29 @@ At most one organisation is designated (`Organization.instanceBrand`; setting
 one clears the rest). With none designated — or when the designated
 organisation has uploaded no logo — the endpoint 404s and the sign-in screen
 falls back to the static Nessie mark. The designated organisation still uploads
-and changes its own logo the ordinary way, at Settings → Appearance.
-
-This replaced an implicit rule: the endpoint used to serve "the organisation's
-logo, if the instance holds exactly one organisation". Under one `Organization`
-per UOA organisation that is routinely false, so branding silently stopped
-working, and while it held it handed one tenant's admins the login screen
-everybody sees. Migration
+and changes its own logo the ordinary way, at Settings → Appearance. Migration
 `20260816100000_organization_instance_brand` backfills the designation on a
-single-organisation instance, so existing local/self-hosted installs are
-unchanged.
+single-organisation instance, replacing the earlier implicit rule ("the
+organisation's logo, if the instance holds exactly one organisation") that both
+broke under per-UOA-organisation tenancy and handed one tenant's admins the
+login screen everybody sees.
 
 ### Retired inference credential env references
 
 Migration `20260816090000_retire_grandfathered_inference_env_refs` revokes every
-`inference_credential_bindings` row and detaches it from its provider. Those
-rows named a host environment variable that the worker dereferenced
-(`process.env[auth_secret_ref]`) and sent as a bearer token to the provider's
-own base URL — an arbitrary deployment secret under an organisation owner's
-control. New writes have been refused since the phase-0 secret-custody gate
+`inference_credential_bindings` row that named a host environment variable — the
+worker dereferenced it (`process.env[auth_secret_ref]`) and sent an arbitrary
+deployment secret as a bearer token to the provider's own base URL. New writes
+have been refused since the phase-0 secret-custody gate
 (`INFERENCE_ENV_REF_FORBIDDEN`); this retires the rows written before it.
 
-After deploying:
-
-* **Compiled providers** (`openai`, `deepseek`, `kimi`) keep working
-  on the deployment-level credential (`NESSIE_MODEL_API_KEY` and the
-  provider-specific fallbacks). Nothing to do.
-* **OpenAI-compatible providers** that were running on such a binding are
-  disabled, marked `unreachable`, and reset to `draft`, restoring the invariant
-  that they must hold a credential binding before being enabled. Their owner
-  sees a disabled provider on the inference control-plane screen instead of runs
-  failing later with "Missing API key for provider …". Restore one by
-  configuring its credential at the deployment level; the control plane will not
-  accept a new env reference.
+After deploying, **compiled providers** (`openai`, `deepseek`, `kimi`) keep
+working on the deployment-level credential (`NESSIE_MODEL_API_KEY`) and need
+nothing. Any **openai-compatible** provider that ran on such a binding is
+disabled, marked `unreachable`, and reset to `draft` — its owner sees a disabled
+provider rather than runs failing later with "Missing API key for provider …".
+Restore one by configuring its credential at the deployment level; the control
+plane will not accept a new env reference.
 
 ## Redeploying a new version
 
@@ -361,21 +348,21 @@ runners and pushes them to GHCR tagged with the commit SHA
 short-lived `GITHUB_TOKEN`, and `redeploy.sh` **pulls** those images.
 
 This exists because building on the box was an outage. Each deploy ran a full
-monorepo install+compile for three images on a host shared with ~40 other
-apps: measured at load average 340 on 8 cores with 0% idle, during which
+monorepo install+compile for three images on a host shared with ~40 other apps:
+measured at load average 340 on 8 cores with 0% idle, during which
 `api.nessie.works` and `app.nessie.works` timed out through Caddy — the
-containers were healthy, the host simply had nothing left to answer with. SSH
-to the box hung too. Pulling a finished image costs the host a network
-transfer and nothing else.
+containers were healthy, the host simply had nothing left to answer with, and
+SSH hung too. Pulling a finished image costs a network transfer and nothing
+else.
 
 `redeploy.sh` decides by `NESSIE_IMAGE_TAG`: set (always, from the workflow) →
-pull; unset → build locally, which is the manual/first-deploy fallback only.
-The compose services keep their `build:` blocks for that path, with
-`image: ${NESSIE_APP_IMAGE:-nessie-app:latest}` (and `_ADMIN_`/`_WEB_`) so the
-same file serves both. Because every deploy pulls a distinct SHA tag and
-tagged images are never *dangling*, the post-deploy reclaim explicitly removes
-Nessie release images other than the one just deployed — otherwise the shared
-disk grows by a full image per deploy.
+pull; unset → build locally, the manual/first-deploy fallback only. The compose
+services keep their `build:` blocks for that path, with
+`image: ${NESSIE_APP_IMAGE:-nessie-app:latest}` (and `_ADMIN_`/`_WEB_`) so one
+file serves both. Because every deploy pulls a distinct SHA tag and tagged
+images are never *dangling*, the post-deploy reclaim explicitly removes Nessie
+release images other than the one just deployed — otherwise the shared disk
+grows by a full image per deploy.
 
 To deploy a specific build by hand:
 
@@ -403,43 +390,36 @@ Consequences worth knowing:
   script (and the Deploy workflow) fails red with the new container's logs.
 - The script ends with a **public-endpoint gate** — it curls
   `https://api.nessie.works/api/health`, `https://app.nessie.works/`, and
-  `https://nessie.works/` through Caddy and exits non-zero on any failure, so
-  a green deploy now proves the site is actually up (previously a dead API
-  could deploy "green" silently).
-- These services have **no fixed `container_name`** (a pinned name cannot
-  scale to two replicas); Compose names them `compose-api-1`-style. Use
-  `docker compose -f infrastructure/compose/docker-compose.prod.yml logs api`
-  rather than `docker logs nessie-api`. `nessie-postgres`, `nessie-minio`, and
-  `nessie-worker` keep their fixed names — they are never blue-greened (the
-  worker is recreated in place; queued work waits out the gap).
+  `https://nessie.works/` through Caddy and exits non-zero on any failure, so a
+  green deploy proves the site is actually up (previously a dead API could
+  deploy "green" silently).
+- These services have **no fixed `container_name`** (a pinned name cannot scale
+  to two replicas); Compose names them `compose-api-1`-style, so read logs with
+  `docker compose -f infrastructure/compose/docker-compose.prod.yml logs api`.
+  `nessie-postgres`, `nessie-minio`, and `nessie-worker` keep their fixed names
+  — they are never blue-greened (the worker is recreated in place; queued work
+  waits out the gap).
 - `redeploy.sh` takes a host-wide `flock` on `/var/lock/nessie-redeploy.lock`
   (30-min wait), so an out-of-band manual run cannot interleave with a Deploy
   workflow run. The workflow additionally serializes its own runs through the
   `deploy-production` GitHub concurrency group; queued runs it shows as
   "cancelled" were subsumed by a newer run that deploys their commits too.
 - Migrations still run **before** the swap, while the old API is serving, so a
-  schema change must remain compatible with the previous code for the length
-  of the build+swap window (this was already true of the old recreate flow).
+  schema change must remain compatible with the previous code for the length of
+  the build+swap window (this was already true of the old recreate flow).
 - In-flight SSE/WebSocket streams to the old API replica break at retirement;
   the admin's stream-retry/refetch paths reconnect to the new one.
-- Optional hardening: the nessie site blocks in `/srv/infra/caddy/Caddyfile`
-  can carry `lb_try_duration 10s` / `lb_try_interval 250ms` inside their
-  `reverse_proxy` blocks so Caddy re-dials across the swap instant instead of
-  surfacing a rare 502 to whoever hits it at exactly that moment.
+- Optional hardening: the nessie site blocks in `/srv/infra/caddy/Caddyfile` can
+  carry `lb_try_duration 10s` / `lb_try_interval 250ms` in their `reverse_proxy`
+  blocks so Caddy re-dials across the swap instant rather than surfacing a rare
+  502 to whoever hits it at exactly that moment.
 
-`redeploy.sh` also checks for an interrupted
-`20260613100000_channel_project_slugs` migration and marks that failed attempt as
-rolled back before retrying it. The migration is idempotent and repairs existing
-duplicate project-local channel slugs before adding the unique index.
-
-The admin SPA also runs a production-only freshness check. Open browser, Tauri
-desktop, and mobile WebView sessions fetch `/` with `cache: no-store` when the
-app regains focus/visibility and every five minutes; if the freshly served
-`index.html` references different hashed JS/CSS assets than the currently
-loaded document, the session reloads itself. The desktop Tauri shell and mobile
-WebView inject the same check as a second layer, so future native shells can
-refresh stale hosted admin bundles even if the page bundle is wedged. Existing
-already-open sessions still need one reload to receive this mechanism.
+The admin SPA also runs a production-only freshness check: browser, Tauri
+desktop, and mobile WebView sessions fetch `/` with `cache: no-store` on
+focus/visibility and every five minutes, and reload themselves when the served
+`index.html` references different hashed assets than the loaded document. The
+desktop shell and mobile WebView inject the same check as a second layer.
+Already-open sessions need one reload to receive the mechanism.
 
 To rotate the deploy key: generate a new keypair, append the public key to the
 host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
@@ -503,71 +483,58 @@ resolved by hand against the real database.
 
 ### One-time: per-UOA-organisation tenancy (2026-08-15)
 
-Nessie now keeps **one `Organization` per UOA organisation**
+Nessie keeps **one `Organization` per UOA organisation**
 (`Organization.externalOrgId`) instead of one shared local organisation holding
 every workspace. The partition migration runs with the others at deploy
-(`prisma migrate deploy`, i.e. `redeploy.sh`) and needs no operator action, but
-two things are worth knowing before you run it:
-
-- **What it does.** The existing organisation adopts the UOA organisation most
-  of its teams belong to (ties go to the oldest team's), so nothing moves for
-  the common single-organisation install. Any *other* UOA organisation present
-  splits into its own `Organization`, taking its workspaces' project/team
-  subtrees and per-user memberships with it. Org-global rows — settings, logo,
-  audit rows that cannot be attributed to a moved subtree — stay with the
-  adopting organisation.
-- **Split-org users sign in once after the deploy.** A session is bound to the
-  local organisation it was issued for, so users whose workspaces moved into a
-  newly split organisation are asked to log in again on their next visit; their
-  refresh family re-homes at that login. Users in the adopting organisation are
-  unaffected and stay signed in. Plan the deploy accordingly if you host more
-  than one UOA organisation.
+(`prisma migrate deploy`, i.e. `redeploy.sh`) and needs no operator action. The
+existing organisation adopts the UOA organisation most of its teams belong to
+(ties go to the oldest team's), so nothing moves for the common
+single-organisation install; any *other* UOA organisation splits into its own
+`Organization` with its project/team subtrees and memberships, while org-global
+rows (settings, logo, unattributable audit rows) stay with the adopting one.
+**Users whose workspaces split off sign in once after the deploy** — a session
+is bound to the organisation it was issued for, and the refresh family re-homes
+at that login. Plan the deploy accordingly if you host more than one UOA
+organisation.
 
 Background, migration rules, and verification:
 [plans/2026-08-15-uoa-org-tenancy.md](plans/2026-08-15-uoa-org-tenancy.md).
 
 ### Host disk / Docker build cache (operational)
 
-The host disk (`/`, ~300 GB) is **shared with other apps** on the box. Each
-rebuild adds image layers and ~10 GB of Docker build cache; left unbounded this
-filled the disk to 100% on 2026-06-10 and crashed `nessie-postgres`
+The host disk (`/`, ~300 GB) is **shared with other apps** on the box. Building
+on it filled the disk to 100% on 2026-06-10 and crashed `nessie-postgres`
 (`PANIC: could not write … No space left on device`, stuck in WAL recovery and
-rejecting connections — which also blocks `prisma migrate deploy`). Mitigations
-now in place:
+rejecting connections — which also blocks `prisma migrate deploy`). Routine
+deploys no longer build here at all (see "Images are built on GitHub"), which
+removed both the cache growth and the CPU/IO saturation. `redeploy.sh` still
+waits for Postgres (`pg_isready`) before migrating, bounds the build cache used
+by the local-build fallback (`docker builder prune -f --keep-storage 40GB`,
+never `-af` — a full wipe forces that fallback to rebuild from scratch), prunes
+dangling images, and removes superseded SHA-tagged Nessie release images.
 
-- Routine deploys no longer build on this host at all (see "Images are built on
-  GitHub"), which removed both the build cache growth and the CPU/IO
-  saturation. `redeploy.sh` still waits for Postgres to accept connections
-  (`pg_isready`) before migrating, bounds the build cache used by the
-  local-build fallback (`docker builder prune -f --keep-storage 40GB`, never
-  `-af` — a full wipe forces that fallback to rebuild from scratch), prunes
-  dangling images, and removes superseded SHA-tagged Nessie release images.
-- If the disk fills anyway, the safe manual reclaim (does **not** touch named
-  volumes / running images): `docker builder prune -af` (build cache, 0 active)
-  then `docker image prune -f` (dangling only). Avoid `image prune -a` and
-  `--volumes` on this shared host. Check with `docker system df` / `df -h /`.
-  Once space frees, Postgres finishes recovery on its own and goes healthy.
+If the disk fills anyway, the safe manual reclaim (does **not** touch named
+volumes / running images): `docker builder prune -af` then `docker image prune
+-f` (dangling only). Avoid `image prune -a` and `--volumes` on this shared host.
+Check with `docker system df` / `df -h /`. Once space frees, Postgres finishes
+recovery on its own and goes healthy.
 
 ### Push relay (optional)
 
 The standalone `@nessie/gateway` push relay is deployable but gated behind the
-Compose `push` profile. The default `redeploy.sh` does not pass
-`--profile push`, so it keeps building and starting only Postgres, API, worker,
-and admin. The relay starts only when an operator deliberately enables that
-profile.
+Compose `push` profile, which `redeploy.sh` does not pass — it starts only when
+an operator deliberately enables that profile.
 
 Before enabling it, set the relay values in the host-only
-`/srv/nessie/infrastructure/compose/.env` file. Do not commit real values.
+`/srv/nessie/infrastructure/compose/.env` (do not commit real values):
+`GATEWAY_API_KEY` (bearer token accepted by `POST /v1/push`); `PUSH_APNS_P8`,
+`PUSH_APNS_KEY_ID`, `PUSH_APNS_TEAM_ID`, `PUSH_APNS_TOPIC`, `PUSH_APNS_ENV`
+(required together for APNs); `PUSH_FCM_SERVICE_ACCOUNT` (Firebase
+service-account JSON, required for FCM).
 
-- `GATEWAY_API_KEY` - bearer token accepted by `POST /v1/push`.
-- `PUSH_APNS_P8`, `PUSH_APNS_KEY_ID`, `PUSH_APNS_TEAM_ID`,
-  `PUSH_APNS_TOPIC`, `PUSH_APNS_ENV` - required together for APNs delivery.
-- `PUSH_FCM_SERVICE_ACCOUNT` - Firebase service-account JSON string, required
-  for FCM delivery.
-
-Create a DNS-only A record for `push.unlikeotherai.com` pointing at
-`178.105.82.46`, then append a third Nessie site block to
-`/srv/infra/caddy/Caddyfile`:
+Create a DNS-only A record for `push.unlikeotherai.com` → `178.105.82.46`, then
+append a third Nessie site block to `/srv/infra/caddy/Caddyfile`, validating and
+reloading Caddy after the edit:
 
 ```caddyfile
 push.unlikeotherai.com {
@@ -575,7 +542,7 @@ push.unlikeotherai.com {
 }
 ```
 
-Validate and reload Caddy after the edit. To build and start only the relay:
+Build and start only the relay:
 
 ```sh
 docker compose -f infrastructure/compose/docker-compose.prod.yml \
@@ -584,10 +551,9 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml \
   --profile push up -d nessie-gateway
 ```
 
-Self-hosted Nessie instances should point at
-`https://push.unlikeotherai.com` for push delivery once their worker/API relay
-client wiring is enabled. This deployment step only hosts the relay; it does not
-make the Nessie API or worker call it yet.
+Self-hosted instances should point at `https://push.unlikeotherai.com` once
+their worker/API relay client wiring is enabled. This step only hosts the relay;
+it does not make the Nessie API or worker call it yet.
 
 ## Verifying
 
@@ -610,14 +576,14 @@ Both edges set baseline security headers:
   `Cross-Origin-Resource-Policy: cross-origin` (so the admin, on a different
   origin, can read responses). No CSP — the API serves no HTML. The hook does
   not run for hijacked SSE streams, so realtime is unaffected.
-- **Admin** (`infrastructure/docker/admin-nginx.conf`) — the document responses
-  add `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS, and a
-  `Permissions-Policy` that **denies `camera`/`microphone`/`display-capture`**.
-  Calls open in the selected provider rather than inside the admin.
-  `Content-Security-Policy-Report-Only` ships a baseline policy; it reports
-  violations without blocking. Promote it to an enforcing
-  `Content-Security-Policy` once the report stream is clean, and update its
-  `connect-src` if the admin gains a new outbound origin.
+- **Admin** (`infrastructure/docker/admin-nginx.conf`) — document responses add
+  `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS, and a
+  `Permissions-Policy` denying `camera`/`microphone`/`display-capture` (calls
+  open in the selected provider, not inside the admin).
+  `Content-Security-Policy-Report-Only` ships a baseline policy that reports
+  without blocking; promote it to an enforcing `Content-Security-Policy` once
+  the report stream is clean, and update its `connect-src` if the admin gains a
+  new outbound origin.
 - **Public web** (`infrastructure/docker/web-nginx.conf`) — the holding page
   uses the same baseline document headers and an enforcing CSP because it only
   serves static local assets.

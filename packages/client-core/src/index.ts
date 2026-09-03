@@ -148,6 +148,7 @@ export {
   createQueryClient,
   QueryProvider,
   type QueryProviderProps,
+  sharedQueryClient,
 } from './QueryProvider.js'
 
 // PKCE / external-auth helpers (framework-neutral; storage + base URL injected).
