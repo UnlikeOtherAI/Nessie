@@ -77,27 +77,11 @@ export const INJECTED = `
           '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
         ].join('')
       : '';
-    // Focus paints charcoal navigation around a paper-white work surface, but
-    // it declares that navigation palette only on in-page chrome
-    // (.admin-topbar, the sidebar rail). A native shell hides both, so on a
-    // phone no element in the document carries it and the native header and
-    // tab bar had nothing monochrome to read. Mirror the same scope onto the
-    // frame, which every form factor has. The frame's own children still
-    // override it, so the page renders exactly as before.
-    var focusNativeChromeCss =
-      '.admin-frame.focus-mode {' +
-      '  --rail: #242424; --sb: #383838; --sb-active: #606062;' +
-      '  --sep: #505052; --border-strong: #6a6a6c;' +
-      '  --tx: #f1f1f1; --tx2: #d4d4d6; --tx3: #aeaeaf;' +
-      '  --accent: #b9b9bc; --accent-hover: #d4d4d6; --accent-strong: #ececee;' +
-      '  --panel: #353535;' +
-      '}';
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}' +
-      focusNativeChromeCss +
       iosPhoneBackgroundCss +
       iosPhoneTabBarOverlayCss +
       androidNativeFrameCss;
@@ -114,21 +98,12 @@ export const INJECTED = `
     try { return document.querySelector('.admin-frame') } catch (e) { return null }
   }
   // Focus mode is a palette swap the admin scopes to the frame's children
-  // (.admin-topbar / .admin-shell), never to <html> or <body>. Reading tokens
-  // off documentElement therefore reports the base theme while the page is
-  // monochrome, so the native chrome kept its themed accents through focus.
+  // (.admin-topbar / .admin-shell), never to <html> or <body>, so the body
+  // colour stops describing the page. Only the backdrop below needs this; the
+  // native chrome's own focus palette lives in native-focus-chrome.ts.
   function focusActive() {
     var f = frameEl();
     return !!(f && f.classList && f.classList.contains('focus-mode'));
-  }
-  // The native header and tab bar are navigation, so in focus they take the
-  // charcoal navigation palette the frame now carries -- the same colours the
-  // page's own top bar and sidebar rail use where those are drawn. Out of
-  // focus this stays on documentElement, so the reported palette is
-  // byte-for-byte what it was before.
-  function themeEl() {
-    var f = focusActive() ? frameEl() : null;
-    return f || document.documentElement;
   }
   function pick() {
     // In focus the work surface is the page, so the native backdrop behind the
@@ -152,8 +127,10 @@ export const INJECTED = `
       try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {}
     }
   }
+  // Always the page's own theme. Focus mode's palette is the native shell's
+  // business, not something to read back out of the document.
   function cssVar(name) {
-    try { return getComputedStyle(themeEl()).getPropertyValue(name).trim() } catch (e) { return '' }
+    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (e) { return '' }
   }
   var lastTheme = '';
   function postTheme() {

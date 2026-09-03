@@ -291,15 +291,20 @@ const FOCUS_NAV_TOKENS: Record<string, string> = {
 
 const injectedFocusMessages = (
   focusEnabled: boolean,
+  // A phone draws no in-page navigation: its header and tab bar are native, so
+  // only the work surface carries a focus palette.
+  { navChrome: hasNavChrome = true }: { navChrome?: boolean } = {},
 ): { bg?: Record<string, unknown>; theme?: Record<string, unknown> } => {
   const messages: Record<string, unknown>[] = []
+  const navChrome = { tag: 'topbar' }
   const workSurface = { tag: 'shell' }
-  // The injected stylesheet puts the charcoal navigation palette on the frame,
-  // so the frame resolves it whether or not the page draws its own chrome.
   const frame = {
     classList: { contains: (name: string): boolean => focusEnabled && name === 'focus-mode' },
-    querySelector: (selector: string): unknown =>
-      selector === ':scope > .admin-shell' ? workSurface : null,
+    querySelector: (selector: string): unknown => {
+      if (selector === ':scope > .admin-topbar') return hasNavChrome ? navChrome : null
+      if (selector === ':scope > .admin-shell') return workSurface
+      return null
+    },
   }
   const body = { tag: 'body' }
   const documentElement = { tag: 'html' }
@@ -333,8 +338,8 @@ const injectedFocusMessages = (
     colorScheme: string
     getPropertyValue: (name: string) => string
   } => {
-    const tokens = element === frame
-      ? (focusEnabled ? FOCUS_NAV_TOKENS : BASE_TOKENS)
+    const tokens = element === navChrome
+      ? FOCUS_NAV_TOKENS
       : element === workSurface
         ? FOCUS_SURFACE_TOKENS
         : BASE_TOKENS
@@ -359,33 +364,20 @@ const injectedFocusMessages = (
   }
 }
 
-test('focus mode reports the monochrome navigation palette to the native chrome', () => {
+// The bridge reports the page's own theme and nothing else. Focus mode's
+// monochrome chrome belongs to the native shell (native-focus-chrome.ts), so
+// nothing here reads the palette back out of the document or restyles it.
+test('focus mode leaves the reported theme as the page defines it', () => {
   const { theme } = injectedFocusMessages(true)
 
-  assert.equal(theme?.headerSurface, '#242424')
-  assert.equal(theme?.surface, '#353535')
-  assert.equal(theme?.accent, '#b9b9bc')
-  assert.equal(theme?.accentStrong, '#ececee')
-  assert.equal(theme?.inactive, '#aeaeaf')
-  assert.equal(theme?.headerText, '#f1f1f1')
-  assert.equal(theme?.text, '#f1f1f1')
+  assert.equal(theme?.headerSurface, '#2e1132')
+  assert.equal(theme?.surface, '#222629')
+  assert.equal(theme?.accent, '#7c3aed')
+  assert.equal(theme?.headerText, '#f8f5ef')
 })
 
 test('focus mode backs the native frame with the paper-white work surface', () => {
   assert.equal(injectedFocusMessages(true).bg?.color, 'rgb(255, 255, 255)')
-})
-
-// A native shell hides the page's top bar and sidebar rail, so the charcoal
-// navigation palette has to reach the frame for the native header and tab bar
-// to have anything monochrome to read.
-test('the injected stylesheet carries focus navigation colours on the frame', () => {
-  const css = injectedSafeAreaCss('ios', 'phone', 34)
-
-  assert.match(css, /\.admin-frame\.focus-mode \{/)
-  assert.match(css, /--rail: #242424/)
-  assert.match(css, /--panel: #353535/)
-  assert.match(css, /--tx: #f1f1f1/)
-  assert.match(css, /--accent: #b9b9bc/)
 })
 
 test('leaving focus mode restores the themed native palette and backdrop', () => {
