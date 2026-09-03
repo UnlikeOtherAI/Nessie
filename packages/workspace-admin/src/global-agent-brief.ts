@@ -5,6 +5,7 @@ import {
   parseTaskId,
   parseThreadId,
   withActionContext,
+  withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
@@ -92,6 +93,19 @@ export const deliverGlobalAgentBrief = async (
   queue: GlobalAgentBriefQueue,
   input: GlobalAgentBriefInput,
 ): Promise<GlobalAgentBriefResult> => {
+  // A brief is always delivered into a global agent's own home DM, so the run
+  // it starts owes that DM's delegated identity. Both callers stamp it before
+  // calling — re-asserting it here is what makes a third caller correct
+  // whether or not its author knows the rule exists.
+  const destination = await tx.channel.findUnique({
+    select: { systemChannelType: true },
+    where: { id: input.destinationChannelId },
+  })
+  const requesterActorContext = withDelegatedSystemDmIdentity(
+    input.requesterActorContext,
+    { systemChannelType: destination?.systemChannelType ?? null },
+  )
+
   const brief = await tx.message.create({
     data: {
       content: input.content,
@@ -105,7 +119,7 @@ export const deliverGlobalAgentBrief = async (
   const claim = await queue.claimThreadRunOrPend(tx, {
     agentId: input.agentId,
     pending: {
-      actorContext: input.requesterActorContext,
+      actorContext: requesterActorContext,
       channelId: input.destinationChannelId,
       interactive: true,
       messageId: brief.id,
@@ -139,7 +153,7 @@ export const deliverGlobalAgentBrief = async (
   await queue.enqueueRunExecution(
     tx,
     {
-      actorContext: withActionContext(input.requesterActorContext, {
+      actorContext: withActionContext(requesterActorContext, {
         taskId: parseTaskId(task.id),
       }),
       agentId: parseAgentId(input.agentId),

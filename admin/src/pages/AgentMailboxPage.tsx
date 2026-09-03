@@ -84,7 +84,7 @@ export const AgentMailboxPage = () => {
           Email section.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-1 gap-4 px-6 pb-6">
+        <div className="flex min-h-0 flex-1 gap-4 px-[var(--page-gutter)] pb-6">
           <aside
             className="flex w-[22rem] shrink-0 flex-col gap-3 overflow-hidden"
             data-testid="mailbox-conversation-list"

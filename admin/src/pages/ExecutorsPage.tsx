@@ -233,7 +233,7 @@ export const ExecutorsPage = () => {
         title="Executors"
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
+        <div className="grid gap-5 px-[var(--page-gutter)] py-6">
 
         <NestedStage
           active={showCreate && Boolean(me)}

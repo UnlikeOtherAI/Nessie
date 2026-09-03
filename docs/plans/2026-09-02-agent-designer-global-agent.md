@@ -18,10 +18,7 @@ redesigning an agent is now the Designer's alone: those tools are
 `identityDelegatedOnly`, so the Personal Assistant hands off instead of carrying
 the design catalogue.
 
-**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only
-a stable tile colour, with generation left to the PA's lazy owner-triggered
-path. Binding a global agent into ordinary shared channels stays with the scopes
-doc's later phase; v1 global agents are DM-homed and own no triggers. The sidebar
+**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only a stable tile colour, with generation left to the PA's lazy owner-triggered path. ~~Binding a global agent into ordinary shared channels stays with the scopes doc's later phase~~ — **that phase shipped 2026-09-02 too:** a system-managed *shared* agent binds to ordinary channels (and so reaches projects, whose reach is their channels) under the ordinary gates, the refusal narrowed to `isChannelBindableAgent`, and `assertGlobalAgentRunPlacement` now admits the home DM **or** a channel the agent is genuinely bound to; a shared room stays advice-only, because the identity-delegated tools keep asking for the home DM. Mechanics: [../global-agents.md](../global-agents.md) → "Where a global agent can be". v1 global agents still own no triggers. The sidebar
 keeps its ephemeral in-process transport rather than becoming thread-backed
 (D9's named end state). There is no `agent_delete` for anyone, and no
 policy-target or explicit-grant mutation from either face.
@@ -158,6 +155,8 @@ bug caught while mapping this. Fixing it legalizes the shape both need, so
 migration `20260902170000_external_agent_surface_invariants` ships that fourth
 tuple; the Designer work must **not** add a second one.)
 
+*Amended 2026-09-02, when global agents became bindable to ordinary channels.* `surface_policy = 'dm_only'` is the storage-level statement "this agent lives only in a per-user private DM", which stopped being true of a global agent — so `ensureGlobalAgent` writes `'shared'`, and migration `20260902230000_global_agents_bindable_to_channels` sanctions the fifth tuple `(systemManaged=true, shared, shared, act_as_requesting_user)` and re-states existing rows. `delegation_mode` is unchanged: *where* the delegation is exercised was always the surface predicate's call, never this column's. The external product's fourth tuple is untouched — `dm_only` is still exactly right for it.
+
 ### D2 — Home surface: a per-user private DM
 
 `dmKey = gagent:{slug}:{orgId}:{userId}`, `type='dm'`,
@@ -185,7 +184,7 @@ precedent, both adopted from review):
   widens to *any* non-null `systemChannelType` (and `unbindAgentFromChannel`
   learns the same scope). Without this, an ordinary agent bound into the
   Designer DM reads the whole design transcript and breaks the
-  single-candidate fast path.
+  single-candidate fast path. *(Still exactly true as built: when global agents became bindable on 2026-09-02 only the **agent**-side arm of that one line moved — `isChannelBindableAgent`, refusing the PA and external products — and the system-**channel** arm was left alone, with `unbindAgentFromChannel` widened symmetrically since removal must be at least as wide as placement.)*
 - **System channels are lifecycle-protected.** The `channel-manage.ts`
   chokepoints (rename, archive, membership) refuse channels with a non-null
   `systemChannelType` (the PA-channel refusals generalised), and the
@@ -294,21 +293,19 @@ Reused as-is (via D3 where PA-only):
 | `agent_create` | the create chokepoint (`createAgentRecord`), incl. private agents + home DM. Today the *route* auto-generates an avatar and the PA tool path does not — the generation moves into a shared seam both call, in the same change, so a chat-created agent is not the only faceless one |
 | `agent_bind_channel` | place the new agent (all four route gates) |
 | `agent_trigger_create` | schedules on *designed* agents, with the UOA-identity refusal intact; refuses `systemSlug` targets (D2) |
-| `channel_create` | "it needs its own channel" |
+| `channel_create` | "it needs its own channel". Inside a global agent's home DM a call that names no `visibility` now lands **private** rather than public — an omitted argument must not publish a room to the organisation; the PA's own default is untouched |
 | `card_post` | forms and choices (D6) |
 | `web_search`, `web_fetch` | research a service/domain before writing the prompt |
 | `people_search`, `channel_find`, `channel_list` | resolve names the person uses |
 | `document_read`, `kb_search`, `kb_page_read` | ground a prompt in existing material when asked |
 
-**Every delegated read above feeds the disclosure sink.** The pa-tools read
-paths (`channels.ts`, `provisioning.ts`, knowledge reads) do not call
-`consumedSources` today; in the owner-only PA DM that is tolerable, but the
-Designer's replies can be handed onward (D8 briefs, future shared surfaces),
-so the reads acquire their scope stamps in the same change that widens them
-— the AGENTS.md read-feeds-the-sink rule applied to this toolset.
+**Every delegated read above feeds the disclosure sink.** The pa-tools read paths
+(`channels.ts`, `provisioning.ts`, knowledge reads) do not call `consumedSources` today;
+in the owner-only PA DM that is tolerable, but the Designer's replies can be handed
+onward (D8 briefs, future shared surfaces), so the reads acquire their scope stamps in
+the same change that widens them — the AGENTS.md read-feeds-the-sink rule applied here.
 
-New builtins (shared function in `@nessie/workspace-admin`, api service
-re-exporting; a tool that takes an id ships with the read that resolves it):
+New builtins (shared function in `@nessie/workspace-admin`, api service re-exporting; a tool that takes an id ships with the read that resolves it):
 
 | Tool | Authorization | Notes |
 |---|---|---|
@@ -316,13 +313,15 @@ re-exporting; a tool that takes an id ships with the read that resolves it):
 | `agent_update` | the deliberately-missing tool, now homed where it belongs. Gated by `canEditAgent` (see "Edit authority") with **field-sensitive** enforcement: the edit-field set only; `ownerUserId` transitions and `todosEnabled` keep their own narrower gates. `mergeGenericAgentToolPolicy` + `assertGenericAgentToolPolicyInput` stand; `systemManaged` targets refused **in the service** (see D7 — today only route invisibility protects them). This deliberately **supersedes** the conversational-setup decision "no general runtime `agent_update`": that decision guarded against a *run rewriting itself*; the Designer is a different principal editing *another* agent under the person's live authority, and the self-rewrite ban stays (the Designer's own row is blueprint-only). The conversational-setup doc is amended in the same change. |
 | `agent_tool_catalog` | read-only live catalogue. **A new member-safe shared projection** — `GET /api/mcp/tools` is org-owner-only and must not be widened; the new read serves exactly what the designer page's `tool-catalog.ts` computes (builtins deny-mode; active, non-protected connector tools allow-mode keyed by registry uuid; explicit-grant tier named in words, never togglable) through a presenter that can never emit credentials, endpoints, or grant state. Served server-side so the two faces cannot drift. |
 | `agent_avatar_update` | mirrors `PATCH /api/agents/:id/avatar` + `POST …/avatar/generate`, gated by `canEditAgent` like those routes become. |
+| `project_list` | mirrors `GET /api/projects` (any active member; owners see every project in the organisation, everybody else the ones they are a `ProjectMember` of) and, for the teams nested under each, `GET /api/teams`'s own organisation scope narrowed to those projects. The read that turns "the Marketing project" into the `projectId` `team_create` takes and the `teamId` `channel_create` takes. Shared reads: `listProjectsForUser` / `listTeamsForOrganization`. Provenance: an owner reads by role, so a project name is organisation-level material the destination already implies and nothing is stamped (the `recordVisibleAgentRead` reasoning); anybody else reached it through their own `ProjectMember` row, which is stamped as a `project:` scope they satisfy. |
+| `project_create` | mirrors `POST /api/projects` — **organisation owner** (`requireOwner`). Shared function `createProjectForUser` carries the single owner-membership row and the default board columns (`defaultColumnCreateData`, moved out of `api/src/services/board.ts`). Visible to non-owners and refuses in words naming who can do it. |
+| `team_create` | mirrors `POST /api/teams` — **organisation owner** (`requireOwner`), taking `{name, projectId}` and refusing a project outside the organisation with the route's own indistinguishable "not found". Shared function `createTeamForUser`. A project holds no channel until it has a team, so this is the middle link of project → team → channel. |
 
-Deliberately **not** given: `connector_*` mutations (the conversational-
-setup plan is retiring them; the Designer points at `/apps` and the
-`app_connect_request` flow in words), any policy-target/grant mutation for
-explicit-grant tools, agent delete (doesn't exist for anyone), DeepWater
-bundle management, and `spawn_subtask`/`delegate` (a design conversation
-needs neither; keeping them off keeps the catalogue-laden context from
+Deliberately **not** given: `connector_*` mutations (the conversational-setup plan is
+retiring them; the Designer points at `/apps` and the `app_connect_request` flow in
+words), any policy-target/grant mutation for explicit-grant tools, agent delete (doesn't
+exist for anyone), DeepWater bundle management, and `spawn_subtask`/`delegate` (a design
+conversation needs neither; keeping them off keeps the catalogue-laden context from
 fanning out).
 
 ### D5 — The capability catalogue is generated, never written
@@ -891,18 +890,18 @@ exist.
      than two. It takes the queue functions as parameters
      (`AgentTodoRunQueue`'s precedent) because this package is loaded from
      `dist` by processes that resolve `@nessie/db` differently.
-   - **The read-only detail view (D7).** `readAgentConfigView` composes
-     `readAgentRecordForActor` with `loadAgentToolCatalog`, resolving the sparse
-     policy map into the tools the agent actually has (`default` / `policy` /
-     `reserved` — the last being blueprint identity tools no policy can grant).
-     Served at `GET /api/agents/:agentId/config` under exactly the list
-     entitlement; `isAgentAccessibleToActor` is untouched, so status, activity,
-     messages and children still 404 on a system agent. The admin's
-     `SystemAgentConfigPanel` replaces the tabs for any `systemManaged` agent,
-     with no edit affordance at all.
+   - **The read-only detail view (D7).** Shipped as a bespoke
+     `SystemAgentConfigPanel` over a narrow `GET /api/agents/:agentId/config`
+     read; **both were deleted on 2026-09-02** as a Rule zero #4 violation — a
+     second implementation of a view that already existed. A `systemManaged`
+     agent now renders the ordinary detail surface with the designer form
+     disabled and only the Edit + Tools tabs, seeded from the entitled agent
+     list. `isAgentAccessibleToActor` is still untouched, so status, activity,
+     messages and children still 404. See `docs/global-agents.md`.
    - Tests: `api/test/designer-continue-in-chat.test.ts` (DB — the hidden
      `system` brief, one run, the `gagent:` DM shape, convergence on a second
-     click, deactivated-member and unknown-slug refusals), config-view cases in
+     click, deactivated-member and unknown-slug refusals), the
+     `readAgentRecordForActor` entitlement cases in
      `api/test/agent-designer-reads.test.ts`, the retirement and the Designer's
      continued access in `worker/test/identity-delegation.test.ts`, and the
      rewritten designer prompt/service suites (the catalogue reaches the prompt

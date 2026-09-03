@@ -742,11 +742,51 @@ folded-card requirement:
   message**, stored through the one `FileService` chokepoint, speaker
   lines preserved as labeled text — never role-bearing turns. The PA reads
   it on demand via its attachment tools (which feed the disclosure sink),
-  and the expanded call card renders the transcript from the attachment.
+  and the call card opens the transcript from the attachment.
   Full-transcript search is honestly out of scope for phase 2 (message
   search covers the summary; an entitlement-aware transcript index is its
   own later feature — and search already excludes basis-carrying messages
   by design).
+- **Two artefacts, and the message content is a compaction *(shipped
+  2026-09-02)*.** The record's content used to be the spoken turns
+  concatenated to a character cap — which is the noise: filler, "can you
+  hear me", false starts, repetition. Because that text enters the
+  assistant's context window on *every* later run in the DM, the agent was
+  carrying the noise forever. It is now generated
+  (`api/src/services/voice/voice-compaction.ts`, one
+  `deps.sharedModelClient` call): what was actually discussed and decided,
+  every substantive detail kept — names, numbers, decisions, commitments,
+  open questions — the conversational noise dropped, written as prose in
+  the assistant's voice rather than meeting minutes. The verbatim
+  attachment is unchanged and remains the ground truth. Three properties
+  hold it up:
+  - **It fails open, always.** No model client configured, a provider
+    error, an empty or unusable answer — each falls back to the verbatim
+    `renderCallSummary`. The call is over and unreproducible, so a failed
+    summarisation may cost the compaction and never the record.
+  - **The transcript is untrusted input to the summariser.** It is text a
+    device reported, and the output lands in an agent's context window, so
+    it travels in the user turn inside explicit delimiters and the
+    instruction says plainly that it is data describing what was said —
+    never instructions to follow.
+  - **`metadata.voiceCall.compacted`** records which shape the content is,
+    so the card (and any later reader) can tell a generated record from a
+    fallback one without reading the text. Records written before this
+    shipped carry no flag and read as the fallback shape, which is what
+    they are.
+- **The card opens the transcript in place, never by navigating.** The
+  "Full transcript attached." line used to be dead text. It is now a
+  control on `VoiceCallMessage` that opens the shared `Dialog` and renders
+  the attachment's markdown through `MessageMarkdown`, with bytes fetched
+  by the shared `TextFilePreview` (an authed fetch — an `<a href>` misses
+  both the `Authorization` header and the cross-origin `api.` host).
+  Deliberately not a link: a `blob:`/`data:` URL inherits the page origin,
+  and following one replaces the SPA with the raw file and destroys the
+  mobile shell's navigation state (fixed in
+  `mobile/src/lib/call-external-url.ts`; top-level navigation to
+  page-created documents is now blocked outright). A call too short to
+  store a transcript has `transcriptAttachmentId: null` and shows no
+  control at all.
 - **Server-authored, via the session, through the message-create
   service.** `POST /api/voice/sessions/:id/transcript` verifies the
   session belongs to the caller and is ending/ended, then writes through

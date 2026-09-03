@@ -1,6 +1,6 @@
+import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type {
-  AgentConfigView,
   AgentModelOption,
   AgentActivityResponse,
   AgentChild,
@@ -37,22 +37,43 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
 }
 
 /**
- * One agent's configuration, for a reader who may look but not touch (D7).
+ * The agents a channel can hold: the ordinary list, plus the app-provided
+ * shared agents (the Agent Designer, the Librarian) that `bindAgentToChannel`
+ * now places like any other.
  *
- * This is the ONLY read that answers for a Nessie-managed agent — the Personal
- * Assistant, the Agent Designer. Every other per-agent route (status, activity,
- * messages, children) 404s on one deliberately: a global agent's activity spans
- * every member's private conversation with it.
+ * `GET /api/agents` omits every `systemManaged` row, so the members popup, the
+ * channel roster and the @mention typeahead were all structurally blind to a
+ * global agent — the same defect class as the address book. `?scope=all` is the
+ * superset, and the identity directory already holds that exact query, so this
+ * costs no extra request.
+ *
+ * The filter is `surfacePolicy`, which is precisely this question in the
+ * record: `dm_only` is the Personal Assistant (added through its own presence
+ * control) and an external-agent product (added by its integration), which are
+ * exactly the two agents `isChannelBindableAgent` refuses on the server. One
+ * sentence, both sides.
  */
-export const useAgentConfig = (agentId?: string, enabled = true) => {
-  const apiClient = useApiClient()
+export const useChannelPlaceableAgents = () => {
+  const visible = useAgents()
+  const allScopes = useAgents({ scope: 'all' })
 
-  return useQuery<AgentConfigView>({
-    enabled: Boolean(agentId) && enabled,
-    queryKey: agentKeys.config(agentId),
-    queryFn: () => apiClient.get(`/api/agents/${agentId}/config`),
-    placeholderData: keepPreviousData,
-  })
+  const data = useMemo(() => {
+    const rows = visible.data ?? []
+    if (!allScopes.data) return rows
+    const known = new Set(rows.map((agent) => agent.id))
+    return [
+      ...rows,
+      ...allScopes.data.filter((agent) =>
+        !known.has(agent.id)
+        && agent.systemManaged === true
+        && agent.surfacePolicy !== 'dm_only'),
+    ]
+  }, [allScopes.data, visible.data])
+
+  // Only the ordinary list decides pending/error: the system tier is additive,
+  // so a failed `scope=all` read must degrade to today's list rather than blank
+  // a channel roster that has nothing to do with global agents.
+  return { data, isError: visible.isError, isPending: visible.isPending }
 }
 
 /** Owner-only aggregate for the Members tree; it never fetches private rows. */

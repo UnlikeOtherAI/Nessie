@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useAgents } from '../../../facades/agents/hooks'
+import { useChannelPlaceableAgents } from '../../../facades/agents/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -27,11 +27,17 @@ type ProjectAgentsSectionProps = {
  * their live status. An agent sitting in `error` or `waiting_approval` on a
  * project channel is exactly the exception this screen exists to surface, and
  * the row lands in the channel where it is stuck.
+ *
+ * This is also the whole of "an agent in a project": a project's reach is its
+ * channels, so there is no project-level placement control to build — you add
+ * an agent to one of its channels and it appears here. Reading
+ * `useChannelPlaceableAgents` rather than `useAgents` is what keeps a bound
+ * global agent from going missing from that list.
  */
 export const ProjectAgentsSection = ({ className, projectId }: ProjectAgentsSectionProps) => {
   const navigate = useNavigate()
   const { data: channels } = useChannels()
-  const { data: agents, isError, isPending } = useAgents()
+  const { data: agents, isError, isPending } = useChannelPlaceableAgents()
   const { token } = useAuthSession()
 
   const projectChannels = projectChannelRows(channels ?? [], projectId)

@@ -5,6 +5,7 @@ import type {
   ThreadMessageRecord,
 } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
+import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
 import type { AvatarSources } from '../../primitives/UserAvatar'
 import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
 import { MessageAttachments } from '../../shared/MessageAttachments'
@@ -19,7 +20,7 @@ import {
   type MessageUserIdentity,
 } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
-import { VoiceCallMessage } from './VoiceCallMessage'
+import { readVoiceCallRecord, VoiceCallMessage } from './VoiceCallMessage'
 import {
   EmbeddedWidget,
   readMessageEmbedIds,
@@ -164,10 +165,19 @@ export const ChannelMessageRow = ({
   lastPointerDownAt,
 }: ChannelMessageRowProps) => {
   const watchStatus = readWatchStatusSummary(message.metadata)
+  // The channel's `agentMap` is the entitled projection — what this viewer may
+  // *act on*. The identity directory is what an agent *looks like*, and it
+  // alone answers for system-managed agents such as the Agent Designer, which
+  // post into their own DMs but never appear in a picker.
+  const lookupAgentIdentity = useAgentIdentityLookup()
+  const authoringAgent =
+    message.role === 'assistant'
+      ? agentMap.get(message.agentId ?? '') ?? lookupAgentIdentity(message.agentId)
+      : null
   const displayName = getDisplayName(
     message,
     meDisplayName,
-    agentMap,
+    authoringAgent,
     assistantFallbackName,
     personalAssistantPresence?.displayName,
   )
@@ -179,15 +189,16 @@ export const ChannelMessageRow = ({
   const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
   // A finished call: server-written metadata, so this is structural rather
   // than a reading of the text.
-  const carriesVoiceCall = Boolean(
-    (message.metadata as { voiceCall?: unknown } | undefined)?.voiceCall,
-  )
+  const voiceCall = readVoiceCallRecord(message.metadata)
+  const carriesVoiceCall = voiceCall !== null
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
   const broadcastRootId = getReplyBroadcastRootId(message.metadata)
   const openThread =
     onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
+  // Opening an agent's drawer is an action, so it stays gated on the entitled
+  // map: the directory can name a system agent this viewer has no page for.
   const messageAgent =
     message.role === 'assistant' && onSelectAgent && !personalAssistantPresence
       ? agentMap.get(message.agentId ?? '') ?? null
@@ -199,7 +210,7 @@ export const ChannelMessageRow = ({
         name: personalAssistantPresence.displayName,
         role: 'Personal Assistant',
       }
-    : agentMap.get(message.agentId ?? '')
+    : authoringAgent ?? undefined
   const authorIdentity =
     message.role === 'user' && message.userId && onSelectUser
       ? {
@@ -383,9 +394,16 @@ export const ChannelMessageRow = ({
                   {message.content}
                 </MessageMarkdown>
               )}
-              {/* A call transcript printed in full buries the conversation it
-                  belongs to, so it collapses to its summary and opening turns. */}
-              {carriesVoiceCall ? <VoiceCallMessage content={message.content} /> : null}
+              {/* A call leaves a compaction in the message and the verbatim
+                  transcript as an attachment; the card shows the first and
+                  opens the second in place. */}
+              {voiceCall ? (
+                <VoiceCallMessage
+                  compacted={voiceCall.compacted}
+                  content={message.content}
+                  transcriptAttachmentId={voiceCall.transcriptAttachmentId}
+                />
+              ) : null}
               {message.restrictedSources && shareRestrictedMessage ? (
                 <div className="mt-2">
                   <RestrictedMessageCard

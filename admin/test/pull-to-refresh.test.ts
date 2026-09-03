@@ -35,12 +35,16 @@ test('a scroller holding a message feed never offers the gesture', () => {
   assert.match(source('../src/components/features/channels/ChannelMessageFeed.tsx'), /className="admin-chat-feed" data-message-feed/)
 })
 
-test('only a Root or Detail page scroller wires the gesture, and it asks the shell for the one full refresh', () => {
+test('only a Root or Detail page scroller wires the gesture, and it refetches the visible page rather than reloading', () => {
   const layer = source('../src/layouts/admin-shell/PhoneNavigationLayer.tsx')
   assert.match(layer, /type === 'root' \|\| type === 'detail'/)
   assert.match(layer, /usePullToRefresh\(\{ enabled: offersRefresh\(pathname\)/)
+  // The pull does a content-only refetch of the mounted queries; it never asks
+  // the shell for the full-WebView refresh or reloads the SPA.
+  assert.match(layer, /refetchQueries\(\{ type: 'active' \}\)/)
   const hook = source('../src/navigation/pull-to-refresh.ts')
   assert.match(hook, /isReactNativeWebView\(\)/)
-  assert.match(hook, /requestNativeFullRefresh\(\)/)
+  assert.match(hook, /onRefreshRef\.current\(\)/)
+  assert.doesNotMatch(hook, /requestNativeFullRefresh\(/)
   assert.doesNotMatch(hook, /location\.reload/)
 })

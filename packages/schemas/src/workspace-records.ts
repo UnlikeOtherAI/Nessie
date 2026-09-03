@@ -96,6 +96,44 @@ export const ChannelRecordSchema = z.object({
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
 
+/**
+ * A project and a team, produced by `@nessie/workspace-admin` for both
+ * `POST /api/projects` / `POST /api/teams` and the Agent Designer's
+ * `project_create` / `team_create` tools — so, like `ChannelRecord`, the shape
+ * has to live where both processes can see it.
+ */
+export const ProjectRecordSchema = z.object({
+  id: ProjectIdSchema,
+  name: NonEmptyStringSchema,
+  avatarEmoji: z.string().min(1).max(32).nullable(),
+  avatarAttachmentId: z.string().uuid().nullable(),
+  organizationId: OrganizationIdSchema,
+  memberCount: z.number().int().nonnegative(),
+  teamCount: z.number().int().nonnegative().optional(),
+  channelCount: z.number().int().nonnegative().optional(),
+  createdAt: TimestampSchema,
+})
+export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
+
+export const TeamCallProviderSchema = z.enum([
+  'google_meet',
+  'jitsi',
+  'microsoft_teams',
+])
+
+export const TeamRecordSchema = z.object({
+  id: TeamIdSchema,
+  name: NonEmptyStringSchema,
+  projectId: ProjectIdSchema,
+  // Which provider a call in this team is minted with. Whether that provider is
+  // *configured* on this deployment is answered by the API alone, so it is not
+  // part of the record.
+  callProvider: TeamCallProviderSchema,
+  memberCount: z.number().int().nonnegative().optional(),
+  createdAt: TimestampSchema,
+})
+export type TeamRecord = z.infer<typeof TeamRecordSchema>
+
 // One row in the direct-message unread inbox. It deliberately carries only
 // the information needed to choose and open a conversation; the full message
 // remains behind the normal thread reader and its disclosure checks.
@@ -191,6 +229,14 @@ export const AgentRecordSchema = z.object({
    * "Continue in chat" doorway need.
    */
   systemSlug: z.string().nullish(),
+  /**
+   * Server-decided: this system agent is reached through the caller's own
+   * pre-provisioned home DM, so addressing it opens that conversation instead
+   * of binding it into a new one. Present only when true. It is what puts the
+   * Personal Assistant and a global agent such as the Agent Designer in the
+   * "New message" address book without any client naming a slug.
+   */
+  dmAddressable: z.boolean().optional(),
   visibility: AgentVisibilitySchema,
   /** Owner-only DM provisioned together with a private agent. */
   homeChannelId: ChannelIdSchema.optional(),

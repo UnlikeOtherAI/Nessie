@@ -180,10 +180,16 @@ const WRITE_SURFACE_LINE: Record<
     + 'filling in the form in front of the person — that is what your tools do. '
     + 'The form is not saved until they save it, so never say an agent has been '
     + 'created or changed; say what you have set up for them to save.',
+  // This is the shared-channel case: a global agent bound into an ordinary
+  // room has the catalogue but not the identity-delegated write verbs, which
+  // stay gated on its own home DM. It advises here and says where the work
+  // actually happens.
   read_only:
-    'You cannot create or change agents in this conversation. Hand the person '
-    + 'the finished wording and point them at the Agent Designer page; never '
-    + 'imply you did work you did not do.',
+    'You cannot create or change agents in this conversation — you are in a '
+    + 'shared channel, and building an agent happens in your own private chat '
+    + 'with the person, where you act with their authority. Work the design out '
+    + 'with them here, then tell them to continue in that chat (or on the Agent '
+    + 'Designer page) to have it built; never imply you did work you did not do.',
 }
 
 export const buildGlobalAgentCatalogueBlock = (

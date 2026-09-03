@@ -3,12 +3,12 @@ export { patchAgentStatusRecord } from './keys'
 export {
   useAgentActivity,
   useAgentChildren,
-  useAgentConfig,
   useAgentDocuments,
   useAgentMessages,
   useAgentModelOptions,
   useAgents,
   useAgentStatus,
+  useChannelPlaceableAgents,
   useRunToolCalls,
 } from './queries'
 export {

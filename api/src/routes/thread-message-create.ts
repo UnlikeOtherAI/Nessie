@@ -8,7 +8,6 @@ import {
   parseChannelId,
   parseThreadId,
   parseUserId,
-  withActionContext,
 } from '@nessie/schemas'
 import {
   CreateThreadMessageBodySchema,
@@ -33,7 +32,6 @@ export const registerCreateThreadMessageRoute = (
     realtimeHub,
     requireActorContext,
     buildChannelRealtimeScopes,
-    isDelegatedSystemDmChannelType,
     messageMemoryCaptureConfig,
   } = deps
 
@@ -350,22 +348,14 @@ export const registerCreateThreadMessageRoute = (
     if (result.channelAgents.length > 0) {
       // A single-member system DM — the Personal Assistant's, or a global
       // agent's home — is the one place an agent may act as the person it is
-      // talking to. `effectiveUserId = poster` is safe there precisely because
-      // the DM has exactly one member, which the database now enforces for the
-      // `gagent:` shape as well as reducing it at bootstrap.
-      const orchestrationActorContext = isDelegatedSystemDmChannelType(
-        thread.channel.systemChannelType,
-      )
-        ? withActionContext(actorContext, {
-            effectiveUserId: parseUserId(actorContext.actor.actorId),
-          })
-        : actorContext
-
+      // talking to, and `enqueueOrchestrateDecide` stamps that identity for
+      // every wake path from the destination itself. This route used to do it
+      // inline, which is precisely why the agent-card press did not.
       try {
         await enqueueOrchestrateDecide(
           prisma,
           {
-            actorContext: orchestrationActorContext,
+            actorContext,
             agentMentions: result.agentMentions,
             channelAgents: result.channelAgents,
             channelId: parseChannelId(thread.channel.id),

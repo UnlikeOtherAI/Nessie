@@ -18,9 +18,9 @@ through a per-user private home DM rather than by binding into shared channels
 — see
 [2026-09-02-agent-designer-global-agent.md](2026-09-02-agent-designer-global-agent.md)
 phase 1. The **read-only detail view is implemented too** (phase 4): a
-`systemManaged` agent answers a narrow config read — name, role, prompt, model,
-effort, limits and resolved tools — at `GET /api/agents/:agentId/config`, and
-the admin renders it in place of the tabs. `isAgentAccessibleToActor` was
+`systemManaged` agent renders the ordinary agent detail surface — the same
+designer form, every control disabled, no Save — filtered to its Edit and Tools
+tabs and seeded from the entitled agent list. `isAgentAccessibleToActor` was
 deliberately NOT widened: status, activity, messages and children stay closed,
 because a global agent's activity spans every member's private DM. What remains
 a later phase is only the *other* half of the recommendation below — binding a
@@ -215,7 +215,12 @@ in place. Keep that pattern for the vendor's default agents:
   violation the UOA invariant names, this time for agents. Per-org
   instantiation keeps tenancy, per-org tool grants, and per-org audit intact
   while the *definition* stays vendor-owned.
-- **Reachability (Rule zero).** Today global agents are list-only:
+- **Reachability (Rule zero).** *(Both decisions below shipped 2026-09-02; the
+  refusal now narrows to `isChannelBindableAgent` — the PA and external-agent
+  products — rather than to the PA alone, because an external product's turns
+  proxy to a per-user instance a shared room has no user for. See
+  [../global-agents.md](../global-agents.md).)* As written, global agents were
+  list-only:
   `bindAgentToChannel` refuses `systemManaged` and `isAgentVisibleToUser`
   hard-codes `systemManaged: false`, so they have no detail page and cannot
   be added to a channel by anyone. "Available to everyone" that nobody can
@@ -772,9 +777,17 @@ people-and-their-agents amendment noted.
 
 ## Open questions
 
-1. **Global agent bindability** — recommended above (bindable, read-only
-   config), but "auto-bound to #general at provision" is the zero-decision
-   alternative; pick one before building.
+1. ~~**Global agent bindability**~~ — **DECIDED (2026-09-02), as recommended
+   above: bindable, read-only config.** A `systemManaged` *shared* agent binds
+   to ordinary channels under the ordinary gates; the refusal narrowed to the
+   Personal Assistant (its own presence path) and external-agent products (their
+   own per-user DM), and the system-*channel* refusal is untouched.
+   `assertGlobalAgentRunPlacement` admits the home DM or a channel the agent is
+   genuinely bound to, and identity-delegated tools stay home-DM-only, so a
+   shared room is advice-only. "Auto-bind to #general at provision" was NOT
+   taken — placement is a workspace's decision, and the unbound-global list
+   branch (shipped) already makes availability independent of a binding
+   accident. Mechanics: [../global-agents.md](../global-agents.md).
 2. **Presence elevation granularity** — the adjudicated posture routes
    owner-private reads/side-effects through approvals. Should the owner be
    able to pre-grant narrow standing capabilities per channel ("my PA may

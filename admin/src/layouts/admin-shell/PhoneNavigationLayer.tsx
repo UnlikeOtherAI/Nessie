@@ -1,10 +1,20 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
+import { sharedQueryClient } from '@nessie/client-core'
 import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
 import { matchSurface } from '../../navigation/surfaces'
 import type { PhoneNavigationDirection } from './phone-navigation'
 import type { PhoneNavigationStackEntry } from './phone-navigation-stack'
+
+// The pull-to-refresh content refresh: re-fetch the mounted queries (the visible
+// page's data, plus any live query the shell keeps warm) on the one app-wide
+// client, without reloading the SPA. The shell, nav and route/scroll stay put —
+// a full reload stays the tablet "Full refresh" button and Cmd/Ctrl-R. Reading
+// the shared client directly, rather than `useQueryClient()`, keeps this
+// navigation-layer component renderable without a provider (its isolation tests
+// mount no data layer), and it is the very instance `QueryProvider` mounts.
+const refreshVisiblePage = (): Promise<unknown> => sharedQueryClient.refetchQueries({ type: 'active' })
 
 // What a layer holds: a route's captured subtree, or a nested stage's
 // container that its page fills through a portal.
@@ -95,7 +105,7 @@ const pageClassName = (pathname: string): string =>
 const RoutedScreen = ({ payload, pathname }: { payload: ScreenPayload; pathname: string }) => {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const indicatorRef = useRef<HTMLDivElement | null>(null)
-  usePullToRefresh({ enabled: offersRefresh(pathname), indicatorRef, scrollerRef })
+  usePullToRefresh({ enabled: offersRefresh(pathname), indicatorRef, onRefresh: refreshVisiblePage, scrollerRef })
   return (
     <UNSAFE_LocationContext.Provider value={payload.locationContext}>
       <div aria-hidden className="phone-navigation-refresh" data-phone-navigation-refresh ref={indicatorRef} />

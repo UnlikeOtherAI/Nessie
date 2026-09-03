@@ -455,6 +455,11 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
         durationMs: body.durationMs,
         fileService,
         lines: body.lines,
+        // Null on a deployment with no model service. The record is written
+        // either way — compaction is the nicety, not the record.
+        modelClient: deps.sharedModelClient,
+        onCompactionFailure: (err) =>
+          request.log.warn({ err }, 'voice compaction failed; recording verbatim'),
         session,
         userDisplayName: user?.displayName ?? 'You',
       })

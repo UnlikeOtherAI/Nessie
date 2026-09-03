@@ -51,6 +51,12 @@ const RUN_LIMIT_FIELDS: RunLimitField[] = [
 ]
 
 type RunLimitsFieldsetProps = {
+  /**
+   * Show the fields, not theirs to change. `<fieldset disabled>` is the
+   * platform's own way to say it: every control inside inherits the disabled
+   * state, so a field added later cannot forget to.
+   */
+  disabled?: boolean
   onChange: (field: RunLimitsField, value: string) => void
   value: RunLimitsFormState
 }
@@ -65,10 +71,15 @@ type RunLimitsFieldsetProps = {
  * one place that class string is legitimately written out a second time.
  */
 export const RunLimitsFieldset = ({
+  disabled = false,
   onChange,
   value,
 }: RunLimitsFieldsetProps) => (
-  <fieldset className="grid gap-1.5 border-0 p-0" data-testid="agent-run-limits">
+  <fieldset
+    className="grid gap-1.5 border-0 p-0"
+    data-testid="agent-run-limits"
+    disabled={disabled}
+  >
     <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
       Run limits
     </legend>

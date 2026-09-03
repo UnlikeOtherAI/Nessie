@@ -212,7 +212,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   }
 
   return (
-    <PageBody width="regular">
+    <PageBody>
       <QueryState
         errorLabel="Couldn't load the backlog."
         loadingLabel="Loading backlog…"
