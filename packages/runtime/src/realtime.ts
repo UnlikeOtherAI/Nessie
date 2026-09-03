@@ -420,7 +420,7 @@ export class PgRealtimeTransport {
     // organization nor a channel scope, but the user scope names its own
     // organization. Without this fallback no row would be written, and the
     // hub gates the whole user-SSE fan-out on a persisted row.
-    let organizationId = organizationScope?.organizationId ?? null
+    let organizationId: string | null = organizationScope?.organizationId ?? null
     if (!organizationId && channelScope) {
       const channel = await this.pool.query<{ organization_id: string }>(
         'SELECT organization_id FROM channels WHERE id = $1',
