@@ -11,6 +11,15 @@ import { useRenameTeam } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import type { TeamRecord } from '../../../lib/api-client'
 
+const renameHelp = (externallyManaged: boolean, renamable: boolean): string | undefined => {
+  if (!externallyManaged) return undefined
+  return renamable
+    ? 'This name belongs to your UnlikeOtherAI workspace. Saving renames it there, so it '
+      + 'changes in every other UnlikeOtherAI product too.'
+    : 'This name belongs to your UnlikeOtherAI workspace, and UnlikeOtherAI only accepts the '
+      + 'change from inside it. Switch to this workspace to rename it.'
+}
+
 /**
  * A workspace's own identity: its name and the company picture UnlikeOtherAI
  * holds for it.
@@ -22,14 +31,6 @@ import type { TeamRecord } from '../../../lib/api-client'
  * outside the product you were standing in.
  */
 
-const renameHelp = (externallyManaged: boolean, renamable: boolean): string | undefined => {
-  if (!externallyManaged) return undefined
-  return renamable
-    ? 'This name belongs to your UnlikeOtherAI workspace. Saving renames it there, so it '
-      + 'changes in every other UnlikeOtherAI product too.'
-    : 'This name belongs to your UnlikeOtherAI workspace, and UnlikeOtherAI only accepts the '
-      + 'change from inside it. Switch to this workspace to rename it.'
-}
 export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: TeamRecord }) => {
   const rename = useRenameTeam()
   const { me, reconcileSession } = useAuthSession()
