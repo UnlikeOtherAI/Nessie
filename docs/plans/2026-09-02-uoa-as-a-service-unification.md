@@ -244,10 +244,26 @@ once a project sits inside a workspace whose roster UOA already owns.
 
 ### 4.2 One word per concept — with the honest exceptions
 
-| Concept | UOA term | Our word |
+> **Superseded on the word 2026-09-03.** The owner overrode this section's
+> "workspace" proposal in favour of **"team"** during same-day discussion, and
+> the rename shipped that day as commit `4fe11c54` ("refactor: rename the
+> workspace concept to team, everywhere", 696 files) — see
+> `docs/plans/2026-09-01-team-members-page.md`'s status banner for exactly
+> what it touched. It landed as a vocabulary rename only: `Project` did
+> **not** leave the hierarchy and the inversion this section's row implies
+> (Project as a Nessie-only sub-unit below the UOA-mapped layer) was **not**
+> built — the shape stayed `Organisation → Team → Project → Channel` (see
+> `docs/standards/team-model.md`, itself renamed from
+> `workspace-model.md`), with the local `Team` row simply keeping its name.
+> The rest of this section (the split of `Settings → Organization → Members`
+> into two rosters) is exactly what shipped the same day, independently, as
+> the org-members-page fix referenced above — read it as confirmed, not
+> superseded.
+
+| Concept | UOA term | Our word (as proposed here; see note above for what shipped) |
 |---|---|---|
 | UOA Organisation ⇒ local `Organization` | Organisation | **organisation** |
-| UOA Team ⇒ local `Team` + its Project | Team | **workspace** |
+| UOA Team ⇒ local `Team` + its Project | Team | ~~workspace~~ **team** (2026-09-03) |
 | A room inside a workspace | — | **channel** |
 
 Concrete edits: Budgets stops offering "Team" as a scope; Integrations stops
