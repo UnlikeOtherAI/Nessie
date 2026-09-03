@@ -94,20 +94,60 @@ export const INJECTED = `
     var n = c.replace(/[^0-9.,]/g, '').split(',');
     return n.length >= 4 && parseFloat(n[3]) === 0;
   }
+  function frameEl() {
+    try { return document.querySelector('.admin-frame') } catch (e) { return null }
+  }
+  // Focus mode is a palette swap the admin scopes to the frame's children
+  // (.admin-topbar / .admin-shell), never to <html> or <body>. Reading tokens
+  // off documentElement therefore reports the base theme while the page is
+  // monochrome, so the native chrome kept its themed accents through focus.
+  function focusActive() {
+    var f = frameEl();
+    return !!(f && f.classList && f.classList.contains('focus-mode'));
+  }
+  // In focus the native chrome follows whichever focus scope its own context
+  // mirrors: the charcoal navigation where the page still draws navigation
+  // (iPad, tablet), and otherwise the paper-white work surface, which on a
+  // phone is the whole screen the native header and tab bar sit against. Out
+  // of focus this stays on documentElement, so the reported palette is
+  // byte-for-byte what it was before.
+  function themeEl() {
+    var f = focusActive() ? frameEl() : null;
+    if (f && f.querySelector) {
+      var nav = f.querySelector(':scope > .admin-topbar')
+        || f.querySelector(':scope > .admin-shell > aside')
+        || f.querySelector(':scope > .admin-shell > .resizable-sidebar')
+        || f.querySelector(':scope > .admin-shell');
+      if (nav) return nav;
+    }
+    return document.documentElement;
+  }
   function pick() {
+    // In focus the work surface is the page, so the native backdrop behind the
+    // WebView matches it instead of the frame's base-theme body colour.
+    if (focusActive()) {
+      var f = frameEl();
+      var shell = f && f.querySelector ? f.querySelector(':scope > .admin-shell') : null;
+      if (shell) { var sc = bgOf(shell); if (!transparent(sc)) return sc; }
+    }
     var els = [document.body, document.documentElement, document.getElementById('root')];
     for (var i = 0; i < els.length; i++) {
       if (els[i]) { var c = bgOf(els[i]); if (!transparent(c)) return c; }
     }
     return '';
   }
+  var lastBg = '';
   function post() {
     var c = pick();
-    if (c) { try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {} }
+    if (c && c !== lastBg) {
+      lastBg = c;
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {}
+    }
   }
   function cssVar(name) {
-    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (e) { return '' }
+    try { return getComputedStyle(themeEl()).getPropertyValue(name).trim() } catch (e) { return '' }
   }
+  var lastTheme = '';
   function postTheme() {
     var accent = cssVar('--accent');
     var accentStrong = cssVar('--accent-strong');
@@ -124,13 +164,16 @@ export const INJECTED = `
     var scheme = '';
     try { scheme = getComputedStyle(document.documentElement).colorScheme } catch (e) {}
     if (accent || surface || scheme === 'light' || scheme === 'dark') {
-      try {
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'theme', accent: accent, accentStrong: accentStrong, inactive: inactive, scheme: scheme, surface: surface,
-          headerSurface: headerSurface, headerText: headerText,
-          text: text, textMuted: textMuted, onAccent: onAccent
-        }))
-      } catch (e) {}
+      var payload = JSON.stringify({
+        type: 'theme', accent: accent, accentStrong: accentStrong, inactive: inactive, scheme: scheme, surface: surface,
+        headerSurface: headerSurface, headerText: headerText,
+        text: text, textMuted: textMuted, onAccent: onAccent
+      });
+      // The palette animates over 300ms, so the settle pass below re-reads it
+      // many times; only a changed palette reaches the bridge.
+      if (payload === lastTheme) return;
+      lastTheme = payload;
+      try { window.ReactNativeWebView.postMessage(payload) } catch (e) {}
     }
   }
   function syncNativePhoneTabBarScrollRegions() {
@@ -159,7 +202,41 @@ export const INJECTED = `
   }
 
   function sync() { syncNativePhoneTabBarScrollRegions(); post(); postTheme(); }
+  // Entering or leaving focus interpolates every palette token over 300ms
+  // (styles.css registers them with @property). A single read on the class
+  // change latches a pre- or mid-animation colour and nothing fires again, so
+  // keep sampling until the transition has settled; posts are de-duplicated.
+  var settleTimer = null;
+  var settleUntil = 0;
+  function syncUntilSettled() {
+    sync();
+    if (!window.setInterval || !window.clearInterval) return;
+    settleUntil = Date.now() + 600;
+    if (settleTimer) return;
+    // Only the colours are re-read while the palette interpolates; rescanning
+    // the page's scroll regions on every frame of the transition is wasted work.
+    settleTimer = window.setInterval(function () {
+      post();
+      postTheme();
+      if (Date.now() > settleUntil) { window.clearInterval(settleTimer); settleTimer = null; }
+    }, 50);
+  }
+  // The focus class lands on .admin-frame, which neither the documentElement
+  // nor the body observer below can see, so a toggle used to reach the native
+  // shell as no message at all.
+  var frameObserver = null;
+  var observedFrame = null;
+  function bindFrameObserver() {
+    var f = frameEl();
+    if (!f || f === observedFrame) return;
+    if (frameObserver && frameObserver.disconnect) frameObserver.disconnect();
+    observedFrame = f;
+    frameObserver = new MutationObserver(syncUntilSettled);
+    frameObserver.observe(f, { attributes: true, attributeFilter: ['class'] });
+    syncUntilSettled();
+  }
   sync();
+  bindFrameObserver();
 
   function installBuildFreshnessCheck() {
     if (window.__nessieBuildFreshnessInstalled) return;
@@ -234,7 +311,12 @@ export const INJECTED = `
   });
   if (document.body) {
     new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-    new MutationObserver(syncNativePhoneTabBarScrollRegions).observe(document.body, {
+    new MutationObserver(function () {
+      syncNativePhoneTabBarScrollRegions();
+      // The admin frame mounts after this script runs and is replaced on a
+      // remount, so pick it up (and re-bind) as the tree changes.
+      bindFrameObserver();
+    }).observe(document.body, {
       childList: true,
       subtree: true,
     });
