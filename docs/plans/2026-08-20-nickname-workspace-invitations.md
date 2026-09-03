@@ -140,9 +140,10 @@ invitation authority.
 
 4. **Make nickname invitations reachable in the Members screen.**
    - Replace the email-only `type="email"` field in
-     `admin/src/pages/settings/WorkspaceMembersSection.tsx` with an explicit
-     target-kind control and a matching input. Do not infer intent from `@` or
-     any other text heuristic.
+     `admin/src/pages/settings/TeamMembersSection.tsx` (renamed from
+     `WorkspaceMembersSection.tsx` by the 2026-09-03 workspace→team rename,
+     commit `4fe11c54`) with an explicit target-kind control and a matching
+     input. Do not infer intent from `@` or any other text heuristic.
    - Email preserves email validation and current copy. Nickname uses the UOA
      nickname rules, explains that UOA sends the email privately, and shows a
      neutral confirmation for a submitted nickname request.

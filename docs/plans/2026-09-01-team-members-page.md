@@ -1,17 +1,27 @@
 # A team-scoped Members page, reusing the org page (plan)
 
-> **Status: blocked on the in-flight Project/Team unification.** A parallel
-> effort is actively renaming/restructuring the Project/Team/Workspace
-> vocabulary (see `docs/plans/2026-09-02-uoa-as-a-service-unification.md` and
-> commit `dc713d9d`) — as of 2026-09-03 the owner has directed that effort to
-> land on the word **"Team"** for the UOA-mapped concept, overriding that
-> doc's "workspace" proposal, with the exact final shape of Project's
-> relationship to Team still being settled. This plan captures the confirmed
-> facts and the owner's exact UI spec now, so no requirements are lost, but
-> the "currently selected team" resolution and file citations below must be
-> re-verified against whatever model actually lands before this is built —
-> do not build against this doc's file names without checking they still
-> exist.
+> **Status: blocked on the Project/Team unification's structural half; the
+> rename half landed 2026-09-03.** The workspace→team vocabulary rename
+> shipped on main as commit `4fe11c54` ("refactor: rename the workspace
+> concept to team, everywhere", 2026-09-03), landing on the word **"Team"**
+> for the UOA-mapped concept as the owner directed that day, overriding
+> `docs/plans/2026-09-02-uoa-as-a-service-unification.md`'s "workspace"
+> proposal. What it did: `GET /api/workspace/members` → `GET
+> /api/team/members` (`api/src/routes/workspace-members.ts` →
+> `api/src/routes/team-members.ts`, same for the `/api/workspace/invitations*`
+> → `/api/team/invitations*` relays), `listWorkspaceMembers` →
+> `listTeamMembers` and `resolveUoaRosterWorkspace` → `resolveUoaRosterTeam`
+> (`packages/workspace-admin` → `packages/team-admin`), and
+> `WorkspaceMembersSection.tsx` / `WorkspaceMemberPeople.tsx` →
+> `TeamMembersSection.tsx` / `TeamMemberPeople.tsx` — the citations in this
+> doc are updated to the new names. Still open and blocking this build: the
+> structural Project/Team unification the rename deliberately did **not** do
+> (sized by commit `dc713d9d`, see the unification doc), including the exact
+> final shape of Project's relationship to Team and the real precedent for
+> "currently selected team" resolution in `admin/`. This plan captures the
+> confirmed facts and the owner's exact UI spec now, so no requirements are
+> lost, but do not build against this doc's structural assumptions without
+> checking what actually lands.
 
 ## Why a team-scoped page is not redundant with the org page
 
@@ -66,18 +76,23 @@ team members page has real work to do that the org page cannot.
 The fix that shipped 2026-09-03 already drew the scope boundary this plan
 depends on:
 
-- **Stays team-scoped, unchanged, reused as-is:** `GET /api/workspace/members`
-  (`api/src/routes/workspace-members.ts`), `listWorkspaceMembers`
-  (`packages/workspace-admin/src/uoa-org-roster.ts`),
-  `WorkspaceMembersSection.tsx` / `WorkspaceMemberPeople.tsx`. These were
+- **Stays team-scoped, unchanged, reused as-is:** `GET /api/team/members`
+  (`api/src/routes/team-members.ts`), `listTeamMembers`
+  (`packages/team-admin/src/uoa-org-roster.ts`),
+  `TeamMembersSection.tsx` / `TeamMemberPeople.tsx`. These were
   already correctly scoped to a single team before the fix — that's exactly
   why the fix left them alone rather than folding them into the new
-  org-wide read.
+  org-wide read. (Renamed from `workspace-members.ts` / `listWorkspaceMembers`
+  / `packages/workspace-admin` / `WorkspaceMembersSection.tsx` /
+  `WorkspaceMemberPeople.tsx` by the workspace→team rename, commit
+  `4fe11c54`, landed the same day as this doc was written — 2026-09-03.)
 - **New org-scoped pieces the fix added** (will need a `scope` parameter
   when this redesign is actually built, or a sibling set for team scope):
   `listOrganisationMembers` / `updateOrganisationMemberRole` /
   `withUoaOrgRosterSubjectAssertion`
-  (`packages/workspace-admin/src/uoa-org-members.ts`),
+  (`packages/team-admin/src/uoa-org-members.ts` — the package was
+  `packages/workspace-admin` when the fix landed earlier the same day;
+  `4fe11c54` moved it),
   `GET/PUT/POST /api/organization/members*`
   (`api/src/routes/organization-members.ts`),
   `OrganizationMembersSection.tsx`, `useOrganizationMembers()` /
@@ -91,11 +106,17 @@ depends on:
 
 ## Open items before this can be built
 
-1. **Resolve the parallel rename first.** "Currently selected team"
-   resolution, and whether "Project" survives as a concept at all, both
-   depend on where `2026-09-02-uoa-as-a-service-unification.md` lands.
-   Find and cite the real precedent for active-team resolution in `admin/`
-   once that's settled — do not invent a new mechanism.
+1. **~~Resolve the parallel rename first.~~ RESOLVED 2026-09-03 — the
+   workspace→team rename landed as commit `4fe11c54`**, so the word is
+   settled: the UOA-mapped concept is "Team", and the roster/members
+   machinery lives at `api/src/routes/team-members.ts`,
+   `packages/team-admin/src/uoa-org-roster.ts`,
+   `TeamMembersSection.tsx` / `TeamMemberPeople.tsx`. What remains open from
+   this item is the *structural* half the rename did not touch: whether
+   "Project" survives as a concept at all still depends on where
+   `2026-09-02-uoa-as-a-service-unification.md` lands, and the real precedent
+   for active-team resolution in `admin/` still needs finding and citing —
+   do not invent a new mechanism.
 2. **Existing-user autocomplete.** No autocomplete/person-picker component
    was identified in `admin/` during the 2026-09-03 work. Confirm whether
    one exists (search `admin/src/components/`) before building a new one.

@@ -1,5 +1,14 @@
 # Settings B (organisation) — content design-system audit
 
+> **Note (2026-09-03):** this audit predates the workspace→team rename
+> (commit `4fe11c54`). Every `Workspace*` file name below (e.g.
+> `WorkspaceMembersSection.tsx`, `WorkspaceMemberPeople.tsx`,
+> `WorkspaceAvatarPanel.tsx`) reflects the tree as it stood at audit time;
+> the current names carry `Team` instead (`TeamMembersSection.tsx`,
+> `TeamMemberPeople.tsx`, `TeamAvatarPanel.tsx`, etc. — verify each against
+> the live tree rather than trusting this snapshot). Left as-written below
+> since this is a point-in-time inventory, not a live build pointer.
+
 Slice: `admin/src/pages/settings/OrganizationSettingsPage.tsx`, `organization/*`
 (CallProviderSettingsPanel, ConversationalSetupPanel, LogoPanel,
 WorkspaceAvatarPanel), `StatusesPage.tsx`, `statuses/*`, `ConnectionsPage.tsx`,

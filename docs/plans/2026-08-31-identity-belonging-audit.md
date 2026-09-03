@@ -128,13 +128,17 @@ in the bug — notably, it never consults the directory, so a workspace that
 ### 1.5 Join / invite / roster
 
 Rosters and invitations are live UOA relays, nothing persisted
-([workspace-members.ts](../../api/src/routes/workspace-members.ts),
-[uoa-org-roster.ts](../../packages/workspace-admin/src/uoa-org-roster.ts)): the
+([team-members.ts](../../api/src/routes/team-members.ts),
+[uoa-org-roster.ts](../../packages/team-admin/src/uoa-org-roster.ts)): the
 roster is the join of the UOA team-member list (subjects + team roles) with
 the org-member list (identity), so it shows **actual team members only**; the
 Members page additionally renders a "Pending invitations" section with status,
 approval state, and expiry
-([WorkspaceMembersSection.tsx:186-211,469](../../admin/src/pages/settings/WorkspaceMembersSection.tsx)).
+([TeamMembersSection.tsx](../../admin/src/pages/settings/TeamMembersSection.tsx) —
+renamed from `workspace-members.ts` / `packages/workspace-admin` /
+`WorkspaceMembersSection.tsx` by the 2026-09-03 workspace→team rename
+(`4fe11c54`); this audit's other `workspace-*` file citations below carry the
+old names from the audit date and are left as written).
 There is no join endpoint: joining *is* logging in or switching into the
 workspace, after UOA acceptance. Acceptance itself is hosted by UOA; Nessie
 mints no invitation tokens. Known leftovers from gap-analysis phase 5 stand:
@@ -386,20 +390,23 @@ does not grant. Rule-zero check 2: scope by entitlement, not ambient org.
 
 **Fixed 2026-09-03.** A sibling instance of the same class of bug was found
 and fixed the same day: `admin/src/pages/settings/SettingsMembersPage.tsx`
-rendered the admin's "Organization → Members" page from
-`WorkspaceMembersSection`, which reads `GET /api/workspace/members`
-([workspace-members.ts:90-92](../../api/src/routes/workspace-members.ts)) —
+rendered the admin's "Organization → Members" page from the team members
+section — now `TeamMembersSection` (then `WorkspaceMembersSection`), which
+reads `GET /api/team/members` (then `GET /api/workspace/members`,
+[team-members.ts](../../api/src/routes/team-members.ts)) —
 resolved from the session's currently active TEAM
-(`resolveUoaRosterWorkspace`), not the organisation. A UOA org can hold many
+(`resolveUoaRosterTeam`, then `resolveUoaRosterWorkspace`), not the organisation. A UOA org can hold many
 teams; the page titled "Organization Members" silently showed only whoever
 was in whichever team the viewer's session happened to be scoped to, never
 the whole org. Fixed with a genuinely org-wide read: `listOrganisationMembers`
-(`packages/workspace-admin/src/uoa-org-members.ts`, calling
+(`packages/team-admin/src/uoa-org-members.ts` — the package was still
+`packages/workspace-admin` when this fix landed; the workspace→team rename
+`4fe11c54` moved it the same day — calling
 `/org/organisations/:orgId/members?status=all` directly, no team join) served
 via `GET /api/organization/members`
 (`api/src/routes/organization-members.ts`), rendered by a new
 `OrganizationMembersSection.tsx` on the same page. The team-scoped
-`GET /api/workspace/members` and `WorkspaceMembersSection` are unchanged —
+`GET /api/team/members` and `TeamMembersSection` are unchanged —
 they remain the correct primitive for a future per-team members page (see
 `docs/plans/2026-09-01-team-members-page.md`).
 
