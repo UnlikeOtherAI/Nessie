@@ -150,6 +150,11 @@ mod tests {
             "core:window:allow-is-maximized",
             "core:window:allow-maximize",
             "core:window:allow-unmaximize",
+            "core:window:allow-current-monitor",
+            "core:window:allow-set-position",
+            "core:window:allow-set-size",
+            "core:window:allow-is-fullscreen",
+            "core:window:allow-set-fullscreen",
         ];
         for capabilities in [DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES] {
             for action in actions {

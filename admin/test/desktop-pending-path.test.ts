@@ -51,6 +51,15 @@ test('custom traffic lights are only exposed by Windows and Linux Tauri shells',
   }
 })
 
+test('the green traffic light owns the shared window-layout popover', () => {
+  const controls = source('../src/layouts/admin-shell/DesktopWindowControls.tsx')
+  const layouts = source('../src/layouts/admin-shell/WindowLayoutPopover.tsx')
+  assert.match(controls, /LAYOUT_HOVER_DELAY_MS = 800/)
+  assert.match(controls, /<WindowLayoutPopover/)
+  assert.match(layouts, /from '..\/..\/components\/overlays\/Popover'/)
+  assert.match(layouts, /className="desktop-window-layout-popover"/)
+})
+
 test('the init script retains the path before dispatching, and both consumers exist', () => {
   const init = source('../../desktop/src-tauri/src/desktop_notifications_init.js')
   const retain = init.indexOf('window.__nessieDesktopPendingPath = path')
