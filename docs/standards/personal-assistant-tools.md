@@ -88,7 +88,11 @@ Per-tool facts:
   a signing deployment refuses a schedule without it, as the route does.
 
 Three more (`worker/src/run/pa-tools/workspace-structure.ts`) cover the
-containers a channel needs — a channel hangs off a team, a team off a project:
+containers a channel needs — a channel hangs off a team, a team off a project.
+(That is the schema's current, inverted shape. The model is
+Organisation → Workspace → Project → Channel; see
+[workspace-model.md](workspace-model.md). These tools describe the code as it
+is, so they are left as-is until the foreign key is flipped.)
 
 - `project_list` → `listProjectsForUser` + `listTeamsForOrganization`. Any
   active member, matching `GET /api/projects` (owners see every project in the

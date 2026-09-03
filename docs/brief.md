@@ -21,9 +21,10 @@ profiles, organisation and team membership, and invitations.
   party. That material is not a local credential or identity authority.
 - UOA's organisation and team structure maps **1:1** into Nessie: one UOA
   organisation is one Nessie `Organization`, bound by the stable UOA
-  organisation id (`Organization.externalOrgId`), and one UOA workspace is one
-  **workspace** (the local `Team` model) inside that organisation — Projects and
-Channels are Nessie's own, and live inside a workspace. Flattening
+  organisation id (`Organization.externalOrgId`), and one UOA **team** is one
+  **workspace** inside that organisation; Projects and Channels are Nessie's
+  own and live inside a workspace
+  ([standards/workspace-model.md](standards/workspace-model.md)). Flattening
   several UOA organisations into one local container — or keeping any second
   local copy of the org hierarchy — is the same violation as duplicating
   identity rows, and gets the same remedy: an API-backed refactor and a data

@@ -37,8 +37,11 @@ mechanism upstream.
 
 ## 1. The shape of the problem
 
-UOA has **two** levels: Organisation → Team. Nessie has **four**: Organization →
-Project → Team → Channel, and the admin calls a Team a "workspace".
+UOA has **two** levels: Organisation → Team. Nessie's model is Organisation →
+Workspace → Project → Channel, where a workspace IS the UOA team and a project
+is Nessie's own ([standards/workspace-model.md](../standards/workspace-model.md)).
+The SCHEMA, however, reads Organisation → Project → Workspace, because
+`Team.projectId` points the wrong way.
 
 `Project` is not the harmless plumbing v1 claimed. Verified in the schema:
 

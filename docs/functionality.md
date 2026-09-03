@@ -1327,7 +1327,7 @@ type ControlCommandDefinition = {
 - Secret definitions and values are encrypted at minimum with 256-bit standard.
 - Tool configs hold `secretRef` only; runtime resolves secrets in a non-chat execution path.
 - Resolves must pass policy checks on actor binding + scope + project + role and emit auditable deny reasons.
-  - policy chain: org -> project -> team -> channel -> explicit secret bindings, deny-first at each layer.
+  - policy chain: org -> project -> team -> channel -> explicit secret bindings, deny-first at each layer. (That order follows the schema's current `Team.projectId` direction, which is inverted relative to the model in `docs/standards/workspace-model.md`; it is the resolution order the code uses today, not the hierarchy.)
 - API contracts to support:
   - `POST /secrets` (create),
   - `GET /secrets` (metadata list),
