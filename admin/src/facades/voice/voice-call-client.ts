@@ -128,17 +128,17 @@ export const createVoiceCall = (deps: {
   /**
    * Answers one tool call.
    *
-   * Everything except the hand-off runs server-side, so the model never holds
-   * a credential and cannot reach anything the person could not. `pa_send`
-   * stays here because it posts as the person through the ordinary message
-   * route with their own session — the same write a typed message makes.
+   * Everything runs server-side, so the model never holds a credential and
+   * cannot reach anything the person could not. `pa_send` takes its own route
+   * because it does not answer here and now: it starts a real run and the
+   * reply arrives minutes later, as its own spoken turn.
    */
   const handleToolCall = async (call: GeminiToolCall): Promise<unknown> => {
     if (call.name === 'pa_send') {
       if (!handoff) return { ok: false, error: 'Hand-off is unavailable on this call.' }
       const text = typeof call.args['text'] === 'string' ? call.args['text'] : ''
       if (text.trim().length === 0) return { ok: false, error: 'No request text was provided.' }
-      return handoff.dispatch(text)
+      return handoff.dispatch(text, call.id)
     }
     if (!credential) return { ok: false, error: 'The call is not connected.' }
     try {
@@ -412,8 +412,8 @@ export const createVoiceCall = (deps: {
         publish({ agentName: credential.agentName })
         handoff = createAssistantHandoff({
           api: deps.api,
-          threadId: credential.threadId,
           speak: speakThroughModel,
+          voiceSessionId: credential.voiceSessionId,
         })
 
         await openSocket(credential.accessToken, credential.websocketUrl)

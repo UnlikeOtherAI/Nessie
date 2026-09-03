@@ -68,12 +68,30 @@ glyph. Spec and phasing:
   transcript** control opening the attachment in the shared `Dialog` — never a
   navigating link, which is how a `blob:` URL destroyed mobile's nav state.
 - **`pa_send` adds no authority.** The one declared function posts an ordinary
-  user message through the normal message route, so the run is
-  indistinguishable from a typed one and every existing gate applies. It acks
-  `working` immediately (Gemini Live blocks until a tool responds) and the reply
-  is spoken later; replies are polled through a viewer-entitled read rather than
-  the thread SSE stream, which is cut structurally when a run consumes a
-  privileged source.
+  user message, so the run is indistinguishable from a typed one and every
+  existing gate applies. It acks `working` immediately (Gemini Live blocks
+  until a tool responds) and the reply is spoken later; replies are polled
+  through a viewer-entitled read rather than the thread SSE stream, which is
+  cut structurally when a run consumes a privileged source. Both halves are
+  **voice-scoped routes** (`…/pa-send`, `…/replies`) rather than the generic
+  message routes, because the device credential is refused on those by design:
+  a native call needs them and a stolen phone token must not become a write to
+  any thread the person can see. What keeps that scope real is that the thread
+  is the call's own and is never named by the caller. Web and native use the
+  same two routes — one path, so neither can drift.
+- **The post-commit work of a message is one service, not one route's tail.**
+  A message row on its own does nothing; `deliverCreatedMessage`
+  (`api/src/services/message-delivery.ts`) is what wakes the agent, pushes to
+  phones, alerts whoever was named, and announces it to open feeds. Both the
+  composer's route and `pa-send` call it. Forking that sequence into the voice
+  path is how you get a hand-off that writes a message, looks like it worked,
+  and answers nothing.
+- **A hand-off spends from the call's tool budget.** `maxToolCalls` is the only
+  bound on how much work one call can start, and a hand-off starts a real
+  billable run — far more than a web search. It is counted for the run it
+  begins, not for the fixed ack it returns. Gemini's own call id arrives as the
+  `Idempotency-Key`, so a retried tool call is one message, one run and one
+  unit of budget.
 - **Local-dev constraint:** the Ledger call goes through `safeFetch`, which
   refuses loopback and private addresses, so a local Ledger cannot be used —
   point `LEDGER_PUBLIC_URL` at the hosted service.

@@ -464,11 +464,18 @@ which carries the original sign-in forward and revokes its predecessor under a
 conditional update, so two racing refreshes cannot leave two live credentials.
 The credential lives two hours against a 30-minute default call cap.
 
-Not yet built, and the rest of what a native call needs: the voice-scoped
-`pa-send` and reply-poll routes (their wire contracts exist in
-`packages/schemas/src/voice.ts`; the routes do not), and the Expo module
-itself. Nothing calls the mint route yet — it is inert until the native
-client lands.
+**The conversation bridge shipped 2026-09-03 too.** `POST
+…/sessions/:id/pa-send` and `GET …/sessions/:id/replies` are the voice-scoped
+equivalents of the generic message routes, marked `duringACall` and living in
+`api/src/routes/voice-conversation.ts`. `pa-send` writes the message through
+the same `createThreadMessage` the composer uses and then the same
+`deliverCreatedMessage` — the post-commit work (orchestration, push, realtime,
+alerts, memory) extracted out of `thread-message-create.ts` so both routes run
+one copy of it. The poll reads through `listThreadMessages` with the caller as
+viewer, in both lanes a run can answer in. The browser client was moved onto
+the same two routes in the same change, so there is one code path rather than
+two that can drift. Still to build for a native call: the Expo module itself.
+Nothing calls the mint route yet — it is inert until the native client lands.
 
 ### 4. The web admin gets the same call — no CallKit, same everything else
 
@@ -587,13 +594,11 @@ server work in the plan and is what turns the call from a relay into
 call loop proves out so the plumbing lands on a working audio path.
 
 **Phase 1b — the iPhone call (CallKit)**
-Note a hard server dependency the phase must carry: the browser client reaches
-the assistant through the *generic* message routes on ordinary session auth,
-and the voice-scoped device credential is deliberately not accepted there. So
-the voice-scoped `pa-send` and reply-poll endpoints named in §3 do not exist
-yet and are part of this phase, with the authorization matrix updated in the
-same change — a native call cannot hand anything to the assistant without
-them.
+The server dependency this phase used to carry is **done** (2026-09-03): the
+voice-scoped `pa-send` and reply-poll routes named in §3 exist, the
+authorization matrix lists them, and the browser client uses them too, so the
+native layer inherits a path that is already exercised rather than a second one
+written blind.
 Mobile: local Expo module with the ported `GeminiLiveClient` +
 `AgentCallCoordinator` + `AgentCallSession` seam; credential source swapped
 to the Nessie routes; the same header call button in the mobile WebView
