@@ -126,23 +126,22 @@ export const shouldDeliverWsNotification = async (
   return input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))
 }
 
-export const createRealtimeHub = async (input: {
+/**
+ * The LISTEN-side fan-out, exported so it can be exercised without a live
+ * pg LISTEN connection. It never writes to `realtime_events`: the publisher
+ * persisted the row before NOTIFYing (`PgRealtimeTransport.publishWs`), so
+ * with N api replicas listening, N appends here would corrupt the shared
+ * Last-Event-ID sequence. A notification carrying no `eventId` comes from an
+ * older publisher mid rolling deploy and is fanned out live with no replay
+ * bookkeeping.
+ */
+export const createWsNotificationDelivery = (input: {
   canAccessChannelEvent?: (input: {
     channelId: string
     organizationId: string
     userId: string
   }) => Promise<boolean>
-  databaseUrl: string
-  poolMax: number
-  poolMin: number
-  prisma: PrismaClient
 }) => {
-  const pool = createPgPool(input.databaseUrl, {
-    max: input.poolMax,
-    min: input.poolMin,
-  })
-  const transport = new PgRealtimeTransport(pool, input.databaseUrl)
-  const realtimeEventStore = createRealtimeEventStore(input.prisma)
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
@@ -257,6 +256,38 @@ export const createRealtimeHub = async (input: {
       connection.send(notification.message)
     }
   }
+
+  return {
+    deliverNotification,
+    threadSseConnections,
+    userSseConnections,
+    wsConnections,
+  }
+}
+
+export const createRealtimeHub = async (input: {
+  canAccessChannelEvent?: (input: {
+    channelId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
+  databaseUrl: string
+  poolMax: number
+  poolMin: number
+  prisma: PrismaClient
+}) => {
+  const pool = createPgPool(input.databaseUrl, {
+    max: input.poolMax,
+    min: input.poolMin,
+  })
+  const transport = new PgRealtimeTransport(pool, input.databaseUrl)
+  const realtimeEventStore = createRealtimeEventStore(input.prisma)
+  const {
+    deliverNotification,
+    threadSseConnections,
+    userSseConnections,
+    wsConnections,
+  } = createWsNotificationDelivery(input)
 
   await transport.listen(deliverNotification)
 
