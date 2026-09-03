@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode } from 'react'
 
+import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 import { CloseIcon, SearchIcon } from './channel-members/icons'
 
@@ -44,80 +45,82 @@ export const MemberManagementPopup = ({
   const { requestClose } = overlay
 
   return (
-    <div
-      {...overlay.scrimProps}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        ...overlay.layerStyle,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--scrim-strong)',
-        backdropFilter: 'blur(4px)',
-      }}
-    >
+    <OverlayPortal>
       <div
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className={[
-          'flex max-h-[80dvh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
-          'border border-[color:var(--sep)] bg-[color:var(--main)]',
-        ].join(' ')}
-        ref={overlay.panelRef}
-        role="dialog"
-        style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
-        tabIndex={-1}
+        {...overlay.scrimProps}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          ...overlay.layerStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--scrim-strong)',
+          backdropFilter: 'blur(4px)',
+        }}
       >
-        <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-[color:var(--tx)]" id={titleId}>
-              {entityLabel} members
-            </h2>
-            <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
-              {totalMembers} member{totalMembers !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)]',
-              'hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            aria-label="Close"
-            onClick={requestClose}
-            type="button"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        <div className="border-b border-[color:var(--sep)] px-5 py-3">
-          <div
-            className={[
-              'flex items-center gap-2 rounded-lg border',
-              'border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2',
-            ].join(' ')}
-          >
-            <SearchIcon />
-            <input
-              autoFocus
+        <div
+          aria-labelledby={titleId}
+          aria-modal="true"
+          className={[
+            'flex max-h-[80dvh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
+            'border border-[color:var(--sep)] bg-[color:var(--main)]',
+          ].join(' ')}
+          ref={overlay.panelRef}
+          role="dialog"
+          style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
+          tabIndex={-1}
+        >
+          <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
+            <div>
+              <h2 className="text-lg font-bold text-[color:var(--tx)]" id={titleId}>
+                {entityLabel} members
+              </h2>
+              <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
+                {totalMembers} member{totalMembers !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <button
               className={[
-                'w-full bg-transparent text-sm text-[color:var(--tx)] outline-none',
-                'placeholder:text-[color:var(--tx3)]',
+                'flex h-7 w-7 items-center justify-center rounded',
+                'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)]',
+                'hover:text-[color:var(--tx)]',
               ].join(' ')}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search members or agents..."
-              ref={searchInputRef}
-              value={search}
-            />
+              aria-label="Close"
+              onClick={requestClose}
+              type="button"
+            >
+              <CloseIcon />
+            </button>
           </div>
-        </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          {children}
+          <div className="border-b border-[color:var(--sep)] px-5 py-3">
+            <div
+              className={[
+                'flex items-center gap-2 rounded-lg border',
+                'border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2',
+              ].join(' ')}
+            >
+              <SearchIcon />
+              <input
+                autoFocus
+                className={[
+                  'w-full bg-transparent text-sm text-[color:var(--tx)] outline-none',
+                  'placeholder:text-[color:var(--tx3)]',
+                ].join(' ')}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder="Search members or agents..."
+                ref={searchInputRef}
+                value={search}
+              />
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            {children}
+          </div>
         </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }

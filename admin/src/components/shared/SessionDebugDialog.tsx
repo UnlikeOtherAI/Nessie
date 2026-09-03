@@ -1,4 +1,5 @@
 import { useId, useRef, type FormEvent } from 'react'
+import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 import { Notice } from '../primitives/Notice'
 
@@ -84,130 +85,132 @@ export const SessionDebugDialog = ({
   }
 
   return (
-    // Not the shared `Dialog`: this one is tuned for phones — safe-area insets on
-    // the scrim, a 44px close target instead of the shell's 28px, and a dvh
-    // max-height with a scrolling flex column. `useOverlay` still gives it the
-    // Back registration, focus trap, drag-safe scrim and layer every other
-    // overlay gets (docs/navigation/overview.md §7).
-    <div
-      {...overlay.scrimProps}
-      className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
-      style={{
-        ...overlay.layerStyle,
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        paddingLeft: 'env(safe-area-inset-left, 0px)',
-        paddingRight: 'env(safe-area-inset-right, 0px)',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-      }}
-    >
+    <OverlayPortal>
+      // Not the shared `Dialog`: this one is tuned for phones — safe-area insets on
+      // the scrim, a 44px close target instead of the shell's 28px, and a dvh
+      // max-height with a scrolling flex column. `useOverlay` still gives it the
+      // Back registration, focus trap, drag-safe scrim and layer every other
+      // overlay gets (docs/navigation/overview.md §7).
       <div
-        aria-busy={pending || undefined}
-        aria-describedby={descriptionId}
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="create-channel-panel flex flex-col overflow-hidden"
-        ref={overlay.panelRef}
-        role="dialog"
+        {...overlay.scrimProps}
+        className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
         style={{
-          maxHeight: [
-            'calc(100dvh - env(safe-area-inset-top, 0px)',
-            '- env(safe-area-inset-bottom, 0px) - 2rem)',
-          ].join(' '),
-          maxWidth: 640,
+          ...overlay.layerStyle,
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
-        tabIndex={-1}
       >
-        <div className="create-channel-header flex-shrink-0">
-          <div>
-            <h2
-              className="text-lg font-bold text-[color:var(--tx)]"
-              id={titleId}
-            >
-              {title}
-            </h2>
-            <div
-              className="text-xs text-[color:var(--tx3)]"
-              id={descriptionId}
-            >
-              {description}
-            </div>
-          </div>
-          <button
-            aria-label={`Close ${title.toLowerCase()}`}
-            className={[
-              'flex h-11 w-11 flex-shrink-0 items-center justify-center',
-              'rounded text-[color:var(--tx3)]',
-              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            disabled={pending}
-            onClick={onClose}
-            type="button"
-          >
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 18L18 6M6 6l12 12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <form
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
-          onSubmit={handleSubmit}
+        <div
+          aria-busy={pending || undefined}
+          aria-describedby={descriptionId}
+          aria-labelledby={titleId}
+          aria-modal="true"
+          className="create-channel-panel flex flex-col overflow-hidden"
+          ref={overlay.panelRef}
+          role="dialog"
+          style={{
+            maxHeight: [
+              'calc(100dvh - env(safe-area-inset-top, 0px)',
+              '- env(safe-area-inset-bottom, 0px) - 2rem)',
+            ].join(' '),
+            maxWidth: 640,
+          }}
+          tabIndex={-1}
         >
-          <textarea
-            aria-label={textareaLabel}
-            autoCapitalize="off"
-            autoCorrect="off"
-            className="admin-input admin-input-mono min-h-40 flex-1"
-            onChange={onChange ? (event) => onChange(event.target.value) : undefined}
-            onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
-            readOnly={readOnly}
-            ref={textareaRef}
-            rows={16}
-            spellCheck={false}
-            style={{ resize: 'vertical', whiteSpace: 'pre', overflowWrap: 'normal' }}
-            value={value}
-          />
-
-          {error ? (
-            <Notice className="mt-3" radius="xl" role="alert" tone="danger">
-              {error}
-            </Notice>
-          ) : null}
-
-          <span aria-live="polite" className="sr-only">
-            {pending ? pendingLabel ?? actionLabel : ''}
-          </span>
-
-          <div className="flex flex-shrink-0 justify-end gap-2 pt-4">
+          <div className="create-channel-header flex-shrink-0">
+            <div>
+              <h2
+                className="text-lg font-bold text-[color:var(--tx)]"
+                id={titleId}
+              >
+                {title}
+              </h2>
+              <div
+                className="text-xs text-[color:var(--tx3)]"
+                id={descriptionId}
+              >
+                {description}
+              </div>
+            </div>
             <button
-              className="admin-button admin-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={`Close ${title.toLowerCase()}`}
+              className={[
+                'flex h-11 w-11 flex-shrink-0 items-center justify-center',
+                'rounded text-[color:var(--tx3)]',
+                'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
+              ].join(' ')}
               disabled={pending}
               onClick={onClose}
               type="button"
             >
-              Cancel
-            </button>
-            <button
-              className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={actionDisabled || pending}
-              type="submit"
-            >
-              {pending ? pendingLabel ?? actionLabel : actionLabel}
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M6 18L18 6M6 6l12 12"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           </div>
-        </form>
+
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+            onSubmit={handleSubmit}
+          >
+            <textarea
+              aria-label={textareaLabel}
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="admin-input admin-input-mono min-h-40 flex-1"
+              onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+              onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
+              readOnly={readOnly}
+              ref={textareaRef}
+              rows={16}
+              spellCheck={false}
+              style={{ resize: 'vertical', whiteSpace: 'pre', overflowWrap: 'normal' }}
+              value={value}
+            />
+
+            {error ? (
+              <Notice className="mt-3" radius="xl" role="alert" tone="danger">
+                {error}
+              </Notice>
+            ) : null}
+
+            <span aria-live="polite" className="sr-only">
+              {pending ? pendingLabel ?? actionLabel : ''}
+            </span>
+
+            <div className="flex flex-shrink-0 justify-end gap-2 pt-4">
+              <button
+                className="admin-button admin-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pending}
+                onClick={onClose}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={actionDisabled || pending}
+                type="submit"
+              >
+                {pending ? pendingLabel ?? actionLabel : actionLabel}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }

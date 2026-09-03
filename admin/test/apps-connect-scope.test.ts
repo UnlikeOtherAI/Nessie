@@ -195,6 +195,10 @@ const mount = async () => {
   return {
     calls,
     container,
+    // The dialog portals out of `container`
+    // (components/overlays/OverlayPortal.tsx), so what it rendered is read
+    // from the document rather than from the element it was mounted in.
+    scope: dom.window.document.body,
     unmount: async () => {
       await act(async () => root.unmount())
       container.remove()
@@ -208,13 +212,13 @@ test('the dialog posts personal scope by default and only posts channel scope af
   const harness = await mount()
 
   try {
-    const confirm = harness.container.querySelector<HTMLButtonElement>(
+    const confirm = harness.scope.querySelector<HTMLButtonElement>(
       '[data-testid="app-connect-confirm"]',
     )
     assert.ok(confirm)
     assert.equal(confirm.disabled, false)
-    assert.equal(harness.container.querySelector('[data-testid="app-connect-channel-picker"]'), null)
-    assert.match(harness.container.textContent ?? '', /Just you\. You can choose which agents may use it/)
+    assert.equal(harness.scope.querySelector('[data-testid="app-connect-channel-picker"]'), null)
+    assert.match(harness.scope.textContent ?? '', /Just you\. You can choose which agents may use it/)
 
     await act(async () => confirm.click())
     await settle()
@@ -228,23 +232,23 @@ test('the dialog posts personal scope by default and only posts channel scope af
 
   const channelHarness = await mount()
   try {
-    const chooseChannel = channelHarness.container.querySelector<HTMLButtonElement>(
+    const chooseChannel = channelHarness.scope.querySelector<HTMLButtonElement>(
       '[data-testid="app-connect-scope-channel"]',
     )
     assert.ok(chooseChannel)
     await act(async () => chooseChannel.click())
     await settle()
 
-    const confirm = channelHarness.container.querySelector<HTMLButtonElement>(
+    const confirm = channelHarness.scope.querySelector<HTMLButtonElement>(
       '[data-testid="app-connect-confirm"]',
     )
-    const picker = channelHarness.container.querySelector<HTMLSelectElement>(
+    const picker = channelHarness.scope.querySelector<HTMLSelectElement>(
       '[data-testid="app-connect-channel-picker"]',
     )
     assert.ok(confirm)
     assert.ok(picker)
     assert.equal(confirm.disabled, true)
-    assert.match(channelHarness.container.textContent ?? '', /Select a channel\./)
+    assert.match(channelHarness.scope.textContent ?? '', /Select a channel\./)
 
     picker.value = CHANNEL_ID
     await act(async () => {
@@ -252,11 +256,11 @@ test('the dialog posts personal scope by default and only posts channel scope af
     })
     assert.equal(confirm.disabled, false)
     assert.match(
-      channelHarness.container.textContent ?? '',
+      channelHarness.scope.textContent ?? '',
       /A separate connection will be created for Customer support\./,
     )
-    assert.match(channelHarness.container.textContent ?? '', /You will add your own credential/)
-    assert.match(channelHarness.container.textContent ?? '', /only agents acting in that channel can use this connection\./)
+    assert.match(channelHarness.scope.textContent ?? '', /You will add your own credential/)
+    assert.match(channelHarness.scope.textContent ?? '', /only agents acting in that channel can use this connection\./)
 
     await act(async () => confirm.click())
     await settle()

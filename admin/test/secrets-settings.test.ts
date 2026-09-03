@@ -196,7 +196,9 @@ test('a table opens in a near-fullscreen dialog and closes again', async () => {
 
     await act(async () => expand.click())
 
-    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')
+    // The dialog is portalled out of this mount's container
+    // (components/overlays/OverlayPortal.tsx), so it is read from the document.
+    const dialog = dom.window.document.querySelector<HTMLElement>('[role="dialog"]')
     assert.ok(dialog)
     assert.equal(dialog.style.width, 'calc(100vw - 2rem)')
     assert.equal(dialog.style.height, 'calc(100dvh - 2rem)')
@@ -205,7 +207,7 @@ test('a table opens in a near-fullscreen dialog and closes again', async () => {
     const close = dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
     assert.ok(close)
     await act(async () => close.click())
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.equal(dom.window.document.querySelector('[role="dialog"]'), null)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -247,7 +249,9 @@ test('the secret dialog opens and closes through the shared modal shell', async 
     )
     assert.ok(opener)
     await act(async () => opener.click())
-    assert.ok(container.querySelector('[role="dialog"]'))
+    // The dialog is portalled out of this mount's container
+    // (components/overlays/OverlayPortal.tsx), so it is read from the document.
+    assert.ok(dom.window.document.querySelector('[role="dialog"]'))
     // No hardcoded id — `FormField` mints its own via `useId()` — so focus is
     // pinned with `initialFocusRef` instead. Without it the shell focuses its
     // own close cross, which precedes the form in the DOM.
@@ -257,16 +261,16 @@ test('the secret dialog opens and closes through the shared modal shell', async 
     // prototype graph to build a diff, which took this file's process past
     // 13 GB and 100 seconds before the runner killed it. The failure it was
     // hiding is this very assertion.
-    const nameInput = container.querySelector<HTMLInputElement>(
+    const nameInput = dom.window.document.querySelector<HTMLInputElement>(
       'input[placeholder="STRIPE_API_KEY"]',
     )
     assert.ok(nameInput)
     assert.equal(dom.window.document.activeElement === nameInput, true)
 
-    const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
+    const close = dom.window.document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')
     assert.ok(close)
     await act(async () => close.click())
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.equal(dom.window.document.querySelector('[role="dialog"]'), null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

@@ -19,9 +19,48 @@ once in `navigation/overlay.ts` and mirrored as tokens:
 | Modal | `--layer-modal` 70 | owns Back | fade + 4 px rise, `modalMs` |
 | blocking | `--layer-blocking` 80 | outranks the modal beneath | as modal |
 
-`--layer-stack` (1) is the navigation stack's own layer; nothing else in the
-admin declares a z-index (the lint gate lands in step 15 once the fifty
-overlays have adopted the scale). No scale, ever: a dialog rises 4 px.
+`--layer-stack` (1) is the navigation stack's own layer, and `--layer-tooltip`
+(45) is the other layer without a kind: a hover hint owns no Back, traps no
+focus and is never dismissed, but the two the rail and the sidebar portal
+beside themselves are `position: fixed` and had picked 90 and 80 out of the
+air — which put a hover hint over an open dialog. Nothing else in the admin
+declares a z-index (the lint gate lands in step 15 once the fifty overlays have
+adopted the scale). No scale, ever: a dialog rises 4 px.
+
+### Every overlay leaves the page tree
+
+The scale only decides who wins **inside one stacking context**. An overlay
+left where it is declared — a task dialog inside the project board, a popover
+inside a sidebar row — inherits every ancestor between it and the document, and
+the admin's page path carries all three hazards: `main` clips,
+`.phone-navigation-viewport` isolates, and `.phone-navigation-screen` is a
+positioned, clipped layer that holds a transform for the whole of a stack
+transition. Any one of them takes the viewport away as the overlay's containing
+block, or traps its layer below the shell's own chrome. What that looks like is
+not a subtle z-index bug: the scrim stops being the screen and becomes the
+content column, so the rail and the secondary sidebar stay unblurred and paint
+over the panel, and the panel is cut off at the sidebar's edge.
+
+So no overlay renders where it is declared. Each one wraps its tree in
+**`OverlayPortal`** (`components/overlays/OverlayPortal.tsx`), which portals
+into one `.admin-overlay-root` host appended to `document.body` — where the
+only stacking context is the root's and the only containing block is the
+viewport. The host is shared by every open overlay (they are ordered by the
+scale, not by DOM position) and is `display: contents`, so it is addressing
+rather than layout. `admin/test/overlay-portal.test.ts` holds every `useOverlay`
+consumer to it, exactly in both directions.
+
+Two consequences worth stating:
+
+- **The work surface's palette follows the overlay out.** Focus mode repaints
+  the surface monochrome through `.focus-mode > .admin-shell`, which a portalled
+  dialog is no longer inside, so the shell mirrors the mode onto the body
+  (`overlays-focus-mode`) and the same rules carry a second arm for the host. A
+  dialog opened in focus mode stays with the surface it came from.
+- **`active={false}` is the one opt-out**, and it is not a loophole:
+  `ChannelConversationComposePage` is a Flow, not a modal — on `single` it is a
+  real screen in the phone navigation stack and must travel with its layer, so
+  it portals only on `split`, where it visually is a centred dialog.
 
 **`useOverlay({ id, kind, label, open, onClose, … })`**
 (`components/overlays/useOverlay.ts`) is the shared work every overlay does
