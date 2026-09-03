@@ -670,13 +670,24 @@ Four decisions the browser client never had to make:
   A JS reload therefore remounts into a call that is still running, with its
   timer and its End button intact.
 
-Two smaller things worth recording. The device credential is stored with
-`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: a locked-phone call has to
-*read and rewrite* it, and the stricter `WhenUnlocked` class fails those writes
-with `errSecInteractionNotAllowed`, which would present as a call dying half an
-hour in. And the native socket uses `?access_token=` rather than Coder's
-`Authorization: Token` header — native could use either, and one form across
-both clients is one contract to keep true.
+Two smaller things worth recording. The native socket uses `?access_token=`
+rather than Coder's `Authorization: Token` header: native could use either, and
+one form across both clients is one contract to keep true. And the device
+credential lives **in memory for the length of one call** — the WebView mints a
+fresh one every time, so a Keychain copy would be a credential nothing ever
+reads. Phase 3, where the assistant places the call and there is no WebView to
+mint from, is where a durable one starts to matter; that is also where the
+`AfterFirstUnlock` accessibility class becomes the deciding detail, because a
+locked-phone call has to *rewrite* it and the stricter `WhenUnlocked` class
+fails that write with `errSecInteractionNotAllowed`.
+
+**Known gaps in 1b, stated plainly.** The transcript is submitted at hang-up
+inside a `beginBackgroundTask`, which buys seconds, not certainty: the browser
+client's persistent outbox has no native counterpart yet, so an app killed
+between hang-up and delivery loses that call's record. `pa_send` calls the
+voice-scoped `pa-send` and `replies` routes by their designed contracts; on a
+deployment without them it degrades to the model saying it could not hand the
+work over, rather than failing the call.
 
 **Phase 1c — the Android call (Telecom)**
 The same local Expo module, second platform. Android's equivalent of CallKit
