@@ -21,9 +21,8 @@ import type { AgentRecord } from '../../lib/api-client'
 import { SettingsPanel } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { TeamMembersSection } from './TeamMembersSection'
-import { startExternalSignIn } from '../../lib/external-auth'
-import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { OrganizationMembersSection } from './OrganizationMembersSection'
+import { activeTeam } from '../../lib/teams'
 import { toFormErrors } from '../../facades/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
@@ -138,7 +137,6 @@ const MemberRow = ({
 
 export const SettingsMembersPage = () => {
   const { me, token } = useAuthSession()
-  const { theme } = useTheme()
   const roleIds = me?.user.roleIds ?? []
   const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
@@ -188,22 +186,17 @@ export const SettingsMembersPage = () => {
   }
 
   if (isUoaSession) {
-    // The roster is entitlement-scoped the way `GET /api/team/members` is:
-    // any active member reads it, and only owners and admins get the controls
-    // that mutate it (role, activation, removal, invitations) — the API refuses
-    // those for anyone else, so rendering them would only produce 403s.
+    // The ORG-wide roster: `GET /api/organization/members`, entitlement-scoped
+    // the way `GET /api/team/members` is — any active member reads it, and
+    // only owners and admins get the controls that mutate it (org role,
+    // activation, invitations) — the API refuses those for anyone else, so
+    // rendering them would only produce 403s. Invitations stay team-scoped:
+    // a UOA invite always lands in one team, and the card names which.
     return (
       <SettingsPanel eyebrow="Organization" title="Members">
-        <TeamMembersSection
+        <OrganizationMembersSection
           canManage={canManageTeam}
-          onReconnect={async () => {
-            const providerId = me.auth.providerId
-            if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')
-            await startExternalSignIn(providerId, resolveAppliedTheme(theme), {
-              returnPath: window.location.pathname + window.location.search,
-            })
-          }}
-          pausedPrivateAgentCount={pausedPrivateAgentCount.data?.count ?? 0}
+          inviteTeamLabel={activeTeam(me)?.label}
         />
       </SettingsPanel>
     )

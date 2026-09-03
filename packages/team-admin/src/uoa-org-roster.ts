@@ -95,7 +95,8 @@ export type TeamMemberActivation = 'deactivate' | 'reactivate'
 
 export type TeamInvitationReview = 'approve' | 'deny'
 
-const delegatedSettings = (): UoaDelegatedIdentitySettings => {
+/** Exported for `uoa-org-members.ts`'s org-scoped subject assertion. */
+export const delegatedSettings = (): UoaDelegatedIdentitySettings => {
   const settings = requireSettings()
   return {
     authBaseUrl: settings.baseUrl,
@@ -206,7 +207,13 @@ const parseTeamMembers = (payload: unknown): Map<string, string | undefined> => 
   return members
 }
 
-const parseOrgMembers = (payload: unknown): Map<string, TeamMemberRecord> => {
+/**
+ * Exported for `uoa-org-members.ts`: the organisation-wide roster (every org
+ * member, no team join) reuses this same parser against the same
+ * `/org/organisations/:orgId/members` payload this file already fetches for
+ * team-roster identity — one parser, two callers, never a second copy.
+ */
+export const parseOrgMembers = (payload: unknown): Map<string, TeamMemberRecord> => {
   const members = new Map<string, TeamMemberRecord>()
   for (const row of rowsAt(payload, 'data')) {
     const uoaSub = trimString(row.userId)
@@ -315,7 +322,7 @@ export const removeTeamMember = async (
  * and it refuses to deactivate an owner.
  */
 export const setTeamMemberActivation = async (
-  team: UoaRosterTeam,
+  team: Pick<UoaRosterTeam, 'externalOrgId'>,
   uoaSub: string,
   action: TeamMemberActivation,
   deps: UoaRosterDeps = {},

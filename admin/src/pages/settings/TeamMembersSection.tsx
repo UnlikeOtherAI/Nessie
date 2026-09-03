@@ -50,7 +50,7 @@ const teamNeedsReconnect = (error: unknown): boolean =>
     || (error.code === 'TEAM_MEMBERS_REJECTED' && error.status === 404)
   )
 
-const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord }) => {
+export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord }) => {
   const resend = useResendTeamInvitation()
   const review = useReviewTeamInvitation()
   const revoke = useRevokeTeamInvitation()
@@ -163,7 +163,7 @@ const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord }) => 
   )
 }
 
-const InviteForm = () => {
+const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
   const createInvitations = useCreateTeamInvitations()
   const [email, setEmail] = useState('')
   const [teamRole, setTeamRole] = useState<string>('member')
@@ -217,6 +217,11 @@ const InviteForm = () => {
           ))}
         </Select>
       </FormField>
+      {teamLabel ? (
+        <p className="text-xs text-[color:var(--tx3)]">
+          Invited people join {teamLabel} — every other team needs its own invitation.
+        </p>
+      ) : null}
       <p className="text-xs text-[color:var(--tx3)]">
         UnlikeOtherAI emails the invitation and hosts the acceptance page.
       </p>
@@ -234,6 +239,19 @@ const InviteForm = () => {
     </form>
   )
 }
+
+/**
+ * The invite card, standalone: the organisation members page reuses it as-is
+ * — a UOA invitation always lands in one team (there is no team-less invite),
+ * so inviting from the org page is inviting into the session's active team,
+ * and the form says so when `teamLabel` is passed.
+ */
+export const InviteToTeamCard = ({ teamLabel }: { teamLabel?: string }) => (
+  <Card as="section">
+    <SectionLabel>Invite to team</SectionLabel>
+    <InviteForm teamLabel={teamLabel} />
+  </Card>
+)
 
 export const TeamMembersSection = ({
   canManage,
@@ -349,10 +367,7 @@ export const TeamMembersSection = ({
 
       {canManage && !needsTeamReconnect ? (
         <div className="grid content-start gap-4">
-          <Card as="section">
-            <SectionLabel>Invite to team</SectionLabel>
-            <InviteForm />
-          </Card>
+          <InviteToTeamCard />
 
           <Section title="Pending invitations">
             <div className="grid gap-2" data-testid="team-invitation-list">

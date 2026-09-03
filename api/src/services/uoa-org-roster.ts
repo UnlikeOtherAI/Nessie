@@ -36,3 +36,13 @@ export {
 // independent value. Same seam, same package, same reason the roster lives
 // there.
 export { renameUoaOrganization, renameUoaTeam } from '@nessie/team-admin'
+
+// The organisation-wide roster (every member, no team join) — distinct from
+// `listTeamMembers` above, which is correctly team-scoped. An
+// "Organization Members" surface must read these, never the team-scoped
+// ones.
+export {
+  listOrganisationMembers,
+  updateOrganisationMemberRole,
+  withUoaOrgRosterSubjectAssertion,
+} from '@nessie/team-admin'

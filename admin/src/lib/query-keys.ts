@@ -359,6 +359,7 @@ export const opsTelemetryKeys = {
 
 export const organizationKeys = {
   current: ['organization', 'current'] as const,
+  members: ['organization', 'members'] as const,
 }
 
 export const personalAssistantKeys = {
