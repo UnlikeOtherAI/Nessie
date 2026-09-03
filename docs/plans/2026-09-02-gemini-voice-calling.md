@@ -744,6 +744,18 @@ folded-card requirement:
   lines preserved as labeled text — never role-bearing turns. The PA reads
   it on demand via its attachment tools (which feed the disclosure sink),
   and the call card opens the transcript from the attachment.
+  **The transcript is stored before the record exists** *(fixed
+  2026-09-03)*, and linked to the message inside the same transaction that
+  claims the session's set-once slot. Written the other way round, a
+  storage failure left a committed record holding that claim: the retry was
+  refused as already-recorded, the transcript was gone permanently, and the
+  surviving record looked exactly like a call that never had one — no
+  control, no error, nothing to retry. Storing first inverts which way a
+  failure falls, so nothing commits and the same submission simply works
+  when it is sent again. The loser of a claim race has bytes on disk by
+  then, and frees them through `FileService.delete` — the one path that
+  also writes the balancing usage event, so a refused submission cannot
+  inflate anybody's storage.
   Full-transcript search is honestly out of scope for phase 2 (message
   search covers the summary; an entitlement-aware transcript index is its
   own later feature — and search already excludes basis-carrying messages

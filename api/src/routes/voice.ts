@@ -393,6 +393,10 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
         modelClient: deps.sharedModelClient,
         onCompactionFailure: (err) =>
           request.log.warn({ err }, 'voice compaction failed; recording verbatim'),
+        // Leaked bytes and an over-counted storage ledger. Nothing else would
+        // ever report it, and the request itself fails for its own reason.
+        onTranscriptCleanupFailure: (err) =>
+          request.log.error({ err }, 'voice transcript bytes could not be freed'),
         session,
         userDisplayName: user?.displayName ?? 'You',
       })
