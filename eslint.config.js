@@ -286,4 +286,146 @@ export default [
       ],
     },
   },
+  {
+    // Egress fetch boundary gate (docs/plans/2026-08-13-security-boundary-hardening.md,
+    // Workstream 3d): the *transport* boundary is the branded `SecureTransport`
+    // built inside packages/runtime (safeFetch/pinnedFetch, redirect-policy.ts)
+    // — per CB-06, this lint block is NOT the boundary; it is the ratchet that
+    // keeps today's tree green so the boundary cannot be silently bypassed by a
+    // new call site. It bans, across every production source tree:
+    //   - `no-restricted-globals: fetch` — scope-analysed, so it catches calls
+    //     AND passing the global as a value (`fetchImpl = fetch`, `fetchImpl: fetch`,
+    //     `createConnector({ fetch })`), while shadowed parameters and object
+    //     properties stay legal.
+    //   - `globalThis.fetch` / `window.fetch` member expressions.
+    //   - `typeof fetch` type queries (they make the ambient fetch part of a
+    //     module's contract and invite the value to leak in through them).
+    //   - `import ... from 'node:http' | 'node:https'` — the raw request
+    //     modules; hosting a server never belongs in these trees (api serves
+    //     via Fastify; only test fixtures do).
+    // Test files are NOT allowlisted individually: they are excluded from the
+    // rule entirely (test globs below — mocks and loopback fixtures there talk
+    // to themselves, never to a caller-supplied address).
+    //
+    // Allowlist admission criteria — an entry must be one of:
+    //   (a) the transport implementation itself (the pinned dispatcher), or
+    //   (b) a fetch against a fixed, non-caller-influenced host
+    //       (api.github.com, slack.com/api, a push provider, an inference
+    //       vendor base URL, our own API), or
+    //   (c) a dependency-injection seam whose production default is global
+    //       fetch and whose migration to SecureTransport is Workstream 3's
+    //       remaining call-site batch.
+    // Everything else is a defect: migrate the caller onto safeFetch. Each
+    // entry's justification is the inline comment beside it in the ignores
+    // list below; the list documents today's reality and only shrinks from
+    // here. An allowlisted file is exempt as a whole, so an entry that has
+    // shrunk to zero real offenses must leave the list in the same change
+    // that removes its last offense — otherwise it silently licenses new ones.
+    files: [
+      'api/src/**/*.ts',
+      'worker/src/**/*.ts',
+      'packages/*/src/**/*.ts',
+      'executor/src/**/*.ts',
+      'cli/src/**/*.ts',
+      'gateway/src/**/*.ts',
+    ],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.spec.ts',
+      '**/test/**',
+      '**/tests/**',
+      '**/test-*.ts',
+      '**/__fixtures__/**',
+      '**/fixtures/**',
+      // Allowlist — justification per entry (admission criteria in the block
+      // comment above; parenthetical tags map to criteria (a)/(b)/(c)):
+      'packages/runtime/src/url-safety.ts', // (a) the pinned dispatcher itself — its default fetchImpl IS the platform fetch it wraps and pins.
+      'packages/push/src/webpush.ts', // (b)+(c) push-provider delivery default; endpoints are provider URLs, redirect already refused ('manual').
+      'packages/push/src/fcm.ts', // (b)+(c) FCM send/token defaults; token_uri migration to the pinned seam is the remaining W3 batch.
+      'packages/comms-providers/src/index.ts', // (b) wires global fetch into the Google connector, which dials only fixed Google endpoints.
+      'packages/comms-slack/src/connector.ts', // (b) `deps.fetchImpl ?? fetch` — the client dials only https://slack.com/api/*.
+      'packages/comms-slack/src/types.ts', // (c) `FetchLike = typeof fetch` DI-seam type for the Slack client.
+      'packages/workspace-admin/src/ledger-agent-model-catalog.ts', // (b)+(c) catalog fetch default targets the fixed Ledger endpoint.
+      'api/src/services/github.ts', // (b) fixed api.github.com host, path built from a validated owner/repo.
+      'api/src/services/uoa-billing-client.ts', // (c) `fetchImpl?: PinnedFetch` type position; values are already pinned.
+      'api/src/services/uoa-avatar.ts', // (c) `fetchImpl?: PinnedFetch` type position; the dial itself goes through safeFetch.
+      'api/src/realtime/hub.ts', // (c) `import type { ServerResponse } from 'node:http'` — Fastify reply internals, not a request client.
+      'executor/src/api-client.ts', // (b) executor daemon → our own configured API base URL only.
+      'executor/src/egress-gateway.ts', // (a) the egress boundary itself: it HOSTS the allow/deny proxy with node:http.
+      'cli/src/local.ts', // (b) localhost health polling against a dev server the CLI itself launched.
+      'packages/mock-llm/src/server.ts', // (a) test-harness HTTP server (mock inference endpoint), never a client.
+      'packages/runtime/src/web-search.ts', // (c) `fetchImpl?: typeof fetch` DI seam; the handler pins at dial.
+      'packages/runtime/src/uoa-delegated-identity.ts', // (c) `fetchImpl?: typeof fetch` DI seam; production passes the pinned transport.
+      'packages/runtime/src/ledger-identity.ts', // (c) `fetchImpl?: typeof fetch` DI seam; fixed Ledger host in production.
+      'packages/runtime/src/deepsignal-mcp-identity.ts', // (c) `fetchImpl?: typeof fetch` DI seam awaiting the W3 migration batch.
+      'packages/runtime/src/inference/connectors/openai.ts', // (b)+(c) vendor baseUrl; pinned-transport migration is W3's remaining batch.
+      'packages/runtime/src/inference/connectors/codex.ts', // (b)+(c) vendor baseUrl; pinned-transport migration is W3's remaining batch.
+      'packages/runtime/src/inference/connectors/kimi.ts', // (b)+(c) vendor baseUrl; pinned-transport migration is W3's remaining batch.
+      'packages/client-core/src/pkce.ts', // (b) desktop/mobile shell → our own API's authorize-url endpoint.
+      'packages/client-core/src/auth-session.ts', // (b) desktop/mobile shell session calls → our own configured API base URL.
+      'packages/client-core/src/api-client.ts', // (b) desktop/mobile shell → our own configured API base URL.
+      'packages/mcp-manage/src/mcp-security.ts', // (a) defines pinnedMcpFetch (`typeof fetch` shape wrapping safeFetch) — transport implementation.
+      'packages/mcp-manage/src/mcp-oauth-secret-store.ts', // (c) `fetchImpl: typeof fetch` DI parameter types; callers pass the pinned fetch.
+      'packages/mcp-manage/src/oauth-discovery.ts', // (c) `fetchImpl?: typeof fetch` DI seam; production passes pinnedMcpFetch.
+      'packages/mcp-manage/src/discovery.ts', // (c) `fetchImpl?: typeof fetch` DI seam; production passes pinnedMcpFetch.
+      'packages/mcp-manage/src/library.ts', // (c) `fetchImpl?: typeof fetch` DI seam; production passes the pinned registry fetch.
+      'packages/mcp-manage/src/registry/registry-client.ts', // (a)+(c) defines pinnedRegistryFetch (`typeof fetch` shape wrapping safeFetch) plus its DI seam.
+      'packages/mcp-manage/src/registry/repository-icons.ts', // (c) IconFetch DI seam (`fetch?: IconFetch`, param named `fetch`); the production default is safeRepositoryFetch.
+      'worker/src/run/tool-dispatch.ts', // (c) `httpFetchImpl?: typeof fetch` type position; the dispatch path injects the pinned transport.
+      'worker/src/run/tool-http.ts', // (c) `fetchImpl?: typeof fetch` DI seam; callers inject the pinned transport.
+      'worker/src/run/builtin-handlers/http-fetch.ts', // (c) `fetchImpl?: typeof fetch` DI seam on the http_fetch handler; pinned at the seam.
+      'worker/src/run/browser-cloud/download.ts', // (b) fetch inside a Runtime.evaluate string runs in the REMOTE browser against its own origin, not in this process.
+      'packages/mcp-client/src/types.ts', // (c) `fetchImpl?: typeof globalThis.fetch` SDK-transport DI seam; the default is safeMcpFetch.
+      'packages/mcp-client/src/transport/safe-fetch.ts', // (a) defines safeMcpFetch (`typeof globalThis.fetch` shape wrapping safeFetch) — transport implementation.
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message:
+            'Global fetch bypasses the pinned egress boundary (safeFetch/pinnedFetch in @nessie/runtime). '
+            + 'Use the branded transport, or argue an allowlist admission (criteria in eslint.config.js).',
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
+        {
+          selector: "MemberExpression[object.name='globalThis'][property.name='fetch']",
+          message:
+            'globalThis.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
+        },
+        {
+          selector: "MemberExpression[object.name='window'][property.name='fetch']",
+          message:
+            'window.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
+        },
+        {
+          selector: "TSTypeQuery[exprName.name='fetch']",
+          message:
+            "'typeof fetch' makes the ambient fetch part of this module's contract — take a PinnedFetch/"
+            + 'FetchLike type from the transport module instead (criteria in eslint.config.js).',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'node:http',
+              message:
+                "Raw node:http in production trees bypasses the egress boundary (and servers don't belong here — "
+                + 'api serves via Fastify). Allowlisted entries are servers/gateways only; see eslint.config.js.',
+            },
+            {
+              name: 'node:https',
+              message:
+                'Raw node:https requests bypass the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]
