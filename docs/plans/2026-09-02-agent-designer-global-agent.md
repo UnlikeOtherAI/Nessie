@@ -235,8 +235,7 @@ default `useAgents()` result, which excludes system agents):
 ### D3 — Identity-delegated tools: generalize the `personalAssistantOnly` gate
 
 The Designer needs `agent_create`, `agent_bind_channel`,
-`agent_trigger_create`, `channel_create`, `agent_list` (and, since
-2026-09-03, `project_list`, `project_create`, `team_create`) — all flagged
+`agent_trigger_create`, `channel_create`, `agent_list` — all flagged
 `personalAssistantOnly`, gated on `agentKind === 'personal_assistant'`.
 Rather than fork designer-specific copies (the eighth look-alike), the gate
 widens by one structural arm:
@@ -301,15 +300,13 @@ Reused as-is (via D3 where PA-only):
 | `people_search`, `channel_find`, `channel_list` | resolve names the person uses |
 | `document_read`, `kb_search`, `kb_page_read` | ground a prompt in existing material when asked |
 
-**Every delegated read above feeds the disclosure sink.** The pa-tools read
-paths (`channels.ts`, `provisioning.ts`, knowledge reads) do not call
-`consumedSources` today; in the owner-only PA DM that is tolerable, but the
-Designer's replies can be handed onward (D8 briefs, future shared surfaces),
-so the reads acquire their scope stamps in the same change that widens them
-— the AGENTS.md read-feeds-the-sink rule applied to this toolset.
+**Every delegated read above feeds the disclosure sink.** The pa-tools read paths
+(`channels.ts`, `provisioning.ts`, knowledge reads) do not call `consumedSources` today;
+in the owner-only PA DM that is tolerable, but the Designer's replies can be handed
+onward (D8 briefs, future shared surfaces), so the reads acquire their scope stamps in
+the same change that widens them — the AGENTS.md read-feeds-the-sink rule applied here.
 
-New builtins (shared function in `@nessie/workspace-admin`, api service
-re-exporting; a tool that takes an id ships with the read that resolves it):
+New builtins (shared function in `@nessie/workspace-admin`, api service re-exporting; a tool that takes an id ships with the read that resolves it):
 
 | Tool | Authorization | Notes |
 |---|---|---|
@@ -321,12 +318,11 @@ re-exporting; a tool that takes an id ships with the read that resolves it):
 | `project_create` | mirrors `POST /api/projects` — **organisation owner** (`requireOwner`). Shared function `createProjectForUser` carries the single owner-membership row and the default board columns (`defaultColumnCreateData`, moved out of `api/src/services/board.ts`). Visible to non-owners and refuses in words naming who can do it. |
 | `team_create` | mirrors `POST /api/teams` — **organisation owner** (`requireOwner`), taking `{name, projectId}` and refusing a project outside the organisation with the route's own indistinguishable "not found". Shared function `createTeamForUser`. A project holds no channel until it has a team, so this is the middle link of project → team → channel. |
 
-Deliberately **not** given: `connector_*` mutations (the conversational-
-setup plan is retiring them; the Designer points at `/apps` and the
-`app_connect_request` flow in words), any policy-target/grant mutation for
-explicit-grant tools, agent delete (doesn't exist for anyone), DeepWater
-bundle management, and `spawn_subtask`/`delegate` (a design conversation
-needs neither; keeping them off keeps the catalogue-laden context from
+Deliberately **not** given: `connector_*` mutations (the conversational-setup plan is
+retiring them; the Designer points at `/apps` and the `app_connect_request` flow in
+words), any policy-target/grant mutation for explicit-grant tools, agent delete (doesn't
+exist for anyone), DeepWater bundle management, and `spawn_subtask`/`delegate` (a design
+conversation needs neither; keeping them off keeps the catalogue-laden context from
 fanning out).
 
 ### D5 — The capability catalogue is generated, never written
