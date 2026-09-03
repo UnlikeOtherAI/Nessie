@@ -10,7 +10,9 @@ mod executor_companion;
 
 const DESKTOP_INIT_SCRIPT: &str = concat!(
     include_str!("desktop_notifications_init.js"),
-    "\n",
+    // Both files end in an IIFE. A semicolon prevents the second one from
+    // being parsed as a call on the first one's undefined return value.
+    "\n;\n",
     include_str!("desktop_build_freshness_init.js")
 );
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
@@ -95,7 +97,7 @@ pub fn run() {
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(format!(
-                    "{DESKTOP_INIT_SCRIPT}\nwindow.__nessieDesktopPlatform = {DESKTOP_PLATFORM:?};"
+                    "{DESKTOP_INIT_SCRIPT}\n;window.__nessieDesktopPlatform = {DESKTOP_PLATFORM:?};"
                 ))
                 .build()?;
 
@@ -126,6 +128,11 @@ mod tests {
     fn release_window_keeps_an_explicitly_embedded_admin() {
         let configured = WebviewUrl::App("index.html".into());
         assert_eq!(desktop_webview_url(configured.clone(), true), configured);
+    }
+
+    #[test]
+    fn desktop_init_scripts_are_statement_separated() {
+        assert!(DESKTOP_INIT_SCRIPT.contains("\n;\n"));
     }
 
     #[test]
