@@ -99,17 +99,34 @@ expected, and does not make the current direction the model.
 of a Team, so the schema reads Organisation → Project → Workspace — the opposite
 of the model above.
 
-That single inversion causes several defects that look unrelated:
+**What the inversion actually causes**, kept separate from what merely travels
+with it — the tidy version of this list said one foreign key explained all four,
+and two of them have their own causes:
 
-- `createWorkspaceEnvironment` must fabricate a Project for every UOA workspace,
-  because a Team cannot exist without a Project parent. The phantom project is
-  forced by the FK, not chosen.
-- That fabricated project is named after the workspace, so one upstream name
-  lands on two rows and both must be re-synced from UOA.
-- `CreateProjectDialog` does the mirror image: it asks for a project name and
-  silently creates a `"{Name} Team"` alongside it.
-- `Team.projectId` has no unique constraint, so several workspaces can hang off
-  one project — a state the model above says cannot exist.
+- **Caused by the FK.** `createWorkspaceEnvironment` must fabricate a Project
+  for every UOA workspace, because `Team.projectId` is non-nullable and a Team
+  cannot commit without a Project to hang from. The phantom project is forced,
+  not chosen. (`Channel.projectId` is non-nullable too, so a channel compels one
+  independently.)
+- **Half caused by the FK.** That fabricated project *exists* because of the FK,
+  but it *shares the workspace's name* because `createWorkspaceEnvironment`
+  computes one `name` and hands it to both rows. The duplicate that
+  `syncExternalWorkspaceNames` then has to heal twice is that convention, not
+  the FK.
+
+Two more defects are commonly filed with these and do **not** follow from the
+direction, though inverting it happens to resolve both:
+
+- `CreateProjectDialog` asking for a project name and silently creating a
+  `"{Name} Team"` is caused by there being **no way to create a project inside
+  an existing workspace** — `createTeamForUser` requires a `projectId`, so the
+  dialog manufactures a team to hold the project. Under the inverted schema it
+  would have to manufacture a workspace instead. The shape of the creation API
+  is the bug.
+- Several workspaces hanging off one project is a **missing `@unique` on
+  `Team.projectId`**, not a direction problem. Adding that constraint would fix
+  it while leaving the direction wrong — which is precisely why the fix below is
+  the inversion and not the constraint.
 
 **The fix is to invert the relationship**, not to constrain it: a project
 carries the workspace it belongs to (`Project.teamId`), rather than a workspace
@@ -124,9 +141,11 @@ and `scripts/inspect-workspace-shape.sql` sizes it against real data.
 ## What Nessie must not store
 
 UOA owns identity and the organisation/team hierarchy, so Nessie keeps no second
-copy of it: no local authority over an organisation's or workspace's name, no
-local roster that can disagree with UOA's, no second copy of who is in which
-team. The binding keys (`Organization.externalOrgId`,
+copy of it: no local authority over an organisation's or workspace's name and
+no second authority over who is in which team. That is the target, not a
+description of today — `OrganizationMember`, `TeamMember` and `ProjectMember`
+all still exist and are re-projected from UOA's claims rather than derived live,
+and profile and workspace names are still mirrored locally. The binding keys (`Organization.externalOrgId`,
 `Team.externalWorkspaceId`, `User.uoaSub`) are not duplication — they are what
 makes asking UOA possible. That rule, and the outstanding gaps against it, are
 in the plan linked above.
