@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
+  <a href="docs/standards/workspace-model.md">Workspace Model</a> &middot;
   <a href="docs/brief.md">Product Brief</a> &middot;
-  <a href="docs/build-ai-coworker.md">Build Plan</a> &middot;
   <a href="docs/remote/brief.md">Remote Brief</a> &middot;
   <a href="docs/review-findings.md">Validated Findings</a>
 </p>
@@ -37,7 +37,7 @@ Organisations host their own instance.
 
 Identity and the organisation structure come from **UnlikeOtherAI (UOA)**, the
 SSO. It owns two levels and the people in them, and Nessie mirrors them one for
-one rather than keeping its own copy:
+one — UOA stays the only authority over them:
 
 ```text
 Organisation                 ← one UOA organisation
@@ -56,56 +56,35 @@ The model in full, including the vocabulary rules and the one place the schema
 currently contradicts it, is
 [docs/standards/workspace-model.md](docs/standards/workspace-model.md).
 
-## Status
-
-| Area | Status | Notes |
-|---|---|---|
-| TypeScript backend | In progress | Runs local HTTP, WS, SSE, MCP, and tool orchestration |
-| macOS app | In progress | Native UI exists and builds, but some features are still stubbed |
-| Voice mode | In progress | UI and realtime client exist, full audio pipeline is not complete |
-| MCP surface | In progress | Implemented, but needs hardening and protocol cleanup |
-| Remote control plane | Scaffold | Go service currently exposes health/readiness only |
-
 ## Run locally
 
 ### Prerequisites
 
 - `pnpm`
-- `bun`
-- Xcode + `xcodebuild`
-- `xcodegen` for regenerating the macOS project
+- PostgreSQL with `pgvector`
 
-### Backend
+### API and admin UI
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-The backend listens on `http://127.0.0.1:4317` by default and exposes:
-
-- `GET /health`
-- `GET /state`
-- `POST /chat`
-- `POST /chat/sync`
-- `GET /mcp`
-- `POST /mcp`
-- WebSocket on the same port
-
-### macOS app
-
-```bash
-pnpm macos:build
-```
+That runs the API on **5454** and the admin UI on **5455**, both with hot
+reload. Those ports are fixed — other tooling in the repo assumes them.
 
 ## Key features
 
-- **Local orchestrator**: routes user requests, manages threads, and decides whether to answer directly, inject text, or run a sub-agent
-- **Tool layer**: bash, file read/write, glob, grep, and placeholder web search
-- **MCP server**: exposes chat and tool operations over JSON-RPC
-- **macOS client**: native SwiftUI app with chat, status, and voice-mode UI
-- **Research mode**: orchestrator can spin up a focused sub-agent path for search-oriented tasks
-- **Remote scaffold**: separate Go service intended for future zero-trust remote access
+- **Channels, threads and DMs** — the collaboration surface people already know,
+  organised into workspaces and projects.
+- **Agents that work in them** — they draft, follow through, and post where the
+  team is already looking, rather than in a separate tool.
+- **SSO-backed identity** — organisations, workspaces and membership come from
+  UnlikeOtherAI, which stays their only authority.
+- **RBAC and approval gates** — with an audit trail behind them.
+- **A token-cost ledger** — so agent spend is attributable.
+- **MCP connector management** — for the tools agents reach.
+- **Triggers and scheduling**, video calling, and human work distribution.
 
 ## Architecture
 
@@ -125,18 +104,29 @@ pnpm macos:build
                       +--> [Postgres]
 ```
 
-Nessie stores no second copy of what the SSO owns. It keeps the binding keys —
-the external organisation id, the external workspace id, the user's subject —
-and asks UOA for the rest.
+UOA is the only authority over identity and the organisation structure. Nessie
+keeps the binding keys — the external organisation id, the external workspace
+id, the user's subject — and asks UOA for the rest. Some display data (profile
+names, workspace names) is still mirrored locally and re-synced from UOA;
+removing those mirrors is tracked in
+[the unification plan](docs/plans/2026-09-02-uoa-as-a-service-unification.md).
 
 ## Repository structure
 
 ```text
-assets/        Project artwork and icons
-docs/          Product brief, build plan, remote docs, review findings
-macos/         Native macOS app
+api/           HTTP/WS API (port 5454)
+admin/         Admin web UI — the primary surface (port 5455)
+worker/        Agent orchestration and background runs
+packages/      Shared libraries (schemas, db, runtime, workspace-admin, …)
+executor/      Sandboxed tool execution
+gateway/       Edge routing
+web/           Public marketing site
+mobile/        iOS / iPad client
+desktop/       Desktop shell
+cli/           Command-line tooling
+macos/         Legacy macOS voice companion (separate from the above)
 remote/        Go remote control-plane scaffold
-src/           TypeScript backend, orchestrator, tools, MCP, voice client
+docs/          Standards, plans, and product documentation
 ```
 
 ## Documentation
@@ -148,7 +138,7 @@ src/           TypeScript backend, orchestrator, tools, MCP, voice client
 | [Apple publishing & direct device delivery](docs/publishing-apple-testflight.md) | TestFlight releases and the default standalone phone/tablet delivery policy |
 | [Running the native apps](docs/running-the-apps.md#default-physical-device-delivery) | Direct installation policy and local development paths |
 | [Product Brief](docs/brief.md) | Vision, modes, architecture, MVP direction |
-| [Build Plan](docs/build-ai-coworker.md) | macOS implementation plan |
+| [Workspace Model](docs/standards/workspace-model.md) | Organisation, workspace, project — what each is and which the SSO owns |
 | [Remote Brief](docs/remote/brief.md) | Remote control-plane scope |
 | [Remote Tech Stack](docs/remote/techstack.md) | Remote service technology choices |
 | [Remote SSO](docs/remote/sso.md) | Remote authentication notes |

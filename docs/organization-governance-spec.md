@@ -12,7 +12,10 @@ Design a multi-tenant, multi-user, multi-agent control plane where:
 - Channel and team boundaries remain private by default and must be enforceable at routing and tool-execution time.
 - Projects are first-class release isolation boundaries so operational mistakes are contained.
 
-This is the source of truth for organization and access-control requirements before implementation.
+This is the source of truth for organization and access-control **requirements**.
+It is **not** the source of truth for the org/workspace/project topology — that
+is [standards/workspace-model.md](standards/workspace-model.md), and §2.1 below
+has been corrected to match it.
 
 ## 2) Core governance model
 
@@ -20,10 +23,18 @@ This is the source of truth for organization and access-control requirements bef
 
 - `Organization` is the trust boundary top-level unit.
 - `Organization` also owns canonical communication settings such as default storage language.
-- `Project` is an isolation boundary for release, documentation, secrets, tooling, and agent access.
-- `Team` is a functional circle inside a project.
-- `Workspace` is legacy/migration-only and is not a first-class boundary in new APIs.
-- `Channel` is the communication audience inside a team (chat, routing, and visibility scope).
+- `Workspace` is the group of people you work in, and **is** the SSO's team —
+  a first-class boundary, not legacy. (An earlier revision of this file called
+  it legacy/migration-only and put `Team` inside `Project`. That was backwards;
+  see the standard linked above.)
+- `Project` is an isolation boundary for release, documentation, secrets,
+  tooling, and agent access, living **inside one workspace**. It is Nessie's
+  own construct — the SSO has no concept of it.
+- `Channel` is the communication audience inside a project (chat, routing, and
+  visibility scope).
+- The local Prisma model for a workspace is still named `Team`, and its
+  `projectId` foreign key currently points the wrong way. That is a known
+  defect, not the model.
 - `User` may belong to one or more teams/channels.
 - `ManagedAgent` may be owned by one team/project and surfaced in multiple channels.
 - `Tool` is capability surface (registry entry) with policy metadata and execution constraints.
