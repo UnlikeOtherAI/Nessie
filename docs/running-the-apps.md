@@ -67,7 +67,7 @@ session renewal. The explicit `frontendDist` override above is the supported
 exception: it embeds that freshly built local admin in a release package, so
 the executable being tested contains the local UI changes.
 
-On Windows and Linux, the top-left of that window carries 18px mac-style red,
+On Windows and Linux, the top-left of that window carries 14.4px mac-style red,
 yellow, and green controls for close, minimise, and maximise/restore. Their
 inset marks appear together on hover. Holding the pointer over the green
 control opens a translucent glass **Window layouts** popover: it can place the
