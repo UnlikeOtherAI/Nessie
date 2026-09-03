@@ -104,6 +104,14 @@ export const AdminShellLayout = () => {
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
   const { focusModeEnabled } = useFocusMode();
+  // Overlays are portalled to the document (components/overlays/OverlayPortal.tsx),
+  // so `.focus-mode > .admin-shell` — which is what repaints the work surface
+  // monochrome — no longer reaches them. Mirror the mode onto the body so an
+  // open dialog stays with the surface it was opened from.
+  useEffect(() => {
+    document.body.classList.toggle('overlays-focus-mode', focusModeEnabled);
+    return () => document.body.classList.remove('overlays-focus-mode');
+  }, [focusModeEnabled]);
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
   // One listener for the whole shell — every composer reads --keyboard-inset

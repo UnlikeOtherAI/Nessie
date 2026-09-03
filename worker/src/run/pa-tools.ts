@@ -80,6 +80,11 @@ export {
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
 export {
+  runProjectCreateTool,
+  runProjectListTool,
+  runTeamCreateTool,
+} from './pa-tools/workspace-structure.js'
+export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,

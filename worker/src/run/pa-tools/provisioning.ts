@@ -91,6 +91,26 @@ const resolveTeamId = async (
   return channel.teamId
 }
 
+/**
+ * The visibility a channel lands on when the model named none.
+ *
+ * A global agent's home DM (`system_agent`) is one person's private workspace:
+ * they asked for a channel, and nobody else asked for anything. Defaulting that
+ * to `public` publishes a room to the whole organisation on the strength of an
+ * omitted argument, which is the opposite of what was asked for. Structural —
+ * the destination's own channel type, never a reading of the conversation.
+ *
+ * The Personal Assistant's own default is deliberately left alone: changing it
+ * changes behaviour for every existing caller, and that is a separate decision.
+ */
+const resolveNewChannelVisibility = (
+  context: BuiltinToolRuntimeContext,
+  requested: 'public' | 'protected' | 'private' | undefined,
+): 'public' | 'protected' | 'private' => {
+  if (requested) return requested
+  return context.channel.systemChannelType === 'system_agent' ? 'private' : 'public'
+}
+
 export const runChannelCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
@@ -106,7 +126,7 @@ export const runChannelCreateTool = async (
     organizationId: member.organizationId,
     teamId,
     userId: member.userId,
-    visibility: args.visibility ?? 'public',
+    visibility: resolveNewChannelVisibility(context, args.visibility),
   })
   if (!channel) {
     throw new Error('That team does not belong to this organisation.')
@@ -383,7 +403,11 @@ export const runAgentBindChannelTool = async (
     throw error
   }
   if (!agent) {
-    throw new Error('Agent not found, or it is system managed and cannot be bound.')
+    throw new Error(
+      'Agent not found, or it is one this path never places — a Personal '
+      + 'Assistant (added through its own presence control) or an external '
+      + 'product agent (added by its integration).',
+    )
   }
 
   return {

@@ -22,6 +22,8 @@ import {
 } from '@nessie/schemas'
 import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
 
+import { getGlobalAgentBlueprint } from './global-agent-blueprints.js'
+
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 
 export type { AgentVisibilityScope } from '@nessie/db'
@@ -53,6 +55,64 @@ export const isSystemManagedAgent = (agent: {
   systemManaged: boolean
 }): boolean =>
   agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
+const EXTERNAL_MCP_EXECUTION_MODE = 'external_mcp' as const
+
+/**
+ * May the ordinary channel-binding path place this agent in a channel?
+ *
+ * `systemManaged` is deliberately NOT the answer. An app-provided *shared*
+ * agent — the Agent Designer, the Librarian — is exactly a colleague the
+ * workspace should be able to put in a room, and "available to everyone,
+ * placeable nowhere" is the unreachable-capability defect Rule zero names. What
+ * such an agent may *do* once it is there is decided elsewhere and stays
+ * narrow: identity-delegated tools (`agent_create`, `agent_update`, …) are gated
+ * on the agent's own home DM by `resolveIdentityDelegatedToolIds`, so in a
+ * shared channel a global agent advises and nothing more.
+ *
+ * Two agents are refused, each for its own reason:
+ *
+ * - The **Personal Assistant** has its own presence path
+ *   (`POST /api/channels/:channelId/personal-assistant`), which writes a
+ *   per-user `AgentBinding.principalUserId` row under its own partial unique.
+ *   A plain binding would be a second, principal-less presence for an agent
+ *   every one of whose runs resolves an owner — the two cannot be one act.
+ * - An **external-agent product** agent (`executionMode = external_mcp`)
+ *   proxies every turn to a *per-user* product instance whose transport and DM
+ *   key are provisioned by the integration. A shared room has no such user, and
+ *   the integration owns that channel's lifecycle.
+ *
+ * The system-*channel* refusal is separate and unconditional (see
+ * `bindAgentToChannel`): no second agent joins any single-agent system DM.
+ */
+export const isChannelBindableAgent = (agent: {
+  agentKind: string
+  executionMode?: string | null
+}): boolean =>
+  agent.agentKind !== PERSONAL_ASSISTANT_AGENT_KIND
+  && agent.executionMode !== EXTERNAL_MCP_EXECUTION_MODE
+
+/**
+ * A system agent somebody can *address*: the Personal Assistant, and every
+ * global agent whose blueprint homes it in a per-person DM.
+ *
+ * Such an agent is never bound into a new conversation — `bindAgentToChannel`
+ * refuses every `systemManaged` agent and every system channel by design.
+ * It already owns one channel per person, so addressing it resolves to that
+ * home DM. This one predicate decides it for the server (the branch in
+ * `POST /api/channels/conversations`) and, through `dmAddressable` on the
+ * record, for every client's address book — so a picker offers exactly what
+ * the route will accept, and neither side hand-names a slug.
+ */
+export const isDmAddressableSystemAgent = (agent: {
+  agentKind: string
+  systemManaged: boolean
+  systemSlug?: string | null
+}): boolean => {
+  if (!isSystemManagedAgent(agent)) return false
+  if (agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND) return true
+  return getGlobalAgentBlueprint(agent.systemSlug)?.home === 'per_user_dm'
+}
 
 /**
  * A stored `ownerUserId` names a membership row that exists — the composite
@@ -214,6 +274,8 @@ export const mapAgentRecord = (agent: {
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
     systemSlug: agent.systemSlug ?? null,
+    // Present only when true, so an ordinary agent's payload is unchanged.
+    ...(isDmAddressableSystemAgent(agent) ? { dmAddressable: true } : {}),
     visibility: agent.visibility,
     ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,

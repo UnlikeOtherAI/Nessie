@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 
 import type { AgentRecord } from '@nessie/schemas'
 import {
-  isSystemManagedAgent,
+  isChannelBindableAgent,
   mapAgentRecord,
 } from './agent-record.js'
 
@@ -45,6 +45,7 @@ export const bindAgentToChannel = async (
       select: {
         agentKind: true,
         delegationMode: true,
+        executionMode: true,
         model: true,
         name: true,
         provider: true,
@@ -89,7 +90,13 @@ export const bindAgentToChannel = async (
   // orchestrator's single-candidate fast path, the design transcript staying
   // private) breaks the moment another agent can read and answer in it. The
   // refusal is therefore any non-null `systemChannelType`, not just the PA's.
-  if (isSystemManagedAgent(agent) || channel.systemChannelType) return null
+  if (channel.systemChannelType) return null
+
+  // The agent-side refusal is NOT `systemManaged`: an app-provided shared agent
+  // is placeable like any other, and only the Personal Assistant (its own
+  // presence path) and an external-agent product (its own per-user DM) are
+  // refused here. See `isChannelBindableAgent`.
+  if (!isChannelBindableAgent(agent)) return null
 
   // Binding widens who can reach this agent, and its browser's sign-ins are
   // shared with exactly that audience — so a bind is the moment to confront
@@ -167,6 +174,18 @@ export const bindAgentToChannel = async (
   return boundAgent ? mapAgentRecord(boundAgent) : null
 }
 
+/**
+ * Removal must be at least as wide as placement, or a bound agent becomes
+ * permanent. This filtered on `systemManaged: false`, which was symmetric only
+ * while nothing system-managed could be bound; now that an app-provided shared
+ * agent can be placed, the same filter would strand it in the channel forever.
+ *
+ * The refusal is therefore the Personal Assistant alone — its presence rows are
+ * removed by the presence route, and carry a `principalUserId` this delete
+ * already excludes. Every other row this path could have written, it can take
+ * back; the system-*channel* refusal (bindings there are owned by their
+ * bootstrap) is enforced by both callers before this is reached.
+ */
 export const unbindAgentFromChannel = async (
   prisma: PrismaClient,
   input: AgentChannelBindingInput,
@@ -175,7 +194,7 @@ export const unbindAgentFromChannel = async (
     where: {
       id: input.agentId,
       organizationId: input.organizationId,
-      systemManaged: false,
+      agentKind: { not: 'personal_assistant' },
       bindings: {
         some: {
           channelId: input.channelId,

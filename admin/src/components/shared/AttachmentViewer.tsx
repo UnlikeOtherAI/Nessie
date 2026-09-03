@@ -5,6 +5,7 @@ import {
   useAuthedObjectUrlFromPath,
   type AttachmentRecord,
 } from '../../lib/uploads'
+import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 
 /**
@@ -75,89 +76,91 @@ const AttachmentViewerDialog = ({
   }
 
   return (
-    // Not the shared `Dialog`: it locks page scroll behind the backdrop, which
-    // the shell does not do. `useOverlay` still gives it the Back registration,
-    // focus trap, drag-safe scrim and layer every other overlay gets
-    // (docs/navigation/overview.md §7).
-    <div
-      className={[
-        'fixed inset-0 flex items-center justify-center p-4',
-        'bg-[var(--scrim-strong)] backdrop-blur-sm',
-      ].join(' ')}
-      {...overlay.scrimProps}
-      onKeyDown={(event) => {
-        // Openable from inside the reply panel, which closes itself on a
-        // window-level Escape. One keypress must not dismiss both.
-        if (event.key === 'Escape') {
-          event.stopPropagation()
-        }
-      }}
-      style={overlay.layerStyle}
-    >
+    <OverlayPortal>
+      // Not the shared `Dialog`: it locks page scroll behind the backdrop, which
+      // the shell does not do. `useOverlay` still gives it the Back registration,
+      // focus trap, drag-safe scrim and layer every other overlay gets
+      // (docs/navigation/overview.md §7).
       <div
-        aria-labelledby="attachment-viewer-title"
-        aria-modal="true"
         className={[
-          'flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
-          'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
+          'fixed inset-0 flex items-center justify-center p-4',
+          'bg-[var(--scrim-strong)] backdrop-blur-sm',
         ].join(' ')}
-        data-testid="attachment-viewer"
-        ref={overlay.panelRef}
-        role="dialog"
-        tabIndex={-1}
+        {...overlay.scrimProps}
+        onKeyDown={(event) => {
+          // Openable from inside the reply panel, which closes itself on a
+          // window-level Escape. One keypress must not dismiss both.
+          if (event.key === 'Escape') {
+            event.stopPropagation()
+          }
+        }}
+        style={overlay.layerStyle}
       >
-        <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[var(--sep)] px-5 py-3">
-          <h2
-            className="min-w-0 truncate text-sm font-semibold text-[var(--tx)]"
-            id="attachment-viewer-title"
-          >
-            {attachment.filename}
-          </h2>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              className="admin-button admin-button-secondary"
-              disabled={downloading}
-              onClick={handleDownload}
-              type="button"
-            >
-              {downloading ? 'Downloading…' : 'Download'}
-            </button>
-            <button
-              aria-label="Close preview"
-              className={[
-                'flex h-8 w-8 items-center justify-center rounded text-[var(--tx3)]',
-                'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
-              ].join(' ')}
-              onClick={close}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-        </header>
-
         <div
-          className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--scrim)] p-2"
-          data-testid="attachment-viewer-body"
+          aria-labelledby="attachment-viewer-title"
+          aria-modal="true"
+          className={[
+            'flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden',
+            'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
+          ].join(' ')}
+          data-testid="attachment-viewer"
+          ref={overlay.panelRef}
+          role="dialog"
+          tabIndex={-1}
         >
-          {!url ? (
-            <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
-          ) : pdf ? (
-            <iframe
-              className="h-[calc(100dvh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
-              src={url}
-              title={attachment.filename}
-            />
-          ) : (
-            <img
-              alt={attachment.filename}
-              className="max-h-[calc(100dvh-9rem)] max-w-full object-contain"
-              src={url}
-            />
-          )}
+          <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[var(--sep)] px-5 py-3">
+            <h2
+              className="min-w-0 truncate text-sm font-semibold text-[var(--tx)]"
+              id="attachment-viewer-title"
+            >
+              {attachment.filename}
+            </h2>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                className="admin-button admin-button-secondary"
+                disabled={downloading}
+                onClick={handleDownload}
+                type="button"
+              >
+                {downloading ? 'Downloading…' : 'Download'}
+              </button>
+              <button
+                aria-label="Close preview"
+                className={[
+                  'flex h-8 w-8 items-center justify-center rounded text-[var(--tx3)]',
+                  'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
+                ].join(' ')}
+                onClick={close}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          </header>
+
+          <div
+            className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--scrim)] p-2"
+            data-testid="attachment-viewer-body"
+          >
+            {!url ? (
+              <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
+            ) : pdf ? (
+              <iframe
+                className="h-[calc(100dvh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
+                src={url}
+                title={attachment.filename}
+              />
+            ) : (
+              <img
+                alt={attachment.filename}
+                className="max-h-[calc(100dvh-9rem)] max-w-full object-contain"
+                src={url}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }
 

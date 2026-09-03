@@ -60,7 +60,7 @@ export const DashboardsPage = () => {
         title="Dashboards"
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 px-[var(--page-gutter)] py-6">
         <input
           className="admin-input w-56"
           onChange={(event) => setSearch(event.target.value)}

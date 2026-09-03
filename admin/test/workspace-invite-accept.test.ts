@@ -197,11 +197,15 @@ test('the workspace switcher accepts a pending invitation and enters that worksp
     await act(async () => switchButton.click())
     await settle()
 
-    assert.match(container.textContent ?? '', /Invitations/)
-    assert.match(container.textContent ?? '', /Launch Crew/)
-    assert.match(container.textContent ?? '', /Invited by Alice/)
+    // The workspace menu is a Popover, and every overlay portals out of the
+    // tree it was declared in (components/overlays/OverlayPortal.tsx), so the
+    // menu is read from the document rather than from `container`.
+    const menu = dom.window.document.body
+    assert.match(menu.textContent ?? '', /Invitations/)
+    assert.match(menu.textContent ?? '', /Launch Crew/)
+    assert.match(menu.textContent ?? '', /Invited by Alice/)
 
-    const acceptButton = [...container.querySelectorAll('button')].find(
+    const acceptButton = [...menu.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === 'Accept',
     )
     assert.ok(acceptButton)

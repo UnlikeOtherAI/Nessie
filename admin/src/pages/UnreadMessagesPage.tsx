@@ -37,7 +37,7 @@ export const UnreadMessagesPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader title="Unread messages" />
-      <PageBody width="regular">
+      <PageBody>
         <QueryState
           errorLabel="Unread messages could not be loaded."
           loadingLabel="Loading unread messages…"

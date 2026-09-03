@@ -206,7 +206,7 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
                 ? 'hidden'
                 : activeTab === 'documents'
                   ? 'min-h-0 flex-1'
-                  : 'flex-1 overflow-y-auto px-6 py-5'
+                  : 'flex-1 overflow-y-auto px-[var(--page-gutter)] py-5'
             }
           >
         {activeTab === 'activity' && (

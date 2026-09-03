@@ -16,6 +16,7 @@ import {
   resolveSheetSwipeOutcome,
   type PhoneBackSwipeSample,
 } from './sheet-swipe'
+import { OverlayPortal } from './OverlayPortal'
 import { useOverlay } from './useOverlay'
 
 /**
@@ -202,30 +203,32 @@ export const Sheet = ({
   const inert = overlay.closing ? { pointerEvents: 'none' as const } : undefined
 
   return (
-    <div
-      {...overlay.scrimProps}
-      style={{ ...SCRIM_STYLE, ...overlay.layerStyle, ...inert }}
-    >
+    <OverlayPortal>
       <div
-        aria-labelledby={titleId}
-        aria-modal="true"
-        ref={overlay.panelRef}
-        role="dialog"
-        style={{
-          ...PANEL_STYLE,
-          ...ANCHOR_STYLE[side],
-          ...(side === 'bottom' ? undefined : SHEET_SIZE_STYLE[size]),
-          ...(fullBleed ? FULL_BLEED_STYLE : undefined),
-          ...inert,
-        }}
-        tabIndex={-1}
-        {...swipe}
+        {...overlay.scrimProps}
+        style={{ ...SCRIM_STYLE, ...overlay.layerStyle, ...inert }}
       >
-        <h2 className="sr-only" id={titleId}>
-          {title}
-        </h2>
-        {children}
+        <div
+          aria-labelledby={titleId}
+          aria-modal="true"
+          ref={overlay.panelRef}
+          role="dialog"
+          style={{
+            ...PANEL_STYLE,
+            ...ANCHOR_STYLE[side],
+            ...(side === 'bottom' ? undefined : SHEET_SIZE_STYLE[size]),
+            ...(fullBleed ? FULL_BLEED_STYLE : undefined),
+            ...inert,
+          }}
+          tabIndex={-1}
+          {...swipe}
+        >
+          <h2 className="sr-only" id={titleId}>
+            {title}
+          </h2>
+          {children}
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }

@@ -118,7 +118,7 @@ export const SecuritySettingsPage = () => {
           </div>
         </section>
 
-        <div className="max-w-3xl">
+        <div>
           {isLocalAccount ? (
             <ChangePasswordCard />
           ) : (
