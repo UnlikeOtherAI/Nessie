@@ -78,7 +78,9 @@ final class VoiceCallController {
         // The WebView is the *initial* provisioning path only: from here the
         // native side renews the credential itself, because a locked phone has
         // no foreground WebView to ask.
-        if coordinator != nil { return }
+        guard coordinator == nil else {
+            throw AgentCallCoordinator.CoordinatorError.callAlreadyActive
+        }
 
         let agentName = provisioning["agentName"] as? String ?? "Personal Assistant"
         let api = NessieVoiceApi(credential: credential)

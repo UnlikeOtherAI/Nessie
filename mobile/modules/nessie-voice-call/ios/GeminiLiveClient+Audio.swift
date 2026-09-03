@@ -66,11 +66,20 @@ extension GeminiLiveClient {
         // known until the session is configured and a route is chosen, and it
         // changes again on every route change. A converter left pointing at the
         // old rate produces garbage the model hears as noise.
-        inputConverter = AVAudioConverter(from: inputFormat, to: captureFormat)
+        // Captured into the tap closure rather than read from the instance on
+        // every callback: the tap runs on the realtime audio thread, and
+        // `startCapture` can be re-entered from the main actor (CallKit
+        // activating audio) or the socket's delegate queue (`setupComplete`).
+        // An unsynchronised read of a class reference another thread is
+        // reassigning is an over-release, not a stale value.
+        guard let converter = AVAudioConverter(from: inputFormat, to: captureFormat) else {
+            throw GeminiLiveError.audioFormatUnavailable
+        }
+        inputConverter = converter
 
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            self?.send(buffer: buffer)
+            self?.send(buffer: buffer, using: converter)
         }
 
         do {
@@ -83,14 +92,23 @@ extension GeminiLiveClient {
         }
     }
 
-    func send(buffer: AVAudioPCMBuffer) {
-        guard isReadyForRealtimeInput, !isModelSpeaking else { return }
+    /// Called on the realtime audio thread.
+    ///
+    /// Input streams unconditionally while the call is live, exactly as the
+    /// browser client does. It deliberately does **not** stop while the model
+    /// is speaking: that is what `activityHandling:
+    /// START_OF_ACTIVITY_INTERRUPTS` needs in order to hear somebody talk over
+    /// the answer, and a client that goes quiet there can never be interrupted
+    /// — it also leaves the microphone dead for the rest of a call if a socket
+    /// drop swallows the `turnComplete` that would have re-opened it.
+    func send(buffer: AVAudioPCMBuffer, using converter: AVAudioConverter) {
+        guard isReadyForRealtimeInput else { return }
         // Held is not muted. Muting keeps a silent stream flowing so Gemini's
         // automatic VAD can still see the end of an utterance; holding stops
         // sending altogether, because a call the system took away must not keep
         // feeding a turn that will be billed and answered into nowhere.
         guard !isHeld else { return }
-        guard let converted = convertToPCM16(buffer: buffer),
+        guard let converted = convertToPCM16(buffer: buffer, using: converter),
               let channelData = converted.int16ChannelData else { return }
 
         let frameCount = Int(converted.frameLength)
@@ -98,13 +116,21 @@ extension GeminiLiveClient {
         let data = isInputMuted
             ? Data(count: byteCount)
             : Data(bytes: channelData[0], count: byteCount)
-        sendRealtimeInput([
-            "audio": ["mimeType": "audio/pcm;rate=16000", "data": data.base64EncodedString()]
-        ])
+        // Base64, JSON and a socket write are all allocation, and allocation on
+        // the render thread is what a caller hears as periodic dropouts. The
+        // samples are already copied into `data`, so the rest is somebody
+        // else's work.
+        audioSendQueue.async { [weak self] in
+            self?.sendRealtimeInput([
+                "audio": ["mimeType": "audio/pcm;rate=16000", "data": data.base64EncodedString()]
+            ])
+        }
     }
 
-    func convertToPCM16(buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let inputConverter else { return nil }
+    func convertToPCM16(
+        buffer: AVAudioPCMBuffer,
+        using inputConverter: AVAudioConverter
+    ) -> AVAudioPCMBuffer? {
         let outputFormat = inputConverter.outputFormat
         let ratio = 16_000.0 / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 64)

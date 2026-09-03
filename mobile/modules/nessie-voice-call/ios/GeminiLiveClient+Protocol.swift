@@ -73,8 +73,11 @@ extension GeminiLiveClient {
 
         if let toolCall = json["toolCall"] as? [String: Any],
            let functionCalls = toolCall["functionCalls"] as? [[String: Any]] {
+            // Not `return`: one frame routinely carries a tool call *and*
+            // `serverContent` or `setupComplete`. Coder returns here and the
+            // browser client does not; the browser client is the one proven
+            // against the live service.
             handleToolCalls(functionCalls)
-            return
         }
 
         if let serverContent = json["serverContent"] as? [String: Any] {
@@ -86,6 +89,10 @@ extension GeminiLiveClient {
             reconnectTask = nil
             reconnectAttempt = 0
             isReadyForRealtimeInput = true
+            // A socket that dropped mid-answer never delivered the
+            // `turnComplete` that ends the model's turn, so a resumed session
+            // would otherwise start believing the assistant is still speaking.
+            isModelSpeaking = false
             // Seed only on the first connect. A resumed session already holds
             // the conversation, and re-seeding would duplicate it into context
             // Gemini re-bills on every turn.
@@ -151,6 +158,10 @@ extension GeminiLiveClient {
             onEvent?(.modelSpeakingChanged(false))
             playerNode.stop()
             playerNode.play()
+            // The half-sentence the model got out is still a line that was
+            // said. Without this it merges into the next assistant line under
+            // the wrong timestamp.
+            onEvent?(.turnComplete)
         }
 
         if serverContent["turnComplete"] as? Bool == true {
@@ -167,8 +178,11 @@ extension GeminiLiveClient {
         // `toolResponse`, so a round trip to the API is fine; blocking the
         // socket receive loop is fatal, which is why this never awaits inline.
         for functionCall in functionCalls {
-            let callID = functionCall["id"] as? String ?? UUID().uuidString
+            // The function name, not a fresh UUID: an id Gemini never issued
+            // matches no pending call, so the model would wait for a response
+            // that can never arrive. Same fallback the browser client uses.
             let name = functionCall["name"] as? String ?? ""
+            let callID = functionCall["id"] as? String ?? name
             let arguments = functionCall["args"] as? [String: Any] ?? [:]
             // Arguments carry the person's own words. Log shape only; never
             // their values.

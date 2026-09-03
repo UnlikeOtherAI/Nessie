@@ -195,10 +195,17 @@ extension GeminiLiveClient {
 
         isRotatingCredential = false
         let detail = lastError?.localizedDescription ?? "unknown error"
-        socketTask?.cancel(with: .goingAway, reason: nil)
-        socketTask = nil
-        urlSession?.invalidateAndCancel()
-        urlSession = nil
+        // Under the lock like every other write to these two: a close callback
+        // racing this path would otherwise double-cancel.
+        let (staleTask, staleSession) = messageStateLock.withLock {
+            let task = socketTask
+            socketTask = nil
+            let session = urlSession
+            urlSession = nil
+            return (task, session)
+        }
+        staleTask?.cancel(with: .goingAway, reason: nil)
+        staleSession?.invalidateAndCancel()
         finishAfterConnectionLoss("The call could not be renewed: \(detail)")
     }
 

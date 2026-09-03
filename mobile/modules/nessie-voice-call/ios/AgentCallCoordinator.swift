@@ -85,15 +85,49 @@ final class AgentCallCoordinator: NSObject {
         do {
             try await request(CXTransaction(action: action))
         } catch {
-            clearCallState(error: error.localizedDescription)
+            clearCallState(error: Self.describe(error))
             throw error
+        }
+    }
+
+    /// Says what happened in a sentence, rather than handing over an NSError.
+    ///
+    /// A refused CallKit transaction otherwise surfaces as "The operation
+    /// couldn't be completed. (com.apple.CallKit.error.requesttransaction
+    /// error 1.)" — which is what the in-call surface would print at somebody
+    /// who pressed a call button.
+    private static func describe(_ error: Error) -> String {
+        let nsError = error as NSError
+        guard nsError.domain == CXErrorDomainRequestTransaction,
+              let code = CXErrorCodeRequestTransactionError.Code(rawValue: nsError.code) else {
+            return error.localizedDescription
+        }
+        switch code {
+        case .unentitled, .unknownCallProvider:
+            // Also what the iOS Simulator answers: it has no telephony stack,
+            // so calling is a device-only capability.
+            return "This device cannot place calls."
+        case .callUUIDAlreadyExists, .maximumCallGroupsReached:
+            return "A call is already in progress."
+        case .unknownCallUUID:
+            return "That call has already ended."
+        default:
+            return "The call could not be started."
         }
     }
 
     func endCall() async throws {
         guard let activeCallID else { throw CoordinatorError.noActiveCall }
+        let previous = state
         publish(.ending)
-        try await request(CXTransaction(action: CXEndCallAction(call: activeCallID)))
+        do {
+            try await request(CXTransaction(action: CXEndCallAction(call: activeCallID)))
+        } catch {
+            // A refused hang-up leaves a call that is still up. Parking the UI
+            // in "Ending call…" would hide it behind a spinner with no way out.
+            publish(previous)
+            throw error
+        }
     }
 
     func setMuted(_ muted: Bool) async throws {
@@ -258,13 +292,16 @@ extension AgentCallCoordinator: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            // Deactivation without an end action means something took the
-            // audio. Stop I/O, keep the socket, and stop sending: the hold
+            guard let self, self.hasCall, self.state != .ending else { return }
+            // Deactivation that is not part of a hang-up means something took
+            // the audio. Stop I/O, keep the socket, and stop sending: the hold
             // action may or may not follow, and either way no captured audio
-            // should reach a turn we would be billed for.
+            // should reach a turn we would be billed for. The phase is
+            // published because otherwise the surface reads "live" on a call
+            // that can neither hear nor speak.
             self.session.setHeld(true)
             self.session.deactivateAudio()
+            self.publish(.held)
         }
     }
 }

@@ -73,9 +73,13 @@ actor VoiceUsageRelay {
             guard let details = metadata[key] as? [[String: Any]] else { return [:] }
             var totals: [String: Int] = [:]
             for detail in details {
+                // Keys pass through as Google wrote them: the wire contract
+                // says the field names mirror `usageMetadata`, and normalising
+                // the case here would be this client reinterpreting a dimension
+                // the browser client forwards untouched.
                 guard let modality = detail["modality"] as? String else { continue }
                 let tokens = max(0, (detail["tokenCount"] as? NSNumber)?.intValue ?? 0)
-                totals[modality.uppercased()] = (totals[modality.uppercased()] ?? 0) + tokens
+                totals[modality] = (totals[modality] ?? 0) + tokens
             }
             return totals
         }

@@ -107,6 +107,8 @@ final class GeminiLiveClient: NSObject, URLSessionWebSocketDelegate {
     var isHeld = false
     var routeChangeObserver: NSObjectProtocol?
     var engineConfigurationObserver: NSObjectProtocol?
+    /// Where captured audio is encoded and written, off the render thread.
+    let audioSendQueue = DispatchQueue(label: "works.nessie.voice.audio-send")
 
     init(
         setup: GeminiSetup,

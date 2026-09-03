@@ -31,6 +31,13 @@ final class VoiceCallSession: AgentCallSession {
     private var durationCapTask: Task<Void, Never>?
     private var toolCallCount = 0
     private var isTearingDown = false
+    /// The platform activated audio before there was anything to activate.
+    private var missedAudioActivation = false
+    /// Chains usage snapshots so they reach the relay in the order Google sent
+    /// them. Independent tasks are not ordered, and the relay stamps a sequence
+    /// number at send time — so unchained, a later snapshot can be filed under
+    /// an earlier sequence and the server would treat the older one as a replay.
+    private var usageChain: Task<Void, Never>?
 
     init(api: NessieVoiceApi, agentName: String?) {
         self.api = api
@@ -84,12 +91,23 @@ final class VoiceCallSession: AgentCallSession {
         }
 
         startedAt = Date()
+        if missedAudioActivation {
+            missedAudioActivation = false
+            try live.activateAudio()
+        }
         scheduleDurationCap(session.limits.maxDurationMs)
         onChange?()
     }
 
     func activateAudio() throws {
-        guard let client else { return }
+        guard let client else {
+            // `connect()` runs a permission prompt and a network round trip
+            // before the client exists, and `didActivate` is the only caller
+            // of this. Dropping it there would leave a connected call with no
+            // audio in either direction and nothing to re-arm it.
+            missedAudioActivation = true
+            return
+        }
         try client.activateAudio()
     }
 
@@ -115,6 +133,12 @@ final class VoiceCallSession: AgentCallSession {
         // seconds the final usage report and the record need.
         let backgroundTask = beginBackgroundWork()
         defer { endBackgroundWork(backgroundTask) }
+        // Stopping the client emits `.disconnected`, which is the same signal
+        // an unexpected drop sends. Left wired, that re-enters the coordinator
+        // during its own teardown: a second `reportCall(endedAt:)` on a call
+        // already reported, and a `clearCallState(error: nil)` that wipes the
+        // real failure reason before it reaches anyone.
+        onSessionEnded = nil
         durationCapTask?.cancel()
         durationCapTask = nil
         await handoff?.stop()
@@ -126,6 +150,10 @@ final class VoiceCallSession: AgentCallSession {
         client = nil
 
         if let session = credential {
+            // Drain what is queued before closing the Ledger session, or the
+            // completion marker races the last turn's spend.
+            await usageChain?.value
+            usageChain = nil
             await usage?.finish()
             await submitRecord(session: session, durationMs: elapsed)
         }
@@ -135,6 +163,7 @@ final class VoiceCallSession: AgentCallSession {
         liveAssistantText = ""
         assistantSpeaking = false
         toolCallCount = 0
+        missedAudioActivation = false
         isTearingDown = false
         onChange?()
     }
@@ -182,7 +211,11 @@ final class VoiceCallSession: AgentCallSession {
             onChange?()
         case .usage(let metadata):
             let relay = usage
-            Task { await relay?.record(metadata) }
+            let previous = usageChain
+            usageChain = Task {
+                await previous?.value
+                await relay?.record(metadata)
+            }
         case .failed(let message):
             onSessionEnded?(.failed(message))
         case .disconnected:
