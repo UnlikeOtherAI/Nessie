@@ -58,7 +58,13 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
     setError(null)
     setSaved(false)
     try {
-      await rename.mutateAsync({ name: name.trim(), teamId: team.id })
+      // UnlikeOtherAI normalizes what it accepted and the route answers with the
+      // name it stored, so adopt that rather than leaving the typed text in the
+      // field: otherwise a normalized rename reads as unsaved — the input still
+      // differs from the stored name, so Save re-enables itself the moment the
+      // team list refetches.
+      const stored = await rename.mutateAsync({ name: name.trim(), teamId: team.id })
+      setName(stored.name)
       // The workspace switcher labels rows from the session payload, not from
       // the team list, so re-read it — otherwise the rail keeps the old name
       // until the next login and the rename looks like it only half worked.

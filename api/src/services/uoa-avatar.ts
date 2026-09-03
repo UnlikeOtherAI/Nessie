@@ -343,6 +343,19 @@ const mutateAvatar = async (
       429,
     )
   }
+  // An authorization refusal is only reachable on the `/org/*` family, which
+  // re-resolves the acting person's own `teams.manage` capability — the
+  // `/domain/*` mutations apply no role check at all, so they cannot 403. It
+  // must not fall into the branch below: telling a Nessie admin who lacks that
+  // UOA capability to "use a PNG under 1 MB" sends them to fix an image that
+  // was never the problem.
+  if (response.status === 401 || response.status === 403) {
+    throw new UoaAvatarRejectedError(
+      'UnlikeOtherAI would not accept this change. You may not have permission to change '
+      + 'this picture there.',
+      403,
+    )
+  }
   if (response.status >= 400 && response.status < 500 && response.status !== 404) {
     throw new UoaAvatarRejectedError(
       'UnlikeOtherAI rejected the image. Use a PNG, JPEG or WebP under 1 MB.',

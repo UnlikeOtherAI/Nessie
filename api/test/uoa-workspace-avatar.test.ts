@@ -628,3 +628,36 @@ test('a UOA session still takes the domain relay for another workspace', async (
     }
   })
 })
+
+test('a UOA capability refusal is not reported as a bad image', async () => {
+  await withUoaEnv(async () => {
+    // Only `/org/*` can 403 — it re-resolves the person's own `teams.manage`
+    // capability, while `/domain/*` applies no role check at all. A Nessie
+    // admin who lacks that UOA capability must not be told to fix an image
+    // that was never the problem.
+    const app = await makeApp(actorContextFor(['admin'], { uoa: true }))
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      new Response('{"code":"INSUFFICIENT_ORG_ROLE"}', {
+        status: 403,
+      })) as unknown as typeof fetch
+
+    const body = multipartBody('file', 'logo.png', 'image/png', PNG_BYTES)
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/workspace/avatar',
+        payload: body.payload,
+        headers: body.headers,
+      })
+
+      assert.equal(response.statusCode, 403)
+      assert.equal(response.json().error.code, 'WORKSPACE_AVATAR_REJECTED')
+      assert.match(response.json().error.message, /permission/)
+      assert.doesNotMatch(response.json().error.message, /PNG/)
+    } finally {
+      globalThis.fetch = originalFetch
+      await app.close()
+    }
+  })
+})
