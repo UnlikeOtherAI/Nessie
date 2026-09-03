@@ -148,7 +148,8 @@ mod tests {
             "core:window:allow-close",
             "core:window:allow-minimize",
             "core:window:allow-is-maximized",
-            "core:window:allow-toggle-maximize",
+            "core:window:allow-maximize",
+            "core:window:allow-unmaximize",
         ];
         for capabilities in [DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES] {
             for action in actions {

@@ -33,8 +33,11 @@ export const DesktopWindowControls = () => {
 
   if (!visible) return null
 
-  const toggleMaximize = () => {
-    void getCurrentWindow().toggleMaximize().then(() => setMaximized((value) => !value))
+  const toggleMaximize = async () => {
+    const appWindow = getCurrentWindow()
+    if (maximized) await appWindow.unmaximize()
+    else await appWindow.maximize()
+    setMaximized(await appWindow.isMaximized())
   }
 
   return (
@@ -60,7 +63,7 @@ export const DesktopWindowControls = () => {
       <button
         aria-label={maximized ? 'Restore window' : 'Maximise window'}
         className="desktop-window-control desktop-window-control--maximize"
-        onClick={toggleMaximize}
+        onClick={() => void toggleMaximize()}
         title={maximized ? 'Restore' : 'Maximise'}
         type="button"
       >
