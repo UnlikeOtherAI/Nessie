@@ -67,11 +67,15 @@ session renewal. The explicit `frontendDist` override above is the supported
 exception: it embeds that freshly built local admin in a release package, so
 the executable being tested contains the local UI changes.
 
-On Windows and Linux, the top-left of that window carries mac-style red,
-yellow, and green controls for close, minimise, and maximise/restore. They are
-Tauri-native window actions, not browser controls; those platforms remove the
-native title-bar buttons so the three-dot strip is the only window chrome.
-macOS keeps its system traffic lights instead.
+On Windows and Linux, the top-left of that window carries 18px mac-style red,
+yellow, and green controls for close, minimise, and maximise/restore. Their
+inset marks appear together on hover. Holding the pointer over the green
+control opens a translucent glass **Window layouts** popover: it can place the
+window into halves or thirds, fill the current display's usable work area, or
+enter full screen. Those choices use Tauri-native monitor, position and size
+actions rather than imitating a browser panel. Windows and Linux remove the
+native title-bar buttons so this strip is the only window chrome; macOS keeps
+its system traffic lights instead.
 
 The desktop script first bundles the local `nessie-executor` CLI and the exact
 Node runtime into private app resources. It records their hashes and the Node

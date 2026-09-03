@@ -945,22 +945,22 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 .desktop-window-controls {
   display: flex;
-  flex: 0 0 135px;
+  flex: 0 0 96px;
   align-items: center;
-  gap: 18px;
-  min-width: 135px;
-  padding-left: 9px;
+  gap: 12px;
+  min-width: 96px;
+  padding-left: 8px;
 }
 
 .desktop-window-control {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   border: 0;
   border-radius: 999px;
   color: color-mix(in srgb, #000 78%, transparent);
-  font-size: 18px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
   transition: filter 120ms ease, transform 120ms ease;
@@ -993,6 +993,177 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 .desktop-window-control--maximize {
   background: #28c840;
+}
+
+/* The green traffic light keeps its normal click-to-maximise behaviour. A
+   settled hover opens this native-only chooser, whose layout presets resize
+   the native Tauri window instead of imitating a browser panel. */
+.desktop-window-layout-popover {
+  width: 366px;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgb(249 229 252 / 64%), rgb(202 150 214 / 43%)),
+    color-mix(in srgb, var(--panel) 74%, transparent);
+  box-shadow:
+    0 22px 54px rgb(22 7 27 / 34%),
+    inset 0 1px rgb(255 255 255 / 47%),
+    inset 0 -1px rgb(75 25 87 / 16%);
+  backdrop-filter: blur(26px) saturate(1.35);
+  -webkit-backdrop-filter: blur(26px) saturate(1.35);
+}
+
+.desktop-window-layout-popover::before {
+  position: absolute;
+  top: -8px;
+  left: 56px;
+  width: 15px;
+  height: 15px;
+  border-top: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
+  background: rgb(239 207 245 / 78%);
+  content: '';
+  transform: rotate(45deg);
+}
+
+.desktop-window-layout-content {
+  overflow: hidden;
+  border-radius: inherit;
+  padding: 21px 27px 15px;
+}
+
+.desktop-window-layout-section h2 {
+  margin: 0 0 14px;
+  color: color-mix(in srgb, var(--tx) 70%, transparent);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.desktop-window-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.desktop-window-layout-option {
+  display: grid;
+  min-height: 57px;
+  place-items: center;
+  border-radius: 10px;
+  color: color-mix(in srgb, var(--tx) 86%, #190f1d);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.desktop-window-layout-option:hover,
+.desktop-window-layout-option:focus-visible {
+  background: rgb(255 255 255 / 23%);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.desktop-window-layout-glyph {
+  position: relative;
+  display: block;
+  width: 50px;
+  height: 38px;
+  overflow: hidden;
+  border: 3px solid currentColor;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 16%);
+}
+
+.desktop-window-layout-glyph > span {
+  position: absolute;
+  display: block;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.desktop-window-layout-glyph--left-half > span {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 5px);
+}
+
+.desktop-window-layout-glyph--right-half > span {
+  top: 3px;
+  right: 3px;
+  bottom: 3px;
+  width: calc(50% - 5px);
+}
+
+.desktop-window-layout-glyph--top-half > span {
+  top: 3px;
+  right: 3px;
+  left: 3px;
+  height: calc(50% - 5px);
+}
+
+.desktop-window-layout-glyph--bottom-half > span {
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  height: calc(50% - 5px);
+}
+
+.desktop-window-layout-glyph--fill > span {
+  inset: 3px;
+}
+
+.desktop-window-layout-glyph--left-third > span {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(33.333% - 4px);
+}
+
+.desktop-window-layout-glyph--middle-third > span {
+  top: 3px;
+  bottom: 3px;
+  left: 33.333%;
+  width: calc(33.333% - 2px);
+}
+
+.desktop-window-layout-glyph--right-third > span {
+  top: 3px;
+  right: 3px;
+  bottom: 3px;
+  width: calc(33.333% - 4px);
+}
+
+.desktop-window-layout-divider {
+  height: 1px;
+  margin: 17px 0 19px;
+  background: color-mix(in srgb, var(--tx) 22%, transparent);
+}
+
+.desktop-window-layout-full-screen {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px 3px;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--tx) 92%, #190f1d);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: left;
+}
+
+.desktop-window-layout-full-screen > span:last-child {
+  font-size: 31px;
+  font-weight: 400;
+  line-height: 0.65;
+}
+
+.desktop-window-layout-full-screen:hover,
+.desktop-window-layout-full-screen:focus-visible {
+  background: rgb(255 255 255 / 23%);
+  outline: none;
 }
 
 .admin-topbar-spacer {
