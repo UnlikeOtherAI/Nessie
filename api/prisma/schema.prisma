@@ -1000,6 +1000,7 @@ model User {
   statuses                            UserStatus[]
   feedback                            Feedback[]
   refreshTokens                       RefreshToken[]
+  authSessions                        AuthSession[]
   uoaSessionCredentials               UoaSessionCredential[]
   uoaWorkspaceSwitchIntents           UoaWorkspaceSwitchIntent[]
   productAccountLinks                 ProductAccountLink[]
@@ -1064,6 +1065,27 @@ model RefreshToken {
   @@index([userId, sessionId])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// The revocation authority for one local login session, keyed by the access
+/// token's `sid` claim (security hardening workstream 1e: S9/SB-04). Every
+/// issuance minting or refreshing an access token upserts the row for that
+/// `sid`; `DELETE /api/auth/sessions/:sessionId` and password change set
+/// `revokedAt`, and central auth rejects any token whose sid carries one.
+/// The refresh-token family table is deliberately NOT this authority: every
+/// rotation revokes predecessor rows sharing the sid, so revocation state
+/// there cannot outlive a rotation (docs/plans/2026-08-13, Sol M-07).
+model AuthSession {
+  id         String    @id @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+  userAgent  String?   @map("user_agent")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("auth_sessions")
 }
 
 /// Server-side UOA refresh state bound to one Nessie refresh-token family.

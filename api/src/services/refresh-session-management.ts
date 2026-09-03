@@ -1,6 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { SessionClientType } from '@nessie/schemas'
 import {
+  revokeAuthSessionRow,
+  revokeAuthSessionRows,
+} from './auth-session-registry.js'
+import {
   lockRefreshFamily,
   revokeRefreshFamilyRows,
 } from './refresh-token-family.js'
@@ -166,12 +170,15 @@ export const revokeUserSession = async (
   for (const familyId of familyIds) {
     await revokeRefreshFamilyRows(tx, familyId, now)
   }
+  // The AuthSession row is the access-token revocation authority: without it,
+  // this session's still-valid access JWT kept working until its TTL expired.
+  await revokeAuthSessionRow(tx, { sessionId, userId })
   return activeCount
 }, AUTH_LOCK_TRANSACTION_OPTIONS)
 
 type RefreshSessionTransaction = Pick<
   Prisma.TransactionClient,
-  '$queryRaw' | 'refreshToken' | 'uoaSessionCredential'
+  '$queryRaw' | 'authSession' | 'refreshToken' | 'uoaSessionCredential'
 >
 
 /** Revoke matching local families and erase their encrypted UOA credentials. */
@@ -203,6 +210,13 @@ export const revokeUserRefreshFamilies = async (
   for (const familyId of familyIds) {
     await revokeRefreshFamilyRows(tx, familyId, now)
   }
+  // Same authority handoff as revokeUserSession: the password-change /
+  // deactivation callers of this helper now revoke the access JWTs of the
+  // affected sids (sparing `exceptSessionId`), not only their refresh rows.
+  await revokeAuthSessionRows(tx, {
+    exceptSessionId: input.exceptSessionId,
+    userId: input.userId,
+  })
   return activeCount
 }
 
