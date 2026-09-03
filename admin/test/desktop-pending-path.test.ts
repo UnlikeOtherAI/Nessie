@@ -32,7 +32,7 @@ test('the retained desktop path is consumed once and must be an internal path', 
 
 test('custom traffic lights are only exposed by Windows and Linux Tauri shells', () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')
-  const fake = { __TAURI_INTERNALS__: {}, __nessieDesktopPlatform: 'windows' } as Window & {
+  const fake = { __nessieDesktopPlatform: 'windows' } as Window & {
     __nessieDesktopPlatform?: unknown
   }
   Object.defineProperty(globalThis, 'window', { configurable: true, value: fake, writable: true })
