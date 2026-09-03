@@ -4,10 +4,13 @@ import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 // Injected into the admin page. The Android WebView continues beneath its
 // floating dock so full-height columns and dividers do not stop at a detached
 // native slab; its content reserves the dock through a shared CSS custom
-// property. This (1) enables CSS safe-area insets via viewport-fit=cover, (2)
-// pads full-screen web surfaces clear of the home indicator, (3) reserves
-// interaction space below Android's floating dock, and (4) reports the document
-// background so the native view behind the WebView matches during load/overscroll.
+// property. This (1) enables CSS safe-area insets via viewport-fit=cover and
+// (2) publishes the inset values as :root custom properties — the selectors
+// that pad full-screen web surfaces clear of the home indicator and the
+// floating dock live in admin/src/styles.css, because only the app knows
+// which wrapper (ResizableSidebar, ResizableThreadPanel) holds the surface.
+// The rest reports the document background so the native view behind the
+// WebView matches during load/overscroll.
 export const INJECTED = `
 (function () {
   var vp = document.querySelector('meta[name=viewport]');
@@ -30,10 +33,11 @@ export const INJECTED = `
       shell && typeof shell.bottomInset === 'number' && isFinite(shell.bottomInset)
         ? Math.max(0, shell.bottomInset)
         : 0;
-    // The native frame owns the iPhone status-bar inset: phone tab roots can
-    // place their aside below an intermediate DOM wrapper, so a selector-based
-    // top inset is not reliable. Keep the surface behind native chrome aligned
-    // with the page itself.
+    // The native frame owns the iPhone status-bar inset. Bottom clearance is
+    // likewise not a selector problem for an injected stylesheet: the wide
+    // shell wraps its aside in ResizableSidebar, so admin/src/styles.css owns
+    // every selector that consumes these custom properties, and this script
+    // only publishes the values on :root.
     var iosPhoneBackgroundCss = isIosPhone
       ? 'body { background: var(--main); }'
       : '';
@@ -69,19 +73,12 @@ export const INJECTED = `
       ? [
           ':root { --nessie-native-bottom-overlay: ${ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE}px; }',
           '.admin-topbar { height: var(--topbar-h); padding-top: 0; }',
-          // The channel composer is part of main's flex flow, so this shared
-          // bottom padding keeps the input, controls, and send button clear of
-          // the floating dock without adding a disconnected native slab.
-          '.admin-shell > aside, .admin-shell > main { padding-bottom: calc(var(--nessie-native-bottom-overlay) + env(safe-area-inset-bottom)); }',
           '[data-testid="channel-content-scroll"] { overflow-x: hidden; }',
           '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
         ].join('')
       : '';
     st.id = styleId;
     st.textContent =
-      '.admin-shell > aside, .admin-shell > main {' +
-      '  padding-bottom: env(safe-area-inset-bottom);' +
-      '}' +
       iosPhoneBackgroundCss +
       iosPhoneTabBarOverlayCss +
       androidNativeFrameCss;

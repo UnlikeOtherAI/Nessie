@@ -15,7 +15,7 @@ export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
   return (
     <SettingsPanel eyebrow="Organization" title="Agents">
       {tabs}
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid gap-4">
         <CallProviderSettingsPanel />
         <MailboxConnectionsPanel scope="team" />
         {organization?.role === 'owner' ? <CloudBrowserPanel scope="organization" /> : null}
