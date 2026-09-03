@@ -345,6 +345,14 @@ when one changes, the same turn updates it, not this section.
   Current callers: MCP OAuth exchange/refresh/discovery/registration, the MCP
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
+  The gate is mechanical: the egress block in the root `eslint.config.js` bans
+  global `fetch` (call, value, `globalThis`/`window`, `typeof fetch`) and raw
+  `node:http(s)` imports across `api/src`, `worker/src`, `packages/*/src`,
+  `executor/src`, `cli/src` and `gateway/src`, with test trees excluded and a
+  per-entry-justified allowlist that only shrinks — admission criteria sit in
+  the block comment (Workstream 3d of
+  `docs/plans/2026-08-13-security-boundary-hardening.md`; the lint is the
+  ratchet, the branded transport remains the boundary).
   Raw sockets get the same policy through the same rules rather than a second
   copy of them: `resolveVettedAddresses` is the shared host check, and the
   IMAP/SMTP dialer (`packages/agent-mail/src/dial.ts`) calls it on every dial,
