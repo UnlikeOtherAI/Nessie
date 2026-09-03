@@ -25,9 +25,25 @@ states a platform fact I could not verify from the repo, it says so.
 Two API gaps block a native client and are named here so they are scoped as
 dependencies, not discovered mid-build:
 
-**Voice-scoped device credential.** Every `/api/voice/*` route today rides
-ordinary session auth, which in the browser means an HttpOnly cookie. A native
-app cannot and should not hold that. The plan needs a device-scoped bearer
+**Voice-scoped device credential** — *shipped 2026-09-03, and Android
+inherits it unchanged.* Storage is a dedicated `voice_device_credentials`
+table rather than a column on the installation row (open question 1, now
+answered): one live credential per device slot, holding only the token's
+SHA-256 digest plus the minting session's `sid`, the user's token generation
+and its workspace scope. The token is prefixed `nvc1_`, minted by the WebView
+on ordinary session auth at `POST /api/voice/device-token`, and refreshed by
+the device itself at `POST /api/voice/device-token/refresh` — a locked phone
+has no foreground WebView to ask. Scope is a per-route `voiceCredential` flag
+read by the one global auth hook: anywhere else in the API it is
+`403 VOICE_CREDENTIAL_OUT_OF_SCOPE`. Revocation is stronger than this plan
+asked for — `DELETE /api/voice/installations/:id` revokes it, and so does
+signing out on the web, a forced sign-out, or deactivating the member, each
+checked on *every* request rather than at token expiry. Keystore-backed
+storage on the device is still this plan's job.
+
+The reasoning that follows is kept because it is why the credential exists:
+Every `/api/voice/*` route rode ordinary session auth, which in the browser
+means an HttpOnly cookie. A native app cannot and should not hold that. The plan needs a device-scoped bearer
 credential minted at installation registration (or first authenticated launch)
 that authorizes *only* the voice routes for that installation: session start,
 rotate, usage, transcript, end, pa-send, reply-poll. It must be revocable via
@@ -411,12 +427,13 @@ the plan does not pretend otherwise.
 
 ## 8. Open questions I cannot resolve from the repo
 
-1. **Device credential shape.** Whether the voice-scoped device token is a
-   new `VoiceInstallation.tokenHash` column on the existing installation row
-   or a row in a general device-credential table. The installation route
-   exists but I was directed not to read it, so the storage design is left to
-   step 1; the contract above (scoped, revocable, Keystore-held) is what the
-   route must satisfy either way.
+1. ~~**Device credential shape.**~~ **Answered (2026-09-03):** its own
+   `voice_device_credentials` table, not a column on the installation row —
+   the credential has its own lifecycle (rotation, per-session binding,
+   independent revocation) that an installation column could not carry. The
+   contract this plan specified — scoped, revocable, Keystore-held — is met,
+   and the scope is enforced in one auth hook against a per-route flag. See
+   §1.
 2. **pa-send authorization granularity.** The schemas pin the payload but not
    the check: does the voice session row store enough (channelId, threadId,
    agentId — it does, per `VoiceSessionCredentialSchema`) to re-derive the
@@ -431,14 +448,50 @@ the plan does not pretend otherwise.
    device matrix settles this.
 5. **Assistant contact-action resolution** (§7): emergent behaviour, settled
    only by on-device testing.
-6. **iOS parity.** iOS is also unbuilt; this plan's shared-JS extraction
-   (step 2) is the shared foundation for it, but nothing here commits the iOS
-   module shape. CallKit + `AVAudioSession` will have their own survival
-   matrix and deserve their own plan rather than a section bolted onto this
-   one.
+6. **iOS parity.** *In flight as of 2026-09-03* — the CallKit module is being
+   built against the same routes, so the shared-JS extraction (step 2) should
+   be reconciled with whatever seam that lands rather than designed twice. The
+   point stands that CallKit + `AVAudioSession` have their own survival matrix;
+   the iOS lifecycle work belongs in the main voice-calling plan's phase 1b,
+   not bolted onto this one.
 7. **Emulator Gemini reachability.** Whether the emulator's network path to
    `generativelanguage.googleapis.com` and its simulated mic are faithful
    enough for step 4 debugging or whether step 4 collapses into device-only.
    Assumed emulator-good-enough-for-bytes, device-required-for-VAD; if the
    emulator proves useless, step 3's loopback mode still earns its keep for
    the audio pipeline.
+
+---
+
+## 9. Review (2026-09-03)
+
+Read against the shipped server surface and the working browser client.
+The plan holds. Three of its calls are load-bearing and right:
+
+- **Rotation must be triggered natively, not from JS.** React Native timers
+  run on the JS thread and a locked, backgrounded device is exactly where JS
+  execution is suspended — so a JS-scheduled rotation is a call that dies at
+  the 30-minute mark on the one platform state that matters most. Moving the
+  trigger into the engine while the shared JS core keeps the *policy* is the
+  correct split. iOS has the same problem for the same reason, and the two
+  should reach it the same way.
+- **Auto-mute means sending silence, not stopping the stream.** This matches
+  the browser client, and it is not a stylistic choice: Gemini's VAD ends a
+  turn by hearing silence, so a gap in frames leaves a turn open and billing.
+- **A route change must not be treated as fatal.** Re-opening the record
+  stream on the new route, with a bounded retry and a loud failure rather than
+  a silent one, is right. "The call dies every time someone parks" is the real
+  failure this prevents.
+
+Two things to correct when the work starts:
+
+- §1's first dependency is **already built** — see the amendment there. Android
+  inherits the credential rather than designing one, and its remaining job is
+  Keystore-backed storage plus the native refresh trigger above.
+- The plan's uncertainty about `WAKE_LOCK` under a foreground service is
+  honest and should stay uncertain until the 35-minute locked-screen test in
+  step 5 settles it. Do not resolve it from documentation.
+
+Sequencing: this sits after the iOS module lands, because `AgentCallSession`
+was written against the call *lifecycle* rather than against CallKit, and the
+shared seam is worth inheriting rather than inventing twice.
