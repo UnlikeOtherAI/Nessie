@@ -51,6 +51,49 @@ rather than offered and then denied.
   `agent_create`, and never throws — a failed generation leaves the agent
   faceless rather than failing the creation.
 
+## Every path that starts a run in the home DM stamps the member
+
+Admission to those tools is `resolveIdentityDelegatedToolIds`
+(`worker/src/run/delegated-identity.ts`), and it requires three structural
+facts: an interactive turn, a `user` actor, and
+`actionContext.effectiveUserId === actor.actorId`. The third is the one that
+gets lost. A single-member delegated system DM — the Personal Assistant's, and
+a DM-homed global agent's home — is the only surface where stamping
+`effectiveUserId = the poster` is true, and it is true there because the DM
+holds exactly one member.
+
+**So every path that starts a run in one of those DMs must stamp it, or the run
+silently loses its identity tools.** Nothing throws when it does not: the gate
+returns the empty set, the tools are absent from the model's function set, the
+capability catalogue renders its `read_only` variant, and the agent truthfully
+reports that it cannot create anything. That is exactly what shipped — the
+stamp lived inline in `thread-message-create.ts` and was absent from
+`POST /api/agent-cards/:cardId/respond`, so a *typed* message worked and a card
+press did not, in an agent whose whole interaction style is card-driven.
+
+The rule now lives in two places, in descending order of strength:
+
+- **One chokepoint for the human-turn wake path.** `enqueueOrchestrateDecide`
+  (`api/src/queue/pgqueue.ts`) resolves the destination channel itself and
+  applies `withDelegatedSystemDmIdentity` (`@nessie/schemas`). A typed message,
+  a card press and an invited agent's mention replay all go through it, and so
+  does a fourth wake path whose author has never read this section. The
+  predicate `isDelegatedSystemDmChannelType` now has one definition, in the same
+  module — it previously existed twice, on each side of the process boundary,
+  each copy carrying a comment saying the other must not drift.
+- **An enumerated list for the run-level enqueues.** `enqueueRunExecution` has
+  no equivalent chokepoint: its callers build actor contexts from six different
+  provenances, and a blanket stamp there would be a guess about whose identity
+  is in play. `api/test/delegated-system-dm-enqueue-sites.test.ts` therefore
+  classifies each call site as `stamps`, `inherits` or `unattended`, and fails
+  until a new one records a verdict. Resume (both the card and approval paths,
+  through `run-resume-core.ts`), continue, restart and the executor launch
+  stamp; `deliverGlobalAgentBrief` re-asserts it for both of its callers.
+
+A resumed run is the case worth naming: a `wait: true` card parks its run in
+`waiting_input` and the press resumes it from the *parked* run's enqueue-time
+actor context, so an unstamped original stayed unstamped through the resume.
+
 ## The capability catalogue is generated, never written
 
 `buildGlobalAgentCatalogueBlock` (`@nessie/workspace-admin`) renders parameters

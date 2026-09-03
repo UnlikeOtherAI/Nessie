@@ -236,8 +236,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   surface-keyed — a PA presence in a shared room still carries its owner's
   identity, so the exemptions key on the surface, never the kind. Memory
   containment and realtime narrowing moved onto it; reply re-attribution and both
-  *binding* waivers stay PA-only. `personalAssistantOnly` gains one arm
-  beside the PA's: the blueprint's `identityToolIds` lists that id, the run is on
+  *binding* waivers stay PA-only. `personalAssistantOnly` gains one arm beside the PA's: the blueprint's `identityToolIds` lists that id, the run is on
   the agent's own home DM, and `payload.interactive === true` with a live human
   requester whose id equals the stamped `effectiveUserId` — resolved **once** at
   run setup and passed to BOTH `resolveAgentTools` (the schema omits them, never
@@ -246,6 +245,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   with the `createAgentTrigger` refusal: remove either and an unattended run
   reconstructing an absent creator's `effectiveUserId` creates agents and
   channels as that person. Delegated reads it opens feed the disclosure sink.
+- **Every path that starts a run in a single-member delegated system DM stamps that member as `effectiveUserId`, or the run silently loses its identity tools.** The gate above requires `effectiveUserId === actorId`, and an unstamped run does not fail: it resolves no requester, the tools are absent from the model's function set, and the agent truthfully reports it cannot create anything. The stamp lived inline in `thread-message-create.ts` and was missing from the agent-card press, so a *typed* message worked while a button press did not — in the one agent whose whole style is card-driven. `isDelegatedSystemDmChannelType` and `withDelegatedSystemDmIdentity` are now ONE definition in `@nessie/schemas` (the predicate had existed twice, once per process, each copy warning that the other must not drift), and `enqueueOrchestrateDecide` resolves the destination channel itself and applies it, so every human-turn wake path is correct without its author knowing this rule exists; a caller-supplied `systemChannelType` is exactly the argument a new path forgets. `enqueueRunExecution` gets no such chokepoint — its callers build actor contexts from six provenances and a blanket stamp would guess whose identity is in play — so each call site is classified `stamps`/`inherits`/`unattended` in `api/test/delegated-system-dm-enqueue-sites.test.ts`, which fails until a new one records a verdict. A resumed run is the case worth naming: a `wait: true` card parks its run and the press resumes from the *parked* run's actor context, so `run-resume-core.ts` re-asserts the destination's rule rather than trusting what it inherited. `docs/global-agents.md`.
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored
   `system` brief — the trigger-kickoff mechanism, never the integration

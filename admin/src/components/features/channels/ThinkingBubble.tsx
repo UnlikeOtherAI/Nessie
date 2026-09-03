@@ -1,5 +1,5 @@
 import type { KeyboardEvent, MouseEvent } from 'react'
-import type { AgentRecord } from '../../../lib/api-client'
+import type { AgentIdentity } from '../../shared/agent-identity'
 import {
   toThinkingLines,
   type PendingStreamMessage,
@@ -11,7 +11,7 @@ import { AgentAvatar } from '../../shared/AgentAvatar'
 const TICKER_MAX_LINES = 6
 
 type ThinkingBubbleProps = {
-  agent: AgentRecord | null
+  agent: AgentIdentity | null
   agentName: string
   entry: PendingStreamMessage
   onOpen: (runId: string) => void

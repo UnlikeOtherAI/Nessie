@@ -14,6 +14,7 @@ import {
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
 import { usePhoneLayout } from '../../lib/mobile-shell'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { useAgentIdentityLookup } from '../../providers/AgentIdentityProvider'
 
 interface UseReplyThreadParams {
   activeChannel: ChannelRecord | null
@@ -161,6 +162,7 @@ export const useReplyThread = ({
   const rootQuery = useThreadMessage(activeThreadId, openRootMessageId ?? undefined)
   const repliesQuery = useThreadReplies(activeThreadId, openRootMessageId ?? undefined)
 
+  const lookupAgentIdentity = useAgentIdentityLookup()
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const userMap = useMemo(
     () => new Map(channelUsers.map((user) => [user.id, user])),
@@ -180,10 +182,13 @@ export const useReplyThread = ({
           displayName: user.displayName,
         }
       }
-      const agent = agentMap.get(participantId)
+      // The directory answers for the system-managed tier the entitled agent
+      // list omits; without it a global agent that replied in a thread was
+      // dropped from the summary bar's avatar stack entirely.
+      const agent = agentMap.get(participantId) ?? lookupAgentIdentity(participantId)
       return agent ? { kind: 'agent', agent } : null
     },
-    [agentMap, userMap],
+    [agentMap, lookupAgentIdentity, userMap],
   )
 
   return {

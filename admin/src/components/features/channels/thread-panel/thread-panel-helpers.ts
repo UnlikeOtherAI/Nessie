@@ -1,4 +1,4 @@
-import type { AgentRecord } from '../../../../lib/api-client'
+import type { AgentIdentity } from '../../../shared/agent-identity'
 
 export const THREAD_PANEL_WIDTH_STORAGE_KEY = 'nessie.threadPanelWidth'
 export const THREAD_PANEL_DEFAULT_WIDTH = 400
@@ -49,4 +49,7 @@ export type ThreadParticipant =
       avatarUrl?: string | null
       displayName: string
     }
-  | { kind: 'agent'; agent: AgentRecord }
+  // Identity, not the entitled record: the summary bar only draws a picture,
+  // and a system-managed agent that replied is resolved through the agent
+  // identity directory rather than the channel's agent list.
+  | { kind: 'agent'; agent: AgentIdentity }

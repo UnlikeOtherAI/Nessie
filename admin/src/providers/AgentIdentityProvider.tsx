@@ -65,3 +65,25 @@ export const useAgentIdentity = (agentId?: string | null): AgentIdentity | null 
   const context = useContext(AgentIdentityContext)
   return context?.lookup(agentId) ?? null
 }
+
+/**
+ * The directory itself, for a caller that must resolve an agent it does not yet
+ * know — inside a `useMemo`/`useCallback`, or once per row of a list.
+ *
+ * `useAgentIdentity` answers the picture question; this answers the *name* one,
+ * which the directory could not previously be asked at all. That asymmetry is
+ * why an Agent Designer message rendered as "Agent": the author chrome resolves
+ * its name from `useAgents()`'s default-scope map, which deliberately omits
+ * system-managed agents, and had nowhere else to look. Widening that map is the
+ * wrong fix — it feeds pickers, bindings and policy surfaces, which must keep
+ * excluding system agents.
+ *
+ * Stable across renders (the provider's own `useMemo`), so it is safe in a
+ * dependency array.
+ */
+export const useAgentIdentityLookup = (): ((agentId?: string | null) => AgentIdentity | null) => {
+  const context = useContext(AgentIdentityContext)
+  return context?.lookup ?? NO_DIRECTORY
+}
+
+const NO_DIRECTORY = (): AgentIdentity | null => null
