@@ -42,13 +42,15 @@ const storeWithRecorder = (): { store: ReturnType<typeof createRealtimeEventStor
  * organization from an organization or channel scope exclusively, so a
  * user-only publication resolved to null and was never persisted. The hub gates
  * its entire user-SSE fan-out on that persisted row, so the ring reached
- * nobody. Reverting the `?? userScope?.organizationId` fallback fails this test.
+ * nobody. The row is now written on the publish side by
+ * `PgRealtimeTransport.publishWs` (this store is the api hub's Prisma-backed
+ * writer for it); reverting the `?? userScope?.organizationId` fallback fails
+ * this test.
  */
 test('a user-only publication is persisted using the user scope organization', async () => {
   const { store, created } = storeWithRecorder()
 
   const event = await store.append({
-    kind: 'ws',
     message: {
       data: { callId: '00000000-0000-4000-8000-0000000000ca' },
       event: 'call.incoming',
@@ -69,7 +71,6 @@ test('an organization scope still wins over the user scope organization', async 
   const { store, created } = storeWithRecorder()
 
   await store.append({
-    kind: 'ws',
     message: {
       data: {},
       event: 'call.invite.updated',

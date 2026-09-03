@@ -3,16 +3,14 @@ import type { PrismaClient } from '@prisma/client'
 import {
   createPgPool,
   PgRealtimeTransport,
+  parseLastRealtimeEventId,
   type RealtimeNotificationPayload,
+  type RealtimeReplayEvent,
   type ThreadStreamEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
 import type { SseEvent, WsScope } from '@nessie/schemas'
-import {
-  createRealtimeEventStore,
-  parseLastRealtimeEventId,
-  type RealtimeReplayEvent,
-} from '../services/realtime-events.js'
+import { createRealtimeEventStore } from '../services/realtime-events.js'
 
 type ThreadSseConnection = {
   kind: 'thread'
@@ -128,23 +126,22 @@ export const shouldDeliverWsNotification = async (
   return input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))
 }
 
-export const createRealtimeHub = async (input: {
+/**
+ * The LISTEN-side fan-out, exported so it can be exercised without a live
+ * pg LISTEN connection. It never writes to `realtime_events`: the publisher
+ * persisted the row before NOTIFYing (`PgRealtimeTransport.publishWs`), so
+ * with N api replicas listening, N appends here would corrupt the shared
+ * Last-Event-ID sequence. A notification carrying no `eventId` comes from an
+ * older publisher mid rolling deploy and is fanned out live with no replay
+ * bookkeeping.
+ */
+export const createWsNotificationDelivery = (input: {
   canAccessChannelEvent?: (input: {
     channelId: string
     organizationId: string
     userId: string
   }) => Promise<boolean>
-  databaseUrl: string
-  poolMax: number
-  poolMin: number
-  prisma: PrismaClient
 }) => {
-  const pool = createPgPool(input.databaseUrl, {
-    max: input.poolMax,
-    min: input.poolMin,
-  })
-  const transport = new PgRealtimeTransport(pool, input.databaseUrl)
-  const realtimeEventStore = createRealtimeEventStore(input.prisma)
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
@@ -180,12 +177,28 @@ export const createRealtimeHub = async (input: {
       return
     }
 
-    let replayEvent: RealtimeReplayEvent | null = null
-    try {
-      replayEvent = await realtimeEventStore.append(notification)
-    } catch (error) {
-      console.error('[realtime] failed to append realtime event:', error)
-    }
+    // The publisher persisted the row before NOTIFYing and carried its id in
+    // the payload; a listener must never append — with N api replicas that
+    // wrote N copies of the same event and duplicated every replay.
+    // During a rolling deploy an old publisher still sends payloads without
+    // an id: those are fanned out live only, with no replay bookkeeping, so
+    // the mixed-version window can miss a row from replay but never writes a
+    // duplicate.
+    const replayEventId =
+      typeof notification.eventId === 'string'
+        ? parseLastRealtimeEventId(notification.eventId)
+        : null
+    const replayEvent: RealtimeReplayEvent | null =
+      replayEventId !== null && replayEventId > 0n
+        ? {
+            id: replayEventId,
+            channelId: null,
+            createdAt: new Date(notification.message.ts),
+            eventType: notification.message.event,
+            payload: notification.message,
+            recipientUserId: null,
+          }
+        : null
 
     if (replayEvent) {
       for (const connection of userSseConnections) {
@@ -243,6 +256,38 @@ export const createRealtimeHub = async (input: {
       connection.send(notification.message)
     }
   }
+
+  return {
+    deliverNotification,
+    threadSseConnections,
+    userSseConnections,
+    wsConnections,
+  }
+}
+
+export const createRealtimeHub = async (input: {
+  canAccessChannelEvent?: (input: {
+    channelId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
+  databaseUrl: string
+  poolMax: number
+  poolMin: number
+  prisma: PrismaClient
+}) => {
+  const pool = createPgPool(input.databaseUrl, {
+    max: input.poolMax,
+    min: input.poolMin,
+  })
+  const transport = new PgRealtimeTransport(pool, input.databaseUrl)
+  const realtimeEventStore = createRealtimeEventStore(input.prisma)
+  const {
+    deliverNotification,
+    threadSseConnections,
+    userSseConnections,
+    wsConnections,
+  } = createWsNotificationDelivery(input)
 
   await transport.listen(deliverNotification)
 
@@ -338,7 +383,7 @@ export const createRealtimeHub = async (input: {
     userSseConnections.add(connection)
 
     try {
-      const backlog = await realtimeEventStore.listAfter({
+      const backlog = await transport.listRealtimeEventsAfter({
         afterEventId: connection.lastEventId,
         channelIds: [...connection.channelIds],
         organizationId: connection.organizationId,
@@ -412,7 +457,14 @@ export const createRealtimeHub = async (input: {
         event: string
         ts?: string
       },
-    ): Promise<WsEventMessage> => transport.publishWs(scopes, input),
+    ): Promise<WsEventMessage> =>
+      transport.publishWs(scopes, {
+        ...input,
+        // Insert through the api's Prisma client so the durable row shares the
+        // api's connection lifecycle; the transport still owns the single
+        // persist-then-notify shape and carries the row id in the NOTIFY.
+        persistEvent: realtimeEventStore.append,
+      }),
     registerWsConnection: (
       input: {
         organizationId: string

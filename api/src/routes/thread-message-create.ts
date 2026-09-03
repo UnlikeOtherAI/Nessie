@@ -1,12 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 
-import { captureUserMessageMemory } from '@nessie/memory'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   detectSecrets,
   parseAgentId,
-  parseChannelId,
-  parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
 import {
@@ -14,8 +11,8 @@ import {
   ThreadMessageRecordSchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
 import { createThreadMessage } from '../services/message-create.js'
+import { deliverCreatedMessage } from '../services/message-delivery.js'
 import {
   findThreadForUser,
   mapMessageRecord,
@@ -178,201 +175,13 @@ export const registerCreateThreadMessageRoute = (
       linkedAttachmentCount = linked.count
     }
 
-    if (messageMemoryCaptureConfig) {
-      // Fire-and-forget: memory capture must never delay message posting.
-      void captureUserMessageMemory(
-        {
-          channelId: thread.channel.id,
-          content: result.message.content,
-          memoryOrigin:
-            thread.channel.systemChannelType === 'personal_assistant'
-              ? 'personal_assistant_dm'
-              : 'user_authored_workspace_message',
-          messageId: result.message.id,
-          organizationId: actorContext.tenant.organizationId,
-          projectId: actorContext.tenant.projectId,
-          teamId:
-            actorContext.tenant.teamId
-            ?? actorContext.actionContext.teamId,
-          sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
-          threadId: thread.id,
-          userId: actorContext.actor.actorId,
-          sessionId: actorContext.actionContext.sessionId,
-          taskId: actorContext.actionContext.taskId,
-          agentId: actorContext.actionContext.agentId,
-          actorId: actorContext.actor.actorId,
-          actorType: actorContext.actor.actorType,
-          requestId: actorContext.actionContext.requestId,
-          correlationId: actorContext.actionContext.correlationId,
-          systemComponent: 'memory-capture',
-        },
-        messageMemoryCaptureConfig,
-      ).catch((error) =>
-        request.log.error(
-          { err: error, messageId: result.message.id },
-          'capture_user_message_memory_failed',
-        ),
-      )
-    }
-
-    const channelScopes = buildChannelRealtimeScopes({
-      channelId: thread.channel.id,
-      organizationId: actorContext.tenant.organizationId,
-      systemChannelType: thread.channel.systemChannelType,
-    })
-
-    if (result.replyRoot) {
-      // Reply threads (#233): a reply announces itself as `message.reply` (so
-      // clients can update the reply panel without touching the top-level
-      // feed), followed by the root's fresh materialized metadata.
-      await realtimeHub.publishWs(channelScopes, {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(thread.channel.id),
-          contentPreview: result.message.content.slice(0, 200),
-          messageId: result.message.id,
-          rootMessageId: result.replyRoot.rootMessageId,
-          role: result.message.role,
-          threadId: parseThreadId(thread.id),
-        },
-        event: 'message.reply',
-      })
-      await realtimeHub.publishWs(channelScopes, {
-        data: {
-          channelId: parseChannelId(thread.channel.id),
-          threadId: parseThreadId(thread.id),
-          rootMessageId: result.replyRoot.rootMessageId,
-          replyCount: result.replyRoot.metadata.replyCount,
-          lastReplyAt: result.replyRoot.metadata.lastReplyAt?.toISOString(),
-          replyParticipantIds: result.replyRoot.metadata.replyParticipantIds,
-        },
-        event: 'message.reply.meta',
-      })
-    } else {
-      await realtimeHub.publishWs(channelScopes, {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(thread.channel.id),
-          contentPreview: result.message.content.slice(0, 200),
-          messageId: result.message.id,
-          role: result.message.role,
-          threadId: parseThreadId(thread.id),
-        },
-        event: 'message.new',
-      })
-    }
-
-    // "Also send to #channel" copy: a normal top-level `message.new` under the
-    // copy's own id. It is informational only — no push/orchestration below.
-    if (result.broadcastMessage) {
-      await realtimeHub.publishWs(channelScopes, {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(thread.channel.id),
-          contentPreview: result.broadcastMessage.content.slice(0, 200),
-          messageId: result.broadcastMessage.id,
-          role: result.broadcastMessage.role,
-          threadId: parseThreadId(thread.id),
-        },
-        event: 'message.new',
-      })
-    }
-
-    // Durable mention alerts were written in the create transaction; fan out
-    // one alert.created event per recipient. Best-effort — the rows are the
-    // record of truth, a missed event only delays a badge refresh.
-    for (const alertedUserId of result.alertedUserIds) {
-      try {
-        await realtimeHub.publishWs(
-          buildChannelRealtimeScopes({
-            channelId: thread.channel.id,
-            organizationId: actorContext.tenant.organizationId,
-            systemChannelType: thread.channel.systemChannelType,
-          }),
-          {
-            data: {
-              userId: parseUserId(alertedUserId),
-              kind: 'mention' as const,
-              messageId: result.message.id,
-              threadId: parseThreadId(thread.id),
-              channelId: parseChannelId(thread.channel.id),
-              actorUserId: parseUserId(actorContext.actor.actorId),
-              createdAt: result.message.createdAt.toISOString(),
-            },
-            event: 'alert.created',
-          },
-        )
-      } catch (error) {
-        app.log.error(
-          { err: error, messageId: result.message.id, alertedUserId },
-          '[alerts] failed to publish alert.created',
-        )
-      }
-    }
-
-    try {
-      const mentions =
-        result.message.metadata
-        && typeof result.message.metadata === 'object'
-        && !Array.isArray(result.message.metadata)
-          ? (result.message.metadata as { mentions?: { userIds?: unknown } }).mentions
-          : undefined
-      const mentionUserIds =
-        mentions && Array.isArray(mentions.userIds)
-          ? mentions.userIds.filter((id): id is string => typeof id === 'string')
-          : []
-      await enqueuePushDispatch(
-        prisma,
-        {
-          messageId: result.message.id,
-          authorUserId: actorContext.actor.actorId,
-          channelId: thread.channel.id,
-          threadId: thread.id,
-          ...(result.replyRoot ? { rootMessageId: result.replyRoot.rootMessageId } : {}),
-          organizationId: actorContext.tenant.organizationId,
-          contentSnippet: result.message.content.slice(0, 140),
-          mentionUserIds,
-        },
-        `push:${result.message.id}`,
-      )
-    } catch (error) {
-      app.log.error(
-        { err: error, messageId: result.message.id },
-        '[push] failed to enqueue dispatch job — recipients will not be notified',
-      )
-    }
-
-    if (result.channelAgents.length > 0) {
-      // A single-member system DM — the Personal Assistant's, or a global
-      // agent's home — is the one place an agent may act as the person it is
-      // talking to, and `enqueueOrchestrateDecide` stamps that identity for
-      // every wake path from the destination itself. This route used to do it
-      // inline, which is precisely why the agent-card press did not.
-      try {
-        await enqueueOrchestrateDecide(
-          prisma,
-          {
-            actorContext,
-            agentMentions: result.agentMentions,
-            channelAgents: result.channelAgents,
-            channelId: parseChannelId(thread.channel.id),
-            content,
-            messageId: result.message.id,
-            role: result.message.role,
-            threadId: parseThreadId(thread.id),
-          },
-          `orchestrate:${result.message.id}`,
-        )
-      } catch (error) {
-        app.log.error(
-          { err: error, messageId: result.message.id },
-          '[orchestrate] failed to enqueue decide job — agent will not respond',
-        )
-      }
-    }
+    // Everything past the row — memory, realtime, alerts, push, and the run
+    // this message starts — is one shared step, because the voice call's
+    // `pa_send` posts as the person too and a second copy of it would drift.
+    await deliverCreatedMessage(
+      { buildChannelRealtimeScopes, messageMemoryCaptureConfig, prisma, realtimeHub },
+      { actorContext, content, log: request.log, result, thread },
+    )
 
     return reply.code(201).send(
       createApiResponse({

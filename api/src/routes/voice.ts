@@ -2,12 +2,8 @@ import type { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 
 import {
-  parseAgentId,
-  parseChannelId,
-  parseThreadId,
   ReportVoiceUsageRequestSchema,
   StartVoiceSessionRequestSchema,
-  SubmitVoiceTranscriptRequestSchema,
   VoiceSessionCredentialSchema,
   VoiceSessionRotationSchema,
   VoiceToolCallRequestSchema,
@@ -27,20 +23,17 @@ import {
   endVoiceSession,
   requireActiveSession,
   requireOwnedInstallation,
-  requireRecordableSession,
   rotateVoiceSession,
   startVoiceSession,
 } from '../services/voice/voice-session.js'
-import {
-  assertTranscriptPlausible,
-  writeVoiceCallRecord,
-} from '../services/voice/voice-transcript.js'
 import {
   hashToolArguments,
   isVoiceTool,
   runVoiceTool,
 } from '../services/voice/voice-tools.js'
 
+import { registerVoiceCallRecordRoute } from './voice-call-record.js'
+import { registerVoiceConversationRoutes } from './voice-conversation.js'
 import { registerVoiceEnrolmentRoutes } from './voice-enrolment.js'
 import { sendVoiceError } from './voice-route-errors.js'
 
@@ -71,7 +64,9 @@ import type { RouteDeps } from './types.js'
  * | POST   | /api/voice/sessions/:id/rotate       | the call's own user | session, device |
  * | POST   | /api/voice/sessions/:id/usage        | the call's own user | session, device |
  * | POST   | /api/voice/sessions/:id/tool-call    | the call's own user | session, device |
- * | POST   | /api/voice/sessions/:id/transcript   | the call's own user | session, device |
+ * | POST   | /api/voice/sessions/:id/pa-send      | the call's own user | session, device |†
+ * | GET    | /api/voice/sessions/:id/replies      | the call's own user | session, device |†
+ * | POST   | /api/voice/sessions/:id/transcript   | the call's own user | session, device |‡
  * | POST   | /api/voice/sessions/:id/end          | the call's own user | session, device |
  *
  * The rows marked * are enrolment rather than calling — whether this
@@ -82,13 +77,20 @@ import type { RouteDeps } from './types.js'
  * outlive the sign-out that should have ended it, so renewal is the refresh
  * row, which carries the original sign-in forward.
  *
+ * The row marked ‡ is the durable record a call leaves behind, in
+ * `voice-call-record.ts`. The rows marked † are the conversation bridge and
+ * live in
+ * `voice-conversation.ts`; they are the voice-scoped equivalents of the
+ * generic message routes, which this credential is refused on: the thread is
+ * the call's own and is never named by the caller, which is what keeps the
+ * scope from widening into "write to any thread this person can see".
+ *
  * Spec: docs/plans/2026-09-02-gemini-voice-calling.md
  */
 export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
     authSecret,
-    fileService,
     ledgerIdentity,
     loadPersonalAssistantState,
     requireActorContext,
@@ -107,6 +109,8 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
   const duringACall = { config: { voiceCredential: true } } as const
 
   registerVoiceEnrolmentRoutes(app, deps)
+  registerVoiceConversationRoutes(app, deps, duringACall)
+  registerVoiceCallRecordRoute(app, deps, duringACall)
 
   app.post('/api/voice/sessions', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -372,66 +376,6 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
   })
 
-  app.post('/api/voice/sessions/:sessionId/transcript', duringACall, async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext || !requireUserActor(actorContext, reply)) return reply
-    const { sessionId } = request.params as { sessionId: string }
-
-    const body = parseInput(SubmitVoiceTranscriptRequestSchema, request.body ?? {}, reply)
-    if (!body) return reply
-
-    try {
-      // Not `requireActiveSession`: a client that died mid-call submits its
-      // record on a later launch, by which point the call may have been ended
-      // by its duration cap or another tab.
-      const session = await requireRecordableSession(prisma, {
-        organizationId: actorContext.tenant.organizationId,
-        sessionId,
-        userId: actorContext.actor.actorId,
-      })
-      assertTranscriptPlausible(session, body.lines)
-
-      const [agent, user] = await Promise.all([
-        prisma.agent.findUnique({ where: { id: session.agentId }, select: { name: true } }),
-        prisma.user.findUnique({
-          where: { id: session.userId },
-          select: { displayName: true },
-        }),
-      ])
-
-      const record = await writeVoiceCallRecord(prisma, {
-        actorContext,
-        agentName: agent?.name ?? 'Personal Assistant',
-        durationMs: body.durationMs,
-        fileService,
-        lines: body.lines,
-        // Null on a deployment with no model service. The record is written
-        // either way — compaction is the nicety, not the record.
-        modelClient: deps.sharedModelClient,
-        onCompactionFailure: (err) =>
-          request.log.warn({ err }, 'voice compaction failed; recording verbatim'),
-        // Leaked bytes and an over-counted storage ledger. Nothing else would
-        // ever report it, and the request itself fails for its own reason.
-        onTranscriptCleanupFailure: (err) =>
-          request.log.error({ err }, 'voice transcript bytes could not be freed'),
-        session,
-        userDisplayName: user?.displayName ?? 'You',
-      })
-
-      await publishCallRecord(deps, {
-        agentId: session.agentId,
-        channelId: session.channelId,
-        messageId: record.messageId,
-        organizationId: session.organizationId,
-        threadId: session.threadId,
-      })
-
-      return reply.code(201).send(createApiResponse({ messageId: record.messageId }))
-    } catch (error) {
-      return sendVoiceError(reply, error) ?? Promise.reject(error)
-    }
-  })
-
   app.post('/api/voice/sessions/:sessionId/end', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -453,43 +397,3 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
   })
 }
 
-/**
- * Announces the call record so an open feed shows it without a refetch.
- *
- * Best-effort: the message row is the record of truth, and a dropped event
- * costs a refresh rather than the record.
- */
-const publishCallRecord = async (
-  deps: RouteDeps,
-  input: {
-    agentId: string
-    channelId: string
-    messageId: string
-    organizationId: string
-    threadId: string
-  },
-): Promise<void> => {
-  try {
-    await deps.realtimeHub.publishWs(
-      deps.buildChannelRealtimeScopes({
-        channelId: input.channelId,
-        organizationId: input.organizationId,
-        systemChannelType: 'personal_assistant',
-      }),
-      {
-        data: {
-          agentId: parseAgentId(input.agentId),
-          authorUserId: undefined,
-          channelId: parseChannelId(input.channelId),
-          contentPreview: 'Voice call',
-          messageId: input.messageId,
-          role: 'agent',
-          threadId: parseThreadId(input.threadId),
-        },
-        event: 'message.new',
-      },
-    )
-  } catch {
-    // The feed refetches on its own; a missed event is not worth failing on.
-  }
-}

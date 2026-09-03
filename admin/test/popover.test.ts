@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { Popover } from '../src/components/overlays/Popover.js'
 import { OVERLAY_BACK_PRIORITY, OVERLAY_LAYER } from '../src/navigation/overlay.js'
+import { stubResizeObserver } from './support/resize-observer-stub'
 
 /**
  * The anchored-overlay primitive (docs/navigation/overview.md §7). Every menu, picker and
@@ -73,6 +74,9 @@ test('the primitive composes useOverlay, and nothing else composes the internals
   const source = read('components/overlays/Popover.tsx')
   assert.match(source, /useOverlay\(\{/)
   assert.match(source, /kind: 'popover'/)
+  // Element anchors go through D11's observed placement; rect anchors (the
+  // editor caret) still place synchronously through the pure helper.
+  assert.match(source, /usePopoverPlacement\(/)
   assert.match(source, /placePopover\(/)
   // Motion is the hook's; a popover never writes a CSS transition of its own.
   assert.doesNotMatch(source, /transition:/)
@@ -143,6 +147,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
   url: 'http://localhost/channels',
 })
+stubResizeObserver(dom.window)
 
 for (const [name, value] of Object.entries({
   sm: '40rem',

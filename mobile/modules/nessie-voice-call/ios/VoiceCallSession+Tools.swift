@@ -19,7 +19,7 @@ extension VoiceCallSession {
             guard let text, !text.isEmpty else {
                 return ["ok": false, "error": "No request text was provided."]
             }
-            return await dispatchHandoff(text)
+            return await dispatchHandoff(text, providerCallId: providerCallId)
         }
 
         guard claimToolCall(limit: session.limits.maxToolCalls) else {
@@ -46,7 +46,7 @@ extension VoiceCallSession {
         }
     }
 
-    private func dispatchHandoff(_ text: String) async -> Any {
+    private func dispatchHandoff(_ text: String, providerCallId: String) async -> Any {
         guard let handoff else {
             return ["ok": false, "error": "Hand-off is unavailable on this call."]
         }
@@ -54,10 +54,18 @@ extension VoiceCallSession {
             // Gemini Live blocks the conversation until a tool responds, and a
             // real run takes far longer than a person will wait — so the ack is
             // immediate and the answer arrives later as its own spoken turn.
-            try await handoff.dispatch(text) { [weak self] reply in
+            try await handoff.dispatch(text, providerCallId: providerCallId) { [weak self] reply in
                 Task { @MainActor [weak self] in self?.speak(reply) }
             }
             return ["ok": true, "status": "working"]
+        } catch let error as NessieVoiceApiError {
+            // A hand-off spends from the same per-call tool budget the relay
+            // enforces, so the model hears the same sentence it would for any
+            // other tool that ran out.
+            if case .http(let status, _, _) = error, status == 429 {
+                return ["ok": false, "error": "This call has used all of its tool calls."]
+            }
+            return ["ok": false, "error": "That could not be handed over. Say so and carry on."]
         } catch {
             return ["ok": false, "error": "That could not be handed over. Say so and carry on."]
         }
@@ -86,9 +94,17 @@ actor VoiceAssistantHandoff {
         self.voiceSessionId = voiceSessionId
     }
 
-    func dispatch(_ text: String, onReply: @escaping @Sendable (String) -> Void) async throws {
+    func dispatch(
+        _ text: String,
+        providerCallId: String,
+        onReply: @escaping @Sendable (String) -> Void
+    ) async throws {
         guard !stopped else { return }
-        let sent = try await api.sendToAssistant(voiceSessionId: voiceSessionId, text: text)
+        let sent = try await api.sendToAssistant(
+            voiceSessionId: voiceSessionId,
+            providerCallId: providerCallId,
+            text: text
+        )
         let watcher = Task { [weak self] in
             guard let self else { return }
             await self.watch(after: sent.messageId, onReply: onReply)

@@ -135,11 +135,12 @@ export default [
       // window, they do not classify the device. The list shrinks as call sites
       // adopt the one placePopover helper (docs/navigation/overview.md §7) — the account,
       // workspace, create and reaction menus and the wikilink suggestion list
-      // came off it that way in step 8.
+      // came off it that way in step 8; the wikilink create confirm and the
+      // page-notes layer came off it with D11's clipping-ancestor placement
+      // (admin/src/lib/popover-placement.ts + popover-placement-hook.ts).
       'admin/src/components/overlays/placePopover.ts',
+      'admin/src/lib/popover-placement-hook.ts',
       'admin/src/layouts/admin-shell/GroupDmSidebarLabel.tsx',
-      'admin/src/components/features/knowledge/wikilink/WikilinkCreateConfirm.tsx',
-      'admin/src/components/features/knowledge/notes/PageNotesLayer.tsx',
     ],
     rules: {
       'no-restricted-imports': [

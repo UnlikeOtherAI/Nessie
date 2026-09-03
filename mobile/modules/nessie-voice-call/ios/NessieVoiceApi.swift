@@ -110,11 +110,16 @@ actor NessieVoiceApi {
     /// auth would bolt a second mode onto every general route in the API.
     func sendToAssistant(
         voiceSessionId: String,
+        providerCallId: String,
         text: String
     ) async throws -> VoiceSendToAssistantResponse {
+        // Gemini retries a tool call it did not see answered. Its own call id
+        // travels as the idempotency key so a retry is one message, one run and
+        // one unit of the call's tool budget — not three.
         try await post(
             path: "/api/voice/sessions/\(voiceSessionId)/pa-send",
-            body: ["text": text]
+            body: ["text": text],
+            idempotencyKey: providerCallId
         )
     }
 
@@ -191,9 +196,18 @@ actor NessieVoiceApi {
         return try await sendRetrying(method: "GET", path: path, body: nil)
     }
 
-    private func post<T: Decodable>(path: String, body: [String: Any]) async throws -> T {
+    private func post<T: Decodable>(
+        path: String,
+        body: [String: Any],
+        idempotencyKey: String? = nil
+    ) async throws -> T {
         await refreshIfDue()
-        return try await sendRetrying(method: "POST", path: path, body: body)
+        return try await sendRetrying(
+            method: "POST",
+            path: path,
+            body: body,
+            idempotencyKey: idempotencyKey
+        )
     }
 
     @discardableResult
@@ -216,17 +230,26 @@ actor NessieVoiceApi {
     private func sendRetrying<T: Decodable>(
         method: String,
         path: String,
-        body: [String: Any]?
+        body: [String: Any]?,
+        idempotencyKey: String? = nil
     ) async throws -> T {
+        func build() throws -> URLRequest {
+            try request(method: method, path: path, body: body, idempotencyKey: idempotencyKey)
+        }
         do {
-            return try await send(request: try request(method: method, path: path, body: body))
+            return try await send(request: try build())
         } catch let error as NessieVoiceApiError where error.isCredentialDead {
             _ = try await refreshCredential()
-            return try await send(request: try request(method: method, path: path, body: body))
+            return try await send(request: try build())
         }
     }
 
-    private func request(method: String, path: String, body: [String: Any]?) throws -> URLRequest {
+    private func request(
+        method: String,
+        path: String,
+        body: [String: Any]?,
+        idempotencyKey: String? = nil
+    ) throws -> URLRequest {
         guard let url = URL(string: credential.apiBaseUrl + path) else {
             throw NessieVoiceApiError.notProvisioned
         }
@@ -234,6 +257,9 @@ actor NessieVoiceApi {
         request.httpMethod = method
         request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let idempotencyKey, !idempotencyKey.isEmpty {
+            request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
