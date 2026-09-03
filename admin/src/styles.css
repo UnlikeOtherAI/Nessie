@@ -945,22 +945,22 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 .desktop-window-controls {
   display: flex;
-  flex: 0 0 68px;
+  flex: 0 0 135px;
   align-items: center;
-  gap: 8px;
-  min-width: 68px;
-  padding-left: 5px;
+  gap: 18px;
+  min-width: 135px;
+  padding-left: 9px;
 }
 
 .desktop-window-control {
   display: grid;
-  width: 13px;
-  height: 13px;
+  width: 27px;
+  height: 27px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, #000 18%, transparent);
+  border: 0;
   border-radius: 999px;
   color: color-mix(in srgb, #000 78%, transparent);
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1;
   transition: filter 120ms ease, transform 120ms ease;
@@ -968,7 +968,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 .desktop-window-control > span {
   opacity: 0;
-  transform: translateY(-0.5px);
+  transform: translateY(-1px);
 }
 
 .desktop-window-control:hover,

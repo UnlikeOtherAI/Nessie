@@ -26,10 +26,14 @@ const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
 // api.nessie.works are third-party in macOS WebKit, which blocks the HttpOnly
-// refresh cookie that keeps a short-lived access JWT renewable. Release windows
-// must therefore load the hosted admin as their top-level, same-site document.
+// refresh cookie that keeps a short-lived access JWT renewable. A normal
+// release therefore loads the hosted admin as its top-level, same-site document.
 fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
-    if !release {
+    // A normal release points at the hosted same-site admin so its HttpOnly
+    // session cookie remains renewable in the desktop WebView. The explicit
+    // frontendDist override used for a local package becomes an App URL,
+    // though, and must stay embedded or a freshly built UI can never run.
+    if !release || matches!(configured, WebviewUrl::App(_)) {
         return configured;
     }
 
@@ -82,6 +86,12 @@ pub fn run() {
 
             let mut window_config = main_window.clone();
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
+            // macOS provides its own traffic lights. Windows and Linux get the
+            // matching controls in the app chrome, so remove their native
+            // title-bar buttons instead of showing two competing control sets.
+            if cfg!(any(target_os = "linux", target_os = "windows")) {
+                window_config.decorations = false;
+            }
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(format!(
@@ -107,8 +117,15 @@ mod tests {
 
     #[test]
     fn release_window_uses_the_hosted_same_site_admin() {
-        let url = desktop_webview_url(WebviewUrl::App("index.html".into()), true);
+        let configured = WebviewUrl::External(PRODUCTION_ADMIN_URL.parse().unwrap());
+        let url = desktop_webview_url(configured, true);
         assert_eq!(url.to_string(), PRODUCTION_ADMIN_URL);
+    }
+
+    #[test]
+    fn release_window_keeps_an_explicitly_embedded_admin() {
+        let configured = WebviewUrl::App("index.html".into());
+        assert_eq!(desktop_webview_url(configured.clone(), true), configured);
     }
 
     #[test]
@@ -121,11 +138,6 @@ mod tests {
     fn this_build_uses_the_same_origin_selection_as_app_startup() {
         let configured = WebviewUrl::App("index.html".into());
         let selected = desktop_webview_url(configured.clone(), !cfg!(debug_assertions));
-
-        if cfg!(debug_assertions) {
-            assert_eq!(selected, configured);
-        } else {
-            assert_eq!(selected.to_string(), PRODUCTION_ADMIN_URL);
-        }
+        assert_eq!(selected, configured);
     }
 }

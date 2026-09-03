@@ -62,10 +62,16 @@ pnpm --filter @nessie/desktop dev
 
 The Nessie desktop window opens and loads the local admin app.
 
+The production config intentionally loads the hosted admin for same-site
+session renewal. The explicit `frontendDist` override above is the supported
+exception: it embeds that freshly built local admin in a release package, so
+the executable being tested contains the local UI changes.
+
 On Windows and Linux, the top-left of that window carries mac-style red,
 yellow, and green controls for close, minimise, and maximise/restore. They are
-Tauri-native window actions, not browser controls. macOS keeps its system
-traffic lights instead.
+Tauri-native window actions, not browser controls; those platforms remove the
+native title-bar buttons so the three-dot strip is the only window chrome.
+macOS keeps its system traffic lights instead.
 
 The desktop script first bundles the local `nessie-executor` CLI and the exact
 Node runtime into private app resources. It records their hashes and the Node
