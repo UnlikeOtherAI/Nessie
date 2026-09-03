@@ -77,11 +77,27 @@ export const INJECTED = `
           '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
         ].join('')
       : '';
+    // Focus paints charcoal navigation around a paper-white work surface, but
+    // it declares that navigation palette only on in-page chrome
+    // (.admin-topbar, the sidebar rail). A native shell hides both, so on a
+    // phone no element in the document carries it and the native header and
+    // tab bar had nothing monochrome to read. Mirror the same scope onto the
+    // frame, which every form factor has. The frame's own children still
+    // override it, so the page renders exactly as before.
+    var focusNativeChromeCss =
+      '.admin-frame.focus-mode {' +
+      '  --rail: #242424; --sb: #383838; --sb-active: #606062;' +
+      '  --sep: #505052; --border-strong: #6a6a6c;' +
+      '  --tx: #f1f1f1; --tx2: #d4d4d6; --tx3: #aeaeaf;' +
+      '  --accent: #b9b9bc; --accent-hover: #d4d4d6; --accent-strong: #ececee;' +
+      '  --panel: #353535;' +
+      '}';
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}' +
+      focusNativeChromeCss +
       iosPhoneBackgroundCss +
       iosPhoneTabBarOverlayCss +
       androidNativeFrameCss;
@@ -105,22 +121,14 @@ export const INJECTED = `
     var f = frameEl();
     return !!(f && f.classList && f.classList.contains('focus-mode'));
   }
-  // In focus the native chrome follows whichever focus scope its own context
-  // mirrors: the charcoal navigation where the page still draws navigation
-  // (iPad, tablet), and otherwise the paper-white work surface, which on a
-  // phone is the whole screen the native header and tab bar sit against. Out
-  // of focus this stays on documentElement, so the reported palette is
+  // The native header and tab bar are navigation, so in focus they take the
+  // charcoal navigation palette the frame now carries -- the same colours the
+  // page's own top bar and sidebar rail use where those are drawn. Out of
+  // focus this stays on documentElement, so the reported palette is
   // byte-for-byte what it was before.
   function themeEl() {
     var f = focusActive() ? frameEl() : null;
-    if (f && f.querySelector) {
-      var nav = f.querySelector(':scope > .admin-topbar')
-        || f.querySelector(':scope > .admin-shell > aside')
-        || f.querySelector(':scope > .admin-shell > .resizable-sidebar')
-        || f.querySelector(':scope > .admin-shell');
-      if (nav) return nav;
-    }
-    return document.documentElement;
+    return f || document.documentElement;
   }
   function pick() {
     // In focus the work surface is the page, so the native backdrop behind the
