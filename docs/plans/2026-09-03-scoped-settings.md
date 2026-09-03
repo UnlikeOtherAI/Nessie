@@ -151,6 +151,10 @@ Shipped on `claude/settings-scopes`. Deltas from the sketch above:
   answers `TEAM_NAME_OWNED_BY_IDP` when `externalWorkspaceId` is set; a local
   install with no IdP may rename. Writing the mirror would have been the second
   copy of the org structure the SSO invariant forbids.
+  *(Superseded 2026-09-03: the route relays the rename to UOA's
+  `PUT /org/organisations/:orgId/teams/:teamId` behind the caller's subject
+  assertion and mirrors UOA's echoed name. UOA is still the only authority —
+  refusing was never the invariant, writing locally was.)*
 - **Surfaces.** `/settings/account` (Profile · Agents · Notifications ·
   Appearance · Security), `/settings/team` (Profile · Agents),
   `/settings/organization` (Profile · Agents). The sidebar reads User → Team →
