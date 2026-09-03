@@ -1,8 +1,28 @@
 # UOA as a service: unifying organisation, workspace, team and project
 
-Status: proposal v2, 2026-09-02. Not implemented. v1 was reviewed by two
-independent adversarial reviewers who converged on six findings; every one is
-accepted and folded in below, and the section that was wrong is marked.
+Status: proposal v3, 2026-09-03. Partly implemented — see "Shipped" below.
+v1 was reviewed by two independent reviewers who converged on six findings, all
+folded in. v2 then went through a six-lens review with three refuters per
+finding; **that run degraded** — 140 of its 235 agents died on a session usage
+limit, so its "74 refuted" figure conflates genuine refutation with
+infrastructure failure and only the two findings in §3a can be treated as
+adjudicated. The rest are unadjudicated, not cleared, and a re-run is owed
+before the remaining work is trusted.
+
+### Shipped already
+
+- **UOA** (`31d0faf`): the founder owns their first workspace, and
+  `POST /org/organisations/:orgId/teams` takes `join_creator` to put the creator
+  in the team it just made, as an idempotent upsert. Without these, creating a
+  workspace produced one its author could not open.
+- **Nessie**: requests `join_creator`; invalidates the caller's directory cache
+  on creation (closing the failed-switch path); refuses local renames of
+  SSO-owned organisation and workspace names at both routes and removes the
+  affordance rather than leaving a form that can only 409;
+  `OrganizationSummary.nameManagedExternally` with a guard test; and
+  `scripts/inspect-workspace-shape.sql` to size the migration below.
+
+Everything after §4.1 is still unbuilt.
 
 The owner's instruction: **treat UOA as a service.** Store no duplicated data
 locally; ask its API. And, as of this revision: **UOA may be extended** — if the
@@ -95,6 +115,74 @@ not fixed. **Three additions to UOA**, which is a parallel project we own:
 Webhooks are the primary path, the sweep is the backstop, and neither is trusted
 alone: at-least-once delivery plus a periodic delta is the standard shape and it
 degrades correctly when one half fails.
+
+## 3a. Two findings that change §3, both verified against source
+
+The degraded review still produced two findings worth more than the rest of the
+run. Both were checked directly rather than taken on trust.
+
+### The sweep has no principal, and the only credential left reads the estate
+
+Every `/org/*` read Nessie makes today authorises as the signed-in human:
+`withUoaRosterSubjectAssertion` refuses unless the live session's UOA subject,
+credential epoch, organisation and team all match, and UOA re-verifies. **A
+background reconciliation sweep has no such principal by construction.** The
+only credential left is the per-domain hash bearer — which is scoped to a
+*domain*, not to an organisation, and not to the organisations that installed
+Nessie.
+
+Building the sweep on that bearer would silently revert the 2026-09-02 decision
+that roster calls authorise as the person, and turn Nessie's client secret into
+a read-everything key for every organisation on the domain, including ones that
+never installed Nessie. A leak would disclose the estate's rosters, not
+Nessie's tenants'.
+
+So the authorization mode is a **first-class deliverable of §3**, not an
+afterthought: a dedicated relying-party credential whose reach UOA restricts to
+organisations that granted this product access — the same fact
+`/billing/v1/service-access/confirm` already evaluates — with the snapshot
+refusing any `orgId` outside that set.
+
+### `changedSince` over `updated_at` fails OPEN, which is the one direction that matters
+
+Verified in UOA's own migrations: `org_members.updated_at`,
+`team_members.updated_at` and `teams.updated_at` are `TIMESTAMP(3) NOT NULL`
+with **no DDL default and no trigger**, so Prisma's `@updatedAt` stamps them
+from the API process's own clock. There is no `revision` column on any of those
+tables and no sequence anywhere in the schema, so nothing today can produce the
+monotonic value §4.4 assumes every cached row carries.
+
+Three separate breakages follow, and they compound:
+
+- **Clock skew.** One replica can stamp a row behind a cursor another replica
+  has already advanced past. The row is never returned again.
+- **Commit visibility.** The org-member removal path is one long transaction —
+  owner reassignment, N team-member updates, group cleanup, the member update,
+  then refresh-token revocation. It stamps `now` at the top and commits seconds
+  later. A sweep running in between reads a snapshot that excludes the
+  uncommitted row, advances its cursor past that timestamp, and **the removal
+  becomes invisible forever.**
+- **Rounding ties.** `TIMESTAMP(3)` collisions make an exclusive `>` bound drop
+  boundary rows, and the plan specified neither bound nor overlap.
+
+The consequence is not a stale cache. The sweep *succeeds*, so §4.4 refreshes
+the checked-at stamp and the organisation stays inside its staleness horizon,
+while a removed member keeps full access indefinitely and every surface reports
+the cache as fresh. That is a silent fail-**open** of exactly the revocation
+this plan exists to deliver, hitting any multi-replica deployment or any removal
+whose transaction spans a sweep tick — routinely, from the day it ships.
+
+**So the delta must not be ordered by wall clock.** UOA gains a transactional
+outbox (`org_change_events`) written in the same transaction as every
+org/team/member mutation, with a `bigserial` id as the cursor — and visibility
+ordered at *commit*, not at insert, either through a single serialized publisher
+stamping a published sequence or by only reading up to
+`min(pg_snapshot_xmin(pg_current_snapshot()))`, so an id is never handed out
+while an earlier transaction is still in flight. Every entity row gains a
+`revision bigint` bumped from that same write, giving §4.4's per-row revision a
+real source. The cheaper fallback — a DB-side `clock_timestamp()` trigger plus a
+mandatory overlap window and an inclusive bound — is acceptable only if written
+into the plan as a stated bound rather than left implicit.
 
 ## 4. Proposal
 
@@ -210,7 +298,10 @@ cleanup, and v1 scheduled it last.
 
 1. **UOA**: the two creation bugs (§4.5), with the membership add as an upsert.
    Unblocks workspace creation, which is otherwise broken on every attempt.
-2. **UOA**: webhooks, bulk snapshot, delta read (§3).
+2. **UOA**: the relying-party credential, the transactional outbox and its
+   `revision` columns, then webhooks, bulk snapshot and the outbox-ordered delta
+   (§3, §3a). The credential and the outbox come first: without them the sweep
+   is either estate-wide or fails open.
 3. **Nessie**: consume them — membership becomes a fail-closed cache (§4.4).
 4. **Nessie**: the Project↔Team migration and its constraint (§4.1). This must
    land *before* any rename work, because until it does a project-scoped rename
