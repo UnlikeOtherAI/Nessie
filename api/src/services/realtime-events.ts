@@ -1,19 +1,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import type { RealtimeNotificationPayload } from '@nessie/runtime'
+import type { RealtimeReplayEvent } from '@nessie/runtime'
 import { parseOrganizationId, parseUserId, type WsScope } from '@nessie/schemas'
 
-const MAX_REPLAY_EVENTS = 5_000
-const REALTIME_EVENT_RETENTION_MS = 24 * 60 * 60 * 1000
-const REALTIME_EVENT_PRUNE_INTERVAL_MS = 60_000
-
-export type RealtimeReplayEvent = {
-  id: bigint
-  channelId: string | null
-  eventType: string
-  payload: unknown
-  createdAt: Date
-  recipientUserId: string | null
-}
+export type { RealtimeReplayEvent } from '@nessie/runtime'
 
 type ChannelRealtimeScopeInput = {
   channelId: string
@@ -29,17 +18,6 @@ type BuildChannelRealtimeScopes = (input: {
 
 const toJsonPayload = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
-
-export const parseLastRealtimeEventId = (
-  value: string | undefined,
-): bigint => {
-  const trimmed = value?.trim()
-  if (!trimmed || !/^\d+$/.test(trimmed)) {
-    return 0n
-  }
-
-  return BigInt(trimmed)
-}
 
 export const buildUserChannelRealtimeScopes = (
   channels: ChannelRealtimeScopeInput[],
@@ -143,32 +121,12 @@ export const resolveUserChannelRealtimeScopes = async (
   ]
 }
 
-export const listRealtimeEventsAfterCursor = async (
-  prisma: PrismaClient,
-  input: {
-    afterEventId: bigint
-    channelIds: string[]
-    organizationId: string
-    userId: string
-  },
-): Promise<RealtimeReplayEvent[]> => {
-  return prisma.realtimeEvent.findMany({
-    where: {
-      organizationId: input.organizationId,
-      id: { gt: input.afterEventId },
-      OR: [
-        ...(input.channelIds.length ? [{ channelId: { in: input.channelIds } }] : []),
-        { recipientUserId: input.userId },
-      ],
-    },
-    orderBy: { id: 'asc' },
-    take: MAX_REPLAY_EVENTS,
-  })
-}
-
+// Only the writer seam remains on the api side. Durable ws events are
+// persisted once by `PgRealtimeTransport.publishWs` on the publish side;
+// the api hub publishes through its own Prisma client so the row insert
+// shares the api's connection lifecycle (and can join a transaction), while
+// the NOTIFY still carries the persisted row id.
 export const createRealtimeEventStore = (prisma: PrismaClient) => {
-  let lastPruneAt = 0
-
   const resolveOrganizationIdForChannel = async (
     channelId: string,
   ): Promise<string | null> => {
@@ -180,34 +138,26 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
     return channel?.organizationId ?? null
   }
 
-  const pruneOldEvents = async (): Promise<void> => {
-    const now = Date.now()
-    if (now - lastPruneAt < REALTIME_EVENT_PRUNE_INTERVAL_MS) {
-      return
+  const append = async (input: {
+    message: {
+      data: unknown
+      event: string
+      ts: string
+      type: 'event'
     }
-
-    lastPruneAt = now
-    await prisma.realtimeEvent.deleteMany({
-      where: {
-        createdAt: { lt: new Date(now - REALTIME_EVENT_RETENTION_MS) },
-      },
-    })
-  }
-
-  const append = async (
-    notification: Extract<RealtimeNotificationPayload, { kind: 'ws' }>,
-  ): Promise<RealtimeReplayEvent | null> => {
-    const channelScope = notification.scopes.find(
+    scopes: WsScope[]
+  }): Promise<RealtimeReplayEvent | null> => {
+    const channelScope = input.scopes.find(
       (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
     )
-    const userScope = notification.scopes.find(
+    const userScope = input.scopes.find(
       (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
     )
     if (!channelScope && !userScope) {
       return null
     }
 
-    const organizationScope = notification.scopes.find(
+    const organizationScope = input.scopes.find(
       (scope): scope is Extract<WsScope, { kind: 'organization' }> =>
         scope.kind === 'organization',
     )
@@ -230,24 +180,14 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
       data: {
         organizationId,
         channelId: channelScope?.channelId,
-        eventType: notification.message.event,
-        payload: toJsonPayload(notification.message),
+        eventType: input.message.event,
+        payload: toJsonPayload(input.message),
         recipientUserId: userScope?.userId,
       },
     })
 
-    await pruneOldEvents()
-
     return event
   }
 
-  return {
-    append,
-    listAfter: (input: {
-      afterEventId: bigint
-      channelIds: string[]
-      organizationId: string
-      userId: string
-    }) => listRealtimeEventsAfterCursor(prisma, input),
-  }
+  return { append }
 }

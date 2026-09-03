@@ -3,16 +3,14 @@ import type { PrismaClient } from '@prisma/client'
 import {
   createPgPool,
   PgRealtimeTransport,
+  parseLastRealtimeEventId,
   type RealtimeNotificationPayload,
+  type RealtimeReplayEvent,
   type ThreadStreamEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
 import type { SseEvent, WsScope } from '@nessie/schemas'
-import {
-  createRealtimeEventStore,
-  parseLastRealtimeEventId,
-  type RealtimeReplayEvent,
-} from '../services/realtime-events.js'
+import { createRealtimeEventStore } from '../services/realtime-events.js'
 
 type ThreadSseConnection = {
   kind: 'thread'
@@ -180,12 +178,28 @@ export const createRealtimeHub = async (input: {
       return
     }
 
-    let replayEvent: RealtimeReplayEvent | null = null
-    try {
-      replayEvent = await realtimeEventStore.append(notification)
-    } catch (error) {
-      console.error('[realtime] failed to append realtime event:', error)
-    }
+    // The publisher persisted the row before NOTIFYing and carried its id in
+    // the payload; a listener must never append — with N api replicas that
+    // wrote N copies of the same event and duplicated every replay.
+    // During a rolling deploy an old publisher still sends payloads without
+    // an id: those are fanned out live only, with no replay bookkeeping, so
+    // the mixed-version window can miss a row from replay but never writes a
+    // duplicate.
+    const replayEventId =
+      typeof notification.eventId === 'string'
+        ? parseLastRealtimeEventId(notification.eventId)
+        : null
+    const replayEvent: RealtimeReplayEvent | null =
+      replayEventId !== null && replayEventId > 0n
+        ? {
+            id: replayEventId,
+            channelId: null,
+            createdAt: new Date(notification.message.ts),
+            eventType: notification.message.event,
+            payload: notification.message,
+            recipientUserId: null,
+          }
+        : null
 
     if (replayEvent) {
       for (const connection of userSseConnections) {
@@ -338,7 +352,7 @@ export const createRealtimeHub = async (input: {
     userSseConnections.add(connection)
 
     try {
-      const backlog = await realtimeEventStore.listAfter({
+      const backlog = await transport.listRealtimeEventsAfter({
         afterEventId: connection.lastEventId,
         channelIds: [...connection.channelIds],
         organizationId: connection.organizationId,
@@ -412,7 +426,14 @@ export const createRealtimeHub = async (input: {
         event: string
         ts?: string
       },
-    ): Promise<WsEventMessage> => transport.publishWs(scopes, input),
+    ): Promise<WsEventMessage> =>
+      transport.publishWs(scopes, {
+        ...input,
+        // Insert through the api's Prisma client so the durable row shares the
+        // api's connection lifecycle; the transport still owns the single
+        // persist-then-notify shape and carries the row id in the NOTIFY.
+        persistEvent: realtimeEventStore.append,
+      }),
     registerWsConnection: (
       input: {
         organizationId: string
