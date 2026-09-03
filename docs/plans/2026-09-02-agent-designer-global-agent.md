@@ -235,7 +235,8 @@ default `useAgents()` result, which excludes system agents):
 ### D3 — Identity-delegated tools: generalize the `personalAssistantOnly` gate
 
 The Designer needs `agent_create`, `agent_bind_channel`,
-`agent_trigger_create`, `channel_create`, `agent_list` — all flagged
+`agent_trigger_create`, `channel_create`, `agent_list` (and, since
+2026-09-03, `project_list`, `project_create`, `team_create`) — all flagged
 `personalAssistantOnly`, gated on `agentKind === 'personal_assistant'`.
 Rather than fork designer-specific copies (the eighth look-alike), the gate
 widens by one structural arm:
@@ -294,7 +295,7 @@ Reused as-is (via D3 where PA-only):
 | `agent_create` | the create chokepoint (`createAgentRecord`), incl. private agents + home DM. Today the *route* auto-generates an avatar and the PA tool path does not — the generation moves into a shared seam both call, in the same change, so a chat-created agent is not the only faceless one |
 | `agent_bind_channel` | place the new agent (all four route gates) |
 | `agent_trigger_create` | schedules on *designed* agents, with the UOA-identity refusal intact; refuses `systemSlug` targets (D2) |
-| `channel_create` | "it needs its own channel" |
+| `channel_create` | "it needs its own channel". Inside a global agent's home DM a call that names no `visibility` now lands **private** rather than public — an omitted argument must not publish a room to the organisation; the PA's own default is untouched |
 | `card_post` | forms and choices (D6) |
 | `web_search`, `web_fetch` | research a service/domain before writing the prompt |
 | `people_search`, `channel_find`, `channel_list` | resolve names the person uses |
@@ -316,6 +317,9 @@ re-exporting; a tool that takes an id ships with the read that resolves it):
 | `agent_update` | the deliberately-missing tool, now homed where it belongs. Gated by `canEditAgent` (see "Edit authority") with **field-sensitive** enforcement: the edit-field set only; `ownerUserId` transitions and `todosEnabled` keep their own narrower gates. `mergeGenericAgentToolPolicy` + `assertGenericAgentToolPolicyInput` stand; `systemManaged` targets refused **in the service** (see D7 — today only route invisibility protects them). This deliberately **supersedes** the conversational-setup decision "no general runtime `agent_update`": that decision guarded against a *run rewriting itself*; the Designer is a different principal editing *another* agent under the person's live authority, and the self-rewrite ban stays (the Designer's own row is blueprint-only). The conversational-setup doc is amended in the same change. |
 | `agent_tool_catalog` | read-only live catalogue. **A new member-safe shared projection** — `GET /api/mcp/tools` is org-owner-only and must not be widened; the new read serves exactly what the designer page's `tool-catalog.ts` computes (builtins deny-mode; active, non-protected connector tools allow-mode keyed by registry uuid; explicit-grant tier named in words, never togglable) through a presenter that can never emit credentials, endpoints, or grant state. Served server-side so the two faces cannot drift. |
 | `agent_avatar_update` | mirrors `PATCH /api/agents/:id/avatar` + `POST …/avatar/generate`, gated by `canEditAgent` like those routes become. |
+| `project_list` | mirrors `GET /api/projects` (any active member; owners see every project in the organisation, everybody else the ones they are a `ProjectMember` of) and, for the teams nested under each, `GET /api/teams`'s own organisation scope narrowed to those projects. The read that turns "the Marketing project" into the `projectId` `team_create` takes and the `teamId` `channel_create` takes. Shared reads: `listProjectsForUser` / `listTeamsForOrganization`. Provenance: an owner reads by role, so a project name is organisation-level material the destination already implies and nothing is stamped (the `recordVisibleAgentRead` reasoning); anybody else reached it through their own `ProjectMember` row, which is stamped as a `project:` scope they satisfy. |
+| `project_create` | mirrors `POST /api/projects` — **organisation owner** (`requireOwner`). Shared function `createProjectForUser` carries the single owner-membership row and the default board columns (`defaultColumnCreateData`, moved out of `api/src/services/board.ts`). Visible to non-owners and refuses in words naming who can do it. |
+| `team_create` | mirrors `POST /api/teams` — **organisation owner** (`requireOwner`), taking `{name, projectId}` and refusing a project outside the organisation with the route's own indistinguishable "not found". Shared function `createTeamForUser`. A project holds no channel until it has a team, so this is the middle link of project → team → channel. |
 
 Deliberately **not** given: `connector_*` mutations (the conversational-
 setup plan is retiring them; the Designer points at `/apps` and the

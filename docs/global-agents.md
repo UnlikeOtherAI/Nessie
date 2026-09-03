@@ -21,8 +21,9 @@ organisation's choice.
 ## The Designer's toolset
 
 The toolset is the blueprint's `identityToolIds`: the five Personal Assistant
-provisioning verbs plus `agent_read`, `agent_update`, `agent_tool_catalog` and
-`agent_avatar_update` — `personalAssistantOnly` builtins whose handlers live in
+provisioning verbs, the three workspace-structure verbs below, plus
+`agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update` —
+`personalAssistantOnly` builtins whose handlers live in
 `worker/src/run/pa-tools/agent-config.ts` over shared
 `@nessie/workspace-admin` functions.
 
@@ -50,6 +51,56 @@ rather than offered and then denied.
 - `generateAvatarForNewAgent` serves both `POST /api/agents` and
   `agent_create`, and never throws — a failed generation leaves the agent
   faceless rather than failing the creation.
+
+## Standing up a place to work: project → team → channel
+
+A channel hangs off a team and a team off a project, so "give this agent its own
+channel" can need all three. Three builtins cover it, all
+`personalAssistantOnly` (**not** `identityDelegatedOnly`): provisioning a
+container is the same tier as `channel_create`, so the Personal Assistant
+reaches them too — `identityDelegatedOnly` stays the narrow marker for the
+*design* verbs.
+
+| Tool | Mirrors | Authorization |
+| --- | --- | --- |
+| `project_list` | `GET /api/projects` (+ `GET /api/teams` for the teams inside) | any active member; owners see every project, everybody else the ones they are a `ProjectMember` of |
+| `project_create` | `POST /api/projects` | **organisation owner** (`requireOwner`) |
+| `team_create` | `POST /api/teams` | **organisation owner** (`requireOwner`) |
+
+The two writes are owner actions, so they stay **visible** to non-owners and
+refuse in words naming who can do it — the `connector_*` precedent, never "I
+have no such capability". Role comes from the live `OrganizationMember` row at
+call time (`resolveActingMember`), never the run's enqueue-time snapshot.
+`project_list` exists for the same reason `agent_list` does: a tool that takes
+an id ships with the read that resolves it, and a person hands the Designer
+*names*.
+
+There is deliberately **no** project-shaped shortcut inside
+`createChannelForUser`. The Designer chains the three calls exactly as a person
+chains the three clicks, so `loadChannelTeamProject`'s organisation/hierarchy
+check stays the one path a channel is attached through, and creating a team is
+an owner's visible act rather than a hidden side effect of asking for a channel.
+`project_create`'s own output says so, so the model does not have to infer it.
+
+Shared implementations live in `@nessie/workspace-admin`
+`project-structure.ts` — `createProjectForUser`, `createTeamForUser`,
+`listProjectsForUser`, `listTeamsForOrganization`, `listAccessibleProjectIds`,
+`isProjectAccessibleToUser`, and the `defaultColumnCreateData` board seeding
+that moved out of `api/src/services/board.ts`. The routes call them and
+`api/src/lib/request-helpers.ts` wraps the two predicates, so the page and the
+tool cannot answer differently. Audit events stay in the routes, which is where
+`emitAuditEvent` and the request's `actorContext` live; the tools' own record is
+the run's `ToolCall` and the rows themselves.
+
+**What a created container contains is one person.** A project, a team and a
+channel created this way get exactly one membership row — the requester, as
+owner. And a `channel_create` call that names no `visibility` inside a global
+agent's home DM (`systemChannelType === 'system_agent'`) lands **private**, not
+public: an omitted argument must not publish a room to the whole organisation.
+That default is structural — the destination's channel type — and the Personal
+Assistant's own `public` default is untouched. The blueprint prompt carries the
+rest: confirm a consequential creation as a plain question, say who will be able
+to see it, then do the whole thing without re-asking at every step.
 
 ## The capability catalogue is generated, never written
 
