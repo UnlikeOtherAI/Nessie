@@ -6,7 +6,7 @@ operator guide: AWS setup, configuration, verification and the operating rules.
 
 Design and invariants: [plans/2026-09-02-agent-email.md](plans/2026-09-02-agent-email.md)
 and `CLAUDE.md` → "Agent email". Deployment overview:
-[deployment.md](deployment.md) → "Agent email (Amazon SES)".
+[deployment/configuration.md](deployment/configuration.md) → "Agent email (Amazon SES)".
 
 Amazon SES is integrated **directly**: the deployment's own SES account sends
 and receives, there is no intermediary service, and an address is therefore

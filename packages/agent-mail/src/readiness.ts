@@ -72,7 +72,7 @@ export const resolveAgentMailReadiness = (
       ready: false,
       reason:
         `Hosted agent email is not configured on this deployment. `
-        + `Set ${missing.join(', ')} — see docs/deployment.md "Agent email (Amazon SES)".`,
+        + `Set ${missing.join(', ')} — see docs/deployment/configuration.md "Agent email (Amazon SES)".`,
     }
   }
 

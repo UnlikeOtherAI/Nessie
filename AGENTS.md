@@ -413,7 +413,7 @@ before writing code here.
 - **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s native width). Never write the number anywhere else — not in a producer, a validator, a test fixture, or the mock-LLM harness. The three pgvector columns (`thoughts.embedding`, `thought_recalls.query_embedding`, `knowledge_page_chunks.embedding`) are declared at that width, and every embed request sends `dimensions` so a provider answering differently fails loudly. Changing the embedding model to another width = edit the constant + one Prisma migration re-typing the columns + re-embedding; vectors of different widths are not convertible, so the migration nulls them rather than truncating (a truncated vector is neither model's output and poisons later comparisons).
 - The model that produced a vector is `ModelClient.embeddingModel`, resolved from deployment config — not a constant. It is what gets written to `embedding_model` and what keys the query-embedding cache, so the two sides of a similarity comparison agree by construction rather than by two constants happening to match.
 - a width-change migration drops the HNSW index, nulls the vectors, `ALTER COLUMN`s, and recreates the index (see `20260811120000_embeddings_1024_dimensions`); the `match_thoughts_*` functions need no change — PostgreSQL discards the typmod on function parameters.
-- Spec: `docs/deployment.md` "Embedding model and vector width".
+- Spec: [docs/deployment/inference-and-embeddings.md](docs/deployment/inference-and-embeddings.md).
 
 ## File storage & accounting — single chokepoint
 

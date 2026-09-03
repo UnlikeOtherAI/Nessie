@@ -38,7 +38,7 @@ file is the rule**.
   agent-visibility question the mailbox reads ask, so the byte surface and the
   conversation surface close together. Deleting a mailbox retires its address
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
-  `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment.md`.
+  `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment/configuration.md`.
 
 ## Detail
 
