@@ -6,10 +6,11 @@ with your assistant, and audio flows straight between your device and Google.
 It works in the web admin, in the desktop shell, and in the iOS app in the
 foreground. Verified end to end on 2026-09-02 against the real services.
 
-**On an iPhone it is a real phone call** *(built 2026-09-03)*: the mobile app's
-header button hands off to a local Expo native module that places a CallKit
-call, so it appears on the lock screen, in Recents, and on the CarPlay in-call
-screen, and it keeps running with the phone locked. Android is still the web
+**On an iPhone it is a real phone call** *(built 2026-09-03, and not yet placed
+— see "What 1b's verification did and did not cover")*: the mobile app's header
+button hands off to a local Expo native module that places a CallKit call, so
+it reaches the lock screen, Recents, and the CarPlay in-call screen, and keeps
+running with the phone locked. Android is still the web
 call in a WebView — the lifecycle seam the iOS module is built on was written
 against the call lifecycle rather than against CallKit, so its `ConnectionService`
 successor reuses everything above the audio layer.
@@ -597,7 +598,7 @@ server work in the plan and is what turns the call from a relay into
 call loop proves out so the plumbing lands on a working audio path.
 
 **Phase 1b — the iPhone call (CallKit)** *(built 2026-09-03; see
-"What shipped in 1b" below for exactly which parts were seen working)*
+"What shipped in 1b" and "What 1b's verification did and did not cover" below)*
 Note a hard server dependency the phase must carry: the browser client reaches
 the assistant through the *generic* message routes on ordinary session auth,
 and the voice-scoped device credential is deliberately not accepted there. So
@@ -625,7 +626,6 @@ so the header button asks and gets a clean "unavailable" rather than throwing.
 | Gemini Live protocol client | `ios/GeminiLiveClient.swift` + `+Connection` / `+Protocol` / `+Audio` |
 | The concrete session (credential, socket, transcript) | `ios/VoiceCallSession.swift` + `+Tools` |
 | Nessie voice routes, and the credential's own refresh | `ios/NessieVoiceApi.swift` |
-| Device credential at rest | `ios/VoiceCredentialStore.swift` |
 | Per-turn usage relay | `ios/VoiceUsageRelay.swift` |
 | Process-owned call + JS boundary | `ios/VoiceCallController.swift`, `ios/NessieVoiceCallModule.swift` |
 | Shell bridge | `mobile/src/lib/native-voice-call.ts` |
@@ -680,6 +680,26 @@ mint from, is where a durable one starts to matter; that is also where the
 `AfterFirstUnlock` accessibility class becomes the deciding detail, because a
 locked-phone call has to *rewrite* it and the stricter `WhenUnlocked` class
 fails that write with `errSecInteractionNotAllowed`.
+
+### What 1b's verification did and did not cover
+
+**Built and installed, on the named hardware.** A Release build for
+`iPhone17,2` compiles clean (SwiftLint strict, zero violations), the module's
+classes are in the shipped binary and registered in Expo's generated
+`ExpoModulesProvider.swift`, the installed `Info.plist` carries
+`UIBackgroundModes: [audio]`, and that exact artifact was installed with
+`xcrun devicectl`, launched, and confirmed still running. A simulator build was
+installed and screenshotted as well. `@nessie/mobile` and `@nessie/admin` pass
+`tsc`, `eslint --max-warnings 0`, and their suites; the bridge tests were shown
+to fail with the handler branch removed.
+
+**No call was placed.** Every acceptance criterion below the audio layer is
+therefore *unverified against the live service* — a real incoming call, a route
+change on real hardware, credential rotation on cellular, the transcript and
+the usage relay, `pa_send`, and rehydration after a JS reload. Reaching them
+needs a signed-in session on the phone and Ledger's Gemini grants, which the
+build alone cannot supply. Nothing in "What shipped in 1b" should be read as
+"seen working"; it describes code that compiles, ships, and runs as a process.
 
 **Known gaps in 1b, stated plainly.** The transcript is submitted at hang-up
 inside a `beginBackgroundTask`, which buys seconds, not certainty: the browser
