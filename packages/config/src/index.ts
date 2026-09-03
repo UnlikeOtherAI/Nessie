@@ -159,6 +159,11 @@ export const NessieConfigSchema = z.object({
       executorDaemonIp: RateLimitRuleSchema.default({ max: 60, windowMs: 10 * 60_000 }),
       stepUpIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
       stepUpAccount: RateLimitRuleSchema.default({ max: 5, windowMs: 10 * 60_000 }),
+      // Polling is legitimately repetitive — a person may sit on the code
+      // screen for a minute or two — so the account allowance is generous
+      // while still bounding what one member can aim at the provider.
+      subscriptionDeviceIp: RateLimitRuleSchema.default({ max: 240, windowMs: 10 * 60_000 }),
+      subscriptionDeviceAccount: RateLimitRuleSchema.default({ max: 120, windowMs: 10 * 60_000 }),
     }).default({}),
     // Public origin of the API as reachable from a user's browser (e.g.
     // https://api.nessie.works). Used to build OAuth redirect URIs minted
@@ -371,6 +376,8 @@ const DEFAULT_CONFIG: NessieConfig = {
       executorDaemonIp: { max: 60, windowMs: 10 * 60_000 },
       stepUpIp: { max: 10, windowMs: 10 * 60_000 },
       stepUpAccount: { max: 5, windowMs: 10 * 60_000 },
+      subscriptionDeviceIp: { max: 240, windowMs: 10 * 60_000 },
+      subscriptionDeviceAccount: { max: 120, windowMs: 10 * 60_000 },
     },
   },
   github: {

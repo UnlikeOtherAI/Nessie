@@ -97,7 +97,9 @@ const buildDirectRoute = (
   const providerKey = input.provider?.trim() || modelConfig.provider
   const runtimeProvider = resolveRuntimeProvider(providerKey)
   const model =
-    runtimeProvider && runtimeProvider !== 'openai-compatible'
+    runtimeProvider
+    && runtimeProvider !== 'openai-compatible'
+    && runtimeProvider !== 'codex-subscription'
       ? resolveModelName(runtimeProvider, input.model ?? modelConfig.modelName)
       : input.model?.trim() || modelConfig.modelName
 

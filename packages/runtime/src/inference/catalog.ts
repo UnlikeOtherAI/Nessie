@@ -9,6 +9,7 @@ const DEFAULT_MODELS: Record<ModelProviderConfig['provider'], string> = {
   kimi: 'kimi-for-coding',
   deepseek: 'deepseek-v4-flash',
   openai: 'gpt-5-mini',
+  'codex-subscription': 'gpt-5-codex',
   'openai-compatible': 'gpt-5-mini',
 }
 

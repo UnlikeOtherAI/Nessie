@@ -13,7 +13,15 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
   openai: 'gpt-5-mini',
 }
 
-export type RunnableProvider = ModelProvider | 'openai-compatible'
+/**
+ * Providers this worker can actually dispatch to. Wider than the deployment
+ * `ModelProvider` union: `openai-compatible` carries Ledger's arbitrary service
+ * ids, and `codex-subscription` exists only on a personal-subscription lane.
+ */
+export type RunnableProvider =
+  | ModelProvider
+  | 'openai-compatible'
+  | 'codex-subscription'
 
 export type ResolvedProviderConfig = {
   apiKey: string
@@ -32,6 +40,8 @@ export type ResolvedProviderConfig = {
     epoch: number
     providerKey: string
   }
+  /** Adapter-declared transport headers for a subscription-routed call. */
+  extraHeaders?: Record<string, string>
 }
 
 /**
@@ -58,8 +68,26 @@ export const resolveRuntimeProvider = (providerKey: string): RunnableProvider | 
   if (normalized === 'deepseek') {
     return 'deepseek'
   }
+  if (normalized === 'codex-subscription') {
+    return 'codex-subscription'
+  }
   return null
 }
+
+/**
+ * Narrow to the providers the DEPLOYMENT can be configured with — the ones that
+ * have a default model and a legacy environment key.
+ *
+ * `openai-compatible` is excluded because Ledger supplies its model id, and
+ * `codex-subscription` because it only ever exists on a personal-subscription
+ * lane, which returns above with its own credential and model.
+ */
+const isDeploymentProvider = (
+  provider: RunnableProvider | null,
+): provider is ModelProvider =>
+  provider !== null
+  && provider !== 'openai-compatible'
+  && provider !== 'codex-subscription'
 
 export const resolveModelName = (
   provider: ModelProvider,
@@ -113,8 +141,7 @@ export const resolveStageApiKey = (input: {
   return (
     resolveBoundApiKey(input.authSecretRef)
     || (
-      input.runtimeProvider
-      && input.runtimeProvider !== 'openai-compatible'
+      isDeploymentProvider(input.runtimeProvider)
         ? resolveLegacyApiKey(input.runtimeProvider, input.modelConfig)
         : ''
     )
@@ -152,6 +179,7 @@ export const resolveStageProviderConfig = async (
       baseUrl: resolved.baseUrl,
       connectorKind:
         resolved.runtimeProvider === 'openai-compatible' ? 'openai-compatible' : 'compiled',
+      ...(resolved.extraHeaders ? { extraHeaders: resolved.extraHeaders } : {}),
       model: input.requestedModel,
       providerKey: resolved.runtimeProvider,
       subscription: {
@@ -247,7 +275,7 @@ export const resolveStageProviderConfig = async (
     // so an agent selection cannot bypass metering or signed attribution.
     baseUrl,
     connectorKind,
-    model: runtimeProvider && runtimeProvider !== 'openai-compatible'
+    model: isDeploymentProvider(runtimeProvider)
       ? resolveModelName(runtimeProvider, input.requestedModel)
       : input.requestedModel,
     providerKey: input.providerKey,

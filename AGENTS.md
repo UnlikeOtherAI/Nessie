@@ -259,6 +259,15 @@ when one changes, the same turn updates it, not this section.
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
   organisation id (`Organization.externalOrgId`, unique), and one UOA workspace
   is one `Team` (with its Project and `#general`) inside that organisation.
+  **Creating** either happens in-app against UOA's org API rather than by
+  redirecting a person into its chooser for a second interactive login; the
+  local rows are still born only in `materializeUoaWorkspace`, from what the
+  silent switch grant proved
+  (`docs/plans/2026-09-02-in-app-organisation-creation.md`). The standing gap
+  between that and "no duplicated data at all" — three local membership tables
+  against UOA's two, a Project level UOA has no concept of, and the delta/
+  revocation machinery UOA still lacks — is mapped in
+  `docs/plans/2026-09-02-uoa-as-a-service-unification.md`.
   Flattening several UOA organisations into one local container — the
   pre-2026-08-15 shared-org model — or keeping any second local copy of the org
   hierarchy is the same violation as duplicating identity rows, and gets the
@@ -392,6 +401,9 @@ A person links a consumer AI plan they already pay for and the agents **they
 own** run on it instead of the organisation's Ledger credits. The lane is
 pinned at run admission and never falls back to Ledger, token values live in a
 dedicated vault project, and organisation budgets deliberately do not gate it.
+Codex and Grok link through Nessie's own server-side device-code sign-in —
+never an import of a vendor CLI's grant — and a first link is confirmed
+against the account that actually signed in.
 Read [`docs/standards/personal-model-subscriptions.md`](docs/standards/personal-model-subscriptions.md)
 before writing code here.
 

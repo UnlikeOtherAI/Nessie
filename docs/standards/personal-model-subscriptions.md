@@ -6,15 +6,45 @@ session. `AGENTS.md` carries the one-line invariant and points here; **this
 file is the rule**.
 
 
-A person links a consumer AI plan they already pay for (Kimi and GLM today;
-OpenAI Codex and xAI Grok when the OAuth phase lands) and the agents **they
-own** run on it instead of the organization's Ledger credits. Rules that must
-not drift:
+A person links a consumer AI plan they already pay for — Kimi and GLM with a
+pasted console key, **OpenAI Codex and xAI Grok with Nessie's own device-code
+sign-in** — and the agents **they own** run on it instead of the
+organization's Ledger credits. Rules that must not drift:
 
 - **A link is Nessie's own grant.** Never read, import, or accept a vendor
   CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
   items): providers rotate refresh tokens and invalidate the previous one, so
   two apps sharing one grant log each other out. One grant, one refresh owner.
+- **Device-code linking is server-side, leased, and confirmed.** The token
+  exchange happens on the server, so no credential passes through the browser.
+  Polling holds one lease per state row and honours the provider's own interval
+  and `slow_down`, because several tabs or replicas hammering a shared public
+  client would get it throttled for everyone. And a first link parks its
+  credential in the vault under a pending name until the person confirms WHICH
+  account signed in — that confirmation is the whole defence against the
+  device-flow confused deputy, where somebody else enters your code and their
+  account would otherwise be attached to your workspace silently. A relink
+  binds the `providerAccountId` already on the row and refuses a different one.
+- **An id_token is read strictly, and a grant without a refresh token is
+  refused.** Exact issuer, audience equal to the client id, expiry, and a
+  stable subject, all fail-closed — a relink's account match is only as good as
+  this reading. A response carrying no `refresh_token` is refused at link time
+  rather than working until the first expiry and then dying silently.
+- **Vendor client ids are the vendor's own public clients**, and Nessie says so
+  rather than impersonating their CLI: OpenAI's flow carries
+  `originator=nessie`, and xAI's consent screen may name "Grok Build" because
+  the client is shared — the linking copy tells the person that. Every endpoint
+  xAI's discovery document names must be on `x.ai`, or the device grant is
+  refused.
+- **Codex speaks the Responses API**, not chat/completions, through its own
+  `codex-subscription` connector (`store: false`, so a workspace's content
+  never lands in a person's ChatGPT history). Its deltas map onto the same
+  `output_text.delta` / `tool_call.delta` / `reasoning_text.delta` vocabulary
+  every other connector emits, so the agentic loop, the thinking recorder and
+  live document streaming see nothing new; a tool-call fragment is enriched
+  from the accumulated call, never the chunk carrying it. Adapter transport
+  headers travel on `ModelProviderConfig.extraHeaders`, which only code
+  populates — never a caller, a stored record, or a model.
 - **Token values live in the vault, never in PostgreSQL**, in a **dedicated,
   separately-ACLed** vault project (`NESSIE_SUBSCRIPTION_VAULT_*`) rather than
   the shared personal partition, which also holds a person's ordinary captured

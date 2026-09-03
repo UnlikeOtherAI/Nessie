@@ -47,6 +47,7 @@ export const createOpenAiLikeConnector = (
   const baseUrl = config.baseUrl ?? 'https://api.openai.com/v1'
   const ledgerRouted = isLedgerEndpoint(baseUrl)
   const headers = {
+    ...(config.extraHeaders ?? {}),
     Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
   }
