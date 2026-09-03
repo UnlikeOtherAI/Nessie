@@ -110,7 +110,7 @@ export const AgentsList = () => {
       />
 
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-4"
         onScroll={scroll.onScroll}
         ref={scroll.ref}
       >

@@ -93,7 +93,7 @@ export const ApprovalsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader title="Approvals" />
 
-      <PageBody width="regular">
+      <PageBody>
         <Section
           actions={
             pending.items.length > 0 ? (

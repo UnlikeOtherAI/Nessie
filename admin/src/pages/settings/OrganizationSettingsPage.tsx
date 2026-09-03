@@ -86,7 +86,7 @@ export const OrganizationSettingsPage = () => {
 
   return (
     <SettingsPanel eyebrow="Organization" title="General">
-      <div className="grid max-w-3xl gap-4">
+      <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Profile</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>

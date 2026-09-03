@@ -5,6 +5,7 @@ import type {
   ThreadMessageRecord,
 } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
+import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
 import type { AvatarSources } from '../../primitives/UserAvatar'
 import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
 import { MessageAttachments } from '../../shared/MessageAttachments'
@@ -164,10 +165,19 @@ export const ChannelMessageRow = ({
   lastPointerDownAt,
 }: ChannelMessageRowProps) => {
   const watchStatus = readWatchStatusSummary(message.metadata)
+  // The channel's `agentMap` is the entitled projection — what this viewer may
+  // *act on*. The identity directory is what an agent *looks like*, and it
+  // alone answers for system-managed agents such as the Agent Designer, which
+  // post into their own DMs but never appear in a picker.
+  const lookupAgentIdentity = useAgentIdentityLookup()
+  const authoringAgent =
+    message.role === 'assistant'
+      ? agentMap.get(message.agentId ?? '') ?? lookupAgentIdentity(message.agentId)
+      : null
   const displayName = getDisplayName(
     message,
     meDisplayName,
-    agentMap,
+    authoringAgent,
     assistantFallbackName,
     personalAssistantPresence?.displayName,
   )
@@ -187,6 +197,8 @@ export const ChannelMessageRow = ({
   const broadcastRootId = getReplyBroadcastRootId(message.metadata)
   const openThread =
     onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
+  // Opening an agent's drawer is an action, so it stays gated on the entitled
+  // map: the directory can name a system agent this viewer has no page for.
   const messageAgent =
     message.role === 'assistant' && onSelectAgent && !personalAssistantPresence
       ? agentMap.get(message.agentId ?? '') ?? null
@@ -198,7 +210,7 @@ export const ChannelMessageRow = ({
         name: personalAssistantPresence.displayName,
         role: 'Personal Assistant',
       }
-    : agentMap.get(message.agentId ?? '')
+    : authoringAgent ?? undefined
   const authorIdentity =
     message.role === 'user' && message.userId && onSelectUser
       ? {

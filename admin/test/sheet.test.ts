@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { JSDOM } from 'jsdom'
+import { openOverlayIn } from './support/overlay-host'
 import * as ReactNamespace from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -229,7 +230,8 @@ const mount = async () => {
     )
   })
 
-  const scrim = container.firstElementChild as HTMLElement
+  // Not `container`: the overlay portals out of the tree it was rendered in.
+  const scrim = openOverlayIn(dom.window.document)
   const panel = scrim.firstElementChild as HTMLElement
   // jsdom lays nothing out, so the panel reports a zero extent; the swipe
   // needs a real one to turn travel into progress.

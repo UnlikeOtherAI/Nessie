@@ -350,7 +350,7 @@ const ProductDetail = ({
 
   return (
     <ColumnBrowserColumn onBack={onBack} showBack={showBack} title={product.name}>
-      <div className="grid max-w-4xl gap-4">
+      <div className="grid gap-4">
         <section className="grid gap-3 border-b border-[color:var(--sep)] pb-4">
           <div className="flex items-start gap-3">
             <ProductGlyph product={product} />

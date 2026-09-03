@@ -8,6 +8,7 @@ export {
   useAgentModelOptions,
   useAgents,
   useAgentStatus,
+  useChannelPlaceableAgents,
   useRunToolCalls,
 } from './queries'
 export {

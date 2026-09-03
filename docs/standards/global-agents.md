@@ -26,7 +26,16 @@ file is the rule**.
   (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
   refuses rename, archive and re-membering), `createAgentTrigger` refuses a
   `systemSlug` target (a scheduled run re-arms its creator's identity), and
-  `assertGlobalAgentRunPlacement` admits only the home DM before any inference. Reachability is the point of the tier: `listAgentsForUser`'s
+  `assertGlobalAgentRunPlacement` admits, before any inference, only the home DM
+  or an ordinary channel the agent is genuinely bound to. A global agent IS
+  placeable in ordinary channels — and so in projects, whose reach is their
+  channels — under the ordinary bind gates: the refusal narrowed from
+  `systemManaged` to the Personal Assistant (its own presence path) and
+  external-agent products, and `surfacePolicy` moved to `shared` so the stored
+  row stops claiming DM-only. A shared room is advice-only: the
+  identity-delegated tools stay gated on the agent's own home DM, so it never
+  acts as whoever happened to speak. Reachability is the point of the tier:
+  `listAgentsForUser`'s
   `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
   longer channel-gated: an app-provided agent nobody can find is the
   unreachable-capability defect Rule zero names. Finding one has to lead
@@ -86,6 +95,8 @@ file is the rule**.
   satisfies**, or the DM's only member cannot read its own specialist. Delivery
   is the one shared `deliverGlobalAgentBrief`, which claims the slot with
   `claimThreadRunOrPend`. `docs/global-agents.md`.
+
+- **Every path that starts a run in a single-member delegated system DM stamps that member as `effectiveUserId`, or the run silently loses its identity tools.** The gate above requires `effectiveUserId === actorId`, and an unstamped run does not fail: it resolves no requester, the tools are absent from the model's function set, and the agent truthfully reports it cannot create anything. The stamp lived inline in `thread-message-create.ts` and was missing from the agent-card press, so a *typed* message worked while a button press did not — in the one agent whose whole style is card-driven. `isDelegatedSystemDmChannelType` and `withDelegatedSystemDmIdentity` are now ONE definition in `@nessie/schemas` (the predicate had existed twice, once per process, each copy warning that the other must not drift), and `enqueueOrchestrateDecide` resolves the destination channel itself and applies it, so every human-turn wake path is correct without its author knowing this rule exists; a caller-supplied `systemChannelType` is exactly the argument a new path forgets. `enqueueRunExecution` gets no such chokepoint — its callers build actor contexts from six provenances and a blanket stamp would guess whose identity is in play — so each call site is classified `stamps`/`inherits`/`unattended` in `api/test/delegated-system-dm-enqueue-sites.test.ts`, which fails until a new one records a verdict. A resumed run is the case worth naming: a `wait: true` card parks its run and the press resumes from the *parked* run's actor context, so `run-resume-core.ts` re-asserts the destination's rule rather than trusting what it inherited. `docs/global-agents.md`.
 
 ## Detail
 

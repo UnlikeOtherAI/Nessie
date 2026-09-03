@@ -8,6 +8,7 @@ import {
   parseTaskId,
   parseThreadId,
   withActionContext,
+  withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 
@@ -64,7 +65,12 @@ export const resumeSuspendedRun = async (
       agentId: true,
       principalUserId: true,
       replyPlacement: true,
-      thread: { select: { channelId: true } },
+      thread: {
+        select: {
+          channelId: true,
+          channel: { select: { systemChannelType: true } },
+        },
+      },
       threadId: true,
       triggerMessageId: true,
     },
@@ -146,13 +152,20 @@ export const resumeSuspendedRun = async (
     },
   })
 
+  // The resumed run inherits the parked run's enqueue-time actor context, so a
+  // correctly-stamped original stays correct. Re-asserting the destination's
+  // own rule is what keeps it correct when the original was not: a `wait: true`
+  // card is literally the run an unstamped card press would have produced.
   const actorContext = AuthorizedActionContextSchema.parse({
-    ...withActionContext(input.resumeActorContext, {
-      agentId: parseAgentId(run.agentId),
-      channelId: parseChannelId(run.thread.channelId),
-      taskId: parseTaskId(task.id),
-      threadId: parseThreadId(run.threadId),
-    }),
+    ...withDelegatedSystemDmIdentity(
+      withActionContext(input.resumeActorContext, {
+        agentId: parseAgentId(run.agentId),
+        channelId: parseChannelId(run.thread.channelId),
+        taskId: parseTaskId(task.id),
+        threadId: parseThreadId(run.threadId),
+      }),
+      { systemChannelType: run.thread.channel.systemChannelType },
+    ),
     ...(input.actorContextExtra ?? {}),
   })
   const queued = await enqueueRunExecution(

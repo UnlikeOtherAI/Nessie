@@ -1,5 +1,6 @@
 import type { AgentRecord, PersonalAssistantPresenceParticipant } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { getAgentScope } from '../../features/agents/agent-scope'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../AgentAvatar'
 import { CloneIcon, CloseIcon, ViewIcon } from './icons'
@@ -10,6 +11,20 @@ const agentActionBtnClass = [
   'text-[color:var(--tx3)] hover:bg-[color:var(--accent-soft)]',
   'hover:text-[color:var(--thinking)]',
 ].join(' ')
+
+/**
+ * A global agent is app-provided, so it can be placed here but never copied:
+ * `cloneAgent` refuses a `systemManaged` source, and a button whose only
+ * outcome is a 404 is worse than no button. The scope comes from the shared
+ * `getAgentScope` rather than a second reading of `systemManaged`.
+ */
+const isGlobalAgent = (agent: AgentRecord): boolean => getAgentScope(agent) === 'global'
+
+const GlobalAgentPill = () => (
+  <Pill radius="chip" size="sm" tone="outline">
+    global
+  </Pill>
+)
 
 type CurrentAgentRowProps = {
   agent: AgentRecord
@@ -43,19 +58,22 @@ export const CurrentAgentRow = ({
           {agent.role}
         </div>
       </div>
+      {isGlobalAgent(agent) ? <GlobalAgentPill /> : null}
       <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
         agent
       </Pill>
       <div className="flex items-center gap-1">
-        <button
-          className={agentActionBtnClass}
-          disabled={clonePending}
-          onClick={() => onClone(agent.id)}
-          title="Clone to personal collection"
-          type="button"
-        >
-          <CloneIcon />
-        </button>
+        {isGlobalAgent(agent) ? null : (
+          <button
+            className={agentActionBtnClass}
+            disabled={clonePending}
+            onClick={() => onClone(agent.id)}
+            title="Clone to personal collection"
+            type="button"
+          >
+            <CloneIcon />
+          </button>
+        )}
         <button
           className={agentActionBtnClass}
           onClick={() => onView(agent.id)}
@@ -165,16 +183,19 @@ export const AvailableAgentRow = ({
           {agent.role}
         </div>
       </div>
+      {isGlobalAgent(agent) ? <GlobalAgentPill /> : null}
       <div className="flex items-center gap-1">
-        <button
-          className={agentActionBtnClass}
-          disabled={clonePending}
-          onClick={() => onClone(agent.id)}
-          title="Clone to personal collection"
-          type="button"
-        >
-          <CloneIcon />
-        </button>
+        {isGlobalAgent(agent) ? null : (
+          <button
+            className={agentActionBtnClass}
+            disabled={clonePending}
+            onClick={() => onClone(agent.id)}
+            title="Clone to personal collection"
+            type="button"
+          >
+            <CloneIcon />
+          </button>
+        )}
         <button
           className={[
             actionBtnClass,

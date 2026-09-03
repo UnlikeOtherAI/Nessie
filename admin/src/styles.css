@@ -75,6 +75,12 @@
   --radius-lg: 14px;
   --radius-xl: 20px;
   --radius-panel: 2rem;
+  /* One horizontal edge for every page. Page headers (ResponsivePageHeader),
+     the shared PageBody/SettingsPanel bodies, and every hand-rolled page body
+     use this single value so content runs edge-to-edge and the header title
+     lines up with the body under it on every screen. Tune the page gutter
+     here, in one place, never per page. */
+  --page-gutter: 1rem;
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;
@@ -88,10 +94,22 @@
      admin/src/navigation/overlay.ts. Nothing declares a z-index outside it. */
   --layer-stack: 1;
   --layer-card: 40;
+  --layer-tooltip: 45;
   --layer-popover: 50;
   --layer-sheet: 60;
   --layer-modal: 70;
   --layer-blocking: 80;
+}
+
+/* Where every overlay renders (components/overlays/OverlayPortal.tsx,
+   docs/navigation/overview.md §7). The scale above only decides who wins inside one
+   stacking context, so an overlay left in the page tree could be isolated
+   below the shell's own chrome — or lose the viewport as its containing block
+   — by any ancestor between it and the document. `display: contents` because
+   this host is addressing, not layout: everything inside it is `position:
+   fixed` and it must not become a box of its own. */
+.admin-overlay-root {
+  display: contents;
 }
 
 [data-theme="midnight"] {
@@ -401,7 +419,13 @@ a {
   color: var(--tx);
 }
 
-.focus-mode > .admin-shell {
+/* The work surface's palette, and the overlays that belong to it. Overlays
+   render outside `.admin-shell` (they are portalled to the document), so the
+   shell mirrors focus mode onto the body for exactly this: a dialog opened in
+   focus mode stays monochrome with the surface it came from rather than
+   reverting to the theme's accents. */
+.focus-mode > .admin-shell,
+body.overlays-focus-mode > .admin-overlay-root {
   --rail: #ffffff;
   --sb: #ffffff;
   --sb-active: #ececec;
@@ -437,23 +461,29 @@ a {
    focus scope in a few controls. Pin their visible accent treatment to the
    same monochrome scale as the work surface. */
 .focus-mode > .admin-shell .admin-button-primary,
-.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'],
+body.overlays-focus-mode > .admin-overlay-root .admin-button-primary,
+body.overlays-focus-mode > .admin-overlay-root [role='switch'][aria-checked='true'] {
   background-color: #303030 !important;
 }
 
-.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'],
+body.overlays-focus-mode > .admin-overlay-root [role='switch'][aria-checked='true'] {
   border-color: #303030 !important;
 }
 
-.focus-mode > .admin-shell [class~='bg-[color:var(--accent)]'] {
+.focus-mode > .admin-shell [class~='bg-[color:var(--accent)]'],
+body.overlays-focus-mode > .admin-overlay-root [class~='bg-[color:var(--accent)]'] {
   background-color: #303030 !important;
 }
 
-.focus-mode > .admin-shell [class~='border-[color:var(--accent)]'] {
+.focus-mode > .admin-shell [class~='border-[color:var(--accent)]'],
+body.overlays-focus-mode > .admin-overlay-root [class~='border-[color:var(--accent)]'] {
   border-color: #303030 !important;
 }
 
-.focus-mode > .admin-shell [class~='text-[color:var(--accent)]'] {
+.focus-mode > .admin-shell [class~='text-[color:var(--accent)]'],
+body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent)]'] {
   color: #1d1d1d !important;
 }
 
@@ -1361,7 +1391,7 @@ a {
 
 .group-dm-sidebar-tooltip {
   position: fixed;
-  z-index: 80;
+  z-index: var(--layer-tooltip);
   left: 0;
   width: max-content;
   max-width: min(360px, calc(100vw - 32px));
@@ -1570,7 +1600,7 @@ a {
    it. This matches Slack's two-line, right-hand hover affordance. */
 .rail-tooltip {
   position: fixed;
-  z-index: 90;
+  z-index: var(--layer-tooltip);
   display: flex;
   width: max-content;
   max-width: min(280px, calc(100vw - 92px));

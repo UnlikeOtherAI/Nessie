@@ -47,7 +47,7 @@ export const AuditLogPage = () => {
           not a screen of its own, so Back never disappears with it. */}
       <ScreenHeader title="Audit Log" />
       <OwnerGate>
-        <PageBody width="regular">
+        <PageBody>
           <Section title="Events">
             <ListToolbar
               search={{
