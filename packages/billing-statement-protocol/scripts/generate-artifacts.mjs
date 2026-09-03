@@ -76,12 +76,6 @@ const artifacts = new Map([
 ]);
 const mode = process.argv[2];
 
-// Git's Windows checkout may materialize the committed JSON files with CRLF.
-// Generated JSON is defined with LF so the checked-in artifact stays
-// byte-stable, but the validation must not report that checkout conversion as
-// schema drift.
-const normaliseNewlines = (text) => text.replaceAll('\r\n', '\n');
-
 if (mode !== '--write' && mode !== '--check') {
   throw new Error('Usage: generate-artifacts.mjs --write|--check');
 }
@@ -94,7 +88,7 @@ for (const [path, value] of artifacts) {
     continue;
   }
   const actual = await readFile(path, 'utf8').catch(() => '');
-  if (normaliseNewlines(actual) !== expected) {
+  if (actual !== expected) {
     throw new Error(
       `${path} has drifted from the TypeScript source. Run pnpm --filter @unlikeotherai/billing-statement-protocol generate.`,
     );

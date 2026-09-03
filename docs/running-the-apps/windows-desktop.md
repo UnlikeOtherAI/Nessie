@@ -9,6 +9,11 @@ pnpm install
 pnpm --filter @nessie/desktop exec tauri build
 ```
 
+`packages/billing-statement-protocol/` is a byte-for-byte vendored UOA
+contract. Git checks its text out with LF on every platform (including Windows)
+so its generated-artifact and SHA-256 verification gates remain valid. Do not
+edit or regenerate that package locally; update its upstream pin instead.
+
 If the local Windows Node installer omits its `LICENSE` file, the build
 retrieves and validates the official licence for that exact Node version before
 including it in the hash-verified runtime layout.
