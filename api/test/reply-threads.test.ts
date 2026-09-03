@@ -22,7 +22,7 @@ type Seed = {
   mentionedUserId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `reply-threads ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -117,7 +117,7 @@ const followExists = async (
 
 runDatabaseTest('replies attach to the root and the default feed lists top-level posts only', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -158,7 +158,7 @@ runDatabaseTest('replies attach to the root and the default feed lists top-level
 
 runDatabaseTest('replies feed paginates with the same keyset cursor', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -200,7 +200,7 @@ runDatabaseTest('replies feed paginates with the same keyset cursor', async (t) 
 
 runDatabaseTest('one level deep: a reply cannot be used as a root', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -223,7 +223,7 @@ runDatabaseTest('one level deep: a reply cannot be used as a root', async (t) =>
 
 runDatabaseTest('a root from another container thread is rejected', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -244,7 +244,7 @@ runDatabaseTest('a root from another container thread is rejected', async (t) =>
 
 runDatabaseTest('materialized reply metadata stays exact under concurrent replies', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -278,7 +278,7 @@ runDatabaseTest('materialized reply metadata stays exact under concurrent replie
 
 runDatabaseTest('follow lifecycle: authors + mentioned users follow, unfollow sticks unless they participate', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

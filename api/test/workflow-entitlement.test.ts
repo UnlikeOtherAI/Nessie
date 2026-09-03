@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
+import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 
@@ -43,7 +43,7 @@ const SECRET_BINDING_SCHEMA = {
   apiKey: { kind: 'reference' },
 }
 
-const seedWorkspace = async (prisma: PrismaClient) => {
+const seedTeam = async (prisma: PrismaClient) => {
   const org = await prisma.organization.create({
     data: { name: `wf-entitle ${randomUUID()}` },
   })
@@ -102,7 +102,7 @@ const seedWorkspace = async (prisma: PrismaClient) => {
   }
 }
 
-type Seed = Awaited<ReturnType<typeof seedWorkspace>>
+type Seed = Awaited<ReturnType<typeof seedTeam>>
 
 const userContext = (
   seed: Seed,
@@ -123,7 +123,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('W19: the entitlement matrix — read, start, pause, and W0 redaction', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -185,7 +185,7 @@ runDatabaseTest('W19: the entitlement matrix — read, start, pause, and W0 reda
 
 runDatabaseTest('W22/W25: audit rows carry the acting caller; retry keeps the origin', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { isAgentAccessibleToActor } from '@nessie/workspace-admin'
+import { isAgentAccessibleToActor } from '@nessie/team-admin'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { registerAgentTodoRoutes } from '../src/routes/agent-todos.js'

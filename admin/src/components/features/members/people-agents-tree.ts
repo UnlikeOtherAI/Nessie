@@ -1,4 +1,4 @@
-import type { WorkspaceMemberRecord } from '@nessie/schemas'
+import type { TeamMemberRecord } from '@nessie/schemas'
 import type { AgentRecord } from '../../../lib/api-client'
 
 /**
@@ -13,7 +13,7 @@ import type { AgentRecord } from '../../../lib/api-client'
  */
 
 export type PeopleAgentsPerson = {
-  member: WorkspaceMemberRecord
+  member: TeamMemberRecord
   agents: AgentRecord[]
 }
 
@@ -26,12 +26,12 @@ export type PeopleAgentsTree = {
    */
   teamOwned: AgentRecord[]
   /**
-   * Owned, but by somebody this workspace's roster does not list. Deliberately
+   * Owned, but by somebody this team's roster does not list. Deliberately
    * NOT labelled "departed": the roster is keyed by *team*, so an active
    * colleague in another team looks identical to someone UOA removed. Calling
    * both "left the company" would libel the former.
    */
-  ownedOutsideWorkspace: AgentRecord[]
+  ownedOutsideTeam: AgentRecord[]
   /** System-managed agents (Personal Assistant, Librarian): nobody's staff. */
   system: AgentRecord[]
   /** Owner-only agents paused because their owner is inactive; names stay private. */
@@ -50,7 +50,7 @@ const isSpawnedWorker = (agent: AgentRecord): boolean =>
   Boolean(agent.parentAgentId)
 
 export const buildPeopleAgentsTree = (
-  members: readonly WorkspaceMemberRecord[],
+  members: readonly TeamMemberRecord[],
   agents: readonly AgentRecord[],
   input: { pausedPrivateAgentCount?: number } = {},
 ): PeopleAgentsTree => {
@@ -80,12 +80,12 @@ export const buildPeopleAgentsTree = (
     return { agents: owned, member }
   })
 
-  const ownedOutsideWorkspace = [...byOwner.entries()]
+  const ownedOutsideTeam = [...byOwner.entries()]
     .filter(([ownerUserId]) => !claimed.has(ownerUserId))
     .flatMap(([, ownerAgents]) => ownerAgents)
 
   return {
-    ownedOutsideWorkspace,
+    ownedOutsideTeam,
     pausedPrivateAgentCount: input.pausedPrivateAgentCount ?? 0,
     people,
     system,

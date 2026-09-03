@@ -6,7 +6,7 @@ import {
 import {
   recordSendDecision,
   resolveStandingConsentForToolCall,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import {
   buildSendBoundaryPrompt,
   readSendBoundaryVerdict,

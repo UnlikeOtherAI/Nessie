@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
-// Trigger records are produced by `@nessie/workspace-admin`, which the worker
+// Trigger records are produced by `@nessie/team-admin`, which the worker
 // also uses (the assistant's `agent_trigger_create` tool parses the very same
 // create body), so these live in `@nessie/schemas`.
 export {
@@ -84,7 +84,7 @@ export const FireAgentTriggerBodySchema = z.object({
 })
 
 // `takeOver` is the owner's explicit "run this as me instead" — never implicit,
-// because re-pointing a schedule's workspace moves its billing attribution.
+// because re-pointing a schedule's team moves its billing attribution.
 export const ReauthorizeAgentTriggerBodySchema = z.object({
   takeOver: z.boolean().optional(),
 })

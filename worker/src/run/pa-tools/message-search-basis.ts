@@ -85,7 +85,7 @@ export const recordChannelDirectoryRead = recordMessageChannelRead
  * stamp restricts the reply to them and never silences the run against its own
  * audience.
  *
- * Workspace-visible rows are deliberately NOT stamped. `agent:<id>` means
+ * Team-visible rows are deliberately NOT stamped. `agent:<id>` means
  * "everybody who passes the shared live agent-visibility predicate", while
  * `listAgentsForUser` hands an organisation OWNER a strictly wider list
  * (unbound agents, and agents bound only into private channels they are not in).

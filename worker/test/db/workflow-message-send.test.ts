@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
+import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 import { parseOrganizationId } from '@nessie/schemas'
 
 import { executeWorkflowRun } from '../../src/control/workflows.js'

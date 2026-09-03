@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaTeamDirectoryEntry } from './uoa-team-directory.js'
 
 /**
  * UOA organisations map 1:1 to local Organizations, keyed by the stable UOA
- * organisation id (`Organization.externalOrgId`). A UOA login or workspace
+ * organisation id (`Organization.externalOrgId`). A UOA login or team
  * switch resolves-or-creates the Organization here, under a per-external-org
  * advisory lock — never through an ambient "oldest organization" lookup
  * (the shared-org model this replaces; see
@@ -14,7 +14,7 @@ import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
  * its existing behaviour byte-for-byte.
  */
 
-/** The placeholder name used until the workspace directory supplies `orgName`. */
+/** The placeholder name used until the team directory supplies `orgName`. */
 export const externalOrganizationPlaceholderName = (
   externalOrgId: string,
 ): string => `Organisation ${externalOrgId.slice(0, 8)}`
@@ -22,7 +22,7 @@ export const externalOrganizationPlaceholderName = (
 /**
  * Serialize every materialization touching one UOA organisation across
  * replicas and devices. Lock order everywhere this is used: external-org →
- * external-workspace → user-session / principal locks, so the transactions
+ * external-team → user-session / principal locks, so the transactions
  * that combine them can never deadlock on reversed pairs.
  */
 export const lockExternalOrganization = async (
@@ -68,13 +68,13 @@ export const materializeExternalOrganizationInTransaction = async (
 /**
  * Mirror UOA's organisation names onto the local rows. `Organization.name` for
  * a UOA org is non-authoritative display data (the profile-mirror doctrine),
- * so this runs best-effort at the two places the verified workspace directory
+ * so this runs best-effort at the two places the verified team directory
  * arrives — login (`syncUoaProductAccountLinks`) and the UOA refresh
  * coordinator — and only rewrites rows whose stored name differs.
  */
 export const syncExternalOrganizationNames = async (
   prisma: Pick<PrismaClient, 'organization'>,
-  directory: UoaWorkspaceDirectoryEntry[] | undefined,
+  directory: UoaTeamDirectoryEntry[] | undefined,
 ): Promise<void> => {
   if (!directory) return
   const nameByExternalOrgId = new Map<string, string>()

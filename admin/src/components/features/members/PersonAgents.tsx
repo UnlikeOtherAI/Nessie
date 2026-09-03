@@ -49,9 +49,9 @@ export const PersonAgents = ({
 }
 
 /**
- * Agents that belong to no one in this workspace. Split into two labelled
+ * Agents that belong to no one in this team. Split into two labelled
  * groups on purpose: "team-owned" is a real state — nobody stewards the agent,
- * so anyone entitled to it may edit it — while "owned outside this workspace"
+ * so anyone entitled to it may edit it — while "owned outside this team"
  * covers an owner the *team* roster does not list, which an active colleague in
  * another team and a departed person both produce. Merging them would either
  * hide who may edit what or call present colleagues gone.

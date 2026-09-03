@@ -344,7 +344,7 @@ test('what a curator wrote survives a re-sync; what only sync wrote is refreshed
   assert.equal(entries[0]!.shortDescription, upstream)
 
   // A human renames the app and picks a different shelf for it.
-  entries[0]!.displayName = 'Notion (workspace)'
+  entries[0]!.displayName = 'Notion (team)'
   entries[0]!.primaryCategory = 'files_documents'
 
   await syncRegistry(prisma, {
@@ -354,7 +354,7 @@ test('what a curator wrote survives a re-sync; what only sync wrote is refreshed
     assertEndpointSafe: allowAll,
   })
 
-  assert.equal(entries[0]!.displayName, 'Notion (workspace)', 'curated name kept')
+  assert.equal(entries[0]!.displayName, 'Notion (team)', 'curated name kept')
   assert.equal(entries[0]!.primaryCategory, 'files_documents', 'curated shelf kept')
   assert.equal(
     entries[0]!.shortDescription,

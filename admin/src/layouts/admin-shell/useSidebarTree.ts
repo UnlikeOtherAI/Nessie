@@ -80,7 +80,7 @@ export const buildSidebarTree = ({
   // Standalone channels live in one hidden, system-owned project per
   // organization. They are deliberately rendered here rather than under that
   // implementation container; every other channel remains under its real
-  // project, including the active UOA workspace.
+  // project, including the active UOA team.
   const visibleStandaloneChannels = standaloneChannels.filter(
     (channel) => !starredChannelIds.has(channel.id),
   )

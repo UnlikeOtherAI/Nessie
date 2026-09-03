@@ -88,7 +88,7 @@ test('APNs test requires a registered iOS device before it claims delivery', asy
 
   assert.deepEqual(result, {
     ok: false,
-    message: 'No iOS device is registered for your current workspace.',
+    message: 'No iOS device is registered for your current team.',
     delivered: false,
   })
   assert.equal(calls, 0)

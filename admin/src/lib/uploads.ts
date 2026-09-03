@@ -63,7 +63,7 @@ export const uploadAttachment = async (
   return payload.data
 }
 
-// Multipart PUT of an UnlikeOtherAI-hosted avatar — the workspace ("company")
+// Multipart PUT of an UnlikeOtherAI-hosted avatar — the team ("company")
 // picture or the signed-in person's own profile photo. Like uploadAttachment
 // this bypasses the JSON ApiClient because it cannot send FormData; unlike it,
 // the bytes are relayed straight to UnlikeOtherAI and never stored by Nessie.
@@ -96,8 +96,8 @@ const uploadRelayedAvatar = async (
   }
 }
 
-export const uploadWorkspaceAvatar = (file: File, token: string | null): Promise<void> =>
-  uploadRelayedAvatar('/api/workspace/avatar', file, token)
+export const uploadTeamAvatar = (file: File, token: string | null): Promise<void> =>
+  uploadRelayedAvatar('/api/team/avatar', file, token)
 
 /** Replace the signed-in person's UnlikeOtherAI-hosted profile photo. */
 export const uploadMyUoaAvatar = (file: File, token: string | null): Promise<void> =>

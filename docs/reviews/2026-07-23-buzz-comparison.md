@@ -4,14 +4,14 @@
 
 ## 1. What buzz is, and how it relates to Nessie
 
-**block/buzz** ("A hive mind communication platform", Rust, Apache-2.0, ~4.9k stars, created March 2026) is Block's self-hostable team workspace where **humans and AI agents are protocol-equal members**. It is directly in Nessie's domain — arguably the closest open-source competitor:
+**block/buzz** ("A hive mind communication platform", Rust, Apache-2.0, ~4.9k stars, created March 2026) is Block's self-hostable team team where **humans and AI agents are protocol-equal members**. It is directly in Nessie's domain — arguably the closest open-source competitor:
 
-- **The relay is the workspace.** One Rust WebSocket server built on the **Nostr protocol**; every action (message, reaction, workflow step, code-review approval, canvas edit, voice-huddle join) is a cryptographically **signed event** in one append-only log (`ARCHITECTURE.md`).
+- **The relay is the team.** One Rust WebSocket server built on the **Nostr protocol**; every action (message, reaction, workflow step, code-review approval, canvas edit, voice-huddle join) is a cryptographically **signed event** in one append-only log (`ARCHITECTURE.md`).
 - **Agents are members, not bots.** Each agent has its own keypair, channel memberships, and audit trail — the same surface as a human. Permissioning an agent = channel membership.
 - **Agent runtimes are pluggable** via ACP (Agent Client Protocol): goose, Codex, and Claude Code plug into a pooled harness (`crates/buzz-acp`); Block also ships its own minimal agent.
 - Feature set: streams/threads/DMs/forum, per-channel canvases, **git hosting on the relay** (signed commits, branch protection, PR review UI), YAML workflows, voice huddles, agent personas/memory ("engrams"), a community GPU **mesh**, Tauri desktop + Flutter mobile + CLI.
 
-The overlap with Nessie (multi-tenant org→project→team→channel workspace, agents in channels, approvals, triggers/workflows, MCP connectors, token ledger, KB, calls, desktop/mobile clients) is strong. The philosophical difference: buzz bets on **one signed event log + protocol-equal identities**; Nessie bets on **governance** (RBAC, budgets, ledger, approvals, commercial billing separation). Buzz has real external users and ferocious velocity (~674 PRs merged in 3.5 weeks, 23 desktop releases in 12 days); Nessie's GitHub tracker has zero external users — its 171 issues were filed by an AI "Architect agent" pipeline (activity stopped ~June 12; real development moved to direct commits on `main`).
+The overlap with Nessie (multi-tenant org→project→team→channel team, agents in channels, approvals, triggers/workflows, MCP connectors, token ledger, KB, calls, desktop/mobile clients) is strong. The philosophical difference: buzz bets on **one signed event log + protocol-equal identities**; Nessie bets on **governance** (RBAC, budgets, ledger, approvals, commercial billing separation). Buzz has real external users and ferocious velocity (~674 PRs merged in 3.5 weeks, 23 desktop releases in 12 days); Nessie's GitHub tracker has zero external users — its 171 issues were filed by an AI "Architect agent" pipeline (activity stopped ~June 12; real development moved to direct commits on `main`).
 
 ## 2. What users actually want — mined from issues/PRs
 

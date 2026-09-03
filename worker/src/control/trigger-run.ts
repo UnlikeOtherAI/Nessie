@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   prepareScheduledAgentTodoTrigger,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import {
-  activeWorkspaceMatchesAttribution,
+  activeTeamMatchesAttribution,
   buildTriggerPrompt,
   loadLedgerIdentitySettings,
   loadLedgerUoaIdentity,
@@ -119,7 +119,7 @@ const buildActorContext = (input: {
   taskId?: string
   source: string
   /**
-   * The creator's UOA workspace, replayed from the trigger's launch origin.
+   * The creator's UOA team, replayed from the trigger's launch origin.
    * A fire has no session, so without this the Ledger signer has no identity
    * to verify and every scheduled run fails before dispatch.
    */
@@ -268,7 +268,7 @@ export const queueTriggerRun = async (
     // It must ask exactly what dispatch asks. `loadLedgerUoaIdentity` checks
     // only the account link (status, subject, epoch); the header path that
     // actually signs a model call additionally requires the attributed team's
-    // external UOA mapping to match the captured workspace. Checking the
+    // external UOA mapping to match the captured team. Checking the
     // narrower condition here let a trigger pass, create a run, and have that
     // run die at its first inference — silently, because an unattended failure
     // posts nothing. That is how one production schedule burned ~1.5 hours of
@@ -290,7 +290,7 @@ export const queueTriggerRun = async (
         )
       }
       // The same predicate the signing path applies, not a second copy of it.
-      const workspaceMatches = await activeWorkspaceMatchesAttribution(
+      const teamMatches = await activeTeamMatchesAttribution(
         prisma,
         {
           actorId: executionOrigin.userId,
@@ -301,10 +301,10 @@ export const queueTriggerRun = async (
         },
         identity,
       )
-      if (!workspaceMatches) {
+      if (!teamMatches) {
         throw new TriggerLaunchOriginError(
           'uoa_identity_unverifiable',
-          'its saved UnlikeOtherAI workspace no longer maps to its team',
+          'its saved UnlikeOtherAI team no longer maps to its team',
         )
       }
     }

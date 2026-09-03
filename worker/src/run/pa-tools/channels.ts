@@ -4,7 +4,7 @@ import {
   ChannelValidationError,
   setChannelArchived,
   updateChannel,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   getScopedChannelSlug,

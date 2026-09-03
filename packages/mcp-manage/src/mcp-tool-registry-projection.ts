@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import type { McpToolDescriptor } from '@nessie/mcp-client'
 import type { McpServerScopeType } from '@nessie/schemas'
-import { acquireAgentToolPolicyLock } from '@nessie/workspace-admin'
+import { acquireAgentToolPolicyLock } from '@nessie/team-admin'
 
 import {
   fingerprintMcpToolDescriptor,

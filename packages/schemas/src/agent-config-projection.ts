@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { AgentEffortSchema, AgentRunLimitsSchema } from './lifecycle.js'
-import { AgentOwnerSchema, AgentVisibilitySchema } from './workspace-records.js'
+import { AgentOwnerSchema, AgentVisibilitySchema } from './team-records.js'
 
 /**
  * What a Nessie-managed agent *is*, for a reader who may look but not touch.

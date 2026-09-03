@@ -20,7 +20,7 @@ test('the scripted generalizer folds non-workflow operations into an executable 
     steps: [
       {
         instruction: 'Review the demonstrated executor operation and report the result.',
-        title: 'Review workspace',
+        title: 'Review team',
         type: 'executor.browser.open',
       },
     ],

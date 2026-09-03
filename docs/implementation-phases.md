@@ -757,7 +757,7 @@ UI build on it. See
 - **Phase 2 — Microsoft Graph:** Teams chats/channels and Outlook mail/folders
   via Microsoft Graph, including Graph subscription renewal.
 - **Phase 3 — enterprise admin:** org-admin-scoped installs, tenant-wide
-  consent, and per-workspace governance over which resources sync.
+  consent, and per-team governance over which resources sync.
 - **Phase 4 — additional systems:** further communication and collaboration
   sources normalized into the same event model.
 

@@ -24,7 +24,7 @@ const designerContext = (): RunContext => ({
     provider: null,
     systemPrompt: null,
     systemSlug: 'agent-designer',
-    visibility: 'workspace',
+    visibility: 'team',
   },
   boundAgentIds: [],
   channel: {

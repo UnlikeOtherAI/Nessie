@@ -47,7 +47,7 @@ import { TransientMenuProvider } from './admin-shell/TransientMenuContext';
 import { useRecordRecentChannelVisits } from './admin-shell/topbar-navigation';
 import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
-import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
+import { TeamSwitcher } from './admin-shell/TeamSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
@@ -78,7 +78,7 @@ export const AdminShellLayout = () => {
           'px-6 py-10 text-[color:var(--tx)]',
         ].join(' ')}
       >
-        <div className="admin-card w-full max-w-xl p-8">Loading workspace...</div>
+        <div className="admin-card w-full max-w-xl p-8">Loading team...</div>
       </main>
     );
   }
@@ -380,7 +380,7 @@ const AuthenticatedAdminShellLayout = () => {
                 </div>
 
                 {showWebTabBar && <MobileTabBar />}
-                {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
+                {(nativeIPadApp || nativePhoneApp) && <TeamSwitcher variant="native-bridge" />}
                 {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
                 {(nativeIPadApp || nativePhoneApp) ? (
                   <UserMenuTrigger

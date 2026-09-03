@@ -39,7 +39,7 @@ export type SeededRun = {
 }
 
 // One isolated organization per harness invocation so seeded rows never
-// collide with (or leak into) real workspace data.
+// collide with (or leak into) real team data.
 export const seedScope = async (
   prisma: PrismaClient,
   label: string,

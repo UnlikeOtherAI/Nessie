@@ -18,7 +18,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   loadAgentToolCatalog,
   resolveGlobalAgentModel,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { FastifyReply } from 'fastify'
 import {
   buildDesignerSystemPrompt,

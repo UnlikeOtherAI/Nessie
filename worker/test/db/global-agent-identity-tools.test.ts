@@ -6,7 +6,7 @@ import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import {
   AGENT_DESIGNER_BLUEPRINT,
   ensureGlobalAgentBootstrap,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   resolveDelegatedRequesterUserId,

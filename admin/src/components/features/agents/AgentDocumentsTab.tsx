@@ -8,7 +8,7 @@ import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../shared/OwnerGate'
 
-const AgentDocumentsWorkspace = () => {
+const AgentDocumentsTeam = () => {
   const isOwner = useIsOwner()
   const { selectedSpace, spacesLoaded, spacesLoadFailed } = useKnowledge()
 
@@ -69,7 +69,7 @@ export const AgentDocumentsTab = ({ agent }: { agent: AgentRecord }) => {
 
         return (
           <KnowledgeProvider agentId={agent.id} spaceId={space.id}>
-            <AgentDocumentsWorkspace />
+            <AgentDocumentsTeam />
           </KnowledgeProvider>
         )
       }}

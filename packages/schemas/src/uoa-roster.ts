@@ -1,5 +1,5 @@
 /**
- * Workspace roster and invitation records, as Nessie serves them from the
+ * Team roster and invitation records, as Nessie serves them from the
  * UnlikeOtherAI (UOA) org API. Nothing here is persisted: every field is read
  * per request from UOA, which owns human identity, membership and invitations.
  *
@@ -8,7 +8,7 @@
  * roster action at somebody else.
  */
 
-export type WorkspaceMemberRecord = {
+export type TeamMemberRecord = {
   /** Stable UOA subject (`userId` in UOA's org payloads). */
   uoaSub: string
   /**
@@ -26,7 +26,7 @@ export type WorkspaceMemberRecord = {
   userId?: string
   displayName?: string
   email?: string
-  /** Role inside this workspace (UOA team role). */
+  /** Role inside this team (UOA team role). */
   teamRole?: string
   /** Role in the owning UOA organisation. */
   orgRole?: string
@@ -34,7 +34,7 @@ export type WorkspaceMemberRecord = {
   status?: string
 }
 
-export type WorkspaceInvitationRecord = {
+export type TeamInvitationRecord = {
   inviteId: string
   email?: string
   name?: string
@@ -49,23 +49,23 @@ export type WorkspaceInvitationRecord = {
 }
 
 /** Per-email outcome of a bulk invite: invited | resent_existing | already_member | … */
-export type WorkspaceInviteResult = {
+export type TeamInviteResult = {
   email?: string
   status?: string
 }
 
-export type WorkspaceMembersResponse = {
-  members: WorkspaceMemberRecord[]
+export type TeamMembersResponse = {
+  members: TeamMemberRecord[]
 }
 
-export type WorkspaceInvitationsResponse = {
-  invitations: WorkspaceInvitationRecord[]
+export type TeamInvitationsResponse = {
+  invitations: TeamInvitationRecord[]
 }
 
-export type CreateWorkspaceInvitationsRequest = {
+export type CreateTeamInvitationsRequest = {
   invites: { email: string; name?: string; teamRole?: string }[]
 }
 
-export type CreateWorkspaceInvitationsResponse = {
-  results: WorkspaceInviteResult[]
+export type CreateTeamInvitationsResponse = {
+  results: TeamInviteResult[]
 }

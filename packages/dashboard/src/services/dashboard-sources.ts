@@ -22,7 +22,7 @@ import {
   DashboardOutputColumnsSchema,
   type DashboardOutputColumn,
 } from '@nessie/schemas'
-import { compileSandboxedJmespath } from '@nessie/workspace-admin'
+import { compileSandboxedJmespath } from '@nessie/team-admin'
 import {
   buildSourceUrl,
   probeDashboardSource,

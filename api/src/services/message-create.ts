@@ -8,7 +8,7 @@ import {
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
-import { buildAgentVisibilityWhere } from '@nessie/workspace-admin'
+import { buildAgentVisibilityWhere } from '@nessie/team-admin'
 
 import type { PersonalAssistantPresenceMention } from '../contracts/messaging.js'
 import { messageInclude, type MessageWithReactions } from './messages.js'

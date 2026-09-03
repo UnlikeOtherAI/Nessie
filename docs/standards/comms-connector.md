@@ -38,7 +38,7 @@ Additional facts:
   store via the provider-agnostic `@nessie/comms-connect` core. Env names
   match the API OAuth-start source of truth
   (`api/src/routes/comms/oauth-config.ts`).
-- Prisma-aware credential loading lives in `@nessie/workspace-admin`, shared
+- Prisma-aware credential loading lives in `@nessie/team-admin`, shared
   by API and worker: it decrypts only the selected connection, serializes
   expired token refresh under a credential-row lock, preserves a stored
   refresh token when Google omits a replacement, persists expiry/scope

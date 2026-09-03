@@ -101,7 +101,7 @@ test('activation is blocked before provisioning when the team is disabled', asyn
   assert.equal(fake.instances.length, 0)
 })
 
-test('activation requires a currently linked UOA subject and signed workspace', async () => {
+test('activation requires a currently linked UOA subject and signed team', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
@@ -130,7 +130,7 @@ test('activation requires a currently linked UOA subject and signed workspace', 
   assert.equal(fake.channelsById.size, 0)
 })
 
-test('activation rejects a signed SSO workspace that does not match the selected Nessie team', async () => {
+test('activation rejects a signed SSO team that does not match the selected Nessie team', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
@@ -164,7 +164,7 @@ test('activation rejects a signed SSO workspace that does not match the selected
   assert.equal(fake.instances.length, 0)
 })
 
-test('activation rejects stale enablement metadata from a previous SSO workspace', async () => {
+test('activation rejects stale enablement metadata from a previous SSO team', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
@@ -266,7 +266,7 @@ test('activation rejects the obsolete per-user OAuth catalog contract', async ()
   )
 })
 
-test('activation uses signed workspace and idempotently pins the managed app-key instance', async () => {
+test('activation uses signed team and idempotently pins the managed app-key instance', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const catalogId = randomUUID()

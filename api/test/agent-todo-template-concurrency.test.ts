@@ -7,7 +7,7 @@ import {
   AgentTodoError,
   createAgentTodoTemplate,
   updateAgentTodoTemplate,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   cleanupAgentTodoRoutes,

@@ -78,7 +78,7 @@ summary and points here; **this file is the rule**.
   `PageBody` therefore has **no** width prop — it is always full-width. The
   deliberate exceptions are the surfaces that are not reading columns and keep
   their own shell: fixed-height self-scrolling regions (chat, the knowledge
-  workspace, boards, canvases, editors, the mailbox, the column-browser
+  team, boards, canvases, editors, the mailbox, the column-browser
   viewport) and true modals (the `/channels/new` compose dialog). A short-line
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never

@@ -75,7 +75,7 @@ const searchMessageIdsByContent = async (
   return rows.map((row) => row.id)
 }
 
-export const runWorkspaceSearchTool = async (
+export const runTeamSearchTool = async (
   context: BuiltinToolRuntimeContext,
   query: string,
   limit: unknown = MAX_SEARCH_RESULTS,
@@ -91,7 +91,7 @@ export const runWorkspaceSearchTool = async (
     return {
       inputSummary: `query=${searchQuery}`,
       outputPreview: `No accessible conversations matched "${searchQuery}".`,
-      toolName: 'workspace_search',
+      toolName: 'team_search',
     }
   }
 
@@ -266,7 +266,7 @@ export const runWorkspaceSearchTool = async (
   return {
     inputSummary: `query=${searchQuery}`,
     outputPreview: truncate(outputPreview, 4000),
-    toolName: 'workspace_search',
+    toolName: 'team_search',
   }
 }
 
@@ -300,7 +300,7 @@ export const runAuthoredMessageSearchTool = async (
     context.channel.organizationId,
     userId,
   )
-  // Same reasoning as workspace_search: FTS the candidate ids, then hydrate them
+  // Same reasoning as team_search: FTS the candidate ids, then hydrate them
   // through the rich select below.
   const messageIds = await searchMessageIdsByContent(context, {
     authorUserId: userId,

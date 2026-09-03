@@ -22,7 +22,7 @@ import {
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentsForUser,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
@@ -32,7 +32,7 @@ import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-se
 import { formatSection } from './tool-output.js'
 
 /**
- * Workspace provisioning from chat: list the agents you can see, create a
+ * Team provisioning from chat: list the agents you can see, create a
  * channel, create an agent, bind an agent to a channel, arm a trigger.
  *
  * Each tool calls the very same service function its REST route calls and
@@ -94,7 +94,7 @@ const resolveTeamId = async (
 /**
  * The visibility a channel lands on when the model named none.
  *
- * A global agent's home DM (`system_agent`) is one person's private workspace:
+ * A global agent's home DM (`system_agent`) is one person's private team:
  * they asked for a channel, and nobody else asked for anything. Defaulting that
  * to `public` publishes a room to the whole organisation on the strength of an
  * omitted argument, which is the opposite of what was asked for. Structural —
@@ -196,7 +196,7 @@ export const runAgentCreateTool = async (
   }
 
   // The same generate-then-attach seam `POST /api/agents` runs. Without it an
-  // agent created in chat was the only faceless one in the workspace. A failed
+  // agent created in chat was the only faceless one in the team. A failed
   // picture never fails the creation — the seam resolves to undefined and the
   // agent is created without one.
   const generatedAvatar = await generateAvatarForNewAgent({
@@ -311,7 +311,7 @@ export const runAgentListTool = async (
     : agents
 
   // Provenance for a delegated read (AGENTS.md: the obligation sits on the
-  // read, not on the reply). The rule and why workspace rows are excluded from
+  // read, not on the reply). The rule and why team rows are excluded from
   // it live on the helper.
   recordVisibleAgentRead(context, matches)
 
@@ -441,7 +441,7 @@ export const runAgentTriggerCreateTool = async (
     context.actorContext.tenant.teamId ?? context.actorContext.actionContext.teamId
   if (isScheduled && !teamId) {
     throw new Error(
-      'Scheduled triggers need an active team, so every future run keeps the original workspace scope.',
+      'Scheduled triggers need an active team, so every future run keeps the original team scope.',
     )
   }
   // A signing deployment cannot fire a schedule whose creator left no UOA
@@ -465,7 +465,7 @@ export const runAgentTriggerCreateTool = async (
           : {}),
         teamId: teamId!,
         // Captured here because this is the only moment a real session exists.
-        // A fire has none, and signing a Ledger call needs the UOA workspace
+        // A fire has none, and signing a Ledger call needs the UOA team
         // the creator was acting in.
         ...(context.actorContext.actionContext.uoaIdentity
           ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }

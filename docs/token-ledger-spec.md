@@ -303,7 +303,7 @@ they re-fetch the projection and relay the exact UOA-authored action. Nessie
 stores no credit balance, top-up policy, payment consent, or add-on state.
 
 The API resolves the exact linked UOA user/organization/team and rejects
-local/UOA workspace drift. It then calls UOA with Nessie's dedicated
+local/UOA team drift. It then calls UOA with Nessie's dedicated
 `UOA_BILLING_APP_KEY_NESSIE` and a fresh RS256
 `X-UOA-Actor` whose subject, product, organization, and team exactly match the
 request and whose lifetime is 45 seconds. This key is distinct from Nessie's
@@ -326,7 +326,7 @@ package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.
 
 After a direct Nessie SSO token exchange has resolved and synchronized the
-linked UOA workspace, the API calls UOA
+linked UOA team, the API calls UOA
 `POST /billing/v1/service-access/confirm` with the exact
 `nessie`/user/organization/team subject before issuing the local session. UOA
 must return `204` with `Cache-Control: no-store`; otherwise login fails closed.

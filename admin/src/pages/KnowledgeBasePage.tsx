@@ -24,7 +24,7 @@ export const KnowledgeBasePage = () => {
 
   // Phone list selections have addressable child routes so the shell can keep
   // and animate the outgoing list. Sync those routes back into the shared
-  // Knowledge workspace as well, so a cold deep link opens the same content.
+  // Knowledge team as well, so a cold deep link opens the same content.
   useEffect(() => {
     if (spaceId && selectedSpaceId !== spaceId) {
       selectSpace(spaceId)
@@ -40,7 +40,7 @@ export const KnowledgeBasePage = () => {
   return (
     <div className="flex h-full flex-col">
       {/* singleLayoutOnly: on a split layout the section's own list is the
-          pinned column and the workspace's panes carry their own chrome, so
+          pinned column and the team's panes carry their own chrome, so
           the bar paints only where it is the screen's own header. The screen
           is published either way, so the tab title and the native shell name
           it on both. */}

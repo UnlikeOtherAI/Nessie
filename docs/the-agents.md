@@ -1204,7 +1204,7 @@ Components marked `Legacy (src/)` exist in the local orchestrator but are NOT ac
 | **Trigger scheduler service** | High | Agentic loop | Cron, interval, webhook, event-driven agent activation (§ 17) |
 | **Webhook ingest endpoint** | High | Trigger scheduler | External systems fire agents via signed HTTP |
 | **Event bus + subscriptions** | High | Trigger scheduler | Internal events trigger agents reactively |
-| **Concurrent resource locks** | Medium | Plans | File/workspace locks, conflict detection |
+| **Concurrent resource locks** | Medium | Plans | File/team locks, conflict detection |
 | **Personalization memory** | Future | — | User communication model |
 | **Local-first filtering** | Future | — | On-device memory extraction |
 
@@ -1253,7 +1253,7 @@ Nessie integrates with OpenClaw at the gateway level. The agent model maps clean
 | Agent loop | Run execution (target: agentic loop) | OpenClaw: interleaved model+tool; we need the same |
 | Gateway routing | Channel orchestrator | Both use per-agent routing decisions |
 | Session keys | `agent:<id>:<channel>:group:<id>` | Via `src/openclaw/session-mapper.ts` |
-| Workspace memory | `thoughts` table with pgvector | We have richer memory; OpenClaw uses Markdown+SQLite |
+| Team memory | `thoughts` table with pgvector | We have richer memory; OpenClaw uses Markdown+SQLite |
 | Per-agent sandbox/tool policy | Role registry + toolPolicy | Both scope tools per agent |
 
 **Where to adopt OpenClaw patterns:**
@@ -1263,7 +1263,7 @@ Nessie integrates with OpenClaw at the gateway level. The agent model maps clean
 
 **Where to diverge:**
 - Our memory system is far richer (pgvector, reasoning, supersession chains, recall ledger)
-- Our skill model has explicit grants and scoping (OpenClaw skills are workspace-global)
+- Our skill model has explicit grants and scoping (OpenClaw skills are team-global)
 - Our review/approval gates don't exist in OpenClaw
 - We need change-request-driven self-modification (OpenClaw allows direct file overwrites)
 

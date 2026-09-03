@@ -14,7 +14,7 @@
  * reachable in the first place.
  */
 
-import { evaluateSandboxedJmespath } from '@nessie/workspace-admin'
+import { evaluateSandboxedJmespath } from '@nessie/team-admin'
 import {
   DASHBOARD_DATASET_SCHEMA_VERSION,
   DASHBOARD_MAX_ROWS,

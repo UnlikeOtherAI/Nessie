@@ -1,6 +1,6 @@
 import type { FastifyReply } from 'fastify'
 
-import { CallLinkError } from '@nessie/workspace-admin'
+import { CallLinkError } from '@nessie/team-admin'
 import { sendApiError } from '../lib/api.js'
 
 export const sendCallLinkError = (reply: FastifyReply, error: CallLinkError): void => {

@@ -76,7 +76,7 @@ tests and specs that pin behaviour. Totals:
 | Projects + Dashboards | 54 | 3 | route push, Knowledge fade, drawer |
 | Knowledge (routes + provider state) | 23 + 3 reuse sites | 2 | fade-slide on remount, attachments drawer |
 | Agents, designers, workflows, triggers, tools, executors, apps | 93 | 3 | column track, drawer, `/apps` push |
-| Settings, governance, ops, feedback | 60 | 3 | nav drawer, workspace menu, column track |
+| Settings, governance, ops, feedback | 60 | 3 | nav drawer, team menu, column track |
 | Overlays repo-wide | 50 (32 dialogs, 8 drawers, 9 popovers, 1 search) | 5 | none register with Back |
 | In-page tab / view-mode switches | 15 | pill only | three different state models |
 | Navigation triggers | 213 in 107 files | — | 113 `navigate(`, 58 `Link`, 19 `<Navigate>`, 11 `setSearchParams`, 8 hard reloads, 4 `replaceState` (all in `ExecutorsPage`) |
@@ -88,14 +88,14 @@ tests and specs that pin behaviour. Totals:
 | 1 | Phone route stack (`PhoneNavigationViewport` + matrix + ledger + swipe) | CSS keyframes 300 ms `cubic-bezier(0.22,1,0.36,1)`, 28 % parallax | route depth | edge swipe, WAAPI settle **220 ms** | skips |
 | 2 | `ColumnBrowserViewport` (Workflows, Tools, Integrations, Triggers) | Tailwind `transition-transform duration-300 ease-out` | column index | none | compressed |
 | 3 | `animate-kb-view-slide` (Knowledge, project Docs, agent Documents) | 220 ms fade + 18 px slide, on remount only | none | none | compressed |
-| 4 | Drawers (`MobileNavDrawer` 200 ms, `AttachmentsDrawer` 300 ms, `WorkspaceMenu` 150 ms) | Tailwind transitions | open flag | none | 2 of 8 |
+| 4 | Drawers (`MobileNavDrawer` 200 ms, `AttachmentsDrawer` 300 ms, `TeamMenu` 150 ms) | Tailwind transitions | open flag | none | 2 of 8 |
 | 5 | Nothing | tablet/desktop detail column, `Dialog`, 45 of 50 overlays, thread panel, every unclassified route | — | — | — |
 
 The one non-trivial curve is duplicated by hand in CSS and JS and has no token.
 `--duration-fast/base` and `--easing-standard` exist but cover a minority of
 declarations. The reduced-motion rule compresses durations to 0.01 ms instead
 of skipping steps; only the phone stack, the tab pill, the rail tooltip and
-the workspace menu treat it as "skip".
+the team menu treat it as "skip".
 
 ### 2.2 Three history models and two duplicated smart-Backs
 
@@ -133,7 +133,7 @@ never render.
 `PhoneNavigationButton` resolves local Back > route Back > menu, and the edge
 swipe, Android hardware Back and the native bridge all feed the same
 `performBack`. That part is right. But only three surfaces register a local
-Back (`ColumnBrowserColumn`, `AgentDetailPage`, `KnowledgeWorkspace`); none of
+Back (`ColumnBrowserColumn`, `AgentDetailPage`, `KnowledgeTeam`); none of
 the 50 overlays do, so hardware Back leaves the page under an open dialog; the
 thread panel and compose page close themselves; `AgentDetailPage` registers at
 priority 20, above the knowledge stages (11–14) nested in its Documents tab, so
@@ -207,7 +207,7 @@ rule:
 | --- | --- | --- | --- | --- | --- | --- |
 | **Modal** | the 32 centred dialogs and confirms, flow panels on `split`, croppers, viewers, session debug | centred over a scrim; `full` on `single` for viewers and flows | fade + 4 px rise, `--overlay-duration` | close, scrim press-and-release, Escape | registers with the Back registry while open; hardware Back and the edge swipe close it | `--layer-modal` |
 | **Sheet** | the 8 drawers: nav drawer, attachments, agent/user info, agent quick view, thread panel on 900–1279 px, design assistant | edge-anchored (left, right, bottom); `full` width on `single` | slide from its edge, `--drawer-duration`, `--nav-easing` | close, scrim, Escape, swipe toward its edge | registers with Back; one sheet at a time | `--layer-sheet` |
-| **Popover** | account, workspace, create, header menus, alerts bell, emoji and assignee pickers, model combobox, wikilink suggestions, status picker, reaction "who", rail tooltips, header overflow | anchored to a trigger, flipped and clamped to the viewport by one placement helper | fade + 4 px rise, `--popover-duration` | outside press, Escape, trigger toggle | registers with Back **only on `single`** (Android hardware Back closes a menu, never leaves the page); Escape always | `--layer-popover` |
+| **Popover** | account, team, create, header menus, alerts bell, emoji and assignee pickers, model combobox, wikilink suggestions, status picker, reaction "who", rail tooltips, header overflow | anchored to a trigger, flipped and clamped to the viewport by one placement helper | fade + 4 px rise, `--popover-duration` | outside press, Escape, trigger toggle | registers with Back **only on `single`** (Android hardware Back closes a menu, never leaves the page); Escape always | `--layer-popover` |
 | **Card** | the toast stack (`NotificationsProvider`, one `ToastViewport`), the in-conversation call banner, the incoming-call ring, the rolling document-stream chips | a fixed viewport region: top-right on `split`, above the tab bar on `single`; the call banner is in-flow in its conversation | slide in from its edge and fade, `--card-duration`; auto-dismiss timer unchanged | tap (opens its target through the controller), dismiss button, timer | never owns Back; never traps focus; `role="status"` stays | `--layer-card` |
 
 Rules for the family:
@@ -235,7 +235,7 @@ Rules for the family:
   direction**: a card that arrives during a push waits for the settle before
   sliding in, so two motions never run at once on a phone.
 - **Placement is one helper.** The popover flip/clamp logic that exists five
-  times (`WorkspaceMenu`, `ReactionPills`, `StatusEmojiPicker`,
+  times (`TeamMenu`, `ReactionPills`, `StatusEmojiPicker`,
   `WikilinkSuggestionMenu`, `ResponsivePageHeader`) becomes `placePopover`,
   and the toast viewport's own `max-width: 639.98px` media query — one more
   breakpoint fork — is replaced by the shell's `navigation` value.

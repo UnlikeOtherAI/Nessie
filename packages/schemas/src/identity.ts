@@ -199,11 +199,11 @@ export const MeMembershipSchema = z.object({
 })
 export type MeMembership = z.infer<typeof MeMembershipSchema>
 
-export const UoaWorkspaceDirectoryEntrySchema = z.object({
+export const UoaTeamDirectoryEntrySchema = z.object({
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
   // The local team id is only present when this person belongs to the Nessie
-  // environment that mirrors the UOA workspace. It authorizes the workspace
+  // environment that mirrors the UOA team. It authorizes the team
   // picker to use the membership-scoped company-avatar relay.
   avatarTeamId: TeamIdSchema.optional(),
   // Public UOA-hosted image for directory entries that have not yet been
@@ -214,9 +214,9 @@ export const UoaWorkspaceDirectoryEntrySchema = z.object({
   orgName: z.string().min(1).optional(),
   active: z.boolean(),
 })
-export type UoaWorkspaceDirectoryEntry = z.infer<typeof UoaWorkspaceDirectoryEntrySchema>
+export type UoaTeamDirectoryEntry = z.infer<typeof UoaTeamDirectoryEntrySchema>
 
-export const UoaPendingWorkspaceInviteSchema = z.object({
+export const UoaPendingTeamInviteSchema = z.object({
   inviteId: z.string().min(1),
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
@@ -224,7 +224,7 @@ export const UoaPendingWorkspaceInviteSchema = z.object({
   invitedBy: z.string().min(1).optional(),
   expiresAt: TimestampSchema.optional(),
 })
-export type UoaPendingWorkspaceInvite = z.infer<typeof UoaPendingWorkspaceInviteSchema>
+export type UoaPendingTeamInvite = z.infer<typeof UoaPendingTeamInviteSchema>
 
 export const SetChannelMuteRequestSchema = z.object({
   muted: z.boolean(),
@@ -237,10 +237,10 @@ export const MeResponseSchema = z.object({
   context: MeContextSchema,
   auth: MeAuthSchema,
   memberships: z.array(MeMembershipSchema).optional(),
-  uoaWorkspaces: z.array(UoaWorkspaceDirectoryEntrySchema).optional(),
+  uoaTeams: z.array(UoaTeamDirectoryEntrySchema).optional(),
   // Present (including as []) only when this process has a verified UOA
   // directory response. A cold-cache local fallback has no invite knowledge.
-  uoaPendingInvites: z.array(UoaPendingWorkspaceInviteSchema).optional(),
+  uoaPendingInvites: z.array(UoaPendingTeamInviteSchema).optional(),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 

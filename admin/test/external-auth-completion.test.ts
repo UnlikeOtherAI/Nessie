@@ -24,7 +24,7 @@ afterEach(() => {
 
 const seedPending = async (input: {
   returnPath?: string
-  targetWorkspace?: { organizationId: string; teamId: string }
+  targetTeam?: { organizationId: string; teamId: string }
 }): Promise<string> => {
   globalThis.fetch = (async () =>
     Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch
@@ -77,7 +77,7 @@ test('stale callback is ignored without exchanging', async () => {
 test('mismatched state preserves a newer target intent', async () => {
   await seedPending({
     returnPath: '/projects',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   const pending = readPendingExternalAuth()
   const result = await complete({ callback: envelope('code', 'stale').callback })
@@ -96,10 +96,10 @@ test('ordinary callback uses login and returns the clean login landing', async (
   assert.equal(logins, 1)
 })
 
-test('a completed switch lands on the home every workspace has', async () => {
+test('a completed switch lands on the home every team has', async () => {
   const state = await seedPending({
-    returnPath: '/channels/chan-from-old-workspace',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    returnPath: '/channels/chan-from-old-team',
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   const result = await complete({ callback: envelope('code', state).callback })
   assert.deepEqual(result, { claimed: true, outcome: 'completed', returnPath: '/channels' })
@@ -114,7 +114,7 @@ test('a plain re-login still honours its own landing route', async () => {
 test('target recovery waits for source restoration and never calls login', async () => {
   const state = await seedPending({
     returnPath: '/channels/chan-a',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   let resolveReady: ((state: AuthSessionState) => void) | undefined
   const ready = new Promise<AuthSessionState>((resolve) => { resolveReady = resolve })
@@ -142,7 +142,7 @@ test('target recovery waits for source restoration and never calls login', async
 test('unauthenticated source fails targeted recovery without ordinary login', async () => {
   const state = await seedPending({
     returnPath: '/projects',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   let calls = 0
   const result = await complete({
@@ -165,7 +165,7 @@ test('target cancellation and provider error preserve the stored route', async (
   ]) {
     await seedPending({
       returnPath: '/knowledge-base',
-      targetWorkspace: { organizationId: 'org', teamId: 'team' },
+      targetTeam: { organizationId: 'org', teamId: 'team' },
     })
     let exchanges = 0
     const result = await complete({
@@ -186,7 +186,7 @@ test('target cancellation and provider error preserve the stored route', async (
 test('a failed targeted exchange returns to the originating route', async () => {
   const state = await seedPending({
     returnPath: '/channels/chan-a/threads/t-1',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   const result = await complete({
     callback: envelope('code', state).callback,
@@ -202,7 +202,7 @@ test('a failed targeted exchange returns to the originating route', async () => 
 test('exchange errors are bounded and unsafe return paths fall back safely', async () => {
   const state = await seedPending({
     returnPath: '//evil.example',
-    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+    targetTeam: { organizationId: 'org', teamId: 'team' },
   })
   const result = await complete({
     callback: envelope('code', state).callback,
@@ -257,7 +257,7 @@ test('a remembered state-less UOA callback cannot claim a later flow', async () 
   await hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
   assert.equal(logins, 1)
 
-  await seedPending({ targetWorkspace: { organizationId: 'org', teamId: 'team-b' } })
+  await seedPending({ targetTeam: { organizationId: 'org', teamId: 'team-b' } })
   const flowB = readPendingExternalAuth()
   await hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
   assert.equal(logins, 1)

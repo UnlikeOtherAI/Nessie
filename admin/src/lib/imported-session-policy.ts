@@ -6,7 +6,7 @@ export type SessionCredentialSnapshot = {
 }
 
 export const IMPORTED_SESSION_SCOPE_MESSAGE =
-  'Imported sessions cannot switch workspaces. Copy a session dump from the workspace you need.'
+  'Imported sessions cannot switch teams. Copy a session dump from the team you need.'
 
 export const createImportedSessionApplyTracker = () => {
   const counts = new Map<string, number>()

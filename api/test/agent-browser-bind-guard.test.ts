@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { AGENT_BINDING_ERROR_CODES, bindAgentToChannel } from '@nessie/workspace-admin'
+import { AGENT_BINDING_ERROR_CODES, bindAgentToChannel } from '@nessie/team-admin'
 
 /**
  * Binding widens who can reach an agent, and its browser's sign-ins are shared

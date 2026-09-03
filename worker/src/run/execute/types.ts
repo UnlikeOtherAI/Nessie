@@ -57,7 +57,7 @@ export type ExecutionDependencies = {
 export type RunContext = {
   agent: {
     agentKind: 'personal_assistant' | 'shared'
-    visibility?: 'private' | 'workspace'
+    visibility?: 'private' | 'team'
     ownerUserId?: string | null
     effort: AgentEffort
     executionMode: 'inference' | 'external_mcp'

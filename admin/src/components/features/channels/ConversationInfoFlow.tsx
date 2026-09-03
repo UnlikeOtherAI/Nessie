@@ -358,7 +358,7 @@ export const ConversationInfoFlow = ({
         <p className="px-6 py-8 text-center text-sm text-[color:var(--tx3)]">
           {activeChannel.type === 'dm'
             ? 'Direct messages are between two participants. Start a channel to include more people.'
-            : 'Ask a workspace owner to add people to this conversation.'}
+            : 'Ask a team owner to add people to this conversation.'}
         </p>
       ) : null}
     </section>

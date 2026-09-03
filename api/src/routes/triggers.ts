@@ -26,7 +26,7 @@ import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
-import { captureScheduledLaunchOrigin } from '@nessie/workspace-admin'
+import { captureScheduledLaunchOrigin } from '@nessie/team-admin'
 
 // Read once at startup, exactly like the runtime signer itself: whether this
 // deployment signs Ledger calls is never a per-request or per-user decision.

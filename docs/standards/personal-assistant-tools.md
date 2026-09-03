@@ -17,7 +17,7 @@ file is the rule**.
   refusal, owner, `checkPolicy('agent','bind')`); trigger creation parses the
   route's own `CreateAgentTriggerBodySchema` and refuses a schedule with no UOA
   identity on a signing deployment. Because `api/src/services/*` is unreachable
-  from the worker, the shared functions live in **`@nessie/workspace-admin`**
+  from the worker, the shared functions live in **`@nessie/team-admin`**
   and the api services re-export them — never a second copy in `pa-tools`.
   `pa-tools/channels.ts` carried a "mirrored from api/src/services" comment over
   a duplicated `canManageChannel` for exactly that reason; on 2026-08-29 the
@@ -30,7 +30,7 @@ file is the rule**.
   `agent_list` (→ `listAgentsForUser`, `GET /api/agents`'s own entitlement
   scoping) is what makes `agent_bind_channel` / `agent_trigger_create` usable on
   an agent the user merely named. Details: `CLAUDE.md` → "Personal assistant —
-  workspace provisioning".
+  team provisioning".
 - **Provider-linked call tools use this same route-mirroring pattern.**
   `meeting_link_create` and `call_start` are separate PA-only builtin ids:
   minting a provider link and ringing a channel have different blast radii, and
@@ -38,7 +38,7 @@ file is the rule**.
   intentionally require no explicit grant today because a person's PA is their
   delegate. Both re-read the live acting membership and call
   `createCallLinkForTeamUser` / `startCallForUser` in
-  `@nessie/workspace-admin`; never duplicate their gates. A call tool leaves
+  `@nessie/team-admin`; never duplicate their gates. A call tool leaves
   `expectedOrganizationId` unset so the shared start seam resolves the
   **target channel's** organisation and re-checks membership there, preserving
   the route's indistinguishable `Channel not found` refusal across UOA orgs.
@@ -46,11 +46,11 @@ file is the rule**.
 
 ## Detail
 
-Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Personal assistant — workspace provisioning".
+Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Personal assistant — team provisioning".
 
 
 Seven `personalAssistantOnly` builtins reach the PA
-(`worker/src/run/pa-tools/provisioning.ts` and `workspace-structure.ts`), each
+(`worker/src/run/pa-tools/provisioning.ts` and `team-structure.ts`), each
 mirroring one REST route's
 authorization — no weaker, no stronger — and calling the same service function
 the route calls. The pattern, visible-refusal for owner-gated tools, the
@@ -87,11 +87,11 @@ Per-tool facts:
   `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`, and
   a signing deployment refuses a schedule without it, as the route does.
 
-Three more (`worker/src/run/pa-tools/workspace-structure.ts`) cover the
+Three more (`worker/src/run/pa-tools/team-structure.ts`) cover the
 containers a channel needs — a channel hangs off a team, a team off a project.
 (That is the schema's current, inverted shape. The model is
-Organisation → Workspace → Project → Channel; see
-[workspace-model.md](workspace-model.md). These tools describe the code as it
+Organisation → Team → Project → Channel; see
+[team-model.md](team-model.md). These tools describe the code as it
 is, so they are left as-is until the foreign key is flipped.)
 
 - `project_list` → `listProjectsForUser` + `listTeamsForOrganization`. Any
@@ -133,7 +133,7 @@ owners, team-owned (`ownerUserId` null) ⇒ anyone entitled plus org owners,
 `systemManaged` ⇒ nobody. Ownership transitions and `todosEnabled` keep their
 own narrower gates. Full rule:
 [docs/standards/agent-ownership.md](agent-ownership.md);
-predicate: `@nessie/workspace-admin` `agent-edit-authority.ts`, mirrored for
+predicate: `@nessie/team-admin` `agent-edit-authority.ts`, mirrored for
 affordances by `admin/src/components/features/agents/agent-edit-authority.ts`.
 
 Private-agent transfer is deliberately unsupported: the owner-only home DM
@@ -154,7 +154,7 @@ membership transaction, records one aggregate audit transition with no widened
 recipient, and does not auto-resume on reactivation.
 
 **Reuse, never fork.** `api/src/services/*` cannot be imported by the worker, so
-the shared functions live in **`@nessie/workspace-admin`** (mirroring how
+the shared functions live in **`@nessie/team-admin`** (mirroring how
 `@nessie/mcp-manage` is shared) and the api services re-export them, leaving the
 routes untouched: channel create/records/slugs, agent create/list/record/
 bindings and the tool-policy protected-key gate, trigger

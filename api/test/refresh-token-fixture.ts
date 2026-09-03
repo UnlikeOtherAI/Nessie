@@ -44,7 +44,7 @@ type StoredUoaCredential = {
   updatedAt: Date
 }
 
-export type StoredUoaWorkspaceSwitchIntent = {
+export type StoredUoaTeamSwitchIntent = {
   familyId: string
   userId: string
   providerId: string
@@ -110,15 +110,15 @@ const cloneCredential = (
   credential: StoredUoaCredential,
 ): StoredUoaCredential => ({ ...credential })
 const cloneIntent = (
-  intent: StoredUoaWorkspaceSwitchIntent,
-): StoredUoaWorkspaceSwitchIntent => ({ ...intent })
+  intent: StoredUoaTeamSwitchIntent,
+): StoredUoaTeamSwitchIntent => ({ ...intent })
 
 export class FakeRefreshTokenPrisma {
   readonly records = new Map<string, StoredRefreshToken>()
   readonly uoaCredentials = new Map<string, StoredUoaCredential>()
-  readonly uoaWorkspaceSwitchIntents = new Map<
+  readonly uoaTeamSwitchIntents = new Map<
     string,
-    StoredUoaWorkspaceSwitchIntent
+    StoredUoaTeamSwitchIntent
   >()
   failNextTransaction = false
   activeTransactions = 0
@@ -215,7 +215,7 @@ export class FakeRefreshTokenPrisma {
       let count = 0
       for (const familyId of familyIds) {
         if (this.uoaCredentials.delete(familyId)) {
-          this.uoaWorkspaceSwitchIntents.delete(familyId)
+          this.uoaTeamSwitchIntents.delete(familyId)
           count += 1
         }
       }
@@ -223,35 +223,35 @@ export class FakeRefreshTokenPrisma {
     },
   }
 
-  readonly uoaWorkspaceSwitchIntent = {
+  readonly uoaTeamSwitchIntent = {
     create: async (input: {
-      data: Omit<StoredUoaWorkspaceSwitchIntent, 'createdAt' | 'updatedAt'>
+      data: Omit<StoredUoaTeamSwitchIntent, 'createdAt' | 'updatedAt'>
     }) => {
-      if (this.uoaWorkspaceSwitchIntents.has(input.data.familyId)) {
-        throw new Error('duplicate UOA workspace switch intent')
+      if (this.uoaTeamSwitchIntents.has(input.data.familyId)) {
+        throw new Error('duplicate UOA team switch intent')
       }
       const now = new Date()
       const intent = { ...input.data, createdAt: now, updatedAt: now }
-      this.uoaWorkspaceSwitchIntents.set(intent.familyId, intent)
+      this.uoaTeamSwitchIntents.set(intent.familyId, intent)
       return cloneIntent(intent)
     },
     findUnique: async (input: { where: { familyId: string } }) => {
-      const intent = this.uoaWorkspaceSwitchIntents.get(input.where.familyId)
+      const intent = this.uoaTeamSwitchIntents.get(input.where.familyId)
       return intent ? cloneIntent(intent) : null
     },
     deleteMany: async (input: {
-      where: Partial<StoredUoaWorkspaceSwitchIntent>
+      where: Partial<StoredUoaTeamSwitchIntent>
     }) => {
       const intent = input.where.familyId
-        ? this.uoaWorkspaceSwitchIntents.get(input.where.familyId)
+        ? this.uoaTeamSwitchIntents.get(input.where.familyId)
         : undefined
       if (!intent) return { count: 0 }
       for (const [key, value] of Object.entries(input.where)) {
-        if (intent[key as keyof StoredUoaWorkspaceSwitchIntent] !== value) {
+        if (intent[key as keyof StoredUoaTeamSwitchIntent] !== value) {
           return { count: 0 }
         }
       }
-      this.uoaWorkspaceSwitchIntents.delete(intent.familyId)
+      this.uoaTeamSwitchIntents.delete(intent.familyId)
       return { count: 1 }
     },
   }
@@ -273,7 +273,7 @@ export class FakeRefreshTokenPrisma {
       ),
     )
     const intentSnapshot = new Map(
-      Array.from(this.uoaWorkspaceSwitchIntents.entries()).map(
+      Array.from(this.uoaTeamSwitchIntents.entries()).map(
         ([id, intent]) => [id, cloneIntent(intent)],
       ),
     )
@@ -286,11 +286,11 @@ export class FakeRefreshTokenPrisma {
     } catch (error) {
       this.records.clear()
       this.uoaCredentials.clear()
-      this.uoaWorkspaceSwitchIntents.clear()
+      this.uoaTeamSwitchIntents.clear()
       for (const [id, record] of tokenSnapshot) this.records.set(id, record)
       for (const [id, record] of credentialSnapshot) this.uoaCredentials.set(id, record)
       for (const [id, intent] of intentSnapshot) {
-        this.uoaWorkspaceSwitchIntents.set(id, intent)
+        this.uoaTeamSwitchIntents.set(id, intent)
       }
       throw error
     } finally {
@@ -353,8 +353,8 @@ export type RefreshCallback = NonNullable<
 >
 
 export const defaultUoaRefresh = (now: Date): RefreshCallback => async (input) => ({
-  identity: input.workspaceSwitch
-    ? { ...input.expectedIdentity, ...input.workspaceSwitch }
+  identity: input.teamSwitch
+    ? { ...input.expectedIdentity, ...input.teamSwitch }
     : input.expectedIdentity,
   refreshToken: `${input.refreshToken}.next`,
   refreshTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
@@ -368,7 +368,7 @@ export const consume = (
 ) => consumeRefreshToken(fake.asClient(), {
   authSecret: AUTH_SECRET,
   advanceUoaSessionBinding: async () => undefined,
-  beforeUoaWorkspaceSwitch: async () => undefined,
+  beforeUoaTeamSwitch: async () => undefined,
   rawToken,
   ttlSeconds: TTL_SECONDS,
   refreshUoaSession,

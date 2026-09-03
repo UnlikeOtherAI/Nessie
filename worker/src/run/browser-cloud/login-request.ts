@@ -6,7 +6,7 @@ import {
 } from '@nessie/browser-cloud'
 import type { Prisma } from '@prisma/client'
 import { AgentCardMessageMetadataSchema, type AgentCardSpec } from '@nessie/schemas'
-import { renderAgentCardPlainText } from '@nessie/workspace-admin'
+import { renderAgentCardPlainText } from '@nessie/team-admin'
 
 import { createAgentMessage } from '../execute/agent-message.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
@@ -46,7 +46,7 @@ const deploymentClampedExpiry = (): Date =>
 export const requestBrowserLogin = async (
   deps: CloudBrowserDeps,
   context: BuiltinToolRuntimeContext & {
-    agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
+    agentIdentity?: { visibility: 'team' | 'private'; ownerUserId: string | null }
   },
   args: { service: string; reason: string },
 ): Promise<LoginRequestOutcome> => {
@@ -71,7 +71,7 @@ export const requestBrowserLogin = async (
     const browser = await ensureAgentBrowser(deps, {
       organizationId: context.channel.organizationId,
       agentId: context.agentId,
-      agentVisibility: context.agentIdentity?.visibility ?? 'workspace',
+      agentVisibility: context.agentIdentity?.visibility ?? 'team',
       agentOwnerUserId: context.agentIdentity?.ownerUserId ?? null,
     })
     browserId = browser.id
@@ -105,7 +105,7 @@ export const requestBrowserLogin = async (
         type: 'text',
         markdown:
           `Open the browser below and sign in to ${service}. You type directly `
-          + 'into the browser — nothing you enter passes through this workspace, '
+          + 'into the browser — nothing you enter passes through this team, '
           + 'and nobody, including me, can see it. Press Done when you are '
           + 'signed in.',
       },

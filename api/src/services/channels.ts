@@ -22,7 +22,7 @@ import {
   resolveDmUserId,
   setChannelArchived,
   updateChannel,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 // Channel creation, the manage check, and the writes it gates are shared with
 // the worker (the assistant's `channel_create` / `channel_update` /

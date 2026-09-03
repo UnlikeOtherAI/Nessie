@@ -106,7 +106,7 @@ export const ConnectionCard = ({
             </Pill>
           </div>
           <div className="mt-1 truncate text-xs text-[color:var(--tx3)]">
-            {connection.externalUserId} · workspace {connection.externalTenantId}
+            {connection.externalUserId} · team {connection.externalTenantId}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

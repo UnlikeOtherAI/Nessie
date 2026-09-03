@@ -256,8 +256,8 @@ key or OAuth sign-in as required.
 
 Custom catalogue rows remain private to their author and organisation. Their
 internal name is therefore unique per `(organizationId, ownerUserId)`, so a
-person can add an identically named private app in another workspace without
-revealing or being blocked by the first workspace's connector.
+person can add an identically named private app in another team without
+revealing or being blocked by the first team's connector.
 
 ### OAuth (dynamic, MCP authorization spec)
 
@@ -448,15 +448,15 @@ three independent proofs:
 3. A fresh, maximum-five-minute RS256 `X-Nessie-Context` binds that subject to
    Nessie's local user/org/team/agent/run plus request and stable tool-call ids.
 
-The current Nessie team's `externalOrgId`/`externalWorkspaceId` must exactly
+The current Nessie team's `externalOrgId`/`externalTeamId` must exactly
 match the link's active UOA org/team on activation and on every outbound call,
 the effective user must still be a current member of that local team, and the
 team's DeepSignal enablement is re-read before dispatch. Conversation
-DM keys include the active external workspace
+DM keys include the active external team
 (`extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`), so switching teams
 creates a distinct channel/thread/conversation. Legacy team-less channels and
-channel/workspace mismatches are archived or rejected before DeepSignal is
-called. Webhook fan-out selects that same workspace-keyed channel.
+channel/team mismatches are archived or rejected before DeepSignal is
+called. Webhook fan-out selects that same team-keyed channel.
 
 No user OAuth token, per-user override, or generic connector credential may
 replace the dsk bearer. Startup rejects equality with any configured
@@ -497,7 +497,7 @@ Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
   registration and the admin pastes it. On `insight.surfaced` the receiver
   resolves the signed payload's `teamId` through the exact enabled
   `ProductTeamEnablement.externalTeamId` and the matching Nessie
-  `Team.externalWorkspaceId`/`externalOrgId`. It then selects only linked,
+  `Team.externalTeamId`/`externalOrgId`. It then selects only linked,
   active members whose UOA link is active in that same external organization
   and team. Unknown, disabled, mismatched, or team-less payloads deliver
   nothing. Accepted events are coalesced into a budgeted rolling digest per
@@ -708,13 +708,13 @@ There is deliberately no direct-provider fallback.
   exactly match the stable subject and credential epoch, but cannot supply or
   upgrade session identity. Its active org/team fields are last-seen UI
   metadata only, so simultaneous sessions in different teams cannot invalidate
-  or rebind one another. The exact signed workspace must independently match
+  or rebind one another. The exact signed team must independently match
   the local Team's external mapping. Legacy UOA refresh families without
   encrypted family proof must sign in again. The stable UOA subject is
   required. The selected UOA org/team
   comes from `active` or, when UOA auto-skips its chooser, the sole active team
   membership; the centralized resolution is projected into the Nessie
-  workspace, while product links retain only stable account/epoch authority.
+  team, while product links retain only stable account/epoch authority.
   Multiple teams without `active`
   remain ambiguous and fail closed. Nessie's signed local organization/team remain the
   authoritative research and raw-usage scope, so the two ID namespaces are never

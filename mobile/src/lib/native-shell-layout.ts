@@ -10,7 +10,7 @@ import type { ScreenType } from './native-shell-message'
 export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
 export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
 // Align the compact landscape header with the system's floating tab controls,
-// rather than letting its workspace and account actions crowd the corners.
+// rather than letting its team and account actions crowd the corners.
 export const NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER = 32
 
 export type NativePhoneCreationAction = 'project' | 'channel' | 'agent' | 'message'
@@ -65,7 +65,7 @@ export const isAuthGateRoute = (path: string): boolean =>
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
-// Portrait only needs the workspace and account controls at a tab root. The
+// Portrait only needs the team and account controls at a tab root. The
 // admitted large-phone landscape lane has room for its compact toolbar on any
 // page, so it retains the header while a detail is shown beside the menu.
 // `isTabRoot` comes from the last-known screen's `type === 'root'`, not from

@@ -32,7 +32,7 @@ export const beginExternalAuth = (input: {
   replacePendingState?: string
   redirectUri: string
   returnPath?: string
-  targetWorkspace?: PendingExternalAuthTarget
+  targetTeam?: PendingExternalAuthTarget
   teamHint?: string
   theme: AppliedTheme
 }): Promise<BeginExternalAuthResult> => {
@@ -46,7 +46,7 @@ export const beginExternalAuth = (input: {
     redirectUri: input.redirectUri,
     ...(input.returnPath ? { returnPath: input.returnPath } : {}),
     storage,
-    ...(input.targetWorkspace ? { targetWorkspace: input.targetWorkspace } : {}),
+    ...(input.targetTeam ? { targetTeam: input.targetTeam } : {}),
     ...(input.teamHint ? { teamHint: input.teamHint } : {}),
     theme: input.theme,
   })

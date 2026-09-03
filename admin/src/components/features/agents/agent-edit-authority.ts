@@ -5,7 +5,7 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 /**
  * Who may edit this agent — the client half of the server's `canEditAgent`.
  *
- * The server rule (`@nessie/workspace-admin` `agent-edit-authority.ts`) is the
+ * The server rule (`@nessie/team-admin` `agent-edit-authority.ts`) is the
  * boundary; this decides which affordances to paint, and must say the same
  * thing or a person gets a button that 403s. It can, because every fact it
  * needs is on the record: ownership state, visibility, and system management.

@@ -1,6 +1,6 @@
 export type Team = {
   externalOrgId: string | null
-  externalWorkspaceId: string | null
+  externalTeamId: string | null
   id: string
   name: string
   projectId: string
@@ -88,7 +88,7 @@ export type AccountLink = {
 
 export type ExternalAgentFakeSeed = {
   externalOrgId?: string
-  externalWorkspaceId?: string
+  externalTeamId?: string
   organizationId: string
   projectId: string
   teamId: string
@@ -121,7 +121,7 @@ export const makeTeamEnablementMap = (
             : enablement.externalOrgId,
         externalTeamId:
           enablement.externalTeamId === undefined
-            ? seed.externalWorkspaceId ?? 'uoa-team'
+            ? seed.externalTeamId ?? 'uoa-team'
             : enablement.externalTeamId,
       },
     ]),

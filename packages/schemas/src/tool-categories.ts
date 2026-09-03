@@ -6,7 +6,7 @@ import { z } from 'zod'
  *
  * Before this, the admin guessed a tool's category from its id prefix
  * (`file_`, `web_`, `kb_`…) and swept everything unmatched into one
- * "Agent & workspace" bucket. That bucket held 75 of 116 builtins: a new tool
+ * "Agent & team" bucket. That bucket held 75 of 116 builtins: a new tool
  * joined it by default, and the only way out was to invent another prefix
  * rule. Category is therefore a **required** field on `BuiltinToolDefinition`
  * — adding a tool without choosing where it belongs does not compile, which is
@@ -102,9 +102,9 @@ export const TOOL_CATEGORIES = [
     label: 'Workflows',
   },
   {
-    description: 'Searching the workspace directory and changing preferences.',
-    id: 'workspace',
-    label: 'People & workspace',
+    description: 'Searching the team directory and changing preferences.',
+    id: 'team',
+    label: 'People & team',
   },
 ] as const
 

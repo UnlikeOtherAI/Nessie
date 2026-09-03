@@ -113,7 +113,7 @@ const radiusClasses: Record<PillRadius, string> = {
  * kanban chips and the member-row chips. The uppercase labels that shipped at
  * regular weight (`ToolPermissionPill`, `MemberUserRow`, `StatusSection`,
  * `ApprovalsPage`, `AuditLogPage`, `PolicyPage`, `ProjectBacklogTab`,
- * `OpsHealthPage`, `SettingsMembersPage`, `WorkspaceMembersSection`,
+ * `OpsHealthPage`, `SettingsMembersPage`, `TeamMembersSection`,
  * `BudgetManager`) gain it.
  *
  * A sentence-case pill carries a real word or a person's name and gets none of

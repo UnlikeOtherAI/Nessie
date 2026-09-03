@@ -182,7 +182,7 @@ type FeaturedRows = {
 /**
  * Curation first. Without it the strip falls back to the apps this caller has
  * actually connected — it still renders, and it renders something true about
- * this workspace rather than an arbitrary five.
+ * this team rather than an arbitrary five.
  *
  * With nothing curated *and* nothing connected the strip is empty rather than
  * the first five apps alphabetically. Across a registry-sized catalogue those

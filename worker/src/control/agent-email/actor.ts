@@ -13,7 +13,7 @@ import {
  * The actor an inbound email run acts as.
  *
  * Deliberately a **service** actor with no user id. The sender is a stranger
- * outside the workspace: their address must never become local authority, and
+ * outside the team: their address must never become local authority, and
  * minting a synthetic user for them would put an unaccountable principal in the
  * audit trail and the ledger. Everything the run may do it may do because the
  * *agent* is entitled to it, never because the email asked.

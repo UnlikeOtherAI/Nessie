@@ -7,7 +7,7 @@ import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { RailTooltip } from './RailTooltip';
 import { sidebarAriaCurrent } from './SidebarRow';
 import { UserMenuTrigger } from './UserMenuTrigger';
-import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { TeamSwitcher } from './TeamSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
@@ -64,7 +64,7 @@ export const SidebarRail = ({
         'bg-[color:var(--rail)] px-2 py-2',
       ].join(' ')}
     >
-      <WorkspaceSwitcher />
+      <TeamSwitcher />
 
       <nav aria-label="Main navigation" className="w-full shrink-0">
         {SIDEBAR_RAIL_ITEMS.map((item) => {

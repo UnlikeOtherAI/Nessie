@@ -50,9 +50,9 @@ test('knowledge document summaries distinguish drafting, composing, and editing'
   )
 })
 
-test('message search summaries distinguish workspace, channel, and author scope', () => {
+test('message search summaries distinguish team, channel, and author scope', () => {
   const expectedSummaries = new Map([
-    ['workspace_search', 'Search accessible workspace conversations, threads, and messages.'],
+    ['team_search', 'Search accessible team conversations, threads, and messages.'],
     ['message_search', 'Search accessible channel messages, optionally within one channel.'],
     ['authored_message_search', 'Search accessible messages written by the current user.'],
   ])

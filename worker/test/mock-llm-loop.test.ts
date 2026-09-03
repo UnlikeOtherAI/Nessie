@@ -51,7 +51,7 @@ test('agentic loop completes a scripted tool-call scenario end to end', async ()
   assert.equal(result.exhaustedBudget, null)
   assert.equal(
     result.finalText,
-    'The workspace has a handful of channels, including the one we are talking in right now.',
+    'The team has a handful of channels, including the one we are talking in right now.',
   )
   assert.equal(result.invocations.length, 2)
 })

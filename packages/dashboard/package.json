@@ -18,7 +18,7 @@
   "dependencies": {
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
-    "@nessie/workspace-admin": "workspace:*",
+    "@nessie/team-admin": "workspace:*",
     "@prisma/client": "^6.17.1",
     "zod": "^3.25.76"
   },

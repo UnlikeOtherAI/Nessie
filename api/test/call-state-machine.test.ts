@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { startCallForUser } from '@nessie/workspace-admin'
+import { startCallForUser } from '@nessie/team-admin'
 
 import { acceptCallInvite, cancelCall, declineCallInvite } from '../src/services/calls.js'
 

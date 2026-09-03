@@ -43,7 +43,7 @@ const ConnectButtons = ({
 /**
  * "Connected accounts" — the user's Individual Communications Connector control
  * surface. Lists the caller's own Slack / Gmail / Microsoft connections with
- * identity, workspace, granted permissions, imported-history status, last sync,
+ * identity, team, granted permissions, imported-history status, last sync,
  * a health pill, per-resource include toggles, and Resync / Disconnect / Delete
  * imported data controls. Chat (the Chief of Staff connect card) is the primary
  * connect surface; the buttons here are the secondary path.

@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { recordTriggerHealthFailure } from '../../src/control/trigger-health.js'
 import { TriggerLaunchOriginError } from '../../src/control/trigger-origin.js'
-import { AgentTodoScheduledConfigError } from '@nessie/workspace-admin'
+import { AgentTodoScheduledConfigError } from '@nessie/team-admin'
 
 // The health write decides whether a failure is NEW — which is what makes the
 // alert fire exactly once per transition rather than once per sweep.

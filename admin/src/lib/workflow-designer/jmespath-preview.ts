@@ -3,7 +3,7 @@
  * the field picker, and the live preview evaluator.
  *
  * The preview deliberately runs the SAME jmespath.js the worker's evaluator
- * runs (@nessie/workspace-admin workflow-jmespath.ts), in-process: a draft
+ * runs (@nessie/team-admin workflow-jmespath.ts), in-process: a draft
  * expression the designer shows as green compiles and evaluates identically
  * at run time. The server-side envelope caps (4 KiB expression, 1 MiB
  * input, 256 KiB output) are mirrored here so the designer never previews

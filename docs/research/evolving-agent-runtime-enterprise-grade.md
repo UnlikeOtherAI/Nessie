@@ -13,7 +13,7 @@ Practically, the shortest path to a reliable "agent that can iteratively build a
 - Run all generated code inside **sandboxed execution** (microVM/OCI+gVisor/Wasm), with strict egress controls, resource limits, artefact capture, and rollback. citeturn3search4turn3search1turn3search2turn3search6  
 - Meet enterprise requirements (SOC 2 / GDPR / internal controls) by enforcing RBAC, approvals, audit trails, secrets hygiene, rate limits, and telemetry at well-defined enforcement points (router → planner → executor → tool gateway → sandbox → VCS/CI). citeturn4search1turn4search0turn2search3turn2search2  
 
-Where OpenClaw is useful as a benchmark: it explicitly separates **tools (typed functions), skills (markdown runbooks), and plugins**, runs an **agentic loop** that interleaves tool calls and streaming output, supports multi-agent routing with per-agent sandbox/tool policy, and treats persona/operations as workspace files injected into context. citeturn9view0turn9view1turn9view2turn8search28turn8search3
+Where OpenClaw is useful as a benchmark: it explicitly separates **tools (typed functions), skills (markdown runbooks), and plugins**, runs an **agentic loop** that interleaves tool calls and streaming output, supports multi-agent routing with per-agent sandbox/tool policy, and treats persona/operations as team files injected into context. citeturn9view0turn9view1turn9view2turn8search28turn8search3
 
 Unspecified items (you should choose among options in the designs below): preferred cloud/provider, required compliance scope beyond GDPR/SOC 2, the canonical "source of truth" for generated tool code (DB vs Git mono-repo vs artefact store), and whether your sandbox must support Windows/macOS host execution.
 
@@ -76,7 +76,7 @@ This section defines each pillar and gives design patterns, data models, APIs, s
 
 **Definition.** Self-modification means the system can propose, validate, and apply changes to its own behaviour/configuration and capabilities (tools/skills), governed by policy and approvals.
 
-OpenClaw's architecture illustrates a "soft" self-modification pattern: persona and operating procedures live in workspace files like `SOUL.md` and `AGENTS.md`, which are injected into context each session, and internal hooks can swap injected files (persona switching). citeturn8search3turn8search28turn9view3
+OpenClaw's architecture illustrates a "soft" self-modification pattern: persona and operating procedures live in team files like `SOUL.md` and `AGENTS.md`, which are injected into context each session, and internal hooks can swap injected files (persona switching). citeturn8search3turn8search28turn9view3
 
 **Design patterns.**
 - **Behaviour-as-data:** store system prompt fragments, policies, and agent configuration as versioned artefacts; apply changes via controlled change requests.
@@ -167,7 +167,7 @@ OpenClaw's architecture illustrates a "soft" self-modification pattern: persona 
 
 OpenClaw's docs illustrate two relevant principles:
 1) "Tools are typed functions… the agent sees tools as structured function definitions sent to the model API." citeturn9view0  
-2) The system prompt is rebuilt each run and injects workspace files; skills are presented as a compact list and loaded on demand, keeping prompts small. citeturn9view4turn9view3  
+2) The system prompt is rebuilt each run and injects team files; skills are presented as a compact list and loaded on demand, keeping prompts small. citeturn9view4turn9view3  
 
 These principles generalise well: meta-tools should be typed and auditable, and "knowledge consolidation" should be designed to minimise context bloat while keeping high-value knowledge retrievable.
 
@@ -653,7 +653,7 @@ Because your provider/cloud is unspecified, here is a vendor-neutral approach:
 **Resource controls (enforce at sandbox runner):**
 - CPU quota, memory hard limit, wallclock timeout, output size caps.
 - Network: default none; allowlist egress domains/IPs; block private ranges (continue your SSRF protections).
-- Filesystem: mount a per-run workspace snapshot; write results to an artefact directory; no host mounts.
+- Filesystem: mount a per-run team snapshot; write results to an artefact directory; no host mounts.
 
 **Artefact storage and rollback**
 - Store: stdout/stderr, test reports, changed files/patches, tool bundles, provenance (hashes), and evaluation results.
@@ -744,13 +744,13 @@ OpenClaw provides several concepts that directly address your stated gaps:
 
 - **Native tool calling:** OpenClaw defines tools as "typed functions" and notes that the agent sees tool definitions as structured function definitions sent to the model API, which implies a tool-calling protocol rather than keyword-triggered pre-execution. citeturn9view0turn9view4  
 - **Agentic loop within a run:** OpenClaw formalises an agent loop that interleaves model inference and tool execution with persistence and lifecycle events. citeturn9view1turn7search28  
-- **Behaviour-as-markdown (with controlled injection):** persona and operations are driven by injected workspace files (`SOUL.md`, `AGENTS.md`, etc.) and skills are `SKILL.md` runbooks; skills are listed compactly and loaded on demand to control context growth. citeturn8search28turn8search3turn0search2turn0search9turn9view4turn9view3  
-- **Multi-agent routing + per-agent sandbox/tool policy:** OpenClaw supports multi-agent routing with per-agent workspaces and per-agent sandbox/tool restrictions. citeturn8search20turn9view2turn7search5  
+- **Behaviour-as-markdown (with controlled injection):** persona and operations are driven by injected team files (`SOUL.md`, `AGENTS.md`, etc.) and skills are `SKILL.md` runbooks; skills are listed compactly and loaded on demand to control context growth. citeturn8search28turn8search3turn0search2turn0search9turn9view4turn9view3  
+- **Multi-agent routing + per-agent sandbox/tool policy:** OpenClaw supports multi-agent routing with per-agent teams and per-agent sandbox/tool restrictions. citeturn8search20turn9view2turn7search5  
 - **Clear security stance:** OpenClaw explicitly warns that using one tool-enabled agent across mutually untrusted users is not a supported security boundary; enterprises should enforce trust boundary separation. citeturn7search20  
 
 ### Where OpenClaw's model may not match enterprise needs (and where to diverge)
 
-- **File-based "source of truth" vs enterprise change control.** File-based configuration is transparent and developer-friendly, but enterprise governance typically needs "who changed what, when, why" with approvals and automated checks. You can still keep a file-based approach by storing all generated tools/skills/prompts in Git and running CI gates, but avoid silent overwrites and require approvals for sensitive changes (OpenClaw itself has had user reports about workspace files being overwritten unexpectedly—exact behaviour varies by version and tooling). citeturn8search17turn8search1  
+- **File-based "source of truth" vs enterprise change control.** File-based configuration is transparent and developer-friendly, but enterprise governance typically needs "who changed what, when, why" with approvals and automated checks. You can still keep a file-based approach by storing all generated tools/skills/prompts in Git and running CI gates, but avoid silent overwrites and require approvals for sensitive changes (OpenClaw itself has had user reports about team files being overwritten unexpectedly—exact behaviour varies by version and tooling). citeturn8search17turn8search1  
 - **Supply chain exposure for skills.** Any ecosystem that installs third-party "skills" or plugins faces supply-chain risk; treat skills as code-adjacent artefacts that must be scanned, reviewed, and sandboxed. citeturn0search24turn2search2  
 - **Mixed-trust multi-user environments.** OpenClaw's stance suggests running separate gateways/credentials per trust boundary. Enterprises often need multi-tenant controls; if you must support multiple trust domains, your design should enforce isolation at the identity, credential, and sandbox layers (not just routing). citeturn7search20turn9view2  
 

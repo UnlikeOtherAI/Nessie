@@ -42,7 +42,7 @@ export const blockAmbientRefresh = (): void => {
 }
 
 // Called only after a successfully APPLIED explicit login, bootstrap,
-// dev login, or validated explicit workspace recovery. clearSession and an
+// dev login, or validated explicit team recovery. clearSession and an
 // ordinary unauthenticated refresh deliberately never call it: they are
 // terminal aftermath, not proof of a new explicit session.
 export const unblockAmbientRefresh = (): void => {

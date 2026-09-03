@@ -330,11 +330,11 @@ That means our orchestration contracts should already look OpenClaw-compatible:
 We should not wait for full OpenClaw integration before implementing those
 patterns locally.
 
-## Prompt and Workspace Design
+## Prompt and Team Design
 
 We should standardise prompt layers:
 
-- workspace `AGENTS.md`
+- team `AGENTS.md`
   Team operating rules, artefact conventions, review requirements, escalation
   policy
 - role charters

@@ -18,7 +18,7 @@ import {
   getAgentTodo,
   updateAgentTodoStep,
   createAgentTrigger,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { updateAgentTrigger } from '../src/services/trigger-crud.js'
 import { requestRunCancellation } from '../src/services/runs.js'
 import { runApprovalEffect } from '../src/services/approval-effects.js'

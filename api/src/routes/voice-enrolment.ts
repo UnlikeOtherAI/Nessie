@@ -150,7 +150,7 @@ export const registerVoiceEnrolmentRoutes = (app: FastifyInstance, deps: RouteDe
         reply,
         400,
         'VOICE_CONTEXT_REQUIRED',
-        'A workspace context is required to provision a device.',
+        'A team context is required to provision a device.',
       )
     }
 

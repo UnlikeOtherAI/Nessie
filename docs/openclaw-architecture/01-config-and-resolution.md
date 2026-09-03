@@ -32,7 +32,7 @@ AgentEntrySchema = {
   id: string,                                    // unique agent identifier
   default?: boolean,                             // marks the default agent (used when none specified)
   name?: string,                                 // human-readable name
-  workspace?: string,                            // workspace directory for this agent
+  team?: string,                            // team directory for this agent
   agentDir?: string,                             // agent-specific files directory
   systemPromptOverride?: string,                 // override the default system prompt
   embeddedHarness?: AgentEmbeddedHarnessSchema,  // harness selection for embedded runtime
@@ -102,7 +102,7 @@ AgentDefaultsSchema = {
     params?: Record<string, unknown>,
     streaming?: boolean,                         // default true; false for Ollama
   }>,
-  workspace?: string,
+  team?: string,
   skills?: string[],
   repoRoot?: string,
   systemPromptOverride?: string,
@@ -273,9 +273,9 @@ Supports three isolation environments:
 AgentSandboxSchema = {
   mode?: "off"|"non-main"|"all",
   backend?: string,
-  workspaceAccess?: "none"|"ro"|"rw",
+  teamAccess?: "none"|"ro"|"rw",
   scope?: "session"|"agent"|"shared",
-  workspaceRoot?: string,
+  teamRoot?: string,
   docker?: SandboxDockerSchema,
   ssh?: SandboxSshSchema,
   browser?: SandboxBrowserSchema,
@@ -327,7 +327,7 @@ AgentSandboxSchema = {
 {
   target?: string,
   command?: string,
-  workspaceRoot?: string,
+  teamRoot?: string,
   identityFile?: string,
   knownHostsFile?: string,
   identityData?: SecretInput,    // injected at runtime, never stored
@@ -365,11 +365,11 @@ AgentToolsSchema = {
     backgroundMs?: number,
     applyPatch?: {
       enabled?: boolean,
-      workspaceOnly?: boolean,
+      teamOnly?: boolean,
       allowModels?: string[],
     },
   },
-  fs?: { workspaceOnly?: boolean },
+  fs?: { teamOnly?: boolean },
   loopDetection?: {
     enabled?: boolean,
     historySize?: number,

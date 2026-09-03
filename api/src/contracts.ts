@@ -1,6 +1,6 @@
 export * from './contracts/browser-cloud.js'
 export * from './contracts/auth.js'
-export * from './contracts/workspace.js'
+export * from './contracts/team.js'
 export * from './contracts/agents.js'
 export * from './contracts/agent-todos.js'
 export * from './contracts/demonstrations.js'

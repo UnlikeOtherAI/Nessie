@@ -26,7 +26,7 @@ export const ExternalAuthCompletionPage = () => {
           Finishing sign-in…
         </h1>
         <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-          We’re verifying your session and opening your workspace.
+          We’re verifying your session and opening your team.
         </p>
         <p
           aria-live="polite"

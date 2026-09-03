@@ -10,7 +10,7 @@ import { Notice } from '../../primitives/Notice'
 /**
  * Per-user activation for a product that is a peer external agent (DeepSignal
  * today) rather than a shared team install. The user's existing Nessie UOA SSO
- * link supplies actor/workspace identity; the product-bound app key stays on
+ * link supplies actor/team identity; the product-bound app key stays on
  * the server. Activation never opens a second OAuth flow.
  */
 export const ExternalAgentActivationSection = ({

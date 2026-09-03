@@ -28,7 +28,7 @@ import {
   WORKFLOW_JMESPATH_OUTPUT_MAX_BYTES,
   collectWorkflowTaintedRefs,
   redactWorkflowSecretValues,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 export const WORKFLOW_STEP_SAMPLES_MAX_BYTES = WORKFLOW_JMESPATH_OUTPUT_MAX_BYTES
 export const WORKFLOW_STEP_SAMPLES_RETENTION_MS = 30 * 24 * 60 * 60 * 1000

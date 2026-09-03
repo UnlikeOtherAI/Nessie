@@ -31,7 +31,7 @@ type DesignerAssistantPanelState = {
 
 const defaultPageContext: DesignerPageContext = {
   actions: [],
-  description: 'Review this agent and its available workspace controls.',
+  description: 'Review this agent and its available team controls.',
   title: 'Agent',
 }
 

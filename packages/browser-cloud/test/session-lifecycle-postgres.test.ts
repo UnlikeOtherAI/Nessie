@@ -33,7 +33,7 @@ type Seed = {
   cleanup: () => Promise<void>
 }
 
-const seedWorkspace = async (prisma: PrismaClient, label: string): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient, label: string): Promise<Seed> => {
   const suffix = randomUUID()
   const organization = await prisma.organization.create({
     data: { name: `${label} ${suffix}` },
@@ -117,7 +117,7 @@ const depsFor = (prisma: PrismaClient, calls: string[]): CloudBrowserDeps => ({
 
 runDatabaseTest('a run cannot hold two cloud browsers at once', async () => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'browser one-per-run')
+  const seed = await seedTeam(prisma, 'browser one-per-run')
   const calls: string[] = []
   const deps = depsFor(prisma, calls)
   try {
@@ -159,7 +159,7 @@ runDatabaseTest('a run cannot hold two cloud browsers at once', async () => {
 
 runDatabaseTest('releasing a run tells the provider to stop the browser', async () => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'browser release')
+  const seed = await seedTeam(prisma, 'browser release')
   const calls: string[] = []
   const deps = depsFor(prisma, calls)
   try {
@@ -207,7 +207,7 @@ runDatabaseTest('releasing a run tells the provider to stop the browser', async 
 
 runDatabaseTest('the reaper stops a session whose run crashed', async () => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'browser reaper')
+  const seed = await seedTeam(prisma, 'browser reaper')
   const calls: string[] = []
   const deps = depsFor(prisma, calls)
   try {
@@ -252,7 +252,7 @@ runDatabaseTest('the reaper stops a session whose run crashed', async () => {
 
 runDatabaseTest('an unattended run never spends an individual’s browser hours', async () => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'browser scope')
+  const seed = await seedTeam(prisma, 'browser scope')
   try {
     await prisma.cloudBrowserConnection.create({
       data: {
@@ -341,7 +341,7 @@ runDatabaseTest('an unattended run never spends an individual’s browser hours'
 
 runDatabaseTest('a needs_attention connection stops resolving for new runs', async () => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'browser health')
+  const seed = await seedTeam(prisma, 'browser health')
   try {
     await prisma.cloudBrowserConnection.create({
       data: {

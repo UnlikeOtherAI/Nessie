@@ -16,9 +16,9 @@ developer Mac or its local network after installation. It does still need normal
 internet access for `https://app.nessie.works`.
 
 The mobile release must use a React version supported by its React Native
-renderer. Nessie's pnpm workspace is hoisted, so changing React requires
+renderer. Nessie's pnpm team is hoisted, so changing React requires
 updating the mobile React Native/Expo SDK in the same release rather than letting
-the web workspace's React package drift into an incompatible device bundle.
+the web team's React package drift into an incompatible device bundle.
 
 Apple labels the required direct iOS installation signature **Ad Hoc**. That is
 only the provisioning method: it is a normal standalone app, not the Expo
@@ -79,7 +79,7 @@ must land first, so no signed-in browser session can be invoked prematurely.
 
 In dev, the companion intentionally pairs only with the local API at
 `http://127.0.0.1:5454`. It cannot pair an unsigned development app with the
-production API. Production executor pairing, local workspace selection, daemon
+production API. Production executor pairing, local team selection, daemon
 lifecycle, and policy controls require an intact signed macOS 15+ release; the
 app verifies its own signature before exposing the companion IPC.
 
@@ -87,13 +87,13 @@ Desktop SSO uses the user's default browser instead of the Tauri webview. The
 desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 `nessie://auth/callback`, macOS focuses the running app and the always-mounted
 callback bridge finishes the PKCE exchange from the deep link, including while
-an authenticated workspace screen remains open.
+an authenticated team screen remains open.
 
 An interrupted browser hand-off is always recoverable: the login screen offers
 **Cancel sign-in**, and a new deliberate sign-in replaces only the exact stale
 attempt it observed. In a web browser, returning with Back cancels the pending
 attempt instead of reopening the provider; a restored browser page also
-reconciles its session again so it cannot remain at **Loading workspace…**.
+reconciles its session again so it cannot remain at **Loading team…**.
 
 ### Desktop notifications
 
@@ -175,7 +175,7 @@ is absent, leave the installed app untouched and report the signing blocker.
 Mac TestFlight uses a separate, sandboxed build configuration. It loads the
 same hosted Nessie product and retains desktop SSO and notifications, but it
 does not bundle the local executor runtime: that helper currently depends on a
-Developer ID signature and user-selected workspace access that has not yet
+Developer ID signature and user-selected team access that has not yet
 been redesigned for App Sandbox inheritance. Follow the canonical
 [Apple TestFlight publishing guide](publishing-apple-testflight.md) for its
 versioning, signing, validation, Xcode Organizer upload, and tester steps.
@@ -210,28 +210,28 @@ its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
 and Search form one centred, theme-derived native control group. The signed-in
 person's SSO avatar is independently pinned at the trailing safe edge of the
-top bar. The active workspace's public UOA picture (with initials as its failure
+top bar. The active team's public UOA picture (with initials as its failure
 fallback) and name occupy the leading edge; in a
 Stage Manager window that trigger first clears the system's leading window
-controls. If the remaining space is tight, the workspace trigger flexes before
+controls. If the remaining space is tight, the team trigger flexes before
 the centred group is reshuffled, reserving the avatar's space. That decision
 uses the native chrome layer's measured width, rather than a cached orientation
 value. The responsive sequence is: retain labelled controls, put Search and the
 four toolbar actions in a native three-dot menu, then change the section tabs
-to icons. The workspace trigger only truncates to its icon/chevron or hides as
-a last resort. Tapping the workspace opens the web shell's existing workspace
+to icons. The team trigger only truncates to its icon/chevron or hides as
+a last resort. Tapping the team opens the web shell's existing team
 menu, while tapping the avatar opens the canonical web account menu (presence,
 status, settings, and logout), so neither native presentation forks the
 entitlement-aware web actions.
-Selecting an existing workspace stays inside the persistent WebView: the shared
-menu calls Nessie's server-authorized UOA workspace-switch route and atomically
+Selecting an existing team stays inside the persistent WebView: the shared
+menu calls Nessie's server-authorized UOA team-switch route and atomically
 replaces the session. It does not open `ASWebAuthenticationSession`. Only
-**Add a workspace** (and an exceptional target whose renewable proof is missing)
+**Add a team** (and an exceptional target whose renewable proof is missing)
 opens hosted UOA. For the exceptional switch, only the proof step leaves the
 WebView: every terminal browser result is retained in a bounded native queue
 until the web callback handler is ready, then the exact target is recovered and
 the original in-app route is restored. Cancellation or failure keeps the
-current session and workspace; it never sends the person through logout.
+current session and team; it never sends the person through logout.
 The duplicate web header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
@@ -311,23 +311,23 @@ top-bar account badge.
 
 On the native iPhone and Android first screen of **every tab** (Channels,
 Projects, Knowledge, Admin, and Search, including ordinary query-string state),
-`NativePhoneConversationMenuChrome` adds a workspace header above the retained
+`NativePhoneConversationMenuChrome` adds a team header above the retained
 WebView. Its surface is the same `--rail` backing surface visible beneath the
 transparent iPad tab controls, and its controls use the theme's `--tx` colour;
 in particular, the default Sandstone header is the same warm light beige as
-that iPad background. On a portrait phone, the team/workspace switcher is at
+that iPad background. On a portrait phone, the team/team switcher is at
 the leading edge and the signed-in account is pinned at the trailing edge;
 navigation controls stay out of that constrained header. An eligible Max-class
 iPhone in landscape shows a shorter 46-point header on **every** page, including
-detail pages alongside the fixed menu: workspace, Back, Forward, Recent Channels,
+detail pages alongside the fixed menu: team, Back, Forward, Recent Channels,
 then account. Search is still deliberately not duplicated there: it remains the
-dedicated bottom-tab destination. The workspace control opens the existing
+dedicated bottom-tab destination. The team control opens the existing
 entitlement-aware switcher, every toolbar button delegates to the existing
 toolbar bridge, and the account control opens the canonical account menu. When
 that landscape layout rotates back to portrait from a detail page, the shell
 returns to that section's menu instead of stranding the user on the former
 right-hand page. Its compact header uses a 32-point horizontal gutter, matching
-the floating tab controls so neither the workspace nor account action crowds a
+the floating tab controls so neither the team nor account action crowds a
 landscape screen corner. The header owns the status-bar backdrop, so its system
 indicators follow the header's actual contrast. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
@@ -341,12 +341,12 @@ Projects, Knowledge, and Admin WebView sidebars each carry
 the native-touch marker on iPhone, iPad, and Android, so those installed
 interfaces use the same Slack-scale 38-point rows and 14px menu type while
 desktop remains compact even on a touchscreen. Project folder rows alone are
-bold. Human, agent, and workspace avatar tiles use the same subtly rounded
+bold. Human, agent, and team avatar tiles use the same subtly rounded
 square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
 
-The same page-rail workspace header appears at the first screen of every tab in
-mobile Safari and Android browsers. Its workspace, Recent Channels, and account
+The same page-rail team header appears at the first screen of every tab in
+mobile Safari and Android browsers. Its team, Recent Channels, and account
 buttons are the existing shared web controls, not browser-specific copies; the
 mobile browser still owns its own system and address-bar chrome. Where the
 normal top-bar **Help & feedback** icon is absent, the same **Help & feedback**
@@ -394,8 +394,8 @@ identity response; it never restores or uploads the dump's claims, cookies,
 local storage, or user/context fields. This is temporary debug access: the
 httpOnly refresh credential cannot be copied, the imported bearer is never
 renewed, and the app clears it at JWT expiry. It does not register the device
-for that user's push notifications. Imported access stays in the workspace
-encoded by the copied bearer; copy a new dump from another active workspace
+for that user's push notifications. Imported access stays in the team
+encoded by the copied bearer; copy a new dump from another active team
 rather than switching inside the target app. Signing out clears only the
 imported bearer and does not act on an unrelated WebView refresh cookie.
 
@@ -522,7 +522,7 @@ and leaves page data, URLs, and conversation state in the admin React app.
 - **Max-class iPhones** (a screen long edge of at least 900dp, such as iPhone
   16 Pro Max) permit landscape. While rotated, the native shell reports a
   dedicated large-phone landscape form factor: it retains the phone's bottom
-  tab bar and Search destination, but the web workspace uses the adjacent
+  tab bar and Search destination, but the web team uses the adjacent
   iPad-style secondary menu and page columns. That secondary menu is a fixed
   260px column with no resize affordance. Smaller iPhones are locked to upright
   portrait, so they never enter a cramped two-column layout.
@@ -537,7 +537,7 @@ and leaves page data, URLs, and conversation state in the admin React app.
   columns by default. A project selected from the **Channels** list still opens
   the project overview because that entry point supplies conversation context.
   Selecting a Knowledge space or product document view uses an addressable
-  child route and pushes the shared Knowledge workspace over its list.
+  child route and pushes the shared Knowledge team over its list.
 - Every phone route below its contextual list has one leading **Back** control,
   including project overviews opened from Channels. It returns to the route's
   immediate owning list (Channels, Projects, Dashboards, Knowledge, Apps, or
@@ -791,7 +791,7 @@ The self-hosted Hyper-V conformance job remains pending until a runner with the
 by a hosted-runner simulation.
 
 An unsigned build is a desktop-shell test build only: it retains hosted
-workspace access, browser SSO/deep links, notifications, and single-instance
+team access, browser SSO/deep links, notifications, and single-instance
 behaviour, but deliberately refuses local executor pairing and daemon control.
 Do not work around that refusal. A production executor release requires a
 Windows Authenticode signature and a pinned publisher identity as specified in
@@ -840,7 +840,7 @@ active sandbox APNs tokens, and the in-house APNs test action was accepted by
 Apple for the configured production credential. Actual delivery to a
 TestFlight-installed production token remains the final device check.
 
-The Android app loads its authenticated workspace successfully, but it has no
+The Android app loads its authenticated team successfully, but it has no
 active FCM registration until the matching Firebase `google-services.json` and
 server-side Firebase service-account credential are supplied. Android push
 delivery therefore remains intentionally unverified rather than falling back

@@ -58,12 +58,12 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
   // Only while the schedule is actually stopped: a stale reason left over from a
   // repaired failure would otherwise keep claiming it is broken.
   // The server refuses a plain repair when the schedule belongs to somebody else
-  // or was created in another workspace, and names which. Offering takeover only
+  // or was created in another team, and names which. Offering takeover only
   // then keeps the ordinary path one click and the attribution-moving path
   // deliberate.
   const needsTakeOver =
     actionError !== null
-    && /belongs to somebody else|active workspace differs/.test(actionError)
+    && /belongs to somebody else|active team differs/.test(actionError)
   const healthMessage =
     trigger.status === 'needs_reauthorization' || trigger.status === 'error'
       ? getTriggerHealthMessage(trigger)

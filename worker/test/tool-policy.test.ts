@@ -98,7 +98,7 @@ test('resolveAgentTools grants personal-assistant-only tools to the personal ass
 test('a PA presence withholds owner-scoped reads and communication mutations', () => {
   const presenceDefinitions = [
     ...definitions,
-    ...['workspace_search', 'kb_search', 'message_edit', 'message_delete', 'react'].map((id) => ({
+    ...['team_search', 'kb_search', 'message_edit', 'message_delete', 'react'].map((id) => ({
       description: id,
       id,
       label: id,
@@ -117,7 +117,7 @@ test('a PA presence withholds owner-scoped reads and communication mutations', (
 
   for (const withheld of [
     'send_message',
-    'workspace_search',
+    'team_search',
     'kb_search',
     'message_edit',
     'message_delete',

@@ -78,7 +78,7 @@ type BrowserToolContext = BuiltinToolRuntimeContext & {
    * durable browser, so the toolset carries them rather than re-reading the
    * agent row on every call.
    */
-  agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
+  agentIdentity?: { visibility: 'team' | 'private'; ownerUserId: string | null }
 }
 
 const depsFor = (context: BrowserToolContext): CloudBrowserDeps | null =>
@@ -87,7 +87,7 @@ const depsFor = (context: BrowserToolContext): CloudBrowserDeps | null =>
 const unavailable: BrowserToolOutcome = {
   output:
     'Cloud browsing is not configured on this deployment. Connect a '
-    + 'Browserbase account in workspace settings first.',
+    + 'Browserbase account in team settings first.',
   success: false,
 }
 
@@ -176,7 +176,7 @@ const runOpen = async (
       const browser = await ensureAgentBrowser(deps, {
         organizationId: context.channel.organizationId,
         agentId: context.agentId,
-        agentVisibility: agent?.visibility ?? 'workspace',
+        agentVisibility: agent?.visibility ?? 'team',
         agentOwnerUserId: agent?.ownerUserId ?? null,
       })
       // An unattended run has nobody to answer for opening somebody's signed-in

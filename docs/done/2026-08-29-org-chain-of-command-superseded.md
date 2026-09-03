@@ -76,7 +76,7 @@ RBAC/policy, delegation/escalation machinery, prior decisions).
 ### 1.1 Humans — owned by UOA
 
 - `Organization` ↔ UOA organisation 1:1 via `externalOrgId`; `Team` ↔ UOA
-  workspace 1:1 (docs/plans/2026-08-15-uoa-org-tenancy.md). UOA is the sole
+  team 1:1 (docs/plans/2026-08-15-uoa-org-tenancy.md). UOA is the sole
   authority for identity, profiles, roster, and the *shape* of the org/team
   hierarchy. Nessie persists only the stable UOA subject plus
   product-specific extension data.
@@ -120,7 +120,7 @@ RBAC/policy, delegation/escalation machinery, prior decisions).
   attribution. **Untrusted until backfilled + FK'd** — nothing should route
   on them.
 - Visibility is **entitlement through channels**: `listAgentsForUser`
-  (packages/workspace-admin/src/agent-list.ts) — owner sees every non-system
+  (packages/team-admin/src/agent-list.ts) — owner sees every non-system
   agent incl. unbound; everyone else sees an agent only through a channel
   they can reach. The brand-new Agents page scope tabs (commit `f8828f3f`,
   2026-08-29) *derive* Personal/Team/Global from
@@ -238,7 +238,7 @@ wrong: minutes-scale liveness for avatar badges, not days-scale absence.)
   closed `AuditActionSchema` has no hierarchy vocabulary yet
   (`escalation.*`, `coverage.*`, `approval.rerouted` are new enum values).
 - PolicyRule/PolicyBinding + `checkPolicy` (deny-overrides, one shared
-  evaluator in `packages/workspace-admin/src/policy-check.ts`): resource/
+  evaluator in `packages/team-admin/src/policy-check.ts`): resource/
   action gates. Two engine facts shape this design: **a deny is
   unoverridable** (first matching deny in scope order wins — "manager may do
   X despite a deny" is inexpressible and stays that way), and `actor.roles`
@@ -257,7 +257,7 @@ to a principal** (their owner by default). Concretely, two data additions:
 **(a) Agent ownership — `Agent.ownerUserId String? @db.Uuid` (SetNull).**
 
 - Set at creation to the creator, for every non-system agent, via
-  `createAgentRecord` in `@nessie/workspace-admin` (one chokepoint — API
+  `createAgentRecord` in `@nessie/team-admin` (one chokepoint — API
   route, PA `agent_create`, Agent Designer all flow through it already).
 - Transferable (owner/admin action, audited). Nullable because legacy agents
   and org-utility agents can be unowned; unowned agents appear in an
@@ -303,7 +303,7 @@ agent's superior is its owner (or, unowned, the team's fallback below).
 
 ### 2.2 Resolving "up the chain" — one shared resolver
 
-One function in `@nessie/workspace-admin` (shared API/worker, like
+One function in `@nessie/team-admin` (shared API/worker, like
 `listAgentsForUser`), the **only** place chain-walking logic lives:
 
 ```
@@ -528,7 +528,7 @@ Reuse the existing substrate instead of a parallel absence system:
 |---|---|---|
 | Agent ownership | `Agent.ownerUserId` (PA excluded — projection; unassigned pool) | creation chokepoint `createAgentRecord`; entitlement scoping unchanged |
 | Human reporting line | `OrganizationMember.managerUserId` (pending UOA decision §7.1) | UOA roster/roles/lifecycle; org name-mirror precedent |
-| Chain resolver | one function in `@nessie/workspace-admin` | the shared-package pattern (`listAgentsForUser` precedent) |
+| Chain resolver | one function in `@nessie/team-admin` | the shared-package pattern (`listAgentsForUser` precedent) |
 | Org chart | one page + 4 doorways (§2.5) | member directory, Agent Designer, TabBar, avatar components |
 | Escalation | `escalate` builtin + validation | messages, reply threads, `UserAlert`+push, orchestrator, TaskEvent, AuditLog |
 | Approval routing | `ApprovalRequest.approverUserId` + `routing` | `ApprovalRequest`, `waiting_approval`/continuation, approvals-in-chat card + standalone view, `requiredApproverRole` as qualification |

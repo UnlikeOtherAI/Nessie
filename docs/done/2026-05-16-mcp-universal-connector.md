@@ -15,7 +15,7 @@ Mental model: an admin runs an app catalogue; users authenticate the servers the
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | `shell_exec` **dropped entirely** | Security. Phase 4 territory. |
-| D2 | Built-in primitives in this slice: `http_fetch`, `file_read`, `file_write`, `file_glob`. Keep existing `web_search`, `web_fetch`, `workspace_search`, `people_search`, `send_message`. | Minimum bootstrap surface. |
+| D2 | Built-in primitives in this slice: `http_fetch`, `file_read`, `file_write`, `file_glob`. Keep existing `web_search`, `web_fetch`, `team_search`, `people_search`, `send_message`. | Minimum bootstrap surface. |
 | D3 | Auth methods: `api_key` (configurable header + prefix), `bearer`, `basic`, `oauth2` (full callback + refresh), `none` | All in this slice. |
 | D4 | `api_key` format is **configurable per server**: `headerName` (e.g. `Authorization`, `X-API-Key`), `valuePrefix` (e.g. `Bearer `, `Token `, ``) — driven by admin at catalog creation. | Different vendors use different conventions. |
 | D5 | Multi-scope MCP installs: `system` (cross-org), `organization`, `project`, `team`, `channel`, `user`. Spec already supports it. | Matches user's "global / per-project / per-group / per-user" requirement. |

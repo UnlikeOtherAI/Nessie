@@ -28,7 +28,7 @@ export function App() {
         <p className="hero-eyebrow">Coming soon</p>
         <h1 className="hero-title">The Slack alternative for an AI world</h1>
         <p className="hero-lede">
-          Your team and its agents in one workspace. Same channels, threads and DMs you already
+          Your team and its agents in one team. Same channels, threads and DMs you already
           know — except the assistants in them can draft the note, post it to the right channel and
           set the follow-up themselves.
         </p>

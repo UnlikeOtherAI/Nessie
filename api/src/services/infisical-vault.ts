@@ -24,7 +24,7 @@ type InfisicalSettings = {
 export type InfisicalSecretNamespace = {
   organizationId: string
   scopeId: string
-  scopeType: 'personal' | 'team' | 'project' | 'workspace'
+  scopeType: 'personal' | 'team' | 'project' | 'organization'
 }
 
 export const infisicalSecretPath = (namespace: InfisicalSecretNamespace): string =>

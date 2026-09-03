@@ -7,10 +7,10 @@ import { NativeFocusModeButton } from './NativeFocusModeButton'
 import { IpadNativeOverflowMenu } from './IpadNativeOverflowMenu'
 import { IpadNativeToolbar, type ToolbarAction, type ToolbarState } from './IpadNativeToolbar'
 import { IpadNativeTabBar } from './IpadNativeTabBar'
-import { IpadNativeWorkspaceSwitcher } from './IpadNativeWorkspaceSwitcher'
+import { IpadNativeTeamSwitcher } from './IpadNativeTeamSwitcher'
 import {
   getIpadTopChromeLayout,
-  getIpadWorkspaceMenuAnchorLeft,
+  getIpadTeamMenuAnchorLeft,
   IPAD_NATIVE_CHROME_GAP,
   IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
   IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
@@ -33,13 +33,13 @@ type IpadNativeChromeProps = {
   onToggleAccountMenu: () => void
   onToggleFocusMode: () => void
   onToolbarAction: (action: ToolbarAction) => void
-  onToggleWorkspaceMenu: (left: number) => void
+  onToggleTeamMenu: (left: number) => void
   theme: IpadNativeChromeTheme
   toolbarState: ToolbarState
   top: number
   windowWidth: number
-  workspaceAvatarUrl: string | null
-  workspaceName: string | null
+  teamAvatarUrl: string | null
+  teamName: string | null
 }
 
 export const IpadNativeChrome = ({
@@ -52,14 +52,14 @@ export const IpadNativeChrome = ({
   onIndexChange,
   onToggleAccountMenu,
   onToggleFocusMode,
-  onToggleWorkspaceMenu,
+  onToggleTeamMenu,
   onToolbarAction,
   theme,
   toolbarState,
   top,
   windowWidth,
-  workspaceAvatarUrl,
-  workspaceName,
+  teamAvatarUrl,
+  teamName,
 }: IpadNativeChromeProps): React.JSX.Element => {
   const [chromeWidth, setChromeWidth] = useState(windowWidth)
   const [controlsWidth, setControlsWidth] = useState<Record<IpadTopChromeMode, number>>({
@@ -70,7 +70,7 @@ export const IpadNativeChrome = ({
   const layout = getIpadTopChromeLayout({
     compactControlsWidth: controlsWidth.compact,
     fullControlsWidth: controlsWidth.full,
-    hasWorkspace: Boolean(workspaceName),
+    hasTeam: Boolean(teamName),
     iconControlsWidth: controlsWidth.icons,
     insetLeft,
     insetRight,
@@ -78,7 +78,7 @@ export const IpadNativeChrome = ({
     screenWidth: chromeWidth,
     trailingReservedWidth: IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH + IPAD_NATIVE_CHROME_GAP,
   })
-  const workspaceLeft = insetLeft + leadingReservedWidth + IPAD_NATIVE_CHROME_GAP
+  const teamLeft = insetLeft + leadingReservedWidth + IPAD_NATIVE_CHROME_GAP
   const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
   const onControlsLayout = useCallback((event: LayoutChangeEvent): void => {
     const width = Math.round(event.nativeEvent.layout.width)
@@ -142,13 +142,13 @@ export const IpadNativeChrome = ({
           <IpadNativeAccountButton {...account} onPress={onToggleAccountMenu} theme={theme} />
         </IpadNativeChromeSurface>
       </View>
-      {workspaceName && layout.workspaceWidth !== null ? (
-        <IpadNativeWorkspaceSwitcher
-          imageUrl={workspaceAvatarUrl}
-          left={workspaceLeft}
-          maxWidth={layout.workspaceWidth}
-          name={workspaceName}
-          onPress={() => onToggleWorkspaceMenu(getIpadWorkspaceMenuAnchorLeft(workspaceLeft))}
+      {teamName && layout.teamWidth !== null ? (
+        <IpadNativeTeamSwitcher
+          imageUrl={teamAvatarUrl}
+          left={teamLeft}
+          maxWidth={layout.teamWidth}
+          name={teamName}
+          onPress={() => onToggleTeamMenu(getIpadTeamMenuAnchorLeft(teamLeft))}
           theme={theme}
           top={top}
         />

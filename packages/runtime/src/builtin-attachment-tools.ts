@@ -3,10 +3,10 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'attachment_upload',
   category: 'files',
-  summary: 'Upload a workspace attachment from base64 content.',
+  summary: 'Upload a team attachment from base64 content.',
   label: 'Upload Attachment',
   description:
-    'Store a file as a workspace attachment. Provide the raw bytes as base64 ' +
+    'Store a file as a team attachment. Provide the raw bytes as base64 ' +
     'in contentBase64 along with a filename and MIME type. Returns the new ' +
     'attachment id, which can be linked to a message via send_message ' +
     'attachmentIds.',

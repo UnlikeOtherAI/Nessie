@@ -324,7 +324,7 @@ test('IntegrationPluginManifestSchema defaults surfaces to an empty array', () =
         availability: 'both',
         label: 'Open',
         requiredForAgentUse: false,
-        setup: 'Open the workspace.',
+        setup: 'Open the team.',
       },
     ],
     mcp: { catalogTemplate: null, toolBundleRef: null, tools: [] },

@@ -10,7 +10,7 @@ import {
   loadAgentMailbox,
   retireAgentMailbox,
   updateAgentMailbox,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'

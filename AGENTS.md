@@ -30,7 +30,7 @@ Four checks, applied to every change that adds or alters a capability:
    ops telemetry (see the `/tokens` vs `/ops/usage` split).
 4. **Reuse the surface; never fork it.** When the same thing must appear in two
    places, it is one component parameterised by scope — as the project Docs tab
-   reuses the knowledge workspace. A second implementation of the same view is a
+   reuses the knowledge team. A second implementation of the same view is a
    defect, not a feature. The same holds one level down, for controls: the
    admin's single-select strip is `components/primitives/TabBar.tsx` and nothing
    else. It had drifted into nine look-alikes (`.admin-tab`, `SegmentedControl`,
@@ -85,7 +85,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Postgres-backed suites share one database and run concurrently.** `node --test` runs files within a package in parallel, so a DB-backed test is never alone — several api suites create and delete organizations at the same time. Cross-package overlap depends on how the suites are invoked: CI's `pnpm -r --if-present test` is topological and `@nessie/api` depends on `@nessie/worker`, so worker finishes before api starts (an accident of the dependency graph — do not rely on it), and `turbo run test` reproduces that order only because `turbo.json` pins `@nessie/api#test` behind `@nessie/worker#test` by hand. Running the two packages' test scripts in parallel yourself still overlaps them, and so does any *new* database suite added to a third package — `packages/runtime` and `packages/memory` already have some, and they are safe only because they create no rows the global pollers claim. Under any of them:
   - **Never write a global mutation.** `DELETE FROM queue_jobs WHERE idempotency_key LIKE 'run:batch:%'` matches every suite's jobs, not the caller's — it deletes a row another suite is about to count. Scope cleanup to the seed (every `run.execute` payload carries a top-level `threadId`: `DELETE FROM queue_jobs WHERE payload->>'threadId' = $1`).
   - **Never assert a global count.** `sweepPendingThreadMessages` drains every orphaned `(agent, thread)` pair in the database and `dispatchNextMailboxMessage` claims the globally oldest queued mailbox row; neither takes a tenant filter. Assert the seed's own outcome instead of the poller's return value.
-  - **Never *depend* on a globally-scoped production lookup either.** Asserting on the global scope is only half of it: a test also breaks when the code under test reads it. `resolveUoaWorkspaceContext` used to resolve "the shared organization" as the globally oldest `Organization` row (right in production — one org, never deleted; unstable in a test database where a dozen suites create and delete organizations): a suite that seeded its own organization still got a *foreign* one back, and died on a foreign-key violation the moment that suite's cleanup deleted it. The UOA path now resolves 1:1 by `Organization.externalOrgId` — deterministic per suite by construction (`api/test/workspace-context-postgres-race.test.ts` no longer anchors an epoch-dated org) — but the oldest-org lookup survives for the legacy no-workspace/generic-OIDC path, so the rule stands: make such a lookup resolve the seed deterministically and assert that it did, so the precondition is stated rather than assumed.
+  - **Never *depend* on a globally-scoped production lookup either.** Asserting on the global scope is only half of it: a test also breaks when the code under test reads it. `resolveUoaTeamContext` used to resolve "the shared organization" as the globally oldest `Organization` row (right in production — one org, never deleted; unstable in a test database where a dozen suites create and delete organizations): a suite that seeded its own organization still got a *foreign* one back, and died on a foreign-key violation the moment that suite's cleanup deleted it. The UOA path now resolves 1:1 by `Organization.externalOrgId` — deterministic per suite by construction (`api/test/team-context-postgres-race.test.ts` no longer anchors an epoch-dated org) — but the oldest-org lookup survives for the legacy no-team/generic-OIDC path, so the rule stands: make such a lookup resolve the seed deterministically and assert that it did, so the precondition is stated rather than assumed.
   - **A suite that drives a global poller needs an exclusive database.** Unique per-suite ids are not enough — a foreign `queued` mailbox row is claimed ahead of the suite's own. Those suites live in `worker/test/db/`, run via `pnpm --filter @nessie/worker test:db` with `--test-concurrency=1` (one file at a time), and call `assertGlobalQueuesQuiet` first, which fails fast with an actionable message rather than dispatching a real database's mail. `test:unit` globs `test/*.test.ts`, so the directory itself is the split.
   - **Timestamps are `timestamp(3)` and Postgres *rounds* into them.** Back-to-back inserts tie on `created_at` (5 rapid inserts typically record ~3 distinct values), so a test that asserts an exact arrival order must set the order explicitly rather than race the clock. Rounding also puts a just-inserted `visible_at` up to ~0.5 ms in the *future* versus full-precision `now()`, so a row can be briefly invisible to a `visible_at <= now()` poller — real pollers loop, single-shot tests must seed an explicitly past `visibleAt`.
 - **A cast Prisma fake is unityped, so a query it does not model fails as a runtime `TypeError` — extend the fake in the change that extends the query.** `as unknown as PrismaClient` silences the compiler, so a delegate or a nested relation the fake omits is `undefined` at call time, not a type error. Both shapes have shipped red to `main`: project avatars became a published attachment reference and `prisma.project.count` took five attachment-ACL tests down with `reading 'count'`; and `team.findMany`/`findFirst` returned flat rows while production read `team.project.organization.name` and `…organization.members[0].role`, which login wrapped as a 401 `EXTERNAL_AUTH_FAILED` so the shape mismatch never named itself. The rule follows the disclosure-sink one: the obligation sits on the *query*. Adding a counted reference, a `select`ed relation, or a new delegate means teaching the fake in the same commit — and a fake that honours `select` must honour the `where` beside it, or it widens the result set while it is at it. Prefer asserting the new case too (`api/test/attachment-unlinked-access.test.ts` had no project-avatar case at all).
@@ -258,14 +258,14 @@ when one changes, the same turn updates it, not this section.
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
   organisation id (`Organization.externalOrgId`, unique), and one UOA **team** is
-  one **workspace** inside that organisation. **A workspace IS the UOA team;
+  one **team** inside that organisation. **A team IS the UOA team;
   a project is Nessie's own and lives inside one.** Read
-  [docs/standards/workspace-model.md](docs/standards/workspace-model.md) before
+  [docs/standards/team-model.md](docs/standards/team-model.md) before
   writing code here — the local model is still called `Team` and its `projectId`
   foreign key currently points the wrong way.
   **Creating** either happens in-app against UOA's org API rather than by
   redirecting a person into its chooser for a second interactive login; the
-  local rows are still born only in `materializeUoaWorkspace`, from what the
+  local rows are still born only in `materializeUoaTeam`, from what the
   silent switch grant proved
   (`docs/plans/2026-09-02-in-app-organisation-creation.md`). The standing gap
   between that and "no duplicated data at all" — three local membership tables
@@ -490,7 +490,7 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - One VAPID key pair per instance via `NESSIE_WEBPUSH_PUBLIC_KEY`, `NESSIE_WEBPUSH_PRIVATE_KEY`, `NESSIE_WEBPUSH_SUBJECT` (all three required to enable). Generate with `node scripts/generate-vapid-keys.mjs`. Public key is safe to expose; private key is secret.
 - Admin SPA service worker (`admin/public/sw.js`) + manifest + a "Browser notifications" toggle on `/settings/notifications`; API endpoints under `/api/push/web/*`. Requires HTTPS (localhost exempt); iOS needs an installed PWA (16.4+).
 - **Authoritative guide: [docs/web-push.md](docs/web-push.md).**
-- User alerts: direct @mentions write durable per-recipient `UserAlert` rows in the message-create transaction (self skipped, broadcast none, agent-authored identical; mute suppresses push, never the row) and surface via `GET /api/alerts` + `POST /api/alerts/read`, realtime `alert.created`/`alert.read`, the admin top-bar bell, and mention-framed push (`<author> mentioned you in <channel>`). `workspace_invitation` alerts are reconciled from every verified UOA `/org/me` read, follow the user's current local organisation for bell visibility, and are deleted—not read-marked—when UOA no longer returns the invite or acceptance succeeds.
+- User alerts: direct @mentions write durable per-recipient `UserAlert` rows in the message-create transaction (self skipped, broadcast none, agent-authored identical; mute suppresses push, never the row) and surface via `GET /api/alerts` + `POST /api/alerts/read`, realtime `alert.created`/`alert.read`, the admin top-bar bell, and mention-framed push (`<author> mentioned you in <channel>`). `team_invitation` alerts are reconciled from every verified UOA `/org/me` read, follow the user's current local organisation for bell visibility, and are deleted—not read-marked—when UOA no longer returns the invite or acceptance succeeds.
 
 ## Provider-linked calls + ringing
 
@@ -506,7 +506,7 @@ only an internal call path/id, never an external meeting URI; the client loads
 the call before opening the provider link. Browser Accept is a real anchor (or
 a synchronous user gesture in a shell), never an asynchronous `window.open`.
 `meeting_link_create` and `call_start` are PA-only builtins: they re-read the
-acting member and call the same `@nessie/workspace-admin` functions as the
+acting member and call the same `@nessie/team-admin` functions as the
 routes; `call_start` resolves membership from its target channel's organisation
 and stamps `Call.createdViaAgentId`.
 

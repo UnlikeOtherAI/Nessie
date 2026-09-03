@@ -252,7 +252,7 @@ export const registerModelSubscriptionRoutes = (
 
   // The person has seen WHICH account signed in and says it is theirs. Until
   // this call the credential is parked and cannot be spent — which is what
-  // stops a phished code attaching somebody else's account to this workspace.
+  // stops a phished code attaching somebody else's account to this team.
   app.post('/api/model-subscriptions/device/confirm', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply

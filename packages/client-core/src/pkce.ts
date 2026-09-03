@@ -1,4 +1,4 @@
-import type { ExpectedWorkspaceTarget } from './auth-session.js'
+import type { ExpectedTeamTarget } from './auth-session.js'
 
 const PENDING_EXTERNAL_AUTH_KEY = 'nessie.pendingExternalAuth'
 const COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY = 'nessie.completedExternalAuthCallbacks'
@@ -64,10 +64,10 @@ export type CompletedExternalAuthCallbackCache = {
   remember: (semanticKey: string) => void
 }
 
-// Exact external (UOA) workspace a reauthorization flow must land on. Stored
+// Exact external (UOA) team a reauthorization flow must land on. Stored
 // with the PKCE entry so an authenticated recovery can verify the exchanged
 // session before applying it, and a plain login can refuse a mismatched one.
-export type PendingExternalAuthTarget = ExpectedWorkspaceTarget
+export type PendingExternalAuthTarget = ExpectedTeamTarget
 
 export type PendingExternalAuth = {
   codeVerifier: string
@@ -75,7 +75,7 @@ export type PendingExternalAuth = {
   // App route to land on after the exchange completes (defaults to /channels).
   returnPath?: string
   state: string
-  targetWorkspace?: PendingExternalAuthTarget
+  targetTeam?: PendingExternalAuthTarget
   teamHint?: string
   theme?: string
 }
@@ -108,7 +108,7 @@ export type BeginExternalAuthInput = {
    */
   replacePendingState?: string
   storage: PkceStorage
-  targetWorkspace?: PendingExternalAuthTarget
+  targetTeam?: PendingExternalAuthTarget
   teamHint?: string
   theme?: string
 }
@@ -141,7 +141,7 @@ export const beginExternalAuth = async ({
   returnPath,
   replacePendingState,
   storage,
-  targetWorkspace,
+  targetTeam,
   teamHint,
   theme,
 }: BeginExternalAuthInput): Promise<BeginExternalAuthResult> => {
@@ -154,13 +154,13 @@ export const beginExternalAuth = async ({
   const sanitizedReturnPath = sanitizeReturnPath(returnPath)
   const sanitizedTeamHint = isBoundedId(teamHint) ? teamHint : undefined
   if (
-    targetWorkspace
+    targetTeam
     && (
-      !isBoundedId(targetWorkspace.organizationId)
-      || !isBoundedId(targetWorkspace.teamId)
+      !isBoundedId(targetTeam.organizationId)
+      || !isBoundedId(targetTeam.teamId)
     )
   ) {
-    throw new Error('The workspace-switch target must carry bounded organization and team ids.')
+    throw new Error('The team-switch target must carry bounded organization and team ids.')
   }
 
   const existing = readPendingExternalAuth(storage)
@@ -184,7 +184,7 @@ export const beginExternalAuth = async ({
       providerId,
       ...(sanitizedReturnPath ? { returnPath: sanitizedReturnPath } : {}),
       state,
-      ...(targetWorkspace ? { targetWorkspace } : {}),
+      ...(targetTeam ? { targetTeam } : {}),
       ...(sanitizedTeamHint ? { teamHint: sanitizedTeamHint } : {}),
       ...(sanitizedTheme ? { theme } : {}),
     } satisfies PendingExternalAuth),
@@ -337,8 +337,8 @@ const isUsablePending = (value: unknown): value is PendingExternalAuth => {
   if (pending.theme !== undefined && !isBoundedId(pending.theme)) {
     return false
   }
-  if (pending.targetWorkspace !== undefined) {
-    const target = pending.targetWorkspace
+  if (pending.targetTeam !== undefined) {
+    const target = pending.targetTeam
     if (
       typeof target !== 'object'
       || target === null

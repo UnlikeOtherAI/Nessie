@@ -34,7 +34,7 @@ export const buildAgentVisibilityWhere = (
   visibility: AgentVisibilityScope,
 ): Prisma.AgentWhereInput => ({
   OR: [
-    { visibility: 'workspace' },
+    { visibility: 'team' },
     {
       visibility: 'private',
       ...buildOwnedAgentWhere(visibility),

@@ -14,7 +14,7 @@ import {
   type AgentConfigProjection,
   type AgentToolCatalogEntry,
   type AgentToolCatalogRestrictedEntry,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -293,7 +293,7 @@ export const runAgentToolCatalogTool = async (
       ...sections,
       formatSection('Not grantable from a conversation', restricted.map(describeRestrictedEntry)),
       catalogue.connectorCount === 0
-        ? 'No connected apps are active in this workspace yet — install one from '
+        ? 'No connected apps are active in this team yet — install one from '
           + 'the Apps page to give an agent access to an outside service.'
         : '',
     ].filter(Boolean).join('\n\n'),

@@ -187,7 +187,7 @@ export const registerCreateThreadMessageRoute = (
           memoryOrigin:
             thread.channel.systemChannelType === 'personal_assistant'
               ? 'personal_assistant_dm'
-              : 'user_authored_workspace_message',
+              : 'user_authored_team_message',
           messageId: result.message.id,
           organizationId: actorContext.tenant.organizationId,
           projectId: actorContext.tenant.projectId,

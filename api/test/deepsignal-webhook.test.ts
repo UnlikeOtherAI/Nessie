@@ -250,7 +250,7 @@ test('insight fan-out targets only the named recipient subs when present', async
   assert.deepEqual(cards[0]?.actions ?? [], [])
 })
 
-test('insight fan-out stays inside the exact enabled external workspace', async () => {
+test('insight fan-out stays inside the exact enabled external team', async () => {
   const fake = makeInsightFake(
     [
       {
@@ -317,7 +317,7 @@ test('insight fan-out stays inside the exact enabled external workspace', async 
   )
 })
 
-test('insight fan-out ignores last-seen link workspace for an activated team channel', async () => {
+test('insight fan-out ignores last-seen link team for an activated team channel', async () => {
   const fake = makeInsightFake([
     {
       activeOrgId: UOA_ORG,
@@ -378,7 +378,7 @@ test('insight fan-out rejects unknown, disabled, and inconsistently mapped teams
   const unknownResult = await handleDeepSignalInsightSurfaced(
     asPrisma(unknown),
     ORG,
-    insightPayload('ins-unknown', { teamId: 'not-an-enabled-workspace' }),
+    insightPayload('ins-unknown', { teamId: 'not-an-enabled-team' }),
     { now: unknown.state.clock },
   )
   assert.equal(unknownResult.deliveries.length, 0)

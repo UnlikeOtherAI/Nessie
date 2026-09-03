@@ -6,7 +6,7 @@ import {
   acquireAgentTodoAgentLock,
   validateWorkflowGraph,
   workflowGeneralizationVocabulary,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   parseChannelId,

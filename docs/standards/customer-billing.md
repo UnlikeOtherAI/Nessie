@@ -22,7 +22,7 @@ file is the rule**.
   may be reused by Ledger or a sibling product. The actor assertion carries the
   signed session's UOA `tv` epoch—not a value recovered from a mutable account
   link—for UOA's online credential-revocation check. Every request resolves the exact
-  linked UOA user/org/team, rejects local workspace drift, and lets UOA
+  linked UOA user/org/team, rejects local team drift, and lets UOA
   independently recheck billing-manager membership. The public
   protocol is consumed from the MIT-licensed
   `@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored

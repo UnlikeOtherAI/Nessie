@@ -141,8 +141,8 @@ export const runExecutionAgentLoop = async (
     },
     agentIdentity: {
       ownerUserId: context.agent.ownerUserId ?? null,
-      visibility: (context.agent.visibility === 'private' ? 'private' : 'workspace') as
-        'private' | 'workspace',
+      visibility: (context.agent.visibility === 'private' ? 'private' : 'team') as
+        'private' | 'team',
     },
     cloudBrowser: deps.cloudBrowser,
     consumedSources: context.consumedSources,

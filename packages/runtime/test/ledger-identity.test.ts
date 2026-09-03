@@ -81,7 +81,7 @@ const delegationToken = (tokenVersion: number | undefined = 7): string => {
   return `header.${claims}.signature`
 }
 
-test('delegates from signed workspace despite different last-seen link metadata', async () => {
+test('delegates from signed team despite different last-seen link metadata', async () => {
   const exchanges: Array<{ body: Record<string, unknown>; init: RequestInit; url: string }> = []
   const prisma = {
     productAccountLink: {
@@ -96,7 +96,7 @@ test('delegates from signed workspace despite different last-seen link metadata'
     team: {
       findFirst: async () => ({
         externalOrgId: 'uoa-org',
-        externalWorkspaceId: 'uoa-team',
+        externalTeamId: 'uoa-team',
       }),
     },
   }
@@ -208,7 +208,7 @@ test('separates delegation cache entries across UOA token versions', async () =>
       team: {
         findFirst: async () => ({
           externalOrgId: 'uoa-org',
-          externalWorkspaceId: 'uoa-team',
+          externalTeamId: 'uoa-team',
         }),
       },
     } as never,
@@ -442,7 +442,7 @@ test('does not delegate a revoked product link', async () => {
       team: {
         findFirst: async () => ({
           externalOrgId: 'uoa-org',
-          externalWorkspaceId: 'uoa-team',
+          externalTeamId: 'uoa-team',
         }),
       },
     } as never,

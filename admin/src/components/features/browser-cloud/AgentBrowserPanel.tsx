@@ -17,7 +17,7 @@ const formatDate = (iso: string): string =>
 /**
  * What this agent's browser is signed in to, and the way to undo it.
  *
- * The signer's name is shown beside each service on purpose: on a workspace
+ * The signer's name is shown beside each service on purpose: on a team
  * agent the logins are shared with everyone who can reach it, so "whose Google
  * is this" is the question a person actually has when they look here.
  */

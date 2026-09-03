@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { createAgentRecord } from '@nessie/workspace-admin'
+import { createAgentRecord } from '@nessie/team-admin'
 
 import {
   validateWorkflowGraphSteps,
@@ -180,7 +180,7 @@ runDatabaseTest('a workflow cannot reference another member’s private agent', 
   assert.ok(result.some((issue) => issue.includes('does not exist')))
 })
 
-runDatabaseTest('a workflow owner can reference an unbound workspace agent', async (t) => {
+runDatabaseTest('a workflow owner can reference an unbound team agent', async (t) => {
   const prisma = new PrismaClient()
   const organizationId = randomUUID()
   const agentOwnerId = randomUUID()

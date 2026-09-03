@@ -13,8 +13,8 @@ Design a multi-tenant, multi-user, multi-agent control plane where:
 - Projects are first-class release isolation boundaries so operational mistakes are contained.
 
 This is the source of truth for organization and access-control **requirements**.
-It is **not** the source of truth for the org/workspace/project topology — that
-is [standards/workspace-model.md](standards/workspace-model.md), and §2.1 below
+It is **not** the source of truth for the org/team/project topology — that
+is [standards/team-model.md](standards/team-model.md), and §2.1 below
 has been corrected to match it.
 
 ## 2) Core governance model
@@ -23,16 +23,16 @@ has been corrected to match it.
 
 - `Organization` is the trust boundary top-level unit.
 - `Organization` also owns canonical communication settings such as default storage language.
-- `Workspace` is the group of people you work in, and **is** the SSO's team —
+- `Team` is the group of people you work in, and **is** the SSO's team —
   a first-class boundary, not legacy. (An earlier revision of this file called
   it legacy/migration-only and put `Team` inside `Project`. That was backwards;
   see the standard linked above.)
 - `Project` is an isolation boundary for release, documentation, secrets,
-  tooling, and agent access, living **inside one workspace**. It is Nessie's
+  tooling, and agent access, living **inside one team**. It is Nessie's
   own construct — the SSO has no concept of it.
 - `Channel` is the communication audience inside a project (chat, routing, and
   visibility scope).
-- The local Prisma model for a workspace is still named `Team`, and its
+- The local Prisma model for a team is still named `Team`, and its
   `projectId` foreign key currently points the wrong way. That is a known
   defect, not the model.
 - `User` may belong to one or more teams/channels.
@@ -87,7 +87,7 @@ Each permission is a matrix on:
   - team memberships
   - project memberships
   - active sessions
-- `workspace` must be canonicalized to `project` before policy evaluation where backward-compatibility input is accepted.
+- `team` must be canonicalized to `project` before policy evaluation where backward-compatibility input is accepted.
 - Actor context is required at:
   - routing time (`handleUserMessage`/session ingress),
   - tool resolution time,
@@ -332,7 +332,7 @@ Every governance action in the table above must also be callable from chat by pa
 ## 6) Data model additions
 
 - `OrganizationPolicy`
-- `WorkspacePolicy` (legacy alias only; no new bindings)
+- `TeamPolicy` (legacy alias only; no new bindings)
 - `Project`
 - `ProjectPolicy`
 - `ProjectMember`

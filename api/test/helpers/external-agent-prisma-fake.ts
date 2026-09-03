@@ -36,7 +36,7 @@ export const makeExternalAgentPrismaFake = (
       {
         id: seed.teamId,
         externalOrgId: seed.externalOrgId ?? 'uoa-org',
-        externalWorkspaceId: seed.externalWorkspaceId ?? 'uoa-team',
+        externalTeamId: seed.externalTeamId ?? 'uoa-team',
         name: 'Seed Team',
         projectId: seed.projectId,
         systemManaged: false,
@@ -96,7 +96,7 @@ export const makeExternalAgentPrismaFake = (
         return seedTeam && seedTeam.organizationId === orgId
           ? {
               externalOrgId: seedTeam.externalOrgId,
-              externalWorkspaceId: seedTeam.externalWorkspaceId,
+              externalTeamId: seedTeam.externalTeamId,
               projectId: seedTeam.projectId,
             }
           : null
@@ -113,7 +113,7 @@ export const makeExternalAgentPrismaFake = (
         teams.set(id, {
           id,
           externalOrgId: null,
-          externalWorkspaceId: null,
+          externalTeamId: null,
           name: args.data.name,
           projectId: args.data.projectId,
           systemManaged: args.data.systemManaged,

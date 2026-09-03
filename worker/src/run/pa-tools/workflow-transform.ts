@@ -1,11 +1,11 @@
 /**
  * §5 agent authoring: `workflow_transform_preview` — the agent checks the
  * same JMESPath mapping a human does, against the same compiler and the
- * same security envelope (`@nessie/workspace-admin` workflow-jmespath.ts:
+ * same security envelope (`@nessie/team-admin` workflow-jmespath.ts:
  * 4 KiB expression, 1 MiB input, 256 KiB output, off the event loop).
  * Deterministic by construction — no LLM in the loop, no I/O, no clock.
  */
-import { evaluateWorkflowJmespath } from '@nessie/workspace-admin'
+import { evaluateWorkflowJmespath } from '@nessie/team-admin'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 
 export const runWorkflowTransformPreviewTool = async (

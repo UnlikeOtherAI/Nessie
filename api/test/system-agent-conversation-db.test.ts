@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { listAgentsForUser } from '@nessie/workspace-admin'
+import { listAgentsForUser } from '@nessie/team-admin'
 
 import {
   AGENT_DESIGNER_BLUEPRINT,

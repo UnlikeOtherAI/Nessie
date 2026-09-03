@@ -87,7 +87,7 @@ export const runSendMessageTool = async (
       {
         channelId: destination.channelId,
         content,
-        memoryOrigin: 'user_authored_workspace_message',
+        memoryOrigin: 'user_authored_team_message',
         messageId: message.id,
         organizationId: context.channel.organizationId,
         projectId: context.actorContext.tenant.projectId,

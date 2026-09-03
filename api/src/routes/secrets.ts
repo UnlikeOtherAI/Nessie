@@ -12,7 +12,7 @@ import {
 } from '../services/infisical-vault.js'
 import type { RouteDeps } from './types.js'
 
-const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'workspace'])
+const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
 const CreateSecretBodySchema = z.object({
   name: z.string().trim().min(1).max(120).regex(/^[A-Z][A-Z0-9_]*$/, 'Use an environment-variable-style name.'),
@@ -27,7 +27,7 @@ const CreateSecretBodySchema = z.object({
 const RotateSecretBodySchema = z.object({ value: z.string().min(1).max(65_536) }).strict()
 
 const GrantSecretBodySchema = z.object({
-  principalType: z.enum(['user', 'agent', 'team', 'project', 'workspace']),
+  principalType: z.enum(['user', 'agent', 'team', 'project', 'organization']),
   principalId: z.string().uuid(),
   permissions: z.array(z.enum(['use', 'reveal', 'manage', 'delegate'])).min(1),
   expiresAt: z.string().datetime().optional(),
@@ -82,7 +82,7 @@ const canManageScope = async (input: {
 }): Promise<{ allowed: boolean; scopeId: string }> => {
   const { actorId, deps, isOwner, organizationId, scopeType } = input
   if (scopeType === 'personal') return { allowed: true, scopeId: actorId }
-  if (scopeType === 'workspace') return { allowed: isOwner, scopeId: organizationId }
+  if (scopeType === 'organization') return { allowed: isOwner, scopeId: organizationId }
   if (!input.scopeId) return { allowed: false, scopeId: '' }
   if (scopeType === 'project') {
     const project = await deps.prisma.project.findFirst({
@@ -108,7 +108,7 @@ const grantPrincipalExistsInOrganization = async (input: {
   prisma: RouteDeps['prisma']
 }): Promise<boolean> => {
   const { organizationId, principalId, principalType, prisma } = input
-  if (principalType === 'workspace') return principalId === organizationId
+  if (principalType === 'organization') return principalId === organizationId
   if (principalType === 'user') {
     return Boolean(await prisma.organizationMember.findFirst({
       where: { organizationId, userId: principalId, deactivatedAt: null },
@@ -412,7 +412,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       principalType: body.principalType,
       prisma,
     }))) {
-      sendApiError(reply, 400, 'SECRET_GRANT_PRINCIPAL_INVALID', 'The grant target is not in this workspace.')
+      sendApiError(reply, 400, 'SECRET_GRANT_PRINCIPAL_INVALID', 'The grant target is not in this team.')
       return reply
     }
     const grant = await prisma.secretGrant.upsert({

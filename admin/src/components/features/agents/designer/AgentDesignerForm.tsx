@@ -125,7 +125,7 @@ export const AgentDesignerForm = ({
           {visibilityReadOnly ? (
             <>
               <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-                {state.visibility === 'private' ? 'Only visible to you' : 'Workspace-visible'}
+                {state.visibility === 'private' ? 'Only visible to you' : 'Team-visible'}
               </p>
               <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
                 Visibility is set when an agent is created and cannot be changed.
@@ -136,7 +136,7 @@ export const AgentDesignerForm = ({
               <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
                 {state.visibility === 'private'
                   ? 'Private — only you can see it.'
-                  : 'Workspace-visible — people in this workspace can find it.'}
+                  : 'Team-visible — people in this team can find it.'}
               </p>
               <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
                 A private agent cannot be added to any project, channel, or conversation, and only
@@ -150,7 +150,7 @@ export const AgentDesignerForm = ({
             checked={state.visibility === 'private'}
             disabled={readOnly}
             label="Only visible to me"
-            onChange={(checked) => actions.setVisibility(checked ? 'private' : 'workspace')}
+            onChange={(checked) => actions.setVisibility(checked ? 'private' : 'team')}
           />
         ) : null}
       </Card>

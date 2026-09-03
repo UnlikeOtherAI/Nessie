@@ -12,7 +12,7 @@ import {
 import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
 import { HANDOFF_TOOL_DEFINITIONS } from './builtin-handoff-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
-import { WORKSPACE_STRUCTURE_TOOL_DEFINITIONS } from './builtin-workspace-structure-tools.js'
+import { TEAM_STRUCTURE_TOOL_DEFINITIONS } from './builtin-team-structure-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
 import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
@@ -147,10 +147,10 @@ const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
-    id: 'workspace_search',
-    category: 'workspace',
-    summary: 'Search accessible workspace conversations, threads, and messages.',
-    label: 'Workspace Search',
+    id: 'team_search',
+    category: 'team',
+    summary: 'Search accessible team conversations, threads, and messages.',
+    label: 'Team Search',
     description:
       'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs, snippets, and a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
@@ -158,7 +158,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'The workspace search query',
+          description: 'The team search query',
         },
         limit: {
           type: 'integer',
@@ -176,7 +176,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Authored Message Search',
     personalAssistantOnly: true,
     description:
-      'Search messages authored by the current user across visible workspace channels and threads. Each result carries a `link=` path — quote that link directly rather than describing the location in prose.',
+      'Search messages authored by the current user across visible team channels and threads. Each result carries a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -195,7 +195,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'people_search',
-    category: 'workspace',
+    category: 'team',
     summary: 'Find organization people by display name or email address.',
     label: 'People Search',
     description:
@@ -251,8 +251,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'update_preferences',
-    category: 'workspace',
-    summary: "Replace the current user's workspace preferences.",
+    category: 'team',
+    summary: "Replace the current user's team preferences.",
     label: 'Update Preferences',
     personalAssistantOnly: true,
     description:
@@ -458,7 +458,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...CARD_TOOL_DEFINITIONS,
   ...HANDOFF_TOOL_DEFINITIONS,
   ...CHANNEL_TOOL_DEFINITIONS,
-  ...WORKSPACE_STRUCTURE_TOOL_DEFINITIONS,
+  ...TEAM_STRUCTURE_TOOL_DEFINITIONS,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,

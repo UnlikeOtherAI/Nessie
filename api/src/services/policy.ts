@@ -12,13 +12,13 @@ import {
   buildScopeChain,
   loadRulesForChecks,
   resolveDecision,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
-// Policy evaluation moved to `@nessie/workspace-admin` so the worker can ask
+// Policy evaluation moved to `@nessie/team-admin` so the worker can ask
 // the same question before the assistant binds an agent to a channel. Rule
 // authoring and default seeding stay here; `checkPolicy` is re-exported so
 // routes keep one import site.
-export { checkPolicy } from '@nessie/workspace-admin'
+export { checkPolicy } from '@nessie/team-admin'
 
 const actionToPrisma = (action: string) => {
   if (action === 'export') return 'export_action'

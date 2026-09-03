@@ -155,7 +155,7 @@ export const AgentDesignerContent = ({
       systemPrompt: editingAgent.systemPrompt ?? '',
       todosEnabled: editingAgent.todosEnabled,
       tools: editingAgent.toolPolicy ?? {},
-      visibility: editingAgent.visibility ?? 'workspace',
+      visibility: editingAgent.visibility ?? 'team',
       voiceName: editingAgent.voiceName ?? '',
     }
   }, [editingAgent])

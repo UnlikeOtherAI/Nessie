@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { createAgentRecord, listAgentsForUser } from '@nessie/workspace-admin'
+import { createAgentRecord, listAgentsForUser } from '@nessie/team-admin'
 
 import { assignTask, createHumanTask } from '../src/services/tasks.js'
 
@@ -117,43 +117,43 @@ dbTest('a member cannot assign another member’s private agent to a task', asyn
   })
 })
 
-dbTest('an owner can assign an unbound workspace agent offered by their picker', async () => {
+dbTest('an owner can assign an unbound team agent offered by their picker', async () => {
   await withDb(async (prisma, fixture) => {
-    const workspaceAgent = await createAgentRecord(prisma, {
-      name: 'Unbound workspace task agent',
+    const teamAgent = await createAgentRecord(prisma, {
+      name: 'Unbound team task agent',
       organizationId: fixture.organizationId,
       ownerUserId: fixture.privateOwnerId,
       role: 'assistant',
     })
     const actorContext = actorFor(fixture.organizationId, fixture.ownerId, 'owner')
     const pickerAgents = await listAgentsForUser(prisma, fixture.ownerId, fixture.organizationId, true)
-    assert.equal(pickerAgents.some((agent) => agent.id === workspaceAgent.id), true)
+    assert.equal(pickerAgents.some((agent) => agent.id === teamAgent.id), true)
 
     const created = await createHumanTask(prisma, {
       actorContext,
-      assigneeAgentId: workspaceAgent.id,
+      assigneeAgentId: teamAgent.id,
       createdByUserId: fixture.ownerId,
       organizationId: fixture.organizationId,
-      title: 'Owner can assign an unbound workspace agent',
+      title: 'Owner can assign an unbound team agent',
     })
     assert.ok(!('error' in created))
-    assert.equal(created.assigneeAgentId, workspaceAgent.id)
+    assert.equal(created.assigneeAgentId, teamAgent.id)
 
     const task = await prisma.task.create({
       data: {
         createdByUserId: fixture.ownerId,
         organizationId: fixture.organizationId,
-        title: 'Owner can reassign an unbound workspace agent',
+        title: 'Owner can reassign an unbound team agent',
       },
       select: { id: true },
     })
     const assigned = await assignTask(prisma, {
       actorContext,
-      assigneeAgentId: workspaceAgent.id,
+      assigneeAgentId: teamAgent.id,
       organizationId: fixture.organizationId,
       taskId: task.id,
     })
     assert.ok(!('error' in assigned))
-    assert.equal(assigned.assigneeAgentId, workspaceAgent.id)
+    assert.equal(assigned.assigneeAgentId, teamAgent.id)
   })
 })

@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { releaseNextQueuedWorkflowRun, withWorkflowOverlapLock } from '@nessie/workspace-admin'
+import { releaseNextQueuedWorkflowRun, withWorkflowOverlapLock } from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type {
   ExecutionEnvironmentTerminateJobPayload,

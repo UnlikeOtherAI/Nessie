@@ -5,7 +5,7 @@ import type { UoaAvatarImage } from '../services/uoa-avatar.js'
 
 /**
  * Shared HTTP shape for the UOA avatar relays (`routes/users.ts`,
- * `routes/workspace-avatar.ts`). Both stream third-party image bytes from the
+ * `routes/team-avatar.ts`). Both stream third-party image bytes from the
  * same upstream under the same rules, so the headers are defined once.
  */
 
@@ -39,7 +39,7 @@ export const sendAvatarImage = (
 
 /**
  * "There is no UOA avatar here" — an unlinked user, a team that was never bound
- * to a UOA workspace, or a deployment with no UOA at all. Cacheable, because the
+ * to a UOA team, or a deployment with no UOA at all. Cacheable, because the
  * client asks again on every mount and the answer will not change soon.
  */
 export const sendAvatarNotFound = (

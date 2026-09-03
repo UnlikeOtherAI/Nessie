@@ -5,7 +5,7 @@ import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import {
   AGENT_DESIGNER_SLUG,
   globalAgentHomeDmKey,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   assertGlobalAgentRunPlacement,

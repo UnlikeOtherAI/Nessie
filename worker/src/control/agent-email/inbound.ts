@@ -12,7 +12,7 @@ import {
 } from '@nessie/agent-mail'
 import type { FileService, PgRealtimeTransport } from '@nessie/runtime'
 import { recordConnectorUsage } from '@nessie/runtime'
-import { resolveMailboxByAddress } from '@nessie/workspace-admin'
+import { resolveMailboxByAddress } from '@nessie/team-admin'
 import { parseAgentId, parseRunId, parseTaskId, parseThreadId } from '@nessie/schemas'
 
 import { enqueueRunExecution } from '../../queue.js'

@@ -6,7 +6,7 @@ import {
   getDemonstrationForUser,
   startDemonstration,
   stopDemonstration,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { captureDemonstrationToolEnd } from '../../src/run/execute/demonstration-capture.js'
@@ -21,7 +21,7 @@ type Seed = {
   userId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const organization = await prisma.organization.create({
     data: { name: `demonstration-${randomUUID()}` },
   })
@@ -76,7 +76,7 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
 
 runDatabaseTest('armed demonstrations capture ordered redacted steps and stop as review-only drafts', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await prisma.organization.deleteMany({ where: { id: seed.organizationId } })
     await prisma.user.deleteMany({ where: { id: seed.userId } })

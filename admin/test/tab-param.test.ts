@@ -262,7 +262,7 @@ const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppConnectDialog.tsx',
   'admin/src/components/features/apps/AppSecretDialog.tsx',
   'admin/src/components/features/channels/RunApprovalGate.tsx',
-  'admin/src/layouts/admin-shell/CreateWorkspaceDialog.tsx',
+  'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {
@@ -342,13 +342,13 @@ test('the hook is the only place a tab is written, and it always replaces', () =
 })
 
 test("the knowledge view mode keeps its cookie as the URL's default", () => {
-  const workspace = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
+  const team = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
   // The cookie seeds the fallback…
-  assert.match(workspace, /const \[storedViewMode\] = useState<KnowledgeViewMode>\(\(\) => \{/)
-  assert.match(workspace, /KNOWLEDGE_VIEW_MODES,\n {4}storedViewMode,/)
+  assert.match(team, /const \[storedViewMode\] = useState<KnowledgeViewMode>\(\(\) => \{/)
+  assert.match(team, /KNOWLEDGE_VIEW_MODES,\n {4}storedViewMode,/)
   // …and is rewritten on every change, so the preference still follows the reader.
   assert.match(
-    workspace,
+    team,
     /selectViewMode\(nextMode\)\n {4}setCookie\(VIEW_MODE_COOKIE, nextMode\)/,
   )
 })

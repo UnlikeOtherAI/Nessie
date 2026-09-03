@@ -14,11 +14,11 @@ export const UserAlertKindSchema = z.enum([
   'trigger_health',
   'approval_requested',
   'call_missed',
-  'workspace_invitation',
+  'team_invitation',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
-export const WorkspaceInvitationAlertMetadataSchema = z.object({
+export const TeamInvitationAlertMetadataSchema = z.object({
   inviteId: z.string().min(1),
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
@@ -26,8 +26,8 @@ export const WorkspaceInvitationAlertMetadataSchema = z.object({
   invitedBy: z.string().min(1).optional(),
   expiresAt: TimestampSchema.optional(),
 }).strict()
-export type WorkspaceInvitationAlertMetadata = z.infer<
-  typeof WorkspaceInvitationAlertMetadataSchema
+export type TeamInvitationAlertMetadata = z.infer<
+  typeof TeamInvitationAlertMetadataSchema
 >
 
 export const UserAlertRecordSchema = z.object({
@@ -43,7 +43,7 @@ export const UserAlertRecordSchema = z.object({
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
-  metadata: WorkspaceInvitationAlertMetadataSchema.nullable(),
+  metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),
   actorDisplayName: z.string().nullable(),

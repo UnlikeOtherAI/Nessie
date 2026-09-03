@@ -60,7 +60,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
   }), { top: 32, bottom: 28 })
 })
 
-test('every native phone tab root reserves the workspace header on iPhone and Android', () => {
+test('every native phone tab root reserves the team header on iPhone and Android', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 59,
     isIpad: false,

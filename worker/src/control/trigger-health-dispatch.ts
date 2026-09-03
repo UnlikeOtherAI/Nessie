@@ -38,7 +38,7 @@ export type TriggerHealthDispatchDeps = {
 
 type TriggerContext = {
   agentOwnerUserId: string | null
-  agentVisibility: 'private' | 'workspace' | null
+  agentVisibility: 'private' | 'team' | null
   name: string
   organizationId: string
   ownerUserId: string | null

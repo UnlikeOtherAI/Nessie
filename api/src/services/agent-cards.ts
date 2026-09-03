@@ -16,7 +16,7 @@ import {
   renderAgentCardResponseText,
   validateAgentCardSubmission,
   AgentCardValueError,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { findThreadForUser } from './messages.js'
 

@@ -6,7 +6,7 @@ import {
   listTeamsForOrganization,
   ProjectValidationError,
   type CallLinkProvider,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -17,11 +17,11 @@ import type { RouteDeps } from './types.js'
 /**
  * Renaming a team is refused when UOA owns it.
  *
- * A UOA workspace maps 1:1 onto a Team, and UOA is the authority for its name;
+ * A UOA team maps 1:1 onto a Team, and UOA is the authority for its name;
  * `Team.name` is a non-authoritative mirror. Writing it locally would create
  * exactly the second copy of the org structure the SSO invariant forbids, and
  * the next roster read would overwrite it anyway. A local install with no IdP
- * (`externalWorkspaceId` null) owns its own names, so there it is allowed.
+ * (`externalTeamId` null) owns its own names, so there it is allowed.
  */
 const RenameTeamBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -190,18 +190,18 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         id: teamId,
         project: { organizationId: actorContext.tenant.organizationId },
       },
-      select: { externalWorkspaceId: true, id: true },
+      select: { externalTeamId: true, id: true },
     })
     if (!team) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
       return reply
     }
-    if (team.externalWorkspaceId) {
+    if (team.externalTeamId) {
       sendApiError(
         reply,
         409,
         'TEAM_NAME_OWNED_BY_IDP',
-        'This workspace’s name is held by UnlikeOtherAI. Rename it there and it '
+        'This team’s name is held by UnlikeOtherAI. Rename it there and it '
         + 'will follow here.',
       )
       return reply

@@ -20,7 +20,7 @@
     },
     {
       "latencyMs": 20,
-      "text": "The workspace has a handful of channels, including the one we are talking in right now.",
+      "text": "The team has a handful of channels, including the one we are talking in right now.",
       "usage": { "inputTokens": 210, "outputTokens": 18 }
     }
   ]

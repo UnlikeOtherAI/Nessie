@@ -25,7 +25,7 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   toggleAccountMenu: (): void => {
     runScript('window.__nessieToggleAccountMenu && window.__nessieToggleAccountMenu();')
   },
-  toggleWorkspaceMenu: (left: number): void => {
-    runScript(`window.__nessieToggleWorkspaceMenu && window.__nessieToggleWorkspaceMenu(${JSON.stringify(left)});`)
+  toggleTeamMenu: (left: number): void => {
+    runScript(`window.__nessieToggleTeamMenu && window.__nessieToggleTeamMenu(${JSON.stringify(left)});`)
   },
 })

@@ -31,12 +31,12 @@ test('recovery link metadata persists directory entries only', async () => {
     returnedTokenVersion: 7,
     subject: 'uoa-subject',
     userId: '00000000-0000-4000-8000-000000000002',
-    workspaceDirectory: entries,
+    teamDirectory: entries,
   })
 
   assert.deepEqual(created?.data.metadata, {
     provider: 'uoa',
-    workspaceDirectory: entries,
+    teamDirectory: entries,
   })
   assert.equal(JSON.stringify(created?.data.metadata).includes('pendingInvites'), false)
 })

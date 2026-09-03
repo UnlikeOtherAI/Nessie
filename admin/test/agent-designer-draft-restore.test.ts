@@ -53,7 +53,7 @@ test('a stored agent-designer draft is restored on mount, not wiped by the mount
       streamingField: null,
       systemPrompt: 'Keep going',
       todosEnabled: false,
-      visibility: 'workspace',
+      visibility: 'team',
     }))
 
     let seenName = ''

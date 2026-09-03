@@ -35,7 +35,7 @@ import type { GeneratedThumbnail } from './thumbnail.js'
  *
  * Privacy: JPEG/PNG/WebP uploads have their EXIF/GPS metadata stripped here
  * (EXIF orientation applied to the pixels first, ICC profiles preserved), so
- * stored bytes never leak location/device data into multi-member workspaces.
+ * stored bytes never leak location/device data into multi-member teams.
  * Orgs can opt out via `Organization.stripImageMetadata`; accounting always
  * records the post-strip byte size. See ./strip-image-metadata.ts.
  *

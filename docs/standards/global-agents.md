@@ -7,7 +7,7 @@ file is the rule**.
 
 - **A global agent is a blueprint in code, one row per organisation, and a
   single-agent DM.** App-provided agents (the Agent Designer is the first) live
-  in a registry in `@nessie/workspace-admin`; `ensureGlobalAgent` instantiates
+  in a registry in `@nessie/team-admin`; `ensureGlobalAgent` instantiates
   each as one `systemManaged` row per organisation, keyed by `Agent.systemSlug` —
   unique on `(organizationId, systemSlug)` with a CHECK requiring `systemManaged`
   AND a non-null `organizationId`, so a cross-org vendor row is a database
@@ -104,7 +104,7 @@ Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one 
 
 
 App-provided agents (the **Agent Designer**, `agent-designer`, is the first) are
-blueprints in `@nessie/workspace-admin`, instantiated by `ensureGlobalAgent` as
+blueprints in `@nessie/team-admin`, instantiated by `ensureGlobalAgent` as
 one `systemManaged` row per organisation keyed by `Agent.systemSlug`, reachable
 through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
@@ -122,7 +122,7 @@ the disabled detail surface: [docs/global-agents.md](../global-agents.md). Spec:
 **Direct messages lists conversations, not a directory.** Every DM channel there
 is provisioned before anybody speaks — a person's DM, a private agent's home, a
 global agent's home the moment the account exists — so listing provisioned
-channels made the section a roster of the workspace, with the Agent Designer
+channels made the section a roster of the team, with the Agent Designer
 pinned in it from day one. A row appears once its channel carries a message,
 plus the channel the viewer is standing in, so opening a fresh conversation
 never pulls its own row out from under them

@@ -11,7 +11,7 @@ import { registerCreateThreadMessageRoute } from '../src/routes/thread-message-c
 import { registerUploadRoutes } from '../src/routes/uploads.js'
 
 /**
- * Shared database harness for the attachment route tests: a seeded workspace, a
+ * Shared database harness for the attachment route tests: a seeded team, a
  * Fastify app with the upload + message-create routes, a filesystem-backed
  * FileService, and teardown. Extracted so message-attachments.test.ts (linking
  * and deletion rules) and attachment-thumbnails.test.ts (previews, caching,
@@ -34,7 +34,7 @@ export const actorContextFor = (seed: Seed, userId: string): AuthorizedActionCon
   actionContext: { requestId: `req-message-attachments-${userId}` },
 })
 
-export const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+export const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({
     data: { name: `message-attachments ${randomUUID()}` },
   })
@@ -148,7 +148,7 @@ export const withHarness = async (
     storage: getStorage({ provider: 'filesystem', localPath: storagePath }),
     maxUploadBytes: 5_000_000,
   })
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   const app = buildApp(prisma, fileService, seed, actingUserIdFor(seed))
   try {
     await run({ app, fileService, prisma, seed })

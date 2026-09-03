@@ -36,7 +36,7 @@ export type UoaDelegatedIdentityHeadersOptions = {
   accountLinkProductSlug: string
   audience: string
   delegationScope: 'ai.invoke' | 'billing.read'
-  requireActiveWorkspace?: boolean
+  requireActiveTeam?: boolean
   requireUoaIdentity?: boolean
   toolCallId?: string | null
 }
@@ -53,7 +53,7 @@ export type UoaProductIdentity = {
  *
  * It is deliberately not an access token: UOA verifies it against the
  * product's configured JWKS and re-resolves the named user, epoch, and active
- * workspace before authorizing a request. This lets a product delegate one
+ * team before authorizing a request. This lets a product delegate one
  * current session without retaining a UOA bearer credential.
  */
 export type UoaSubjectAssertionIdentity = {
@@ -79,7 +79,7 @@ export class UoaDelegatedIdentityError extends Error {
   constructor(
     public readonly code:
       | 'UOA_IDENTITY_REQUIRED'
-      | 'UOA_ACTIVE_WORKSPACE_REQUIRED'
+      | 'UOA_ACTIVE_TEAM_REQUIRED'
       | 'UOA_TOKEN_EXCHANGE_FAILED',
     message: string,
   ) {
@@ -185,7 +185,7 @@ const resolveUserId = (attribution: LedgerAttribution): string | null =>
   ?? (attribution.actorType === 'user' ? attribution.actorId : null)
 
 /**
- * Does the attributed local team still advertise exactly the UOA workspace this
+ * Does the attributed local team still advertise exactly the UOA team this
  * identity names?
  *
  * Exported because the scheduled-trigger fire gate must ask precisely this
@@ -195,7 +195,7 @@ const resolveUserId = (attribution: LedgerAttribution): string | null =>
  * this predicate would be free to drift back apart, which is exactly the gap
  * that produced that outage.
  */
-export const activeWorkspaceMatchesAttribution = async (
+export const activeTeamMatchesAttribution = async (
   prisma: UoaIdentityPrisma,
   attribution: LedgerAttribution,
   identity: UoaProductIdentity | null,
@@ -214,14 +214,14 @@ export const activeWorkspaceMatchesAttribution = async (
     },
     select: {
       externalOrgId: true,
-      externalWorkspaceId: true,
+      externalTeamId: true,
     },
   })
   return Boolean(
     team?.externalOrgId
-    && team.externalWorkspaceId
+    && team.externalTeamId
     && team.externalOrgId === identity.organizationId
-    && team.externalWorkspaceId === identity.teamId,
+    && team.externalTeamId === identity.teamId,
   )
 }
 
@@ -470,14 +470,14 @@ export const createUoaDelegatedIdentityService = (input: {
         completeAttribution,
         options.accountLinkProductSlug,
       )
-      const workspaceMatches = linkedIdentity
-        ? await activeWorkspaceMatchesAttribution(
+      const teamMatches = linkedIdentity
+        ? await activeTeamMatchesAttribution(
           input.prisma,
           completeAttribution,
           linkedIdentity,
         )
         : false
-      const identity = workspaceMatches ? linkedIdentity : null
+      const identity = teamMatches ? linkedIdentity : null
       if (options.requireUoaIdentity && !linkedIdentity) {
         throw new UoaDelegatedIdentityError(
           'UOA_IDENTITY_REQUIRED',
@@ -486,11 +486,11 @@ export const createUoaDelegatedIdentityService = (input: {
       }
       if (
         linkedIdentity
-        && !workspaceMatches
-        && (options.requireActiveWorkspace || options.requireUoaIdentity)
+        && !teamMatches
+        && (options.requireActiveTeam || options.requireUoaIdentity)
       ) {
         throw new UoaDelegatedIdentityError(
-          'UOA_ACTIVE_WORKSPACE_REQUIRED',
+          'UOA_ACTIVE_TEAM_REQUIRED',
           `The active UnlikeOtherAI organization/team must match the originating Nessie team for ${options.accountLinkProductSlug}.`,
         )
       }

@@ -11,7 +11,7 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
-import { loadAgentTodoPromptFacts } from '@nessie/workspace-admin'
+import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
 import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
 import {
   resolveDelegatedRequesterUserId,

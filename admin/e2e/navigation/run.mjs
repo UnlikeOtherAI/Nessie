@@ -20,7 +20,7 @@ import { CASES } from './cases/index.mjs'
 import { CaseFailure } from './lib/expect.mjs'
 import { SCREENSHOT_ROOT, databaseUrl, keepServers } from './lib/config.mjs'
 import { launchBrowser, openViewportContext } from './lib/browser.mjs'
-import { seedWorkspace } from './lib/seed.mjs'
+import { seedTeam } from './lib/seed.mjs'
 import { startAdmin, startApi, stopProcess } from './lib/servers.mjs'
 
 const parseArgs = (argv) => {
@@ -98,7 +98,7 @@ const main = async () => {
   try {
     api = await startApi()
     admin = await startAdmin()
-    const seed = await seedWorkspace(api)
+    const seed = await seedTeam(api)
     console.log(
       `navigation e2e: signed in via ${seed.origin}; `
       + `project "${seed.project.name}", channels ${seed.channels.map((c) => c.slug).join(', ')}`,

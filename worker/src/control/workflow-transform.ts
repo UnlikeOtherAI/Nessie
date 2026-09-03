@@ -5,7 +5,7 @@
  * (the 500-line cap).
  *
  * The evaluator itself is the one §5 seam
- * (`@nessie/workspace-admin` `workflow-jmespath.ts`) shared with the `when:`
+ * (`@nessie/team-admin` `workflow-jmespath.ts`) shared with the `when:`
  * guard: 4 KiB expression, 1 MiB input, 256 KiB output, evaluated off the
  * event loop. This module only decides what the step's evaluation document
  * is and how the result is persisted.
@@ -18,7 +18,7 @@
 import {
   evaluateWorkflowJmespath,
   redactWorkflowSecretValues,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 export const WORKFLOW_TRANSFORM_JMESPATH_PREFIX = 'jmespath:'
 

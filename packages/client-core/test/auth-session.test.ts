@@ -7,7 +7,7 @@ import {
   SessionMutationLoss,
   getAccessTokenExpiresAtMs,
   getAccessTokenRenewalDelayMs,
-  sessionMatchesExpectedWorkspace,
+  sessionMatchesExpectedTeam,
   type SessionPayload,
 } from '../src/auth-session.js'
 
@@ -139,10 +139,10 @@ test('provider discovery surfaces failures to its independent retry owner', asyn
   )
 })
 
-test('UOA workspace switching sends the exact external target with both session proofs', async () => {
+test('UOA team switching sends the exact external target with both session proofs', async () => {
   await withMockFetch(
     async (input, init) => {
-      assert.equal(input, 'https://api.example.test/api/auth/uoa/workspace')
+      assert.equal(input, 'https://api.example.test/api/auth/uoa/team')
       assert.equal(init?.method, 'POST')
       assert.equal(init?.credentials, 'include')
       const headers = new Headers(init?.headers)
@@ -156,7 +156,7 @@ test('UOA workspace switching sends the exact external target with both session 
     },
     async () => {
       assert.deepEqual(
-        await createAuthSessionApi('https://api.example.test/').switchUoaWorkspace(
+        await createAuthSessionApi('https://api.example.test/').switchUoaTeam(
           'access-token',
           { organizationId: 'external-org', teamId: 'external-team' },
         ),
@@ -166,7 +166,7 @@ test('UOA workspace switching sends the exact external target with both session 
   )
 })
 
-test('UOA workspace switching preserves the server error code and status', async () => {
+test('UOA team switching preserves the server error code and status', async () => {
   await withMockFetch(
     async () => Response.json(
       { error: { code: 'INTERACTION_REQUIRED', message: 'Verification required' } },
@@ -174,7 +174,7 @@ test('UOA workspace switching preserves the server error code and status', async
     ),
     async () => {
       await assert.rejects(
-        createAuthSessionApi('https://api.example.test').switchUoaWorkspace(
+        createAuthSessionApi('https://api.example.test').switchUoaTeam(
           'access-token',
           { organizationId: 'external-org', teamId: 'external-team' },
         ),
@@ -190,10 +190,10 @@ test('UOA workspace switching preserves the server error code and status', async
   )
 })
 
-test('sessionMatchesExpectedWorkspace requires the exact active UOA org and team', () => {
+test('sessionMatchesExpectedTeam requires the exact active UOA org and team', () => {
   const targeted = {
     me: {
-      uoaWorkspaces: [
+      uoaTeams: [
         { active: false, organizationId: 'org-a', teamId: 'team-a' },
         { active: true, organizationId: 'org-b', teamId: 'team-b' },
       ],
@@ -202,19 +202,19 @@ test('sessionMatchesExpectedWorkspace requires the exact active UOA org and team
   } as unknown as SessionPayload
 
   assert.equal(
-    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-b', teamId: 'team-b' }),
+    sessionMatchesExpectedTeam(targeted, { organizationId: 'org-b', teamId: 'team-b' }),
     true,
   )
   assert.equal(
-    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-a', teamId: 'team-a' }),
+    sessionMatchesExpectedTeam(targeted, { organizationId: 'org-a', teamId: 'team-a' }),
     false,
   )
   assert.equal(
-    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-b', teamId: 'team-c' }),
+    sessionMatchesExpectedTeam(targeted, { organizationId: 'org-b', teamId: 'team-c' }),
     false,
   )
   assert.equal(
-    sessionMatchesExpectedWorkspace(
+    sessionMatchesExpectedTeam(
       sessionPayload('no-directory'),
       { organizationId: 'org-b', teamId: 'team-b' },
     ),
@@ -224,7 +224,7 @@ test('sessionMatchesExpectedWorkspace requires the exact active UOA org and team
   // Ambiguous multiple-active responses are rejected, even when one matches.
   const ambiguous = {
     me: {
-      uoaWorkspaces: [
+      uoaTeams: [
         { active: true, organizationId: 'org-b', teamId: 'team-b' },
         { active: true, organizationId: 'org-a', teamId: 'team-a' },
       ],
@@ -232,24 +232,24 @@ test('sessionMatchesExpectedWorkspace requires the exact active UOA org and team
     token: 'token',
   } as unknown as SessionPayload
   assert.equal(
-    sessionMatchesExpectedWorkspace(ambiguous, { organizationId: 'org-b', teamId: 'team-b' }),
+    sessionMatchesExpectedTeam(ambiguous, { organizationId: 'org-b', teamId: 'team-b' }),
     false,
   )
 
   // An empty active set never matches.
   const noneActive = {
     me: {
-      uoaWorkspaces: [{ active: false, organizationId: 'org-b', teamId: 'team-b' }],
+      uoaTeams: [{ active: false, organizationId: 'org-b', teamId: 'team-b' }],
     },
     token: 'token',
   } as unknown as SessionPayload
   assert.equal(
-    sessionMatchesExpectedWorkspace(noneActive, { organizationId: 'org-b', teamId: 'team-b' }),
+    sessionMatchesExpectedTeam(noneActive, { organizationId: 'org-b', teamId: 'team-b' }),
     false,
   )
 })
 
-test('recoverWorkspaceSession sends the bearer proof and exact expected workspace to POST /api/auth/session', async () => {
+test('recoverTeamSession sends the bearer proof and exact expected team to POST /api/auth/session', async () => {
   await withMockFetch(
     async (input, init) => {
       assert.equal(input, 'https://api.example.test/api/auth/session')
@@ -261,7 +261,7 @@ test('recoverWorkspaceSession sends the bearer proof and exact expected workspac
       assert.deepEqual(JSON.parse(String(init?.body)), {
         code: 'auth-code',
         codeVerifier: 'pkce-verifier',
-        expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+        expectedTeam: { organizationId: 'external-org', teamId: 'external-team' },
         providerId: 'uoa',
         redirectUri: 'https://app.example.test/callback',
       })
@@ -269,12 +269,12 @@ test('recoverWorkspaceSession sends the bearer proof and exact expected workspac
     },
     async () => {
       assert.deepEqual(
-        await createAuthSessionApi('https://api.example.test/').recoverWorkspaceSession(
+        await createAuthSessionApi('https://api.example.test/').recoverTeamSession(
           'current-access-token',
           {
             code: 'auth-code',
             codeVerifier: 'pkce-verifier',
-            expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+            expectedTeam: { organizationId: 'external-org', teamId: 'external-team' },
             providerId: 'uoa',
             redirectUri: 'https://app.example.test/callback',
           },
@@ -285,7 +285,7 @@ test('recoverWorkspaceSession sends the bearer proof and exact expected workspac
   )
 })
 
-test('recoverWorkspaceSession refuses a missing or empty bearer locally', async () => {
+test('recoverTeamSession refuses a missing or empty bearer locally', async () => {
   let fetchCalls = 0
   await withMockFetch(
     async () => {
@@ -297,16 +297,16 @@ test('recoverWorkspaceSession refuses a missing or empty bearer locally', async 
       const input = {
         code: 'auth-code',
         codeVerifier: 'pkce-verifier',
-        expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+        expectedTeam: { organizationId: 'external-org', teamId: 'external-team' },
         providerId: 'uoa' as const,
         redirectUri: 'https://app.example.test/callback',
       }
       await assert.rejects(
-        api.recoverWorkspaceSession(null as unknown as string, input),
+        api.recoverTeamSession(null as unknown as string, input),
         /requires an authenticated bearer token/,
       )
       await assert.rejects(
-        api.recoverWorkspaceSession('', input),
+        api.recoverTeamSession('', input),
         /requires an authenticated bearer token/,
       )
       assert.equal(fetchCalls, 0)
@@ -388,12 +388,12 @@ test('a lost session response surfaces as an opaque SessionMutationLoss, never a
         }),
       async () => {
         await assert.rejects(
-          createAuthSessionApi('https://api.example.test').recoverWorkspaceSession(
+          createAuthSessionApi('https://api.example.test').recoverTeamSession(
             'current-access-token',
             {
               code: 'auth-code',
               codeVerifier: 'pkce-verifier',
-              expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+              expectedTeam: { organizationId: 'external-org', teamId: 'external-team' },
               providerId: 'uoa',
               redirectUri: 'https://app.example.test/callback',
             },
@@ -411,7 +411,7 @@ test('a lost session response surfaces as an opaque SessionMutationLoss, never a
   await t.test('a delivered HTTP status stays typed and is never opaque', async () => {
     await withMockFetch(
       async () => Response.json(
-        { error: { code: 'WORKSPACE_MISMATCH', message: 'Wrong workspace' } },
+        { error: { code: 'TEAM_MISMATCH', message: 'Wrong team' } },
         { status: 409 },
       ),
       async () => {
@@ -422,7 +422,7 @@ test('a lost session response surfaces as an opaque SessionMutationLoss, never a
           }),
           (error: unknown) => {
             assert.ok(error instanceof AuthSessionApiError)
-            assert.equal(error.code, 'WORKSPACE_MISMATCH')
+            assert.equal(error.code, 'TEAM_MISMATCH')
             assert.equal(error.status, 409)
             return true
           },

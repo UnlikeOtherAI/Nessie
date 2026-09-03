@@ -5,7 +5,7 @@ import { requestJson, encodeForm, type FetchLike } from '../http.js'
  *
  * Two sources, because they answer different questions: `people:searchContacts`
  * covers the person's own contacts, and `people:searchDirectoryPeople` covers
- * their Workspace directory. Colleagues inside Nessie are already resolvable
+ * their Team directory. Colleagues inside Nessie are already resolvable
  * through `people_search`; this is for everyone else.
  */
 

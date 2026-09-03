@@ -31,7 +31,7 @@ type Seed = {
   toAgentId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `mbx-ser ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -140,7 +140,7 @@ const dispatchSeededMail = async (
 runDatabaseTest('mailbox delivery while the thread is busy pends instead of spawning a concurrent run', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -201,7 +201,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
 runDatabaseTest('mailbox delivery on a free thread claims the slot and enqueues the run', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

@@ -15,11 +15,11 @@ File: `src/agents/pi-embedded-runner/run.ts`
    ├── resolveSessionLane(sessionKey)
    └── resolveGlobalLane(lane)
 
-2. Workspace resolution
-   └── resolveRunWorkspaceDir(sessionKey, agentId, config)
+2. Team resolution
+   └── resolveRunTeamDir(sessionKey, agentId, config)
 
 3. Plugin loading
-   └── ensureRuntimePluginsLoaded(config, workspaceDir)
+   └── ensureRuntimePluginsLoaded(config, teamDir)
 
 4. Model resolution
    ├── provider = params.provider ?? DEFAULT_PROVIDER
@@ -32,7 +32,7 @@ File: `src/agents/pi-embedded-runner/run.ts`
    └── applyAuthHeaderOverride()
 
 6. System prompt building
-   ├── resolveSkillsPromptForRun()  [skills/workspace.ts]
+   ├── resolveSkillsPromptForRun()  [skills/team.ts]
    ├── buildEmbeddedSystemPrompt()  [system-prompt.ts]
    └── buildEmbeddedSandboxInfo()   [sandbox-info.ts]
 
@@ -73,7 +73,7 @@ File: `src/agents/pi-embedded-runner/run.ts`
 | File | Role |
 |---|---|
 | `run.ts` | Main entry point — orchestrates the full run |
-| `run/attempt.ts` | `runEmbeddedAttempt()` — single-attempt orchestrator: workspace setup, prompt building, streaming, compaction, teardown (~2400 lines) |
+| `run/attempt.ts` | `runEmbeddedAttempt()` — single-attempt orchestrator: team setup, prompt building, streaming, compaction, teardown (~2400 lines) |
 | `runs.ts` | Active run tracking, abort, queue |
 | `run/setup.ts` | `resolveEffectiveRuntimeModel()` and `resolveHookModelSelection()` |
 | `run/helpers.ts` | Shared helpers (`scrubAnthropicRefusalMagic`, `resolveFinalAssistantRawText`, etc.) |
@@ -90,7 +90,7 @@ File: `src/agents/pi-embedded-runner/run.ts`
 | `run/tool-media-payloads.ts` | Merge tool media payloads |
 | `run/attempt.tool-call-normalization.ts` | Classify and normalize tool calls before execution |
 | `run/attempt.tool-call-argument-repair.ts` | Attempt to repair malformed tool arguments |
-| `run/attempt.tool-run-context.ts` | Tool execution context (sandbox routing, workspace injection) |
+| `run/attempt.tool-run-context.ts` | Tool execution context (sandbox routing, team injection) |
 | `run/attempt.thread-helpers.ts` | Thread-level helpers |
 | `run/attempt.sessions-yield.ts` | Session yielding to sub-agents |
 | `run/attempt.stop-reason-recovery.ts` | Handles stop reason recovery |
@@ -109,7 +109,7 @@ File: `src/agents/pi-embedded-runner/run.ts`
 | `tool-result-truncation.ts` | Tool result size management |
 | `tool-result-char-estimator.ts` | Character estimation for truncation |
 | `replay-state.ts` | State replay for retries (`createEmbeddedRunReplayState`) |
-| `sandbox-info.ts` | `buildEmbeddedSandboxInfo()` — workspace mount, elevated access, browser bridge URL |
+| `sandbox-info.ts` | `buildEmbeddedSandboxInfo()` — team mount, elevated access, browser bridge URL |
 | `system-prompt.ts` | `buildEmbeddedSystemPrompt()` — skills, overrides, sandbox info |
 | `thinking.ts` | Thinking level handling |
 | `stream-resolution.ts` | Stream resolution logic |
@@ -295,9 +295,9 @@ Skills are plugin-like modules that inject into the system prompt:
 ```typescript
 // src/agents/skills.ts — primary exports
 resolveSkillsInstallPreferences()
-buildWorkspaceSkillSnapshot()      // copies skills to workspace
-syncSkillsToWorkspace()            // syncs skill files to workspace
-loadWorkspaceSkillEntries()        // loads skill metadata
+buildTeamSkillSnapshot()      // copies skills to team
+syncSkillsToTeam()            // syncs skill files to team
+loadTeamSkillEntries()        // loads skill metadata
 resolveSkillsPromptForRun()         // builds skills section of system prompt
 
 // src/agents/skills/config.ts
@@ -305,9 +305,9 @@ resolveSkillConfig()
 isBundledSkillAllowed()
 resolveBundledAllowlist()
 
-// src/agents/skills/workspace.ts
-buildWorkspaceSkillSnapshot()
-loadWorkspaceSkillEntries()
+// src/agents/skills/team.ts
+buildTeamSkillSnapshot()
+loadTeamSkillEntries()
 resolveSkillsPromptForRun()
 
 // src/agents/skills/filter.ts
@@ -325,7 +325,7 @@ ensureSkillsWatcher()
 resetSkillsRefreshForTest()
 ```
 
-**Snapshot versioning:** Each workspace skill snapshot has a version number. `getSkillsSnapshotVersion()` returns the current version. `shouldRefreshSnapshotForVersion()` decides whether to rebuild the snapshot when the skill config changes.
+**Snapshot versioning:** Each team skill snapshot has a version number. `getSkillsSnapshotVersion()` returns the current version. `shouldRefreshSnapshotForVersion()` decides whether to rebuild the snapshot when the skill config changes.
 
 ---
 
@@ -565,7 +565,7 @@ SessionEntry = {
   heartbeatTaskState?: Record<string, number>,
   sessionFile?: string,
   spawnedBy?: string,
-  spawnedWorkspaceDir?: string,
+  spawnedTeamDir?: string,
   parentSessionKey?: string,
   forkFromParent?: boolean,
   spawnDepth?: number,
@@ -600,7 +600,7 @@ Session pruning is driven by `updatedAt` vs `idleExpiresAt` and `archiveAfterMin
 
 **Heartbeat:** Heartbeat agents run in isolated sessions with `:heartbeat` key suffix (`resolveSessionAgentId()`). They are independent sessions, not sub-states of the parent.
 
-**Lane isolation:** `resolveSessionLane()` assigns each session to a lane. `enqueueCommandInLane(lane, task, opts)` serializes work within a lane. Concurrent tool calls within the same session are serialized. The sandbox `scope: "shared"` option causes all sessions to share a single workspace container/browser rather than creating per-session isolation — it does NOT share lanes between sessions.
+**Lane isolation:** `resolveSessionLane()` assigns each session to a lane. `enqueueCommandInLane(lane, task, opts)` serializes work within a lane. Concurrent tool calls within the same session are serialized. The sandbox `scope: "shared"` option causes all sessions to share a single team container/browser rather than creating per-session isolation — it does NOT share lanes between sessions.
 
 ---
 
@@ -715,7 +715,7 @@ Config (zod-schema.agents.ts)
   │     ├── sandbox: docker / ssh / browser
   │     ├── tools: allowlists, exec policies, loop detection
   │     ├── memorySearch: vector + FTS config
-  │     ├── skills: workspace skill snapshots
+  │     ├── skills: team skill snapshots
   │     ├── subagents: spawn permissions
   │     └── heartbeat: periodic agent
   └── bindings[] — channel → agent routing
@@ -736,7 +736,7 @@ runReplyAgent()  [agent-runner.ts]
 ┌─ embedded ─────────────────────────────────────────────────────────┐
 │ runEmbeddedPiAgent()  [pi-embedded-runner/run.ts]                     │
 │                                                                        │
-│  1. workspace resolution                                                │
+│  1. team resolution                                                │
 │  2. plugin loading                                                      │
 │  3. model + hook resolution  [run/setup.ts]                           │
 │  4. auth profile (eligibility + order + OAuth refresh)                 │
@@ -805,7 +805,7 @@ Hooks (src/plugins/hook-runner-global.ts)
 3. **Lane-based concurrency** — session lanes serialize per-session work; global lane coordinates cross-session work; lanes are queues backed by `enqueueCommandInLane()`
 4. **Compaction** — triggered on context overflow or timeout; summarize old history into a compact message; inject as a new session entry; `postCompactionForce` can force memory sync afterward
 5. **Sandbox isolation** — Docker/SSH/Browser with security policies enforced at config parse time (before any container starts); seccomp/AppArmor/network restrictions prevent escape
-6. **Skills snapshots** — versioned workspace snapshots; `getSkillsSnapshotVersion()` tracks current version; `shouldRefreshSnapshotForVersion()` decides whether to rebuild on config change
+6. **Skills snapshots** — versioned team snapshots; `getSkillsSnapshotVersion()` tracks current version; `shouldRefreshSnapshotForVersion()` decides whether to rebuild on config change
 7. **Memory engine** — SQLite/FTS/sqlite-vec backend via `packages/memory-host-sdk/`; `memory-lancedb` plugin occupies the `plugins.slots.memory` slot; MMR reranking for diversity; temporal decay for recency weighting; sync on session start, search, interval, or watch
 8. **Plugin harness** — plugins register `AgentHarness*` to replace the low-level agent runtime; harness intercepts `EmbeddedRunAttemptParams` / `EmbeddedRunAttemptResult`
 9. **Hook runner** — `getGlobalHookRunner()` provides typed hook execution; 29 hooks in `PluginHookName` (`before_model_resolve`, `llm_input`, `before_tool_call`, `agent_end`, etc.); hooks initialized at startup in `src/plugins/loader.ts`; execution order is **priority order (higher first)**, not registration order; return values can mutate intercepted data

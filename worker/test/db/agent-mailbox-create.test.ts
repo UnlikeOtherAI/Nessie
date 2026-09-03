@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { AgentMailboxError, createAgentMailbox, retireAgentMailbox } from '@nessie/workspace-admin'
+import { AgentMailboxError, createAgentMailbox, retireAgentMailbox } from '@nessie/team-admin'
 
 import { runDatabaseTest } from './support.js'
 

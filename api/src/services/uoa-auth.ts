@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-import { loadUoaSettings, type UoaSettings } from '@nessie/workspace-admin'
+import { loadUoaSettings, type UoaSettings } from '@nessie/team-admin'
 
 import type { SsoTheme } from '../contracts/auth.js'
 
@@ -22,20 +22,20 @@ import type { SsoTheme } from '../contracts/auth.js'
  *      authenticated with `Bearer <client_hash>` where
  *      `client_hash = SHA256(domain + client_secret)`. The response carries an
  *      HS256 access token whose claims (`sub`, `email`, optional `org`, and
- *      optional `active`) identify the user and selected UOA workspace; per UOA's
+ *      optional `active`) identify the user and selected UOA team; per UOA's
  *      contract the RP does not verify it cryptographically (trust derives from
  *      the authenticated backend channel).
  */
 
 // Settings resolution and the domain-hash bearer moved to
-// `@nessie/workspace-admin` (`uoa-settings.ts`) so the worker's roster reads
+// `@nessie/team-admin` (`uoa-settings.ts`) so the worker's roster reads
 // resolve the same environment; everything else about the login flow stays here.
 export {
   clientHash,
   isUoaConfigured,
   loadUoaSettings,
   type UoaSettings,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 export const DESKTOP_REDIRECT_URL = 'nessie://auth/callback'
 
@@ -245,9 +245,9 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       enabled: true,
       // First organisation for a user with none.
       allow_user_create_org: true,
-      // Further workspaces inside an organisation the user already runs, offered
-      // in the SSO workspace chooser to ACTIVE org owners/admins. Without this,
-      // anyone who already belongs to a workspace sees no create option.
+      // Further teams inside an organisation the user already runs, offered
+      // in the SSO team chooser to ACTIVE org owners/admins. Without this,
+      // anyone who already belongs to a team sees no create option.
       allow_user_create_team: true,
       // Let the Nessie backend drive the `/org/*` roster and invitation routes
       // with the domain-hash bearer alone (UOA "backend mode" — the
@@ -256,18 +256,18 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       // this to false, and while it is false a missing access token stays
       // `401 MISSING_ACCESS_TOKEN`. Backend mode has no acting user, so UOA
       // applies no per-member role check: the owner/admin gate in
-      // `routes/workspace-members.ts` is what authorises every mutation.
+      // `routes/team-members.ts` is what authorises every mutation.
       backend_org_management: true,
     },
-    // Slack-style workspace login: ask UOA to show the workspace chooser (and to
-    // offer email sign-in codes) so a user picks the workspace they're entering.
+    // Slack-style team login: ask UOA to show the team chooser (and to
+    // offer email sign-in codes) so a user picks the team they're entering.
     // UOA then issues the `active { orgId, teamId }` claim Nessie routes on
-    // (services/workspace-context.ts). "auto" shows the chooser only when the
+    // (services/team-context.ts). "auto" shows the chooser only when the
     // user has 2+ active teams or a pending invite — single-team users are
     // unaffected. See docs/plans/2026-07-10-slack-workspace-login-nessie.md.
     login_flow: {
       email_code_enabled: true,
-      workspace_selection: 'auto',
+      team_selection: 'auto',
     },
     jwks_url: settings.jwksUrl,
     contact_email: settings.contactEmail,

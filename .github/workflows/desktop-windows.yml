@@ -138,8 +138,8 @@ jobs:
         run: pnpm prisma:generate
 
       # `prepare:executor-runtime` bundles the TypeScript executor with esbuild.
-      # It resolves workspace packages through their published `dist` exports,
-      # so installing the workspace links alone is insufficient on a clean
+      # It resolves team packages through their published `dist` exports,
+      # so installing the team links alone is insufficient on a clean
       # runner. Build the executor and every one of those dependencies in the
       # serialized Turbo order before Tauri invokes that preparation step.
       - name: Build executor bundle dependencies

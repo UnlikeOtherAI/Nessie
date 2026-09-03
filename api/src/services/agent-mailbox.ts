@@ -8,7 +8,7 @@ import {
   type EmailMessageRecord,
   type PaginationMeta,
 } from '@nessie/schemas'
-import { isAgentVisibleToUser, type MailboxRecord } from '@nessie/workspace-admin'
+import { isAgentVisibleToUser, type MailboxRecord } from '@nessie/team-admin'
 
 /**
  * Reads for the mailbox surface.

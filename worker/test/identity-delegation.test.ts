@@ -6,7 +6,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   AGENT_DESIGNER_SLUG,
   globalAgentHomeDmKey,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   agentActsAsRequestingPerson,

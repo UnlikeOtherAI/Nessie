@@ -22,7 +22,7 @@ import type { RunContext } from './types.js'
  *  3. the mailbox has already sent its hourly allowance, so the overflow parks
  *     for a person instead of being dropped or blasted out;
  *  4. the run consumed a privileged source beyond its own mailbox and thread,
- *     so somebody must decide whether that material may leave the workspace.
+ *     so somebody must decide whether that material may leave the team.
  *
  * (4) is the one that cannot be expressed as a policy at all: it is a property
  * of what this particular run happened to read.

@@ -1,4 +1,4 @@
-// The workspace the cases navigate: one organisation, one project and at
+// The team the cases navigate: one organisation, one project and at
 // least two channels a phone list can push into. Everything is created
 // through the same REST routes a person's clicks call — there is no second
 // seeding path to drift from them.
@@ -75,7 +75,7 @@ const ensureProject = async (token) => {
   })
 }
 
-export const seedWorkspace = async (apiServer) => {
+export const seedTeam = async (apiServer) => {
   const session = await signIn(apiServer)
   const channels = await ensureChannels(session.token)
   const project = await ensureProject(session.token)

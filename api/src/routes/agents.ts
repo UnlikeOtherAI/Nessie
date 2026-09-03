@@ -44,7 +44,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { checkPolicy } from '../services/policy.js'
 import {
   sendAgentEditAuthorityError,

@@ -232,12 +232,12 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      '@nessie/team-admin':
+        specifier: workspace:*
+        version: link:../packages/team-admin
       '@nessie/worker':
         specifier: workspace:*
         version: link:../worker
-      '@nessie/workspace-admin':
-        specifier: workspace:*
-        version: link:../packages/workspace-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -565,9 +565,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
-      '@nessie/workspace-admin':
+      '@nessie/team-admin':
         specifier: workspace:*
-        version: link:../workspace-admin
+        version: link:../team-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -653,9 +653,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
-      '@nessie/workspace-admin':
+      '@nessie/team-admin':
         specifier: workspace:*
-        version: link:../workspace-admin
+        version: link:../team-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -785,7 +785,7 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
-  packages/workspace-admin:
+  packages/team-admin:
     dependencies:
       '@nessie/agent-mail':
         specifier: workspace:*
@@ -909,9 +909,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
-      '@nessie/workspace-admin':
+      '@nessie/team-admin':
         specifier: workspace:*
-        version: link:../packages/workspace-admin
+        version: link:../packages/team-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)

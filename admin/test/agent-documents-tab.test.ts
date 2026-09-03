@@ -11,7 +11,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { AgentDocumentsTab } from '../src/components/features/agents/AgentDocumentsTab.js'
-import { buildKnowledgeWorkspaceActions } from '../src/components/features/knowledge/knowledge-workspace-actions.js'
+import { buildKnowledgeWorkspaceActions } from '../src/components/features/knowledge/knowledge-team-actions.js'
 import { ResponsivePageHeader } from '../src/components/shared/ResponsivePageHeader.js'
 import { agentKeys } from '../src/lib/query-keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
@@ -21,7 +21,7 @@ import type { AgentRecord } from '../src/lib/api-client.js'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('agent detail mounts documents through the shared knowledge workspace seam', () => {
+test('agent detail mounts documents through the shared knowledge team seam', () => {
   const tabs = readSource('../src/components/features/agents/AgentDetailTabs.tsx')
   const documents = readSource('../src/components/features/agents/AgentDocumentsTab.tsx')
   const projectDocs = readSource('../src/pages/project/ProjectDocsTab.tsx')

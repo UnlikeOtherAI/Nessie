@@ -94,7 +94,7 @@ No metrics, alerting, or tracing in the shipping stack — `run_validators` / `g
 
 - `api/prisma/schema.prisma:505`, `api/src/auth/session.ts:52`, `api/src/services/policy.ts:72`, `api/src/services/external-auth.ts:59`
 
-**Knowledge-worker chat (5/10).** Slack-style workspace with channels, DMs, agent @mentions, and an auto-provisioned "Personal Assistant" DM running a real agentic loop with safety budgets (max 12 iterations / 20 tool calls / 90s / cost cap). Knowledge-worker tools are wired and dispatched (workspace/people search, web search/fetch, document read, send_message, natural-language scheduling). A non-technical employee can plausibly type a request and get multi-step work done without touching Bash.
+**Knowledge-worker chat (5/10).** Slack-style team with channels, DMs, agent @mentions, and an auto-provisioned "Personal Assistant" DM running a real agentic loop with safety budgets (max 12 iterations / 20 tool calls / 90s / cost cap). Knowledge-worker tools are wired and dispatched (team/people search, web search/fetch, document read, send_message, natural-language scheduling). A non-technical employee can plausibly type a request and get multi-step work done without touching Bash.
 
 - `api/src/services/personal-assistant.ts:157`, `worker/src/run/agentic-loop.ts:173`, `worker/src/run/pa-tools.ts:507`
 

@@ -41,7 +41,7 @@ const actorFor = (seed: Seed): AuthorizedActionContext => ({
   },
 })
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `run-lc ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -123,7 +123,7 @@ const createRun = async (
 
 runDatabaseTest('cancel: a queued run is cancelled immediately and never executes', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -152,7 +152,7 @@ runDatabaseTest('cancel: a queued run is cancelled immediately and never execute
 
 runDatabaseTest('cancel: a running run gets the cooperative flag, not immediate terminal', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -174,7 +174,7 @@ runDatabaseTest('cancel: a running run gets the cooperative flag, not immediate 
 
 runDatabaseTest('cancel: a completed run reports already-terminal and is untouched', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -193,7 +193,7 @@ runDatabaseTest('cancel: a completed run reports already-terminal and is untouch
 
 runDatabaseTest('cancel: a DeepWater handoff run is rejected in favor of research_cancel', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -216,7 +216,7 @@ runDatabaseTest('cancel: a DeepWater handoff run is rejected in favor of researc
 
 runDatabaseTest('cancel: a run in another org is not found', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -233,7 +233,7 @@ runDatabaseTest('cancel: a run in another org is not found', async (t) => {
 
 runDatabaseTest('restart: a failed run enqueues a fresh linked run replaying the same input', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -262,7 +262,7 @@ runDatabaseTest('restart: a failed run enqueues a fresh linked run replaying the
 
 runDatabaseTest('restart: a running run is rejected as not-terminal', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -278,7 +278,7 @@ runDatabaseTest('restart: a running run is rejected as not-terminal', async (t) 
 
 runDatabaseTest('restart: another active run on the thread rejects with thread-busy', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -305,7 +305,7 @@ runDatabaseTest('restart: another active run on the thread rejects with thread-b
 })
 
 runDatabaseTest('restart: a completed run is rejected as not-restartable', async (t) => {  const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -321,7 +321,7 @@ runDatabaseTest('restart: a completed run is rejected as not-restartable', async
 
 runDatabaseTest('restart: a DeepWater handoff run is rejected', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -339,7 +339,7 @@ runDatabaseTest('restart: a DeepWater handoff run is rejected', async (t) => {
 
 runDatabaseTest('listActiveRuns returns live runs for the org with cheap telemetry', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

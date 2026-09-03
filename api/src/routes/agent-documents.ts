@@ -53,7 +53,7 @@ export const registerAgentDocumentRoutes = (
 
     // Agent visibility and document readability are separate entitlements.
     // Resolve the canonical knowledge read verdict so the tab can explain an
-    // unreadable home instead of mounting a workspace whose requests all 403.
+    // unreadable home instead of mounting a team whose requests all 403.
     const actorType = actorContext.actor.actorType
     const principal = actorType === 'user' || actorType === 'agent'
       ? { actorId: actorContext.actor.actorId, actorType }

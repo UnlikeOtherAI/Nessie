@@ -30,21 +30,21 @@ file is the rule**.
   omniscience: every entitled agent read composes `buildAgentVisibilityWhere`,
   and only the private agent's live owner passes its private arm — an org owner
   never sees another person's private agent. Subtask children inherit both
-  owner and visibility so delegated private work cannot mint workspace-visible
+  owner and visibility so delegated private work cannot mint team-visible
   rows. A private agent is created atomically with its exact owner-only
   `agent:{org}:{owner}:{agent}` home DM, and the worker refuses any run outside
   that home or the agent's own trigger thread before inference. Deactivating its
   owner pauses only its triggers and records one aggregate audit transition;
   the owner-only Members surface receives the count through
   `GET /api/agents/paused-private-count` and never private rows or names;
-  workspace agents keep running, no private detail is widened, and reactivation
+  team agents keep running, no private detail is widened, and reactivation
   never resumes automation implicitly.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never
   backfill ownership: nothing recorded who created an agent, so old rows read
   `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree
   itself is one `buildPeopleAgentsTree` rendered on `/settings/members` with the
   people source parameterised (UOA roster, or local `User` rows on a no-IdP
-  install) — *unowned* and *owned outside this workspace* stay separate buckets,
+  install) — *unowned* and *owned outside this team* stay separate buckets,
   because the roster is team-keyed and a colleague on another team is otherwise
   indistinguishable from someone who left. `resolveLocalUserIdsByUoaSub` is
   org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
@@ -54,12 +54,12 @@ file is the rule**.
   agent-mutation route gated on the ORGANISATION owner role, so no ordinary
   member could edit any agent — not even the private one they own. It never
   surfaced because the people editing were org owners. `canEditAgent` /
-  `assertAgentFieldAuthority` (`@nessie/workspace-admin`
+  `assertAgentFieldAuthority` (`@nessie/team-admin`
   `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
   both avatar routes, and are the one rule chat tools consume too, so routes and
   the Agent Designer cannot disagree. A **private** agent is its live owner's
   alone (an org owner cannot see it, so cannot edit it); a **person-owned**
-  workspace agent takes its live owner plus org owners (without that override a
+  team agent takes its live owner plus org owners (without that override a
   deactivated steward leaves an agent with no editor); a **team-owned** agent —
   `ownerUserId` null — takes anyone entitled to it, plus org owners; a
   `systemManaged` agent takes nobody, refused **in the service**

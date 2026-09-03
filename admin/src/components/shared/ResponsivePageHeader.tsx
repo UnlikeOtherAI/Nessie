@@ -148,7 +148,7 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
 }
 
 // A shared header for dense admin surfaces. It measures the actual controls at
-// runtime, so the same action declarations remain usable in a wide workspace,
+// runtime, so the same action declarations remain usable in a wide team,
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
 export const ResponsivePageHeader = ({
   actions = [],

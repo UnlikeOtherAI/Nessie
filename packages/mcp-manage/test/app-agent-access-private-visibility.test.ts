@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { createAgentRecord } from '@nessie/workspace-admin'
+import { createAgentRecord } from '@nessie/team-admin'
 
 import { listAgentsWithAppAccess } from '../src/apps/app-agent-access.js'
 
@@ -40,7 +40,7 @@ databaseTest('an org owner never receives another member’s private agent on th
       teamId: team.id,
       visibility: 'private',
     })
-    const workspaceAgent = await createAgentRecord(prisma, {
+    const teamAgent = await createAgentRecord(prisma, {
       name: 'Team helper',
       organizationId,
       ownerUserId: privateOwnerId,
@@ -61,7 +61,7 @@ databaseTest('an org owner never receives another member’s private agent on th
       [{ enabled: true, id: randomUUID(), mcpInstanceId: instanceId, metadata: {}, status: 'active' }],
     )
 
-    assert.deepEqual(agents.map((agent) => agent.agentId), [workspaceAgent.id])
+    assert.deepEqual(agents.map((agent) => agent.agentId), [teamAgent.id])
     assert.equal(agents.some((agent) => agent.agentId === privateAgent.id), false)
   } finally {
     await prisma.organization.deleteMany({ where: { id: organizationId } })

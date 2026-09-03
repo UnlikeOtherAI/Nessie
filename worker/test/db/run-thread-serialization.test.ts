@@ -50,7 +50,7 @@ type Seed = {
   userId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `run-ser ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -195,7 +195,7 @@ const queueJobCount = async (prisma: PrismaClient, idempotencyKey: string) => {
 runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves order', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -284,7 +284,7 @@ runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves orde
 runDatabaseTest('pending survives a lost drain: the re-poll sweep enqueues the follow-up', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -326,7 +326,7 @@ runDatabaseTest('pending survives a lost drain: the re-poll sweep enqueues the f
 
 runDatabaseTest('cancelling the in-flight run still fires the batched follow-up', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -402,7 +402,7 @@ runDatabaseTest('cancelling the in-flight run still fires the batched follow-up'
 
 runDatabaseTest('decide-job redelivery after commit is a no-op: one run, no pending, nothing to drain', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

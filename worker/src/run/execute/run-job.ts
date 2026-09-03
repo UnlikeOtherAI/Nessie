@@ -73,7 +73,7 @@ import {
   materializeScheduledAgentTodosForRun,
   readAgentTodoKickoff,
   readAgentTodoScheduledKickoff,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { recordTriggerHealthFailure } from '../../control/trigger-health.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,

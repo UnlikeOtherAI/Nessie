@@ -11,10 +11,10 @@ import {
   type ResolveHost,
 } from '@nessie/runtime'
 import {
-  BillingWorkspaceError,
-  resolveBillingWorkspace,
-  type BillingWorkspacePrisma,
-} from './billing-workspace.js'
+  BillingTeamError,
+  resolveBillingTeam,
+  type BillingTeamPrisma,
+} from './billing-team.js'
 
 export const NESSIE_UOA_BILLING_APP_KEY_ENV =
   'UOA_BILLING_APP_KEY_NESSIE'
@@ -239,7 +239,7 @@ const signBillingActor = (
   return `${signingInput}.${signature}`
 }
 
-const mapWorkspaceError = (error: BillingWorkspaceError): never => {
+const mapTeamError = (error: BillingTeamError): never => {
   throw new UoaBillingError(
     error.code === 'BILLING_CONTEXT_MISMATCH'
       ? 'UOA_BILLING_CONTEXT_MISMATCH'
@@ -383,23 +383,23 @@ const clientForSubject = (
 })
 
 export const createUoaBillingClient = async (
-  prisma: BillingWorkspacePrisma,
+  prisma: BillingTeamPrisma,
   actorContext: AuthorizedActionContext,
   deps: UoaBillingClientDeps = {},
 ): Promise<UoaBillingClient> => {
   const settings = loadBillingSettings(deps.env ?? process.env)
-  let workspace: Awaited<ReturnType<typeof resolveBillingWorkspace>>
+  let team: Awaited<ReturnType<typeof resolveBillingTeam>>
   try {
-    workspace = await resolveBillingWorkspace(prisma, actorContext)
+    team = await resolveBillingTeam(prisma, actorContext)
   } catch (error) {
-    if (error instanceof BillingWorkspaceError) return mapWorkspaceError(error)
+    if (error instanceof BillingTeamError) return mapTeamError(error)
     throw error
   }
   const subject = {
-    organizationId: workspace.sessionIdentity.organizationId,
-    teamId: workspace.sessionIdentity.teamId,
-    tokenVersion: workspace.sessionIdentity.tokenVersion,
-    userId: workspace.sessionIdentity.subject,
+    organizationId: team.sessionIdentity.organizationId,
+    teamId: team.sessionIdentity.teamId,
+    tokenVersion: team.sessionIdentity.tokenVersion,
+    userId: team.sessionIdentity.subject,
   }
   return clientForSubject(settings, subject, deps)
 }

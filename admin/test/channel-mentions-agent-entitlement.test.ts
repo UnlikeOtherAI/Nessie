@@ -12,7 +12,7 @@ import {
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-const agent = (id: string, name: string, visibility: 'private' | 'workspace'): AgentRecord => ({
+const agent = (id: string, name: string, visibility: 'private' | 'team'): AgentRecord => ({
   channelIds: [],
   createdAt: '2026-08-31T00:00:00.000Z',
   id,
@@ -25,17 +25,17 @@ const agent = (id: string, name: string, visibility: 'private' | 'workspace'): A
 }) as AgentRecord
 
 test('agent mentions trust the server-entitled list without a client visibility filter', () => {
-  const workspaceAgent = agent('00000000-0000-4000-8000-000000000001', 'Workspace', 'workspace')
+  const teamAgent = agent('00000000-0000-4000-8000-000000000001', 'Team', 'team')
   const privateAgent = agent('00000000-0000-4000-8000-000000000002', 'Private', 'private')
 
   assert.deepEqual(
-    buildAgentMentionEntities([workspaceAgent, privateAgent]).map((entity) => entity.id),
-    [workspaceAgent.id, privateAgent.id],
+    buildAgentMentionEntities([teamAgent, privateAgent]).map((entity) => entity.id),
+    [teamAgent.id, privateAgent.id],
     'the owner-provided, server-entitled private agent stays mentionable',
   )
   assert.deepEqual(
-    buildAgentMentionEntities([workspaceAgent]).map((entity) => entity.id),
-    [workspaceAgent.id],
+    buildAgentMentionEntities([teamAgent]).map((entity) => entity.id),
+    [teamAgent.id],
     'a non-owner never receives a private agent to mention',
   )
 })

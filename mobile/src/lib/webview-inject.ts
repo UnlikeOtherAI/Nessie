@@ -143,7 +143,7 @@ export const INJECTED = `
     var onAccent = cssVar('--on-accent');
     // Match the uninterrupted surface behind iPad's transparent native tab
     // controls. This is deliberately the page rail rather than a dark top-bar
-    // colour, so light themes keep a light phone workspace header too.
+    // colour, so light themes keep a light phone team header too.
     var headerSurface = cssVar('--rail');
     var headerText = cssVar('--tx');
     var scheme = '';

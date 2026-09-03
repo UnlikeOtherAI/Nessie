@@ -12,7 +12,7 @@ export type AvatarSources = {
   // Nessie user id. It resolves the UnlikeOtherAI-hosted avatar through the API
   // relay, so passing it upgrades the picture wherever it is available.
   userId?: string
-  // UOA subject, for people named only by UOA — a workspace roster row may have
+  // UOA subject, for people named only by UOA — a team roster row may have
   // no local user row at all. It resolves the same picture through the
   // roster-scoped relay, which is why the two are alternatives, never a chain:
   // both end at the one image UOA holds for that person.
@@ -43,7 +43,7 @@ export const resolveAvatarSource = (
 /**
  * Which authenticated relay serves this person's UnlikeOtherAI picture. A
  * Nessie user id goes through the organization-scoped relay; a person known
- * only by UOA subject (a workspace roster row with no local user) goes through
+ * only by UOA subject (a team roster row with no local user) goes through
  * the roster-scoped one, which checks the subject against the same roster the
  * Members page is served from before relaying any bytes.
  */
@@ -52,7 +52,7 @@ export const uoaAvatarPath = (
 ): string | null => {
   if (sources.userId) return `/api/users/${sources.userId}/avatar`
   if (sources.uoaSub) {
-    return `/api/workspace/members/${encodeURIComponent(sources.uoaSub)}/avatar`
+    return `/api/team/members/${encodeURIComponent(sources.uoaSub)}/avatar`
   }
   return null
 }
@@ -98,7 +98,7 @@ type UserAvatarProps = AvatarSources & {
 
 // A person's picture. Resolution (UnlikeOtherAI > local upload > Google >
 // initials) lives here; the tile itself is the shared `IdentityTile`, so a
-// person, an agent and a workspace are the same shape at the same size.
+// person, an agent and a team are the same shape at the same size.
 // Presence + active-status badges are opt-in.
 export const UserAvatar = ({
   displayName,

@@ -36,7 +36,7 @@ const GROUP_ORDER: ReadonlyArray<{
     types: ['scheduled', 'interval'],
   },
   {
-    description: 'Runs when something happens in the workspace.',
+    description: 'Runs when something happens in the team.',
     key: 'event',
     title: 'Events',
     types: ['event'],

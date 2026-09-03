@@ -42,7 +42,7 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   Session hydration also repairs legacy email-shaped display names so chat
   messages do not render raw email addresses as sender names.
 - The **first** SSO user on a fresh instance bootstraps the default
-  workspace and becomes its owner — there is no separate owner-account step.
+  team and becomes its owner — there is no separate owner-account step.
   Bootstrap mode is automatically suppressed whenever an SSO provider is
   configured.
 

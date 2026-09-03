@@ -35,7 +35,7 @@ test('targeted grant and stale generic PUT serialize without losing either chang
     todosEnabled: false,
     toolPolicy: {} as Record<string, boolean>,
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-    visibility: 'workspace' as const,
+    visibility: 'team' as const,
   }
   let locked = false
   const lockWaiters: Array<() => void> = []

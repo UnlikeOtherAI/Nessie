@@ -254,7 +254,7 @@ INSERT INTO projects (id, name, organization_id, updated_at) VALUES
   ('${PB1}', 'Beta WS 1', '${ORG}', now()),
   ('${PL}', 'Local project', '${ORG}', now());
 
-INSERT INTO teams (id, name, project_id, external_workspace_id, external_org_id, created_at, updated_at) VALUES
+INSERT INTO teams (id, name, project_id, external_team_id, external_org_id, created_at, updated_at) VALUES
   ('${TA1}', 'Alpha Team 1', '${PA1}', 'ws-alpha-1', '${EXT_ALPHA}', '2026-02-01', now()),
   ('${TA2}', 'Alpha Team 2', '${PA2}', 'ws-alpha-2', '${EXT_ALPHA}', '2026-02-02', now()),
   ('${TA3}', 'Alpha Team 3', '${PA3}', 'ws-alpha-3', '${EXT_ALPHA}', '2026-02-03', now()),
@@ -289,7 +289,7 @@ INSERT INTO messages (id, thread_id, user_id, role, content, reply_participant_i
 
 INSERT INTO agents (id, name, organization_id, project_id, team_id, updated_at) VALUES
   ('${GA}', 'Org-wide agent', '${ORG}', NULL, NULL, now()),
-  ('${GB}', 'Beta workspace agent', '${ORG}', '${PB1}', '${TB1}', now());
+  ('${GB}', 'Beta team agent', '${ORG}', '${PB1}', '${TB1}', now());
 
 INSERT INTO runs (id, agent_id, thread_id, status) VALUES
   ('${RB1}', '${GB}', '${THB1}', 'completed');
@@ -430,10 +430,10 @@ function phaseA(args) {
       ['beta org created with placeholder name + external id',
         `SELECT count(*) FROM organizations WHERE external_org_id = '${EXT_BETA}' AND name = 'Organisation ' || left('${EXT_BETA}', 8)`, '1'],
 
-      // Moved workspace: project, channel, agent, run artifacts, tasks, KB.
+      // Moved team: project, channel, agent, run artifacts, tasks, KB.
       ['beta project moved', `SELECT organization_id::text = (${BETA_ORG})::text FROM projects WHERE id = '${PB1}'`, 't'],
       ['beta channel moved', `SELECT organization_id::text = (${BETA_ORG})::text FROM channels WHERE id = '${CB1}'`, 't'],
-      ['beta workspace agent moved', `SELECT organization_id::text = (${BETA_ORG})::text FROM agents WHERE id = '${GB}'`, 't'],
+      ['beta team agent moved', `SELECT organization_id::text = (${BETA_ORG})::text FROM agents WHERE id = '${GB}'`, 't'],
       ['org-wide agent stays', `SELECT organization_id FROM agents WHERE id = '${GA}'`, ORG],
       ['run checkpoint follows its thread', `SELECT organization_id::text = (${BETA_ORG})::text FROM run_checkpoints WHERE id = '${RCB}'`, 't'],
       ['project task moved', `SELECT organization_id::text = (${BETA_ORG})::text FROM tasks WHERE id = '${TKB}'`, 't'],
@@ -481,7 +481,7 @@ function phaseA(args) {
         `${EXT_BETA}|ws-beta-1`],
       ['refresh token untouched', `SELECT count(*) FROM refresh_tokens WHERE id = '${RT2}' AND user_id = '${U2}'`, '1'],
 
-      // Local-only workspace and the adopting org's own workspaces untouched.
+      // Local-only team and the adopting org's own teams untouched.
       ['local project untouched', `SELECT organization_id FROM projects WHERE id = '${PL}'`, ORG],
       ['local channel untouched', `SELECT organization_id FROM channels WHERE id = '${CL1}'`, ORG],
       ['alpha projects untouched',

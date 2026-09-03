@@ -11,8 +11,8 @@ import type { Prisma, PrismaClient } from '@prisma/client'
  * — a rename in UOA never arrived — and `/api/auth/me` papered over that by
  * manufacturing a name from the email local part on every call. Both are gone.
  * Instead every exchange that produces verified provider claims re-syncs the
- * mirror through this one function: SSO login and workspace-switch
- * materialization (via `ensureWorkspacePrincipal`) and ordinary session refresh
+ * mirror through this one function: SSO login and team-switch
+ * materialization (via `ensureTeamPrincipal`) and ordinary session refresh
  * (via the UOA refresh coordinator).
  *
  * Only fields the provider actually asserted are written, and only when they

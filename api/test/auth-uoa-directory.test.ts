@@ -5,11 +5,11 @@ import type { PrismaClient, User } from '@prisma/client'
 
 import type { SessionTokenClaims } from '../src/auth/session.js'
 import { buildMeResponse } from '../src/services/auth.js'
-import type { UoaWorkspaceDirectory } from '../src/services/uoa-workspace-directory.js'
+import type { UoaTeamDirectory } from '../src/services/uoa-team-directory.js'
 import {
-  clearUoaWorkspaceDirectoryCache,
-  readUoaWorkspaceDirectory,
-  rememberUoaWorkspaceDirectory,
+  clearUoaTeamDirectoryCache,
+  readUoaTeamDirectory,
+  rememberUoaTeamDirectory,
 } from '../src/services/uoa-directory-cache.js'
 
 const userId = '00000000-0000-4000-8000-00000000000a'
@@ -52,7 +52,7 @@ const user: User = {
 
 type LocalTeam = {
   externalOrgId: string
-  externalWorkspaceId: string
+  externalTeamId: string
   id: string
   name: string
   organizationName?: string
@@ -60,7 +60,7 @@ type LocalTeam = {
 
 type TeamQuery = {
   where: {
-    externalWorkspaceId?: { in?: string[]; not?: null }
+    externalTeamId?: { in?: string[]; not?: null }
     members: { some: { userId: string } }
   }
 }
@@ -73,11 +73,11 @@ const makePrisma = (localTeams: LocalTeam[] = []) => ({
     findMany: async ({ where }: TeamQuery) => {
       assert.equal(where.members.some.userId, userId)
       // Two callers share this model: the avatar relay resolves local ids for
-      // named external workspaces, the degraded fallback lists every locally
-      // materialized UOA workspace this person belongs to.
-      const externalIds = where.externalWorkspaceId?.in
+      // named external teams, the degraded fallback lists every locally
+      // materialized UOA team this person belongs to.
+      const externalIds = where.externalTeamId?.in
       const teams = externalIds
-        ? localTeams.filter((team) => externalIds.includes(team.externalWorkspaceId))
+        ? localTeams.filter((team) => externalIds.includes(team.externalTeamId))
         : localTeams
       return teams.map((team) => ({
         ...team,
@@ -96,49 +96,49 @@ const config = {
 } as Parameters<typeof buildMeResponse>[3]
 
 const verifiedDirectory = (
-  entries: UoaWorkspaceDirectory['entries'],
-  pendingInvites: UoaWorkspaceDirectory['pendingInvites'] = [],
+  entries: UoaTeamDirectory['entries'],
+  pendingInvites: UoaTeamDirectory['pendingInvites'] = [],
 ) => ({ entries, pendingInvites })
 
 test('a cached directory is served without touching the account link', async () => {
-  clearUoaWorkspaceDirectoryCache()
-  rememberUoaWorkspaceDirectory(userId, verifiedDirectory([
+  clearUoaTeamDirectoryCache()
+  rememberUoaTeamDirectory(userId, verifiedDirectory([
     {
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
       avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar',
-      label: 'Active workspace',
+      label: 'Active team',
       orgName: 'Active org',
     },
     {
       organizationId: 'uoa-org-other',
       teamId: 'uoa-team-other',
-      label: 'Other workspace',
+      label: 'Other team',
     },
   ], [{
     inviteId: 'invite-1',
     organizationId: 'uoa-org-invited',
     teamId: 'uoa-team-invited',
-    teamName: 'Invited workspace',
+    teamName: 'Invited team',
     invitedBy: 'Grace Hopper',
   }]))
   const prisma = makePrisma([{
     externalOrgId: 'uoa-org-active',
-    externalWorkspaceId: 'uoa-team-active',
+    externalTeamId: 'uoa-team-active',
     id: teamId,
-    name: 'Local mirror of the active workspace',
+    name: 'Local mirror of the active team',
     organizationName: 'Active org',
   }])
 
   const me = await buildMeResponse(prisma, user, claims, config)
 
-  assert.deepEqual(me.uoaWorkspaces, [
+  assert.deepEqual(me.uoaTeams, [
     {
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
       avatarTeamId: teamId,
       avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar?size=128',
-      label: 'Active workspace',
+      label: 'Active team',
       orgName: 'Active org',
       active: true,
     },
@@ -147,7 +147,7 @@ test('a cached directory is served without touching the account link', async () 
       teamId: 'uoa-team-other',
       avatarImageUrl:
         'https://authentication.unlikeotherai.com/teams/uoa-team-other/avatar?size=128',
-      label: 'Other workspace',
+      label: 'Other team',
       active: false,
     },
   ])
@@ -155,17 +155,17 @@ test('a cached directory is served without touching the account link', async () 
     inviteId: 'invite-1',
     organizationId: 'uoa-org-invited',
     teamId: 'uoa-team-invited',
-    teamName: 'Invited workspace',
+    teamName: 'Invited team',
     invitedBy: 'Grace Hopper',
   }])
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
 })
 
-test('a cold cache degrades to the local Team → UOA workspace mapping', async () => {
-  clearUoaWorkspaceDirectoryCache()
+test('a cold cache degrades to the local Team → UOA team mapping', async () => {
+  clearUoaTeamDirectoryCache()
   const prisma = makePrisma([{
     externalOrgId: 'uoa-org-active',
-    externalWorkspaceId: 'uoa-team-active',
+    externalTeamId: 'uoa-team-active',
     id: teamId,
     name: 'Engineering',
     organizationName: 'Nessie Works',
@@ -176,7 +176,7 @@ test('a cold cache degrades to the local Team → UOA workspace mapping', async 
   // Label comes from the local team name and the avatar from UOA's
   // deterministic per-team image URL; the org name is simply unknown until the
   // next rotation refreshes the real directory.
-  assert.deepEqual(me.uoaWorkspaces, [{
+  assert.deepEqual(me.uoaTeams, [{
     organizationId: 'uoa-org-active',
     teamId: 'uoa-team-active',
     avatarTeamId: teamId,
@@ -189,51 +189,51 @@ test('a cold cache degrades to the local Team → UOA workspace mapping', async 
   assert.equal(me.uoaPendingInvites, undefined)
 })
 
-test('a person with no locally materialized workspace gets no directory', async () => {
-  clearUoaWorkspaceDirectoryCache()
+test('a person with no locally materialized team gets no directory', async () => {
+  clearUoaTeamDirectoryCache()
   const me = await buildMeResponse(makePrisma(), user, claims, config)
-  assert.equal(me.uoaWorkspaces, undefined)
+  assert.equal(me.uoaTeams, undefined)
 })
 
 test('a failed UOA read keeps the last verified directory', () => {
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   const entries = [{ organizationId: 'uoa-org', teamId: 'uoa-team', label: 'Kept' }]
-  rememberUoaWorkspaceDirectory(userId, verifiedDirectory(entries))
-  rememberUoaWorkspaceDirectory(userId, undefined)
-  assert.deepEqual(readUoaWorkspaceDirectory(userId), verifiedDirectory(entries))
-  clearUoaWorkspaceDirectoryCache()
+  rememberUoaTeamDirectory(userId, verifiedDirectory(entries))
+  rememberUoaTeamDirectory(userId, undefined)
+  assert.deepEqual(readUoaTeamDirectory(userId), verifiedDirectory(entries))
+  clearUoaTeamDirectoryCache()
 })
 
 test('a cached directory expires after its TTL', () => {
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   const start = 1_700_000_000_000
-  rememberUoaWorkspaceDirectory(
+  rememberUoaTeamDirectory(
     userId,
     verifiedDirectory([{ organizationId: 'uoa-org', teamId: 'uoa-team', label: 'Stale soon' }]),
     start,
   )
-  assert.notEqual(readUoaWorkspaceDirectory(userId, start + 29 * 60 * 1000), undefined)
-  assert.equal(readUoaWorkspaceDirectory(userId, start + 30 * 60 * 1000), undefined)
-  clearUoaWorkspaceDirectoryCache()
+  assert.notEqual(readUoaTeamDirectory(userId, start + 29 * 60 * 1000), undefined)
+  assert.equal(readUoaTeamDirectory(userId, start + 30 * 60 * 1000), undefined)
+  clearUoaTeamDirectoryCache()
 })
 
 test('the cache is bounded and evicts the least recently used person', () => {
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   const bound = 10_000
   for (let index = 0; index < bound; index += 1) {
-    rememberUoaWorkspaceDirectory(`user-${index}`, verifiedDirectory([
-      { organizationId: 'uoa-org', teamId: `uoa-team-${index}`, label: `Workspace ${index}` },
+    rememberUoaTeamDirectory(`user-${index}`, verifiedDirectory([
+      { organizationId: 'uoa-org', teamId: `uoa-team-${index}`, label: `Team ${index}` },
     ]))
   }
   // Touching the oldest entry moves it ahead of the next-oldest, so the write
   // that overflows the bound evicts `user-1` rather than `user-0`.
-  assert.notEqual(readUoaWorkspaceDirectory('user-0'), undefined)
-  rememberUoaWorkspaceDirectory('user-overflow', verifiedDirectory([
+  assert.notEqual(readUoaTeamDirectory('user-0'), undefined)
+  rememberUoaTeamDirectory('user-overflow', verifiedDirectory([
     { organizationId: 'uoa-org', teamId: 'uoa-team-overflow', label: 'Overflow' },
   ]))
 
-  assert.notEqual(readUoaWorkspaceDirectory('user-0'), undefined)
-  assert.equal(readUoaWorkspaceDirectory('user-1'), undefined)
-  assert.notEqual(readUoaWorkspaceDirectory('user-overflow'), undefined)
-  clearUoaWorkspaceDirectoryCache()
+  assert.notEqual(readUoaTeamDirectory('user-0'), undefined)
+  assert.equal(readUoaTeamDirectory('user-1'), undefined)
+  assert.notEqual(readUoaTeamDirectory('user-overflow'), undefined)
+  clearUoaTeamDirectoryCache()
 })

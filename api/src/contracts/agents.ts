@@ -15,11 +15,11 @@ import { z } from 'zod'
 
 import { ThreadRecordSchema } from './messaging.js'
 import { NonEmptyStringSchema } from './shared.js'
-import { ChannelRecordSchema } from './workspace.js'
+import { ChannelRecordSchema } from './team.js'
 
 export { AgentModelOptionSchema } from '@nessie/schemas'
 
-// The agent record is produced by `@nessie/workspace-admin`, which the worker
+// The agent record is produced by `@nessie/team-admin`, which the worker
 // also uses, so its schema lives in `@nessie/schemas`.
 export { type AgentRecord } from '@nessie/schemas'
 export { AgentRecordSchema }
@@ -103,7 +103,7 @@ export const UpdateAgentAvatarBodySchema = z.object({
 })
 
 // The image is stored as a normal private attachment. It becomes visible to
-// the wider workspace only after the owner confirms it as the agent's avatar.
+// the wider team only after the owner confirms it as the agent's avatar.
 export const GeneratedAgentAvatarSchema = z.object({
   avatarAttachmentId: z.string().uuid(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema,

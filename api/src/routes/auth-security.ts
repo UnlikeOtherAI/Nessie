@@ -227,14 +227,14 @@ export const registerAuthSecurityRoutes = (
       && (
         !currentClaims.uoaIdentity
         || team.externalOrgId !== currentClaims.uoaIdentity.organizationId
-        || team.externalWorkspaceId !== currentClaims.uoaIdentity.teamId
+        || team.externalTeamId !== currentClaims.uoaIdentity.teamId
       )
     ) {
       sendApiError(
         reply,
         409,
-        'SSO_WORKSPACE_REAUTH_REQUIRED',
-        'Sign in with UnlikeOtherAI to switch to this workspace.',
+        'SSO_TEAM_REAUTH_REQUIRED',
+        'Sign in with UnlikeOtherAI to switch to this team.',
       )
       return reply
     }

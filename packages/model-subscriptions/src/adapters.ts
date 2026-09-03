@@ -344,7 +344,7 @@ const codexAdapter: SubscriptionProviderAdapter = {
       : { providerAccountId: fingerprintApiKey(bundle.refreshToken ?? bundle.accessToken) },
 }
 
-/** ChatGPT routes Codex requests per workspace account, named in the id_token. */
+/** ChatGPT routes Codex requests per team account, named in the id_token. */
 const readChatgptAccountId = (idToken: string): string | undefined => {
   const payloadPart = idToken.split('.')[1]
   if (!payloadPart) return undefined

@@ -83,8 +83,8 @@ Detailed push strategy section covering:
 **File**: `docs/openclaw-reference.md` Part 6
 
 - DPIA trigger criteria: special category data, systematic monitoring, scale
-- Data flow diagram: ingress → Gateway → workspace file → external tools → persistence
-- Retention policy template table: transcripts, workspace, credentials, hook logs, skills
+- Data flow diagram: ingress → Gateway → team file → external tools → persistence
+- Retention policy template table: transcripts, team, credentials, hook logs, skills
 - Processor checklist for skills/plugins: code review, logging audit, scope validation, SSRF review
 
 ### ✅ 10. Added "why not just use X" section

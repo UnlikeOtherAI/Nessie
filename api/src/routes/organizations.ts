@@ -11,7 +11,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
   renameUoaOrganization,
-  resolveUoaRosterWorkspace,
+  resolveUoaRosterTeam,
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
@@ -29,7 +29,7 @@ const SAFE_LOGO_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image
 /**
  * `rosterDeps` is the injectable egress seam (pinned fetch + DNS) for the one
  * upstream call this file makes — renaming a UOA-bound organisation. Production
- * passes nothing; it mirrors `registerWorkspaceMembersRoutes`.
+ * passes nothing; it mirrors `registerTeamMembersRoutes`.
  */
 export const registerOrganizationRoutes = (
   app: FastifyInstance,
@@ -59,28 +59,28 @@ export const registerOrganizationRoutes = (
 
     // The assertion UOA verifies names the caller's active org AND team, so the
     // relay needs the session team's UOA mapping — and it must be a mapping of
-    // *this* organisation, never a workspace the session drifted onto.
-    const workspace = await resolveUoaRosterWorkspace(prisma, {
+    // *this* organisation, never a team the session drifted onto.
+    const team = await resolveUoaRosterTeam(prisma, {
       organizationId: input.organizationId,
       teamId: input.actorContext.tenant.teamId ?? input.actorContext.actionContext.teamId,
     })
-    if (!workspace || workspace.externalOrgId !== organization.externalOrgId) {
+    if (!team || team.externalOrgId !== organization.externalOrgId) {
       sendApiError(
         reply,
         403,
         'UOA_SESSION_REQUIRED',
         'This organisation is managed by UnlikeOtherAI. Sign in with UnlikeOtherAI and select '
-          + 'this workspace to rename it.',
+          + 'this team to rename it.',
       )
       return null
     }
 
     try {
       return await renameUoaOrganization(
-        workspace,
+        team,
         input.name,
         withUoaRosterSubjectAssertion(
-          workspace,
+          team,
           input.actorContext.actionContext.uoaIdentity,
           rosterDeps,
         ),
@@ -92,7 +92,7 @@ export const registerOrganizationRoutes = (
           403,
           'UOA_SESSION_REQUIRED',
           'This organisation is managed by UnlikeOtherAI. Sign in with UnlikeOtherAI and select '
-            + 'this workspace to rename it.',
+            + 'this team to rename it.',
         )
         return null
       }
@@ -207,7 +207,7 @@ export const registerOrganizationRoutes = (
     // A rename of a UOA-bound organisation is UOA's write, not ours. It is
     // relayed BEFORE the local row is touched: `Organization.name` is a mirror
     // of UOA's `orgName`, and a local-only write both left every other product
-    // (UOA's own workspace chooser included) on the old name and was reverted
+    // (UOA's own team chooser included) on the old name and was reverted
     // by the next login's directory sync. A refusal or outage upstream
     // therefore changes nothing locally.
     let mirroredName = body.name

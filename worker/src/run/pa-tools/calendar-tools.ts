@@ -9,7 +9,7 @@ import {
   patchEvent,
   queryFreeBusy,
 } from '@nessie/comms-google'
-import { loadUserGoogleCommsCredential } from '@nessie/workspace-admin'
+import { loadUserGoogleCommsCredential } from '@nessie/team-admin'
 import { safeFetch } from '@nessie/runtime'
 import { z } from 'zod'
 
@@ -148,7 +148,7 @@ export const runCalendarEventsListTool = async (
  * Availability.
  *
  * This still stamps the owner's basis. It is tempting to widen free/busy to the
- * organisation on the grounds that Workspace publishes it domain-wide, but a
+ * organisation on the grounds that Team publishes it domain-wide, but a
  * Nessie organisation is not proof of a shared Google domain, so the entitlement
  * does not translate. Times only ever leave here — no titles, guests or notes.
  */

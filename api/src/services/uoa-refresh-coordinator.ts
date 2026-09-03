@@ -3,9 +3,9 @@ import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { UoaRefreshBindingError } from './refresh-token-uoa.js'
 import { syncExternalOrganizationNames } from './external-organization.js'
-import { resolveExternalWorkspaceSelection } from './identity-display.js'
+import { resolveExternalTeamSelection } from './identity-display.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
-import { syncExternalWorkspaceNames } from './workspace-target.js'
+import { syncExternalTeamNames } from './team-target.js'
 import { advanceUoaLocalSessionBindingInTransaction } from './uoa-session-context.js'
 import { syncUoaDirectoryAfterSessionCommit } from './uoa-session-context.js'
 import {
@@ -14,32 +14,32 @@ import {
   type UoaSessionExchange,
 } from './uoa-session.js'
 import {
-  confirmUoaWorkspaceSwitchAccess,
-  materializeUoaWorkspace,
-  materializeUoaWorkspaceSwitch,
-} from './uoa-workspace-switch.js'
-import { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
+  confirmUoaTeamSwitchAccess,
+  materializeUoaTeam,
+  materializeUoaTeamSwitch,
+} from './uoa-team-switch.js'
+import { UoaTeamSwitchError } from './uoa-team-switch-intent.js'
 
-/** Did UOA answer this refresh with a workspace other than the bound one? */
-const workspaceDrifted = (
+/** Did UOA answer this refresh with a team other than the bound one? */
+const teamDrifted = (
   expected: UoaSessionIdentity,
   identity: UoaSessionExchange['identity'],
 ): boolean => {
-  const selected = resolveExternalWorkspaceSelection(identity.workspace)
+  const selected = resolveExternalTeamSelection(identity.team)
   return selected.organizationId !== expected.organizationId
     || selected.teamId !== expected.teamId
 }
 
 const safeSwitchCode = (
   error: UoaSessionRefreshError,
-): UoaWorkspaceSwitchError['code'] => {
+): UoaTeamSwitchError['code'] => {
   switch (error.upstreamCode) {
     case 'INTERACTION_REQUIRED':
-    case 'WORKSPACE_NOT_AVAILABLE':
-    case 'WORKSPACE_SWITCH_CONFLICT':
+    case 'TEAM_NOT_AVAILABLE':
+    case 'TEAM_SWITCH_CONFLICT':
       return error.upstreamCode
     default:
-      return 'WORKSPACE_SWITCH_CONFLICT'
+      return 'TEAM_SWITCH_CONFLICT'
   }
 }
 
@@ -50,28 +50,28 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     expectedIdentity: UoaSessionIdentity
     refreshToken: string
     userId: string
-    workspaceSwitch?: { organizationId: string; teamId: string }
+    teamSwitch?: { organizationId: string; teamId: string }
   }) => {
     let refreshed: Awaited<ReturnType<typeof refreshUoaSession>>
     try {
       refreshed = await refreshUoaSession(upstream)
-      if (upstream.workspaceSwitch) {
-        await materializeUoaWorkspaceSwitch(prisma, {
+      if (upstream.teamSwitch) {
+        await materializeUoaTeamSwitch(prisma, {
           identity: refreshed.identity,
-          target: upstream.workspaceSwitch,
+          target: upstream.teamSwitch,
           userId: upstream.userId,
         })
       } else if (
-        workspaceDrifted(upstream.expectedIdentity, refreshed.identity)
+        teamDrifted(upstream.expectedIdentity, refreshed.identity)
       ) {
-        // An ordinary refresh whose successor names a different workspace is
+        // An ordinary refresh whose successor names a different team is
         // adopted, not refused (see `refreshUoaSession`). Adoption has to land
         // on a real local org/project/team, so it materializes the successor's
-        // own workspace exactly as a switch materializes its target — and the
+        // own team exactly as a switch materializes its target — and the
         // binding advance then fails closed if it still does not resolve.
-        // Same-workspace refreshes — every ordinary rotation — skip this
+        // Same-team refreshes — every ordinary rotation — skip this
         // entirely and are byte-identical to before.
-        await materializeUoaWorkspace(prisma, {
+        await materializeUoaTeam(prisma, {
           identity: refreshed.identity,
           userId: upstream.userId,
         })
@@ -79,22 +79,22 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     } catch (error) {
       if (
         error instanceof UoaSessionRefreshError
-        && error.safeWorkspaceSwitchFailure
+        && error.safeTeamSwitchFailure
       ) {
-        throw new UoaWorkspaceSwitchError(
+        throw new UoaTeamSwitchError(
           safeSwitchCode(error),
-          'UnlikeOtherAI refused the requested workspace switch.',
+          'UnlikeOtherAI refused the requested team switch.',
           true,
         )
       }
       throw error
     }
-    const selected = resolveExternalWorkspaceSelection(
-      refreshed.identity.workspace,
+    const selected = resolveExternalTeamSelection(
+      refreshed.identity.team,
     )
     if (!selected.organizationId || !selected.teamId) {
       throw new UoaRefreshBindingError(
-        'UnlikeOtherAI did not return the bound session workspace.',
+        'UnlikeOtherAI did not return the bound session team.',
       )
     }
     // The renewed access token carries the same verified profile claims a
@@ -114,8 +114,8 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     // UOA's `orgName` (per-UOA-org model), refreshed where the verified
     // directory arrives — never allowed to break session renewal.
     try {
-      await syncExternalOrganizationNames(prisma, refreshed.workspaceDirectory?.entries)
-      await syncExternalWorkspaceNames(prisma, refreshed.workspaceDirectory?.entries)
+      await syncExternalOrganizationNames(prisma, refreshed.teamDirectory?.entries)
+      await syncExternalTeamNames(prisma, refreshed.teamDirectory?.entries)
     } catch {
       // Intentionally ignored — see above.
     }
@@ -132,8 +132,8 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
       ),
       // The verified `org` claim travels with the rotation so the binding
       // commit can re-project UOA's roles onto the local membership rows.
-      workspace: refreshed.identity.workspace,
-      workspaceDirectory: refreshed.workspaceDirectory,
+      team: refreshed.identity.team,
+      teamDirectory: refreshed.teamDirectory,
     }
   },
   advanceUoaSessionBinding: async (
@@ -145,11 +145,11 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
   afterUoaSessionBinding: async (input: {
     nextIdentity: UoaSessionIdentity
     userId: string
-    workspaceDirectory?: UoaSessionExchange['workspaceDirectory']
+    teamDirectory?: UoaSessionExchange['teamDirectory']
   }) => syncUoaDirectoryAfterSessionCommit(prisma, input),
-  beforeUoaWorkspaceSwitch: async (input: {
+  beforeUoaTeamSwitch: async (input: {
     sourceIdentity: UoaSessionIdentity
     target: { organizationId: string; teamId: string }
     userId: string
-  }) => confirmUoaWorkspaceSwitchAccess(input),
+  }) => confirmUoaTeamSwitchAccess(input),
 })

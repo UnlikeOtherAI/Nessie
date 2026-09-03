@@ -7,7 +7,7 @@ import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
-import { releaseAgentTodosForTerminalRun } from '@nessie/workspace-admin'
+import { releaseAgentTodosForTerminalRun } from '@nessie/team-admin'
 
 export const updateTaskStatus = async (
   prisma: PrismaClient,

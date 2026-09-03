@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import {
   loadAgentToolCatalog,
   readAgentRecordForActor,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 /**
  * The two reads the Agent Designer's tools stand on, against a real database.

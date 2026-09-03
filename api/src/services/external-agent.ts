@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread, loadChannelTeamProject } from '@nessie/workspace-admin'
+import { ensureDefaultThread, loadChannelTeamProject } from '@nessie/team-admin'
 
 /**
  * External-agent conversation surface bootstrap.
@@ -42,7 +42,7 @@ export type ExternalAgentBootstrapInput = {
   product: ExternalAgentProduct
   teamId: string
   userId: string
-  workspaceId: string
+  externalTeamId: string
 }
 
 export type ExternalAgentBootstrapResult = {
@@ -156,8 +156,8 @@ export const externalAgentDmKey = (
   productSlug: string,
   organizationId: string,
   userId: string,
-  workspaceId: string,
-): string => `extagent:${productSlug}:${organizationId}:${userId}:${workspaceId}`
+  externalTeamId: string,
+): string => `extagent:${productSlug}:${organizationId}:${userId}:${externalTeamId}`
 
 const setSoleMember = async (
   prisma: PrismaClient,
@@ -181,14 +181,14 @@ export const ensureExternalAgentChannel = async (
     product: ExternalAgentProduct
     teamId: string
     userId: string
-    workspaceId: string
+    externalTeamId: string
   },
 ): Promise<string> => {
   const dmKey = externalAgentDmKey(
     input.product.slug,
     input.organizationId,
     input.userId,
-    input.workspaceId,
+    input.externalTeamId,
   )
   const legacyDmKey =
     `extagent:${input.product.slug}:${input.organizationId}:${input.userId}`
@@ -269,7 +269,7 @@ export const ensureExternalAgentBootstrap = async (
     product: input.product,
     teamId: systemTeamId,
     userId: input.userId,
-    workspaceId: input.workspaceId,
+    externalTeamId: input.externalTeamId,
   })
   const threadId = await ensureDefaultThread(prisma, channelId)
   await ensureExternalAgentBinding(prisma, { agentId, channelId })

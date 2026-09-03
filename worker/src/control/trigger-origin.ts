@@ -11,7 +11,7 @@ export type TriggerExecutionOrigin = {
   projectId?: string
   teamId?: string
   /**
-   * The creator's UOA workspace, replayed from the trigger's launch origin.
+   * The creator's UOA team, replayed from the trigger's launch origin.
    * Present only for schedules created once it started being captured.
    */
   uoaIdentity?: UoaSessionIdentity
@@ -66,7 +66,7 @@ export class TriggerLaunchOriginError extends Error {
         // anyway, since a trigger with delivery history refuses deletion.
         ? 'Sign in and reauthorize this schedule to resume it.'
         // The other reasons have no stored identity to refresh, or need the
-        // workspace itself changed, so recreating really is the remedy.
+        // team itself changed, so recreating really is the remedy.
         : 'Sign in again if needed, then recreate the schedule so it captures '
           + 'your current authenticated team and UnlikeOtherAI identity.'),
     )

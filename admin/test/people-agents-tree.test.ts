@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { WorkspaceMemberRecord } from '@nessie/schemas'
+import type { TeamMemberRecord } from '@nessie/schemas'
 import type { AgentRecord } from '../src/lib/api-client'
 import { buildPeopleAgentsTree } from '../src/components/features/members/people-agents-tree'
 
@@ -17,7 +17,7 @@ const agent = (overrides: Partial<AgentRecord> & { id: string }): AgentRecord =>
   ...overrides,
 })
 
-const member = (uoaSub: string, userId?: string): WorkspaceMemberRecord => ({
+const member = (uoaSub: string, userId?: string): TeamMemberRecord => ({
   displayName: uoaSub,
   uoaSub,
   ...(userId ? { userId } : {}),
@@ -38,7 +38,7 @@ test('each person is listed with the agents they steward', () => {
     [['sub-a', ['a1', 'a2']], ['sub-b', ['b1']]],
   )
   assert.deepEqual(tree.teamOwned, [])
-  assert.deepEqual(tree.ownedOutsideWorkspace, [])
+  assert.deepEqual(tree.ownedOutsideTeam, [])
 })
 
 test('a person with no local row renders with no agents rather than vanishing', () => {
@@ -94,7 +94,7 @@ test('an owner absent from this team roster is separated from genuinely team-own
   )
 
   assert.deepEqual(tree.people[0]?.agents.map((one) => one.id), ['mine'])
-  assert.deepEqual(tree.ownedOutsideWorkspace.map((one) => one.id), ['elsewhere'])
+  assert.deepEqual(tree.ownedOutsideTeam.map((one) => one.id), ['elsewhere'])
   assert.deepEqual(tree.teamOwned.map((one) => one.id), ['nobody'])
 })
 

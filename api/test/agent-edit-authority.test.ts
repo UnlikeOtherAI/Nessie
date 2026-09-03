@@ -10,7 +10,7 @@ import {
   canEditAgent,
   createAgentRecord,
   resolveAgentEditAuthority,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { AgentToolPolicyError } from '../src/services/agent-tool-policy.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
 import { updateAgentAvatar } from '../src/services/agent-avatars.js'
@@ -211,7 +211,7 @@ dbTest('a private agent is editable by its live owner and by nobody else', async
   })
 })
 
-dbTest('a person-owned workspace agent refuses another member and admits an org owner', async () => {
+dbTest('a person-owned team agent refuses another member and admits an org owner', async () => {
   await withDb(async (prisma) => {
     const agent = await createPersonOwnedAgent(prisma)
     await prisma.agentBinding.create({ data: { agentId: agent.id, channelId: publicChannelId } })
@@ -281,7 +281,7 @@ dbTest('a team-owned agent reachable through no visible channel is not editable'
     assert.equal(authority.canEdit, false)
     assert.equal(authority.refusal?.code, AGENT_EDIT_AUTHORITY_ERROR_CODES.NOT_ENTITLED)
 
-    // An org owner still reaches every workspace agent.
+    // An org owner still reaches every team agent.
     assert.equal(await canEditAgent(prisma, actor(orgOwnerUserId), row), true)
   })
 })

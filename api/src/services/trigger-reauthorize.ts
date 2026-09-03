@@ -6,7 +6,7 @@ import {
   normalizeNextRunAt,
   SCHEDULER_TRIGGER_TYPES,
   TRIGGER_ADMIN_AUDIENCE,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import {
   extractTriggerLaunchOrigin,
   isJsonRecord,
@@ -44,7 +44,7 @@ export type ReauthorizeTriggerErrorCode =
   | 'TRIGGER_REAUTHORIZE_FORBIDDEN'
   | 'TRIGGER_LAUNCH_ORIGIN_REQUIRED'
   | 'TRIGGER_UOA_IDENTITY_REQUIRED'
-  | 'TRIGGER_WORKSPACE_CHANGED'
+  | 'TRIGGER_TEAM_CHANGED'
   | 'TRIGGER_TARGET_UNREACHABLE'
   | 'TRIGGER_NOT_REARMABLE'
 
@@ -61,7 +61,7 @@ export const reauthorizeAgentTrigger = async (
     isOwner: boolean
     /**
      * Take ownership of somebody else's schedule, re-pointing it at the
-     * caller's own workspace. Owner-only and never implicit: re-pointing a
+     * caller's own team. Owner-only and never implicit: re-pointing a
      * schedule's team silently would move its billing attribution.
      */
     takeOver?: boolean
@@ -150,15 +150,15 @@ export const reauthorizeAgentTrigger = async (
     )
   }
 
-  // Re-stamp the epoch, never silently re-point the workspace.
+  // Re-stamp the epoch, never silently re-point the team.
   //
   // The stale part of a drifted identity is its credential epoch; the
   // organisation and team are what the schedule is attributed to and billed
   // through. Refreshing those from whoever happens to be reauthorizing would
   // move an old schedule onto a different team's account — quietly, as a side
-  // effect of clicking a repair button. So a genuine workspace change is
+  // effect of clicking a repair button. So a genuine team change is
   // refused and named, and taking a schedule over is a separate explicit act.
-  const sameWorkspace =
+  const sameTeam =
     captured.launchOrigin.organizationId === storedOrigin.organizationId
     && captured.launchOrigin.teamId === storedOrigin.teamId
   if (input.takeOver && !input.isOwner) {
@@ -178,11 +178,11 @@ export const reauthorizeAgentTrigger = async (
         403,
       )
     }
-    if (!sameWorkspace) {
+    if (!sameTeam) {
       return failure(
-        'TRIGGER_WORKSPACE_CHANGED',
-        'Your active workspace differs from the one this schedule was created in. '
-        + 'Switch back to that workspace to reauthorize it, or take it over to move it to this one.',
+        'TRIGGER_TEAM_CHANGED',
+        'Your active team differs from the one this schedule was created in. '
+        + 'Switch back to that team to reauthorize it, or take it over to move it to this one.',
         409,
       )
     }

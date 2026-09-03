@@ -21,7 +21,7 @@ import type { AgentRecord } from '../../lib/api-client'
 import { SettingsPanel } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { WorkspaceMembersSection } from './WorkspaceMembersSection'
+import { TeamMembersSection } from './TeamMembersSection'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
 import { toFormErrors } from '../../facades/form-errors'
@@ -144,7 +144,7 @@ export const SettingsMembersPage = () => {
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
   // features: UOA owns membership, and Nessie holds no list to show.
   const isUoaSession = me?.auth.providerType === 'uoa'
-  const canManageWorkspace = isOwner || roleIds.includes('admin')
+  const canManageTeam = isOwner || roleIds.includes('admin')
   const usersQuery = useUsers(isOwner && !isUoaSession)
   const users = usersQuery.data ?? []
   const createUser = useCreateUser()
@@ -188,14 +188,14 @@ export const SettingsMembersPage = () => {
   }
 
   if (isUoaSession) {
-    // The roster is entitlement-scoped the way `GET /api/workspace/members` is:
+    // The roster is entitlement-scoped the way `GET /api/team/members` is:
     // any active member reads it, and only owners and admins get the controls
     // that mutate it (role, activation, removal, invitations) — the API refuses
     // those for anyone else, so rendering them would only produce 403s.
     return (
       <SettingsPanel eyebrow="Organization" title="Members">
-        <WorkspaceMembersSection
-          canManage={canManageWorkspace}
+        <TeamMembersSection
+          canManage={canManageTeam}
           onReconnect={async () => {
             const providerId = me.auth.providerId
             if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')

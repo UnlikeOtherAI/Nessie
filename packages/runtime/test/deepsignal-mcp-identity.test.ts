@@ -230,8 +230,8 @@ test('mints exact DeepSignal delegation and fresh signed request provenance', as
   )
 })
 
-test('fails before exchange when active UOA workspace or provenance is absent', async () => {
-  const noWorkspace = {
+test('fails before exchange when active UOA team or provenance is absent', async () => {
+  const noTeam = {
     channel: linkedPrisma().channel,
     productAccountLink: {
       findUnique: async () => ({
@@ -254,12 +254,12 @@ test('fails before exchange when active UOA workspace or provenance is absent', 
     team: {
       findFirst: async () => ({
         externalOrgId: 'uoa-org',
-        externalWorkspaceId: 'uoa-team',
+        externalTeamId: 'uoa-team',
       }),
     },
   }
   const service = createDeepSignalMcpIdentityServiceFromEnv(
-    noWorkspace as never,
+    noTeam as never,
     env(),
   )
   assert.ok(service)
@@ -326,7 +326,7 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
       team: {
         findFirst: async () => ({
           externalOrgId: 'other-org',
-          externalWorkspaceId: 'other-team',
+          externalTeamId: 'other-team',
         }),
       },
       productTeamEnablement: {
@@ -440,7 +440,7 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
     legacyChannel.requestHeaders(attribution, request),
     (error: unknown) =>
       error instanceof DeepSignalMcpIdentityError
-      && error.code === 'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH',
+      && error.code === 'DEEPSIGNAL_MCP_CHANNEL_TEAM_MISMATCH',
   )
   assert.equal(exchanges, 0)
 })

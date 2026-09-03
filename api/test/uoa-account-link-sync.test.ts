@@ -6,8 +6,8 @@ import {
   syncUoaProductAccountLinks,
 } from '../src/services/integrations.js'
 import {
-  clearUoaWorkspaceDirectoryCache,
-  readUoaWorkspaceDirectory,
+  clearUoaTeamDirectoryCache,
+  readUoaTeamDirectory,
 } from '../src/services/uoa-directory-cache.js'
 
 const syncInput = {
@@ -17,7 +17,7 @@ const syncInput = {
   teamId: '00000000-0000-4000-8000-000000000002',
   uoaTokenVersion: 8,
   userId: '00000000-0000-4000-8000-000000000003',
-  workspaceDirectory: {
+  teamDirectory: {
     entries: [{
       organizationId: 'uoa-org',
       teamId: 'uoa-team',
@@ -27,7 +27,7 @@ const syncInput = {
     }],
     pendingInvites: [],
   },
-  workspace: {
+  team: {
     activeOrgId: 'uoa-org',
     activeTeamId: 'uoa-team',
     teamIds: ['uoa-team'],
@@ -79,7 +79,7 @@ test('account-link sync fails closed without the canonical Nessie product', asyn
 })
 
 test('account-link sync updates every first-party product under one transaction', async () => {
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   const persistedMetadata: Array<Record<string, unknown>> = []
   const statements: string[] = []
   const orgNameWrites: Array<{ where: unknown; data: unknown }> = []
@@ -122,13 +122,13 @@ test('account-link sync updates every first-party product under one transaction'
   assert.equal(statements.length, 2)
   // The UOA-owned directory is cached in memory, never mirrored into the link.
   for (const metadata of persistedMetadata) {
-    assert.equal('workspaceDirectory' in metadata, false)
+    assert.equal('teamDirectory' in metadata, false)
     assert.equal(metadata.provider, 'uoa')
-    assert.deepEqual(metadata.teamIds, syncInput.workspace.teamIds)
+    assert.deepEqual(metadata.teamIds, syncInput.team.teamIds)
   }
   assert.deepEqual(
-    readUoaWorkspaceDirectory(syncInput.userId),
-    syncInput.workspaceDirectory,
+    readUoaTeamDirectory(syncInput.userId),
+    syncInput.teamDirectory,
   )
   // Organization.name is a non-authoritative mirror of UOA's orgName: the
   // directory-carried name is written onto the matching externalOrgId row.
@@ -136,7 +136,7 @@ test('account-link sync updates every first-party product under one transaction'
     where: { externalOrgId: 'uoa-org', name: { not: 'Example organization' } },
     data: { name: 'Example organization' },
   }])
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   for (const statement of statements) {
     assert.match(statement, /"uoa_sub" = EXCLUDED\."uoa_sub"/)
     assert.match(
@@ -187,9 +187,9 @@ test('team enablement uses the Team tuple and preserves drifted teardown metadat
     userId: syncInput.userId,
   }), null)
   assert.match(statement, /t\."external_org_id"/)
-  assert.match(statement, /t\."external_workspace_id"/)
+  assert.match(statement, /t\."external_team_id"/)
   assert.match(statement, /t\."external_org_id" IS NOT NULL/)
-  assert.match(statement, /t\."external_workspace_id" IS NOT NULL/)
+  assert.match(statement, /t\."external_team_id" IS NOT NULL/)
   assert.match(statement, /COALESCE\([\s\S]*EXCLUDED\."external_org_id"/)
   assert.match(statement, /COALESCE\([\s\S]*EXCLUDED\."external_team_id"/)
   assert.doesNotMatch(statement, /account_link/)

@@ -7,7 +7,7 @@ import {
   getIpadContentTop,
   getIpadTopChromeLayout,
   getIpadWindowedLeadingControlsClearance,
-  getIpadWorkspaceMenuAnchorLeft,
+  getIpadTeamMenuAnchorLeft,
   IPAD_WINDOWED_CHROME_TOP,
   isIpadWindowed,
 } from './ipad-native-chrome'
@@ -37,55 +37,55 @@ test('builds iPad top chrome from the active theme colours', () => {
   assert.equal(theme.inactiveTintColor, '#64748b')
 })
 
-test('centres the complete iPad chrome group when no workspace is present', () => {
+test('centres the complete iPad chrome group when no team is present', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: false,
+    hasTeam: false,
     screenWidth: 1_024,
-  }), { controlsLeft: 202, mode: 'full', workspaceWidth: null })
+  }), { controlsLeft: 202, mode: 'full', teamWidth: null })
 })
 
-test('moves the full group trailing before compacting it to preserve the workspace switcher', () => {
+test('moves the full group trailing before compacting it to preserve the team switcher', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: true,
+    hasTeam: true,
     screenWidth: 1_024,
-  }), { controlsLeft: 244, mode: 'full', workspaceWidth: 220 })
+  }), { controlsLeft: 244, mode: 'full', teamWidth: 220 })
 })
 
-test('uses workspace flexibility before reshuffling the native controls', () => {
+test('uses team flexibility before reshuffling the native controls', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: true,
+    hasTeam: true,
     screenWidth: 780,
-  }), { controlsLeft: 94, mode: 'full', workspaceWidth: 70 })
+  }), { controlsLeft: 94, mode: 'full', teamWidth: 70 })
 })
 
-test('compacts navigation into overflow only after full controls and flexible workspace cannot fit', () => {
+test('compacts navigation into overflow only after full controls and flexible team cannot fit', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: true,
+    hasTeam: true,
     screenWidth: 768,
-  }), { controlsLeft: 242, mode: 'compact', workspaceWidth: 218 })
+  }), { controlsLeft: 242, mode: 'compact', teamWidth: 218 })
 })
 
-test('uses section icons before hiding the workspace switcher in a narrow iPad window', () => {
+test('uses section icons before hiding the team switcher in a narrow iPad window', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: true,
+    hasTeam: true,
     screenWidth: 600,
-  }), { controlsLeft: 244, mode: 'icons', workspaceWidth: 220 })
+  }), { controlsLeft: 244, mode: 'icons', teamWidth: 220 })
 })
 
 test('reserves the trailing safe-edge account control before centring or compacting navigation', () => {
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: false,
+    hasTeam: false,
     screenWidth: 600,
-  }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
+  }), { controlsLeft: 70, mode: 'compact', teamWidth: null })
 })
 
-test('keeps the workspace switcher clear of Stage Manager window controls', () => {
+test('keeps the team switcher clear of Stage Manager window controls', () => {
   assert.equal(isIpadWindowed({
     screenHeight: 1_024,
     screenWidth: 1_366,
@@ -102,10 +102,10 @@ test('keeps the workspace switcher clear of Stage Manager window controls', () =
   assert.equal(getIpadWindowedLeadingControlsClearance(true), 80)
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
-    hasWorkspace: true,
+    hasTeam: true,
     leadingReservedWidth: 80,
     screenWidth: 1_024,
-  }), { controlsLeft: 324, mode: 'full', workspaceWidth: 220 })
+  }), { controlsLeft: 324, mode: 'full', teamWidth: 220 })
 })
 
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
@@ -118,6 +118,6 @@ test('leaves twelve points between the iPad chrome and web content', () => {
   assert.equal(getIpadContentTop(IPAD_WINDOWED_CHROME_TOP), 66)
 })
 
-test('moves the iPad workspace menu anchor clear of the tablet edge', () => {
-  assert.equal(getIpadWorkspaceMenuAnchorLeft(16), 60)
+test('moves the iPad team menu anchor clear of the tablet edge', () => {
+  assert.equal(getIpadTeamMenuAnchorLeft(16), 60)
 })

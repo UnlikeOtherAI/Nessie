@@ -36,19 +36,19 @@ export type RecoveryStrategy =
 export const userMessageForFailureReason = (reason: FailoverReason): string => {
   switch (reason) {
     case 'credentials_missing':
-      return 'No API key is configured for the model provider. Ask a workspace owner to add the provider credential, then try again.'
+      return 'No API key is configured for the model provider. Ask a team owner to add the provider credential, then try again.'
     case 'credentials_scope':
-      return 'The workspace AI service credential is not permitted to use the configured model. Ask a workspace owner to update its allowed model scope, then try again.'
+      return 'The team AI service credential is not permitted to use the configured model. Ask a team owner to update its allowed model scope, then try again.'
     case 'auth_permanent':
-      return 'The model provider rejected its API key. Ask a workspace owner to update the provider credential, then try again.'
+      return 'The model provider rejected its API key. Ask a team owner to update the provider credential, then try again.'
     case 'auth':
-      return 'The model provider could not authenticate this request. Ask a workspace owner to verify the provider credential, then try again.'
+      return 'The model provider could not authenticate this request. Ask a team owner to verify the provider credential, then try again.'
     case 'rate_limit':
       return 'The model provider is rate limited. Please try again shortly.'
     case 'credits_exhausted':
       return CREDITS_EXHAUSTED_USER_MESSAGE
     case 'billing':
-      return 'The model provider reported a billing or quota problem. Ask a workspace owner to review the provider account, then try again.'
+      return 'The model provider reported a billing or quota problem. Ask a team owner to review the provider account, then try again.'
     case 'context_overflow':
       return 'This conversation is too long for the configured model. Start a new conversation or ask a shorter follow-up.'
     case 'timeout':
@@ -57,7 +57,7 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
     case 'overloaded':
       return 'The model provider is overloaded. Please try again in a few minutes.'
     case 'model_not_found':
-      return 'The configured model was not found. Ask a workspace owner to check the model configuration.'
+      return 'The configured model was not found. Ask a team owner to check the model configuration.'
     case 'content_filter':
       return 'The model provider blocked this request under its content policy. Try rephrasing it.'
     case 'private_agent_placement':
@@ -67,7 +67,7 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
     case 'format':
       return 'The model provider returned an invalid response. Please try again.'
     case 'unknown':
-      return 'I could not complete that request because the assistant service encountered an unexpected error. Please try again; if it keeps happening, ask a workspace owner to check the worker logs.'
+      return 'I could not complete that request because the assistant service encountered an unexpected error. Please try again; if it keeps happening, ask a team owner to check the worker logs.'
   }
 }
 

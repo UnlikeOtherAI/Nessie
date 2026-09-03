@@ -6,7 +6,7 @@ import {
   ensureDefaultThread,
   loadChannelTeamProject,
   mergeGenericAgentToolPolicy,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { reconcilePersonalAssistantDefaultToolGrants } from './personal-assistant-default-tool-grants.js'
 

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { dispatchClaimedDraft } from '@nessie/workspace-admin'
+import { dispatchClaimedDraft } from '@nessie/team-admin'
 
 /**
  * Dispatch email whose undo window has elapsed.

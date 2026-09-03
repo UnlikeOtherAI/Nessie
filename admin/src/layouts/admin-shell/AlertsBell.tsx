@@ -13,7 +13,7 @@ import {
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../../facades/alerts/hooks'
-import { useAcceptWorkspaceInvitation } from '../../facades/workspace/invitations'
+import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 
 const DROPDOWN_ALERT_COUNT = 8
 
@@ -39,7 +39,7 @@ export const AlertsBell = () => {
   const { data } = useAlerts({ limit: DROPDOWN_ALERT_COUNT })
   const summary = useAttentionSummary()
   const markRead = useMarkAlertsRead()
-  const acceptInvitation = useAcceptWorkspaceInvitation()
+  const acceptInvitation = useAcceptTeamInvitation()
   useAlertEvents()
 
   const alerts = data ?? []

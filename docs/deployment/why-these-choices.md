@@ -16,9 +16,9 @@ Chapter of [deployment.md](../deployment.md). The dedicated pgvector Postgres, o
 - **Nessie has no Redis dependency.** Its job queue and realtime transport are
   Postgres-backed (`PgQueueProvider` / `PgRealtimeTransport`). Infisical has a
   separate private Redis sidecar for its own sessions and background work.
-- **One backend image for API + worker.** The workspace is tightly interlinked
+- **One backend image for API + worker.** The team is tightly interlinked
   (`@nessie/api` depends on `@nessie/worker`, both need the Prisma client). A
-  single full-workspace image (`Dockerfile.app`) builds everything once; the
+  single full-team image (`Dockerfile.app`) builds everything once; the
   worker container overrides the command to `node worker/dist/index.js`.
 - **Admin is built static, and the two origins are not interchangeable.**
   `Dockerfile.admin` bakes `VITE_API_BASE_URL=https://api.nessie.works` into the
@@ -69,7 +69,7 @@ create a **second project** and an identity scoped to it alone — never reuse
 the Nessie Secrets project or its token. Using the instance admin identity
 stored at `/srv/nessie-secrets/infisical-bootstrap.json`:
 
-1. `POST /api/v2/workspace` — `{"projectName":"Nessie Subscriptions",
+1. `POST /api/v2/team` — `{"projectName":"Nessie Subscriptions",
    "slug":"nessie-subscriptions","type":"secret-manager"}`. New projects come
    with `dev`/`staging`/`prod` environments; `prod` is what the default
    `NESSIE_SUBSCRIPTION_VAULT_ENVIRONMENT` expects.
@@ -79,7 +79,7 @@ stored at `/srv/nessie-secrets/infisical-bootstrap.json`:
    `accessTokenTTL: 0` / `accessTokenMaxTTL: 0` — the vault client holds a
    static bearer and has no refresh path, so an expiring token would silently
    break every subscription-routed run once it lapsed.
-4. `POST /api/v2/workspace/{projectId}/identity-memberships/{identityId}` with
+4. `POST /api/v2/team/{projectId}/identity-memberships/{identityId}` with
    role `admin` — project-scoped, so it grants nothing outside this project.
 5. `POST /api/v1/auth/token-auth/identities/{id}/tokens` mints the bearer.
    Production keeps it at `/srv/nessie-secrets/infisical-subscriptions-token`
@@ -121,10 +121,10 @@ project, `prod` environment, and the dedicated project-only API machine identity
 described above. Record the project's ID in
 `INFISICAL_PROJECT_ID`. Nessie derives every child path as
 `/nessie/<organizationId>/<scopeType>/<scopeId>` from structural IDs only;
-personal, team, project, and workspace secrets therefore cannot collide on a
+personal, team, project, and team secrets therefore cannot collide on a
 display name. The stored vault reference records that exact path plus a
 server-generated opaque secret name. On the first write, Nessie creates the
 four namespace folders (`nessie`, organization, scope type, and scope ID) in
 order; concurrent creation conflicts are safe to retry. Do not use tenant,
-workspace, project, or person names in Infisical paths, and never log or return
+team, project, or person names in Infisical paths, and never log or return
 vault values.

@@ -39,8 +39,8 @@ type AlertRowProps = {
 
 const describeAlert = (alert: UserAlertRecord): string => {
   const actor = alert.actorDisplayName ?? 'Someone'
-  if (alert.kind === 'workspace_invitation') {
-    if (!alert.metadata) return 'Workspace invitation'
+  if (alert.kind === 'team_invitation') {
+    if (!alert.metadata) return 'Team invitation'
     return alert.metadata.invitedBy
       ? `${alert.metadata.invitedBy} invited you to ${alert.metadata.teamName}`
       : alert.metadata.teamName
@@ -71,7 +71,7 @@ export const AlertRow = ({
   onOpen,
 }: AlertRowProps) => {
   const unread = alert.readAt === null
-  const invite = alert.kind === 'workspace_invitation' ? alert.metadata : null
+  const invite = alert.kind === 'team_invitation' ? alert.metadata : null
   const description = describeAlert(alert)
 
   return (

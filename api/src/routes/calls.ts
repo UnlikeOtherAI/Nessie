@@ -8,7 +8,7 @@ import {
   startCallForUser,
   CallStartError,
   verifyCallActionToken,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 import { CallRecordSchema, EmptyBodySchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'

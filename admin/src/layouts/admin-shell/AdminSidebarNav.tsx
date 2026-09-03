@@ -16,8 +16,8 @@ export type AdminNavViewer = {
   isOwner: boolean;
   isSuperAdmin: boolean;
   /**
-   * An UnlikeOtherAI session: UOA owns membership, and the workspace roster
-   * (`GET /api/workspace/members`) is entitlement-scoped to any active member
+   * An UnlikeOtherAI session: UOA owns membership, and the team roster
+   * (`GET /api/team/members`) is entitlement-scoped to any active member
    * rather than to owners.
    */
   isUoaSession: boolean;

@@ -44,8 +44,8 @@ const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unatt
   'api/src/services/runs.ts': 'stamps',
   'api/src/services/trigger-dispatch.ts': 'unattended',
   'packages/db/src/thread-serialization.ts': 'inherits',
-  'packages/workspace-admin/src/agent-todo-run.ts': 'unattended',
-  'packages/workspace-admin/src/global-agent-brief.ts': 'stamps',
+  'packages/team-admin/src/agent-todo-run.ts': 'unattended',
+  'packages/team-admin/src/global-agent-brief.ts': 'stamps',
   'worker/src/control/agent-email/inbound.ts': 'unattended',
   'worker/src/control/mailbox.ts': 'unattended',
   'worker/src/control/trigger-run.ts': 'unattended',
@@ -58,7 +58,7 @@ const SEARCH_ROOTS = [
   'api/src',
   'worker/src',
   'packages/db/src',
-  'packages/workspace-admin/src',
+  'packages/team-admin/src',
 ]
 
 const walk = (dir: string): string[] => {

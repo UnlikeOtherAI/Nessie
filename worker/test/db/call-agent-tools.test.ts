@@ -98,43 +98,43 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   }
 }
 
-const cleanup = async (prisma: PrismaClient, workspace: Seed): Promise<void> => {
+const cleanup = async (prisma: PrismaClient, team: Seed): Promise<void> => {
   await prisma.$executeRaw(Prisma.sql`
     DELETE FROM queue_jobs
     WHERE payload->>'callId' IN (
-      SELECT id::text FROM calls WHERE channel_id = ${workspace.targetChannelId}::uuid
+      SELECT id::text FROM calls WHERE channel_id = ${team.targetChannelId}::uuid
     )
   `)
   await prisma.organization.deleteMany({
-    where: { id: { in: [workspace.homeOrganizationId, workspace.targetOrganizationId] } },
+    where: { id: { in: [team.homeOrganizationId, team.targetOrganizationId] } },
   })
-  await prisma.agent.delete({ where: { id: workspace.agentId } })
-  await prisma.user.deleteMany({ where: { id: { in: [workspace.callerId, workspace.inviteeId] } } })
+  await prisma.agent.delete({ where: { id: team.agentId } })
+  await prisma.user.deleteMany({ where: { id: { in: [team.callerId, team.inviteeId] } } })
 }
 
 const contextFor = (
   prisma: PrismaClient,
-  workspace: Seed,
+  team: Seed,
   unattended = false,
 ): { context: BuiltinToolRuntimeContext; publications: string[] } => {
   const actor = unattended
-    ? { actorId: workspace.agentId, actorType: 'agent' as const, roles: ['system'] }
-    : { actorId: workspace.callerId, actorType: 'user' as const, roles: ['member'] }
+    ? { actorId: team.agentId, actorType: 'agent' as const, roles: ['system'] }
+    : { actorId: team.callerId, actorType: 'user' as const, roles: ['member'] }
   const publications: string[] = []
   return {
     context: {
-      agentId: workspace.agentId,
+      agentId: team.agentId,
       agentKind: 'personal_assistant',
       actorContext: {
-        actionContext: { requestId: `call-agent-tools-${randomUUID()}`, teamId: workspace.homeTeamId },
+        actionContext: { requestId: `call-agent-tools-${randomUUID()}`, teamId: team.homeTeamId },
         actor,
         tenant: {
-          organizationId: workspace.homeOrganizationId,
-          projectId: workspace.homeProjectId,
-          teamId: workspace.homeTeamId,
+          organizationId: team.homeOrganizationId,
+          projectId: team.homeProjectId,
+          teamId: team.homeTeamId,
         },
       },
-      channel: { id: workspace.homeChannelId, organizationId: workspace.homeOrganizationId },
+      channel: { id: team.homeChannelId, organizationId: team.homeOrganizationId },
       ledgerIdentity: null,
       prisma,
       realtimeTransport: {
@@ -151,21 +151,21 @@ const contextFor = (
 
 runDatabaseTest('PA call tools use the target channel tenant, honour a provider override, and attribute the call to the PA', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
-  const { context, publications } = contextFor(prisma, workspace)
-  assert.notEqual(workspace.homeOrganizationId, workspace.targetOrganizationId)
-  const link = await runMeetingLinkCreateTool(context, { teamId: workspace.homeTeamId })
+  const { context, publications } = contextFor(prisma, team)
+  assert.notEqual(team.homeOrganizationId, team.targetOrganizationId)
+  const link = await runMeetingLinkCreateTool(context, { teamId: team.homeTeamId })
   const linkOutput = JSON.parse(link.outputPreview) as { meetingUri: string; provider: string }
   assert.equal(linkOutput.provider, 'jitsi')
   assert.match(linkOutput.meetingUri, /^https:\/\/meet\.jit\.si\/nessie-/)
 
   const started = await executeBuiltinTool('call_start', {
-    channelId: workspace.targetChannelId,
+    channelId: team.targetChannelId,
     provider: 'jitsi',
   }, context)
 
@@ -181,8 +181,8 @@ runDatabaseTest('PA call tools use the target channel tenant, honour a provider 
   assert.match(output.meetingUri, /^https:\/\/meet\.jit\.si\/nessie-/)
 
   const call = await prisma.call.findUniqueOrThrow({ where: { id: output.callId } })
-  assert.equal(call.channelId, workspace.targetChannelId)
-  assert.equal(call.createdViaAgentId, workspace.agentId)
+  assert.equal(call.channelId, team.targetChannelId)
+  assert.equal(call.createdViaAgentId, team.agentId)
   assert.equal(call.provider, 'jitsi')
   assert.equal(await prisma.callInvite.count({ where: { callId: call.id, state: 'ringing' } }), 1)
   assert.deepEqual(publications.sort(), ['call.incoming', 'call.updated'])
@@ -190,14 +190,14 @@ runDatabaseTest('PA call tools use the target channel tenant, honour a provider 
 
 runDatabaseTest('call tools refuse an unattended PA run before minting a link', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
   await assert.rejects(
-    runMeetingLinkCreateTool(contextFor(prisma, workspace, true).context, { teamId: workspace.homeTeamId }),
+    runMeetingLinkCreateTool(contextFor(prisma, team, true).context, { teamId: team.homeTeamId }),
     /only create or start a call when a person asks me directly/,
   )
 })

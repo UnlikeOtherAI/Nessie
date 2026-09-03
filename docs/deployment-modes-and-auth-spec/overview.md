@@ -71,7 +71,7 @@ Do not abstract prematurely:
 
 - [Objective, deployment modes, architecture rule](#1-objective)
 - [Authentication](authentication.md) — auth modes, bootstrap, session/JWT
-  contract, refresh families, UOA renewal/workspace switching, profile mirror,
+  contract, refresh families, UOA renewal/team switching, profile mirror,
   rosters and invitations, middleware.
 - [Local deployment and baselines](local-deployment.md) — local/docker
   startup, launcher, persistence, recommended self-hosted baselines.

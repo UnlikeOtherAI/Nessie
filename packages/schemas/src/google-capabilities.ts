@@ -30,7 +30,7 @@ export type GoogleCapabilityId = z.infer<typeof GoogleCapabilityIdSchema>
 /**
  * Google's own verification tiers. `restricted` scopes require a CASA security
  * assessment for a public OAuth client; the internal-use exception applies only
- * when every user belongs to the same Workspace/Cloud Identity organization,
+ * when every user belongs to the same Team/Cloud Identity organization,
  * the Cloud project is owned by that organization, AND the consent screen is
  * Internal — not merely because the deployment is self-hosted.
  */

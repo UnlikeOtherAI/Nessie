@@ -3,7 +3,7 @@ import {
   CallLinkError,
   CallLinkProviderSchema,
   createCallLinkForTeamUser,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput } from '../lib/api.js'

@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { DeepSignalSignalKind } from '@nessie/schemas'
 
-import { ensureDefaultThread } from '@nessie/workspace-admin'
+import { ensureDefaultThread } from '@nessie/team-admin'
 import {
   deliverInsightToDigest,
   type DigestDeliveryMode,
@@ -110,7 +110,7 @@ const resolveEnabledExternalTeam = async (
       team: {
         select: {
           externalOrgId: true,
-          externalWorkspaceId: true,
+          externalTeamId: true,
         },
       },
     },
@@ -120,7 +120,7 @@ const resolveEnabledExternalTeam = async (
     || !enablement.externalTeamId
     || enablement.externalTeamId !== externalTeamId
     || enablement.team.externalOrgId !== enablement.externalOrgId
-    || enablement.team.externalWorkspaceId !== enablement.externalTeamId
+    || enablement.team.externalTeamId !== enablement.externalTeamId
   ) {
     return null
   }
@@ -195,8 +195,8 @@ const deliverToUser = async (
 
 /**
  * Handle one verified `insight.surfaced` event for a resolved org. Resolves
- * the payload's external team through an exact enabled Nessie/UOA workspace,
- * selects only linked active members of that workspace (narrowed by payload UOA
+ * the payload's external team through an exact enabled Nessie/UOA team,
+ * selects only linked active members of that team (narrowed by payload UOA
  * subs when present), and folds the insight into each recipient's rolling
  * digest, coalesced + budgeted. Returns the insight id + what was delivered.
  */

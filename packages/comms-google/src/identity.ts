@@ -27,7 +27,7 @@ export type GoogleAccountIdentity = {
   accountId: string
   /** The account's email address; human-readable and the natural key today. */
   email: string
-  /** Workspace hosted domain when present; absent for consumer accounts. */
+  /** Team hosted domain when present; absent for consumer accounts. */
   hostedDomain?: string
 }
 

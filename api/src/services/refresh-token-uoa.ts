@@ -9,10 +9,10 @@ import {
   type UoaSessionIdentity,
 } from '@nessie/schemas'
 
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import type { ExternalAuthTeam } from './identity-display.js'
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import type { RefreshTokenRecord } from './refresh-token-family.js'
-import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
+import type { UoaTeamDirectory } from './uoa-team-directory.js'
 
 export type UoaCredentialRecord = {
   familyId: string
@@ -40,8 +40,8 @@ export type RotatedUoaCredential = {
   refreshTokenHash: string
   // The refreshed token's verified `org` claim, carried through to the local
   // role projection in `uoa-session-context.ts`.
-  workspace?: ExternalAuthWorkspace
-  workspaceDirectory?: UoaWorkspaceDirectory
+  team?: ExternalAuthTeam
+  teamDirectory?: UoaTeamDirectory
 }
 
 export class UoaRefreshBindingError extends Error {
@@ -166,25 +166,25 @@ export const validateUoaRefresh = (input: {
   refreshToken: string
   refreshTokenExpiresAt: Date
   targetIdentity?: Pick<UoaSessionIdentity, 'organizationId' | 'teamId'>
-  workspace?: ExternalAuthWorkspace
-  workspaceDirectory?: UoaWorkspaceDirectory
+  team?: ExternalAuthTeam
+  teamDirectory?: UoaTeamDirectory
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
   // Same subject, non-regressing epoch: strictly enforced, because those two
   // checks are what prove this credential still belongs to the same person.
-  // A drifted workspace on an ordinary refresh is adopted rather than refused
+  // A drifted team on an ordinary refresh is adopted rather than refused
   // (see `refreshUoaSession`); `targetIdentity` is present only for an explicit
-  // workspace switch, where the requested tuple must match exactly.
-  const expectedWorkspace = input.targetIdentity
+  // team switch, where the requested tuple must match exactly.
+  const expectedTeam = input.targetIdentity
   if (
     !parsedIdentity.success
     || parsedIdentity.data.tokenVersion === null
     || parsedIdentity.data.subject !== input.expectedIdentity.subject
     || (
-      expectedWorkspace
+      expectedTeam
       && (
-        parsedIdentity.data.organizationId !== expectedWorkspace.organizationId
-        || parsedIdentity.data.teamId !== expectedWorkspace.teamId
+        parsedIdentity.data.organizationId !== expectedTeam.organizationId
+        || parsedIdentity.data.teamId !== expectedTeam.teamId
       )
     )
     || input.expectedIdentity.tokenVersion === null
@@ -210,9 +210,9 @@ export const validateUoaRefresh = (input: {
     identity: parsedIdentity.data,
     refreshTokenExpiresAt: input.refreshTokenExpiresAt,
     refreshTokenHash: nextRefreshTokenHash,
-    ...(input.workspace ? { workspace: input.workspace } : {}),
-    ...(input.workspaceDirectory
-      ? { workspaceDirectory: input.workspaceDirectory }
+    ...(input.team ? { team: input.team } : {}),
+    ...(input.teamDirectory
+      ? { teamDirectory: input.teamDirectory }
       : {}),
   }
 }

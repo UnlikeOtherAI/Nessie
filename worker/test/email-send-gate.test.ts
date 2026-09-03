@@ -65,7 +65,7 @@ const makeContext = (overrides: Partial<RunContext> = {}): RunContext =>
       model: 'gpt-4o',
       systemPrompt: null,
       runLimits: null,
-      visibility: 'workspace',
+      visibility: 'team',
     },
     boundAgentIds: [AGENT],
     channel: {
@@ -150,7 +150,7 @@ test('a privileged source read beyond the mailbox forces approval even under aut
   assert.deepEqual(
     decision.externalSources.map((scope) => `${scope.scopeType}:${scope.scopeId}`),
     ['user:space-private'],
-    'the approver is told exactly what would leave the workspace',
+    'the approver is told exactly what would leave the team',
   )
 })
 

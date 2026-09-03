@@ -3,7 +3,7 @@ import {
   channelTeamInclude,
   isDmAddressableSystemAgent,
   mapChannelRecord,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { ChannelRecord } from '@nessie/schemas'
 
 import { openGlobalAgentHome } from './global-agent-home.js'

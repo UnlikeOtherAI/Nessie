@@ -72,7 +72,7 @@ export const createCodexConnector = (
       model,
       ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
       // The backend must not retain this conversation: the transcript is
-      // Nessie's, and a stored copy would put a workspace's content in a
+      // Nessie's, and a stored copy would put a team's content in a
       // person's ChatGPT history where its disclosure rules do not reach.
       store: false,
       stream,

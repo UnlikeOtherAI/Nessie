@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/client'
 import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
-import { isAgentAccessibleToActor } from '@nessie/workspace-admin'
+import { isAgentAccessibleToActor } from '@nessie/team-admin'
 import type { AssignableUser, TaskRecord } from '../contracts.js'
 import { mapTask, taskInclude } from './task-records.js'
 import { isValidTransition } from './task-status.js'

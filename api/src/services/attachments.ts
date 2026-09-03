@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { isAgentVisibleToUser } from '@nessie/workspace-admin'
+import { isAgentVisibleToUser } from '@nessie/team-admin'
 
 type AttachmentAccessRow = {
   id: string

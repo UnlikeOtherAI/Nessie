@@ -27,7 +27,7 @@ type CloudBrowserPanelProps = {
 const HEALTH_COPY: Record<string, string> = {
   auth_failed: 'Browserbase rejected the stored key. Replace it to start browsing again.',
   unreachable: 'Browserbase could not be reached the last time an agent tried.',
-  disabled_by_owner: 'Switched off for this workspace.',
+  disabled_by_owner: 'Switched off for this team.',
 }
 
 const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empty: string }> = {

@@ -21,7 +21,7 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 type FileNodeViewerProps = {
   canWrite: boolean
   page: KnowledgePageRecord
-  // On a phone the workspace owns the doorway through the local-back
+  // On a phone the team owns the doorway through the local-back
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
   onOpenHistory: () => void

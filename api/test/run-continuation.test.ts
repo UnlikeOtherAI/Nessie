@@ -38,7 +38,7 @@ const actorFor = (seed: Seed): AuthorizedActionContext => ({
   },
 })
 
-const seedWorkspace = async (
+const seedTeam = async (
   prisma: PrismaClient,
   visibility: 'private' | 'public' = 'public',
 ): Promise<Seed> => {
@@ -153,7 +153,7 @@ const createStoppedRun = async (
 
 runDatabaseTest('continue: a checkpointed run enqueues a linked continuation run', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -200,7 +200,7 @@ runDatabaseTest('continue: a checkpointed run enqueues a linked continuation run
 
 runDatabaseTest('continue: an already-consumed checkpoint is rejected', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -219,7 +219,7 @@ runDatabaseTest('continue: an already-consumed checkpoint is rejected', async (t
 
 runDatabaseTest('continue: concurrent continues produce exactly one winner', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -253,7 +253,7 @@ runDatabaseTest('continue: concurrent continues produce exactly one winner', asy
 
 runDatabaseTest('continue: another active run on the thread rejects with busy', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -279,7 +279,7 @@ runDatabaseTest('continue: another active run on the thread rejects with busy', 
 
 runDatabaseTest('continue: a terminal run without a checkpoint is not continuable', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -299,7 +299,7 @@ runDatabaseTest('continue: a terminal run without a checkpoint is not continuabl
 
 runDatabaseTest('continue: a still-running run is not continuable', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -319,7 +319,7 @@ runDatabaseTest('continue: a still-running run is not continuable', async (t) =>
 
 runDatabaseTest('continue: a DeepWater handoff run is rejected before any claim', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -340,7 +340,7 @@ runDatabaseTest('continue: a DeepWater handoff run is rejected before any claim'
 
 runDatabaseTest('continue: a run in another org is not found', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -356,7 +356,7 @@ runDatabaseTest('continue: a run in another org is not found', async (t) => {
 
 runDatabaseTest('continue: a private channel the caller cannot reach is not found', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma, 'private')
+  const seed = await seedTeam(prisma, 'private')
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -382,7 +382,7 @@ runDatabaseTest('continue: a private channel the caller cannot reach is not foun
 
 runDatabaseTest('active runs: recently-ended runs project their unconsumed checkpoint id', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

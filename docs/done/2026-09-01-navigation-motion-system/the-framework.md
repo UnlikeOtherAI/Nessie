@@ -521,7 +521,7 @@ Rules:
   the root redirect, as the native pending push path is.
 - **Every other route-changing effect goes through the controller**: the
   large-phone-landscape rotation redirect in `PhoneNavigationProvider`, the
-  workspace switch and logout (both reset the ledger and any seeded stack,
+  team switch and logout (both reset the ledger and any seeded stack,
   and say so), the auth completion landing (a cold start into a Detail is
   seeded like any other), and the invite alerts' accept action from the bell
   popover.

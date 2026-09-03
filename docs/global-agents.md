@@ -20,7 +20,7 @@ to build. The decision is `docs/plans/2026-08-30-agent-scopes-personal-team-glob
 open question 1, resolved as recommended there.
 
 **The agent-side refusal is not `systemManaged`.**
-`isChannelBindableAgent` (`@nessie/workspace-admin` `agent-record.ts`) refuses
+`isChannelBindableAgent` (`@nessie/team-admin` `agent-record.ts`) refuses
 exactly two agents, each for its own reason:
 
 - the **Personal Assistant**, whose presence is a per-user
@@ -116,11 +116,11 @@ organisation's choice.
 ## The Designer's toolset
 
 The toolset is the blueprint's `identityToolIds`: the five Personal Assistant
-provisioning verbs, the three workspace-structure verbs below, plus
+provisioning verbs, the three team-structure verbs below, plus
 `agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update` —
 `personalAssistantOnly` builtins whose handlers live in
 `worker/src/run/pa-tools/agent-config.ts` over shared
-`@nessie/workspace-admin` functions.
+`@nessie/team-admin` functions.
 
 Five of them additionally carry **`identityDelegatedOnly`**: `agent_create`,
 `agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update`.
@@ -135,7 +135,7 @@ rather than offered and then denied.
   and the detail read cannot disagree) and answers a `systemManaged` target with
   a **config-only** projection.
 - `updateAgentRecord` / `updateAgentAvatar` moved to `agent-update.ts` in
-  `@nessie/workspace-admin` because the worker cannot import
+  `@nessie/team-admin` because the worker cannot import
   `api/src/services/*`, so chat inherits the one `canEditAgent` the PUT route
   uses rather than a second copy of it.
 - `loadAgentToolCatalog` is a **member-safe** projection (`GET /api/mcp/tools`
@@ -177,7 +177,7 @@ check stays the one path a channel is attached through, and creating a team is
 an owner's visible act rather than a hidden side effect of asking for a channel.
 `project_create`'s own output says so, so the model does not have to infer it.
 
-Shared implementations live in `@nessie/workspace-admin`
+Shared implementations live in `@nessie/team-admin`
 `project-structure.ts` — `createProjectForUser`, `createTeamForUser`,
 `listProjectsForUser`, `listTeamsForOrganization`, `listAccessibleProjectIds`,
 `isProjectAccessibleToUser`, and the `defaultColumnCreateData` board seeding
@@ -242,7 +242,7 @@ actor context, so an unstamped original stayed unstamped through the resume.
 
 ## The capability catalogue is generated, never written
 
-`buildGlobalAgentCatalogueBlock` (`@nessie/workspace-admin`) renders parameters
+`buildGlobalAgentCatalogueBlock` (`@nessie/team-admin`) renders parameters
 from the contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS`
 plus the organisation's live registry rows, and models from the same catalogue
 the model picker reads. Hand-written parameter or tool prose is forbidden: a new
@@ -275,7 +275,7 @@ The origin doorway renders as `AgentHandoffDoorway`.
 
 ## One delivery, two callers
 
-`deliverGlobalAgentBrief` (`@nessie/workspace-admin`) is the only way a briefing
+`deliverGlobalAgentBrief` (`@nessie/team-admin`) is the only way a briefing
 reaches a global agent's home DM, and every property that makes it safe is a
 property of the delivery: a hidden `system` message (never a `role: 'user'` row
 written under the person's id, the integration-handoff mistake),
@@ -301,7 +301,7 @@ is gone.
 
 - The service reads `loadAgentToolCatalog` itself. `availableTools` was removed
   from `DesignerChatBodySchema`: the browser must not be the source of what this
-  workspace has, and while it was, the two faces could enumerate different
+  team has, and while it was, the two faces could enumerate different
   tools.
 - `web_search` is the Ledger Serper route — `runWebSearch`, moved into
   `@nessie/runtime` so both processes call one implementation, with
@@ -362,7 +362,7 @@ already owns one home DM per person, so addressing it **resolves** to that
 channel.
 
 - **One predicate, both sides.** `isDmAddressableSystemAgent`
-  (`@nessie/workspace-admin`) is true for the Personal Assistant and for any
+  (`@nessie/team-admin`) is true for the Personal Assistant and for any
   global agent whose blueprint homes it `per_user_dm`. `mapAgentRecord` emits it
   as `AgentRecord.dmAddressable` — present only when true — and the picker
   (`admin/src/lib/channel-compose-recipients.ts`) offers exactly the rows

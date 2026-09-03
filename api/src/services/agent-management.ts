@@ -21,7 +21,7 @@ import {
   updateAgentRecord,
   validateAgentCreateInput,
   type AgentEditActor,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import type { AgentRecord } from '../contracts.js'
 

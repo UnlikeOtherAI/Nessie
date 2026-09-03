@@ -115,7 +115,7 @@ export const linkedPrisma = (
   team: {
     findFirst: async () => ({
       externalOrgId: 'uoa-org',
-      externalWorkspaceId: 'uoa-team',
+      externalTeamId: 'uoa-team',
     }),
   },
 })

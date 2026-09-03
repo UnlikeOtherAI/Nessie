@@ -44,7 +44,7 @@ export type NativeShellMessage = {
   userName?: string
   userPresence?: 'away' | 'offline' | 'online'
   userStatusEmoji?: string
-  workspaceAvatarUrl?: string
+  teamAvatarUrl?: string
 }
 
 const SCREEN_SECTIONS: ReadonlySet<string> = new Set<ScreenSection>([

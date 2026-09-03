@@ -34,7 +34,7 @@ type Seed = {
   organizationId: string
   ownerUserId: string
   otherUserId: string
-  workspaceAgentId: string
+  teamAgentId: string
   privateAgentId: string
   threadId: string
   runId: string
@@ -71,7 +71,7 @@ const seed = async (prisma: PrismaClient, label: string): Promise<Seed> => {
     },
   })
   const thread = await prisma.thread.create({ data: { channelId: channel.id, title: 'general' } })
-  const workspaceAgent = await prisma.agent.create({
+  const teamAgent = await prisma.agent.create({
     data: {
       name: `ws-${suffix}`,
       organizationId: organization.id,
@@ -90,17 +90,17 @@ const seed = async (prisma: PrismaClient, label: string): Promise<Seed> => {
     },
   })
   const run = await prisma.run.create({
-    data: { agentId: workspaceAgent.id, threadId: thread.id },
+    data: { agentId: teamAgent.id, threadId: thread.id },
   })
   const secondRun = await prisma.run.create({
-    data: { agentId: workspaceAgent.id, threadId: thread.id },
+    data: { agentId: teamAgent.id, threadId: thread.id },
   })
 
   return {
     organizationId: organization.id,
     ownerUserId: owner.id,
     otherUserId: other.id,
-    workspaceAgentId: workspaceAgent.id,
+    teamAgentId: teamAgent.id,
     privateAgentId: privateAgent.id,
     threadId: thread.id,
     runId: run.id,
@@ -148,9 +148,9 @@ const connect = (
   },
 })
 
-runDatabaseTest('a workspace agent’s browser refuses to live on a personal account', async () => {
+runDatabaseTest('a team agent’s browser refuses to live on a personal account', async () => {
   const prisma = new PrismaClient()
-  const s = await seed(prisma, 'durable workspace')
+  const s = await seed(prisma, 'durable team')
   try {
     // Only a personal connection exists.
     await connect(prisma, {
@@ -162,7 +162,7 @@ runDatabaseTest('a workspace agent’s browser refuses to live on a personal acc
     await assert.rejects(
       resolveDurableBrowserConnection(prisma, {
         organizationId: s.organizationId,
-        agentVisibility: 'workspace',
+        agentVisibility: 'team',
         agentOwnerUserId: s.ownerUserId,
       }),
       // Its state would otherwise be reachable through runs the account's
@@ -211,14 +211,14 @@ runDatabaseTest('an agent gets one browser, reused across runs', async () => {
 
     const first = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     const second = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
 
@@ -232,7 +232,7 @@ runDatabaseTest('an agent gets one browser, reused across runs', async () => {
     const other = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
       agentId: s.privateAgentId,
-      agentVisibility: 'workspace',
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     assert.notEqual(other.browserbaseContextId, first.browserbaseContextId)
@@ -251,8 +251,8 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     const browser = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     const attach = {
@@ -266,7 +266,7 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
       agentBrowser: attach,
     })
@@ -277,7 +277,7 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
         organizationId: s.organizationId,
         runId: s.secondRunId,
         threadId: s.threadId,
-        agentId: s.workspaceAgentId,
+        agentId: s.teamAgentId,
         requestedByUserId: s.ownerUserId,
         agentBrowser: attach,
       }),
@@ -306,8 +306,8 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     const browser = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     await recordAgentBrowserLogin(prisma, {
@@ -321,7 +321,7 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
       agentBrowser: {
         id: browser.id,
@@ -354,8 +354,8 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     const browser = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     await recordAgentBrowserLogin(prisma, {
@@ -390,8 +390,8 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
     // The next open gets a fresh browser rather than the retired one.
     const fresh = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     assert.notEqual(fresh.id, browser.id)
@@ -415,15 +415,15 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     const browser = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.workspaceAgentId,
-      agentVisibility: 'workspace',
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
       agentOwnerUserId: null,
     })
     await openCloudBrowserSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
       agentBrowser: {
         id: browser.id,
@@ -460,7 +460,7 @@ runDatabaseTest('handing back the controls marks the session authenticated', asy
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
     })
     const before = await prisma.cloudBrowserSession.findUnique({
@@ -509,7 +509,7 @@ runDatabaseTest('only the holder can hand the controls back', async () => {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
     })
     await claimSessionControl(prisma, {
@@ -608,7 +608,7 @@ runDatabaseTest('a session already being released cannot be claimed again', asyn
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.workspaceAgentId,
+      agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
     })
 
@@ -662,7 +662,7 @@ runDatabaseTest('a session whose remote stop failed is retried, not abandoned', 
         connectionId: connection.id,
         runId: s.runId,
         threadId: s.threadId,
-        agentId: s.workspaceAgentId,
+        agentId: s.teamAgentId,
         browserbaseSessionId: 'bb-unknown',
         status: 'unknown',
         expiresAt: new Date(Date.now() - 60_000),

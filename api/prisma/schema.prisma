@@ -38,7 +38,7 @@ enum AgentDelegationMode {
 }
 
 enum AgentVisibility {
-  workspace
+  team
   private
 }
 
@@ -670,7 +670,7 @@ enum SecretScopeType {
   personal
   team
   project
-  workspace
+  organization
 }
 
 enum SecretStatus {
@@ -691,7 +691,7 @@ enum SecretPrincipalType {
   agent
   team
   project
-  workspace
+  organization
 }
 
 // ─── App Store (store dimension over the same catalogue) ───
@@ -944,7 +944,7 @@ model User {
   // NON-AUTHORITATIVE MIRROR of the identity provider's profile. UOA owns the
   // profile of every SSO principal; these columns exist only so a name and a
   // picture can be rendered without a round trip per row, and they are re-synced
-  // from the provider's verified claims at login, workspace switch, and session
+  // from the provider's verified claims at login, team switch, and session
   // refresh (`api/src/services/uoa-profile-mirror.ts`). Nothing manufactures a
   // value: a row the provider has not named carries its email address until it
   // does. Dropping the columns for UOA deployments is Phase 3's later step (see
@@ -1001,7 +1001,7 @@ model User {
   feedback                            Feedback[]
   refreshTokens                       RefreshToken[]
   uoaSessionCredentials               UoaSessionCredential[]
-  uoaWorkspaceSwitchIntents           UoaWorkspaceSwitchIntent[]
+  uoaTeamSwitchIntents           UoaTeamSwitchIntent[]
   productAccountLinks                 ProductAccountLink[]
   productTeamEnablements              ProductTeamEnablement[]
   productIntegrationRuns              ProductIntegrationRun[]
@@ -1027,7 +1027,7 @@ model User {
 }
 
 // A single server-side generation orders device-token ownership handoffs across
-// every account and workspace. It is deliberately not tied to an individual
+// every account and team. It is deliberately not tied to an individual
 // user: an old session for a former user must never reclaim a shared device.
 model PushRegistrationGeneration {
   id    Int    @id
@@ -1092,18 +1092,18 @@ model UoaSessionCredential {
   updatedAt              DateTime                  @updatedAt @map("updated_at")
   user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   lastLocalToken         RefreshToken              @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
-  workspaceSwitchIntent  UoaWorkspaceSwitchIntent?
+  teamSwitchIntent  UoaTeamSwitchIntent?
 
   @@index([userId])
   @@map("uoa_session_credentials")
 }
 
-/// One crash-recoverable workspace rescope request for a UOA refresh family.
+/// One crash-recoverable team rescope request for a UOA refresh family.
 /// Its source fields bind the requested target to the exact encrypted upstream
 /// credential and local cookie that authorized it. The row is deleted only by
 /// the atomic rescope commit, an explicit safe upstream refusal, or family
 /// revocation.
-model UoaWorkspaceSwitchIntent {
+model UoaTeamSwitchIntent {
   familyId                String               @id @map("family_id") @db.Uuid
   userId                  String               @map("user_id") @db.Uuid
   providerId              String               @map("provider_id")
@@ -1122,14 +1122,14 @@ model UoaWorkspaceSwitchIntent {
   credential              UoaSessionCredential @relation(fields: [familyId], references: [familyId], onDelete: Cascade)
 
   @@index([userId])
-  @@map("uoa_workspace_switch_intents")
+  @@map("uoa_team_switch_intents")
 }
 
 model Organization {
   id                         String                      @id @default(uuid()) @db.Uuid
   // For a UOA-provisioned organization, `name` is a NON-authoritative mirror of
   // UOA's `orgName` (same doctrine as the user profile mirror): synced wherever
-  // the workspace directory carries it, placeholder
+  // the team directory carries it, placeholder
   // `Organisation ${externalOrgId.slice(0, 8)}` at first provisioning.
   name                       String
   // Stable UnlikeOtherAI organisation id this Organization mirrors 1:1.
@@ -1418,7 +1418,7 @@ model Project {
   avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
-  // is not a UOA workspace and does not mirror any external team.
+  // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
   boardStyle               BoardStyle                @default(kanban) @map("board_style")
   createdAt                DateTime                  @default(now()) @map("created_at")
@@ -1505,14 +1505,14 @@ model Team {
   projectId              String                  @map("project_id") @db.Uuid
   systemManaged          Boolean                 @default(false) @map("system_managed")
   callProvider           String                  @default("google_meet") @map("call_provider")
-  // Slack-style workspace binding. When this Nessie team represents a UOA
-  // workspace, `externalWorkspaceId` is that workspace's UOA team id
-  // (`active.teamId`) — unique, so one Nessie team per UOA workspace — and
+  // Slack-style team binding. When this Nessie team represents a UOA
+  // team, `externalTeamId` is that team's UOA team id
+  // (`active.teamId`) — unique, so one Nessie team per UOA team — and
   // `externalOrgId` is the owning UOA org id, kept for traceability. Null on
-  // teams that were not provisioned from a UOA workspace (e.g. the bootstrap
+  // teams that were not provisioned from a UOA team (e.g. the bootstrap
   // default team, local-mode teams). See
   // docs/plans/2026-07-10-slack-workspace-login-nessie.md.
-  externalWorkspaceId    String?                 @unique @map("external_workspace_id")
+  externalTeamId    String?                 @unique @map("external_team_id")
   externalOrgId          String?                 @map("external_org_id")
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt @map("updated_at")
@@ -1683,7 +1683,7 @@ enum UserAlertKind {
   // is missable, the bell is not.
   trigger_health
   call_missed
-  workspace_invitation
+  team_invitation
   // An agent is waiting on this person to approve an action it cannot take
   // alone. Durable rather than push-only for the same reason as
   // trigger_health: a push at 06:00 is missable and the request expires.
@@ -2127,7 +2127,7 @@ model Agent {
   systemSlug                     String?                         @map("system_slug")
   surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
   delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
-  visibility                     AgentVisibility                 @default(workspace) @map("visibility")
+  visibility                     AgentVisibility                 @default(team) @map("visibility")
   executionMode                  AgentExecutionMode              @default(inference) @map("execution_mode")
   effort                         AgentEffort                     @default(medium)
   systemPrompt                   String?                         @map("system_prompt")
@@ -3618,7 +3618,7 @@ model McpCatalogEntry {
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner in
   // one organisation. A person can therefore use the same private connector
-  // name in separate workspaces without either workspace exposing the other.
+  // name in separate teams without either team exposing the other.
   // A single `@@unique` can't express either, so they live in raw SQL.
   @@index([organizationId, status])
   @@index([ownerUserId, status])
@@ -5424,7 +5424,7 @@ model PushDelivery {
 // idempotent on the deterministic canonical key
 // `provider:tenantId:conversationId:messageId` with explicit edit-versioning;
 // sync jobs resume from stored cursors. Connections are per-user, never
-// per-workspace. See docs/plans/2026-07-21-individual-communications-connector.md.
+// per-team. See docs/plans/2026-07-21-individual-communications-connector.md.
 
 enum CommsProvider {
   slack
@@ -5460,7 +5460,7 @@ enum CommsSubscriptionStatus {
 
 /// A single user's authenticated connection to one external communications
 /// provider tenant. Scoped to the organization AND the owning user — a
-/// connection is never shared across a workspace. The unique key makes
+/// connection is never shared across a team. The unique key makes
 /// re-connecting the same provider account idempotent.
 model CommsConnection {
   id                     String                @id @default(uuid()) @db.Uuid
@@ -6385,7 +6385,7 @@ model VoiceDeviceCredential {
 /// increments) so one call keeps one usage stream and one transcript slot.
 /// The UOA tuple is captured at mint and re-used to sign every later relay —
 /// never re-read from ambient request context, which could have drifted to
-/// another workspace mid-call.
+/// another team mid-call.
 model VoiceSession {
   id             String @id @default(uuid()) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -6480,7 +6480,7 @@ enum InferenceBillingSource {
 }
 
 /// One person's link to one account at one subscription provider. Scoped to
-/// the organization AND the user — never shared across a workspace. Several
+/// the organization AND the user — never shared across a team. Several
 /// accounts per provider are allowed (work + personal), which is why
 /// `providerAccountId` is part of the natural key and why an agent points at a
 /// subscription by id rather than by provider string.
@@ -6685,7 +6685,7 @@ enum CloudBrowserSessionStatus {
   unknown
 }
 
-/// One Browserbase account bound to this workspace. Bring-your-own key at
+/// One Browserbase account bound to this team. Bring-your-own key at
 /// both scopes: the organization subscription an owner connects, or a
 /// member's own account (the free tier is the intended on-ramp) which powers
 /// only runs that member requested.

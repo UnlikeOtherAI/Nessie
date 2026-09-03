@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { loadChannelTeamProject } from '@nessie/workspace-admin'
+import { loadChannelTeamProject } from '@nessie/team-admin'
 
 export const addMemberToChannel = async (
   prisma: PrismaClient,

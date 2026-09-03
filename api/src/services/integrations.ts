@@ -1,19 +1,19 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { IntegratedProductResponse } from '@nessie/schemas'
 import { syncExternalOrganizationNames } from './external-organization.js'
-import { syncExternalWorkspaceNames } from './workspace-target.js'
+import { syncExternalTeamNames } from './team-target.js'
 import {
-  resolveExternalWorkspaceSelection,
-  type ExternalAuthWorkspace,
+  resolveExternalTeamSelection,
+  type ExternalAuthTeam,
 } from './identity-display.js'
 import {
   mapProductRow,
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
-import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
-import type { UoaWorkspaceDirectory } from './uoa-session.js'
-import { syncWorkspaceInviteAlerts } from './workspace-invite-alerts.js'
+import { rememberUoaTeamDirectory } from './uoa-directory-cache.js'
+import type { UoaTeamDirectory } from './uoa-session.js'
+import { syncTeamInviteAlerts } from './team-invite-alerts.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
@@ -26,8 +26,8 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
   email: string
   externalSubject: string | undefined
   uoaTokenVersion: number | undefined
-  workspace: ExternalAuthWorkspace | undefined
-  workspaceDirectory?: UoaWorkspaceDirectory
+  team: ExternalAuthTeam | undefined
+  teamDirectory?: UoaTeamDirectory
 }
 
 type ProductSlugRow = {
@@ -37,16 +37,16 @@ type ProductSlugRow = {
 const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
 
 const uoaLinkMetadata = (
-  workspace?: ExternalAuthWorkspace,
+  team?: ExternalAuthTeam,
 ): Prisma.InputJsonObject => {
   const metadata = {
     provider: 'uoa',
-    teamIds: workspace?.teamIds ?? [],
-    teamRoles: workspace?.teamRoles ?? {},
+    teamIds: team?.teamIds ?? [],
+    teamRoles: team?.teamRoles ?? {},
   }
   return {
     ...metadata,
-    ...(workspace?.orgRole ? { orgRole: workspace.orgRole } : {}),
+    ...(team?.orgRole ? { orgRole: team.orgRole } : {}),
   }
 }
 
@@ -76,12 +76,12 @@ export const syncUoaProductAccountLinks = async (
   }
 
   const now = new Date()
-  const metadata = uoaLinkMetadata(input.workspace)
+  const metadata = uoaLinkMetadata(input.team)
   const externalAccountId = input.externalSubject
   const {
     organizationId: activeOrgId,
     teamId: activeTeamId,
-  } = resolveExternalWorkspaceSelection(input.workspace)
+  } = resolveExternalTeamSelection(input.team)
   const metadataJson = JSON.stringify(metadata)
   const uoaSub = input.externalSubject
 
@@ -152,24 +152,24 @@ export const syncUoaProductAccountLinks = async (
 
   // The directory UOA returned with this login is display-only, UOA-owned data:
   // it goes to the bounded in-memory cache, never into the link row.
-  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
-  if (input.workspaceDirectory) {
+  rememberUoaTeamDirectory(input.userId, input.teamDirectory)
+  if (input.teamDirectory) {
     try {
-      await syncWorkspaceInviteAlerts(prisma, {
+      await syncTeamInviteAlerts(prisma, {
         organizationId: input.organizationId,
-        pendingInvites: input.workspaceDirectory.pendingInvites,
+        pendingInvites: input.teamDirectory.pendingInvites,
         userId: input.userId,
       })
     } catch (error) {
-      console.warn('[uoa] workspace invitation alert sync failed after login', error)
+      console.warn('[uoa] team invitation alert sync failed after login', error)
     }
   }
   // `Organization.name` is a non-authoritative mirror of UOA's `orgName`
   // (per-UOA-org model): refresh it wherever the verified directory arrives.
   // Display data — a failure must never fail the login.
   try {
-    await syncExternalOrganizationNames(prisma, input.workspaceDirectory?.entries)
-    await syncExternalWorkspaceNames(prisma, input.workspaceDirectory?.entries)
+    await syncExternalOrganizationNames(prisma, input.teamDirectory?.entries)
+    await syncExternalTeamNames(prisma, input.teamDirectory?.entries)
   } catch {
     // Intentionally ignored — see above.
   }
@@ -251,7 +251,7 @@ export const setProductTeamEnablement = async (
         p."slug",
         ${input.enabled},
         t."external_org_id",
-        t."external_workspace_id",
+        t."external_team_id",
         CAST(${input.userId} AS uuid),
         CAST(${metadataJson} AS jsonb),
         CURRENT_TIMESTAMP,
@@ -268,7 +268,7 @@ export const setProductTeamEnablement = async (
           ${!input.enabled}
           OR (
             t."external_org_id" IS NOT NULL
-            AND t."external_workspace_id" IS NOT NULL
+            AND t."external_team_id" IS NOT NULL
           )
         )
       ON CONFLICT ("organization_id", "team_id", "product_slug") DO UPDATE SET

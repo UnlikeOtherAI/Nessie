@@ -60,7 +60,7 @@ creating files, moving code, reusing logic, or widening an existing service.
 - Prefer focused tests around new boundaries: service error mapping, private
   resource access, SSRF rejection, redaction, rate-limit identity, and build or
   deploy gates.
-- Admin route and workspace headers own their actions as typed
+- Admin route and team headers own their actions as typed
   `PageHeaderAction` values and render them through
   `ResponsivePageHeader`/`AdminPageHeader`. Give each action an explicit
   priority, preserve one primary action where applicable, and let the shared

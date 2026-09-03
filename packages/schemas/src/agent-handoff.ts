@@ -14,7 +14,7 @@ import { z } from 'zod'
 /**
  * The Agent Designer's blueprint slug.
  *
- * The blueprint itself lives in `@nessie/workspace-admin` (it holds a Prisma
+ * The blueprint itself lives in `@nessie/team-admin` (it holds a Prisma
  * client's worth of dependencies), but its slug is a plain contract that the
  * admin needs too: `AgentRecord.systemSlug` is how a client says "this is the
  * Agent Designer" structurally instead of matching a display name.

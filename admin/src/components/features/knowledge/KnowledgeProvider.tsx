@@ -43,7 +43,7 @@ type KnowledgeContextValue = {
   // tab). Consumers use it to drop org-level chrome that makes no sense inside
   // a single project.
   scopeProjectId?: string
-  // Set by the owning agent-detail surface, so the shared workspace can avoid
+  // Set by the owning agent-detail surface, so the shared team can avoid
   // rendering a redundant "Open agent" doorway while it is already there.
   scopeAgentId?: string
   spaces: KnowledgeSpaceRecord[]
@@ -58,7 +58,7 @@ type KnowledgeContextValue = {
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
   // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
-  // the Knowledge sidebar. When set the workspace renders that product view
+  // the Knowledge sidebar. When set the team renders that product view
   // instead of a space's pages; selecting any space clears it.
   activeProductView?: string
   selectProductView: (view: string) => void
@@ -135,7 +135,7 @@ export const useDisplayedKnowledgeSpace = (
   return listedSpace ?? detailQuery.data ?? null
 }
 
-// The provider is the workspace parameterisation seam. `projectId` scopes the
+// The provider is the team parameterisation seam. `projectId` scopes the
 // project Documents tab to that project's spaces; `spaceId` scopes an owning
 // surface such as an agent Documents tab to one canonical knowledge space.
 // Scoped mounts never ensure My Docs or seed first-visit example content.

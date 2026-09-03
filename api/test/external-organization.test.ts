@@ -26,7 +26,7 @@ test('the name mirror rewrites only directory entries that carry an orgName', as
 
   await syncExternalOrganizationNames(prisma as never, [
     { organizationId: 'org-a', teamId: 't1', label: 'Team 1', orgName: 'Acme' },
-    // Second workspace of the same org: one write, the latest name wins.
+    // Second team of the same org: one write, the latest name wins.
     { organizationId: 'org-a', teamId: 't2', label: 'Team 2', orgName: 'Acme Corp' },
     // No orgName asserted → the local mirror is left alone, never blanked.
     { organizationId: 'org-b', teamId: 't3', label: 'Team 3' },

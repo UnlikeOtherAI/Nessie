@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { Channel, PrismaClient } from '@prisma/client'
 
-import { mapChannelRecord } from '@nessie/workspace-admin'
+import { mapChannelRecord } from '@nessie/team-admin'
 import { listChannelsForUser } from '../src/services/channels.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'

@@ -8,7 +8,7 @@ import type { RunContext } from './types.js'
  *
  * A delegate's own single-member home DM — the Personal Assistant's, or a
  * DM-homed global agent's — publishes on the channel lane ALONE. The
- * organisation and agent lanes are workspace-wide broadcast: an organisation
+ * organisation and agent lanes are team-wide broadcast: an organisation
  * lane would put one person's private conversation in front of everybody, and
  * the agent lane would do the same across every member's home DM, since a
  * global agent is one org-wide row shared by all of them. The api side already

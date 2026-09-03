@@ -54,8 +54,8 @@ test('late profile responses cannot restore an old session boundary', () => {
 
 test('a delayed startup snapshot cannot overwrite a refreshed token session', async () => {
   let currentToken: string | null = 'source-token'
-  let releaseSnapshot: ((value: { workspace: string }) => void) | undefined
-  const delayedSnapshot = new Promise<{ workspace: string }>((resolve) => {
+  let releaseSnapshot: ((value: { team: string }) => void) | undefined
+  const delayedSnapshot = new Promise<{ team: string }>((resolve) => {
     releaseSnapshot = resolve
   })
 
@@ -68,13 +68,13 @@ test('a delayed startup snapshot cannot overwrite a refreshed token session', as
   })
 
   currentToken = 'target-token'
-  releaseSnapshot?.({ workspace: 'source' })
+  releaseSnapshot?.({ team: 'source' })
 
   assert.equal(await pendingSnapshot, null)
 })
 
 test('startup restoration accepts a snapshot while its bearer remains current', async () => {
-  const snapshot = { workspace: 'source' }
+  const snapshot = { team: 'source' }
 
   assert.strictEqual(
     await fetchCurrentSessionSnapshot({

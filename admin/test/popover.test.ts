@@ -95,7 +95,7 @@ test('a popover owns Back only on a single-column layout', () => {
 
 const CONVERTED = [
   'layouts/admin-shell/UserMenuPopover.tsx',
-  'layouts/admin-shell/WorkspaceMenu.tsx',
+  'layouts/admin-shell/TeamMenu.tsx',
   'layouts/admin-shell/CreateMenuTrigger.tsx',
   'layouts/admin-shell/AlertsBell.tsx',
   'components/shared/ResponsivePageHeader.tsx',
@@ -122,16 +122,16 @@ test('the five hand-rolled flip/clamp routines are gone', () => {
   // was the tell: every private routine clamped against it.
   for (const relative of [
     'layouts/admin-shell/UserMenuPopover.tsx',
-    'layouts/admin-shell/WorkspaceMenu.tsx',
+    'layouts/admin-shell/TeamMenu.tsx',
     'layouts/admin-shell/CreateMenuTrigger.tsx',
     'components/features/channels/ReactionPills.tsx',
     'components/features/knowledge/wikilink/WikilinkSuggestionMenu.tsx',
   ]) {
     assert.doesNotMatch(read(relative), /innerWidth|innerHeight/, relative)
   }
-  // …and the module that held the workspace menu's copy no longer exists.
+  // …and the module that held the team menu's copy no longer exists.
   const shellFiles = readdirSync(`${sourceRoot}/layouts/admin-shell`)
-  assert.ok(!shellFiles.includes('workspace-menu-position.ts'))
+  assert.ok(!shellFiles.includes('team-menu-position.ts'))
 })
 
 // ---------------------------------------------------------------------------

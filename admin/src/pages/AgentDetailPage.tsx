@@ -24,7 +24,7 @@ const GlobalAgentNote = () => (
   <Card>
     <SectionLabel size="sm">Provided by Nessie</SectionLabel>
     <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-      This agent ships with Nessie. It is the same in every workspace and changes only when
+      This agent ships with Nessie. It is the same in every team and changes only when
       the deployment is updated — nobody edits it here, organisation owners included.
     </p>
   </Card>
@@ -38,7 +38,7 @@ const GlobalAgentNote = () => (
 //
 // "May edit" is the agent's ownership state, not the organization owner role
 // this page used to ask for: the owner of a private or person-owned agent, any
-// entitled member of a team-owned one, plus organization owners on workspace
+// entitled member of a team-owned one, plus organization owners on team
 // agents. See `agent-edit-authority.ts`.
 export const AgentDetailPage = () => {
   const navigate = useNavigate()

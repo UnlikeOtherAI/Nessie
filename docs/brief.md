@@ -1,6 +1,6 @@
 # Helper — Personal Agent Brief
 
-> **Status: historical architecture brief.** This document describes the original single-user personal voice agent concept. The project has since evolved into a **multi-tenant, self-hosted agentic work platform** (Organisation → Workspace → Project → Channel — a workspace being the SSO's team, see [standards/workspace-model.md](standards/workspace-model.md) — with RBAC, approvals, audit trail, token ledger, MCP connector management, triggers/scheduling, video calling, and human work distribution). For the current implementation state, see [functionality.md](./functionality.md).
+> **Status: historical architecture brief.** This document describes the original single-user personal voice agent concept. The project has since evolved into a **multi-tenant, self-hosted agentic work platform** (Organisation → Team → Project → Channel — a team being the SSO's team, see [standards/team-model.md](standards/team-model.md) — with RBAC, approvals, audit trail, token ledger, MCP connector management, triggers/scheduling, video calling, and human work distribution). For the current implementation state, see [functionality.md](./functionality.md).
 
 > **Voice layer note:** The brief references both Minimax (in the voice mode section) and OpenAI Realtime API (in the architecture section) — this contradiction reflects the exploratory state of the original brief. The shipping codebase uses OpenAI Realtime API in the legacy macOS client only; voice is not implemented in the `api/` server stack.
 
@@ -22,9 +22,9 @@ profiles, organisation and team membership, and invitations.
 - UOA's organisation and team structure maps **1:1** into Nessie: one UOA
   organisation is one Nessie `Organization`, bound by the stable UOA
   organisation id (`Organization.externalOrgId`), and one UOA **team** is one
-  **workspace** inside that organisation; Projects and Channels are Nessie's
-  own and live inside a workspace
-  ([standards/workspace-model.md](standards/workspace-model.md)). Flattening
+  **team** inside that organisation; Projects and Channels are Nessie's
+  own and live inside a team
+  ([standards/team-model.md](standards/team-model.md)). Flattening
   several UOA organisations into one local container — or keeping any second
   local copy of the org hierarchy — is the same violation as duplicating
   identity rows, and gets the same remedy: an API-backed refactor and a data

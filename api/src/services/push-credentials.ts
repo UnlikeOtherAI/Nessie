@@ -236,7 +236,7 @@ export const createPushCredentialsService = (deps: {
       if (!input.deviceToken) {
         return {
           ok: false,
-          message: 'No iOS device is registered for your current workspace.',
+          message: 'No iOS device is registered for your current team.',
           delivered: false,
         }
       }

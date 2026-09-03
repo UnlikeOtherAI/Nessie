@@ -3,7 +3,7 @@ import { captureThought } from './capture.js'
 
 export type UserMessageMemoryOrigin =
   | 'personal_assistant_dm'
-  | 'user_authored_workspace_message'
+  | 'user_authored_team_message'
   | 'user_conversation_summary'
 
 export type CaptureUserMessageMemoryInput = {

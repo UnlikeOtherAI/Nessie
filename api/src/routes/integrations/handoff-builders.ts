@@ -227,9 +227,9 @@ export const buildBuildMeProjectHandoffMessage = (
     launchUrl ? `Launch URL: ${launchUrl}` : null,
     '',
     'Boundary:',
-    '- Use UOA SSO link-out for the BuildMe workspace.',
+    '- Use UOA SSO link-out for the BuildMe team.',
     '- Do not create, sync, or mutate Nessie project-board columns from BuildMe yet.',
-    '- Do not ask the user to paste BuildMe board payloads, card lists, column mappings, credentials, or workspace files into Nessie.',
+    '- Do not ask the user to paste BuildMe board payloads, card lists, column mappings, credentials, or team files into Nessie.',
     '- If the user asks for native board pairing, explain that it needs the BuildMe board API/MCP contract first.',
     scope,
   ].filter((line): line is string => line !== null).join('\n')

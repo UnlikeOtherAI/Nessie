@@ -10,11 +10,11 @@ type AgentScreenViewerProps = {
   /** Full-screen gets more chrome and a bigger frame; the panel is compact. */
   variant: 'panel' | 'fullscreen'
   /**
-   * The agent whose browser this is, when known. A workspace agent's browser
+   * The agent whose browser this is, when known. A team agent's browser
    * is shared with everyone who can reach it, which the banner says before
    * anybody types into it.
    */
-  agent?: { id: string; visibility?: 'workspace' | 'private' }
+  agent?: { id: string; visibility?: 'team' | 'private' }
 }
 
 /**
@@ -169,10 +169,10 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
           {control.controlling
             ? 'You are driving. The agent is paused until you hand back. What you type '
-              + 'goes straight to the browser — it never passes through this workspace, '
+              + 'goes straight to the browser — it never passes through this team, '
               + 'and the agent cannot read it.'
             : 'You are watching what the agent sees. Pages load directly from the browser '
-              + 'provider, so their content never passes through this workspace.'}
+              + 'provider, so their content never passes through this team.'}
         </p>
       ) : null}
     </div>

@@ -157,7 +157,7 @@ export const useKnowledgePage = (pageId?: string) => {
 // links (e.g. a DeepWater research run's `knowledgePageId`) that don't know
 // which space the page lives in ahead of time. Shares the same cache entry as
 // useKnowledgePage via fetchQuery, so a page opened this way is not re-fetched
-// once the workspace subsequently renders it.
+// once the team subsequently renders it.
 export const useKnowledgePageLookup = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

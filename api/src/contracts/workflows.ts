@@ -119,7 +119,7 @@ export const CreateWorkflowTemplateBodySchema = z.object({
 
 export const UpdateWorkflowTemplateBodySchema = CreateWorkflowTemplateBodySchema
 
-// W26: { limit, onOverlap } — parseWorkflowConcurrency in workspace-admin
+// W26: { limit, onOverlap } — parseWorkflowConcurrency in team-admin
 // supplies the defaults at enforcement time, so an empty object is valid.
 export const WorkflowConcurrencySchema = z
   .object({

@@ -57,7 +57,7 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       lastSeenAt: new Date(),
     }
 
-    // An older WebView request can finish after an account or workspace switch.
+    // An older WebView request can finish after an account or team switch.
     // The signed, globally server-issued generation decides whether its write is
     // newer; a client cannot advance or pin that value.
     const updateIfNewer = async () => prisma.deviceToken.updateMany({

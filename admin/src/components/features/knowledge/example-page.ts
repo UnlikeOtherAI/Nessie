@@ -1,4 +1,4 @@
-// Seeded into the auto-created "General" space the first time a workspace opens
+// Seeded into the auto-created "General" space the first time a team opens
 // Knowledge with no spaces. Authored as HTML so it renders directly through the
 // rich-text view and loads into the WYSIWYG editor.
 export const EXAMPLE_PAGE_TITLE = 'Welcome to your knowledge base'

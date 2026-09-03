@@ -10,7 +10,7 @@ import {
 } from '../services/uoa-avatar.js'
 
 /**
- * The shared half of the two UnlikeOtherAI avatar relays — the workspace
+ * The shared half of the two UnlikeOtherAI avatar relays — the team
  * ("company") picture and a person's own profile picture. Both accept one
  * multipart image, enforce UOA's own ceiling before anything is buffered, and
  * map an upstream refusal onto the API's error envelope. The gate that decides

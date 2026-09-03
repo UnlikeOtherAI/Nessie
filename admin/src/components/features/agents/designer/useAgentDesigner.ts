@@ -9,7 +9,7 @@ import {
 } from './run-limits'
 
 export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
-export type AgentVisibilityValue = 'private' | 'workspace'
+export type AgentVisibilityValue = 'private' | 'team'
 
 export type AgentFormState = {
   effort: AgentEffortValue
@@ -70,7 +70,7 @@ const DEFAULT_STATE: AgentFormState = {
   systemPrompt: '',
   todosEnabled: false,
   tools: {},
-  visibility: 'workspace',
+  visibility: 'team',
   voiceName: '',
 }
 

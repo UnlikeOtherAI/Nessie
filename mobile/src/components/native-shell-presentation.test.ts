@@ -10,25 +10,25 @@ import {
   reduceNativeShellPresentation,
 } from './native-shell-presentation'
 
-test('native workspace presentation carries its public picture and clears invalid values', () => {
-  const withWorkspace = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
-    type: 'nessie:workspace',
+test('native team presentation carries its public picture and clears invalid values', () => {
+  const withTeam = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:team',
     name: 'Design',
-    workspaceAvatarUrl: 'https://authentication.example/teams/design/avatar',
+    teamAvatarUrl: 'https://authentication.example/teams/design/avatar',
   })
-  assert.equal(withWorkspace.workspaceName, 'Design')
+  assert.equal(withTeam.teamName, 'Design')
   assert.equal(
-    withWorkspace.workspaceAvatarUrl,
+    withTeam.teamAvatarUrl,
     'https://authentication.example/teams/design/avatar',
   )
 
-  const cleared = reduceNativeShellPresentation(withWorkspace, {
-    type: 'nessie:workspace',
+  const cleared = reduceNativeShellPresentation(withTeam, {
+    type: 'nessie:team',
     name: ' ',
-    workspaceAvatarUrl: '',
+    teamAvatarUrl: '',
   })
-  assert.equal(cleared.workspaceName, null)
-  assert.equal(cleared.workspaceAvatarUrl, null)
+  assert.equal(cleared.teamName, null)
+  assert.equal(cleared.teamAvatarUrl, null)
 })
 
 test('native presentation normalizes per-section badge counts and sums an authoritative total', () => {
@@ -71,7 +71,7 @@ test('native account focus mode is preserved from the web shell', () => {
 
 test('only presentation messages enter the native presentation reducer', () => {
   assert.equal(isNativeShellPresentationMessage({ type: 'theme' }), true)
-  assert.equal(isNativeShellPresentationMessage({ type: 'nessie:workspace' }), true)
+  assert.equal(isNativeShellPresentationMessage({ type: 'nessie:team' }), true)
   assert.equal(isNativeShellPresentationMessage({ type: 'nessie:route' }), false)
   assert.equal(
     reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, { type: 'nessie:route' }),

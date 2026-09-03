@@ -24,14 +24,14 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
     product,
     teamId: seed.teamId,
     userId,
-    workspaceId: 'uoa-team',
+    externalTeamId: 'uoa-team',
   })
   const second = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
     teamId: seed.teamId,
     userId,
-    workspaceId: 'uoa-team',
+    externalTeamId: 'uoa-team',
   })
 
   assert.equal(first.agentId, second.agentId)
@@ -59,7 +59,7 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
   assert.equal(channel?.systemChannelType, 'external_agent')
 })
 
-test('different UOA workspaces use distinct channels and conversations', async () => {
+test('different UOA teams use distinct channels and conversations', async () => {
   const seed = {
     organizationId: randomUUID(),
     projectId: randomUUID(),
@@ -75,14 +75,14 @@ test('different UOA workspaces use distinct channels and conversations', async (
     product,
     teamId: seed.teamId,
     userId,
-    workspaceId: 'uoa-team-a',
+    externalTeamId: 'uoa-team-a',
   })
   const second = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
     teamId: seed.teamId,
     userId,
-    workspaceId: 'uoa-team-b',
+    externalTeamId: 'uoa-team-b',
   })
 
   assert.notEqual(first.channelId, second.channelId)

@@ -13,7 +13,7 @@ const agent = (overrides: Partial<AgentRecord>): AgentRecord => ({
   role: 'researcher',
   status: 'idle',
   updatedAt: '2026-08-31T00:00:00.000Z',
-  visibility: 'workspace',
+  visibility: 'team',
   ...overrides,
 }) as AgentRecord
 
@@ -37,7 +37,7 @@ test('the list binding remains the private-home doorway after a refresh', () => 
   )
 })
 
-test('workspace agents have no private-home doorway', () => {
+test('team agents have no private-home doorway', () => {
   assert.equal(
     privateAgentHomeChannelId(agent({
       channelIds: ['00000000-0000-4000-8000-000000000004'],

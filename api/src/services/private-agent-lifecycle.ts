@@ -23,7 +23,7 @@ type TransactionClient = Prisma.TransactionClient
 
 /**
  * A private agent has no audience when its sole owner is deactivated. This is
- * intentionally unlike workspace-agent stewardship: only private triggers are
+ * intentionally unlike team-agent stewardship: only private triggers are
  * paused, and reactivation deliberately leaves them paused for an explicit
  * human re-enable.
  */

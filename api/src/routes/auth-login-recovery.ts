@@ -7,33 +7,33 @@ import { sendApiError } from '../lib/api.js'
 import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import type { RouteDeps } from './types.js'
 
-// Workspace-switch recovery refusal helpers. Each preserves the exact response
+// Team-switch recovery refusal helpers. Each preserves the exact response
 // the login route sent inline; keep the codes and messages byte-identical.
-export const rejectWorkspaceTarget = (
+export const rejectTeamTarget = (
   reply: Parameters<typeof sendApiError>[0],
 ): void => {
   sendApiError(
     reply,
     401,
-    'WORKSPACE_TARGET_MISMATCH',
-    'The renewed session is not on the requested workspace. Try switching again.',
+    'TEAM_TARGET_MISMATCH',
+    'The renewed session is not on the requested team. Try switching again.',
   )
 }
 
-export const rejectWorkspaceIdentity = (
+export const rejectTeamIdentity = (
   reply: Parameters<typeof sendApiError>[0],
 ): void => {
   sendApiError(
     reply,
     401,
-    'WORKSPACE_IDENTITY_MISMATCH',
+    'TEAM_IDENTITY_MISMATCH',
     'This sign-in belongs to a different account. Try switching again.',
   )
 }
 
-export const rejectWorkspaceRecovery = rejectWorkspaceIdentity
+export const rejectTeamRecovery = rejectTeamIdentity
 
-// Verify the Bearer Nessie session an expectedWorkspace discriminant must
+// Verify the Bearer Nessie session an expectedTeam discriminant must
 // accompany: a live, unrevoked UOA access token for an existing local user
 // with an immutable UOA identity bound. Returns null on any refusal — every
 // caller rejects before any upstream exchange or local write.

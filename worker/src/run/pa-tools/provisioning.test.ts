@@ -202,7 +202,7 @@ const buildAgentRow = (input: {
   systemPrompt: null,
   todosEnabled: false,
   updatedAt: new Date('2026-01-01T00:00:00Z'),
-  visibility: 'workspace' as const,
+  visibility: 'team' as const,
 })
 
 test('agent_list gives a member the agents they may see, with the ids bind and trigger need', async () => {
@@ -240,7 +240,7 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
   assert.equal(where.organizationId, ORG_ID)
   assert.deepEqual(where.AND, [{
     OR: [
-      { visibility: 'workspace' },
+      { visibility: 'team' },
       {
         visibility: 'private',
         ownerMembership: { deactivatedAt: null },
@@ -461,7 +461,7 @@ test('agent_trigger_create refuses a non-owner before touching the agent', async
   assert.equal(agentReads, 0)
 })
 
-test('agent_trigger_create stamps launchOrigin with the creator and their UOA workspace', async () => {
+test('agent_trigger_create stamps launchOrigin with the creator and their UOA team', async () => {
   const created: Array<Record<string, unknown>> = []
   const context = buildContext(
     'owner',

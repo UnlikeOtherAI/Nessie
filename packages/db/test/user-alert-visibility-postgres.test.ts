@@ -8,7 +8,7 @@ import { visibleUserAlertWhere } from '../src/user-alerts.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
-runDatabaseTest('workspace invitation alerts disappear when the recipient is deactivated', async (t) => {
+runDatabaseTest('team invitation alerts disappear when the recipient is deactivated', async (t) => {
   const prisma = new PrismaClient()
   const suffix = randomUUID()
   const organization = await prisma.organization.create({
@@ -25,8 +25,8 @@ runDatabaseTest('workspace invitation alerts disappear when the recipient is dea
   })
   await prisma.userAlert.create({
     data: {
-      eventKey: `workspace-invite:${suffix}`,
-      kind: 'workspace_invitation',
+      eventKey: `team-invite:${suffix}`,
+      kind: 'team_invitation',
       metadata: {
         inviteId: `invite-${suffix}`,
         organizationId: `uoa-org-${suffix}`,

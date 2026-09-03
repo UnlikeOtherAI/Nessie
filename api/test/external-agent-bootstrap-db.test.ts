@@ -48,7 +48,7 @@ dbTest('external-agent bootstrap writes its system-managed tuple to Postgres', a
       product,
       teamId: team.id,
       userId,
-      workspaceId: 'uoa-team',
+      externalTeamId: 'uoa-team',
     })
 
     const agent = await prisma.agent.findUniqueOrThrow({
@@ -84,7 +84,7 @@ dbTest('external-agent bootstrap writes its system-managed tuple to Postgres', a
       product,
       teamId: team.id,
       userId,
-      workspaceId: 'uoa-team',
+      externalTeamId: 'uoa-team',
     })
     assert.equal(second.agentId, first.agentId)
     assert.equal(second.channelId, first.channelId)

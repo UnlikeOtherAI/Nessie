@@ -5,7 +5,7 @@ import {
   mapProjectRecord,
   projectCountsInclude,
   ProjectValidationError,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   ProjectMemberRecordSchema,
@@ -165,7 +165,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       select: {
         id: true,
         name: true,
-        teams: { where: { externalWorkspaceId: { not: null } }, select: { id: true }, take: 1 },
+        teams: { where: { externalTeamId: { not: null } }, select: { id: true }, take: 1 },
       },
     })
     if (!project) {
@@ -173,8 +173,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    // A project backing a UOA workspace takes its name from that workspace:
-    // `syncExternalWorkspaceNames` rewrites it from the verified directory on
+    // A project backing a UOA team takes its name from that team:
+    // `syncExternalTeamNames` rewrites it from the verified directory on
     // every login and rotation. Accepting a local rename made the value persist
     // just long enough to look saved before a refresh silently reverted it.
     // The avatar below is Nessie's own and stays editable.
@@ -182,8 +182,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(
         reply,
         409,
-        'WORKSPACE_NAME_MANAGED_BY_SSO',
-        'This workspace is named in UnlikeOtherAI. Rename it there and the change will appear here.',
+        'TEAM_NAME_MANAGED_BY_SSO',
+        'This team is named in UnlikeOtherAI. Rename it there and the change will appear here.',
       )
       return reply
     }

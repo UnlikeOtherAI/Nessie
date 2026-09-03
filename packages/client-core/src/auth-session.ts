@@ -44,21 +44,21 @@ export type LoginInput =
     }
   | ExternalLoginInput
 
-// Exact external (UOA) workspace a session must be scoped to.
-export type ExpectedWorkspaceTarget = {
+// Exact external (UOA) team a session must be scoped to.
+export type ExpectedTeamTarget = {
   organizationId: string
   teamId: string
 }
 
-// An authenticated workspace-switch reauthorization: the external-auth code
-// exchange plus the exact external workspace the renewed session must land
+// An authenticated team-switch reauthorization: the external-auth code
+// exchange plus the exact external team the renewed session must land
 // on. The API rejects the exchange before any local mutation or Set-Cookie
 // when the provider's active org/team differ.
-export type RecoverWorkspaceSessionInput = {
+export type RecoverTeamSessionInput = {
   code: string
   codeVerifier: string
-  expectedWorkspace: ExpectedWorkspaceTarget
-  // Workspace recovery is UOA-only: the expectedWorkspace discriminant is
+  expectedTeam: ExpectedTeamTarget
+  // Team recovery is UOA-only: the expectedTeam discriminant is
   // defined against the identity provider's own active selection.
   providerId: 'uoa'
   redirectUri: string
@@ -80,31 +80,31 @@ export type SessionPayload = {
 
 /**
  * True when an exchanged session is scoped to exactly the expected external
- * workspace. The session claims the active UOA org/team through
- * `me.uoaWorkspaces` (the identity provider's own active selection).
+ * team. The session claims the active UOA org/team through
+ * `me.uoaTeams` (the identity provider's own active selection).
  */
-export const sessionMatchesExpectedWorkspace = (
+export const sessionMatchesExpectedTeam = (
   payload: SessionPayload,
-  expected: ExpectedWorkspaceTarget,
+  expected: ExpectedTeamTarget,
 ): boolean => {
-  // Exactly one active UOA workspace may exist; an ambiguous multiple-active
+  // Exactly one active UOA team may exist; an ambiguous multiple-active
   // response is rejected outright rather than pattern-matched.
-  const active = (payload.me.uoaWorkspaces ?? []).filter((workspace) => workspace.active)
+  const active = (payload.me.uoaTeams ?? []).filter((team) => team.active)
   if (active.length !== 1) return false
-  const [workspace] = active
-  return workspace?.organizationId === expected.organizationId
-    && workspace?.teamId === expected.teamId
+  const [team] = active
+  return team?.organizationId === expected.organizationId
+    && team?.teamId === expected.teamId
 }
 
 /**
- * The preserved source session a workspace recovery starts from, captured by
+ * The preserved source session a team recovery starts from, captured by
  * the caller immediately inside the queued mutation thunk — never at enqueue
  * time, so it is the session that is current when the request is actually
  * sent. A decoded payload that misses the exact target is only the *source*
  * (applied but a rejected non-switch) when every one of these fields matches;
  * anything else is foreign.
  */
-export type WorkspaceSessionSource = {
+export type TeamSessionSource = {
   userId: string
   organizationId: string
   projectId: string
@@ -113,13 +113,13 @@ export type WorkspaceSessionSource = {
 }
 
 /**
- * Capture the source session a guarded workspace recovery must preserve. Only
- * a UOA-authenticated session can recover onto a UOA workspace; any other
+ * Capture the source session a guarded team recovery must preserve. Only
+ * a UOA-authenticated session can recover onto a UOA team; any other
  * provider yields null and the recovery must refuse before it sends.
  */
-export const captureWorkspaceSessionSource = (
+export const captureTeamSessionSource = (
   me: MeResponse,
-): WorkspaceSessionSource | null => {
+): TeamSessionSource | null => {
   if (me.auth.providerId !== 'uoa') return null
   return {
     userId: me.user.id,
@@ -131,24 +131,24 @@ export const captureWorkspaceSessionSource = (
 }
 
 /**
- * Three-way classification of a workspace-recovery payload against the exact
+ * Three-way classification of a team-recovery payload against the exact
  * requested external target and the captured source session. `target` when
  * the payload is the SAME person and provider as the captured source (same
  * local user id, UOA provider) AND its active UOA org/team are exactly the
  * requested pair; `source` when the payload is the preserved source session
  * (same local user id, local org/project/team, and UOA provider); `foreign`
- * otherwise. A payload that claims the exact requested UOA workspace but
+ * otherwise. A payload that claims the exact requested UOA team but
  * belongs to a different user or a different provider is foreign, never the
  * target.
  */
-export const classifyWorkspaceSessionPayload = (
+export const classifyTeamSessionPayload = (
   payload: SessionPayload,
-  expectedWorkspace: ExpectedWorkspaceTarget,
-  source: WorkspaceSessionSource,
+  expectedTeam: ExpectedTeamTarget,
+  source: TeamSessionSource,
 ): SessionMutationOutcome => {
   const me = payload.me
   if (
-    sessionMatchesExpectedWorkspace(payload, expectedWorkspace)
+    sessionMatchesExpectedTeam(payload, expectedTeam)
     && me.user.id === source.userId
     && me.auth.providerId === source.providerId
   ) {
@@ -163,12 +163,12 @@ export const classifyWorkspaceSessionPayload = (
   ) {
     return {
       kind: 'source',
-      message: 'The session was renewed on the current workspace, but the switch did not complete. Try switching again.',
+      message: 'The session was renewed on the current team, but the switch did not complete. Try switching again.',
     }
   }
   return {
     kind: 'foreign',
-    message: 'The renewed session did not land on the requested workspace. Try switching again.',
+    message: 'The renewed session did not land on the requested team. Try switching again.',
   }
 }
 
@@ -225,7 +225,7 @@ export const getAccessTokenRenewalDelayMs = (
   return Math.max(0, expiresAtMs - nowMs - Math.max(0, renewalLeewayMs))
 }
 
-// Re-scope the session to another workspace the user already belongs to. The
+// Re-scope the session to another team the user already belongs to. The
 // server re-validates membership of the full org/project/team triple.
 export type SwitchContextInput = {
   organizationId: string
@@ -233,7 +233,7 @@ export type SwitchContextInput = {
   teamId: string
 }
 
-export type SwitchUoaWorkspaceInput = {
+export type SwitchUoaTeamInput = {
   organizationId: string
   teamId: string
 }
@@ -264,24 +264,24 @@ export type AuthSessionApi = {
   login: (input: LoginInput) => Promise<SessionPayload>
   logout: (token: string | null) => Promise<void>
   // Reauthorize an already-authenticated session onto an exact external
-  // workspace. `token` is read at call time and sent as the current Bearer
+  // team. `token` is read at call time and sent as the current Bearer
   // proof beside the PKCE exchange. An HTTP refusal is typed
   // (AuthSessionApiError); a transport failure or unreadable body is opaque
   // (SessionMutationLoss) so the guarded coordinator can decide whether one
   // refresh winner is warranted.
-  recoverWorkspaceSession: (
+  recoverTeamSession: (
     token: string,
-    input: RecoverWorkspaceSessionInput,
+    input: RecoverTeamSessionInput,
   ) => Promise<SessionPayload>
   // Renew the access token from the httpOnly refresh cookie. Returns the new
   // session, or null when there is no valid refresh cookie.
   refresh: () => Promise<SessionPayload | null>
-  // Switch the active workspace (org/project/team); returns the re-scoped session.
+  // Switch the active team (org/project/team); returns the re-scoped session.
   switchContext: (token: string | null, input: SwitchContextInput) => Promise<SessionPayload>
   // Switch a renewable UOA session without leaving Nessie.
-  switchUoaWorkspace: (
+  switchUoaTeam: (
     token: string | null,
-    input: SwitchUoaWorkspaceInput,
+    input: SwitchUoaTeamInput,
   ) => Promise<SessionPayload>
 }
 
@@ -426,13 +426,13 @@ export const createAuthSessionApi = (
         credentials: 'omit',
       }).catch(() => undefined)
     },
-    // Workspace-switch reauthorization goes to the same session route but is
-    // a distinct, authenticated operation: the expectedWorkspace discriminant
+    // Team-switch reauthorization goes to the same session route but is
+    // a distinct, authenticated operation: the expectedTeam discriminant
     // is valid only beside the current Bearer proof, and the exchange is
     // fenced by the guarded coordinator's exact-target check.
-    recoverWorkspaceSession: async (token, input) => {
+    recoverTeamSession: async (token, input) => {
       if (typeof token !== 'string' || token.length === 0) {
-        throw new Error('Workspace session recovery requires an authenticated bearer token.')
+        throw new Error('Team session recovery requires an authenticated bearer token.')
       }
       return postSession('/api/auth/session', input, token)
     },
@@ -467,8 +467,8 @@ export const createAuthSessionApi = (
       }
       return parseResponse<SessionPayload>(response)
     },
-    switchUoaWorkspace: async (token, input) => {
-      const response = await fetch(`${resolvedBaseUrl}/api/auth/uoa/workspace`, {
+    switchUoaTeam: async (token, input) => {
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/uoa/team`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',

@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import { parseOrganizationId } from '@nessie/schemas'
-import { updateAgentTodoStep } from '@nessie/workspace-admin'
+import { updateAgentTodoStep } from '@nessie/team-admin'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { executeBuiltinTool } from '../tools.js'

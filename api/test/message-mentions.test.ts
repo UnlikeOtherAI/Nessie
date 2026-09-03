@@ -10,7 +10,7 @@ import { createThreadMessage } from '../src/services/message-create.js'
 const makePrisma = () => {
   const calls = { agentFindManyWhere: [] as unknown[], messageUpdates: [] as unknown[] }
   const candidates = [
-    { id: 'agent-scout', name: 'Scout', ownerUserId: null, visibility: 'workspace' },
+    { id: 'agent-scout', name: 'Scout', ownerUserId: null, visibility: 'team' },
     { id: 'agent-secret', name: 'Secret', ownerUserId: 'user-2', visibility: 'private' },
   ]
   const prisma = {
@@ -76,7 +76,7 @@ const makePrisma = () => {
         )
         return candidates
           .filter((candidate) =>
-            candidate.visibility === 'workspace'
+            candidate.visibility === 'team'
             || candidate.ownerUserId === privateArm?.ownerUserId)
           .map(({ id, name }) => ({ id, name }))
       },

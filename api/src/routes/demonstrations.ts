@@ -14,7 +14,7 @@ import {
   requestDemonstrationGeneralization,
   startDemonstration,
   stopDemonstration,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import type { RouteDeps } from './types.js'
 

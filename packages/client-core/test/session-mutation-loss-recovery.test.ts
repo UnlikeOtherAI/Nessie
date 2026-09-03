@@ -3,11 +3,11 @@ import test from 'node:test'
 
 import {
   SessionMutationLoss,
-  classifyWorkspaceSessionPayload,
-  sessionMatchesExpectedWorkspace,
-  type ExpectedWorkspaceTarget,
+  classifyTeamSessionPayload,
+  sessionMatchesExpectedTeam,
+  type ExpectedTeamTarget,
   type SessionPayload,
-  type WorkspaceSessionSource,
+  type TeamSessionSource,
 } from '../src/auth-session.js'
 import { createSessionMutationCoordinator } from '../src/session-mutation-coordinator.js'
 
@@ -16,22 +16,22 @@ const sessionPayload = (token: string): SessionPayload => ({
   token,
 })
 
-const TARGET: ExpectedWorkspaceTarget = {
+const TARGET: ExpectedTeamTarget = {
   organizationId: 'external-org',
   teamId: 'external-team',
 }
 
 const exactTargetGuard = (payload: SessionPayload) =>
-  sessionMatchesExpectedWorkspace(payload, TARGET)
+  sessionMatchesExpectedTeam(payload, TARGET)
     ? ({ kind: 'target' } as const)
-    : ({ kind: 'foreign', message: 'The renewed session missed the requested workspace.' } as const)
+    : ({ kind: 'foreign', message: 'The renewed session missed the requested team.' } as const)
 
 test('a same-team different-person refresh winner is foreign, never the target', async () => {
   // Regression: the one refresh winner after an opaque SessionMutationLoss
   // passes the SAME three-way classification as the direct payload — a
   // winner that claims the exact requested UOA org/team but belongs to
   // another local user must fence, never apply.
-  const source: WorkspaceSessionSource = {
+  const source: TeamSessionSource = {
     userId: 'user-1',
     organizationId: 'local-org-a',
     projectId: 'local-project-a',
@@ -54,7 +54,7 @@ test('a same-team different-person refresh winner is foreign, never the target',
             projectId: 'local-project-b',
             teamId: 'local-team-b',
           },
-          uoaWorkspaces: [
+          uoaTeams: [
             { active: true, organizationId: TARGET.organizationId, teamId: TARGET.teamId },
           ],
           user: { id: 'user-2' },
@@ -69,9 +69,9 @@ test('a same-team different-person refresh winner is foreign, never the target',
       async () => {
         throw new SessionMutationLoss('The session response body could not be read.')
       },
-      (payload) => classifyWorkspaceSessionPayload(payload, TARGET, source),
+      (payload) => classifyTeamSessionPayload(payload, TARGET, source),
     ),
-    /did not land on the requested workspace/,
+    /did not land on the requested team/,
   )
   assert.equal(refreshCalls, 1)
   assert.deepEqual(events, ['clear', 'revoke:foreign-winner'])

@@ -12,7 +12,7 @@ import { registerOrganizationRoutes } from '../src/routes/organizations.js'
 /**
  * Renaming a UOA-bound organisation is a write to UnlikeOtherAI, not to the
  * local mirror. Nessie used to write `Organization.name` and stop: the new name
- * showed in Nessie alone — UOA's own workspace chooser and every other product
+ * showed in Nessie alone — UOA's own team chooser and every other product
  * kept the old one — and the next login's directory sync reverted the row.
  */
 
@@ -93,8 +93,8 @@ const makeApp = (options: {
     team: {
       findFirst: async () =>
         options.teamLinked === false
-          ? { externalOrgId: null, externalWorkspaceId: null }
-          : { externalOrgId, externalWorkspaceId: externalTeamId },
+          ? { externalOrgId: null, externalTeamId: null }
+          : { externalOrgId, externalTeamId: externalTeamId },
     },
   } as unknown as PrismaClient
 

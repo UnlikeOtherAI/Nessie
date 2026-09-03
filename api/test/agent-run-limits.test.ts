@@ -12,7 +12,7 @@ import {
   createAgentRecord,
   updateAgentRecord,
 } from '../src/services/agent-management.js'
-import { readAgentRunLimits } from '@nessie/workspace-admin'
+import { readAgentRunLimits } from '@nessie/team-admin'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -61,7 +61,7 @@ type Seed = {
   teamId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `run-limits ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -94,7 +94,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('agent runLimits round-trip: set, preserve on unrelated edits, clear', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -138,7 +138,7 @@ runDatabaseTest('agent runLimits round-trip: set, preserve on unrelated edits, c
 
 runDatabaseTest('an agent created without run limits reports none', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

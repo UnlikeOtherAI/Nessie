@@ -142,8 +142,8 @@ const Shell = (): React.JSX.Element => {
     statusBarStyle,
     strongAccent,
     toolbarState,
-    workspaceAvatarUrl: nativeWorkspaceAvatarUrl,
-    workspaceName: ipadWorkspaceName,
+    teamAvatarUrl: nativeTeamAvatarUrl,
+    teamName: ipadTeamName,
   } = focusedPresentation
   const currentPathRef = useRef<string | null>(null)
   const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
@@ -488,7 +488,7 @@ const Shell = (): React.JSX.Element => {
           onCreationMenuOpen={nativeActions.closeTransientMenus}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onToolbarAction={nativeActions.runToolbarAction}
-          onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
+          onTeamPress={() => nativeActions.toggleTeamMenu(insets.left + 16)}
           safeTop={insets.top}
           sheetMutedText={phoneTextMuted}
           sheetText={phoneText}
@@ -496,8 +496,8 @@ const Shell = (): React.JSX.Element => {
           platform={IS_ANDROID ? 'android' : 'ios'}
           showCreationActions={showNativePhoneCreationActions}
           toolbarState={toolbarState}
-          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
-          workspaceName={ipadWorkspaceName}
+          teamAvatarUrl={nativeTeamAvatarUrl}
+          teamName={ipadTeamName}
         />
       ) : null}
 
@@ -509,7 +509,7 @@ const Shell = (): React.JSX.Element => {
           onIndexChange={onIndexChange}
           onToggleAccountMenu={nativeActions.toggleAccountMenu}
           onToggleFocusMode={nativeActions.toggleFocusMode}
-          onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
+          onToggleTeamMenu={nativeActions.toggleTeamMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
           insetRight={insets.right}
@@ -518,8 +518,8 @@ const Shell = (): React.JSX.Element => {
           toolbarState={toolbarState}
           top={ipadChromeTop}
           windowWidth={windowWidth}
-          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
-          workspaceName={ipadWorkspaceName}
+          teamAvatarUrl={nativeTeamAvatarUrl}
+          teamName={ipadTeamName}
         />
       ) : null}
     </View>

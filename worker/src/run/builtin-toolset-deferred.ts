@@ -20,7 +20,7 @@ export const BUILTIN_HOT_TOOL_IDS = [
   'react',
   'web_search',
   'web_fetch',
-  'workspace_search',
+  'team_search',
   'message_search',
   'people_search',
   'channel_find',

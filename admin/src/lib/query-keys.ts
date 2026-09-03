@@ -207,7 +207,7 @@ export const executorKeys = {
   pairing: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'pairing'] as const,
   workspacePromotion: (promotionId?: string) =>
-    ['executors', 'workspace-promotion', promotionId ?? 'none'] as const,
+    ['executors', 'team-promotion', promotionId ?? 'none'] as const,
   workspaceReviews: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'workspace-reviews'] as const,
 }
@@ -439,6 +439,11 @@ export const taskKeys = {
 
 export const teamKeys = {
   all: ['teams'] as const,
+  // Client-only cache-buster for the fixed `/api/team/avatar` URL; nothing
+  // fetches it, so it never refetches or resets on its own.
+  avatarRevision: ['team', 'avatar', 'revision'] as const,
+  invitations: ['team', 'invitations'] as const,
+  members: ['team', 'members'] as const,
 }
 
 export const threadKeys = {
@@ -501,14 +506,6 @@ export const workflowKeys = {
   templates: ['workflow-templates'] as const,
   templateStepSamples: (workflowTemplateId?: string) =>
     ['workflow-templates', workflowTemplateId, 'step-samples'] as const,
-}
-
-export const workspaceKeys = {
-  // Client-only cache-buster for the fixed `/api/workspace/avatar` URL; nothing
-  // fetches it, so it never refetches or resets on its own.
-  avatarRevision: ['workspace', 'avatar', 'revision'] as const,
-  invitations: ['workspace', 'invitations'] as const,
-  members: ['workspace', 'members'] as const,
 }
 
 export const mailboxConnectionKeys = {

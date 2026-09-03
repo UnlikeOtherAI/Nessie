@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { AUTH_LOCK_TRANSACTION_OPTIONS, lockUserSessions } from './user-session-lock.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaTeamDirectoryEntry } from './uoa-team-directory.js'
 
 export class UoaRecoveryAccountLinkError extends Error {
   constructor(message: string) {
@@ -20,7 +20,7 @@ export type UoaRecoveryLinkFenceInput = {
   returnedTokenVersion: number
   /** Non-authoritative last-seen directory/active tuple from the exchange. */
   identity: UoaSessionIdentity
-  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+  teamDirectory?: UoaTeamDirectoryEntry[]
 }
 
 /**
@@ -68,7 +68,7 @@ export const assertUoaRecoveryAccountLink = async (
 
 /**
  * Authoritative recovery fence, run INSIDE the single recovery transaction
- * after the exact external-org + external-workspace locks and before the
+ * after the exact external-org + external-team locks and before the
  * target existing-or-create branch and every project/team/channel/membership
  * write. `localOrganizationId` is the resolved TARGET organization (per-UOA-org
  * model — for a cross-org reauthorization it differs from the bearer's source
@@ -114,8 +114,8 @@ export const claimUoaRecoveryAccountLink = async (
         lastVerifiedAt: new Date(),
         metadata: {
           provider: 'uoa',
-          ...(input.workspaceDirectory
-            ? { workspaceDirectory: input.workspaceDirectory }
+          ...(input.teamDirectory
+            ? { teamDirectory: input.teamDirectory }
             : {}),
         },
       },
@@ -142,8 +142,8 @@ export const claimUoaRecoveryAccountLink = async (
       lastVerifiedAt: new Date(),
       metadata: {
         ...metadata,
-        ...(input.workspaceDirectory
-          ? { workspaceDirectory: input.workspaceDirectory }
+        ...(input.teamDirectory
+          ? { teamDirectory: input.teamDirectory }
           : {}),
       },
       uoaTokenVersion: input.returnedTokenVersion,

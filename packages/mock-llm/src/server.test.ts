@@ -85,7 +85,7 @@ test('a reasoning turn streams reasoning_content before any text or tool call', 
     const reasoning = chunks
       .map((chunk) => chunk.choices[0]?.delta?.reasoning_content ?? '')
       .join('')
-    assert.match(reasoning, /^The question is about this workspace/)
+    assert.match(reasoning, /^The question is about this team/)
 
     // Ordering matters: the thought recorder must see reasoning ahead of the
     // answer text and the tool call it leads to.

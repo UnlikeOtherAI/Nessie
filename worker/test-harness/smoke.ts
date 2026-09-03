@@ -23,7 +23,7 @@ process.env.OPENAI_API_KEY ??= 'mock-token'
 // reasoning on both turns so the run's thought log is exercised too.
 const SCENARIO = 'reasoning-tool-answer'
 const EXPECTED_ANSWER =
-  'The workspace has a handful of channels, including the one we are talking in right now.'
+  'The team has a handful of channels, including the one we are talking in right now.'
 
 // Bounded poll for state a run writes after its status flips terminal.
 // Returns the last value seen when the deadline passes, so the caller's own
@@ -56,7 +56,7 @@ const main = async (): Promise<void> => {
   const seeded = await seedRun(
     pipeline.prisma,
     scope,
-    'Which channels does this workspace have?',
+    'Which channels does this team have?',
   )
   const runIds = [seeded.runId]
 

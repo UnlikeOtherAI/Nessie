@@ -8,14 +8,14 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listLedgerAgentModels,
   loadAgentToolCatalog,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import type { RunContext } from './types.js'
 
 /**
  * The worker's half of the generated capability catalogue (D5).
  *
- * The block itself is built in `@nessie/workspace-admin` so the Agent Designer
+ * The block itself is built in `@nessie/team-admin` so the Agent Designer
  * page's sidebar renders from the same definition (D9) — what lives here is the
  * run-shaped half: resolving the blueprint from the run's agent, and reading
  * this organisation's live tool and model catalogues.

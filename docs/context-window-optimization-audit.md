@@ -83,7 +83,7 @@ data, and the current cap (if any).
 | Tool(s) | Effective cap before context |
 |---|---|
 | `web_search`, `web_fetch`, `document_read` | ~4,000 chars (`MAX_PREVIEW_LENGTH`) |
-| `workspace_search` | ~4,000 chars |
+| `team_search` | ~4,000 chars |
 | `http_fetch` (and HTTP-transport tools) | 12,000 chars middle-out (`MAX_RAW_BODY_CHARS`) |
 | `kb_page_read` | 20,000 chars (`PAGE_BODY_CHAR_CAP`) |
 | `file_read`, `file_glob`, other builtins | 32,000 chars (`truncateToolResult`) |

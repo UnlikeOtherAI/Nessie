@@ -107,7 +107,7 @@ export const CURATED_MCP_LIBRARY: McpLibraryEntry[] = [
     key: 'asana',
     name: 'asana',
     label: 'Asana',
-    description: 'Tasks, projects and workspaces via the official Asana MCP server.',
+    description: 'Tasks, projects and teams via the official Asana MCP server.',
     vendor: 'Asana',
     sourceUrl: 'https://developers.asana.com/docs/using-asanas-mcp-server',
     url: 'https://mcp.asana.com/sse',

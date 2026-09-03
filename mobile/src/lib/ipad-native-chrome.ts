@@ -19,9 +19,9 @@ type IpadNativeChromeThemeOptions = {
 export const IPAD_NATIVE_CHROME_HEIGHT = 42
 export const IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE = 12
 export const IPAD_WINDOWED_CHROME_TOP = 12
-export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
-export const IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH = 68
-export const IPAD_NATIVE_WORKSPACE_MENU_TABLET_OFFSET = 44
+export const IPAD_NATIVE_TEAM_MAX_WIDTH = 220
+export const IPAD_NATIVE_TEAM_COLLAPSED_WIDTH = 68
+export const IPAD_NATIVE_TEAM_MENU_TABLET_OFFSET = 44
 export const IPAD_NATIVE_CHROME_GAP = 12
 // Two native controls (focus, then account) share one trailing chrome surface.
 export const IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH = 79
@@ -35,7 +35,7 @@ export type IpadTopChromeMode = 'compact' | 'full' | 'icons'
 export type IpadTopChromeLayout = {
   controlsLeft: number
   mode: IpadTopChromeMode
-  workspaceWidth: number | null
+  teamWidth: number | null
 }
 
 // A full-screen iPad app owns no pixels above its safe area, so native chrome
@@ -72,8 +72,8 @@ export const getIpadContentTop = (chromeTop: number): number => (
   chromeTop + IPAD_NATIVE_CHROME_HEIGHT + IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE
 )
 
-export const getIpadWorkspaceMenuAnchorLeft = (workspaceLeft: number): number => (
-  workspaceLeft + IPAD_NATIVE_WORKSPACE_MENU_TABLET_OFFSET
+export const getIpadTeamMenuAnchorLeft = (teamLeft: number): number => (
+  teamLeft + IPAD_NATIVE_TEAM_MENU_TABLET_OFFSET
 )
 
 export const withOpacity = (color: string, opacity: number): string => {
@@ -116,28 +116,28 @@ const arrangeControls = ({
   leadingEdge,
   screenWidth,
   trailingEdge,
-  workspaceWidth,
+  teamWidth,
 }: {
   controlsWidth: number
   leadingEdge: number
   screenWidth: number
   trailingEdge: number
-  workspaceWidth: number | null
+  teamWidth: number | null
 }): number | null => {
-  const controlsMinLeft = workspaceWidth === null
+  const controlsMinLeft = teamWidth === null
     ? leadingEdge
-    : leadingEdge + workspaceWidth + IPAD_NATIVE_CHROME_GAP
+    : leadingEdge + teamWidth + IPAD_NATIVE_CHROME_GAP
   const controlsMaxLeft = trailingEdge - controlsWidth
   if (controlsMinLeft > controlsMaxLeft) return null
   return clamp(getCentredControlsLeft(screenWidth, controlsWidth), controlsMinLeft, controlsMaxLeft)
 }
 
-// The workspace owns the leading edge, while all navigation controls are one
+// The team owns the leading edge, while all navigation controls are one
 // visual group. Preserve both by moving that group trailing before reducing it.
 export const getIpadTopChromeLayout = ({
   compactControlsWidth,
   fullControlsWidth,
-  hasWorkspace,
+  hasTeam,
   iconControlsWidth,
   insetLeft,
   insetRight,
@@ -147,7 +147,7 @@ export const getIpadTopChromeLayout = ({
 }: {
   compactControlsWidth: number
   fullControlsWidth: number
-  hasWorkspace: boolean
+  hasTeam: boolean
   iconControlsWidth: number
   insetLeft: number
   insetRight: number
@@ -158,38 +158,38 @@ export const getIpadTopChromeLayout = ({
   const leadingEdge = insetLeft + leadingReservedWidth + IPAD_NATIVE_CHROME_GAP
   const trailingEdge = screenWidth - insetRight - IPAD_NATIVE_CHROME_GAP - trailingReservedWidth
 
-  if (!hasWorkspace) {
+  if (!hasTeam) {
     const fullControlsLeft = arrangeControls({
       controlsWidth: fullControlsWidth,
       leadingEdge,
       screenWidth,
       trailingEdge,
-      workspaceWidth: null,
+      teamWidth: null,
     })
     if (fullControlsLeft !== null) {
-      return { controlsLeft: fullControlsLeft, mode: 'full', workspaceWidth: null }
+      return { controlsLeft: fullControlsLeft, mode: 'full', teamWidth: null }
     }
     const compactControlsLeft = arrangeControls({
       controlsWidth: compactControlsWidth,
       leadingEdge,
       screenWidth,
       trailingEdge,
-      workspaceWidth: null,
+      teamWidth: null,
     })
     if (compactControlsLeft !== null) {
-      return { controlsLeft: compactControlsLeft, mode: 'compact', workspaceWidth: null }
+      return { controlsLeft: compactControlsLeft, mode: 'compact', teamWidth: null }
     }
     const iconControlsLeft = arrangeControls({
       controlsWidth: iconControlsWidth,
       leadingEdge,
       screenWidth,
       trailingEdge,
-      workspaceWidth: null,
+      teamWidth: null,
     })
     return {
       controlsLeft: iconControlsLeft ?? leadingEdge,
       mode: 'icons',
-      workspaceWidth: null,
+      teamWidth: null,
     }
   }
 
@@ -198,20 +198,20 @@ export const getIpadTopChromeLayout = ({
     ['compact', compactControlsWidth],
     ['icons', iconControlsWidth],
   ] as const) {
-    const availableWorkspaceWidth = Math.min(
-      IPAD_NATIVE_WORKSPACE_MAX_WIDTH,
+    const availableTeamWidth = Math.min(
+      IPAD_NATIVE_TEAM_MAX_WIDTH,
       trailingEdge - leadingEdge - IPAD_NATIVE_CHROME_GAP - controlsWidth,
     )
-    if (availableWorkspaceWidth < IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH) continue
+    if (availableTeamWidth < IPAD_NATIVE_TEAM_COLLAPSED_WIDTH) continue
     const controlsLeft = arrangeControls({
       controlsWidth,
       leadingEdge,
       screenWidth,
       trailingEdge,
-      workspaceWidth: availableWorkspaceWidth,
+      teamWidth: availableTeamWidth,
     })
     if (controlsLeft !== null) {
-      return { controlsLeft, mode, workspaceWidth: availableWorkspaceWidth }
+      return { controlsLeft, mode, teamWidth: availableTeamWidth }
     }
   }
 
@@ -224,10 +224,10 @@ export const getIpadTopChromeLayout = ({
       leadingEdge,
       screenWidth,
       trailingEdge,
-      workspaceWidth: null,
+      teamWidth: null,
     })
-    if (controlsLeft !== null) return { controlsLeft, mode, workspaceWidth: null }
+    if (controlsLeft !== null) return { controlsLeft, mode, teamWidth: null }
   }
 
-  return { controlsLeft: leadingEdge, mode: 'icons', workspaceWidth: null }
+  return { controlsLeft: leadingEdge, mode: 'icons', teamWidth: null }
 }

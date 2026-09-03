@@ -17,7 +17,7 @@ From `docs/brief.md` and `src/agent/Orchestrator.ts`:
 | **Sub-agents** | Spawned via `max` CLI (MiniMax API, Anthropic-compatible) |
 | **Tool layer** | `Tool<Input, Output, Progress>` interface with `buildTool()` factory; built-in: Bash, FileRead, FileWrite, Glob, Grep, WebSearch |
 | **Tool orchestration** | `runTools()` with read/write partitioning, permission hooks, abort support |
-| **Session context** | In-memory conversation history + markdown workspace files |
+| **Session context** | In-memory conversation history + markdown team files |
 | **macOS UI** | AppKit/SwiftUI native — sidebar agents, chat interface, voice toggle, status bar |
 | **State management** | `OrchestratorState` with agents, messages, subAgents, isListening, isSpeaking |
 | **Deployment** | Self-hosted, single machine |
@@ -55,7 +55,7 @@ From `docs/brief.md` and `src/agent/Orchestrator.ts`:
 | **Tool layer** | 5 tools (file, bash, search, find) | 20+ built-in + extensible via skills/plugins | OpenClaw ahead |
 | **Sub-agent spawning** | Via `max` CLI (MiniMax) | Via Gateway + Pi runtime | Both have it |
 | **Orchestration** | Custom `Orchestrator` class | Built-in multi-agent routing | Both have it |
-| **Session persistence** | Markdown workspace files | JSONL transcripts + SQLite indexes | OpenClaw ahead |
+| **Session persistence** | Markdown team files | JSONL transcripts + SQLite indexes | OpenClaw ahead |
 | **WS protocol** | OpenAI Realtime (voice) | Gateway protocol (connect/chat.*/sessions.*) | Both have WS |
 | **HTTP API** | Minimal (index.ts) | Full HTTP surface (OpenAI, OpenResponses, tools) | OpenClaw ahead |
 | **Cron/scheduling** | None | Built-in | OpenClaw ahead |
@@ -152,7 +152,7 @@ Helper Agent acts as a **tool provider** for OpenClaw, registered via a skill or
 
 **Medium term (Path B — Helper as OpenClaw Node)**: Once the hybrid works, expose Helper as a first-class OpenClaw node. This gives OpenClaw native macOS capabilities (voice, input injection) and gives Helper a cleaner integration model.
 
-**Long term (Path A — Helper as OpenClaw Operator)**: Full integration where Helper Agent's Orchestrator uses OpenClaw as the messaging + automation backend. Helper's voice layer feeds into OpenClaw's `chat.send`; OpenClaw's session model replaces Helper's in-memory workspace. This is the most ambitious but also the most powerful.
+**Long term (Path A — Helper as OpenClaw Operator)**: Full integration where Helper Agent's Orchestrator uses OpenClaw as the messaging + automation backend. Helper's voice layer feeds into OpenClaw's `chat.send`; OpenClaw's session model replaces Helper's in-memory team. This is the most ambitious but also the most powerful.
 
 ## What Helper Agent Should NOT Take From OpenClaw
 

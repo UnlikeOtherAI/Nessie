@@ -7,7 +7,7 @@ import {
   searchGoogleContacts,
   trashGmailThread,
 } from '@nessie/comms-google'
-import { loadUserGoogleCommsCredential } from '@nessie/workspace-admin'
+import { loadUserGoogleCommsCredential } from '@nessie/team-admin'
 import { safeFetch } from '@nessie/runtime'
 import { z } from 'zod'
 

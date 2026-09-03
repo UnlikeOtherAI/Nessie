@@ -21,7 +21,7 @@ const exactTokenGuard = (
 ): SessionMutationOutcome =>
   payload.token === 'targeted-token'
     ? { kind: 'target' }
-    : { kind: 'foreign', message: 'The renewed session missed the requested workspace.' }
+    : { kind: 'foreign', message: 'The renewed session missed the requested team.' }
 
 test('runGuarded applies a direct success the exact-target guard accepts', async () => {
   const events: string[] = []
@@ -76,7 +76,7 @@ test('a decoded direct mismatch terminally fences the coordinator without any re
       async () => sessionPayload('foreign-token'),
       exactTokenGuard,
     ),
-    /missed the requested workspace/,
+    /missed the requested team/,
   )
   // A decoded direct mismatch is not opaque: the foreign session is handed to
   // the caller-owned revocation callback exactly once, the local session is
@@ -203,13 +203,13 @@ test('a typed refusal surfaces without any refresh', async () => {
   await assert.rejects(
     coordinator.runGuarded(
       async () => {
-        const refusal = new Error('The renewed session is not on the requested workspace.')
+        const refusal = new Error('The renewed session is not on the requested team.')
         refusal.name = 'AuthSessionApiError'
         throw refusal
       },
       () => ({ kind: 'target' }),
     ),
-    /not on the requested workspace/,
+    /not on the requested team/,
   )
   assert.equal(refreshCalls, 0)
   assert.deepEqual(events, [])

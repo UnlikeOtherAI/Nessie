@@ -26,7 +26,7 @@ import {
   listAccessibleProjectIds as listAccessibleProjectIdsShared,
   loadLastMessageAtByThread,
   readAgentVoiceName,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the
@@ -467,7 +467,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   // what keeps one team's tickets, board and iterations off another team's
   // screen — org scope alone made them readable by every member.
   //
-  // The predicate itself lives in `@nessie/workspace-admin` so the worker's
+  // The predicate itself lives in `@nessie/team-admin` so the worker's
   // `project_list` tool asks exactly this question; these wrappers only unpack
   // the actor context.
   const projectViewer = (actorContext: AuthorizedActionContext) => ({

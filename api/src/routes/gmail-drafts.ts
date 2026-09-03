@@ -10,7 +10,7 @@ import {
   undoHeldSend,
   updateDraftForUser,
   SEND_GRANT_DURATIONS,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'

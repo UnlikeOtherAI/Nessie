@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import {
   issueCallActionToken,
   startCallForUser,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { registerCallRoutes } from '../src/routes/calls.js'
 import type { RouteDeps } from '../src/routes/types.js'

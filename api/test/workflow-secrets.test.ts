@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
+import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 
@@ -36,7 +36,7 @@ const GRAPH = {
   ],
 }
 
-const seedWorkspace = async (
+const seedTeam = async (
   prisma: PrismaClient,
   bindingSchema: Record<string, unknown>,
 ) => {
@@ -98,7 +98,7 @@ const seedRunWithTaintedStepInput = async (
 runDatabaseTest('W0 write gate: plaintext in a reference binding is rejected', async () => {
   const prisma = new PrismaClient()
   try {
-    const seed = await seedWorkspace(prisma, {
+    const seed = await seedTeam(prisma, {
       apiKey: { kind: 'reference' },
       region: { kind: 'literal' },
     })
@@ -154,7 +154,7 @@ runDatabaseTest('W0 write gate: plaintext in a reference binding is rejected', a
 runDatabaseTest('W0 sink 1: API responses redact reference bindings', async () => {
   const prisma = new PrismaClient()
   try {
-    const seed = await seedWorkspace(prisma, {
+    const seed = await seedTeam(prisma, {
       apiKey: { kind: 'reference' },
       region: 'literal',
     })
@@ -191,7 +191,7 @@ runDatabaseTest(
   async () => {
     const prisma = new PrismaClient()
     try {
-      const seed = await seedWorkspace(prisma, {
+      const seed = await seedTeam(prisma, {
         apiKey: { kind: 'reference' },
       })
       const installation = await installWorkflowTemplate(

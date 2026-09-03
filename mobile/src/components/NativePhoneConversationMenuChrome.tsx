@@ -32,7 +32,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 /**
  * Native phone shell chrome for every tab's first screen. The controls are
- * native but delegate to the WebView's existing workspace, recents, account,
+ * native but delegate to the WebView's existing team, recents, account,
  * and compose actions, preserving their authorization and menus.
  */
 export const NativePhoneConversationMenuChrome = ({
@@ -60,9 +60,9 @@ export const NativePhoneConversationMenuChrome = ({
   showCreationActions,
   toolbarState,
   platform,
-  onWorkspacePress,
-  workspaceAvatarUrl,
-  workspaceName,
+  onTeamPress,
+  teamAvatarUrl,
+  teamName,
 }: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
   const creationProgress = useRef(new Animated.Value(0)).current
@@ -151,11 +151,11 @@ export const NativePhoneConversationMenuChrome = ({
         onAccountPress={onAccountPress}
         onToggleFocusMode={onToggleFocusMode}
         onToolbarAction={onToolbarAction}
-        onWorkspacePress={onWorkspacePress}
+        onTeamPress={onTeamPress}
         safeTop={safeTop}
         toolbarState={toolbarState}
-        workspaceAvatarUrl={workspaceAvatarUrl}
-        workspaceName={workspaceName}
+        teamAvatarUrl={teamAvatarUrl}
+        teamName={teamName}
       />
 
       {showCreationActions ? (

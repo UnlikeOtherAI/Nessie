@@ -104,7 +104,7 @@ export type TeamRecord = {
   callProvider: 'google_meet' | 'jitsi' | 'microsoft_teams'
   callProviderAvailability: Record<'google_meet' | 'jitsi' | 'microsoft_teams', boolean>
   createdAt: string
-  /** UOA holds this workspace's name, so it cannot be renamed in Nessie. */
+  /** UOA holds this team's name, so it cannot be renamed in Nessie. */
   externallyManaged?: boolean
   id: string
   memberCount: number

@@ -318,7 +318,7 @@ The architecture allows multiple agents and concurrent spawns. It also allows bu
 
 Missing:
 
-- file/workspace locks.
+- file/team locks.
 - plan-level write sets.
 - conflict detection.
 - merge/rebase strategy.
@@ -753,7 +753,7 @@ Those pieces exist mostly in the research doc, not in the canonical agent/base/m
 5. Replace all skill lifecycle prose with one lifecycle state machine and active version model.
 6. Define mailbox delivery semantics with leases, retries, dead-lettering, idempotency, and ordering.
 7. Define plan recovery: retries, compensation, rollback, cancellation, crash resume, and partial results.
-8. Add resource concurrency controls: per-agent run serialization, file/workspace locks, external resource locks, and conflict detection.
+8. Add resource concurrency controls: per-agent run serialization, file/team locks, external resource locks, and conflict detection.
 9. Add a real cost ledger: per agent, run, plan, step, tool call, skill execution, and provider request.
 10. Add queue/rate-limit/backpressure design across router, planner, worker, tool gateway, sandbox, mailbox, and provider clients.
 

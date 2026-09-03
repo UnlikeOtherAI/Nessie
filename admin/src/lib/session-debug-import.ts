@@ -41,7 +41,7 @@ export const shouldStartAutomaticSignIn = (input: {
 /**
  * Extract the one credential the debug dump can actually transfer. Everything
  * else in the JSON is diagnostic and untrusted: never restore its storage,
- * cookies, decoded claims, user, or workspace context.
+ * cookies, decoded claims, user, or team context.
  */
 export const parseSessionDebugImport = (
   raw: string,

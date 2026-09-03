@@ -8,7 +8,7 @@ import {
   loadManageableMailboxConnection,
   MailboxConnectionError,
   resolveMailboxForToolCall,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { runDatabaseTest } from './support.js'
 
@@ -311,7 +311,7 @@ runDatabaseTest('a member sees a shared mailbox only for a team they belong to',
       actor: { role: 'member', userId: seeded.personId },
       organizationId: seeded.organizationId,
     })
-    assert.deepEqual(before, [], 'a team mailbox is not workspace-wide')
+    assert.deepEqual(before, [], 'a team mailbox is not team-wide')
 
     await prisma.teamMember.create({
       data: { teamId: seeded.teamId, userId: seeded.personId },

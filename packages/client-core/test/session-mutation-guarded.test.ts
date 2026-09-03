@@ -3,8 +3,8 @@ import test from 'node:test'
 
 import {
   SessionMutationLoss,
-  sessionMatchesExpectedWorkspace,
-  type ExpectedWorkspaceTarget,
+  sessionMatchesExpectedTeam,
+  type ExpectedTeamTarget,
   type SessionPayload,
 } from '../src/auth-session.js'
 import {
@@ -19,17 +19,17 @@ const sessionPayload = (token: string): SessionPayload => ({
 
 const targetedPayload = (
   token: string,
-  target: ExpectedWorkspaceTarget,
+  target: ExpectedTeamTarget,
 ): SessionPayload => ({
   me: {
-    uoaWorkspaces: [
+    uoaTeams: [
       { active: true, organizationId: target.organizationId, teamId: target.teamId },
     ],
   } as unknown as SessionPayload['me'],
   token,
 })
 
-const TARGET: ExpectedWorkspaceTarget = {
+const TARGET: ExpectedTeamTarget = {
   organizationId: 'external-org',
   teamId: 'external-team',
 }
@@ -37,9 +37,9 @@ const TARGET: ExpectedWorkspaceTarget = {
 const exactTargetGuard = (
   payload: SessionPayload,
 ): SessionMutationOutcome =>
-  sessionMatchesExpectedWorkspace(payload, TARGET)
+  sessionMatchesExpectedTeam(payload, TARGET)
     ? { kind: 'target' }
-    : { kind: 'foreign', message: 'The renewed session missed the requested workspace.' }
+    : { kind: 'foreign', message: 'The renewed session missed the requested team.' }
 
 test('termination fences a late apply and logout deletes the winning session', async () => {
   let resolveSwitch: ((payload: SessionPayload) => void) | undefined
@@ -284,7 +284,7 @@ test('a mismatched direct payload is terminally fenced without a refresh; typed 
       }),
       exactTargetGuard,
     ),
-    /missed the requested workspace/,
+    /missed the requested team/,
   )
   assert.equal(refreshCalls, 0)
   assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
@@ -374,7 +374,7 @@ test('a foreign refresh winner after an opaque loss terminally fences without ad
       },
       exactTargetGuard,
     ),
-    /missed the requested workspace/,
+    /missed the requested team/,
   )
   assert.equal(refreshCalls, 1)
   // Never clear-then-adopt the unvalidated winner: the foreign session is

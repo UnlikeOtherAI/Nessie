@@ -8,7 +8,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   AGENT_DESIGNER_SLUG,
   globalAgentHomeDmKey,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { runAgentHandoffTool } from '../../src/run/pa-tools/agent-handoff.js'
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
@@ -107,23 +107,23 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   }
 }
 
-const cleanup = async (prisma: PrismaClient, workspace: Seed): Promise<void> => {
+const cleanup = async (prisma: PrismaClient, team: Seed): Promise<void> => {
   const designerThreads = await prisma.thread.findMany({
-    where: { channel: { organizationId: workspace.organizationId } },
+    where: { channel: { organizationId: team.organizationId } },
     select: { id: true },
   })
   for (const thread of designerThreads) {
     await deleteThreadQueueJobs(prisma, thread.id)
   }
-  await prisma.organization.deleteMany({ where: { id: workspace.organizationId } })
+  await prisma.organization.deleteMany({ where: { id: team.organizationId } })
   await prisma.user.deleteMany({
-    where: { id: { in: [workspace.memberId, workspace.ownerId] } },
+    where: { id: { in: [team.memberId, team.ownerId] } },
   })
 }
 
 const buildContext = (
   prisma: PrismaClient,
-  workspace: Seed,
+  team: Seed,
   options: {
     /** The human doing the asking — the actor. */
     actorUserId?: string
@@ -142,16 +142,16 @@ const buildContext = (
       requestId: randomUUID(),
     },
     actor: options.unattended
-      ? { actorId: workspace.agentId, actorType: 'agent' as const, roles: ['system'] }
+      ? { actorId: team.agentId, actorType: 'agent' as const, roles: ['system'] }
       : {
-        actorId: options.actorUserId ?? workspace.ownerId,
+        actorId: options.actorUserId ?? team.ownerId,
         actorType: 'user' as const,
         roles: ['member'],
       },
     tenant: {
-      organizationId: workspace.organizationId,
-      projectId: workspace.projectId,
-      teamId: workspace.teamId,
+      organizationId: team.organizationId,
+      projectId: team.projectId,
+      teamId: team.teamId,
     },
   }
   const runContext: RunContext = {
@@ -159,7 +159,7 @@ const buildContext = (
       agentKind: 'shared',
       effort: 'medium',
       executionMode: 'inference',
-      id: workspace.agentId,
+      id: team.agentId,
       model: null,
       name: 'Ops agent',
       parentAgentId: null,
@@ -169,29 +169,29 @@ const buildContext = (
     boundAgentIds: [],
     channel: {
       dmKey: null,
-      id: workspace.channelId,
-      organizationId: workspace.organizationId,
-      projectId: workspace.projectId,
+      id: team.channelId,
+      organizationId: team.organizationId,
+      projectId: team.projectId,
       systemChannelType: null,
-      teamId: workspace.teamId,
+      teamId: team.teamId,
     },
     consumedSources,
     run: {
       createdAt: new Date(),
-      id: workspace.runId,
+      id: team.runId,
       replyPlacement: null,
-      threadId: workspace.threadId,
+      threadId: team.threadId,
     },
     task: { id: randomUUID() },
   }
 
   return {
     actorContext: actorContext as BuiltinToolRuntimeContext['actorContext'],
-    agentId: workspace.agentId,
+    agentId: team.agentId,
     agentKind: 'shared',
     channel: {
-      id: workspace.channelId,
-      organizationId: workspace.organizationId as never,
+      id: team.channelId,
+      organizationId: team.organizationId as never,
       systemChannelType: null,
     },
     consumedSources,
@@ -201,10 +201,10 @@ const buildContext = (
       publishWs: async () => undefined,
     } as BuiltinToolRuntimeContext['realtimeTransport'],
     run: {
-      id: workspace.runId,
+      id: team.runId,
       interactive: options.interactive ?? true,
       messageId: randomUUID(),
-      threadId: workspace.threadId,
+      threadId: team.threadId,
     },
     runContext,
     toolCallId: randomUUID(),
@@ -213,13 +213,13 @@ const buildContext = (
 
 const designerHome = async (
   prisma: PrismaClient,
-  workspace: Seed,
+  team: Seed,
   userId: string,
 ) =>
   prisma.channel.findUniqueOrThrow({
     where: {
       dmKey: globalAgentHomeDmKey({
-        organizationId: workspace.organizationId,
+        organizationId: team.organizationId,
         slug: AGENT_DESIGNER_SLUG,
         userId,
       }),
@@ -229,16 +229,16 @@ const designerHome = async (
 
 runDatabaseTest('a handoff writes one brief, one doorway and one run — and a repeat converges', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
-  const context = buildContext(prisma, workspace, {
+  const context = buildContext(prisma, team, {
     // A privileged source the requester themselves satisfies: this is exactly
     // what the subtraction exists for.
-    consumed: [{ scopeId: workspace.ownerId, scopeType: 'user' }],
+    consumed: [{ scopeId: team.ownerId, scopeType: 'user' }],
   })
   const first = await runAgentHandoffTool(context, {
     brief: 'They want an agent that triages inbound support mail every morning.',
@@ -247,7 +247,7 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   const firstOutput = JSON.parse(first.outputPreview) as { status: string; channelId: string }
   assert.equal(firstOutput.status, 'handed_off')
 
-  const home = await designerHome(prisma, workspace, workspace.ownerId)
+  const home = await designerHome(prisma, team, team.ownerId)
   assert.equal(firstOutput.channelId, home.id)
   const homeThreadId = home.threads[0]?.id
   assert.ok(homeThreadId)
@@ -278,14 +278,14 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   assert.deepEqual(briefBasis, [])
   const viewer = await resolveDisclosureViewer(
     prisma,
-    workspace.organizationId,
-    workspace.ownerId,
+    team.organizationId,
+    team.ownerId,
   )
   assert.equal(viewerSatisfiesBasis(briefBasis, viewer), true)
 
   // One doorway message back in the origin thread, carrying the deep link.
   const doorways = await prisma.message.findMany({
-    where: { agentId: workspace.agentId, threadId: workspace.threadId },
+    where: { agentId: team.agentId, threadId: team.threadId },
     select: { metadata: true },
   })
   assert.equal(doorways.length, 1)
@@ -296,7 +296,7 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   )
 
   const designerAgent = await prisma.agent.findFirstOrThrow({
-    where: { organizationId: workspace.organizationId, systemSlug: AGENT_DESIGNER_SLUG },
+    where: { organizationId: team.organizationId, systemSlug: AGENT_DESIGNER_SLUG },
     select: { id: true, systemSlug: true, toolPolicy: true },
   })
   assert.equal(
@@ -325,7 +325,7 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   // A second ask inside the cooldown — a retry, a continuation run, or simply
   // the person repeating themselves — converges on the briefing already there.
   const second = await runAgentHandoffTool(
-    buildContext(prisma, workspace),
+    buildContext(prisma, team),
     { brief: 'Same thing again, phrased differently.', target: AGENT_DESIGNER_SLUG },
   )
   const secondOutput = JSON.parse(second.outputPreview) as { status: string; channelId: string }
@@ -334,7 +334,7 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   assert.equal(await prisma.message.count({ where: { threadId: homeThreadId } }), 1)
   assert.equal(
     await prisma.message.count({
-      where: { agentId: workspace.agentId, threadId: workspace.threadId },
+      where: { agentId: team.agentId, threadId: team.threadId },
     }),
     1,
   )
@@ -344,7 +344,7 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
   )
   assert.equal(
     await prisma.agentHandoffRequest.count({
-      where: { requestedByUserId: workspace.ownerId, targetSlug: AGENT_DESIGNER_SLUG },
+      where: { requestedByUserId: team.ownerId, targetSlug: AGENT_DESIGNER_SLUG },
     }),
     1,
   )
@@ -352,9 +352,9 @@ runDatabaseTest('a handoff writes one brief, one doorway and one run — and a r
 
 runDatabaseTest('a PA-presence handoff opens the ASKING member\'s DM, not the effective user\'s', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
@@ -363,23 +363,23 @@ runDatabaseTest('a PA-presence handoff opens the ASKING member\'s DM, not the ef
   // is the one talking to it.
   const output = JSON.parse(
     (await runAgentHandoffTool(
-      buildContext(prisma, workspace, {
-        actorUserId: workspace.memberId,
-        effectiveUserId: workspace.ownerId,
+      buildContext(prisma, team, {
+        actorUserId: team.memberId,
+        effectiveUserId: team.ownerId,
       }),
       { brief: 'The member wants a standup-notes agent.', target: AGENT_DESIGNER_SLUG },
     )).outputPreview,
   ) as { channelId: string }
 
-  const memberHome = await designerHome(prisma, workspace, workspace.memberId)
+  const memberHome = await designerHome(prisma, team, team.memberId)
   assert.equal(output.channelId, memberHome.id)
   assert.equal(
     await prisma.channel.count({
       where: {
         dmKey: globalAgentHomeDmKey({
-          organizationId: workspace.organizationId,
+          organizationId: team.organizationId,
           slug: AGENT_DESIGNER_SLUG,
-          userId: workspace.ownerId,
+          userId: team.ownerId,
         }),
       },
     }),
@@ -388,7 +388,7 @@ runDatabaseTest('a PA-presence handoff opens the ASKING member\'s DM, not the ef
   )
   assert.equal(
     await prisma.agentHandoffRequest.count({
-      where: { requestedByUserId: workspace.memberId },
+      where: { requestedByUserId: team.memberId },
     }),
     1,
   )
@@ -396,23 +396,23 @@ runDatabaseTest('a PA-presence handoff opens the ASKING member\'s DM, not the ef
 
 runDatabaseTest('unattended, non-interactive and agent-authored runs cannot hand off', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
   const args = { brief: 'Build me a triage agent.', target: AGENT_DESIGNER_SLUG }
 
   await assert.rejects(
-    runAgentHandoffTool(buildContext(prisma, workspace, { interactive: false }), args),
+    runAgentHandoffTool(buildContext(prisma, team, { interactive: false }), args),
     /live turn from the person themselves/,
   )
   await assert.rejects(
     runAgentHandoffTool(
       // A trigger-fired run: an agent actor replaying an absent creator.
-      buildContext(prisma, workspace, {
-        effectiveUserId: workspace.ownerId,
+      buildContext(prisma, team, {
+        effectiveUserId: team.ownerId,
         unattended: true,
       }),
       args,
@@ -420,7 +420,7 @@ runDatabaseTest('unattended, non-interactive and agent-authored runs cannot hand
     /nobody to hand the conversation to/,
   )
   await assert.rejects(
-    runAgentHandoffTool(buildContext(prisma, workspace), {
+    runAgentHandoffTool(buildContext(prisma, team), {
       brief: 'x',
       target: 'no-such-specialist',
     }),
@@ -429,13 +429,13 @@ runDatabaseTest('unattended, non-interactive and agent-authored runs cannot hand
 
   assert.equal(
     await prisma.agentHandoffRequest.count({
-      where: { organizationId: workspace.organizationId },
+      where: { organizationId: team.organizationId },
     }),
     0,
   )
   assert.equal(
     await prisma.channel.count({
-      where: { organizationId: workspace.organizationId, systemChannelType: 'system_agent' },
+      where: { organizationId: team.organizationId, systemChannelType: 'system_agent' },
     }),
     0,
   )
@@ -443,26 +443,26 @@ runDatabaseTest('unattended, non-interactive and agent-authored runs cannot hand
 
 runDatabaseTest('a busy Designer DM pends the brief instead of double-running the agent', async (t) => {
   const prisma = new PrismaClient()
-  const workspace = await seed(prisma)
+  const team = await seed(prisma)
   t.after(async () => {
-    await cleanup(prisma, workspace)
+    await cleanup(prisma, team)
     await prisma.$disconnect()
   })
 
   // Bootstrap the home first, then occupy its run slot exactly as an open card
   // or a turn still thinking would.
-  const { ensureGlobalAgentBootstrap } = await import('@nessie/workspace-admin')
+  const { ensureGlobalAgentBootstrap } = await import('@nessie/team-admin')
   const home = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
-    organizationId: workspace.organizationId,
-    teamId: workspace.teamId,
-    userId: workspace.ownerId,
+    organizationId: team.organizationId,
+    teamId: team.teamId,
+    userId: team.ownerId,
   })
   const busy = await prisma.run.create({
     data: { agentId: home.agentId, status: 'waiting_input', threadId: home.threadId },
   })
 
-  await runAgentHandoffTool(buildContext(prisma, workspace), {
+  await runAgentHandoffTool(buildContext(prisma, team), {
     brief: 'A second thing, while the first card is still open.',
     target: AGENT_DESIGNER_SLUG,
   })
@@ -483,7 +483,7 @@ runDatabaseTest('a busy Designer DM pends the brief instead of double-running th
   assert.equal(await prisma.message.count({ where: { threadId: home.threadId } }), 1)
   assert.equal(
     await prisma.agentHandoffRequest.count({
-      where: { organizationId: workspace.organizationId },
+      where: { organizationId: team.organizationId },
     }),
     1,
   )

@@ -9,7 +9,7 @@ import {
   withWorkflowOverlapLock,
   type WorkflowBindingScope,
   type WorkflowBindingTemplate,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { LedgerIdentityService } from '@nessie/runtime'
 import {
   parseChannelId,

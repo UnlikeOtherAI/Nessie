@@ -60,7 +60,7 @@ Plan and as-built deltas:
   serves both models. They are hand-written rather than a mail library: the dial
   must open to a just-vetted literal address with SNI pinned to the configured
   hostname, and a client that owns its own socket cannot be given that.
-  Lifecycle and the credential chokepoint are in `@nessie/workspace-admin`
+  Lifecycle and the credential chokepoint are in `@nessie/team-admin`
   (`mailbox-connection*.ts`); the routes are `/api/mailbox-connections*`; the
   only tuning is `NESSIE_MAILBOX_TIMEOUT_MS` (20s).
 

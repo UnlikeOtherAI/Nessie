@@ -49,7 +49,7 @@ export const PA_PRESENCE_PRIVATE_READ_TOOL_IDS = new Set([
   'message_edit',
   'message_delete',
   'react',
-  'workspace_search',
+  'team_search',
 ])
 
 const isWithheldFromPersonalAssistantPresence = (tool: BuiltinToolDefinition): boolean =>

@@ -32,7 +32,7 @@ const actorFor = (seed: Seed): AuthorizedActionContext => ({
   },
 })
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const organization = await prisma.organization.create({ data: { name: `approval-${randomUUID()}` } })
   const project = await prisma.project.create({ data: { name: 'project', organizationId: organization.id } })
   const team = await prisma.team.create({ data: { name: 'team', projectId: project.id } })
@@ -142,7 +142,7 @@ const seedSuspendedApproval = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('approving a tool gate claims its checkpoint and queues one approval continuation', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -176,7 +176,7 @@ runDatabaseTest('approving a tool gate claims its checkpoint and queues one appr
 
 runDatabaseTest('concurrent approvers can create only one continuation', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

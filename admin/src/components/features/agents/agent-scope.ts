@@ -9,7 +9,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 //  - `global`   — a system-provided agent (`systemManaged`, and not the PA):
 //    librarian, external-agent products, and other bootstrapped agents. These
 //    are not user-authored and are read-only, so the row omits its edit menu.
-//  - `team`     — everything else: workspace-visible agents the workspace
+//  - `team`     — everything else: team-visible agents the team
 //    builds and runs. Editable.
 //
 // Precedence matters: the PA is *both* `personal_assistant` and `systemManaged`,
@@ -42,13 +42,13 @@ export const AGENT_SCOPE_META: Record<AgentScope, AgentScopeCopy> = {
     label: 'Personal agents',
   },
   team: {
-    description: 'Shared agents your workspace builds, binds to channels, and runs.',
+    description: 'Shared agents your team builds, binds to channels, and runs.',
     empty: 'No team agents yet. Create one to put an agent to work in your channels.',
     label: 'Team agents',
   },
   global: {
     description: 'System-provided agents. These are managed for you and cannot be edited here.',
-    empty: 'No global agents are available in this workspace.',
+    empty: 'No global agents are available in this team.',
     label: 'Global agents',
   },
 }

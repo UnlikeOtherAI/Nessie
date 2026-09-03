@@ -8,11 +8,11 @@ import {
 import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-auth.js'
 
 /**
- * UOA-hosted avatars, for users and for workspaces ("teams").
+ * UOA-hosted avatars, for users and for teams ("teams").
  *
  * UOA always has an avatar for a subject it knows: an image uploaded through
  * UOA, a server-side proxy of the social-provider picture (users) or the team's
- * `iconUrl` (workspaces), or a deterministic generated SVG. The `GET` endpoints
+ * `iconUrl` (teams), or a deterministic generated SVG. The `GET` endpoints
  * therefore return `200` + image bytes for anything visible to the authenticated
  * domain, and the standard generic `404` for anything else.
  *
@@ -23,11 +23,11 @@ import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from '
  *
  * The domain hash is a server-side secret, so the browser can never call UOA
  * directly — the API relays the bytes (`routes/users.ts`,
- * `routes/workspace-avatar.ts`).
+ * `routes/team-avatar.ts`).
  *
  * It is also full system trust for the domain: the `/domain/*` mutations apply
  * no role check of their own, and UOA requires the calling product to gate
- * first. That gate lives in `routes/workspace-avatar.ts` and is load-bearing.
+ * first. That gate lives in `routes/team-avatar.ts` and is load-bearing.
  */
 
 const NESSIE_PRODUCT_SLUG = 'nessie'
@@ -65,7 +65,7 @@ export type UoaAvatarPrisma = Pick<PrismaClient, 'productAccountLink'>
 
 export type UoaUserPrisma = Pick<PrismaClient, 'user'>
 
-export type UoaWorkspacePrisma = Pick<PrismaClient, 'team'>
+export type UoaTeamPrisma = Pick<PrismaClient, 'team'>
 
 export type UoaAvatarImage = {
   body: Buffer
@@ -75,8 +75,8 @@ export type UoaAvatarImage = {
   source: string | null
 }
 
-export type UoaWorkspace = {
-  // The UOA team id — `Team.externalWorkspaceId`.
+export type UoaTeam = {
+  // The UOA team id — `Team.externalTeamId`.
   externalTeamId: string
   name: string
 }
@@ -154,21 +154,21 @@ export const resolveOwnUoaSubject = async (
 }
 
 /**
- * The UOA workspace behind the actor's session team, or null when there is no
- * team in context or the team was never bound to a UOA workspace (a purely
- * local team). Current-workspace routes scope through the actor's organization.
- * The workspace picker instead supplies `userId` and requires that user's team
- * membership, which safely covers workspaces in every organization the user
+ * The UOA team behind the actor's session team, or null when there is no
+ * team in context or the team was never bound to a UOA team (a purely
+ * local team). Current-team routes scope through the actor's organization.
+ * The team picker instead supplies `userId` and requires that user's team
+ * membership, which safely covers teams in every organization the user
  * belongs to.
  */
-export const resolveUoaWorkspace = async (
-  prisma: UoaWorkspacePrisma,
+export const resolveUoaTeam = async (
+  prisma: UoaTeamPrisma,
   input: {
     organizationId?: string
     teamId: string | null | undefined
     userId?: string
   },
-): Promise<UoaWorkspace | null> => {
+): Promise<UoaTeam | null> => {
   if (!input.teamId || (!input.organizationId && !input.userId)) {
     return null
   }
@@ -180,10 +180,10 @@ export const resolveUoaWorkspace = async (
         : {}),
       ...(input.userId ? { members: { some: { userId: input.userId } } } : {}),
     },
-    select: { externalWorkspaceId: true, name: true },
+    select: { externalTeamId: true, name: true },
   })
-  return team?.externalWorkspaceId
-    ? { externalTeamId: team.externalWorkspaceId, name: team.name }
+  return team?.externalTeamId
+    ? { externalTeamId: team.externalTeamId, name: team.name }
     : null
 }
 
@@ -298,7 +298,7 @@ const mutateAvatar = async (
   // 4xx; that is the caller's problem, not an outage.
   if (response.status === 429) {
     throw new UoaAvatarRejectedError(
-      'Too many workspace avatar changes. Try again later.',
+      'Too many team avatar changes. Try again later.',
       429,
     )
   }
@@ -331,10 +331,10 @@ export const fetchUoaUserAvatar = async (
 }
 
 /**
- * Fetch a UOA workspace's ("team") avatar bytes. Null when UOA is not configured
+ * Fetch a UOA team's ("team") avatar bytes. Null when UOA is not configured
  * or the team belongs to another domain.
  */
-export const fetchUoaWorkspaceAvatar = async (
+export const fetchUoaTeamAvatar = async (
   externalTeamId: string,
   deps: UoaAvatarDeps = {},
 ): Promise<UoaAvatarImage | null> => {
@@ -394,22 +394,22 @@ const deleteAvatar = async (path: string, deps: UoaAvatarDeps): Promise<boolean>
   return true
 }
 
-const workspaceAvatarPath = (externalTeamId: string): string =>
+const teamAvatarPath = (externalTeamId: string): string =>
   `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`
 
 const userAvatarPath = (uoaSub: string): string =>
   `/domain/users/${encodeURIComponent(uoaSub)}/avatar`
 
-export const putUoaWorkspaceAvatar = (
+export const putUoaTeamAvatar = (
   externalTeamId: string,
   image: UoaAvatarUpload,
   deps: UoaAvatarDeps = {},
-): Promise<boolean> => putAvatar(workspaceAvatarPath(externalTeamId), image, deps)
+): Promise<boolean> => putAvatar(teamAvatarPath(externalTeamId), image, deps)
 
-export const deleteUoaWorkspaceAvatar = (
+export const deleteUoaTeamAvatar = (
   externalTeamId: string,
   deps: UoaAvatarDeps = {},
-): Promise<boolean> => deleteAvatar(workspaceAvatarPath(externalTeamId), deps)
+): Promise<boolean> => deleteAvatar(teamAvatarPath(externalTeamId), deps)
 
 /**
  * Replace the UOA-hosted picture for one person. The subject must be the acting

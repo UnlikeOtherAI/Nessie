@@ -402,7 +402,7 @@ export const catalogueEmptyMessage = (input: {
   }
   if (query.length > 0 && input.filter === 'installed') {
     // The narrowing is half the answer: the app may well be in the catalogue,
-    // it is just not one of the ones this workspace has connected.
+    // it is just not one of the ones this team has connected.
     return {
       actions: [{ id: 'browse-all', label: 'Search all apps' }, ADD_CUSTOM_ACTION],
       message: `None of your installed apps match "${query}".`,

@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { buildAccessibleChannelWhere } from '@nessie/workspace-admin'
+import { buildAccessibleChannelWhere } from '@nessie/team-admin'
 import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
 import type { ThreadActivityRecord } from '../contracts.js'

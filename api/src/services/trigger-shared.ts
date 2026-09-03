@@ -4,13 +4,13 @@ import {
   computeNextRetryAt,
 } from '@nessie/runtime'
 import { parseRunId, type AgentTriggerRecord } from '@nessie/schemas'
-import { toTimestamp } from '@nessie/workspace-admin'
+import { toTimestamp } from '@nessie/team-admin'
 import type { AgentTriggerDeliveryRecord } from '../contracts.js'
 
 // Dispatch-side internals for the trigger service: delivery mapping, payload
 // normalization, retry bookkeeping, and the DispatchTriggerResult contract.
 // The create-side internals (record mapping, schedule arming, webhook config,
-// target resolution) live in `@nessie/workspace-admin` because the worker
+// target resolution) live in `@nessie/team-admin` because the worker
 // creates triggers too; they are re-exported so importers keep one import site.
 export {
   ensureWebhookConfig,
@@ -22,7 +22,7 @@ export {
   SCHEDULER_TRIGGER_TYPES,
   toTimestamp,
   TRIGGER_ADMIN_AUDIENCE,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 export type WorkflowTriggerPrismaLike = Pick<
   PrismaClient,

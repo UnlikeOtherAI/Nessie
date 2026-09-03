@@ -9,7 +9,7 @@ import {
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
-import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
+import { resolveInstallationPinnedGraph } from '@nessie/team-admin'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import {
   type DispatchTriggerResult,

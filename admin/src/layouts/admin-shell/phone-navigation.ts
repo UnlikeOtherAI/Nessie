@@ -147,7 +147,7 @@ export const phoneRouteHasBackDepth = (pathname: string): boolean =>
   getPhoneNavigationBackTarget(pathname) !== null
 
 // A phone Knowledge root is the space picker, not an open space. Retain the
-// provider's selection so a detail can restore its workspace, but don't leave
+// provider's selection so a detail can restore its team, but don't leave
 // that prior choice painted as active after Back returns to the picker.
 export const shouldHighlightKnowledgeSidebarSelection = (
   pathname: string,

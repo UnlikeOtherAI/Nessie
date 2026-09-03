@@ -381,7 +381,7 @@ State management:
 
 - Remote state in GCS bucket: `nessie-terraform-state-{project}`
 - State locking via GCS object versioning
-- Separate state files per environment (workspace or directory-based)
+- Separate state files per environment (team or directory-based)
 
 Terraform version: `>= 1.5`
 Google provider version: `>= 5.0`

@@ -120,7 +120,7 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
   const avatar = readSource('../src/components/primitives/UserAvatar.tsx')
   const agentAvatar = readSource('../src/components/shared/AgentAvatar.tsx')
-  const workspaceAvatar = readSource('../src/components/primitives/WorkspaceAvatar.tsx')
+  const teamAvatar = readSource('../src/components/primitives/TeamAvatar.tsx')
   const badge = readSource('../src/components/primitives/PresenceBadge.tsx')
 
   assert.match(people, /presenceRingWidth=\{nativeTouchShell \? 3 : undefined\}/)
@@ -134,8 +134,8 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   // through IdentityTile, which derives the radius from the rendered size.
   assert.match(avatar, /<IdentityTile/)
   assert.match(agentAvatar, /<IdentityTile/)
-  assert.match(workspaceAvatar, /<IdentityTile/)
-  for (const source of [avatar, agentAvatar, workspaceAvatar]) {
+  assert.match(teamAvatar, /<IdentityTile/)
+  for (const source of [avatar, agentAvatar, teamAvatar]) {
     assert.doesNotMatch(source, /rounded-(?:full|sm|md|lg|xl|2xl|3xl)/)
   }
   assert.doesNotMatch(people, /shape=/)
@@ -143,7 +143,7 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   assert.match(badge, /ringWidth = 2/)
 })
 
-test('the native phone home chrome delegates workspace, history, account, and Channels creation actions to the web shell', () => {
+test('the native phone home chrome delegates team, history, account, and Channels creation actions to the web shell', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const accountPopover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
@@ -153,10 +153,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const phoneCreationOptions = readSource('../../mobile/src/lib/native-creation-menu.ts')
   const phoneHeader = readSource('../../mobile/src/components/NativePhoneHeader.tsx')
   const phoneNavigationProvider = readSource('../src/layouts/admin-shell/PhoneNavigationProvider.tsx')
-  const ipadWorkspace = readSource('../../mobile/src/components/IpadNativeWorkspaceSwitcher.tsx')
-  const nativeWorkspaceAvatar = readSource('../../mobile/src/components/NativeWorkspaceAvatar.tsx')
+  const ipadTeam = readSource('../../mobile/src/components/IpadNativeTeamSwitcher.tsx')
+  const nativeTeamAvatar = readSource('../../mobile/src/components/NativeTeamAvatar.tsx')
   const nativePresentation = readSource('../../mobile/src/components/native-shell-presentation.ts')
-  const workspaceSwitcher = readSource('../src/layouts/admin-shell/WorkspaceSwitcher.tsx')
+  const teamSwitcher = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(shell, /useNativePhoneApp/)
@@ -167,7 +167,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(shell, /isPhoneTabRoot,/)
   const surfaces = readSource('../src/navigation/surfaces.ts')
   assert.ok(surfaces.includes(String.raw`/^\/search$/`))
-  assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
+  assert.match(shell, /<TeamSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger\s+nativeShellBridge/)
   assert.match(account, /__nessieToggleAccountMenu/)
@@ -225,21 +225,21 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneCreationOptions, /title: 'Project'/)
   assert.match(phoneCreationOptions, /title: 'Channel'/)
   assert.match(phoneCreationOptions, /title: 'Agent'/)
-  assert.match(workspaceSwitcher, /workspaceAvatarUrl: active\?\.avatarImageUrl \?\? null/)
-  assert.match(nativePresentation, /workspaceAvatarUrl: optionalText\(message\.workspaceAvatarUrl\)/)
-  assert.match(nativeApp, /workspaceAvatarUrl=\{nativeWorkspaceAvatarUrl\}/)
-  assert.match(phoneHeader, /<NativeWorkspaceAvatar/)
+  assert.match(teamSwitcher, /teamAvatarUrl: active\?\.avatarImageUrl \?\? null/)
+  assert.match(nativePresentation, /teamAvatarUrl: optionalText\(message\.teamAvatarUrl\)/)
+  assert.match(nativeApp, /teamAvatarUrl=\{nativeTeamAvatarUrl\}/)
+  assert.match(phoneHeader, /<NativeTeamAvatar/)
   assert.ok(
-    phoneHeader.indexOf('accessibilityLabel={`Switch workspace')
+    phoneHeader.indexOf('accessibilityLabel={`Switch team')
       < phoneHeader.indexOf('<NativePhoneToolbarControls')
       && phoneHeader.indexOf('<NativePhoneToolbarControls')
         < phoneHeader.lastIndexOf('accessibilityLabel="Account menu"'),
   )
-  assert.match(ipadWorkspace, /<NativeWorkspaceAvatar/)
-  assert.match(nativeWorkspaceAvatar, /const useAvatarImageSource/)
-  assert.match(nativeWorkspaceAvatar, /<SvgXml height=\{size\} width=\{size\} xml=\{source\.xml\} \/>/)
-  assert.match(nativeWorkspaceAvatar, /source=\{\{ uri: source\.uri \}\}/)
-  assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
+  assert.match(ipadTeam, /<NativeTeamAvatar/)
+  assert.match(nativeTeamAvatar, /const useAvatarImageSource/)
+  assert.match(nativeTeamAvatar, /<SvgXml height=\{size\} width=\{size\} xml=\{source\.xml\} \/>/)
+  assert.match(nativeTeamAvatar, /source=\{\{ uri: source\.uri \}\}/)
+  assert.match(nativeTeamAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
 })
 
 test('the account popover places Feedback and Debug between status and account actions', () => {
@@ -303,18 +303,18 @@ test('the native phone shell clears the glass tab bar within the WebView content
   )
 })
 
-test('Safari and Android browser tab roots reuse the mobile workspace, recents, and account controls', () => {
+test('Safari and Android browser tab roots reuse the mobile team, recents, and account controls', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const header = readSource('../src/layouts/admin-shell/MobileWebHomeHeader.tsx')
-  const workspace = readSource('../src/layouts/admin-shell/WorkspaceSwitcher.tsx')
+  const team = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
 
   assert.match(shell, /showMobileWebHomeHeader = showWebTabBar && showPhoneTabRoot/)
   assert.match(shell, /<MobileWebHomeHeader onLogout=\{shell.logoutAndRedirect\} \/>/)
-  assert.match(header, /<WorkspaceSwitcher variant="mobile-header" \/>/)
+  assert.match(header, /<TeamSwitcher variant="mobile-header" \/>/)
   assert.match(header, /<RecentChannelsControl/)
   assert.match(header, /<UserMenuTrigger/)
   assert.doesNotMatch(header, /showFeedbackLink/)
-  assert.match(workspace, /variant\?: 'mobile-header' \| 'native-bridge' \| 'rail'/)
+  assert.match(team, /variant\?: 'mobile-header' \| 'native-bridge' \| 'rail'/)
 })
 
 test('sidebar action menus have room to read and tap their choices', () => {

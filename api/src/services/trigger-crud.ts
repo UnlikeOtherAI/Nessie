@@ -7,7 +7,7 @@ import {
   mergeTriggerConfigPreservingIdentity,
   stripServerOwnedTriggerConfig,
   validateTodoTemplateTriggerConfig,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,

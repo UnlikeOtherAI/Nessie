@@ -10,42 +10,42 @@ import {
   type RotatedUoaCredential,
 } from './refresh-token-uoa.js'
 import {
-  deleteExactUoaWorkspaceSwitchIntent,
+  deleteExactUoaTeamSwitchIntent,
   identityMatches,
   identityMatchesTarget,
-  loadUoaWorkspaceSwitchIntent,
+  loadUoaTeamSwitchIntent,
   targetFromIntent,
-  UoaWorkspaceSwitchError,
-  type UoaWorkspaceSwitchIntentRecord,
-} from './uoa-workspace-switch-intent.js'
+  UoaTeamSwitchError,
+  type UoaTeamSwitchIntentRecord,
+} from './uoa-team-switch-intent.js'
 import {
   lockRefreshFamily,
   refreshTokenSelect,
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import type { ExternalAuthTeam } from './identity-display.js'
 import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
-import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
+import type { UoaTeamDirectory } from './uoa-team-directory.js'
 
 export type UoaRotationCallbacks = {
   advanceUoaSessionBinding?: (input: {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
-    workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectory
+    team?: ExternalAuthTeam
+    teamDirectory?: UoaTeamDirectory
   }, transaction: Prisma.TransactionClient) => Promise<void>
   afterUoaSessionBinding?: (input: {
     nextIdentity: UoaSessionIdentity
     userId: string
-    workspaceDirectory?: UoaWorkspaceDirectory
+    teamDirectory?: UoaTeamDirectory
   }) => Promise<void>
 }
 
 const sameSwitchIntent = (
-  left: UoaWorkspaceSwitchIntentRecord,
-  right: UoaWorkspaceSwitchIntentRecord,
+  left: UoaTeamSwitchIntentRecord,
+  right: UoaTeamSwitchIntentRecord,
 ): boolean =>
   left.familyId === right.familyId
   && left.sourceGeneration === right.sourceGeneration
@@ -54,7 +54,7 @@ const sameSwitchIntent = (
   && left.targetOrganizationId === right.targetOrganizationId
   && left.targetTeamId === right.targetTeamId
 
-export const assertWorkspaceSwitchSource = (
+export const assertTeamSwitchSource = (
   input: {
     sourceIdentity: UoaSessionIdentity
     sourceProviderId: string
@@ -76,19 +76,19 @@ export const assertWorkspaceSwitchSource = (
     // stale or unrelated request state (for example, another tab committed a
     // switch and rotated the shared cookie), not evidence that the healthy
     // cookie family is corrupt. Preserve it so an ordinary refresh can
-    // reconcile the caller to the winning workspace.
-    throw new UoaWorkspaceSwitchError(
-      'WORKSPACE_SWITCH_CONFLICT',
+    // reconcile the caller to the winning team.
+    throw new UoaTeamSwitchError(
+      'TEAM_SWITCH_CONFLICT',
       'The UnlikeOtherAI access token and refresh cookie do not identify the same source session.',
       false,
     )
   }
 }
 
-export const revalidateWorkspaceSwitchIntent = async (
+export const revalidateTeamSwitchIntent = async (
   prisma: PrismaClient,
   input: {
-    intent: UoaWorkspaceSwitchIntentRecord
+    intent: UoaTeamSwitchIntentRecord
     presented: RefreshTokenRecord
   },
 ): Promise<void> => {
@@ -105,31 +105,31 @@ export const revalidateWorkspaceSwitchIntent = async (
       || presented.revokedAt
       || presented.replacedById
     ) {
-      throw new UoaWorkspaceSwitchError(
-        'WORKSPACE_SWITCH_CONFLICT',
-        'The source session rotated while the workspace switch was starting.',
+      throw new UoaTeamSwitchError(
+        'TEAM_SWITCH_CONFLICT',
+        'The source session rotated while the team switch was starting.',
         false,
       )
     }
     const credential = await loadBoundUoaCredential(transaction, presented)
-    const current = await loadUoaWorkspaceSwitchIntent(transaction, {
+    const current = await loadUoaTeamSwitchIntent(transaction, {
       credential,
       presented,
     })
     if (!current || !sameSwitchIntent(current, input.intent)) {
-      throw new UoaWorkspaceSwitchError(
-        'WORKSPACE_SWITCH_CONFLICT',
-        'The pending workspace switch changed before the upstream request.',
+      throw new UoaTeamSwitchError(
+        'TEAM_SWITCH_CONFLICT',
+        'The pending team switch changed before the upstream request.',
         false,
       )
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
-export const clearRefusedWorkspaceSwitchIntent = async (
+export const clearRefusedTeamSwitchIntent = async (
   prisma: PrismaClient,
   input: {
-    intent: UoaWorkspaceSwitchIntentRecord
+    intent: UoaTeamSwitchIntentRecord
     presented: RefreshTokenRecord
   },
 ): Promise<void> => {
@@ -141,12 +141,12 @@ export const clearRefusedWorkspaceSwitchIntent = async (
     }) as RefreshTokenRecord | null
     if (!presented || presented.revokedAt || presented.replacedById) return
     const credential = await loadBoundUoaCredential(transaction, presented)
-    const current = await loadUoaWorkspaceSwitchIntent(transaction, {
+    const current = await loadUoaTeamSwitchIntent(transaction, {
       credential,
       presented,
     })
     if (current && sameSwitchIntent(current, input.intent)) {
-      await deleteExactUoaWorkspaceSwitchIntent(transaction, current)
+      await deleteExactUoaTeamSwitchIntent(transaction, current)
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
@@ -157,7 +157,7 @@ export const commitUoaRotation = async (
   presented: RefreshTokenRecord,
   rotated: RotatedUoaCredential,
   lastLocalTokenId: string,
-  switchIntent: UoaWorkspaceSwitchIntentRecord | null,
+  switchIntent: UoaTeamSwitchIntentRecord | null,
 ): Promise<void> => {
   const current = await loadBoundUoaCredential(transaction, presented)
   if (uoaRotationAlreadyPersisted(current, rotated, lastLocalTokenId)) return
@@ -169,13 +169,13 @@ export const commitUoaRotation = async (
       'UnlikeOtherAI session rotation conflicted with another request.',
     )
   }
-  const currentIntent = await loadUoaWorkspaceSwitchIntent(transaction, {
+  const currentIntent = await loadUoaTeamSwitchIntent(transaction, {
     credential: current,
     presented,
   })
   // A pending switch keeps its own exactness check: that request named a
-  // workspace, so the rotation may only commit the workspace it asked for.
-  // Beyond that the binding advance is one path — it adopts whatever workspace
+  // team, so the rotation may only commit the team it asked for.
+  // Beyond that the binding advance is one path — it adopts whatever team
   // UOA proved, for a switch and for an ordinary refresh alike.
   if (switchIntent) {
     if (
@@ -184,7 +184,7 @@ export const commitUoaRotation = async (
       || !identityMatchesTarget(rotated.identity, targetFromIntent(switchIntent))
     ) {
       throw new UoaRefreshBindingError(
-        'The pending UnlikeOtherAI workspace switch changed during rotation.',
+        'The pending UnlikeOtherAI team switch changed during rotation.',
       )
     }
   }
@@ -197,12 +197,12 @@ export const commitUoaRotation = async (
     nextIdentity: rotated.identity,
     previousIdentity: identityFromCredential(rotated.credential),
     userId: presented.userId,
-    workspace: rotated.workspace,
-    workspaceDirectory: rotated.workspaceDirectory,
+    team: rotated.team,
+    teamDirectory: rotated.teamDirectory,
   }, transaction)
   await persistUoaRotation(transaction, { lastLocalTokenId, rotated })
   if (currentIntent) {
-    await deleteExactUoaWorkspaceSwitchIntent(transaction, currentIntent)
+    await deleteExactUoaTeamSwitchIntent(transaction, currentIntent)
   }
 }
 
@@ -212,17 +212,17 @@ export const notifyUoaSessionBindingAfterCommit = async (
   result: ConsumeRefreshTokenResult,
   userId: string,
 ): Promise<void> => {
-  if (!rotated?.workspaceDirectory || !result.ok || !callbacks.afterUoaSessionBinding) return
+  if (!rotated?.teamDirectory || !result.ok || !callbacks.afterUoaSessionBinding) return
   try {
     await callbacks.afterUoaSessionBinding({
       nextIdentity: rotated.identity,
       userId,
-      workspaceDirectory: rotated.workspaceDirectory,
+      teamDirectory: rotated.teamDirectory,
     })
   } catch (error) {
     // The credential rotation is already committed. Display-alert
     // reconciliation can retry on the next verified directory read and must
     // never turn a successful rotation into an auth failure.
-    console.warn('[uoa] workspace invitation alert sync failed after rotation', error)
+    console.warn('[uoa] team invitation alert sync failed after rotation', error)
   }
 }

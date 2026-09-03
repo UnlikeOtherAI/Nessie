@@ -6,7 +6,7 @@ import { KnowledgeWorkspace } from '../../components/features/knowledge/Knowledg
 import { useKnowledgePageDeepLink } from '../../components/features/knowledge/useKnowledgePageDeepLink'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 
-// The project's own documents: the same knowledge workspace the Knowledge
+// The project's own documents: the same knowledge team the Knowledge
 // section renders, scoped by KnowledgeProvider to this project. Nothing is
 // duplicated — the space rail is the shared KnowledgeSpaceList and the
 // document area is KnowledgeWorkspace, both driven by the scoped provider.

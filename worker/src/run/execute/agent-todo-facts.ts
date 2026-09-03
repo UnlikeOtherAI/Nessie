@@ -9,7 +9,7 @@ import {
   AGENT_TODO_PROMPT_PROPOSAL_LIMIT,
   AGENT_TODO_PROMPT_TEMPLATE_LIMIT,
 } from '@nessie/schemas'
-import type { AgentTodoPromptFacts } from '@nessie/workspace-admin'
+import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 
 const TODO_FACTS_HEADING = 'To-do facts:'
 const ACTIVE_TEMPLATES_HEADING = 'Active templates:'

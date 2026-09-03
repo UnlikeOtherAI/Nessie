@@ -1,20 +1,20 @@
 import type { PrismaClient } from '@prisma/client'
 
 import type {
-  UoaWorkspaceDirectory,
-  UoaWorkspaceDirectoryEntry,
-} from './uoa-workspace-directory.js'
+  UoaTeamDirectory,
+  UoaTeamDirectoryEntry,
+} from './uoa-team-directory.js'
 
 /**
- * The UOA workspace directory (workspace labels, org ids/names, avatar URLs) is
+ * The UOA team directory (team labels, org ids/names, avatar URLs) is
  * UnlikeOtherAI-owned identity data. Nessie may keep it only in a bounded
  * in-memory cache that is never authoritative — never in a durable table — so
  * this module is the one place a directory lives between the UOA read that
  * produced it and the `/api/auth/me` response that renders it.
  *
- * Written wherever `fetchUoaWorkspaceDirectory` succeeds: at login
+ * Written wherever `fetchUoaTeamDirectory` succeeds: at login
  * (`syncUoaProductAccountLinks`) and at every UOA token rotation, including a
- * workspace switch (`advanceUoaBindingInTransaction`). Read by
+ * team switch (`advanceUoaBindingInTransaction`). Read by
  * `buildMeResponse`.
  *
  * The cache is per process. Multiple API replicas each keep their own, and each
@@ -29,12 +29,12 @@ const DIRECTORY_TTL_MS = 30 * 60 * 1000
 const DIRECTORY_MAX_USERS = 10_000
 
 type CachedDirectory = {
-  directory: UoaWorkspaceDirectory
+  directory: UoaTeamDirectory
   expiresAt: number
 }
 
-export type UoaWorkspaceDirectoryFallback = {
-  entries: UoaWorkspaceDirectoryEntry[]
+export type UoaTeamDirectoryFallback = {
+  entries: UoaTeamDirectoryEntry[]
   pendingInvites: undefined
 }
 
@@ -44,12 +44,12 @@ const directoryByUserId = new Map<string, CachedDirectory>()
 
 /**
  * Record a directory UOA just verified for this user. `undefined` means the
- * opportunistic UOA read failed, and — matching `fetchUoaWorkspaceDirectory`'s
+ * opportunistic UOA read failed, and — matching `fetchUoaTeamDirectory`'s
  * contract — the last verified copy is kept for the lifetime of this process.
  */
-export const rememberUoaWorkspaceDirectory = (
+export const rememberUoaTeamDirectory = (
   userId: string,
-  directory: UoaWorkspaceDirectory | undefined,
+  directory: UoaTeamDirectory | undefined,
   now: number = Date.now(),
 ): void => {
   if (!directory) return
@@ -63,10 +63,10 @@ export const rememberUoaWorkspaceDirectory = (
 }
 
 /** The cached directory for this user, or `undefined` when cold or expired. */
-export const readUoaWorkspaceDirectory = (
+export const readUoaTeamDirectory = (
   userId: string,
   now: number = Date.now(),
-): UoaWorkspaceDirectory | undefined => {
+): UoaTeamDirectory | undefined => {
   const cached = directoryByUserId.get(userId)
   if (!cached) return undefined
   if (cached.expiresAt <= now) {
@@ -81,32 +81,32 @@ export const readUoaWorkspaceDirectory = (
 /**
  * Drop this user's cached directory so the next read re-asks UOA.
  *
- * Creating an organisation or a workspace is the case this exists for. The
+ * Creating an organisation or a team is the case this exists for. The
  * happy path already re-primes, because the switch that follows creation is a
  * rotation and rotations write a freshly verified directory — but if that
  * switch fails, the person is left holding a directory that predates the thing
  * they just made, and the 30-minute TTL is a long time to be told your own new
- * workspace does not exist. Forgetting is safe at any moment: the entry is a
+ * team does not exist. Forgetting is safe at any moment: the entry is a
  * cache, and a miss falls back to a UOA read or the local team-derived
  * directory.
  */
-export const forgetUoaWorkspaceDirectory = (userId: string): void => {
+export const forgetUoaTeamDirectory = (userId: string): void => {
   directoryByUserId.delete(userId)
 }
 
 /** Test seam: drop every cached directory. */
-export const clearUoaWorkspaceDirectoryCache = (): void => {
+export const clearUoaTeamDirectoryCache = (): void => {
   directoryByUserId.clear()
 }
 
 /**
  * Degraded directory for a cold cache (fresh process, another replica), derived
  * **only** from data Nessie legitimately owns: the user's own `TeamMember` rows
- * joined to the `Team.externalWorkspaceId` / `externalOrgId` mapping written
- * when that UOA workspace was materialized locally. The team name stands in for
+ * joined to the `Team.externalTeamId` / `externalOrgId` mapping written
+ * when that UOA team was materialized locally. The team name stands in for
  * the UOA label, and it is a healed mirror of it: `Team.name` is refreshed
- * from UOA's verified workspace directory by `syncExternalWorkspaceNames`, so
- * once any verified `/org/me` read has occurred for that workspace the
+ * from UOA's verified team directory by `syncExternalTeamNames`, so
+ * once any verified `/org/me` read has occurred for that team the
  * fallback returns the real name rather than a frozen placeholder. The local
  * Organisation name is the permitted
  * non-authoritative mirror of UOA's `orgName`, so it is used only when present;
@@ -114,34 +114,34 @@ export const clearUoaWorkspaceDirectoryCache = (): void => {
  * time.
  *
  * Consequence, and the reason this is a fallback rather than a source: a
- * workspace the person is entitled to in UOA but has never opened in Nessie has
+ * team the person is entitled to in UOA but has never opened in Nessie has
  * no local Team row, so it appears only once a rotation refreshes the real
  * directory into the cache.
  */
-export const deriveUoaWorkspaceDirectoryFromTeams = async (
+export const deriveUoaTeamDirectoryFromTeams = async (
   prisma: PrismaClient,
   userId: string,
-): Promise<UoaWorkspaceDirectoryFallback> => {
+): Promise<UoaTeamDirectoryFallback> => {
   const teams = await prisma.team.findMany({
     where: {
       externalOrgId: { not: null },
-      externalWorkspaceId: { not: null },
+      externalTeamId: { not: null },
       members: { some: { userId } },
     },
     orderBy: { name: 'asc' },
     select: {
       externalOrgId: true,
-      externalWorkspaceId: true,
+      externalTeamId: true,
       name: true,
       project: { select: { organization: { select: { name: true } } } },
     },
   })
 
   return {
-    entries: teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
+    entries: teams.flatMap((team) => team.externalOrgId && team.externalTeamId
       ? [{
         organizationId: team.externalOrgId,
-        teamId: team.externalWorkspaceId,
+        teamId: team.externalTeamId,
         label: team.name,
         orgName: team.project.organization.name,
       }]

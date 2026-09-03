@@ -389,7 +389,7 @@ export const useChannelMentions = ({
               title={
                 dmChannel
                   ? `Open chat with ${entity.name}`
-                  : `Open ${entity.name} in workspace users`
+                  : `Open ${entity.name} in team users`
               }
               to={dmChannel ? `/channels/${dmChannel.id}` : '/settings/members'}
             >

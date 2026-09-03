@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { isWorkflowConcurrencyConfig } from '@nessie/workspace-admin'
+import { isWorkflowConcurrencyConfig } from '@nessie/team-admin'
 import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 

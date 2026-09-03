@@ -341,9 +341,9 @@ test('transient UOA failure leaves the presented family active for retry', async
 })
 
 // Estate rule: a successor proving the same subject and a non-regressed epoch
-// is adopted even when its workspace drifted, because a silent switch makes
+// is adopted even when its team drifted, because a silent switch makes
 // drift the ordinary way a committed switch reaches the next refresh.
-test('adopts a UOA successor whose workspace drifted', async () => {
+test('adopts a UOA successor whose team drifted', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
 
@@ -356,7 +356,7 @@ test('adopts a UOA successor whose workspace drifted', async () => {
   assert.equal(rotated.ok, true)
   if (!rotated.ok) return
   assert.equal(rotated.uoaIdentity?.teamId, 'different-team')
-  // The encrypted family proof follows the workspace UOA proved.
+  // The encrypted family proof follows the team UOA proved.
   assert.equal(fake.uoaCredentials.get(rotated.familyId)?.teamId, 'different-team')
 })
 

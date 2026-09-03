@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { createAgentRecord } from '@nessie/workspace-admin'
+import { createAgentRecord } from '@nessie/team-admin'
 
 import { countPausedPrivateAgents } from '../src/services/private-agent-lifecycle.js'
 import { setOrganizationMemberDeactivated } from '../src/services/users.js'
@@ -38,17 +38,17 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
     const team = await prisma.team.create({
       data: { name: 'Lifecycle team', projectId: project.id },
     })
-    const workspaceChannel = await prisma.channel.create({
+    const teamChannel = await prisma.channel.create({
       data: {
-        label: 'Workspace delivery',
+        label: 'Team delivery',
         organizationId,
         projectId: project.id,
-        slug: `workspace-delivery-${organizationId}`,
+        slug: `team-delivery-${organizationId}`,
         teamId: team.id,
       },
     })
-    const workspaceThread = await prisma.thread.create({
-      data: { channelId: workspaceChannel.id },
+    const teamThread = await prisma.thread.create({
+      data: { channelId: teamChannel.id },
     })
     const privateAgent = await createAgentRecord(prisma, {
       name: 'Private lifecycle agent',
@@ -58,8 +58,8 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
       teamId: team.id,
       visibility: 'private',
     })
-    const workspaceAgent = await createAgentRecord(prisma, {
-      name: 'Workspace lifecycle agent',
+    const teamAgent = await createAgentRecord(prisma, {
+      name: 'Team lifecycle agent',
       organizationId,
       ownerUserId,
       role: 'assistant',
@@ -70,7 +70,7 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
       where: { channelId: privateAgent.homeChannelId },
       select: { id: true },
     })
-    const [privateTrigger, workspaceTrigger] = await Promise.all([
+    const [privateTrigger, teamTrigger] = await Promise.all([
       prisma.agentTrigger.create({
         data: {
           agentId: privateAgent.id,
@@ -82,10 +82,10 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
       }),
       prisma.agentTrigger.create({
         data: {
-          agentId: workspaceAgent.id,
+          agentId: teamAgent.id,
           config: { interval_minutes: 15 },
-          targetChannelId: workspaceChannel.id,
-          targetThreadId: workspaceThread.id,
+          targetChannelId: teamChannel.id,
+          targetThreadId: teamThread.id,
           type: 'interval',
         },
       }),
@@ -107,18 +107,18 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
       'the owner-only Members signal reports only the paused private agent count',
     )
 
-    const [pausedPrivate, untouchedWorkspace] = await Promise.all([
+    const [pausedPrivate, untouchedTeam] = await Promise.all([
       prisma.agentTrigger.findUniqueOrThrow({ where: { id: privateTrigger.id } }),
-      prisma.agentTrigger.findUniqueOrThrow({ where: { id: workspaceTrigger.id } }),
+      prisma.agentTrigger.findUniqueOrThrow({ where: { id: teamTrigger.id } }),
     ])
     assert.equal(pausedPrivate.enabled, false)
     assert.equal(pausedPrivate.status, 'paused')
     assert.equal(pausedPrivate.healthReason, 'private_agent_owner_deactivated')
     assert.equal(pausedPrivate.healthRevision, 1)
     assert.equal(pausedPrivate.nextRunAt, null)
-    assert.equal(untouchedWorkspace.enabled, true)
-    assert.equal(untouchedWorkspace.status, 'active')
-    assert.equal(untouchedWorkspace.healthRevision, 0)
+    assert.equal(untouchedTeam.enabled, true)
+    assert.equal(untouchedTeam.status, 'active')
+    assert.equal(untouchedTeam.healthRevision, 0)
 
     assert.equal(await prisma.auditLog.count({
       where: {

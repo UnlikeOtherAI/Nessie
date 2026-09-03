@@ -20,7 +20,7 @@ const definition = (
   required: string[] = ['value'],
 ): BuiltinToolDefinition => ({
   id,
-  category: 'workspace',
+  category: 'team',
   description: `Full description for ${id}`,
   label: id,
   parameters: {
@@ -82,7 +82,7 @@ test('the fixed hot set is fully specified and every other builtin uses its cura
     'react',
     'web_search',
     'web_fetch',
-    'workspace_search',
+    'team_search',
     'message_search',
     'people_search',
     'channel_find',
@@ -155,13 +155,13 @@ test('tool_spec cannot surface a PA-only schema to a shared agent', () => {
   assert.equal(resolved.allowedIds.has('send_message'), false)
 
   const result = executeBuiltinToolSpec(
-    { names: ['send_message', 'workspace_search'] },
+    { names: ['send_message', 'team_search'] },
     allowedDefinitions,
   )
   const output = JSON.parse(result.output) as {
     tools: Array<{ name: string }>
     unknownNames?: string[]
   }
-  assert.deepEqual(output.tools.map((tool) => tool.name), ['workspace_search'])
+  assert.deepEqual(output.tools.map((tool) => tool.name), ['team_search'])
   assert.deepEqual(output.unknownNames, ['send_message'])
 })

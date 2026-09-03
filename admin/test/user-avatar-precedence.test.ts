@@ -42,13 +42,13 @@ test('the provider picture is the last image source, then initials', () => {
 })
 
 test('a person named only by UOA subject resolves through the roster relay', () => {
-  // A workspace roster row often has no local user row, so the user-id relay
+  // A team roster row often has no local user row, so the user-id relay
   // cannot name them; the roster-scoped relay checks the subject against the
   // roster before relaying. A local user id still wins when both are known —
   // both endpoints serve the one picture UOA holds for that person.
   assert.equal(
     uoaAvatarPath({ uoaSub: 'usr_ada' }),
-    '/api/workspace/members/usr_ada/avatar',
+    '/api/team/members/usr_ada/avatar',
   )
   assert.equal(
     uoaAvatarPath({ userId: 'user-1', uoaSub: 'usr_ada' }),
@@ -58,12 +58,12 @@ test('a person named only by UOA subject resolves through the roster relay', () 
   // Subjects are opaque UOA strings, so the path segment is escaped.
   assert.equal(
     uoaAvatarPath({ uoaSub: 'usr/ada?x' }),
-    '/api/workspace/members/usr%2Fada%3Fx/avatar',
+    '/api/team/members/usr%2Fada%3Fx/avatar',
   )
 })
 
-test('the workspace roster renders the shared avatar, not a second implementation', () => {
-  const roster = readSource('../src/pages/settings/WorkspaceMemberPeople.tsx')
+test('the team roster renders the shared avatar, not a second implementation', () => {
+  const roster = readSource('../src/pages/settings/TeamMemberPeople.tsx')
 
   assert.match(roster, /<UserAvatar/)
   assert.match(roster, /uoaSub=\{member\.uoaSub\}/)

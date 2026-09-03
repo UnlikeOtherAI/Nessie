@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { MAILBOX_SEND_TOOL_ID } from '@nessie/runtime'
-import { listReachableMailboxes, type ReachableMailbox } from '@nessie/workspace-admin'
+import { listReachableMailboxes, type ReachableMailbox } from '@nessie/team-admin'
 
 import { liveApproverOrNull } from './approver.js'
 import { subtractImpliedScopes } from './disclosure-basis.js'

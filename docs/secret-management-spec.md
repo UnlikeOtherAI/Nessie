@@ -69,7 +69,7 @@ the four separate capabilities:
 Every vault location is hard-partitioned as
 `/nessie/<organizationId>/<scopeType>/<scopeId>`, using only stable structural
 IDs. Personal paths use the owner user ID, team paths the team ID, project paths
-the project ID, and workspace paths the organisation ID. Nessie uses the same
+the project ID, and team paths the organisation ID. Nessie uses the same
 path for create, rotate, and revoke; `vaultReference` records that exact path
 with the server-minted opaque secret name. Display names never enter a vault
 path, and secret values are neither returned nor logged. The folder hierarchy
@@ -83,12 +83,12 @@ returns a secret value.
 ## Scope
 
 A secret has exactly one home scope: `personal`, `team`, `project`, or
-`workspace`. A personal secret is bound to its owner. Workspace, team, and
+`team`. A personal secret is bound to its owner. Team, team, and
 project mutation is owner-gated and confirms the requested target belongs to
 the caller's organisation. Reads are entitlement-scoped: an owner sees all
 metadata; other users see their own personal secrets and explicit user grants.
 
-Phase 1 exposes Personal and Project selection in the UI. Team and Workspace
+Phase 1 exposes Personal and Project selection in the UI. Team and Team
 are preserved in the metadata model and API for an owner-managed surface.
 
 ## Capture and ingestion

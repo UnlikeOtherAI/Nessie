@@ -343,7 +343,7 @@ test('a late former-account registration cannot reclaim a token after an ownersh
   await current.app.close()
 })
 
-test('registering in another organization transfers the device to that active workspace', async () => {
+test('registering in another organization transfers the device to that active team', async () => {
   const otherOrganizationId = '00000000-0000-4000-8000-000000000099'
   const rows: DeviceRow[] = []
   const first = makeApp(userA, rows, organizationId, '1')

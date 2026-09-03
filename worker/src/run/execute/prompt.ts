@@ -31,7 +31,7 @@ import {
   type AgentDocumentsPromptFacts,
 } from './agent-documents.js'
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
-import type { AgentTodoPromptFacts } from '@nessie/workspace-admin'
+import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
 // A turn's text as the model sees it: what was written, plus the inventory of

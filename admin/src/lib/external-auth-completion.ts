@@ -35,7 +35,7 @@ export type ExternalAuthRecoveryExchange = (
     redirectUri: string
     theme?: string
   },
-  expectedWorkspace: { organizationId: string; teamId: string },
+  expectedTeam: { organizationId: string; teamId: string },
 ) => Promise<SessionPayload>
 
 /**
@@ -67,13 +67,13 @@ export const completeExternalAuthCallback = async (input: {
   }
 
   // The captured route is where switching began. A *successful* switch rescopes
-  // the session, and the old workspace's channels, threads and documents do not
+  // the session, and the old team's channels, threads and documents do not
   // exist in the new one — returning there lands on not-found, so a completed
-  // switch goes to the home every workspace has. Cancel or failure changed
+  // switch goes to the home every team has. Cancel or failure changed
   // nothing, so the person stays exactly where they were standing.
   const capturedPath = safeReturnPath(claim.pending.returnPath, DEFAULT_RETURN_PATH)
-  const successPath = claim.pending.targetWorkspace ? DEFAULT_RETURN_PATH : capturedPath
-  const failurePath = claim.pending.targetWorkspace ? capturedPath : LOGIN_PATH
+  const successPath = claim.pending.targetTeam ? DEFAULT_RETURN_PATH : capturedPath
+  const failurePath = claim.pending.targetTeam ? capturedPath : LOGIN_PATH
   if (claim.kind === 'state-mismatch') {
     return {
       claimed: false,
@@ -112,7 +112,7 @@ export const completeExternalAuthCallback = async (input: {
   }
 
   try {
-    if (pending.targetWorkspace) {
+    if (pending.targetTeam) {
       // Restoration owns the source session proof. Never turn a targeted
       // callback into an ordinary login while that proof is still loading or
       // after it has resolved unauthenticated.
@@ -121,7 +121,7 @@ export const completeExternalAuthCallback = async (input: {
           claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath,
         })
       }
-      await input.recoveryExchange(exchangeInput, pending.targetWorkspace)
+      await input.recoveryExchange(exchangeInput, pending.targetTeam)
     } else {
       await input.login(exchangeInput)
     }

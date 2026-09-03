@@ -1,4 +1,4 @@
-import { getGlobalAgentBlueprint } from '@nessie/workspace-admin'
+import { getGlobalAgentBlueprint } from '@nessie/team-admin'
 
 import { isGlobalAgentHomeSurface } from '../delegated-identity.js'
 import type { RunContext } from './types.js'
@@ -27,7 +27,7 @@ export class GlobalAgentPlacementError extends Error {
  *   the delegation gate and the identity-tool gate ask — is what admits it.
  *   Placement and identity can therefore never disagree about "its own home".
  * - **A bound ordinary channel** is the reachability arm (Rule zero): a global
- *   agent is an app-provided colleague and a workspace can put it in a room.
+ *   agent is an app-provided colleague and a team can put it in a room.
  *   The check is the *binding*, not the channel kind: `boundAgentIds` is the
  *   destination's live `AgentBinding` set, loaded once with the run context, so
  *   an unbound agent enqueued into a channel by a stale job still fails closed.

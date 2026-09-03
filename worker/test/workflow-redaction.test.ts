@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
+import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 
 import {
   buildAgentTaskBody,

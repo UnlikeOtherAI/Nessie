@@ -29,7 +29,7 @@ const toolCallId = (
 /**
  * Call one DeepSignal tool through the shared one-shot MCP dispatcher. The
  * stored transport already carries Nessie's DeepSignal-issued app key; this
- * adds fresh, independently signed UOA actor/workspace and Nessie provenance
+ * adds fresh, independently signed UOA actor/team and Nessie provenance
  * headers without allowing either to replace Authorization.
  */
 export const callDeepSignalMcpTool = async (

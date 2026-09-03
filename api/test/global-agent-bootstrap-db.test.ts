@@ -14,7 +14,7 @@ import {
   getChannelIfMember,
   listAgentsForUser,
   unbindAgentFromChannel,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import {
   AGENT_DESIGNER_BLUEPRINT,

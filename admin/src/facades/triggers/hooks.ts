@@ -134,7 +134,7 @@ export const useResumeTrigger = () => {
  * Put a schedule back to work after its captured identity stopped verifying.
  *
  * `takeOver` is the owner's explicit "run this as me instead"; without it the
- * server refuses to re-point a schedule at a different workspace, because that
+ * server refuses to re-point a schedule at a different team, because that
  * would move its billing attribution as a side effect of a repair click.
  */
 export const useReauthorizeTrigger = () => {

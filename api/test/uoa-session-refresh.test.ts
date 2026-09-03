@@ -6,7 +6,7 @@ import {
   refreshUoaSession,
   UoaSessionRefreshError,
 } from '../src/services/uoa-session.js'
-import { resolveExternalWorkspaceSelection } from '../src/services/identity-display.js'
+import { resolveExternalTeamSelection } from '../src/services/identity-display.js'
 
 const testPrivateKeyPem = String(
   generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
@@ -92,9 +92,9 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
           )
           return new Response(JSON.stringify({
             org: {
-              workspaces: [{
+              teams: [{
                 avatarImageUrl: '/teams/team-active/avatar',
-                name: 'Fresh workspace',
+                name: 'Fresh team',
                 orgId: 'org-active',
                 orgName: 'Fresh org',
                 teamId: 'team-active',
@@ -126,10 +126,10 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
 
     assert.equal(refreshed.refreshToken, 'uoa-refresh-2')
     assert.equal(refreshed.identity.uoaTokenVersion, 8)
-    assert.deepEqual(refreshed.workspaceDirectory, {
+    assert.deepEqual(refreshed.teamDirectory, {
       entries: [{
         avatarImageUrl: 'https://1.1.1.1/teams/team-active/avatar',
-        label: 'Fresh workspace',
+        label: 'Fresh team',
         organizationId: 'org-active',
         orgName: 'Fresh org',
         teamId: 'team-active',
@@ -165,12 +165,12 @@ test('refreshUoaSession retains the caller directory when its optional read fail
       },
     })
 
-    assert.equal(refreshed.workspaceDirectory, undefined)
+    assert.equal(refreshed.teamDirectory, undefined)
     assert.equal(calls, 2)
   })
 })
 
-test('refreshUoaSession sends the explicit workspace-switch grant and requires the exact target', async () => {
+test('refreshUoaSession sends the explicit team-switch grant and requires the exact target', async () => {
   await withUoaEnv(async () => {
     const refreshed = await refreshUoaSession({
       configUrl: uoaEnv.UOA_CONFIG_URL,
@@ -181,13 +181,13 @@ test('refreshUoaSession sends the explicit workspace-switch grant and requires t
         tokenVersion: 7,
       },
       refreshToken: 'uoa-refresh-1',
-      workspaceSwitch: {
+      teamSwitch: {
         organizationId: 'org-target',
         teamId: 'team-target',
       },
       fetchImpl: async (_input, init) => {
         assert.deepEqual(JSON.parse(String(init.body)), {
-          grant_type: 'urn:unlikeotherai:params:oauth:grant-type:workspace-switch',
+          grant_type: 'urn:unlikeotherai:params:oauth:grant-type:team-switch',
           organization_id: 'org-target',
           refresh_token: 'uoa-refresh-1',
           team_id: 'team-target',
@@ -214,13 +214,13 @@ test('refreshUoaSession sends the explicit workspace-switch grant and requires t
 
     assert.equal(refreshed.refreshToken, 'uoa-refresh-2')
     assert.deepEqual(
-      resolveExternalWorkspaceSelection(refreshed.identity.workspace),
+      resolveExternalTeamSelection(refreshed.identity.team),
       { organizationId: 'org-target', teamId: 'team-target' },
     )
   })
 })
 
-test('workspace-switch errors distinguish safe target refusals from an invalid source', async () => {
+test('team-switch errors distinguish safe target refusals from an invalid source', async () => {
   await withUoaEnv(async () => {
     const baseInput = {
       configUrl: uoaEnv.UOA_CONFIG_URL,
@@ -231,15 +231,15 @@ test('workspace-switch errors distinguish safe target refusals from an invalid s
         tokenVersion: 7,
       },
       refreshToken: 'uoa-refresh-1',
-      workspaceSwitch: {
+      teamSwitch: {
         organizationId: 'org-target',
         teamId: 'team-target',
       },
     } as const
     for (const [status, code] of [
-      [403, 'WORKSPACE_NOT_AVAILABLE'],
+      [403, 'TEAM_NOT_AVAILABLE'],
       [403, 'INTERACTION_REQUIRED'],
-      [409, 'WORKSPACE_SWITCH_CONFLICT'],
+      [409, 'TEAM_SWITCH_CONFLICT'],
     ] as const) {
       await assert.rejects(
         refreshUoaSession({
@@ -249,7 +249,7 @@ test('workspace-switch errors distinguish safe target refusals from an invalid s
         (error: unknown) =>
           error instanceof UoaSessionRefreshError
           && !error.definitive
-          && error.safeWorkspaceSwitchFailure
+          && error.safeTeamSwitchFailure
           && error.upstreamCode === code,
       )
     }
@@ -257,14 +257,14 @@ test('workspace-switch errors distinguish safe target refusals from an invalid s
       refreshUoaSession({
         ...baseInput,
         fetchImpl: async () => new Response(
-          JSON.stringify({ error: 'WORKSPACE_NOT_AVAILABLE' }),
+          JSON.stringify({ error: 'TEAM_NOT_AVAILABLE' }),
           { status: 503 },
         ),
       }),
       (error: unknown) =>
         error instanceof UoaSessionRefreshError
         && !error.definitive
-        && !error.safeWorkspaceSwitchFailure,
+        && !error.safeTeamSwitchFailure,
     )
     await assert.rejects(
       refreshUoaSession({
@@ -277,7 +277,7 @@ test('workspace-switch errors distinguish safe target refusals from an invalid s
       (error: unknown) =>
         error instanceof UoaSessionRefreshError
         && error.definitive
-        && !error.safeWorkspaceSwitchFailure,
+        && !error.safeTeamSwitchFailure,
     )
   })
 })
@@ -310,12 +310,12 @@ test('credential-bearing UOA session calls never follow redirects', async () => 
   })
 })
 
-// Estate rule: an ordinary refresh adopts a successor whose workspace drifted,
+// Estate rule: an ordinary refresh adopts a successor whose team drifted,
 // because with a silent switch in the product that is how a committed switch
 // surfaces on the next refresh — refusing made a success look like a logout.
-// Workspace is not an identity claim; subject and epoch still are, and those
+// Team is not an identity claim; subject and epoch still are, and those
 // two checks below remain strict.
-test('refreshUoaSession adopts a successor that drifted to another workspace', async () => {
+test('refreshUoaSession adopts a successor that drifted to another team', async () => {
   await withUoaEnv(async () => {
     for (const active of [
       { orgId: 'different-org', teamId: 'different-team' },
@@ -344,7 +344,7 @@ test('refreshUoaSession adopts a successor that drifted to another workspace', a
       })
 
       assert.deepEqual(
-        resolveExternalWorkspaceSelection(refreshed.identity.workspace),
+        resolveExternalTeamSelection(refreshed.identity.team),
         { organizationId: active.orgId, teamId: active.teamId },
       )
     }

@@ -56,13 +56,13 @@ test('beginExternalAuth persists the exact recovery target, team hint, and sanit
     await beginExternalAuth({
       ...beginInput(storage),
       returnPath: '/channels?filter=mine',
-      targetWorkspace: { organizationId: 'uoa-org-1', teamId: 'uoa-team-9' },
+      targetTeam: { organizationId: 'uoa-org-1', teamId: 'uoa-team-9' },
       teamHint: 'uoa-team-9',
     })
 
     const pending = readPendingExternalAuth(storage)
-    assert.equal(pending?.targetWorkspace?.organizationId, 'uoa-org-1')
-    assert.equal(pending?.targetWorkspace?.teamId, 'uoa-team-9')
+    assert.equal(pending?.targetTeam?.organizationId, 'uoa-org-1')
+    assert.equal(pending?.targetTeam?.teamId, 'uoa-team-9')
     assert.equal(pending?.teamHint, 'uoa-team-9')
     assert.equal(pending?.returnPath, '/channels?filter=mine')
   })
@@ -84,12 +84,12 @@ test('beginExternalAuth drops an external or oversized return path and hint', as
   })
 })
 
-test('beginExternalAuth refuses an unbounded target workspace', async () => {
+test('beginExternalAuth refuses an unbounded target team', async () => {
   const storage = memoryStorage()
   await assert.rejects(
     beginExternalAuth({
       ...beginInput(storage),
-      targetWorkspace: { organizationId: `org-${'x'.repeat(600)}`, teamId: 'team-1' },
+      targetTeam: { organizationId: `org-${'x'.repeat(600)}`, teamId: 'team-1' },
     }),
     /bounded organization and team ids/,
   )
@@ -104,7 +104,7 @@ test('readPendingExternalAuth discards a malformed or tampered record', () => {
       codeVerifier: 'verifier',
       providerId: 'uoa',
       state: 'state',
-      targetWorkspace: { organizationId: 42, teamId: 'team-1' },
+      targetTeam: { organizationId: 42, teamId: 'team-1' },
     }),
   )
   assert.equal(readPendingExternalAuth(storage), null)

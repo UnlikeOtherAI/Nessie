@@ -11,7 +11,7 @@ const NAMED_SIZES = { md: 40, sm: 32 } as const
 /**
  * An initials tile for an identity with no picture to resolve. Anything that
  * *can* have a picture uses `UserAvatar` / `AgentAvatar` / `ProjectAvatar` /
- * `WorkspaceAvatar` instead — this is the degenerate case, not a shortcut.
+ * `TeamAvatar` instead — this is the degenerate case, not a shortcut.
  */
 export const Avatar = ({ label, size = 'md' }: AvatarProps) => (
   <IdentityTile

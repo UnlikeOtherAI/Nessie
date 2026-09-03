@@ -42,7 +42,7 @@ const fallbackFontSize = (size: number, kind: IdentityFallback['kind']): number 
 
 /**
  * The single identity picture renderer for the admin: people, agents,
- * projects, teams/workspaces and apps all end here.
+ * projects, teams/teams and apps all end here.
  *
  * It owns exactly three things, which is why it exists: the shape (one
  * proportional rounded square, see identity-shape.ts), the broken-image reset

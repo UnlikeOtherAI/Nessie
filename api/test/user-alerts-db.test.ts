@@ -21,7 +21,7 @@ type Seed = {
   mentionedId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `alerts ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -67,7 +67,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('mention alerts persist in the message-create transaction and drive list/read', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(() => cleanup(prisma, seed).then(() => prisma.$disconnect()))
 
   // A direct mention (plus a self-mention and a broadcast, which must NOT

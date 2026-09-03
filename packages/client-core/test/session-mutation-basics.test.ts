@@ -87,7 +87,7 @@ test('coordinator clears only on explicit rejection and retries transient failur
   assert.equal(clearCalls, 1)
 })
 
-test('session mutation coordinator makes refresh join an in-flight workspace switch', async () => {
+test('session mutation coordinator makes refresh join an in-flight team switch', async () => {
   let resolveSwitch: ((payload: SessionPayload) => void) | undefined
   let refreshCalls = 0
   const applied: string[] = []

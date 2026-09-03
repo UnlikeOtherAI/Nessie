@@ -62,14 +62,14 @@ resolved by hand against the real database.
 
 Nessie keeps **one `Organization` per UOA organisation**
 (`Organization.externalOrgId`) instead of one shared local organisation holding
-every workspace. The partition migration runs with the others at deploy
+every team. The partition migration runs with the others at deploy
 (`prisma migrate deploy`, i.e. `redeploy.sh`) and needs no operator action. The
 existing organisation adopts the UOA organisation most of its teams belong to
 (ties go to the oldest team's), so nothing moves for the common
 single-organisation install; any *other* UOA organisation splits into its own
 `Organization` with its project/team subtrees and memberships, while org-global
 rows (settings, logo, unattributable audit rows) stay with the adopting one.
-**Users whose workspaces split off sign in once after the deploy** — a session
+**Users whose teams split off sign in once after the deploy** — a session
 is bound to the organisation it was issued for, and the refresh family re-homes
 at that login. Plan the deploy accordingly if you host more than one UOA
 organisation.

@@ -92,7 +92,7 @@ const mapIdentityError = (error: unknown): never => {
   }
   if (
     error.code === 'UOA_IDENTITY_REQUIRED'
-    || error.code === 'UOA_ACTIVE_WORKSPACE_REQUIRED'
+    || error.code === 'UOA_ACTIVE_TEAM_REQUIRED'
   ) {
     throw new LedgerIdentityError(
       'LEDGER_UOA_IDENTITY_REQUIRED',

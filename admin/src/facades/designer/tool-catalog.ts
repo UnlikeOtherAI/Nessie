@@ -53,7 +53,7 @@ export type DesignerToolGroup = {
  * Groups are what the tools declare, not what their ids look like.
  *
  * This used to be a list of id-prefix rules (`file_`, `web_`, `kb_`…) with an
- * "Agent & workspace" fallback, and that fallback had grown to hold 75 of 116
+ * "Agent & team" fallback, and that fallback had grown to hold 75 of 116
  * builtins — a new tool joined it by default and only a new prefix rule got it
  * out. `BuiltinToolDefinition.category` is now required, so the catalogue
  * renders a decision its author made rather than guessing one here.

@@ -199,7 +199,7 @@ export const LoginPage = () => {
       <div className="mx-auto grid w-full max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="glass-panel order-2 flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10 lg:order-1">
           <img
-            alt="Workspace logo"
+            alt="Team logo"
             className="h-[88px] w-[88px] object-cover shadow-[0_20px_40px_var(--scrim)]"
             style={{ borderRadius: identityTileRadius(88) }}
             onError={(event) => {
@@ -214,7 +214,7 @@ export const LoginPage = () => {
               Sign in
             </p>
             <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-[color:var(--tx)] md:text-5xl">
-              Open the Nessie workspace.
+              Open the Nessie team.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
               Use your account to enter channels, create agents, and watch their activity live.
@@ -225,7 +225,7 @@ export const LoginPage = () => {
         <section className="glass-panel order-1 self-start rounded-[2rem] p-8 md:p-10 lg:order-2">
           <h2 className="text-2xl font-semibold text-[color:var(--tx)]">Sign in</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Continue with single sign-on to access your workspace.
+            Continue with single sign-on to access your team.
           </p>
 
           <div className="mt-6 grid gap-3">

@@ -125,7 +125,7 @@ an agent loop:
 Runs are serialised per session key. This reduces race conditions and preserves
 session consistency.
 
-At session bootstrap, OpenClaw injects workspace files such as:
+At session bootstrap, OpenClaw injects team files such as:
 
 - `AGENTS.md`
 - `SOUL.md`
@@ -133,7 +133,7 @@ At session bootstrap, OpenClaw injects workspace files such as:
 
 Large files are trimmed to control prompt size. This implies a best practice:
 
-- long-lived role and policy should live in versioned workspace files
+- long-lived role and policy should live in versioned team files
 - per-task detail should be passed via prompts or artefacts, not buried in
   global persona text
 
@@ -141,7 +141,7 @@ Large files are trimmed to control prompt size. This implies a best practice:
 
 OpenClaw supports multiple top-level agents, each with its own:
 
-- workspace
+- team
 - state directory
 - session store
 - persona and operating instructions
@@ -282,12 +282,12 @@ Task Flow adds durable, multi-step orchestration with:
 If Lobster is a deterministic pipeline shell, Task Flow is the durable state
 machine for longer-lived orchestration.
 
-### Hooks, memory, and workspace home
+### Hooks, memory, and team home
 
 OpenClaw’s hooks system allows scripts to attach to lifecycle events and
 message pipeline events. Bundled hooks include memory-writing behaviour.
 
-The workspace is treated as the agent’s long-term home. In practice, that means
+The team is treated as the agent’s long-term home. In practice, that means
 memory and operating context should be durable, auditable, and ideally kept in
 private version control when appropriate.
 
@@ -534,7 +534,7 @@ graph LR
 
 ### Prompt layering in OpenClaw
 
-OpenClaw’s workspace model gives a practical prompt hierarchy:
+OpenClaw’s team model gives a practical prompt hierarchy:
 
 - `AGENTS.md` for mission, rules, and operating constraints
 - `SOUL.md` for tone and persona

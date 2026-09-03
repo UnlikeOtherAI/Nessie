@@ -32,7 +32,7 @@ glyph. Spec and phasing:
   stream and the single transcript slot stay attached; the socket resumes with
   Gemini's resumption handle rather than re-seeding context. The UOA tuple is
   captured at mint and every later relay re-signs against it, never against
-  ambient workspace context that may have drifted mid-call.
+  ambient team context that may have drifted mid-call.
 - **Context seeds as role-preserving turns**, never inside
   `setup.systemInstruction` — folding DM history into the highest-trust tier
   would let anything ever said in the DM read as an instruction. The seed is

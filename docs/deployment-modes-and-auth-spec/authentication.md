@@ -114,11 +114,11 @@ The system is in bootstrap mode when the `users` table is empty. No config flag 
 Bootstrap initialization is serialized across API replicas with one
 transaction-scoped PostgreSQL advisory lock. After acquiring the lock, the API
 re-reads both the user and organization state and creates the initial user,
-workspace hierarchy, memberships, board columns, and default policies in the
+team hierarchy, memberships, board columns, and default policies in the
 same transaction. A simultaneous local bootstrap loses that race with a `409
 BOOTSTRAP_DISABLED`; simultaneous first UOA callbacks reuse the committed
-organization and continue through the normal per-workspace and per-principal
-locks. No caller may observe a partially seeded workspace.
+organization and continue through the normal per-team and per-principal
+locks. No caller may observe a partially seeded team.
 
 #### Bootstrap mode detection from `/admin`
 
@@ -188,7 +188,7 @@ Bootstrap itself needs no mode gate and does not have one: `resolveBootstrapStat
 already returns `null` (disarming bootstrap mode entirely) whenever any
 non-`local-bootstrap` auth provider is enabled, and first SSO login provisions
 the owner instead — a first UOA login materializes its per-UOA-org
-Organization with the first materializer as owner, and a first workspace-less
+Organization with the first materializer as owner, and a first team-less
 SSO login seeds the shared bootstrap org (`initializeSharedOrganization`).
 Every SSO-configured
 deployment — including production, which is `selfHosted` with UOA — therefore
@@ -263,7 +263,7 @@ Claims:
 #### Token lifecycle
 
 - the access JWT is **short-lived**: default 30 minutes, configurable via `NESSIE_AUTH_TOKEN_TTL`
-- issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, `POST /api/auth/uoa/workspace`, and `POST /api/auth/refresh`
+- issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, `POST /api/auth/uoa/team`, and `POST /api/auth/refresh`
 - sent by the client as `Authorization: Bearer <token>` header on every request
 - alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` on app start, before the access JWT expires, when a request receives a 401, and when a resumed app is already within its renewal window
 - app startup and API 401 recovery use one in-process single-flight coordinator,
@@ -288,9 +288,9 @@ Claims:
   is marked imported/nonrenewable, so 401 recovery never tries an unrelated
   WebView refresh cookie; it is cleared at its JWT expiry. Imported debug
   sessions also do not create a durable native push-device registration,
-  cannot switch workspace scope, and sign out locally without revoking any
-  ambient refresh family. To inspect another workspace, copy a dump while that
-  workspace is active on the source device
+  cannot switch team scope, and sign out locally without revoking any
+  ambient refresh family. To inspect another team, copy a dump while that
+  team is active on the source device
 
 #### Refresh tokens (rotating, server-tracked)
 
@@ -325,15 +325,15 @@ Claims:
   `503`; a changed subject, a regressed epoch, or a malformed family proof
   returns `401` and erases it. Legacy UOA families without encrypted proof
   reauthenticate.
-- **Workspace drift on renewal is adopted, not refused** (estate-wide rule;
+- **Team drift on renewal is adopted, not refused** (estate-wide rule;
   water, DeepSignal and DeepTest behave the same way). When the successor
   proves the **same subject** and a **non-regressed epoch** but carries a
   **different `org`/`team`**, Nessie adopts it and the session converges on the
-  workspace UOA just proved. Two reasons, both load-bearing:
-  - Nessie has a silent workspace switch, so drift is the *ordinary* way a
-    committed switch — or a UOA-side workspace change — surfaces on the next
+  team UOA just proved. Two reasons, both load-bearing:
+  - Nessie has a silent team switch, so drift is the *ordinary* way a
+    committed switch — or a UOA-side team change — surfaces on the next
     refresh. Refusing turned a **successful** switch into a logout.
-  - The workspace is not an identity claim. Substitution is caught by the two
+  - The team is not an identity claim. Substitution is caught by the two
     checks that actually prove identity — subject equality and epoch
     non-regression — and those remain strictly enforced at every layer
     (`uoa-session.ts` `refreshUoaSession`, `refresh-token-uoa.ts`
@@ -342,54 +342,54 @@ Claims:
     revokes the family and returns `401`.
 
   Adoption is not a relaxation of local tenancy: it re-derives the local
-  binding the same way an explicit switch does. The successor's workspace is
-  materialized through `materializeUoaWorkspace` (the exact
-  `Team.externalWorkspaceId`/`externalOrgId` and `Organization.externalOrgId`
+  binding the same way an explicit switch does. The successor's team is
+  materialized through `materializeUoaTeam` (the exact
+  `Team.externalTeamId`/`externalOrgId` and `Organization.externalOrgId`
   mapping, plus the login's first-party account-link sync), and the binding
   advance then resolves the local organization/project/team or **fails closed**
-  with `UoaLocalSessionBindingError`. A same-workspace renewal — every ordinary
+  with `UoaLocalSessionBindingError`. A same-team renewal — every ordinary
   rotation — skips materialization entirely and is unchanged. An **explicit**
-  workspace switch keeps exact-target equality (requirement 2d below): that
-  request named a workspace, so anything else is still a refusal.
-- **UOA workspace rescoping:** authenticated UOA sessions switch without a
-  browser login through `POST /api/auth/uoa/workspace` with external
+  team switch keeps exact-target equality (requirement 2d below): that
+  request named a team, so anything else is still a refusal.
+- **UOA team rescoping:** authenticated UOA sessions switch without a
+  browser login through `POST /api/auth/uoa/team` with external
   `{ organizationId, teamId }`. The access bearer and httpOnly cookie must bind
   to the same user, provider, session id, and exact encrypted source
   `{sub, org, team, tv}`. Under the family lock, Nessie creates one
-  `uoa_workspace_switch_intents` row bound to the source credential generation,
+  `uoa_team_switch_intents` row bound to the source credential generation,
   current local-token id, and upstream-token hash before any external call.
   After direct Nessie access is confirmed, Nessie calls UOA's existing token
   endpoint with
-  `grant_type=urn:unlikeotherai:params:oauth:grant-type:workspace-switch`, the
+  `grant_type=urn:unlikeotherai:params:oauth:grant-type:team-switch`, the
   opaque refresh token, and the exact target. The authoritative switched
-  identity then idempotently materializes the target local workspace, including
+  identity then idempotently materializes the target local team, including
   its claimed team role. The intent/source is rechecked immediately before
   every credential-bearing call. Finalization uses the same
   deterministic local rotation funnel as ordinary refresh and atomically
-  rescope-updates the family proof, first-party link epoch/last-seen workspace,
+  rescope-updates the family proof, first-party link epoch/last-seen team,
   local cookie successor, and intent deletion. An ordinary refresh that finds a
   live intent resumes that exact switch; without one it adopts whatever
   immediate child UOA proves for the same subject and epoch (drift rule above).
   If an ordinary same-scope rotation already won,
   its adoption and exact-intent cancellation are one transaction. Safe target
-  refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
-  `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only
+  refusals (`TEAM_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
+  `TEAM_SWITCH_CONFLICT`) never revoke the source family; only
   proof-gap answers (`INTERACTION_REQUIRED`, `NO_REFRESH_TOKEN`,
-  `INVALID_REFRESH_TOKEN`, and `WORKSPACE_SWITCH_REAUTH_REQUIRED`) enter the
+  `INVALID_REFRESH_TOKEN`, and `TEAM_SWITCH_REAUTH_REQUIRED`) enter the
   same exact-target in-app reauthorization flow. The current Nessie session is
   retained: only the UOA proof step opens the system browser. A **successful**
   reauthorized switch lands on `/channels`, exactly as a silent switch does —
-  the session is now scoped to the target workspace, where the originating
+  the session is now scoped to the target team, where the originating
   channel, thread, or document route does not exist. The route where switching
   began is captured for the unhappy path only: cancellation, provider failure,
   or a target mismatch returns there with the session untouched, because
-  nothing changed. None of them ever logs out or applies a different workspace.
+  nothing changed. None of them ever logs out or applies a different team.
   After UOA accepts a switch, transient local materialization failures retain
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed
   upstream credential.
   Every successful UOA renewal also reads `/org/me` with the fresh access token
-  and replaces the cached workspace directory used by the switcher, so
+  and replaces the cached team directory used by the switcher, so
   membership removals and avatar/name changes appear without a new login. That
   directory is display-only and never authorizes a switch. If the optional
   directory read is unavailable, Nessie retains the last verified copy while
@@ -397,22 +397,22 @@ Claims:
   **The directory is UOA-owned data, so it lives only in a bounded in-memory
   cache** (`api/src/services/uoa-directory-cache.ts`: per user, 30-minute TTL,
   LRU-bounded at 10,000 users), written at login and at every rotation
-  — including a workspace switch — and read by `GET /api/auth/me`. It is never
+  — including a team switch — and read by `GET /api/auth/me`. It is never
   persisted; migration
-  `20260815120000_drop_uoa_workspace_directory_mirror` removed the former
-  `ProductAccountLink.metadata.workspaceDirectory` mirror.
+  `20260815120000_drop_uoa_team_directory_mirror` removed the former
+  `ProductAccountLink.metadata.teamDirectory` mirror.
   The cache is per process: each API replica repopulates from its own logins and
   rotations, and a replica that has not yet served one for a user answers from a
   **degraded fallback** derived only from data Nessie owns — the user's own
-  `TeamMember` rows joined to `Team.externalWorkspaceId` / `externalOrgId`, with
+  `TeamMember` rows joined to `Team.externalTeamId` / `externalOrgId`, with
   the local team name as the label and UOA's deterministic per-team image URL as
-  the avatar. A workspace the person is entitled to in UOA but has never opened
+  the avatar. A team the person is entitled to in UOA but has never opened
   in Nessie has no local Team row and therefore appears only once a rotation
   refreshes the real directory.
   UOA session and billing requests use IP-pinned `safeFetch` and allow zero
   redirects, so refresh credentials, domain hashes, app keys, and signed actor
   assertions are never forwarded to a redirect target.
-- **workspace binding:** refreshed UOA access sessions resolve the exact local
+- **team binding:** refreshed UOA access sessions resolve the exact local
   team mapped to the signed external org/team and require live user, project,
   team, organization, and Nessie product-link membership. They never fall back
   to the user's first membership. The one account link per user/product proves
@@ -420,7 +420,7 @@ Claims:
   last-seen metadata and cannot invalidate a simultaneous family in another
   team. The product link may mirror a newer epoch after a valid refresh, but it
   never supplies session identity. Billing, delegated calls, activation, team
-  enablement, and webhook routing all derive workspace authority from the signed
+  enablement, and webhook routing all derive team authority from the signed
   family plus the exact Team mapping.
 - **revocation:** `DELETE /api/auth/session` (logout) is public but requires a
   authentic signed Bearer session to revoke exactly that session's `{sub,
@@ -445,7 +445,7 @@ Claims:
 
 - `proj` and `team` claims are the user's **active** project and team, not their only one
 - local/non-UOA project/team switching: `POST /api/auth/switch-context` with `{ organizationId, projectId, teamId }` → issues a new JWT with updated claims (and rotates the refresh cookie)
-- UOA workspace switching: `POST /api/auth/uoa/workspace` with external `{ organizationId, teamId }` → rescope-rotates the bound UOA/local refresh family and issues the corresponding JWT without leaving the app
+- UOA team switching: `POST /api/auth/uoa/team` with external `{ organizationId, teamId }` → rescope-rotates the bound UOA/local refresh family and issues the corresponding JWT without leaving the app
 - the active project/team determines the default scope for channel listing, agent discovery, and policy evaluation
 
 #### Server-side signing secret
@@ -493,14 +493,14 @@ intent has expired is a visible terminal result ("Sign-in expired, please try
 again") that releases the login control; it is acknowledged but never recorded
 as a completed replay proof.
 Callbacks wait for startup session restoration when they carry an authenticated
-workspace target; a target callback can only call the bearer-authenticated
+team target; a target callback can only call the bearer-authenticated
 recovery exchange and can never fall back to ordinary login.
 
-#### Authenticated workspace-switch recovery (`expectedWorkspace`)
+#### Authenticated team-switch recovery (`expectedTeam`)
 
-`POST /api/auth/session` also accepts an `expectedWorkspace { organizationId,
-teamId }` discriminant for **workspace-switch reauthorization** — the browser
-re-runs hosted UOA login for the target workspace while holding a current
+`POST /api/auth/session` also accepts an `expectedTeam { organizationId,
+teamId }` discriminant for **team-switch reauthorization** — the browser
+re-runs hosted UOA login for the target team while holding a current
 Nessie session. It is valid ONLY as a complete `providerId: "uoa"` code
 exchange accompanied by a live `Bearer` Nessie access token; every other shape
 (password login, local provider, incomplete tuple) is refused before any
@@ -524,8 +524,8 @@ upstream exchange or local write. The invariant, in order:
 4. **Billing confirm** (the one network side effect) runs once the fence
    passes.
 5. **Authoritative claim, inside the single recovery transaction:** after the
-   exact external-org + external-workspace advisory locks, the transaction
-   resolves the **TARGET** Organization from the verified workspace claim's
+   exact external-org + external-team advisory locks, the transaction
+   resolves the **TARGET** Organization from the verified team claim's
    external org id (creating it on a first entry — a cross-org
    reauthorization is legitimate under the per-UOA-org model; the bearer's
    own org claim is only the fallback scope for a claim with no external org
@@ -553,50 +553,50 @@ Recovery resolves the principal exclusively by the bearer's user id: it never
 looks up, creates, or remaps a user by email, and the generic multi-product
 link sync is skipped (the in-transaction claim is the only link mutation).
 
-#### UOA organisations → Nessie Organizations, workspaces → Teams
+#### UOA organisations → Nessie Organizations, teams → Teams
 
-For the `uoa` provider, Nessie's config JWT enables UOA's workspace chooser
-(`login_flow.workspace_selection: "auto"`), so the user picks a **workspace**
+For the `uoa` provider, Nessie's config JWT enables UOA's team chooser
+(`login_flow.team_selection: "auto"`), so the user picks a **team**
 before returning; UOA then carries the selection in the access-token
 `active { orgId, teamId }` claim plus the authentication epoch in `tv`. The same
 config JWT sets `org_features.allow_user_create_org` **and**
-`allow_user_create_team`, so the chooser offers self-service workspace creation
+`allow_user_create_team`, so the chooser offers self-service team creation
 both to a user with no organisation yet (`_org`, their first one) and to an
 ACTIVE owner/admin of an organisation they already run (`_team`, a further
-workspace via UOA's `POST /auth/create-team`). Without the `_team` flag the
-chooser shows no create option to anyone who already belongs to a workspace.
+team via UOA's `POST /auth/create-team`). Without the `_team` flag the
+chooser shows no create option to anyone who already belongs to a team.
 
 **Model (revised 2026-08-15): each UOA organisation maps 1:1 to its own local
 `Organization`**, keyed by `Organization.externalOrgId` (the stable UOA org id;
-unique, null for local-mode orgs), and the selected UOA workspace maps to a
+unique, null for local-mode orgs), and the selected UOA team maps to a
 Nessie **Team** (project + team + `#general`, auto-provisioned on first entry)
 INSIDE that Organization. The original 2026-07-10 decision flattened every
-workspace into the one shared bootstrap Organization — chosen when UOA was
+team into the one shared bootstrap Organization — chosen when UOA was
 one-org-per-user; UOA's ReBAC model made organisations first-class and
 multi-per-user, so per-org tenancy (budgets, policies, member directory,
 settings) now follows the UOA organisation. On exchange,
 `POST /api/auth/session` resolves-or-creates the Organization under a
 per-external-org advisory lock (`api/src/services/external-organization.ts`) —
-never the old "oldest organization" lookup — then materializes the workspace
+never the old "oldest organization" lookup — then materializes the team
 target inside it. `Organization.name` is a non-authoritative mirror of UOA's
 `orgName` (profile-mirror doctrine): synced best-effort wherever the verified
-workspace directory arrives (login link sync + the refresh coordinator), with
+team directory arrives (login link sync + the refresh coordinator), with
 the placeholder `Organisation ${externalOrgId.slice(0, 8)}` at first
 provisioning. First entry into a brand-new org: the verified `org_role` claim
 decides the local role; with no claim, the **first materializer of the org owns
 it** (the exact mirror of the first-materializer team rule, evaluated as "no
 organization member exists yet" under the org lock) and the org's default
-policy rules are seeded in the same transaction. Logins with **no workspace
-claim** (generic OIDC, the legacy no-workspace UOA login) keep the shared-org
+policy rules are seeded in the same transaction. Logins with **no team
+claim** (generic OIDC, the legacy no-team UOA login) keep the shared-org
 behaviour byte-for-byte, including the bootstrap seed, which creates a
 null-`externalOrgId` org.
 
-Users switch between workspaces they belong to via
-the authenticated `POST /api/auth/uoa/workspace` rescope route; the browser does
+Users switch between teams they belong to via
+the authenticated `POST /api/auth/uoa/team` rescope route; the browser does
 not leave Nessie or repeat hosted login. A **cross-org** switch is legitimate
 and lands in the target org's Organization — materializing it, and syncing its
 first-party account links, when the user has never entered it before
-(`materializeUoaWorkspaceSwitch` runs the same login path plus
+(`materializeUoaTeamSwitch` runs the same login path plus
 `syncUoaProductAccountLinks` scoped to the target org, which the rescope
 binding advance requires). `POST /api/auth/switch-context` remains
 the local/non-UOA context route and still refuses to mint a UOA token for a
@@ -605,21 +605,21 @@ different external tuple. The signed session/family proof, rather than
 the refreshed binding additionally requires the resolved team's Organization to
 carry the session's external org id, so a team can never be reached through a
 foreign org (`uoa-session-context.ts` `loadBinding`).
-Before provisioning a local workspace, mutating product links, or issuing a
+Before provisioning a local team, mutating product links, or issuing a
 Nessie session, login confirms exact direct `nessie` access through UOA using
 the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,
 slug-ordered transaction: an existing subject cannot be replaced and an older
 epoch cannot overwrite a newer one — per (organization, user, product), so a
 login or switch into an org creates/updates exactly that org's links.
-First-time organization and workspace creation are likewise
+First-time organization and team creation are likewise
 serialized by advisory locks over the exact external organization and
 organization/team pair, so simultaneous first logins converge on one
 Organization, project, and team.
 
 **UOA principals are matched by the stable UOA subject, never by email.**
-`User.uoaSub` (unique, nullable) is the principal key: login and workspace
+`User.uoaSub` (unique, nullable) is the principal key: login and team
 materialization resolve `where: { uoaSub }` first
-(`api/src/services/workspace-principal.ts`). On a subject miss, a **one-time
+(`api/src/services/team-principal.ts`). On a subject miss, a **one-time
 adoption** claims an email-matching row only while that row is unbound
 (`uoaSub IS NULL` — a pre-subject account, a bootstrap-seeded owner, or a row
 the backfill migration deliberately left NULL as ambiguous), setting the
@@ -632,7 +632,7 @@ locks keyed on the subject and — second, always in that order — the normaliz
 email; the email lock remains because the adoption path and non-UOA logins
 resolve rows through the unique email column, so concurrent device callbacks
 for one principal, or two subjects racing one address, meet on a common lock
-instead of the read-then-create window. The workspace-switch materialization
+instead of the read-then-create window. The team-switch materialization
 guard compares the session's verified subject against `User.uoaSub` (a NULL
 subject fails closed to reauthentication). Existing rows were backfilled from
 `linked` `nessie` product-account links
@@ -640,7 +640,7 @@ subject fails closed to reauthentication). Existing rows were backfilled from
 left NULL on both rather than guessed.
 **Org and team roles are a projection of the verified UOA claims, re-applied on
 every session.** UOA's access token carries `org.org_role` and
-`org.team_roles[workspaceId]`; both map through one function
+`org.team_roles[externalTeamId]`; both map through one function
 (`api/src/services/uoa-roles.ts` `mapUoaMemberRole`: `owner → owner`,
 `admin`/legacy `lead` → `admin`, `member → member`, **anything else → no role
 at all**) onto the local `organization_members`, `project_members`, and
@@ -650,18 +650,18 @@ demotion propagates instead of freezing at first join:
 
 | Path | Claims come from | Effect |
 |---|---|---|
-| Login (`POST /api/auth/session`, `uoa` branch) | the exchanged access token | `resolveUoaWorkspaceContext` → `ensureWorkspacePrincipal` → `projectUoaRoles` |
-| Workspace switch (`POST /api/auth/uoa/workspace`) | the **target** token UOA returned | `materializeUoaWorkspaceSwitch` runs the same login path against the target claims |
-| Refresh / rotation (`POST /api/auth/refresh`) | the refreshed access token, threaded through the rotation as `workspace` | `advanceUoaLocalSessionBinding` re-projects inside the family transaction, so the reissued token carries the new role |
+| Login (`POST /api/auth/session`, `uoa` branch) | the exchanged access token | `resolveUoaTeamContext` → `ensureTeamPrincipal` → `projectUoaRoles` |
+| Team switch (`POST /api/auth/uoa/team`) | the **target** token UOA returned | `materializeUoaTeamSwitch` runs the same login path against the target claims |
+| Refresh / rotation (`POST /api/auth/refresh`) | the refreshed access token, threaded through the rotation as `team` | `advanceUoaLocalSessionBinding` re-projects inside the family transaction, so the reissued token carries the new role |
 
 Rules that make this safe to run on every session:
 
-- **Only a present claim projects.** An absent `org_role` or a workspace with
+- **Only a present claim projects.** An absent `org_role` or a team with
   no `team_roles` entry leaves the local row exactly as it was. That is what
   keeps generic (non-UOA) OIDC providers, `local` mode, and the legacy
-  no-workspace login byte-identical, and it is the sole surviving case of the
+  no-team login byte-identical, and it is the sole surviving case of the
   **first-materializer team-`owner`** rule: whoever first materializes a
-  workspace owns its team *only* when UOA sent no role for that workspace — a
+  team owns its team *only* when UOA sent no role for that team — a
   verified claim always wins, including `member`.
 - **A role Nessie does not model is refused, never coerced.** `org_roles` is
   per-domain configurable in UOA, so a domain can mint `auditor` — or `viewer`,
@@ -672,8 +672,8 @@ Rules that make this safe to run on every session:
   therefore throws `UoaUnrecognizedRoleError` **before the materializer's first
   query**, and each auth boundary answers it as a refusal: login →
   `403 UOA_ROLE_UNRECOGNIZED`; refresh → definitive, family revoked,
-  `401 REFRESH_REAUTH_REQUIRED`; workspace switch →
-  `UoaWorkspaceSwitchError('WORKSPACE_NOT_AVAILABLE')` with the intent cleared.
+  `401 REFRESH_REAUTH_REQUIRED`; team switch →
+  `UoaTeamSwitchError('TEAM_NOT_AVAILABLE')` with the intent cleared.
   A person whose standing Nessie cannot express gets no session rather than the
   wrong one. This is wave 0 of `UnlikeOtherAuthenticator`
   `Docs/plans/2026-08-16-configurable-roles-and-capabilities.md`; wave 3
@@ -695,7 +695,7 @@ Rules that make this safe to run on every session:
   deactivated org membership); role changes come from the projection alone.
 
 Non-UOA OIDC providers keep email keying unchanged, and they plus
-single-workspace users carry no `active` claim and
+single-team users carry no `active` claim and
 land in their existing/default team, unchanged. See
 [docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).
 
@@ -713,8 +713,8 @@ be rendered without a round trip per row. Three consequences:
   `buildMeResponse` now writes nothing at all.
 - **Every exchange that carries verified claims re-syncs the mirror**
   (`api/src/services/uoa-profile-mirror.ts` `syncProfileMirrorFromClaims`):
-  SSO login and workspace-switch materialization through
-  `ensureWorkspacePrincipal`, and ordinary session refresh through the UOA
+  SSO login and team-switch materialization through
+  `ensureTeamPrincipal`, and ordinary session refresh through the UOA
   refresh coordinator (best-effort there — a display-data write must never
   break session renewal). Only fields the provider asserted are written, and
   only when they differ, so a provider that sends no picture claim leaves the
@@ -886,24 +886,24 @@ In a deployment whose provider is UnlikeOtherAI, UOA is the authority for human
 identity, organisation/team membership, team rosters, and invitations. Nessie
 persists none of it and offers no local substitute:
 
-- **The roster is a live read.** `GET /api/workspace/members` joins UOA's team
+- **The roster is a live read.** `GET /api/team/members` joins UOA's team
   detail (`GET /org/organisations/:orgId/teams/:teamId`, which carries the team
   roles) with the organisation membership list
   (`GET /org/organisations/:orgId/members?status=all`, which carries names,
   emails, and lifecycle status). Every field is display-only; nothing is
   written to a local table.
 - **People are matched by UOA subject.** Every route takes the subject in the
-  path (`/api/workspace/members/:uoaSub/...`). Never a local user id, never an
+  path (`/api/team/members/:uoaSub/...`). Never a local user id, never an
   email lookup against local rows — an IdP-asserted email is the documented
   account-takeover shape.
-- **The UOA workspace comes from the actor's own session team.** `Team.externalOrgId`
-  + `Team.externalWorkspaceId` are the only mapping; a team without both, or a
-  deployment with no UOA credentials, answers `404 WORKSPACE_NOT_LINKED`.
+- **The UOA team comes from the actor's own session team.** `Team.externalOrgId`
+  + `Team.externalTeamId` are the only mapping; a team without both, or a
+  deployment with no UOA credentials, answers `404 TEAM_NOT_LINKED`.
 - **Invitation acceptance is hosted by UOA.** Nessie creates, lists, resends,
   revokes, approves, and denies invitations; it never mints, stores, or renders
   an invitation token and has no accept page. `deny` covers the
   member-initiated invites still awaiting approval; **revoke**
-  (`POST /api/workspace/invitations/:inviteId/revoke` →
+  (`POST /api/team/invitations/:inviteId/revoke` →
   `DELETE /org/organisations/:orgId/teams/:teamId/invitations/:inviteId`)
   withdraws one that was already sent — idempotent, so revoking twice is still a
   success, while an invitation that has already been accepted answers
@@ -924,20 +924,20 @@ second secret in the path: stealing the domain-hash bearer does not turn the
 flag on. Backend mode has **no acting user**, so UOA applies no owner/admin
 check of its own and records the mutation as `actor_user_id: null` with
 `uoa_actor: { via: "domain_backend" }`. Nessie's own owner/admin gate in
-`api/src/routes/workspace-members.ts` is therefore the only authorization on
-every mutation, exactly as with the workspace avatar relay (§ `docs/done/2026-07-25-uoa-workspace-avatar.md`).
-The roster read itself is open to any member of the workspace.
+`api/src/routes/team-members.ts` is therefore the only authorization on
+every mutation, exactly as with the team avatar relay (§ `docs/done/2026-07-25-uoa-team-avatar.md`).
+The roster read itself is open to any member of the team.
 
 Egress follows the standard rule: `safeFetch` with `maxRedirects: 0` and a
-10-second timeout (`@nessie/workspace-admin` `uoa-org-roster.ts`, re-exported
+10-second timeout (`@nessie/team-admin` `uoa-org-roster.ts`, re-exported
 by `api/src/services/uoa-org-roster.ts`). Upstream 4xx becomes
-`WORKSPACE_MEMBERS_REJECTED`; a transport failure, 5xx, or unparseable body
+`TEAM_MEMBERS_REJECTED`; a transport failure, 5xx, or unparseable body
 becomes `502 UOA_DIRECTORY_UNAVAILABLE` — never a silently empty roster.
 
 **Agents read the same roster.** The personal assistant's `people_search`
 (`worker/src/run/pa-tools/people.ts`) calls the same
-`resolveUoaRosterWorkspace` + `listWorkspaceMembers` seam — the roster module
-lives in `@nessie/workspace-admin` precisely because the worker cannot import
+`resolveUoaRosterTeam` + `listTeamMembers` seam — the roster module
+lives in `@nessie/team-admin` precisely because the worker cannot import
 `api/src/services/*`. On a UOA-linked team the tool filters the live roster
 (bounded 60-second in-memory cache per org/team) and keys results on the UOA
 subject, joining `User.uoaSub` only to surface the local `userId` other tools

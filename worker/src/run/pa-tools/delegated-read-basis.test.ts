@@ -77,14 +77,14 @@ test('channel_find stamps the same way', async () => {
   ])
 })
 
-test('agent_list stamps private agents only, never workspace-visible ones', () => {
+test('agent_list stamps private agents only, never team-visible ones', () => {
   const consumedSources = createConsumedSourceSink()
   recordVisibleAgentRead({ consumedSources }, [
     { id: 'agent-private', visibility: 'private' },
-    { id: 'agent-workspace', visibility: 'workspace' },
+    { id: 'agent-team', visibility: 'team' },
   ])
 
-  // A workspace-visible agent is deliberately NOT stamped `agent:<id>`: an org
+  // A team-visible agent is deliberately NOT stamped `agent:<id>`: an org
   // owner's list is wider than the shared visibility predicate that scope
   // denotes, so stamping would withhold the reply from the person who asked.
   assert.deepEqual(consumedSources.list(), [

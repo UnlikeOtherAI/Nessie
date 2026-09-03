@@ -4,4 +4,4 @@ export {
   removePersonalAssistantPresence,
   type PersonalAssistantPresence,
   type PersonalAssistantPresenceMutation,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'

@@ -44,7 +44,7 @@ const privateVisibleAgentWhere = (viewerId: string) => ({
     },
     {
       OR: [
-        { visibility: 'workspace' },
+        { visibility: 'team' },
         {
           visibility: 'private',
           ownerMembership: { deactivatedAt: null },

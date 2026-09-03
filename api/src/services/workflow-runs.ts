@@ -7,7 +7,7 @@ import {
   redactWorkflowSecretValues,
   resolveInstallationPinnedGraph,
   withWorkflowOverlapLock,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { WorkflowRunExecuteJobPayload } from '@nessie/schemas'

@@ -195,7 +195,7 @@ test('Infisical paths partition every secret scope by stable IDs', () => {
     { organizationId: ORGANIZATION_ID, scopeId: USER_ID, scopeType: 'personal' },
     { organizationId: ORGANIZATION_ID, scopeId: TEAM_ID, scopeType: 'team' },
     { organizationId: ORGANIZATION_ID, scopeId: PROJECT_ID, scopeType: 'project' },
-    { organizationId: ORGANIZATION_ID, scopeId: ORGANIZATION_ID, scopeType: 'workspace' },
+    { organizationId: ORGANIZATION_ID, scopeId: ORGANIZATION_ID, scopeType: 'team' },
   ]
 
   assert.deepEqual(
@@ -204,7 +204,7 @@ test('Infisical paths partition every secret scope by stable IDs', () => {
       `/nessie/${ORGANIZATION_ID}/personal/${USER_ID}`,
       `/nessie/${ORGANIZATION_ID}/team/${TEAM_ID}`,
       `/nessie/${ORGANIZATION_ID}/project/${PROJECT_ID}`,
-      `/nessie/${ORGANIZATION_ID}/workspace/${ORGANIZATION_ID}`,
+      `/nessie/${ORGANIZATION_ID}/team/${ORGANIZATION_ID}`,
     ],
   )
 })

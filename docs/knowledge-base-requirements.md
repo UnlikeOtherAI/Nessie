@@ -424,15 +424,15 @@ Shared state lives in `KnowledgeProvider`
 route outlet on the Knowledge route.
 
 On a phone, `/knowledge-base` owns the Spaces/product-views list as the first
-screen. Selecting a row pushes the same workspace into view at the addressable
+screen. Selecting a row pushes the same team into view at the addressable
 `/knowledge-base/spaces/:spaceId` or `/knowledge-base/views/:productView`
 route, with a deterministic Back action to the list. The returned phone list
 does not mark the previously viewed space as active: it is a picker rather than
-an open workspace. Tablet and desktop keep the sidebar and workspace side by
+an open team. Tablet and desktop keep the sidebar and team side by
 side; they update the shared provider state without changing to the phone child
 route.
 
-**Two surfaces, one workspace.** `KnowledgeProvider` takes an optional
+**Two surfaces, one team.** `KnowledgeProvider` takes an optional
 `projectId`, which puts it in *project scope* — the **Docs** tab of a project
 (`/projects/:projectId/docs`, `ProjectDocsTab`). In that scope the space list is
 fetched with `?projectId=`, the caller's personal "My Docs" space is neither
@@ -442,7 +442,7 @@ empty project means "nothing filed here", never "no knowledge base"), a new
 space is created in the project being viewed rather than the session's project,
 and the org-wide storage meter is hidden. Everything else is the same code: the
 space rows are the shared `KnowledgeSpaceList` and the document area is the same
-`KnowledgeWorkspace` the Knowledge section renders. The page hierarchy is derived client-side
+`KnowledgeTeam` the Knowledge section renders. The page hierarchy is derived client-side
 from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`.
 That list **omits each page's latest-version body** (it can be large and the
 tree/column/preview-header views never need it); the body is fetched on demand
@@ -566,7 +566,7 @@ route renders it to HTML (`markdown-it`, `api/src/lib/markdown.ts`) and creates 
 `kind = document` page with that body, so it gets the rich-text reader, the
 WYSIWYG editor, comments/notes and version history — identical to a document
 authored in-app. Import is capped at `MARKDOWN_IMPORT_MAX_BYTES` (5 MiB). Existing
-markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
+markdown file nodes are migrated on open: `KnowledgeTeam` calls
 `convert-to-document` (read the attachment text → HTML → new document version →
 flip `kind` → drop the now-unused blob) and then renders the document.
 

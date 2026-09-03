@@ -143,7 +143,7 @@ export const router = createBrowserRouter([
         element: <ChannelProjectOverviewPage />,
       },
       {
-        // The Channels workspace stays mounted when a new-message sheet opens,
+        // The Channels team stays mounted when a new-message sheet opens,
         // so wider layouts retain the source conversation beneath the composer.
         path: '/channels',
         element: <ChannelsPage />,

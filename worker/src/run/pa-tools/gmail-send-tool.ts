@@ -1,7 +1,7 @@
 import {
   hasStandingSendAuthorization,
   sendDraftForUser,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'

@@ -17,7 +17,7 @@ import {
   AgentManagementError,
   archiveAgentTodoTemplate,
   validateTodoTemplateTriggerConfig,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 

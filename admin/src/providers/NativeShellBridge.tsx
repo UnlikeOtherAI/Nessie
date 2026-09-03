@@ -123,7 +123,7 @@ export const NativeShellBridge = () => {
     window.addEventListener(NATIVE_PUSH_UNREGISTER_EVENT, unregister);
     // Imported debug access is intentionally ephemeral and never reaches this
     // branch. Renewable sessions ask the shell to repost its cached token after
-    // every API-client change, including a workspace switch.
+    // every API-client change, including a team switch.
     (window as RnWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({ type: 'nessie:request-push-registration' }),
     );

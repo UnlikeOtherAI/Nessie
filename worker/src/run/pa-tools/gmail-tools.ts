@@ -10,7 +10,7 @@ import {
   composeDraftForUser,
   loadUserGoogleCommsCredential,
   updateDraftForUser,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { safeFetch } from '@nessie/runtime'
 import { z } from 'zod'
 

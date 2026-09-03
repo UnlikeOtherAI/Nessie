@@ -128,7 +128,7 @@ export const loadSpendableSubscription = async (
   if (!membership || membership.deactivatedAt !== null) {
     throw new ModelSubscriptionError(
       SUBSCRIPTION_ERROR_CODES.OWNER_INACTIVE,
-      'The person who owns this subscription is no longer active in this workspace.',
+      'The person who owns this subscription is no longer active in this team.',
     )
   }
   return subscription

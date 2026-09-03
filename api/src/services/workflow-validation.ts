@@ -5,7 +5,7 @@ import {
   validateWorkflowSecretWrite,
   WORKFLOW_SECRET_WRITE_ERROR,
   type WorkflowBindingSecretError,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import type { WorkflowGraph } from '../contracts.js'
 

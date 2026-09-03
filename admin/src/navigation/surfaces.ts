@@ -57,7 +57,7 @@ const redirect = (row: Pick<Surface, 'pattern' | 'root' | 'section'>): Surface =
 })
 
 // First match wins, so the order inside each section is specific → generic.
-// The knowledge workspace is one component parameterised by scope (the
+// The knowledge team is one component parameterised by scope (the
 // section and a project's Docs tab), so its intent is one object too:
 // `?spaceId=&pageId=` opens a document from an approval, a search result or
 // a research run, and `?view=` is the view-mode strip.
@@ -239,7 +239,7 @@ export const SURFACES: Surface[] = [
   },
   {
     // A Knowledge space keeps one screen identity across spaces: the mounted
-    // workspace swaps its selection rather than remounting the route page.
+    // team swaps its selection rather than remounting the route page.
     depth: 1,
     identityOf: () => 'space',
     keyScope: () => 'space',

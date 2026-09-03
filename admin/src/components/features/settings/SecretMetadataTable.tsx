@@ -17,7 +17,7 @@ const scopeLabel: Record<SecretScopeType, string> = {
   personal: 'Personal',
   project: 'Project',
   team: 'Team',
-  workspace: 'Workspace',
+  organization: 'Organisation',
 }
 
 const statusTone: Record<SecretRecord['status'], PillTone> = {

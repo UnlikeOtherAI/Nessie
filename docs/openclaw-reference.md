@@ -39,7 +39,7 @@ flowchart LR
   subgraph AG["Agent runtime (embedded Pi)"]
     LOOP["Agent loop\nprompt→model→tools→reply→persist"]
     SKILLS["Skills\n(ClawHub + local)"]
-    MEM["Workspace memory\nMarkdown + SQLite"]
+    MEM["Team memory\nMarkdown + SQLite"]
   end
 
   subgraph EXT["External systems"]
@@ -688,8 +688,8 @@ Each instance has independent auth, sessions, channels, and tools. This is the r
 
 ### Backups
 
-- **Workspace** (the agent's "memory"): put in a private git repo. Never commit `~/.openclaw` (contains credentials and sessions).
-- **State**: back up `~/.openclaw/agents/<agentId>/sessions/` (JSONL transcripts) and `~/.openclaw/agents/<agentId>/memory/` separately from workspace.
+- **Team** (the agent's "memory"): put in a private git repo. Never commit `~/.openclaw` (contains credentials and sessions).
+- **State**: back up `~/.openclaw/agents/<agentId>/sessions/` (JSONL transcripts) and `~/.openclaw/agents/<agentId>/memory/` separately from team.
 - **Config**: back up `~/.openclaw/openclaw.json` with secrets excluded (use environment variable substitution for sensitive values: `"token": "${GATEWAY_TOKEN}"`).
 
 ### Messaging channels
@@ -748,7 +748,7 @@ Resume with `openclaw lobster resume <approval-token>` or via WS RPC.
 - [ ] Tool policy set to `messaging` or equivalent restrictive profile initially
 - [ ] Channel DM/group policies set to `allowlist` or `pairing` (not `open`)
 - [ ] Webhook tokens strong and unique
-- [ ] Workspace backed up to private git
+- [ ] Team backed up to private git
 - [ ] `~/.openclaw` excluded from git
 - [ ] Skills reviewed before installing; versions pinned
 - [ ] `openclaw security audit` run and findings addressed
@@ -911,11 +911,11 @@ A Data Protection Impact Assessment is likely required when OpenClaw processes s
 **OpenClaw data flows**:
 
 ```
-Ingress: chat message → Gateway → session JSONL → agent workspace file
+Ingress: chat message → Gateway → session JSONL → agent team file
          ↓
-External tools: agent calls Gmail API → reads email content → workspace file
-                agent calls web search → results → workspace file
-                agent calls CRM API → data → workspace file
+External tools: agent calls Gmail API → reads email content → team file
+                agent calls web search → results → team file
+                agent calls CRM API → data → team file
          ↓
 Persistence: session transcripts → ~/.openclaw/agents/<id>/sessions/
              agent memory → ~/.openclaw/agents/<id>/memory/
@@ -927,7 +927,7 @@ Persistence: session transcripts → ~/.openclaw/agents/<id>/sessions/
 | Data type | Retention | Basis |
 |---|---|---|
 | Session transcripts | Delete after N days / on user request | Operational need vs privacy |
-| Agent workspace files | User-controlled; git-backed | User ownership |
+| Agent team files | User-controlled; git-backed | User ownership |
 | Credentials / tokens | Rotated regularly; deleted on revocation | Security |
 | Hook delivery logs | N days max; review for PII | Operational debugging |
 | Skills | Version-pinned; old versions deleted | Supply chain hygiene |
@@ -950,7 +950,7 @@ Persistence: session transcripts → ~/.openclaw/agents/<id>/sessions/
 | **Messaging-native** | Yes (channels built-in) | No (build your own) | Partial | No |
 | **Mobile / voice** | Via nodes (Android/iOS) | No native client | No | No |
 | **Tool ecosystem** | Skills + plugins + WS tools | LangChain tools | Built-in + LangChain | Built-in + custom |
-| **Session persistence** | JSONL transcripts + workspace | Custom | Custom | Custom |
+| **Session persistence** | JSONL transcripts + team | Custom | Custom | Custom |
 | **Multi-agent routing** | Built-in | Build your own | Built-in | Build your own |
 | **Learning curve** | Medium | High | Low–Medium | Medium–High |
 | **Security model** | Tool policy + sandboxing | Custom | Custom | Custom |
@@ -1006,7 +1006,7 @@ See `docs/openclaw-gap-analysis.md` for the full analysis.
 | Orchestration | MiniMax via `max` CLI (sub-agents) | Multi-agent routing + Pi runtime |
 | Tool layer | File, bash, search, find | Skills, plugins, 20+ built-in tools |
 | Messaging channels | None | WhatsApp, Telegram, Discord, Slack, Teams, etc. |
-| Session persistence | File-based workspace | JSONL transcripts + SQLite indexes |
+| Session persistence | File-based team | JSONL transcripts + SQLite indexes |
 | WebSocket protocol | Custom (OpenAI Realtime) | Gateway WS protocol (connect, chat.*, sessions.*) |
 | Cron / scheduling | None | Built-in cron + Lobster workflows |
 | HTTP API surface | Minimal (index.ts entry point) | OpenAI-compatible, OpenResponses, /tools/invoke |

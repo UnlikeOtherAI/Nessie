@@ -21,7 +21,7 @@ import {
 const safeFetchTestOptions: SafeFetchOptions = {
   resolveHost: async () => ['93.184.216.34'],
 }
-import { resolveExternalWorkspaceSelection } from '../src/services/identity-display.js'
+import { resolveExternalTeamSelection } from '../src/services/identity-display.js'
 
 const testPrivateKeyPem = String(
   generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
@@ -108,41 +108,41 @@ const withTokenResponse = async <T>(
       return new Response(JSON.stringify({
         ok: true,
         org: {
-          workspaces: [
+          teams: [
             {
               avatarImageUrl: '/public/teams/team-active/avatar',
               orgId: 'org-active',
               orgName: 'Active org',
               teamId: 'team-active',
-              name: 'Active workspace',
+              name: 'Active team',
             },
             {
-              avatarImageUrl: 'https://images.example.com/workspaces/team-other.png',
+              avatarImageUrl: 'https://images.example.com/teams/team-other.png',
               orgId: 'org-other',
               orgName: 'Other org',
               teamId: 'team-other',
-              name: 'Other workspace',
+              name: 'Other team',
             },
             {
               avatarImageUrl: 'data:image/png;base64,unsafe',
               orgId: 'org-other',
               orgName: 'Other org',
               teamId: 'team-unsafe-scheme',
-              name: 'Unsafe scheme workspace',
+              name: 'Unsafe scheme team',
             },
             {
-              avatarImageUrl: '//attacker.example/workspace.png',
+              avatarImageUrl: '//attacker.example/team.png',
               orgId: 'org-other',
               orgName: 'Other org',
               teamId: 'team-protocol-relative',
-              name: 'Protocol-relative workspace',
+              name: 'Protocol-relative team',
             },
             {
-              avatarImageUrl: String.raw`/\\attacker.example/workspace.png`,
+              avatarImageUrl: String.raw`/\\attacker.example/team.png`,
               orgId: 'org-other',
               orgName: 'Other org',
               teamId: 'team-backslash-host',
-              name: 'Backslash-host workspace',
+              name: 'Backslash-host team',
             },
           ],
           pending_invites: [
@@ -150,7 +150,7 @@ const withTokenResponse = async <T>(
               inviteId: 'invite-valid',
               orgId: 'org-invited',
               teamId: 'team-invited',
-              teamName: 'Invited workspace',
+              teamName: 'Invited team',
               invitedBy: 'Grace Hopper',
               expiresAt: '2026-09-30T12:00:00.000Z',
             },
@@ -222,44 +222,44 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
       assert.equal(exchange.refreshTokenExpiresInSeconds, 2_592_000)
       assert.equal(exchange.identity.externalSubject, 'uoa-user-123')
       assert.equal(exchange.identity.uoaTokenVersion, 7)
-      assert.deepEqual(resolveExternalWorkspaceSelection(exchange.identity.workspace), {
+      assert.deepEqual(resolveExternalTeamSelection(exchange.identity.team), {
         organizationId: 'org-active',
         teamId: 'team-active',
       })
-      assert.deepEqual(exchange.workspaceDirectory, {
+      assert.deepEqual(exchange.teamDirectory, {
         entries: [{
           organizationId: 'org-active',
           teamId: 'team-active',
           avatarImageUrl: 'https://1.1.1.1/public/teams/team-active/avatar',
-          label: 'Active workspace',
+          label: 'Active team',
           orgName: 'Active org',
         }, {
           organizationId: 'org-other',
           teamId: 'team-other',
-          avatarImageUrl: 'https://images.example.com/workspaces/team-other.png',
-          label: 'Other workspace',
+          avatarImageUrl: 'https://images.example.com/teams/team-other.png',
+          label: 'Other team',
           orgName: 'Other org',
         }, {
           organizationId: 'org-other',
           teamId: 'team-unsafe-scheme',
-          label: 'Unsafe scheme workspace',
+          label: 'Unsafe scheme team',
           orgName: 'Other org',
         }, {
           organizationId: 'org-other',
           teamId: 'team-protocol-relative',
-          label: 'Protocol-relative workspace',
+          label: 'Protocol-relative team',
           orgName: 'Other org',
         }, {
           organizationId: 'org-other',
           teamId: 'team-backslash-host',
-          label: 'Backslash-host workspace',
+          label: 'Backslash-host team',
           orgName: 'Other org',
         }],
         pendingInvites: [{
           inviteId: 'invite-valid',
           organizationId: 'org-invited',
           teamId: 'team-invited',
-          teamName: 'Invited workspace',
+          teamName: 'Invited team',
           invitedBy: 'Grace Hopper',
           expiresAt: '2026-09-30T12:00:00.000Z',
         }],
@@ -272,7 +272,7 @@ test('exchangeUoaSession treats an absent pending_invites field as verified empt
   await withUoaEnv(async () => {
     const previousFetch = globalThis.fetch
     globalThis.fetch = async (input) => new URL(String(input)).pathname === '/org/me'
-      ? new Response(JSON.stringify({ org: { workspaces: [] } }), { status: 200 })
+      ? new Response(JSON.stringify({ org: { teams: [] } }), { status: 200 })
       : new Response(JSON.stringify({
           access_token: jwtForClaims(completeSessionClaims),
           expires_in: 1_800,
@@ -286,7 +286,7 @@ test('exchangeUoaSession treats an absent pending_invites field as verified empt
         codeVerifier: 'verifier',
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
       }, safeFetchTestOptions)
-      assert.deepEqual(exchange.workspaceDirectory, { entries: [], pendingInvites: [] })
+      assert.deepEqual(exchange.teamDirectory, { entries: [], pendingInvites: [] })
     } finally {
       globalThis.fetch = previousFetch
     }
@@ -327,7 +327,7 @@ test('buildConfigJwt uses the selected hosted-login theme palette', async () => 
   })
 })
 
-test('buildConfigJwt requests UOA workspace features', async () => {
+test('buildConfigJwt requests UOA team features', async () => {
   await withUoaEnv(async () => {
     const payload = decodeJwtPayload(buildConfigJwt(loadUoaSettings()))
 
@@ -339,11 +339,11 @@ test('buildConfigJwt requests UOA workspace features', async () => {
       backend_org_management: true,
       enabled: true,
     })
-    // Slack-style workspace chooser must be requested so UOA issues the
+    // Slack-style team chooser must be requested so UOA issues the
     // `active { orgId, teamId }` claim Nessie routes on.
     assert.deepEqual(payload.login_flow, {
       email_code_enabled: true,
-      workspace_selection: 'auto',
+      team_selection: 'auto',
     })
   })
 })
@@ -380,7 +380,7 @@ test('exchangeUoaCode reuses the selected theme for the token config_url', async
   })
 })
 
-test('resolveUoaIdentityFromAccessToken decodes UOA workspace claims', () => {
+test('resolveUoaIdentityFromAccessToken decodes UOA team claims', () => {
   const identity = resolveUoaIdentityFromAccessToken(jwtForClaims({
     active: { orgId: 'org-active', teamId: 'team-active' },
     email: 'Ada.Lovelace@Example.com ',
@@ -402,7 +402,7 @@ test('resolveUoaIdentityFromAccessToken decodes UOA workspace claims', () => {
   assert.equal(identity.email, 'ada.lovelace@example.com')
   assert.equal(identity.externalSubject, 'uoa-user-123')
   assert.equal(identity.uoaTokenVersion, 7)
-  assert.deepEqual(identity.workspace, {
+  assert.deepEqual(identity.team, {
     activeOrgId: 'org-active',
     activeTeamId: 'team-active',
     orgId: 'org-default',
@@ -427,7 +427,7 @@ test('rejects malformed UOA token-version claims', () => {
   }
 })
 
-test('sole-team UOA sessions resolve the same workspace without an active claim', () => {
+test('sole-team UOA sessions resolve the same team without an active claim', () => {
   const identity = resolveUoaIdentityFromAccessToken(jwtForClaims({
     email: 'ada.lovelace@example.com',
     org: {
@@ -439,14 +439,14 @@ test('sole-team UOA sessions resolve the same workspace without an active claim'
     sub: 'uoa-user-123',
   }))
 
-  assert.deepEqual(resolveExternalWorkspaceSelection(identity.workspace), {
+  assert.deepEqual(resolveExternalTeamSelection(identity.team), {
     organizationId: 'org-only',
     teamId: 'team-only',
   })
 })
 
 test('multi-team UOA sessions require an explicit active team', () => {
-  assert.deepEqual(resolveExternalWorkspaceSelection({
+  assert.deepEqual(resolveExternalTeamSelection({
     orgId: 'org-many',
     teamIds: ['team-one', 'team-two'],
     teamRoles: {},

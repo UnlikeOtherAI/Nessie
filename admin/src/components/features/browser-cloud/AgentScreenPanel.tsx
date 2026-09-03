@@ -14,7 +14,7 @@ type AgentScreenPanelProps = {
   sessionId: string
   onClose: () => void
   /** Drives the shared-browser banner; absent simply omits it. */
-  agent?: { id: string; visibility?: 'workspace' | 'private' }
+  agent?: { id: string; visibility?: 'team' | 'private' }
 }
 
 /**

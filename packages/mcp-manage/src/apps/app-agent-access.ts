@@ -7,7 +7,7 @@ import type {
 import {
   buildAccessibleChannelWhere,
   buildAgentVisibilityWhere,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import {
   fingerprintMcpToolDescriptor,
   isCurrentAllowedMcpToolGrant,

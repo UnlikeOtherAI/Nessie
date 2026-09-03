@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildTriggerPrompt } from '@nessie/runtime'
 import {
   prepareScheduledAgentTodoTrigger,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import {
   parseAgentId,
   parseChannelId,

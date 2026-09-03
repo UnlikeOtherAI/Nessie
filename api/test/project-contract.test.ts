@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ProjectRecordSchema, UpdateProjectBodySchema } from '../src/contracts/workspace.js'
+import { ProjectRecordSchema, UpdateProjectBodySchema } from '../src/contracts/team.js'
 
 test('project records carry a nullable emoji and photo identity', () => {
   const project = ProjectRecordSchema.parse({

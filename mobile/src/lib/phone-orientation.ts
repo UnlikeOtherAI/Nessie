@@ -12,7 +12,7 @@ type NativePhoneOrientationTarget = PhoneDimensions & {
 
 // The 900dp long-edge gate admits the current Max-class iPhones (for example,
 // iPhone 16 Pro Max at 956dp) without making ordinary 6.1–6.7 inch phones
-// rotate into a cramped two-column workspace.
+// rotate into a cramped two-column team.
 export const supportsLargePhoneLandscape = ({
   height,
   isPad,

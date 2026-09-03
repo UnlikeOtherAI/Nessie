@@ -2,7 +2,7 @@
  * The native chrome's copy of the admin's identity-tile shape contract
  * (`admin/src/components/primitives/identity-shape.ts`). The two must agree:
  * the native header sits directly above the WebView that renders the same
- * person and the same workspace, so a different radius here reads as two
+ * person and the same team, so a different radius here reads as two
  * different apps stacked on top of each other.
  *
  * It is duplicated rather than imported because the Expo app does not build

@@ -483,7 +483,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         reply,
         403,
         'FORBIDDEN',
-        'Only this agent’s owner, a workspace owner, or somebody who signed it in can reset its browser.',
+        'Only this agent’s owner, a team owner, or somebody who signed it in can reset its browser.',
       )
       return reply
     }

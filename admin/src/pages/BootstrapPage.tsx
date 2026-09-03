@@ -82,7 +82,7 @@ export const BootstrapPage = () => {
             First-time setup
           </p>
           <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-tight md:text-5xl">
-            Create the owner account for this Nessie workspace.
+            Create the owner account for this Nessie team.
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
             This screen appears only when the backend has no users yet. The token from the

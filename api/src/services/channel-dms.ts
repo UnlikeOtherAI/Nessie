@@ -5,7 +5,7 @@ import {
   loadChannelTeamProject,
   mapChannelRecord,
   validateChannelLabel,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 const uniqueParticipantIds = (currentUserId: string, targetUserId: string): string[] =>
   Array.from(new Set([currentUserId, targetUserId]))

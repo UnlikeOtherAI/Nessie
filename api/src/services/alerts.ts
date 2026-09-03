@@ -4,7 +4,7 @@ import { visibleUserAlertWhere } from '@nessie/db'
 import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationMeta } from '@nessie/schemas'
 
 import {
-  WorkspaceInvitationAlertMetadataSchema,
+  TeamInvitationAlertMetadataSchema,
   type UserAlertRecord,
 } from '../contracts.js'
 
@@ -24,8 +24,8 @@ type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertIncl
 const alertMetadata = (
   alert: AlertWithRelations,
 ): UserAlertRecord['metadata'] => {
-  if (alert.kind !== 'workspace_invitation') return null
-  const parsed = WorkspaceInvitationAlertMetadataSchema.safeParse(alert.metadata)
+  if (alert.kind !== 'team_invitation') return null
+  const parsed = TeamInvitationAlertMetadataSchema.safeParse(alert.metadata)
   return parsed.success ? parsed.data : null
 }
 

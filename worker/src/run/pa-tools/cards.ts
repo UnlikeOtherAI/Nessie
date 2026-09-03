@@ -5,7 +5,7 @@ import {
   CardPostToolOutputSchema,
   type AgentCardSpec,
 } from '@nessie/schemas'
-import { renderAgentCardPlainText } from '@nessie/workspace-admin'
+import { renderAgentCardPlainText } from '@nessie/team-admin'
 
 import { createAgentMessage } from '../execute/agent-message.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'

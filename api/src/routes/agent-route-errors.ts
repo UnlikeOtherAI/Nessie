@@ -4,7 +4,7 @@ import {
   AgentManagementError,
 } from '../services/agents.js'
 import { AgentEditAuthorityError } from '../services/agent-management.js'
-import { LedgerAgentModelCatalogError } from '@nessie/workspace-admin'
+import { LedgerAgentModelCatalogError } from '@nessie/team-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,

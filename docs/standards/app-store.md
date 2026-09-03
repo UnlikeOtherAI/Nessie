@@ -26,7 +26,7 @@ file is the rule**.
   Postgres refuses it (`42P17`). Every `/api/apps` response goes through a
   presenter that cannot emit a `credentialRef`, auth/transport config, endpoint
   URL, or a raw upstream icon URL, and `listAgentsWithAppAccess` imports
-  `buildAccessibleChannelWhere` from `@nessie/workspace-admin` rather than
+  `buildAccessibleChannelWhere` from `@nessie/team-admin` rather than
   restating it, so a member-readable surface can never name an agent
   `GET /api/agents` would withhold. Spec:
   `docs/plans/2026-08-29-apps-catalogue/overview.md`.

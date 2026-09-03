@@ -62,7 +62,7 @@ const makePrisma = (
   calls: PrismaCalls,
   options: {
     externalOrgId: string | null
-    externalWorkspaceId: string | null
+    externalTeamId: string | null
     linkedUsers?: { id: string; uoaSub: string }[]
   },
 ): PrismaClient =>
@@ -76,7 +76,7 @@ const makePrisma = (
     team: {
       findFirst: async () => ({
         externalOrgId: options.externalOrgId,
-        externalWorkspaceId: options.externalWorkspaceId,
+        externalTeamId: options.externalTeamId,
       }),
     },
     user: {
@@ -164,7 +164,7 @@ test('a UOA-linked team answers from the UOA roster, not local rows', async () =
     const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
     const prisma = makePrisma(calls, {
       externalOrgId: EXTERNAL_ORG_ID,
-      externalWorkspaceId: EXTERNAL_TEAM_ID,
+      externalTeamId: EXTERNAL_TEAM_ID,
       linkedUsers: [{ id: USER_ID, uoaSub: 'usr_ada' }],
     })
     const urls: string[] = []
@@ -178,7 +178,7 @@ test('a UOA-linked team answers from the UOA roster, not local rows', async () =
 
     assert.equal(urls.length, 2)
     assert.ok(urls.some((url) => url.includes(`/org/organisations/${EXTERNAL_ORG_ID}/teams/`)))
-    assert.match(result.outputPreview, /UnlikeOtherAI workspace roster/)
+    assert.match(result.outputPreview, /UnlikeOtherAI team roster/)
     assert.match(result.outputPreview, /Ada Lovelace \(you\) <ada@acme\.test>/)
     assert.match(result.outputPreview, /uoaSub=usr_ada/)
     assert.match(result.outputPreview, /userId=20000000-0000-4000-8000-000000000004/)
@@ -197,7 +197,7 @@ test('the roster is cached briefly per (org, team) across repeated calls', async
     const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
     const prisma = makePrisma(calls, {
       externalOrgId: EXTERNAL_ORG_ID,
-      externalWorkspaceId: EXTERNAL_TEAM_ID,
+      externalTeamId: EXTERNAL_TEAM_ID,
     })
     const urls: string[] = []
     const deps = rosterDeps(urls, respondRoster)
@@ -219,7 +219,7 @@ test('an unlinked team keeps the local search and never calls UOA', async () => 
     const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
     const prisma = makePrisma(calls, {
       externalOrgId: null,
-      externalWorkspaceId: null,
+      externalTeamId: null,
     })
     const urls: string[] = []
 
@@ -245,7 +245,7 @@ test('a deployment with no UOA credentials keeps the local search', async () => 
   const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
   const prisma = makePrisma(calls, {
     externalOrgId: EXTERNAL_ORG_ID,
-    externalWorkspaceId: EXTERNAL_TEAM_ID,
+    externalTeamId: EXTERNAL_TEAM_ID,
   })
 
   const result = await runPeopleSearchTool(makeContext(prisma), 'lena', 10, {
@@ -264,7 +264,7 @@ test('a failed UOA read reports failure in words — never a local fallback', as
     const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
     const prisma = makePrisma(calls, {
       externalOrgId: EXTERNAL_ORG_ID,
-      externalWorkspaceId: EXTERNAL_TEAM_ID,
+      externalTeamId: EXTERNAL_TEAM_ID,
     })
     const urls: string[] = []
 
@@ -291,7 +291,7 @@ test('an upstream refusal is also reported, not localized', async () => {
     const calls: PrismaCalls = { localSearches: 0, subjectJoins: [] }
     const prisma = makePrisma(calls, {
       externalOrgId: EXTERNAL_ORG_ID,
-      externalWorkspaceId: EXTERNAL_TEAM_ID,
+      externalTeamId: EXTERNAL_TEAM_ID,
     })
     const urls: string[] = []
 

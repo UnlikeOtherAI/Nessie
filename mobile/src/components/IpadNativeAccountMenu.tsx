@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
-import { NativeIdentityAvatar } from './NativeWorkspaceAvatar'
+import { NativeIdentityAvatar } from './NativeTeamAvatar'
 
 export type IpadNativeAccount = {
   avatarUrl: string | null

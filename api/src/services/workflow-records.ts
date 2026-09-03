@@ -1,4 +1,4 @@
-import { parseWorkflowConcurrency, redactWorkflowInstallationSecrets } from '@nessie/workspace-admin'
+import { parseWorkflowConcurrency, redactWorkflowInstallationSecrets } from '@nessie/team-admin'
 import {
   parseAgentId,
   parseChannelId,

@@ -2,10 +2,10 @@ import type { SsoTheme } from '../contracts/auth.js'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import { safeFetch } from '@nessie/runtime'
 import {
-  resolveExternalWorkspaceSelection,
+  resolveExternalTeamSelection,
   resolveIdentityDisplayName,
   type ExternalAuthIdentity,
-  type ExternalAuthWorkspace,
+  type ExternalAuthTeam,
 } from './identity-display.js'
 import {
   UOA_SIGN_IN_THEMES,
@@ -16,16 +16,16 @@ import {
   type UoaSettings,
 } from './uoa-auth.js'
 import {
-  fetchUoaWorkspaceDirectory,
+  fetchUoaTeamDirectory,
   type UoaSessionHttpDeps,
-  type UoaWorkspaceDirectory,
-} from './uoa-workspace-directory.js'
+  type UoaTeamDirectory,
+} from './uoa-team-directory.js'
 
 export type {
   UoaSessionHttpDeps,
-  UoaWorkspaceDirectory,
-  UoaWorkspaceDirectoryEntry,
-} from './uoa-workspace-directory.js'
+  UoaTeamDirectory,
+  UoaTeamDirectoryEntry,
+} from './uoa-team-directory.js'
 
 type UoaTokenResponse = {
   access_token?: unknown
@@ -40,11 +40,11 @@ export type UoaSessionExchange = {
   identity: ExternalAuthIdentity & {
     externalSubject: string
     uoaTokenVersion: number
-    workspace: ExternalAuthWorkspace
+    team: ExternalAuthTeam
   }
   refreshToken: string
   refreshTokenExpiresInSeconds: number
-  workspaceDirectory?: UoaWorkspaceDirectory
+  teamDirectory?: UoaTeamDirectory
 }
 
 export class UoaSessionRefreshError extends Error {
@@ -52,20 +52,20 @@ export class UoaSessionRefreshError extends Error {
     message: string,
     public readonly definitive: boolean,
     public readonly upstreamCode?: string,
-    public readonly safeWorkspaceSwitchFailure = false,
+    public readonly safeTeamSwitchFailure = false,
   ) {
     super(message)
     this.name = 'UoaSessionRefreshError'
   }
 }
 
-export type UoaWorkspaceSwitchTarget = {
+export type UoaTeamSwitchTarget = {
   organizationId: string
   teamId: string
 }
 
-export const UOA_WORKSPACE_SWITCH_GRANT =
-  'urn:unlikeotherai:params:oauth:grant-type:workspace-switch'
+export const UOA_TEAM_SWITCH_GRANT =
+  'urn:unlikeotherai:params:oauth:grant-type:team-switch'
 const trimString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
     return undefined
@@ -102,7 +102,7 @@ const decodeJwtClaims = (token: string): Record<string, unknown> => {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as Record<string, unknown>
 }
 
-const parseUoaWorkspace = (claims: Record<string, unknown>): ExternalAuthWorkspace | undefined => {
+const parseUoaTeam = (claims: Record<string, unknown>): ExternalAuthTeam | undefined => {
   const orgClaim = claims.org
   const activeClaim = claims.active
   const org = orgClaim && typeof orgClaim === 'object' && !Array.isArray(orgClaim)
@@ -112,7 +112,7 @@ const parseUoaWorkspace = (claims: Record<string, unknown>): ExternalAuthWorkspa
     ? activeClaim as Record<string, unknown>
     : undefined
 
-  const workspace: ExternalAuthWorkspace = {
+  const team: ExternalAuthTeam = {
     teamIds: stringArray(org?.teams),
     teamRoles: stringRecord(org?.team_roles),
   }
@@ -121,22 +121,22 @@ const parseUoaWorkspace = (claims: Record<string, unknown>): ExternalAuthWorkspa
   const orgId = trimString(org?.org_id)
   const orgRole = trimString(org?.org_role)
 
-  if (activeOrgId) workspace.activeOrgId = activeOrgId
-  if (activeTeamId) workspace.activeTeamId = activeTeamId
-  if (orgId) workspace.orgId = orgId
-  if (orgRole) workspace.orgRole = orgRole
+  if (activeOrgId) team.activeOrgId = activeOrgId
+  if (activeTeamId) team.activeTeamId = activeTeamId
+  if (orgId) team.orgId = orgId
+  if (orgRole) team.orgRole = orgRole
 
   if (
-    !workspace.activeOrgId &&
-    !workspace.activeTeamId &&
-    !workspace.orgId &&
-    !workspace.orgRole &&
-    workspace.teamIds.length === 0 &&
-    Object.keys(workspace.teamRoles).length === 0
+    !team.activeOrgId &&
+    !team.activeTeamId &&
+    !team.orgId &&
+    !team.orgRole &&
+    team.teamIds.length === 0 &&
+    Object.keys(team.teamRoles).length === 0
   ) {
     return undefined
   }
-  return workspace
+  return team
 }
 
 export const resolveUoaIdentityFromAccessToken = (accessToken: string): ExternalAuthIdentity => {
@@ -160,9 +160,9 @@ export const resolveUoaIdentityFromAccessToken = (accessToken: string): External
     identity.uoaTokenVersion = tokenVersion
   }
   const externalSubject = trimString(claims.sub)
-  const workspace = parseUoaWorkspace(claims)
+  const team = parseUoaTeam(claims)
   if (externalSubject) identity.externalSubject = externalSubject
-  if (workspace) identity.workspace = workspace
+  if (team) identity.team = team
   return identity
 }
 
@@ -190,15 +190,15 @@ const parseUoaSessionExchange = (
   )
   const claims = decodeJwtClaims(accessToken)
   const identity = resolveUoaIdentityFromAccessToken(accessToken)
-  const selectedWorkspace = resolveExternalWorkspaceSelection(identity.workspace)
+  const selectedTeam = resolveExternalTeamSelection(identity.team)
   if (
     claims.domain !== settings.domain
     || claims.client_id !== clientHash(settings)
     || !identity.externalSubject
-    || !identity.workspace
+    || !identity.team
     || identity.uoaTokenVersion === undefined
-    || !selectedWorkspace.organizationId
-    || !selectedWorkspace.teamId
+    || !selectedTeam.organizationId
+    || !selectedTeam.teamId
   ) {
     throw new Error('[uoa] token response carried an incomplete session proof')
   }
@@ -208,16 +208,16 @@ const parseUoaSessionExchange = (
       ...identity,
       externalSubject: identity.externalSubject,
       uoaTokenVersion: identity.uoaTokenVersion,
-      workspace: identity.workspace,
+      team: identity.team,
     },
     refreshToken,
     refreshTokenExpiresInSeconds,
-    workspaceDirectory: { entries: [], pendingInvites: [] },
+    teamDirectory: { entries: [], pendingInvites: [] },
   } }
 }
 
 // Both UOA login calls carry credentials and must never follow a redirect: the
-// token exchange POSTs the authorization code + PKCE verifier, and the workspace
+// token exchange POSTs the authorization code + PKCE verifier, and the team
 // directory carries the bearer access token. safeFetch validates the URL and
 // pins the socket to the vetted addresses; maxRedirects 0 returns any 3xx raw.
 // The options are injectable so tests can stub DNS resolution at this seam.
@@ -296,7 +296,7 @@ export const exchangeUoaSession = async (
   const parsed = parseUoaSessionExchange((await response.json()) as UoaTokenResponse, settings, configUrl)
   return {
     ...parsed.exchange,
-    workspaceDirectory: await fetchUoaWorkspaceDirectory(
+    teamDirectory: await fetchUoaTeamDirectory(
       settings,
       configUrl,
       parsed.accessToken,
@@ -325,19 +325,19 @@ const upstreamErrorCode = async (response: Response): Promise<string | undefined
   }
 }
 
-const isSafeWorkspaceSwitchFailure = (
+const isSafeTeamSwitchFailure = (
   status: number,
   code: string | undefined,
 ): boolean =>
   (status === 403
-    && (code === 'INTERACTION_REQUIRED' || code === 'WORKSPACE_NOT_AVAILABLE'))
-  || (status === 409 && code === 'WORKSPACE_SWITCH_CONFLICT')
+    && (code === 'INTERACTION_REQUIRED' || code === 'TEAM_NOT_AVAILABLE'))
+  || (status === 409 && code === 'TEAM_SWITCH_CONFLICT')
 
 export const refreshUoaSession = async (input: {
   configUrl: string
   expectedIdentity: UoaSessionIdentity
   refreshToken: string
-  workspaceSwitch?: UoaWorkspaceSwitchTarget
+  teamSwitch?: UoaTeamSwitchTarget
 } & UoaSessionHttpDeps): Promise<UoaSessionExchange> => {
   const settings = loadUoaSettings()
   const configUrl = ensureStoredConfigUrl(settings, input.configUrl)
@@ -352,12 +352,12 @@ export const refreshUoaSession = async (input: {
         Authorization: `Bearer ${clientHash(settings)}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(input.workspaceSwitch
+      body: JSON.stringify(input.teamSwitch
         ? {
-            grant_type: UOA_WORKSPACE_SWITCH_GRANT,
+            grant_type: UOA_TEAM_SWITCH_GRANT,
             refresh_token: input.refreshToken,
-            organization_id: input.workspaceSwitch.organizationId,
-            team_id: input.workspaceSwitch.teamId,
+            organization_id: input.teamSwitch.organizationId,
+            team_id: input.teamSwitch.teamId,
           }
         : {
             grant_type: 'refresh_token',
@@ -378,12 +378,12 @@ export const refreshUoaSession = async (input: {
   if (!response.ok) {
     const code = await upstreamErrorCode(response)
     const safeSwitchFailure = Boolean(
-      input.workspaceSwitch && isSafeWorkspaceSwitchFailure(response.status, code),
+      input.teamSwitch && isSafeTeamSwitchFailure(response.status, code),
     )
     throw new UoaSessionRefreshError(
       `[uoa] refresh endpoint returned ${response.status}`,
       code === 'INVALID_REFRESH_TOKEN'
-        || (!input.workspaceSwitch && [400, 401, 403].includes(response.status)),
+        || (!input.teamSwitch && [400, 401, 403].includes(response.status)),
       code,
       safeSwitchFailure,
     )
@@ -403,29 +403,29 @@ export const refreshUoaSession = async (input: {
     )
   }
   const refreshed = parsedRefresh.exchange
-  const selected = resolveExternalWorkspaceSelection(refreshed.identity.workspace)
+  const selected = resolveExternalTeamSelection(refreshed.identity.team)
   // Subject equality and a non-regressing epoch are the two facts that prove
   // the successor is the same person's credential; both stay strict.
   //
-  // The successor's WORKSPACE is deliberately not compared on an ordinary
-  // refresh. UOA can commit a workspace change on its own side, and with a
-  // silent switch in the product a drifted workspace is the ordinary way a
+  // The successor's TEAM is deliberately not compared on an ordinary
+  // refresh. UOA can commit a team change on its own side, and with a
+  // silent switch in the product a drifted team is the ordinary way a
   // committed switch surfaces on the next refresh — refusing it would make a
-  // *successful* switch look like a logout. Workspace is not an identity
+  // *successful* switch look like a logout. Team is not an identity
   // claim, so adopting it substitutes nothing: the caller re-derives the local
-  // binding from the successor's own workspace and fails closed if it does not
+  // binding from the successor's own team and fails closed if it does not
   // map. An explicit switch keeps exact-target equality (requirement 2d): that
-  // request named a workspace, so anything else is a refusal.
-  const expectedWorkspace = input.workspaceSwitch
+  // request named a team, so anything else is a refusal.
+  const expectedTeam = input.teamSwitch
   if (
     input.expectedIdentity.tokenVersion === null
     || refreshed.identity.externalSubject !== input.expectedIdentity.subject
     || refreshed.identity.uoaTokenVersion < input.expectedIdentity.tokenVersion
     || (
-      expectedWorkspace
+      expectedTeam
       && (
-        selected.organizationId !== expectedWorkspace.organizationId
-        || selected.teamId !== expectedWorkspace.teamId
+        selected.organizationId !== expectedTeam.organizationId
+        || selected.teamId !== expectedTeam.teamId
       )
     )
   ) {
@@ -436,7 +436,7 @@ export const refreshUoaSession = async (input: {
   }
   return {
     ...refreshed,
-    workspaceDirectory: await fetchUoaWorkspaceDirectory(
+    teamDirectory: await fetchUoaTeamDirectory(
       settings,
       configUrl,
       parsedRefresh.accessToken,

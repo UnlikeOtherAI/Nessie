@@ -1,5 +1,5 @@
-import { getGlobalAgentBlueprint, globalAgentHomePrefix } from '@nessie/workspace-admin'
-import type { GlobalAgentBlueprint } from '@nessie/workspace-admin'
+import { getGlobalAgentBlueprint, globalAgentHomePrefix } from '@nessie/team-admin'
+import type { GlobalAgentBlueprint } from '@nessie/team-admin'
 
 import type { AgentKind } from './tool-policy.js'
 

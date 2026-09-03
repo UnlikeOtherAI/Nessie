@@ -18,7 +18,7 @@ import {
   getGlobalAgentBlueprint,
   listGlobalAgentBlueprints,
   type GlobalAgentBlueprint,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { createAgentMessage } from '../execute/agent-message.js'
 import {

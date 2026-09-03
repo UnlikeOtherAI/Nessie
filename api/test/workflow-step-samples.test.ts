@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
+import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 
 import {
   WORKFLOW_STEP_SAMPLES_MAX_BYTES,

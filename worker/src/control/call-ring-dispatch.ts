@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   issueCallActionToken,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type {
   CallRingCancelJobPayload,
   CallRingDispatchJobPayload,

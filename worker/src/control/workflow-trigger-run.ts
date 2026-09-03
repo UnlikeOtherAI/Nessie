@@ -15,7 +15,7 @@ import {
   parseWorkflowConcurrency,
   resolveInstallationPinnedGraph,
   withWorkflowOverlapLock,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { enqueueQueueJob } from '../queue.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 import {

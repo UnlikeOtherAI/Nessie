@@ -20,7 +20,7 @@ form.
 | Automation | Admin | workflows, triggers, tools, executors | template → installation → run; failed-runs and drafts columns; trigger detail; tool detail; executor selection, access change, promotion | trigger status filter, tool source filter, executor tabs | trigger editor | import, delete confirms, inspector disclosures |
 | Apps | Admin | `/apps` | `/apps/:slug` | Overview / Capabilities / Accounts / Agents; All / Installed | connect (dialog on `split`, screen on `single`) | custom app, secret, remove, disconnect confirms |
 | Settings + ops | `/settings` | every settings page, `/audit`, `/approvals`, `/alerts`, `/tokens`, `/policy`, `/ops`, `/feedback`, integrations | status detail, `/ops/usage`, integration product | Colours / Text size | logo and photo croppers, session debug | create secret, emoji picker, billing cancellation dialogs, connection expanders |
-| Shell | — | — | — | — | — | nav drawer, tab bar, home header, workspace menu, account menu, create menu, alerts bell, top-bar search, native search overlay, rail tooltips, header menus |
+| Shell | — | — | — | — | — | nav drawer, tab bar, home header, team menu, account menu, create menu, alerts bell, top-bar search, native search overlay, rail tooltips, header menus |
 | Outside | login, bootstrap, external-auth completion, not-found, service-worker clicks, checkout hand-offs, SSO launches | | | | | never inside the stack |
 
 ## 6. Refactor order

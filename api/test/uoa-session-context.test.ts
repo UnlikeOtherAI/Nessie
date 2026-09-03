@@ -3,10 +3,10 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
-import type { ExternalAuthWorkspace } from '../src/services/identity-display.js'
+import type { ExternalAuthTeam } from '../src/services/identity-display.js'
 import {
-  clearUoaWorkspaceDirectoryCache,
-  readUoaWorkspaceDirectory,
+  clearUoaTeamDirectoryCache,
+  readUoaTeamDirectory,
 } from '../src/services/uoa-directory-cache.js'
 import {
   advanceUoaLocalSessionBinding,
@@ -78,13 +78,13 @@ class FakeBindingPrisma {
     findFirst: async (input: {
       where: {
         externalOrgId: string
-        externalWorkspaceId: string
+        externalTeamId: string
         members: { some: { userId: string } }
         project: { organization: { externalOrgId: string } }
       }
     }) => {
       assert.equal(input.where.externalOrgId, this.expectedOrganizationId)
-      assert.equal(input.where.externalWorkspaceId, this.expectedTeamId)
+      assert.equal(input.where.externalTeamId, this.expectedTeamId)
       assert.equal(input.where.members.some.userId, USER_ID)
       // Organizations map 1:1 to UOA organisations: the binding must require
       // the team's Organization to carry the session's external org id, so a
@@ -191,7 +191,7 @@ class FakeBindingPrisma {
   }
 }
 
-test('resolves the exact UOA-bound Nessie workspace and live role', async () => {
+test('resolves the exact UOA-bound Nessie team and live role', async () => {
   const fake = new FakeBindingPrisma()
 
   assert.deepEqual(
@@ -278,10 +278,10 @@ test('concurrent replay accepts an already-advanced epoch', async () => {
 })
 
 // Estate rule: a successor proving the same subject and a non-regressed epoch
-// is ADOPTED even when it names a different workspace, because a drift is how
-// a committed switch (or a UOA-side workspace change) surfaces on the next
+// is ADOPTED even when it names a different team, because a drift is how
+// a committed switch (or a UOA-side team change) surfaces on the next
 // refresh. Refusing made a successful switch look like a logout.
-test('an ordinary refresh adopts a successor that drifted to another workspace', async () => {
+test('an ordinary refresh adopts a successor that drifted to another team', async () => {
   const fake = new FakeBindingPrisma()
   const nextIdentity = {
     ...IDENTITY,
@@ -297,7 +297,7 @@ test('an ordinary refresh adopts a successor that drifted to another workspace',
     { nextIdentity, previousIdentity: IDENTITY, userId: USER_ID },
   )
 
-  // The local binding is re-derived from the successor's own workspace and the
+  // The local binding is re-derived from the successor's own team and the
   // last-seen metadata follows it.
   assert.equal(fake.link.uoaTokenVersion, 8)
   assert.equal(fake.link.activeOrgId, nextIdentity.organizationId)
@@ -305,7 +305,7 @@ test('an ordinary refresh adopts a successor that drifted to another workspace',
   assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
 })
 
-test('an adopted workspace that maps to no local team still fails closed', async () => {
+test('an adopted team that maps to no local team still fails closed', async () => {
   const fake = new FakeBindingPrisma()
   const nextIdentity = {
     ...IDENTITY,
@@ -352,7 +352,7 @@ test('a changed subject or a regressed epoch is still refused', async () => {
   assert.equal(regressedEpoch.link.uoaTokenVersion, IDENTITY.tokenVersion)
 
   // A drift carrying either violation is refused for that reason, never
-  // adopted because the workspace check is gone.
+  // adopted because the team check is gone.
   const both = new FakeBindingPrisma()
   both.expectedOrganizationId = 'uoa-org-drifted'
   both.expectedTeamId = 'uoa-team-drifted'
@@ -373,13 +373,13 @@ test('a changed subject or a regressed epoch is still refused', async () => {
 })
 
 test('a rotation caches the refreshed directory and never persists it', async () => {
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
   const fake = new FakeBindingPrisma()
-  const workspaceDirectory = {
+  const teamDirectory = {
     entries: [{
       organizationId: IDENTITY.organizationId,
       teamId: IDENTITY.teamId,
-      label: 'Fresh workspace',
+      label: 'Fresh team',
     }],
     pendingInvites: [],
   }
@@ -388,21 +388,21 @@ test('a rotation caches the refreshed directory and never persists it', async ()
     nextIdentity: IDENTITY,
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspaceDirectory,
+    teamDirectory,
   })
 
-  assert.deepEqual(readUoaWorkspaceDirectory(USER_ID), workspaceDirectory)
+  assert.deepEqual(readUoaTeamDirectory(USER_ID), teamDirectory)
   assert.deepEqual(fake.link.metadata, { retained: 'value' })
   assert.deepEqual(
     fake.siblingLinks.map((link) => link.metadata),
     [{ retained: 'sibling-one' }, { retained: 'sibling-two' }],
   )
-  clearUoaWorkspaceDirectoryCache()
+  clearUoaTeamDirectoryCache()
 })
 
 // --- UOA roles are re-projected on every rotation (gap analysis, phase 4) ----
 
-const claimsFor = (orgRole: string, teamRole: string): ExternalAuthWorkspace => ({
+const claimsFor = (orgRole: string, teamRole: string): ExternalAuthTeam => ({
   activeOrgId: IDENTITY.organizationId,
   activeTeamId: IDENTITY.teamId,
   orgRole,
@@ -419,7 +419,7 @@ test('a refresh projects a UOA demotion onto the local membership', async () => 
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspace: claimsFor('member', 'member'),
+    team: claimsFor('member', 'member'),
   })
 
   assert.equal(fake.orgRole, 'member')
@@ -434,7 +434,7 @@ test('a refresh projects a UOA promotion onto org, project, and team rows', asyn
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspace: claimsFor('admin', 'admin'),
+    team: claimsFor('admin', 'admin'),
   })
 
   assert.equal(context.role, 'admin')
@@ -450,7 +450,7 @@ test('a refresh applies a UOA demotion even to the LAST owner of a per-UOA-org o
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspace: claimsFor('member', 'member'),
+    team: claimsFor('member', 'member'),
   })
 
   // Organizations map 1:1 to UOA organisations, so the verified claim is a
@@ -468,7 +468,7 @@ test('a refresh keeps the last-owner floor for a legacy null-externalOrgId org',
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspace: claimsFor('member', 'member'),
+    team: claimsFor('member', 'member'),
   })
 
   assert.equal(fake.orgRole, 'owner')
@@ -486,7 +486,7 @@ test('a refresh that carries no role claims changes no local role', async () => 
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
-    workspace: {
+    team: {
       activeOrgId: IDENTITY.organizationId,
       activeTeamId: IDENTITY.teamId,
       teamIds: [IDENTITY.teamId],

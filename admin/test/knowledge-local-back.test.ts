@@ -8,11 +8,11 @@ import { matchSurface } from '../src/navigation/surfaces'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-const workspace = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
+const team = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
 
 // Knowledge's inner screens are nested stages (docs/navigation/overview.md §6): the
 // stack owns their layers, and each registers its own Back through
-// NestedStage. The workspace itself registers nothing.
+// NestedStage. The team itself registers nothing.
 
 test('each knowledge screen is a nested stage with its pinned id and priority', () => {
   const stages = [
@@ -24,13 +24,13 @@ test('each knowledge screen is a nested stage with its pinned id and priority', 
 
   let cursor = -1
   for (const [id, priority, label] of stages) {
-    const at = workspace.indexOf(`id="${id}"`)
+    const at = team.indexOf(`id="${id}"`)
     assert.ok(at > cursor, `stage ${id} missing or out of ladder order`)
     cursor = at
     // Its own label and priority sit on the same element.
-    const element = workspace.slice(
-      workspace.lastIndexOf('<NestedStage', at),
-      workspace.indexOf('</NestedStage>', at),
+    const element = team.slice(
+      team.lastIndexOf('<NestedStage', at),
+      team.indexOf('</NestedStage>', at),
     )
     assert.ok(
       element.includes(`LOCAL_BACK_PRIORITY.${priority}`),
@@ -40,9 +40,9 @@ test('each knowledge screen is a nested stage with its pinned id and priority', 
   }
 })
 
-test('the workspace registers no Back owner of its own — the stages do', () => {
-  assert.doesNotMatch(workspace, /useLocalBack/)
-  assert.match(workspace, /import \{ NestedStage, useNestedStageHosted \}/)
+test('the team registers no Back owner of its own — the stages do', () => {
+  assert.doesNotMatch(team, /useLocalBack/)
+  assert.match(team, /import \{ NestedStage, useNestedStageHosted \}/)
 
   // NestedStage is what registers, and only where a stack hosts the stage.
   const stage = readSource('../src/navigation/NestedStage.tsx')
@@ -59,7 +59,7 @@ test('every stage unwinds exactly one level, deepest first', () => {
   ]
   let cursor = -1
   for (const action of actions) {
-    const at = workspace.indexOf(action)
+    const at = team.indexOf(action)
     assert.ok(at > cursor, `unwind order broken at ${action}`)
     cursor = at
   }
@@ -68,15 +68,15 @@ test('every stage unwinds exactly one level, deepest first', () => {
 test('the editor refuses the edge swipe while it is open', () => {
   // The page editor keeps its draft in its own state and publishes no dirty
   // signal, so the gesture stays refused for as long as it is open.
-  const editorStage = workspace.slice(workspace.indexOf('id="knowledge:editor"'))
+  const editorStage = team.slice(team.indexOf('id="knowledge:editor"'))
   assert.match(editorStage.slice(0, editorStage.indexOf('>')), /swipeable=\{false\}/)
-  assert.equal((workspace.match(/swipeable=\{false\}/g) ?? []).length, 1)
+  assert.equal((team.match(/swipeable=\{false\}/g) ?? []).length, 1)
 })
 
 test('inner knowledge surfaces keep titles/actions but suppress their own Back in the stack', () => {
-  // Every onBack the workspace hands to an inner pane is gated on the stack
+  // Every onBack the team hands to an inner pane is gated on the stack
   // hosting the stage; there the shared doorway renders the stage's own Back.
-  const handoffs = workspace.match(/onBack=\{stacked \? undefined :/g) ?? []
+  const handoffs = team.match(/onBack=\{stacked \? undefined :/g) ?? []
   assert.ok(handoffs.length >= 2, `expected pane handoffs stack-gated, found ${handoffs.length}`)
   const documentPane = readSource('../src/components/features/knowledge/KnowledgeDocumentPane.tsx')
   assert.match(documentPane, /onBack\?: \(\) => void/)
@@ -95,17 +95,17 @@ test('inner knowledge surfaces keep titles/actions but suppress their own Back i
 test('an inline host still composes one knowledge pane at a time', () => {
   // On split the stages render where they stand, so the base browser yields to
   // whichever pane is deepest — the composition the early returns used to give.
-  assert.match(workspace, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
+  assert.match(team, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
   assert.match(
-    workspace,
+    team,
     /const documentOpen = Boolean\(current\) && \(stacked \|\| !\(editorOpen \|\| historyOpen\)\)/,
   )
   assert.match(
-    workspace,
+    team,
     /const baseIsBrowser = stacked \|\| !\(editorOpen \|\| historyOpen \|\| documentOpen\)/,
   )
   // A folder is only ever a layer; inline, the browser already renders the path.
-  assert.match(workspace, /const folderOpen = stacked && !current/)
+  assert.match(team, /const folderOpen = stacked && !current/)
 })
 
 test('the agent detail page owns no Back of its own', () => {

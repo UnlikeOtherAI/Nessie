@@ -7,7 +7,7 @@ import {
   addPersonalAssistantPresence,
   isAgentAccessibleToActor,
   removePersonalAssistantPresence,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { listChannelsForUser } from '../src/services/channels.js'
 import { ensurePersonalAssistantBootstrap } from '../src/services/personal-assistant.js'

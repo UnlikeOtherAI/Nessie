@@ -2,7 +2,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   buildGlobalAgentCatalogueBlock,
   type AgentToolCatalog,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { z } from 'zod'
 
 import type { DesignerChatBodySchema } from '../contracts.js'

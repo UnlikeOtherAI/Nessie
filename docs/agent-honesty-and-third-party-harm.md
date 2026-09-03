@@ -160,7 +160,7 @@ first.
 **Mechanism today.** The review gate exists for `requiresReview` roles (builder,
 debugger): reviewer verdict pass/fail, max 3 repair iterations, then human escalation
 ([agent-base-template.md](agent-base-template.md) §5). Executor work goes further: a
-`workspace.review` result carries a canonical manifest digest binding every changed
+`team.review` result carries a canonical manifest digest binding every changed
 path's base and draft SHA-256, and "a same-length post-review edit cannot reuse a
 review" ([executor-protocol.md](executor-protocol.md) §6).
 
@@ -175,7 +175,7 @@ what it "wrote" completes successfully.
 `done` only when the platform holds artifact evidence:
 
 - at least one successful mutating `ToolCall` receipt, or an executor
-  `workspace.review` manifest digest, referenced on the task record; or
+  `team.review` manifest digest, referenced on the task record; or
 - an explicit, recorded `no_changes_needed` outcome — which is a legitimate result, but
   a *distinct* one the user can see, not a silent variant of done.
 
@@ -289,7 +289,7 @@ machine context first. Lands in: [approval-gating-spec.md](approval-gating-spec.
 O2 and O6 below, all assume a worker that intercepts a pending tool call and opens an
 approval carrying its verbatim arguments. That flow is not built. `approvalProof` has
 **consumers but no producer**: `checkPolicy` refuses a `requiresApproval` rule when the
-proof is absent (`packages/workspace-admin/src/policy-check.ts`, mirrored in
+proof is absent (`packages/team-admin/src/policy-check.ts`, mirrored in
 `worker/src/run/execute/policy.ts`), and nothing anywhere mints one. In practice a
 `requiresApproval` verdict *denies the tool into the model's context* as
 `approval_required` rather than raising a gate a human can answer, and the only real

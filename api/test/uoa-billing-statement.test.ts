@@ -285,7 +285,7 @@ test('renders cancellation choices from UOA and sends only opaque confirmation',
   })
 })
 
-test('rejects path drift, workspace drift, and cross-tenant statements', async () => {
+test('rejects path drift, team drift, and cross-tenant statements', async () => {
   await assert.rejects(
     executeUoaBillingHostedAction(
       prisma() as never,

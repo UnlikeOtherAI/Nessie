@@ -116,7 +116,7 @@ const withSeed = async (run: (prisma: PrismaClient, seeded: Seeded) => Promise<v
   }
 }
 
-dbTest('a minted credential authenticates as its own person, in its own workspace', async () => {
+dbTest('a minted credential authenticates as its own person, in its own team', async () => {
   await withSeed(async (prisma, seeded) => {
     const { token } = await mintVoiceDeviceCredential(prisma, {
       ...seeded,
@@ -130,7 +130,7 @@ dbTest('a minted credential authenticates as its own person, in its own workspac
     // Read from the live membership, so a demotion lands on the next request.
     assert.deepEqual(verified.actorContext.actor.roles, ['owner'])
     // Cost attribution is scoped by project and team; a credential provisioned
-    // in one workspace must not bill another.
+    // in one team must not bill another.
     assert.equal(verified.actorContext.tenant.organizationId, seeded.organizationId)
     assert.equal(verified.actorContext.tenant.projectId, seeded.projectId)
     assert.equal(verified.actorContext.tenant.teamId, seeded.teamId)

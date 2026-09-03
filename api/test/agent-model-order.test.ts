@@ -5,7 +5,7 @@ import type { AgentModelOption } from '@nessie/schemas'
 import {
   compareAgentModelOptions,
   compareModelLabels,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 const order = (labels: string[]): string[] => [...labels].sort(compareModelLabels)
 

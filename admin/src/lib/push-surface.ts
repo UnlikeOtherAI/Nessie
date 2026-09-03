@@ -53,7 +53,7 @@ export const resolveReportedPushSurface = (
 
 /**
  * Route paths cannot identify the selected Knowledge space. The shared
- * workspace reports its structural target so another Docs space never
+ * team reports its structural target so another Docs space never
  * suppresses a notification for the document the user actually needs to see.
  * It also lets channel tabs explicitly clear their conversation target while
  * Files, Info, or Runs is focused without leaking that clear to another route.

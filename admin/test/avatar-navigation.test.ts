@@ -3,9 +3,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { workspaceAvatarPath } from '../src/components/primitives/WorkspaceAvatar.js'
+import { teamAvatarPath } from '../src/components/primitives/TeamAvatar.js'
 import { placePopover } from '../src/components/overlays/placePopover.js'
-import { workspaceSwitchFailureMessage } from '../src/layouts/admin-shell/workspace-switch-message.js'
+import { teamSwitchFailureMessage } from '../src/layouts/admin-shell/team-switch-message.js'
 
 const sourceRoot = fileURLToPath(new URL('../src', import.meta.url))
 
@@ -16,10 +16,10 @@ const sourceFiles = (directory: string): string[] =>
     return entry.isFile() && entry.name.endsWith('.tsx') ? [path] : []
   })
 
-// The workspace menu no longer owns any placement arithmetic: it declares a
+// The team menu no longer owns any placement arithmetic: it declares a
 // preferred side and its width, and the one placePopover helper keeps it on
 // screen. These pin that the rail's geometry still lands where it used to.
-const placeWorkspaceMenu = (
+const placeTeamMenu = (
   anchor: { right: number; top: number },
   viewport: { width: number; height: number },
   panelHeight = 320,
@@ -30,8 +30,8 @@ const placeWorkspaceMenu = (
   placement: 'right',
 })
 
-test('workspace menu stays within the viewport when opened near the top edge', () => {
-  const position = placeWorkspaceMenu({ right: 65, top: -24 }, { width: 1_280, height: 720 })
+test('team menu stays within the viewport when opened near the top edge', () => {
+  const position = placeTeamMenu({ right: 65, top: -24 }, { width: 1_280, height: 720 })
 
   assert.equal(position.left, 73)
   assert.equal(position.top, 8)
@@ -41,8 +41,8 @@ test('workspace menu stays within the viewport when opened near the top edge', (
 // The old arithmetic had no flip: against a narrow window it clamped the menu
 // left until it lay across the rail button that opened it. It now opens on the
 // other side of the anchor instead.
-test('workspace menu flips to the other side of its trigger rather than covering it', () => {
-  const position = placeWorkspaceMenu({ right: 780, top: 32 }, { width: 800, height: 600 })
+test('team menu flips to the other side of its trigger rather than covering it', () => {
+  const position = placeTeamMenu({ right: 780, top: 32 }, { width: 800, height: 600 })
 
   assert.equal(position.placement, 'left')
   assert.equal(position.left, 748 - 8 - 390)
@@ -51,28 +51,28 @@ test('workspace menu flips to the other side of its trigger rather than covering
 
 // Width is the menu's own design constraint and is now stated in CSS, so no
 // code re-reads the viewport for it.
-test('the workspace menu caps its own width in CSS, not from a window read', () => {
-  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
+test('the team menu caps its own width in CSS, not from a window read', () => {
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamMenu.tsx`, 'utf8')
   assert.match(menu, /const MENU_WIDTH = 'min\(390px, 80vw\)'/)
   assert.doesNotMatch(menu, /innerWidth/)
 })
 
-test('workspace pictures prefer the team relay and accept the UOA public fallback', () => {
-  assert.equal(workspaceAvatarPath(), '/api/workspace/avatar')
-  assert.equal(workspaceAvatarPath(null), null)
+test('team pictures prefer the team relay and accept the UOA public fallback', () => {
+  assert.equal(teamAvatarPath(), '/api/team/avatar')
+  assert.equal(teamAvatarPath(null), null)
   assert.equal(
-    workspaceAvatarPath('team/with spaces'),
+    teamAvatarPath('team/with spaces'),
     '/api/teams/team%2Fwith%20spaces/avatar',
   )
 
-  const avatar = readFileSync(`${sourceRoot}/components/primitives/WorkspaceAvatar.tsx`, 'utf8')
-  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
-  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
+  const avatar = readFileSync(`${sourceRoot}/components/primitives/TeamAvatar.tsx`, 'utf8')
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamMenu.tsx`, 'utf8')
+  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamSwitcher.tsx`, 'utf8')
   assert.match(avatar, /relayedUrl \?\? imageUrl \?\? null/)
-  assert.match(menu, /imageUrl=\{workspace\.avatarImageUrl\}/)
+  assert.match(menu, /imageUrl=\{team\.avatarImageUrl\}/)
   assert.ok(
     switcher.match(/imageUrl=\{active\?\.avatarImageUrl\}/g)?.length === 2,
-    'both web workspace triggers must render the public avatar fallback',
+    'both web team triggers must render the public avatar fallback',
   )
   assert.match(switcher, /faChevronDown/)
   assert.match(switcher, /bottom-0\.5 right-0\.5/)
@@ -88,41 +88,41 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
   assert.match(switcher, /open=\{open\}/)
 })
 
-test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted sign-in', () => {
-  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
-  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
+test('UOA team rows switch inside Nessie while Add Team keeps hosted sign-in', () => {
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamMenu.tsx`, 'utf8')
+  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamSwitcher.tsx`, 'utf8')
   assert.match(
     switcher,
-    /switchUoaWorkspace\(\{\s*organizationId: workspace\.organizationId,\s*teamId: workspace\.teamId,/,
+    /switchUoaTeam\(\{\s*organizationId: team\.organizationId,\s*teamId: team\.teamId,/,
   )
   assert.match(
     switcher,
     /startExternalSignIn\(providerId, resolveAppliedTheme\(theme\)\)/,
   )
-  assert.doesNotMatch(switcher, /startExternalSignIn\([\s\S]{0,200}workspace\.teamId/)
+  assert.doesNotMatch(switcher, /startExternalSignIn\([\s\S]{0,200}team\.teamId/)
   assert.match(menu, /role="alert"/)
   assert.match(switcher, /busyTeamId=\{busyTeamId\}/)
 })
 
-test('workspace-switch errors make the retained workspace explicit', () => {
-  const base = workspaceSwitchFailureMessage({
-    currentWorkspace: 'Alpha',
-    targetWorkspace: 'Beta',
+test('team-switch errors make the retained team explicit', () => {
+  const base = teamSwitchFailureMessage({
+    currentTeam: 'Alpha',
+    targetTeam: 'Beta',
   })
   assert.equal(base, 'Couldn’t switch to Beta. You’re still in Alpha.')
   assert.match(
-    workspaceSwitchFailureMessage({
+    teamSwitchFailureMessage({
       code: 'INTERACTION_REQUIRED',
-      currentWorkspace: 'Alpha',
-      targetWorkspace: 'Beta',
+      currentTeam: 'Alpha',
+      targetTeam: 'Beta',
     }),
     /requires another sign-in verification/,
   )
   assert.match(
-    workspaceSwitchFailureMessage({
-      code: 'WORKSPACE_SWITCH_CONFLICT',
-      currentWorkspace: 'Alpha',
-      targetWorkspace: 'Beta',
+    teamSwitchFailureMessage({
+      code: 'TEAM_SWITCH_CONFLICT',
+      currentTeam: 'Alpha',
+      targetTeam: 'Beta',
     }),
     /Try again/,
   )
@@ -154,7 +154,7 @@ test('every shared UserAvatar usage supplies the SSO user identity source', () =
   for (const { path, usage } of usages) {
     // Either identifier reaches the same UnlikeOtherAI picture: a Nessie user id
     // through the organisation-scoped relay, a UOA subject through the
-    // roster-scoped one (for a workspace roster row with no local user row).
+    // roster-scoped one (for a team roster row with no local user row).
     // What is refused is a surface that renders a person with neither.
     assert.match(
       usage,

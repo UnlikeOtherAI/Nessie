@@ -3,12 +3,12 @@ import { parseProjectId } from '@nessie/schemas'
 import {
   DEFAULT_BOARD_COLUMNS,
   defaultColumnCreateData,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { BoardColumnRecord, ProjectBoardRecord } from '../contracts.js'
 
 // The columns every project starts with — also seeded for existing projects in
 // the add_board_columns migration and at bootstrap. They live in
-// `@nessie/workspace-admin` because project creation is shared with the worker
+// `@nessie/team-admin` because project creation is shared with the worker
 // (the Agent Designer's `project_create`), and a project created from chat must
 // get the same board a clicked one gets.
 export const DEFAULT_COLUMNS: { name: string; category: ColumnCategory }[] =

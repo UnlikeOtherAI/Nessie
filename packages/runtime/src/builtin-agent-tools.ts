@@ -18,7 +18,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
  * the operational verbs on agents that already exist — `agent_list`,
  * `agent_bind_channel`, `agent_trigger_create`. Designing an agent — creating
  * one, reading its configuration in order to change it, knowing this
- * workspace's tool catalogue, rewriting it, restyling it — belongs to the Agent
+ * team's tool catalogue, rewriting it, restyling it — belongs to the Agent
  * Designer, which reaches these through its blueprint's `identityToolIds`; the
  * PA hands the conversation over with `agent_handoff` instead. That is the
  * whole isolation story: the design catalogue is large and belongs in one
@@ -42,7 +42,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'whenever the user refers to an existing agent ("put Hardware Watch in '
       + '#ops", "give the reporter a daily schedule") — you only already know an '
       + 'id for an agent you created in this same conversation, so never guess '
-      + 'one. Owners see every workspace-visible agent, including ones sitting '
+      + 'one. Owners see every team-visible agent, including ones sitting '
       + 'in no channel, plus private agents they own; '
       + 'everybody else sees the agents working in channels they can see.',
     parameters: {
@@ -66,9 +66,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     identityDelegatedOnly: true,
     description:
-      'Create a new workspace-visible or private agent — a colleague with its own instructions, model, '
+      'Create a new team-visible or private agent — a colleague with its own instructions, model, '
       + 'and tool policy — the same record the Agent Designer writes. The agent '
-      + 'gets an owner-only home conversation when private; a workspace agent starts '
+      + 'gets an owner-only home conversation when private; a team agent starts '
       + 'in no channel and an owner puts it to work with agent_bind_channel. '
       + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
       + 'be granted here; they are owner controls.',
@@ -100,9 +100,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         visibility: {
           type: 'string',
-          enum: ['workspace', 'private'],
+          enum: ['team', 'private'],
           description:
-            'Who can find this agent. workspace is the default; private means only its creator.',
+            'Who can find this agent. team is the default; private means only its creator.',
         },
         ownerUserId: {
           type: 'string',
@@ -230,7 +230,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     identityDelegatedOnly: true,
     description:
-      'The live list of tools a designed agent can be given in this workspace: '
+      'The live list of tools a designed agent can be given in this team: '
       + 'the built-in tools and the organisation’s connected apps, each with the '
       + 'exact key to write in a toolPolicy and whether it is on or off by '
       + 'default. Call it before proposing or changing a tool policy so you name '

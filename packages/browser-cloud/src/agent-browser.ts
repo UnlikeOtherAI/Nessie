@@ -24,7 +24,7 @@ export type AgentBrowserRow = {
 /**
  * Which connection may hold an agent's durable browser.
  *
- * A workspace agent's browser lives on the organisation connection only: on
+ * A team agent's browser lives on the organisation connection only: on
  * somebody's personal account its state would be reachable through runs that
  * account's owner never requested, and their Browserbase dashboard would hold
  * a colleague's browsing. A private agent — owner-only home DM, owner-only
@@ -35,7 +35,7 @@ export const resolveDurableBrowserConnection = async (
   prisma: Pick<PrismaClient, 'cloudBrowserConnection'>,
   input: {
     organizationId: string
-    agentVisibility: 'workspace' | 'private'
+    agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
   },
 ): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string; apiKeyRef: string }> => {
@@ -100,7 +100,7 @@ export const ensureAgentBrowser = async (
   input: {
     organizationId: string
     agentId: string
-    agentVisibility: 'workspace' | 'private'
+    agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
   },
 ): Promise<AgentBrowserRow & { connection: { projectId: string; apiKeyRef: string } }> => {

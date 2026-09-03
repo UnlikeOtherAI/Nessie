@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
-import { loadUnreadCountsByThread } from '@nessie/workspace-admin'
+import { loadUnreadCountsByThread } from '@nessie/team-admin'
 
 import { markThreadRead } from '../src/services/messages.js'
 

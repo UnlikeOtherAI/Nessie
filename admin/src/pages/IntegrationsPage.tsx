@@ -41,7 +41,7 @@ type SurfacePlan = {
 
 const surfacePlans: Record<string, SurfacePlan> = {
   'deep-water': {
-    nativePage: 'Research workspace with runs, source review, and Knowledge import.',
+    nativePage: 'Research team with runs, source review, and Knowledge import.',
     chatCards: 'Progress, result, and source cards rendered from message metadata.',
     controls: 'Depth, chapter detail, search quality, recency, output language, and artifact destination.',
     agentAccess: 'Approved MCP tools for create, poll, list, and research scoping conversations.',
@@ -257,7 +257,7 @@ const TeamAccessSection = ({
       <StatGrid className="mt-3">
         <StatTile label="Account" value={accountLabel(product)} />
         <StatTile
-          label="UOA workspace"
+          label="UOA team"
           value={externalTeamId ? `${externalOrgId ?? 'org'} / ${externalTeamId}` : 'Not projected yet'}
         />
         <StatTile

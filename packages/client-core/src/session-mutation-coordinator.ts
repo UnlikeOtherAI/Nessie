@@ -19,7 +19,7 @@ export type SessionReconcileCoordinator = () => Promise<SessionPayload | null>
  *   applied so the rotated access token survives, but the recovery REJECTS
  *   with {@link SessionSourcePreserved}: the caller must not navigate or
  *   report a switch. Nothing is cleared, revoked, or fenced.
- * - `foreign` — the payload is a different user or workspace. It is never
+ * - `foreign` — the payload is a different user or team. It is never
  *   applied: the coordinator revokes its cookie family via the caller-owned
  *   `onForeignSession`, clears exactly once, and permanently fences itself;
  *   the recovery rejects with {@link ForeignSessionDetected}.
@@ -60,7 +60,7 @@ const fencedError = (): Error => new Error('The session was fenced over a foreig
 
 /**
  * Serialize every mutation of the renewable session — startup restoration,
- * proactive renewal, API 401 recovery, and workspace switching — in FIFO
+ * proactive renewal, API 401 recovery, and team switching — in FIFO
  * order. A rotating refresh cookie is single-use, so a refresh joins any
  * in-flight mutation and explicit mutations queue after it; every queued
  * mutation executes in turn. A null payload is an authentication rejection;
@@ -337,7 +337,7 @@ export const createSessionMutationCoordinator = (input: {
     if (fenced) return Promise.reject(fencedError())
     // A refresh arriving while another session mutation is queued must join
     // that mutation. Issuing a second request could otherwise apply an older
-    // access token after a workspace switch or race two single-use cookies.
+    // access token after a team switch or race two single-use cookies.
     if (latest) return latest
     return enqueue(input.refresh)
   }

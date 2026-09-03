@@ -76,10 +76,10 @@ import { registerWebPushRoutes } from './routes/web-push.js'
 import { registerVoiceRoutes } from './routes/voice.js'
 import { registerWellKnownOAuthClientRoutes } from './routes/well-known-oauth-client.js'
 import { registerWorkflowRoutes } from './routes/workflows.js'
-import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
-import { registerWorkspaceInvitationAcceptanceRoute } from './routes/workspace-invitations.js'
-import { registerWorkspaceMembersRoutes } from './routes/workspace-members.js'
-import { registerWorkspaceProvisioningRoutes } from './routes/workspace-provisioning.js'
+import { registerTeamAvatarRoutes } from './routes/team-avatar.js'
+import { registerTeamInvitationAcceptanceRoute } from './routes/team-invitations.js'
+import { registerTeamMembersRoutes } from './routes/team-members.js'
+import { registerTeamProvisioningRoutes } from './routes/team-provisioning.js'
 import {
   buildDashboardEgressPolicy,
   createDashboardCredentialStore,
@@ -132,11 +132,11 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   })
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
-  registerWorkspaceAvatarRoutes(app, deps)
+  registerTeamAvatarRoutes(app, deps)
   registerProfileAvatarRoutes(app, deps)
-  registerWorkspaceMembersRoutes(app, deps)
-  registerWorkspaceProvisioningRoutes(app, deps)
-  registerWorkspaceInvitationAcceptanceRoute(app, deps)
+  registerTeamMembersRoutes(app, deps)
+  registerTeamProvisioningRoutes(app, deps)
+  registerTeamInvitationAcceptanceRoute(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
   registerAppConnectionRequestRoutes(app, deps)

@@ -1,4 +1,4 @@
-import { listGlobalAgentBlueprints } from '@nessie/workspace-admin'
+import { listGlobalAgentBlueprints } from '@nessie/team-admin'
 
 /**
  * Handoff routing (D8) — the research-routing precedent, one level over.

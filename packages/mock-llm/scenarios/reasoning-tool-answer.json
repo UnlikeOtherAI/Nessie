@@ -8,7 +8,7 @@
   "turns": [
     {
       "latencyMs": 20,
-      "reasoning": "The question is about this workspace, so I should look at the real channel list rather than guess. Calling channel_list with a small limit first.",
+      "reasoning": "The question is about this team, so I should look at the real channel list rather than guess. Calling channel_list with a small limit first.",
       "stream": { "chunkDelayMs": 0, "chunkSize": 16 },
       "text": "Let me check which channels exist first.",
       "toolCalls": [
@@ -24,7 +24,7 @@
       "latencyMs": 20,
       "reasoning": "The tool came back with the channel list. That is everything I need, so I can answer directly now.",
       "stream": { "chunkDelayMs": 0, "chunkSize": 16 },
-      "text": "The workspace has a handful of channels, including the one we are talking in right now.",
+      "text": "The team has a handful of channels, including the one we are talking in right now.",
       "usage": { "inputTokens": 210, "outputTokens": 18 }
     }
   ]

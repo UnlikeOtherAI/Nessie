@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { AGENT_DESIGNER_SLUG, globalAgentHomeDmKey } from '@nessie/workspace-admin'
+import { AGENT_DESIGNER_SLUG, globalAgentHomeDmKey } from '@nessie/team-admin'
 
 import { buildScopesForAgent } from './scopes.js'
 

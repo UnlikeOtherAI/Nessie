@@ -8,7 +8,7 @@ import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { originIsAuthenticated, type OriginGateState } from './origin-gate.js'
 
 /**
- * `browser_download` — take a file out of the browser and into the workspace.
+ * `browser_download` — take a file out of the browser and into the team.
  *
  * The bytes are fetched *from inside the page*, which is the only way a file
  * behind a sign-in can be read at all: the request carries the session's own

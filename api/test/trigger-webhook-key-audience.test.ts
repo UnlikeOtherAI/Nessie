@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { mapTriggerRecord, TRIGGER_ADMIN_AUDIENCE } from '@nessie/workspace-admin'
+import { mapTriggerRecord, TRIGGER_ADMIN_AUDIENCE } from '@nessie/team-admin'
 
 import { dispatchAgentTrigger } from '../src/services/trigger-dispatch.js'
 import {

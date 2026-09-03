@@ -10,7 +10,7 @@ import { registerAuthCoreRoutes } from './auth-core.js'
 import { registerAuthLoginRoute } from './auth-login.js'
 import { registerAuthRefreshRoute } from './auth-refresh.js'
 import { registerAuthSecurityRoutes } from './auth-security.js'
-import { registerAuthUoaWorkspaceRoute } from './auth-uoa-workspace.js'
+import { registerAuthUoaTeamRoute } from './auth-uoa-team.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -57,5 +57,5 @@ export const registerAuthRoutes = (
   registerAuthLoginRoute(app, deps, issueRefreshCookie)
   registerAuthRefreshRoute(app, deps)
   registerAuthSecurityRoutes(app, deps, issueRefreshCookie)
-  registerAuthUoaWorkspaceRoute(app, deps)
+  registerAuthUoaTeamRoute(app, deps)
 }

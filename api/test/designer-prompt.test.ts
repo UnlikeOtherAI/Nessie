@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AgentToolCatalog } from '@nessie/workspace-admin'
+import type { AgentToolCatalog } from '@nessie/team-admin'
 
 import {
   buildDesignerSystemPrompt,

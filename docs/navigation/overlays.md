@@ -134,9 +134,9 @@ top-end | right | left`) and the clipping bounds (`viewportBounds()`, or a
 container rect), it flips to the opposite side when the preferred one does not
 fit and clamps the panel inside the bounds, returning `{ left, top, placement,
 maxHeight }`. It replaced the five private flip/clamp routines
-(`WorkspaceMenu`, `UserMenuPopover`, `CreateMenuTrigger`, `ReactionPills`,
+(`TeamMenu`, `UserMenuPopover`, `CreateMenuTrigger`, `ReactionPills`,
 `WikilinkSuggestionMenu`, plus `ResponsivePageHeader`'s CSS anchoring), three of
-which had no flip at all. Adopted by the account, workspace, create, header and
+which had no flip at all. Adopted by the account, team, create, header and
 overflow menus, the alerts bell, the reaction "who reacted" popover, the status
 and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a

@@ -11,8 +11,8 @@ This report's key operational takeaway is that OpenClaw is powerful precisely be
 From a business-operations perspective, OpenClaw is best treated as an "automation control plane + agent runtime" that you can deploy in layers:
 
 - Start with "messaging-only" (read/respond) workflows in one or two channels with strict allowlists and strong Gateway authentication, and adopt deterministic/approval-gated patterns (for example via Lobster) for side effects (sending email, posting content).
-- Expand into inbox and calendar automation using Google Workspace tooling (commonly via `gogcli` + Gmail Pub/Sub hooks), but segment accounts and scope permissions (dedicated bot accounts, least privilege) and operationalise backups (workspace in private git; credentials excluded).
-- For multi-function "business assistant" usage (support/marketing/sales), run multiple agents with distinct workspaces and security profiles (tool allow/deny + sandbox at "non-main" or "all"), and split trust boundaries across separate Gateways or OS users when needed.
+- Expand into inbox and calendar automation using Google Workspace tooling (commonly via `gogcli` + Gmail Pub/Sub hooks), but segment accounts and scope permissions (dedicated bot accounts, least privilege) and operationalise backups (team in private git; credentials excluded).
+- For multi-function "business assistant" usage (support/marketing/sales), run multiple agents with distinct teams and security profiles (tool allow/deny + sandbox at "non-main" or "all"), and split trust boundaries across separate Gateways or OS users when needed.
 
 Adoption is unusually large for a new OSS project: as of 23 February 2026, the OpenClaw organisation's repository listing shows ~219k stars and ~42k forks on the main repo, with ~3.8k issues and ~4.2k pull requests visible in the repo navigation.
 
@@ -50,7 +50,7 @@ flowchart LR
   subgraph AG["Agent runtime (embedded Pi)"]
     LOOP["Agent loop\nprompt→model→tools→reply→persist"]
     SKILLS["Skills + plugins\n(add tools/commands/RPC)"]
-    MEM["Workspace memory\nMarkdown (+ optional SQLite index)"]
+    MEM["Team memory\nMarkdown (+ optional SQLite index)"]
   end
 
   subgraph EXT["External systems"]
@@ -85,7 +85,7 @@ For workflows that require side effects with explicit approvals, OpenClaw provid
 
 ### Integrations via skills, plugins, and external CLIs
 
-OpenClaw's extensibility model separates "skills" (instructional/tooling bundles) from "plugins" (code modules that register tools, commands, Gateway RPC methods, HTTP handlers, background services, and skills). Skills load from bundled, managed (`~/.openclaw/skills`), and workspace (`<workspace>/skills`) locations with precedence rules; gating depends on environment/config and required binaries.
+OpenClaw's extensibility model separates "skills" (instructional/tooling bundles) from "plugins" (code modules that register tools, commands, Gateway RPC methods, HTTP handlers, background services, and skills). Skills load from bundled, managed (`~/.openclaw/skills`), and team (`<team>/skills`) locations with precedence rules; gating depends on environment/config and required binaries.
 
 For discovery and distribution, OpenClaw provides ClawHub, a public registry with versioned skill bundles, browsing/search, and community feedback signals such as stars/downloads.
 
@@ -158,7 +158,7 @@ openclaw gateway --port 19001
 
 **VPS and managed deployment patterns.** There are official "production VPS guide" style docs (for example GCP via Docker), plus platform guides (for example Render) and marketplace-style deployment documentation (for example DigitalOcean's OpenClaw marketplace page). These emphasise durable state, baked-in binaries for skills, and safe restart behaviour.
 
-**Backups.** The official FAQ recommends putting your agent workspace into a private git repository for backup and restoring the assistant's "mind" (memory and bootstrap files), while explicitly warning not to commit `~/.openclaw` because it contains credentials, sessions, and tokens. For full restores, back up workspace and state separately.
+**Backups.** The official FAQ recommends putting your agent team into a private git repository for backup and restoring the assistant's "mind" (memory and bootstrap files), while explicitly warning not to commit `~/.openclaw` because it contains credentials, sessions, and tokens. For full restores, back up team and state separately.
 
 ### Authentication, permissions, and network exposure
 
@@ -241,7 +241,7 @@ OpenClaw's official showcase page and community writeups point to a pattern: use
 A pragmatic OpenClaw support stack looks like:
 
 1. **Ingress**: messages arrive from a support channel (for example a Slack channel or Teams bot endpoint) into the Gateway; strict allowlists and mention gating prevent uncontrolled prompts.
-2. **Triage + drafting**: the agent summarises context, proposes a response, and optionally tags the conversation with internal metadata in the workspace. Lobster is a strong fit to make "triage → draft → approve → send" deterministic, with an audited resume token.
+2. **Triage + drafting**: the agent summarises context, proposes a response, and optionally tags the conversation with internal metadata in the team. Lobster is a strong fit to make "triage → draft → approve → send" deterministic, with an audited resume token.
 3. **External system updates**: use a skill to create/update tickets (or call `/tools/invoke` to run a deterministic tool wrapper); avoid letting the model freely run arbitrary scripts in production.
 4. **Escalation**: route "high-risk" or "needs human" messages to a human operator, and keep "send" actions behind explicit approvals.
 
@@ -274,7 +274,7 @@ OpenClaw supports multi-agent routing and per-agent security profiles (sandbox a
 A practical pattern is:
 
 - **Support agent**: messaging-only tool profile, no filesystem/runtime tools, strict channel allowlists.
-- **Ops agent**: cron + hooks enabled, limited filesystem scope (workspace-only) and approvals for exec.
+- **Ops agent**: cron + hooks enabled, limited filesystem scope (team-only) and approvals for exec.
 - **Marketing agent**: browser tool enabled only in a sandbox; API-based posting only via vetted integrations.
 
 ## Security, privacy, and legal/compliance considerations
@@ -305,7 +305,7 @@ The following items are all supported by documented mechanisms:
 **Tool policy and sandboxing**
 
 - Start with `tools.profile: "messaging"` or similarly restricted policies and explicitly allow only what you need.
-- Use Docker sandboxing for non-main sessions or all sessions to constrain filesystem and runtime actions; understand that "workspace is the default cwd" but not a hard sandbox without sandboxing.
+- Use Docker sandboxing for non-main sessions or all sessions to constrain filesystem and runtime actions; understand that "team is the default cwd" but not a hard sandbox without sandboxing.
 - Run `openclaw security audit` regularly and treat "break glass" flags as temporary.
 
 **Skills supply chain**
@@ -314,7 +314,7 @@ The following items are all supported by documented mechanisms:
 
 **Data and secrets**
 
-- Know where data lives: workspace files are in the agent workspace; sessions are stored as JSONL under `~/.openclaw/agents/<agentId>/sessions/`; memory search indexes may be stored as per-agent SQLite.
+- Know where data lives: team files are in the agent team; sessions are stored as JSONL under `~/.openclaw/agents/<agentId>/sessions/`; memory search indexes may be stored as per-agent SQLite.
 - Prefer environment variable substitution for secrets (and avoid committing secrets to config); the config reference documents `${VAR_NAME}` substitution and failure behaviour when vars are missing.
 - Encrypt data at rest on hosts that store sensitive transcripts and tokens.
 
@@ -366,7 +366,7 @@ A defensible business operating posture (grounded in the documented capabilities
 1. **Treat OpenClaw as privileged infrastructure**: dedicate hosts, lock down access, encrypt storage, and limit what the agent can reach (sandbox + tool policy).
 2. **Separate concerns**: use multiple agents for different departments and, where trust boundaries differ, multiple Gateways or OS users.
 3. **Default to deterministic pipelines for side effects**: Lobster-style approval gates and resumable workflows reduce "agent drift" and create audit points.
-4. **Make the workspace your source of truth and backup unit**: keep it versioned (private) and restoreable; never commit credentials.
+4. **Make the team your source of truth and backup unit**: keep it versioned (private) and restoreable; never commit credentials.
 5. **Assume marketplace compromise is normal**: review skills, pin versions, and monitor for secret leakage patterns.
 
 ### Alternatives and comparisons

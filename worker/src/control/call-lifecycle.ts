@@ -5,7 +5,7 @@ import {
   enqueueCallRingCancellation,
   ensureDefaultThread,
   publishCallTransitionRealtime,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import { buildRealtimeScopesForChannel } from '../run/pa-tools/message-destination.js'
 

@@ -30,7 +30,7 @@ export const DesignerChatBodySchema = z.object({
   formState: DesignerFormStateSchema,
   // There is deliberately no `availableTools` here any more. The browser used
   // to send the tool list, which made the sidebar's knowledge of this
-  // workspace a client-supplied fact and let the two faces of the Agent
+  // team a client-supplied fact and let the two faces of the Agent
   // Designer disagree; the service now reads the member-safe
   // `loadAgentToolCatalog` projection, the same one `agent_tool_catalog`
   // answers from.

@@ -10,7 +10,7 @@ file is the rule**.
   `TOOL_CATEGORIES` in `@nessie/schemas` — one ordered list of
   `{id, label, description}` that every surface listing tools renders in order.
   The admin used to infer a category from the tool's id prefix (`file_`,
-  `web_`, `kb_`…) and sweep everything unmatched into one "Agent & workspace"
+  `web_`, `kb_`…) and sweep everything unmatched into one "Agent & team"
   bucket; that bucket had grown to hold **75 of 116** builtins, because a new
   tool joined it by default and the only way out was to invent another prefix
   rule. Making the field required means adding a tool without choosing a home

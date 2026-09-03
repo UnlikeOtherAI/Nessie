@@ -7,7 +7,7 @@ import { drainPendingThreadMessages } from '@nessie/db'
 import {
   createAgentTodoTemplate,
   materializeScheduledAgentTodosForRun,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { dispatchAgentTrigger } from '../src/services/trigger-dispatch.js'
 
@@ -27,7 +27,7 @@ type Seed = {
   triggerId: string
 }
 
-const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
+const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `trg-ser ${randomUUID()}` } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
@@ -93,7 +93,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('webhook dispatch while a run is active pends, then drains into one linked follow-up', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -182,7 +182,7 @@ runDatabaseTest('webhook dispatch while a run is active pends, then drains into 
 
 runDatabaseTest('manual to-do fire carries pending provenance and materializes one pinned checklist', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

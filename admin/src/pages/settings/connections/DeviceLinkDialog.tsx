@@ -16,7 +16,7 @@ import { renderFieldError } from '../../../components/shared/FormFieldError'
  * Three states, in order: the code to enter, the account that signed in, done.
  * The middle one is not a formality — it is the whole defence against the
  * device-flow confused deputy, where somebody else enters your code and their
- * account would otherwise be attached to your workspace silently. So the person
+ * account would otherwise be attached to your team silently. So the person
  * is shown WHICH account arrived and has to say it is theirs.
  */
 type Phase =

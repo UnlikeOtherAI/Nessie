@@ -32,8 +32,8 @@ export type NativeShellPresentation = {
   statusBarStyle: 'dark' | 'light'
   strongAccent: string
   toolbarState: ToolbarState
-  workspaceAvatarUrl: string | null
-  workspaceName: string | null
+  teamAvatarUrl: string | null
+  teamName: string | null
 }
 
 const zeroAttentionBadges = (): AttentionBadges =>
@@ -54,8 +54,8 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   statusBarStyle: 'light',
   strongAccent: '#5b21b6',
   toolbarState: DEFAULT_TOOLBAR_STATE,
-  workspaceAvatarUrl: null,
-  workspaceName: null,
+  teamAvatarUrl: null,
+  teamName: null,
 }
 
 const optionalText = (value: unknown): string | null =>
@@ -84,7 +84,7 @@ export const isNativeShellPresentationMessage = (message: NativeShellMessage): b
   || message.type === 'nessie:account'
   || message.type === 'nessie:attention'
   || message.type === 'nessie:toolbar-state'
-  || message.type === 'nessie:workspace'
+  || message.type === 'nessie:team'
 
 export const reduceNativeShellPresentation = (
   current: NativeShellPresentation,
@@ -136,11 +136,11 @@ export const reduceNativeShellPresentation = (
       },
     }
   }
-  if (message.type === 'nessie:workspace') {
+  if (message.type === 'nessie:team') {
     return {
       ...current,
-      workspaceAvatarUrl: optionalText(message.workspaceAvatarUrl),
-      workspaceName: optionalText(message.name),
+      teamAvatarUrl: optionalText(message.teamAvatarUrl),
+      teamName: optionalText(message.name),
     }
   }
   return current

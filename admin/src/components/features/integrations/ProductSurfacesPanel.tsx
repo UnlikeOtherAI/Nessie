@@ -57,7 +57,7 @@ export const ProductSurfacesPanel = ({
   }
 
   const resolveTarget = (surface: ProductSurface): string | null => {
-    // The product view is a route of its own; `?view=` is the workspace's
+    // The product view is a route of its own; `?view=` is the team's
     // view-mode strip and must not be overloaded with a product id.
     if (surface.type === 'documents_section') {
       return `/knowledge-base/views/${encodeURIComponent(surface.view)}`

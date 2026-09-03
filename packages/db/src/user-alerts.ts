@@ -74,7 +74,7 @@ export const visibleUserAlertWhere = (input: {
       // these rows, and acceptance deletes one immediately. The outer user
       // membership clause still requires an active membership in whichever
       // organisation currently owns the recipient's bell.
-      kind: 'workspace_invitation',
+      kind: 'team_invitation',
     },
     {
       kind: 'knowledge_published',

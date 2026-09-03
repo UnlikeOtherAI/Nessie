@@ -93,12 +93,12 @@ export const ScheduledTriggerLaunchOriginSchema = z.object({
   projectId: ProjectIdSchema.optional(),
   teamId: TeamIdSchema,
   /**
-   * The UOA workspace the creator was standing in, captured while a real
+   * The UOA team the creator was standing in, captured while a real
    * session existed.
    *
    * A fire has no session, and signing a Ledger call needs one: the product
    * account link proves the user's subject, status and credential epoch, but
-   * not which UOA workspace they were acting in — that only a session knows.
+   * not which UOA team they were acting in — that only a session knows.
    * Without this every scheduled run failed before dispatch with
    * "Ledger requires a linked UnlikeOtherAI SSO identity". It is replayed at
    * fire time and then verified against the link exactly as a live session is,

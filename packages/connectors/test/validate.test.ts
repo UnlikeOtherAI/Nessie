@@ -44,7 +44,7 @@ test('validateManifest accepts sandbox roots with explicit kind and access', asy
       allowedRoots: [
         '/tmp/legacy-root',
         { path: '/tmp/read-only-config.json', kind: 'file', access: 'ro' },
-        { path: '/tmp/workspace', kind: 'dir', access: 'rw' },
+        { path: '/tmp/team', kind: 'dir', access: 'rw' },
       ],
     },
   }
@@ -56,7 +56,7 @@ test('validateManifest accepts sandbox roots with explicit kind and access', asy
     assert.deepEqual(result.bundle.policy?.defaultSandbox?.allowedRoots, [
       '/tmp/legacy-root',
       { path: '/tmp/read-only-config.json', kind: 'file', access: 'ro' },
-      { path: '/tmp/workspace', kind: 'dir', access: 'rw' },
+      { path: '/tmp/team', kind: 'dir', access: 'rw' },
     ])
   }
 })
@@ -70,7 +70,7 @@ test('validateManifest rejects sandbox roots with invalid kind or access', async
     defaultToolMode: 'inherit',
     defaultSandbox: {
       allowedRoots: [
-        { path: '/tmp/workspace', kind: 'directory', access: 'read' },
+        { path: '/tmp/team', kind: 'directory', access: 'read' },
       ],
     },
   }

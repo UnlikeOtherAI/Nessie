@@ -25,8 +25,8 @@ export const externalAuthRedirectUri = (): string =>
 export type ExternalSignInOptions = {
   // App route to land on after the exchange completes (defaults to /channels).
   returnPath?: string
-  // Exact external workspace a reauthorization flow must land on.
-  targetWorkspace?: PendingExternalAuthTarget
+  // Exact external team a reauthorization flow must land on.
+  targetTeam?: PendingExternalAuthTarget
   teamHint?: string
 }
 
@@ -55,7 +55,7 @@ const openAuthorizeUrl = async (authorizeUrl: string, state: string | undefined)
 /**
  * Kick off an SSO authorize flow for a provider from whichever surface we are on
  * (OS browser on desktop/mobile, full-page redirect on web). Shared by the login
- * screen, the in-app "add a workspace" action, and workspace-switch
+ * screen, the in-app "add a team" action, and team-switch
  * reauthorization so every entry point starts SSO identically.
  */
 export const startExternalSignIn = async (
@@ -74,7 +74,7 @@ export const startExternalSignIn = async (
     ...(replacePendingState ? { replacePendingState } : {}),
     redirectUri,
     ...(options.returnPath ? { returnPath: options.returnPath } : {}),
-    ...(options.targetWorkspace ? { targetWorkspace: options.targetWorkspace } : {}),
+    ...(options.targetTeam ? { targetTeam: options.targetTeam } : {}),
     ...(options.teamHint ? { teamHint: options.teamHint } : {}),
     theme,
   })
@@ -87,19 +87,19 @@ export const startExternalSignIn = async (
 }
 
 /**
- * Workspace-switch reauthorization: SSO pre-hinted at the exact workspace the
+ * Team-switch reauthorization: SSO pre-hinted at the exact team the
  * switch targeted. The captured route is kept for the *unhappy* path only — a
  * cancelled or failed flow changed nothing, so the person stays where they
- * were. A completed switch lands on `/channels`, because the old workspace's
+ * were. A completed switch lands on `/channels`, because the old team's
  * routes do not resolve in the new one.
  */
-export const startWorkspaceSwitchReauthorization = async (input: {
+export const startTeamSwitchReauthorization = async (input: {
   providerId: string
-  targetWorkspace: PendingExternalAuthTarget
+  targetTeam: PendingExternalAuthTarget
   theme: AppliedTheme
 }): Promise<void> =>
   startExternalSignIn(input.providerId, input.theme, {
     returnPath: window.location.pathname + window.location.search,
-    targetWorkspace: input.targetWorkspace,
-    teamHint: input.targetWorkspace.teamId,
+    targetTeam: input.targetTeam,
+    teamHint: input.targetTeam.teamId,
   })

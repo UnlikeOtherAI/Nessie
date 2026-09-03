@@ -840,7 +840,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
 }
 
-/* Browser counterpart to the installed phone shell's workspace bar. It only
+/* Browser counterpart to the installed phone shell's team bar. It only
    appears on a top-level tab screen, so it keeps the list/detail hierarchy
    clear while making core navigation available in Safari and Android browsers. */
 .mobile-web-home-header {
@@ -856,7 +856,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   color: var(--tx);
 }
 
-.mobile-web-home-workspace {
+.mobile-web-home-team {
   display: flex;
   min-width: 0;
   max-width: 62%;
@@ -871,8 +871,8 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   transition: background-color 120ms ease;
 }
 
-.mobile-web-home-workspace:hover,
-.mobile-web-home-workspace:focus-visible,
+.mobile-web-home-team:hover,
+.mobile-web-home-team:focus-visible,
 .mobile-web-home-action:hover,
 .mobile-web-home-action:focus-visible {
   background: color-mix(in srgb, var(--tx) 8%, transparent);
@@ -1666,7 +1666,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 /* The rail's creation control intentionally has no label: its compact
    plus-button placement mirrors the native phone action and keeps it directly
-   above the account avatar, where it remains available from every workspace. */
+   above the account avatar, where it remains available from every team. */
 .admin-rail-create-trigger {
   display: flex;
   width: 40px;
@@ -2181,7 +2181,7 @@ button.reaction-pill-active:focus-visible {
    26 panels — AgentAvailableTools, TriggerDetail, TriggerListColumn,
    WorkflowRunDetail/TemplateDetail/InstallationDetail, WorkflowsPage, ToolList,
    ToolExecutionLog, the two agent-access panels, the attachment viewer, and the
-   user-menu/workspace popovers among them. Two cards of different radii are two
+   user-menu/team popovers among them. Two cards of different radii are two
    cards. If the admin should have one card radius, that is a design decision
    with a visible diff, not a de-duplication.
 

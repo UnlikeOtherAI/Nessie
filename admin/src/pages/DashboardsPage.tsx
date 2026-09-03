@@ -70,7 +70,7 @@ export const DashboardsPage = () => {
 
       {/* This page had no error branch at all: a failed read fell straight
           through to "Ask your assistant to build one", which states that the
-          workspace has no dashboards when the truth is that nothing was read.
+          team has no dashboards when the truth is that nothing was read.
           The two facts now render differently, and the failure offers a Retry.
           Declared pixel change: the loading line moves from left-aligned to
           QueryState's centred py-8 — the price of the error state sharing its

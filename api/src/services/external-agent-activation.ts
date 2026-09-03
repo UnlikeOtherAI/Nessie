@@ -130,7 +130,7 @@ const assertLinkedSsoIdentity = async (
     externalOrgId: string
     externalTeamId: string
   },
-): Promise<{ workspaceId: string }> => {
+): Promise<{ externalTeamId: string }> => {
   const [link, team] = await Promise.all([
     prisma.productAccountLink.findUnique({
       where: {
@@ -154,15 +154,15 @@ const assertLinkedSsoIdentity = async (
       },
       select: {
         externalOrgId: true,
-        externalWorkspaceId: true,
+        externalTeamId: true,
       },
     }),
   ])
   if (
     !team?.externalOrgId
-    || !team.externalWorkspaceId
+    || !team.externalTeamId
     || input.externalOrgId !== team.externalOrgId
-    || input.externalTeamId !== team.externalWorkspaceId
+    || input.externalTeamId !== team.externalTeamId
   ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED,
@@ -177,14 +177,14 @@ const assertLinkedSsoIdentity = async (
     || link.uoaSub !== input.sessionIdentity.subject
     || link.uoaTokenVersion !== input.sessionIdentity.tokenVersion
     || input.sessionIdentity.organizationId !== team.externalOrgId
-    || input.sessionIdentity.teamId !== team.externalWorkspaceId
+    || input.sessionIdentity.teamId !== team.externalTeamId
   ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.SSO_LINK_REQUIRED,
       'Sign in to Nessie with UnlikeOtherAI SSO and select an active organization/team first.',
     )
   }
-  return { workspaceId: input.sessionIdentity.teamId }
+  return { externalTeamId: input.sessionIdentity.teamId }
 }
 
 type CatalogEntry = {
@@ -285,7 +285,7 @@ export const activateExternalAgentProduct = async (
 ): Promise<ExternalAgentActivationResult> => {
   const product = resolveProduct(productSlug)
   const teamId = requireTeamId(ctx.teamId)
-  const enabledWorkspace = await assertTeamEnabled(prisma, {
+  const enabledTeam = await assertTeamEnabled(prisma, {
     organizationId: ctx.organizationId,
     teamId,
     productSlug: product.slug,
@@ -296,8 +296,8 @@ export const activateExternalAgentProduct = async (
     userId: ctx.userId,
     productSlug: product.slug,
     sessionIdentity: ctx.actorContext.actionContext.uoaIdentity,
-    externalOrgId: enabledWorkspace.externalOrgId,
-    externalTeamId: enabledWorkspace.externalTeamId,
+    externalOrgId: enabledTeam.externalOrgId,
+    externalTeamId: enabledTeam.externalTeamId,
   })
 
   const catalogEntry = await loadFirstPartyCatalogEntry(prisma, product.slug)
@@ -315,7 +315,7 @@ export const activateExternalAgentProduct = async (
     product,
     teamId,
     userId: ctx.userId,
-    workspaceId: ssoIdentity.workspaceId,
+    externalTeamId: ssoIdentity.externalTeamId,
   })
 
   return {

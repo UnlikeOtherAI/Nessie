@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import type { GoogleCapabilityId } from '@nessie/schemas'
-import { GmailDraftError } from '@nessie/workspace-admin'
+import { GmailDraftError } from '@nessie/team-admin'
 
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { buildRealtimeScopesForChannel } from './message-destination.js'

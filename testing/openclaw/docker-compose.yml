@@ -38,8 +38,8 @@ services:
     volumes:
       # Persist state across restarts
       - openclaw-data:/root/.openclaw
-      # Optional: mount a local workspace for the agent
-      # - /path/to/workspace:/root/workspace
+      # Optional: mount a local team for the agent
+      # - /path/to/team:/root/team
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:18789/health"]
       interval: 10s

@@ -6,7 +6,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerAgentRoutes } from '../src/routes/agents.js'
-import { bindAgentToChannel } from '@nessie/workspace-admin'
+import { bindAgentToChannel } from '@nessie/team-admin'
 import {
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,
@@ -63,7 +63,7 @@ const makeAgent = (
   todosEnabled: false,
   toolPolicy,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  visibility: 'workspace' as const,
+  visibility: 'team' as const,
 })
 
 const selectRow = (

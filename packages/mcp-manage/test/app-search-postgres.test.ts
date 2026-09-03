@@ -228,16 +228,16 @@ runIfDatabase('a person can add the same private app name in separate organisati
     assert.notEqual(first.organizationId, second.organizationId)
 
     // The new index permits the independent rows; the tenancy floor must still
-    // make each one visible only in the workspace where its owner added it.
-    const firstWorkspace = await idsBothWays(prisma, storeCatalogWhere(actorIn(orgId, adaId)))
-    assert.deepEqual(firstWorkspace.viaSql, firstWorkspace.viaPrisma)
-    assert.ok(firstWorkspace.viaPrisma.includes(first.id))
-    assert.ok(!firstWorkspace.viaPrisma.includes(second.id))
+    // make each one visible only in the team where its owner added it.
+    const firstTeam = await idsBothWays(prisma, storeCatalogWhere(actorIn(orgId, adaId)))
+    assert.deepEqual(firstTeam.viaSql, firstTeam.viaPrisma)
+    assert.ok(firstTeam.viaPrisma.includes(first.id))
+    assert.ok(!firstTeam.viaPrisma.includes(second.id))
 
-    const secondWorkspace = await idsBothWays(prisma, storeCatalogWhere(actorIn(otherOrgId, adaId)))
-    assert.deepEqual(secondWorkspace.viaSql, secondWorkspace.viaPrisma)
-    assert.ok(!secondWorkspace.viaPrisma.includes(first.id))
-    assert.ok(secondWorkspace.viaPrisma.includes(second.id))
+    const secondTeam = await idsBothWays(prisma, storeCatalogWhere(actorIn(otherOrgId, adaId)))
+    assert.deepEqual(secondTeam.viaSql, secondTeam.viaPrisma)
+    assert.ok(!secondTeam.viaPrisma.includes(first.id))
+    assert.ok(secondTeam.viaPrisma.includes(second.id))
   } finally {
     await fixture.cleanup()
   }

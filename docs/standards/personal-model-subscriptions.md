@@ -23,7 +23,7 @@ organization's Ledger credits. Rules that must not drift:
   credential in the vault under a pending name until the person confirms WHICH
   account signed in — that confirmation is the whole defence against the
   device-flow confused deputy, where somebody else enters your code and their
-  account would otherwise be attached to your workspace silently. A relink
+  account would otherwise be attached to your team silently. A relink
   binds the `providerAccountId` already on the row and refuses a different one.
 - **An id_token is read strictly, and a grant without a refresh token is
   refused.** Exact issuer, audience equal to the client id, expiry, and a
@@ -37,7 +37,7 @@ organization's Ledger credits. Rules that must not drift:
   xAI's discovery document names must be on `x.ai`, or the device grant is
   refused.
 - **Codex speaks the Responses API**, not chat/completions, through its own
-  `codex-subscription` connector (`store: false`, so a workspace's content
+  `codex-subscription` connector (`store: false`, so a team's content
   never lands in a person's ChatGPT history). Its deltas map onto the same
   `output_text.delta` / `tool_call.delta` / `reasoning_text.delta` vocabulary
   every other connector emits, so the agentic loop, the thinking recorder and
@@ -69,7 +69,7 @@ organization's Ledger credits. Rules that must not drift:
   Attribution follows the subscription **owner**, not whoever posted, and the
   writer reads the run's own pin so no terminal path can forget to stamp it.
 - **One validator, every write path.** `assertAgentModelSelection`
-  (`@nessie/workspace-admin`) gates create, update, clone and the PA
+  (`@nessie/team-admin`) gates create, update, clone and the PA
   `agent_create` tool; ownership transfer and clone strip the selection,
   because a subscription is not transferable. Write-time validation is UX; the
   run-time gate is the security boundary.

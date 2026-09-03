@@ -255,7 +255,7 @@ const rawManifests = [
         availability: 'both',
         label: 'Launch buildme.live',
         requiredForAgentUse: false,
-        setup: 'Use UOA SSO to open the BuildMe project-definition workspace.',
+        setup: 'Use UOA SSO to open the BuildMe project-definition team.',
       },
       {
         mode: 'native_data_source',

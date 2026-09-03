@@ -1,11 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
-import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import { rememberUoaTeamDirectory } from './uoa-directory-cache.js'
+import type { ExternalAuthTeam } from './identity-display.js'
 import { projectUoaRoles, resolveUoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
-import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
-import { syncWorkspaceInviteAlerts } from './workspace-invite-alerts.js'
+import type { UoaTeamDirectory } from './uoa-team-directory.js'
+import { syncTeamInviteAlerts } from './team-invite-alerts.js'
 
 type UoaSessionContextPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
 
@@ -63,7 +63,7 @@ const loadBinding = async (
   const team = await prisma.team.findFirst({
     where: {
       externalOrgId: input.identity.organizationId,
-      externalWorkspaceId: input.identity.teamId,
+      externalTeamId: input.identity.teamId,
       members: { some: { userId: input.userId } },
       project: {
         members: { some: { userId: input.userId } },
@@ -102,7 +102,7 @@ const loadBinding = async (
   const role = team?.project.organization.members[0]?.role
   if (!team || !role) {
     throw new UoaLocalSessionBindingError(
-      'The UnlikeOtherAI workspace is no longer available in Nessie.',
+      'The UnlikeOtherAI team is no longer available in Nessie.',
     )
   }
 
@@ -141,7 +141,7 @@ const loadBinding = async (
   }
 }
 
-/** Resolve the exact live local workspace for an immutable UOA session proof. */
+/** Resolve the exact live local team for an immutable UOA session proof. */
 export const resolveUoaLocalSessionContext = async (
   prisma: UoaSessionContextPrisma,
   input: { identity: UoaSessionIdentity; userId: string },
@@ -160,21 +160,21 @@ export const resolveUoaLocalSessionContext = async (
 }
 
 /**
- * Advance Nessie's stable account-link epoch onto the workspace UOA has just
+ * Advance Nessie's stable account-link epoch onto the team UOA has just
  * proven for this session — the same immutable subject, an epoch that has not
  * regressed, and whatever org/team the successor carries.
  *
- * **Identity is the subject and the epoch; the workspace is not an identity
+ * **Identity is the subject and the epoch; the team is not an identity
  * claim.** Those two checks are what prove the successor belongs to the same
- * person, and they stay strictly enforced. The workspace is deliberately
- * allowed to differ: UOA can commit a workspace change on its own side, and
- * with the silent switch in the product a drifted workspace is the ordinary
+ * person, and they stay strictly enforced. The team is deliberately
+ * allowed to differ: UOA can commit a team change on its own side, and
+ * with the silent switch in the product a drifted team is the ordinary
  * way a committed switch surfaces on the next refresh. Refusing it made a
  * *successful* switch look like a logout, and Nessie was the last product in
  * the estate still doing so. Substitution is not what a drift means, and would
  * still be caught: adopting re-derives the local binding from the successor's
- * own workspace through the exact `Team.externalOrgId`/`externalWorkspaceId`
- * mapping below, which fails closed when the workspace does not resolve to a
+ * own team through the exact `Team.externalOrgId`/`externalTeamId`
+ * mapping below, which fails closed when the team does not resolve to a
  * local org/project/team this user is a member of.
  *
  * ProductAccountLink.activeOrgId / activeTeamId are only last-seen UI metadata
@@ -186,8 +186,8 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
-    workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectory
+    team?: ExternalAuthTeam
+    teamDirectory?: UoaTeamDirectory
   },
 ): Promise<UoaLocalSessionContext> => {
   const previousVersion = requireTokenVersion(input.previousIdentity)
@@ -217,7 +217,7 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
   // instead of waiting for the next interactive sign-in. Claims UOA did not
   // send project nothing (`uoa-roles.ts`).
   const projected = await projectUoaRoles(transaction, {
-    claims: resolveUoaRoleClaims(input.workspace, input.nextIdentity.teamId),
+    claims: resolveUoaRoleClaims(input.team, input.nextIdentity.teamId),
     organizationId: binding.organizationId,
     projectId: binding.projectId,
     teamId: binding.teamId,
@@ -298,27 +298,27 @@ export const syncUoaDirectoryAfterSessionCommit = async (
   input: {
     nextIdentity: UoaSessionIdentity
     userId: string
-    workspaceDirectory?: UoaWorkspaceDirectory
+    teamDirectory?: UoaTeamDirectory
   },
 ): Promise<void> => {
-  if (!input.workspaceDirectory) return
-  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
+  if (!input.teamDirectory) return
+  rememberUoaTeamDirectory(input.userId, input.teamDirectory)
   try {
     const organization = await prisma.organization.findUnique({
       where: { externalOrgId: input.nextIdentity.organizationId },
       select: { id: true },
     })
     if (!organization) {
-      console.warn('[uoa] workspace invitation alert sync skipped: local organization missing')
+      console.warn('[uoa] team invitation alert sync skipped: local organization missing')
       return
     }
-    await syncWorkspaceInviteAlerts(prisma, {
+    await syncTeamInviteAlerts(prisma, {
       organizationId: organization.id,
-      pendingInvites: input.workspaceDirectory.pendingInvites,
+      pendingInvites: input.teamDirectory.pendingInvites,
       userId: input.userId,
     })
   } catch (error) {
-    console.warn('[uoa] workspace invitation alert sync failed after rotation', error)
+    console.warn('[uoa] team invitation alert sync failed after rotation', error)
   }
 }
 
@@ -333,7 +333,7 @@ export const advanceUoaLocalSessionBinding = async (
   await syncUoaDirectoryAfterSessionCommit(prisma, {
     nextIdentity: input.nextIdentity,
     userId: input.userId,
-    workspaceDirectory: input.workspaceDirectory,
+    teamDirectory: input.teamDirectory,
   })
   return context
 }

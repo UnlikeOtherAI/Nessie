@@ -44,7 +44,7 @@ export class DeepSignalMcpIdentityError extends Error {
       | 'DEEPSIGNAL_MCP_IDENTITY_UNCONFIGURED'
       | 'DEEPSIGNAL_MCP_ORIGIN_INVALID'
       | 'DEEPSIGNAL_MCP_PROVENANCE_REQUIRED'
-      | 'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH'
+      | 'DEEPSIGNAL_MCP_CHANNEL_TEAM_MISMATCH'
       | 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED'
       | 'DEEPSIGNAL_MCP_UOA_IDENTITY_REQUIRED'
       | 'DEEPSIGNAL_MCP_UOA_EXCHANGE_FAILED'
@@ -299,7 +299,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           },
           select: {
             externalOrgId: true,
-            externalWorkspaceId: true,
+            externalTeamId: true,
           },
         }),
       ])
@@ -308,9 +308,9 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
         || !enablement.externalOrgId
         || !enablement.externalTeamId
         || !team?.externalOrgId
-        || !team.externalWorkspaceId
+        || !team.externalTeamId
         || enablement.externalOrgId !== team.externalOrgId
-        || enablement.externalTeamId !== team.externalWorkspaceId
+        || enablement.externalTeamId !== team.externalTeamId
       ) {
         throw new DeepSignalMcpIdentityError(
           'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
@@ -326,13 +326,13 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           select: { dmKey: true },
         })
         const expectedDmKey =
-          team?.externalWorkspaceId
-            ? `extagent:${DEEPSIGNAL_PRODUCT_SLUG}:${attribution.organizationId}:${userId}:${team.externalWorkspaceId}`
+          team?.externalTeamId
+            ? `extagent:${DEEPSIGNAL_PRODUCT_SLUG}:${attribution.organizationId}:${userId}:${team.externalTeamId}`
             : null
         if (!expectedDmKey || channel?.dmKey !== expectedDmKey) {
           throw new DeepSignalMcpIdentityError(
-            'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH',
-            'The DeepSignal conversation channel does not belong to the originating SSO workspace.',
+            'DEEPSIGNAL_MCP_CHANNEL_TEAM_MISMATCH',
+            'The DeepSignal conversation channel does not belong to the originating SSO team.',
           )
         }
       }
@@ -341,7 +341,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           accountLinkProductSlug: DEEPSIGNAL_PRODUCT_SLUG,
           audience,
           delegationScope: 'ai.invoke',
-          requireActiveWorkspace: true,
+          requireActiveTeam: true,
           requireUoaIdentity: true,
           toolCallId: options.toolCallId,
         })
@@ -349,7 +349,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
         if (!(error instanceof UoaDelegatedIdentityError)) throw error
         if (
           error.code === 'UOA_IDENTITY_REQUIRED'
-          || error.code === 'UOA_ACTIVE_WORKSPACE_REQUIRED'
+          || error.code === 'UOA_ACTIVE_TEAM_REQUIRED'
         ) {
           throw new DeepSignalMcpIdentityError(
             'DEEPSIGNAL_MCP_UOA_IDENTITY_REQUIRED',

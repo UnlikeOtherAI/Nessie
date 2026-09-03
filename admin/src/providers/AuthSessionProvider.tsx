@@ -10,20 +10,20 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
-  captureWorkspaceSessionSource,
-  classifyWorkspaceSessionPayload,
+  captureTeamSessionSource,
+  classifyTeamSessionPayload,
   createAuthSessionApi,
   createSessionMutationCoordinator,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
-  type ExpectedWorkspaceTarget,
+  type ExpectedTeamTarget,
   type ExternalLoginInput,
   type LoginInput,
-  type RecoverWorkspaceSessionInput,
+  type RecoverTeamSessionInput,
   type SessionPayload,
   type SwitchContextInput,
-  type SwitchUoaWorkspaceInput,
+  type SwitchUoaTeamInput,
 } from '@nessie/client-core'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -69,22 +69,22 @@ type AuthSessionContextValue = {
   me: MeResponse | null
   reconcileSession: () => Promise<SessionPayload | null>
   /**
-   * Complete an external-auth code exchange for a workspace-switch
+   * Complete an external-auth code exchange for a team-switch
    * reauthorization. Unlike `login` this never applies the exchanged session
-   * until the payload proves it is scoped to exactly `expectedWorkspace`; a
+   * until the payload proves it is scoped to exactly `expectedTeam`; a
    * mismatch leaves the current session, token, and query cache untouched.
    * Returns the applied payload.
    */
   recoveryExchange: (
     input: ExternalLoginInput,
-    expectedWorkspace: ExpectedWorkspaceTarget,
+    expectedTeam: ExpectedTeamTarget,
   ) => Promise<SessionPayload>
   refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionMode: StoredTokenMode
   sessionState: AuthSessionState
   switchContext: (input: SwitchContextInput) => Promise<void>
-  switchUoaWorkspace: (input: SwitchUoaWorkspaceInput) => Promise<void>
+  switchUoaTeam: (input: SwitchUoaTeamInput) => Promise<void>
   token: string | null
 }
 
@@ -191,7 +191,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // A foreign-session fence or logout permanently terminates its coordinator.
   // That coordinator stays fenced forever, but the PROVIDER is not dead: once
   // the terminal clear completes, the generation bumps so a later explicit
-  // login or workspace recovery — after React re-renders — runs against a
+  // login or team recovery — after React re-renders — runs against a
   // fresh coordinator. An ordinary refresh that returns null is not terminal
   // and never bumps it.
   const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
@@ -208,7 +208,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // so a full remount (web page, Tauri, mobile WebView) of a terminated-
   // but-not-revoked session starts blocked.
   const ambientRefreshGate = useMemo(() => createAmbientRefreshGateHost(), [])
-  // Login, startup restore, every API 401, and workspace switching share this
+  // Login, startup restore, every API 401, and team switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
   const sessionMutations = useMemo(
@@ -442,10 +442,10 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const recoveryExchange = async (
     input: ExternalLoginInput,
-    expectedWorkspace: ExpectedWorkspaceTarget,
+    expectedTeam: ExpectedTeamTarget,
   ): Promise<SessionPayload> => {
     if (input.providerId !== 'uoa') {
-      throw new Error('Workspace session recovery is only supported for the UOA provider.')
+      throw new Error('Team session recovery is only supported for the UOA provider.')
     }
     // The bearer AND the source session are captured lexically inside the
     // queued thunk — immediately before the request is sent — so the
@@ -454,31 +454,31 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     // reads that same lexical binding for BOTH the direct payload and the one
     // opaque-refresh winner, whose raw response carries no request-local
     // proof — nothing is ever attached to the payload itself.
-    let capturedSource: ReturnType<typeof captureWorkspaceSessionSource> = null
+    let capturedSource: ReturnType<typeof captureTeamSessionSource> = null
     const recovered = sessionMutations.runGuarded(
       () => {
         const currentToken = tokenRef.current
         if (typeof currentToken !== 'string' || currentToken.length === 0) {
-          throw new Error('Workspace session recovery requires an active session.')
+          throw new Error('Team session recovery requires an active session.')
         }
         const currentMe = meRef.current
         if (!currentMe) {
-          throw new Error('Workspace session recovery requires an active session.')
+          throw new Error('Team session recovery requires an active session.')
         }
-        const source = captureWorkspaceSessionSource(currentMe)
+        const source = captureTeamSessionSource(currentMe)
         if (!source) {
-          throw new Error('Workspace session recovery is only supported for the UOA provider.')
+          throw new Error('Team session recovery is only supported for the UOA provider.')
         }
         capturedSource = source
-        const recoveryInput: RecoverWorkspaceSessionInput = {
+        const recoveryInput: RecoverTeamSessionInput = {
           code: input.code,
           codeVerifier: input.codeVerifier,
-          expectedWorkspace,
+          expectedTeam,
           providerId: 'uoa',
           redirectUri: input.redirectUri,
           ...(input.theme === undefined ? {} : { theme: input.theme }),
         }
-        return authApi.recoverWorkspaceSession(currentToken, recoveryInput)
+        return authApi.recoverTeamSession(currentToken, recoveryInput)
       },
       (payload) => {
         // Defense in depth behind the API's pre-issuance rejection, as a
@@ -492,7 +492,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
             message: 'The renewed session could not be verified. Try switching again.',
           }
         }
-        return classifyWorkspaceSessionPayload(payload, expectedWorkspace, capturedSource)
+        return classifyTeamSessionPayload(payload, expectedTeam, capturedSource)
       },
     )
     const payload = await recovered
@@ -512,14 +512,14 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     await sessionMutations.run(() => authApi.switchContext(tokenRef.current, input))
   }
 
-  const switchUoaWorkspace = async (input: SwitchUoaWorkspaceInput): Promise<void> => {
+  const switchUoaTeam = async (input: SwitchUoaTeamInput): Promise<void> => {
     if (
       tokenRef.current
       && importedSessionTokenRef.current === tokenRef.current
     ) {
       throw new Error(IMPORTED_SESSION_SCOPE_MESSAGE)
     }
-    await sessionMutations.run(() => authApi.switchUoaWorkspace(tokenRef.current, input))
+    await sessionMutations.run(() => authApi.switchUoaTeam(tokenRef.current, input))
   }
 
   const logout = async (): Promise<void> => {
@@ -564,7 +564,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       sessionMode,
       sessionState,
       switchContext,
-      switchUoaWorkspace,
+      switchUoaTeam,
       token,
     }),
     [

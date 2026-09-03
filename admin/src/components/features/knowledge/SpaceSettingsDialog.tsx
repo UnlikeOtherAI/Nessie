@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useUsers } from '../../../facades/users/hooks'
-import { useWorkspaceMembers } from '../../../facades/users/workspace-members'
+import { useTeamMembers } from '../../../facades/users/team-members'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { toFormErrors } from '../../../facades/form-errors'
 import { Dialog } from '../../shared/Dialog'
@@ -46,11 +46,11 @@ export const SpaceSettingsDialog = ({
   const isUoaSession = me?.auth.providerType === 'uoa'
   const agentsQuery = useAgents()
   const usersQuery = useUsers(open && canManageAccess && !isUoaSession)
-  const workspaceMembersQuery = useWorkspaceMembers(open && canManageAccess && isUoaSession)
+  const teamMembersQuery = useTeamMembers(open && canManageAccess && isUoaSession)
   const userOptions: KnowledgeMemberOption[] = isUoaSession
-    ? (workspaceMembersQuery.data?.members ?? []).flatMap((member) => member.userId
+    ? (teamMembersQuery.data?.members ?? []).flatMap((member) => member.userId
         ? [{
-            label: member.displayName ?? member.email ?? 'Workspace member',
+            label: member.displayName ?? member.email ?? 'Team member',
             id: member.userId,
           }]
         : [])

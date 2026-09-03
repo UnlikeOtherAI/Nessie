@@ -25,23 +25,23 @@ import {
 } from './refresh-token-uoa.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import {
-  ensureUoaWorkspaceSwitchIntent,
+  ensureUoaTeamSwitchIntent,
   identityMatchesTarget,
-  loadUoaWorkspaceSwitchIntent,
+  loadUoaTeamSwitchIntent,
   targetFromIntent,
-  UoaWorkspaceSwitchError,
-  type UoaWorkspaceSwitchIntentRecord,
-} from './uoa-workspace-switch-intent.js'
-import type { UoaWorkspaceSwitchTarget } from './uoa-session.js'
-import type { ExternalAuthWorkspace } from './identity-display.js'
-import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
+  UoaTeamSwitchError,
+  type UoaTeamSwitchIntentRecord,
+} from './uoa-team-switch-intent.js'
+import type { UoaTeamSwitchTarget } from './uoa-session.js'
+import type { ExternalAuthTeam } from './identity-display.js'
+import type { UoaTeamDirectory } from './uoa-team-directory.js'
 import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import {
-  assertWorkspaceSwitchSource,
-  clearRefusedWorkspaceSwitchIntent,
+  assertTeamSwitchSource,
+  clearRefusedTeamSwitchIntent,
   commitUoaRotation,
   notifyUoaSessionBindingAfterCommit,
-  revalidateWorkspaceSwitchIntent,
+  revalidateTeamSwitchIntent,
   type UoaRotationCallbacks,
 } from './refresh-token-uoa-rotation.js'
 
@@ -50,7 +50,7 @@ export { issueRefreshToken, RefreshTokenIssuanceError } from './refresh-token-is
 export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
 export { revokeRefreshFamily as revokeFamily } from './refresh-token-family.js'
 export { UoaRefreshBindingError } from './refresh-token-uoa.js'
-export { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
+export { UoaTeamSwitchError } from './uoa-team-switch-intent.js'
 export type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 
 type ConsumeInput = UoaRotationCallbacks & {
@@ -62,25 +62,25 @@ type ConsumeInput = UoaRotationCallbacks & {
     expectedIdentity: UoaSessionIdentity
     refreshToken: string
     userId: string
-    workspaceSwitch?: UoaWorkspaceSwitchTarget
+    teamSwitch?: UoaTeamSwitchTarget
   }) => Promise<{
     identity: UoaSessionIdentity
     refreshToken: string
     refreshTokenExpiresAt: Date
-    workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectory
+    team?: ExternalAuthTeam
+    teamDirectory?: UoaTeamDirectory
   }>
-  beforeUoaWorkspaceSwitch?: (input: {
+  beforeUoaTeamSwitch?: (input: {
     sourceIdentity: UoaSessionIdentity
-    target: UoaWorkspaceSwitchTarget
+    target: UoaTeamSwitchTarget
     userId: string
   }) => Promise<void>
-  uoaWorkspaceSwitch?: {
+  uoaTeamSwitch?: {
     sourceIdentity: UoaSessionIdentity
     sourceProviderId: string
     sourceSessionId: string
     sourceUserId: string
-    target: UoaWorkspaceSwitchTarget
+    target: UoaTeamSwitchTarget
   }
   userAgent?: string | null
   clientType?: SessionClientType | null
@@ -96,7 +96,7 @@ type RefreshPreflight =
       uoa: {
         credential: UoaCredentialRecord
         expectedIdentity: UoaSessionIdentity
-        intent: UoaWorkspaceSwitchIntentRecord | null
+        intent: UoaTeamSwitchIntentRecord | null
         intentWasPending: boolean
         refreshToken: string
       } | null
@@ -104,7 +104,7 @@ type RefreshPreflight =
 
 type RefreshCredentialStore = Pick<
   Prisma.TransactionClient,
-  'uoaSessionCredential' | 'uoaWorkspaceSwitchIntent'
+  'uoaSessionCredential' | 'uoaTeamSwitchIntent'
 >
 
 const successResult = async (
@@ -167,16 +167,16 @@ export const consumeRefreshToken = async (
     const requestTime = readClock()
     if (presented.revokedAt || presented.replacedById) {
       if (
-        input.uoaWorkspaceSwitch
+        input.uoaTeamSwitch
         && (
-          presented.userId !== input.uoaWorkspaceSwitch.sourceUserId
-          || presented.providerId !== input.uoaWorkspaceSwitch.sourceProviderId
+          presented.userId !== input.uoaTeamSwitch.sourceUserId
+          || presented.providerId !== input.uoaTeamSwitch.sourceProviderId
           || presented.providerType !== 'uoa'
-          || presented.sessionId !== input.uoaWorkspaceSwitch.sourceSessionId
+          || presented.sessionId !== input.uoaTeamSwitch.sourceSessionId
         )
       ) {
-        throw new UoaWorkspaceSwitchError(
-          'WORKSPACE_SWITCH_CONFLICT',
+        throw new UoaTeamSwitchError(
+          'TEAM_SWITCH_CONFLICT',
           'The UnlikeOtherAI access token and refresh cookie do not identify the same session.',
           false,
         )
@@ -191,21 +191,21 @@ export const consumeRefreshToken = async (
         ? await successResult(tx, replay.record, replay.rawToken, true)
         : replay
       if (
-        input.uoaWorkspaceSwitch
+        input.uoaTeamSwitch
         && result.ok
         && (
           !result.uoaIdentity
           || result.uoaIdentity.subject
-            !== input.uoaWorkspaceSwitch.sourceIdentity.subject
+            !== input.uoaTeamSwitch.sourceIdentity.subject
           || !identityMatchesTarget(
             result.uoaIdentity,
-            input.uoaWorkspaceSwitch.target,
+            input.uoaTeamSwitch.target,
           )
         )
       ) {
-        throw new UoaWorkspaceSwitchError(
-          'WORKSPACE_SWITCH_CONFLICT',
-          'A different session rotation completed before this workspace switch.',
+        throw new UoaTeamSwitchError(
+          'TEAM_SWITCH_CONFLICT',
+          'A different session rotation completed before this team switch.',
           false,
         )
       }
@@ -219,7 +219,7 @@ export const consumeRefreshToken = async (
       return { kind: 'result', result: { ok: false, reason: 'expired' } }
     }
     if (presented.providerType !== 'uoa') {
-      if (input.uoaWorkspaceSwitch) {
+      if (input.uoaTeamSwitch) {
         throw new UoaRefreshBindingError(
           'This refresh session is not backed by UnlikeOtherAI.',
         )
@@ -245,22 +245,22 @@ export const consumeRefreshToken = async (
       now: requestTime,
       presented,
     })
-    if (input.uoaWorkspaceSwitch) {
-      assertWorkspaceSwitchSource(
-        input.uoaWorkspaceSwitch,
+    if (input.uoaTeamSwitch) {
+      assertTeamSwitchSource(
+        input.uoaTeamSwitch,
         presented,
         prepared.expectedIdentity,
       )
     }
-    const pendingIntent = await loadUoaWorkspaceSwitchIntent(tx, {
+    const pendingIntent = await loadUoaTeamSwitchIntent(tx, {
       credential: prepared.credential,
       presented,
     })
-    const intent = input.uoaWorkspaceSwitch
-      ? await ensureUoaWorkspaceSwitchIntent(tx, {
+    const intent = input.uoaTeamSwitch
+      ? await ensureUoaTeamSwitchIntent(tx, {
           credential: prepared.credential,
           presented,
-          target: input.uoaWorkspaceSwitch.target,
+          target: input.uoaTeamSwitch.target,
         })
       : pendingIntent
     if (
@@ -273,9 +273,9 @@ export const consumeRefreshToken = async (
         result: await successResult(tx, presented, input.rawToken, true),
       }
     }
-    if (intent && !input.beforeUoaWorkspaceSwitch) {
+    if (intent && !input.beforeUoaTeamSwitch) {
       throw new UoaRefreshBindingError(
-        'UnlikeOtherAI workspace switching is not configured for this session.',
+        'UnlikeOtherAI team switching is not configured for this session.',
       )
     }
     return {
@@ -293,24 +293,24 @@ export const consumeRefreshToken = async (
   const rotatedUoaIntent = preflight.uoa?.intent ?? null
   if (preflight.uoa) {
     try {
-      const workspaceSwitch = rotatedUoaIntent
+      const teamSwitch = rotatedUoaIntent
         ? targetFromIntent(rotatedUoaIntent)
         : undefined
-      if (rotatedUoaIntent && workspaceSwitch) {
-        await revalidateWorkspaceSwitchIntent(prisma, {
+      if (rotatedUoaIntent && teamSwitch) {
+        await revalidateTeamSwitchIntent(prisma, {
           intent: rotatedUoaIntent,
           presented: preflight.presented,
         })
-        await input.beforeUoaWorkspaceSwitch!({
+        await input.beforeUoaTeamSwitch!({
           sourceIdentity: preflight.uoa.expectedIdentity,
-          target: workspaceSwitch,
+          target: teamSwitch,
           userId: preflight.presented.userId,
         })
         // Direct access confirmation intentionally happens outside the family
         // transaction. Recheck the exact intent and source credential
         // immediately before presenting that credential to UOA, closing the
         // intervening race without holding a DB lock over network I/O.
-        await revalidateWorkspaceSwitchIntent(prisma, {
+        await revalidateTeamSwitchIntent(prisma, {
           intent: rotatedUoaIntent,
           presented: preflight.presented,
         })
@@ -320,7 +320,7 @@ export const consumeRefreshToken = async (
         expectedIdentity: preflight.uoa.expectedIdentity,
         refreshToken: preflight.uoa.refreshToken,
         userId: preflight.presented.userId,
-        ...(workspaceSwitch ? { workspaceSwitch } : {}),
+        ...(teamSwitch ? { teamSwitch } : {}),
       })
       rotatedUoa = validateUoaRefresh({
         authSecret: input.authSecret,
@@ -330,14 +330,14 @@ export const consumeRefreshToken = async (
         now: readClock(),
         refreshToken: refreshed.refreshToken,
         refreshTokenExpiresAt: refreshed.refreshTokenExpiresAt,
-        workspace: refreshed.workspace,
-        workspaceDirectory: refreshed.workspaceDirectory,
-        ...(workspaceSwitch ? { targetIdentity: workspaceSwitch } : {}),
+        team: refreshed.team,
+        teamDirectory: refreshed.teamDirectory,
+        ...(teamSwitch ? { targetIdentity: teamSwitch } : {}),
       })
     } catch (error) {
       if (
         rotatedUoaIntent
-        && error instanceof UoaWorkspaceSwitchError
+        && error instanceof UoaTeamSwitchError
         && error.clearIntent
       ) {
         if (preflight.uoa.intentWasPending) {
@@ -345,10 +345,10 @@ export const consumeRefreshToken = async (
           // target edge. Preserving the old local credential after a resumed
           // refusal would strand the family on a consumed predecessor.
           throw new UoaRefreshBindingError(
-            'The pending UnlikeOtherAI workspace switch can no longer be resumed.',
+            'The pending UnlikeOtherAI team switch can no longer be resumed.',
           )
         }
-        await clearRefusedWorkspaceSwitchIntent(prisma, {
+        await clearRefusedTeamSwitchIntent(prisma, {
           intent: rotatedUoaIntent,
           presented: preflight.presented,
         })
@@ -392,9 +392,9 @@ export const consumeRefreshToken = async (
           )
         )
       ) {
-        throw new UoaWorkspaceSwitchError(
-          'WORKSPACE_SWITCH_CONFLICT',
-          'A different session rotation completed before this workspace switch.',
+        throw new UoaTeamSwitchError(
+          'TEAM_SWITCH_CONFLICT',
+          'A different session rotation completed before this team switch.',
           false,
         )
       }

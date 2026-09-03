@@ -7,7 +7,7 @@ import {
 } from '@nessie/comms-connect'
 import {
   buildCommsConnectorContext,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 /**
  * Persistence + mapping helpers for the communications sync worker. Kept apart

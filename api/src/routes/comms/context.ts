@@ -1,3 +1,3 @@
 export {
   buildCommsConnectorContext as buildConnectorContext,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'

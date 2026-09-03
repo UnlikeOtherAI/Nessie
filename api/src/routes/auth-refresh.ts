@@ -6,7 +6,7 @@ import {
   consumeRefreshToken,
   revokeRefreshTokenByRaw,
   UoaRefreshBindingError,
-  UoaWorkspaceSwitchError,
+  UoaTeamSwitchError,
 } from '../services/refresh-token.js'
 import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
 import {
@@ -91,15 +91,15 @@ export const registerAuthRefreshRoute = (
         ...createUoaRefreshCallbacks(prisma),
       })
     } catch (error) {
-      if (error instanceof UoaWorkspaceSwitchError) {
-        const statusCode = error.code === 'WORKSPACE_SWITCH_CONFLICT' ? 409 : 403
+      if (error instanceof UoaTeamSwitchError) {
+        const statusCode = error.code === 'TEAM_SWITCH_CONFLICT' ? 409 : 403
         sendApiError(
           reply,
           statusCode,
           error.code,
           error.code === 'INTERACTION_REQUIRED'
-            ? 'Sign in again to access the requested UnlikeOtherAI workspace.'
-            : 'The pending UnlikeOtherAI workspace switch could not be completed.',
+            ? 'Sign in again to access the requested UnlikeOtherAI team.'
+            : 'The pending UnlikeOtherAI team switch could not be completed.',
         )
         return reply
       }

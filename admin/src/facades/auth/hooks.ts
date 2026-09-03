@@ -95,7 +95,7 @@ export const useUpdateMyAvatar = () => {
  * The UOA-hosted profile photo lives behind one fixed relay URL, so a fresh
  * upload would keep showing the old image everywhere it is rendered. This is
  * the shared cache-buster the profile panel and the account button read, bumped
- * by a successful change — the same pattern as the workspace avatar. Deliberately
+ * by a successful change — the same pattern as the team avatar. Deliberately
  * client-only: nothing fetches it, so it never refetches or resets on its own.
  */
 export const useMyAvatarRevision = (): number => {

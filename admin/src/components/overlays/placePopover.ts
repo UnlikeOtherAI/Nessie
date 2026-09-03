@@ -1,6 +1,6 @@
 // The one placement helper for anchored overlays (docs/navigation/overview.md §7).
 //
-// Five call sites hand-rolled the same flip/clamp arithmetic — the workspace
+// Five call sites hand-rolled the same flip/clamp arithmetic — the team
 // menu, the account menu, the create menu, the reaction "who reacted" popover
 // and the wikilink suggestion list — each with its own gutter, its own idea of
 // which edge to give up first, and (in most of them) no flip at all, so a menu

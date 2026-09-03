@@ -14,7 +14,7 @@ import {
   listAgentsForUser,
   isAgentVisibleToUser,
   resolveLocalUserIdsByUoaSub,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { listChannelsForUser } from '../src/services/channels.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
 
@@ -137,7 +137,7 @@ const withDb = async (run: (prisma: PrismaClient) => Promise<void>) => {
   }
 }
 
-dbTest('a workspace agent stays visible to its steward and a member through a public channel', async () => {
+dbTest('a team agent stays visible to its steward and a member through a public channel', async () => {
   await withDb(async (prisma) => {
     const agent = await createAgentRecord(prisma, {
       name: `steward-${suite}`,
@@ -147,7 +147,7 @@ dbTest('a workspace agent stays visible to its steward and a member through a pu
     })
 
     assert.equal(agent.ownerUserId, ownerUserId)
-    assert.equal(agent.visibility, 'workspace')
+    assert.equal(agent.visibility, 'team')
     assert.equal(agent.owner?.ownerState, 'active')
     assert.equal(agent.owner?.displayName, 'Owner')
 

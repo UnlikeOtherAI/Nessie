@@ -93,7 +93,7 @@ export type BuiltinToolRuntimeContext = {
    * browser may live on its owner's personal Browserbase account or must use
    * the organisation's.
    */
-  agentIdentity?: { visibility: 'workspace' | 'private'; ownerUserId: string | null }
+  agentIdentity?: { visibility: 'team' | 'private'; ownerUserId: string | null }
   /** Deployment secret used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
   executorCommandEncryptionSecret?: string

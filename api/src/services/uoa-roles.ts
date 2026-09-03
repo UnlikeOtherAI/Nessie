@@ -1,21 +1,21 @@
 import type { MemberRole, Prisma } from '@prisma/client'
 
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import type { ExternalAuthTeam } from './identity-display.js'
 import { wouldRemoveLastOwner } from './organization-owner-lock.js'
 
 /**
  * UOA owns org/team membership and roles; the local `organization_members`,
  * `project_members`, and `team_members` rows are a **projection** of the
- * verified `org.org_role` / `org.team_roles[workspaceId]` claims carried by the
+ * verified `org.org_role` / `org.team_roles[externalTeamId]` claims carried by the
  * signed UOA access token (SSO gap analysis, phase 4). Every path that receives
- * those claims — first login, session refresh, workspace-switch materialization
+ * those claims — first login, session refresh, team-switch materialization
  * — re-applies them, so a demotion or promotion in UOA propagates instead of
  * being frozen at first join.
  *
  * Only a *present* claim projects. An absent claim leaves the local row alone,
  * which is what keeps generic (non-UOA) OIDC providers and the local mode
  * byte-identical, and what preserves the first-materializer team-`owner` rule
- * for a workspace UOA sends no role for.
+ * for a team UOA sends no role for.
  *
  * **A role Nessie does not model is not an absent claim, and never a `member`.**
  * `org_roles` is already per-domain configurable in UOA, so a domain can mint
@@ -34,7 +34,7 @@ import { wouldRemoveLastOwner } from './organization-owner-lock.js'
 /**
  * UOA claimed a role string this deployment cannot resolve to a local standing.
  * Thrown before any membership write, and answered as a refusal at each auth
- * boundary (`auth-login`, `auth-refresh`, `uoa-workspace-switch`).
+ * boundary (`auth-login`, `auth-refresh`, `uoa-team-switch`).
  */
 export class UoaUnrecognizedRoleError extends Error {
   constructor(
@@ -72,7 +72,7 @@ export const mapUoaMemberRole = (role: string | undefined): MemberRole | null =>
 export type UoaRoleClaims = {
   /** UOA's `org.org_role`, mapped; null when the token carried none. */
   orgRole: MemberRole | null
-  /** UOA's `org.team_roles[workspaceId]`, mapped; null when it carried none. */
+  /** UOA's `org.team_roles[externalTeamId]`, mapped; null when it carried none. */
   teamRole: MemberRole | null
 }
 
@@ -94,16 +94,16 @@ const claimedRole = (
 }
 
 /**
- * Read the verified role claims for one workspace out of the token's `org`
+ * Read the verified role claims for one team out of the token's `org`
  * claim. Throws `UoaUnrecognizedRoleError` when UOA claimed a role string this
  * deployment does not model; a *missing* claim is still simply `null`.
  */
 export const resolveUoaRoleClaims = (
-  workspace: ExternalAuthWorkspace | undefined,
-  workspaceId: string | undefined,
+  team: ExternalAuthTeam | undefined,
+  externalTeamId: string | undefined,
 ): UoaRoleClaims => ({
-  orgRole: claimedRole(workspace?.orgRole, 'org'),
-  teamRole: workspaceId ? claimedRole(workspace?.teamRoles?.[workspaceId], 'team') : null,
+  orgRole: claimedRole(team?.orgRole, 'org'),
+  teamRole: externalTeamId ? claimedRole(team?.teamRoles?.[externalTeamId], 'team') : null,
 })
 
 /**
@@ -160,8 +160,8 @@ const projectOrgRole = async (
 
 /**
  * Re-apply UOA's verified roles to one user's local membership rows for one
- * workspace. Idempotent, and a no-op for every dimension UOA did not claim.
- * The project row tracks the team claim: a UOA workspace is exactly one local
+ * team. Idempotent, and a no-op for every dimension UOA did not claim.
+ * The project row tracks the team claim: a UOA team is exactly one local
  * project + team.
  *
  * Returns the org role that is now in force (null when UOA claimed none), so a

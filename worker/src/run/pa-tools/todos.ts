@@ -16,7 +16,7 @@ import {
   startAgentTodoForRun,
   updateAgentTodoStep,
   publishAgentTodoUpdated,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -141,7 +141,7 @@ export const runTodoTemplateProposeTool = async (
 }
 
 /**
- * To-do mutations are shared workspace-admin operations. The worker supplies
+ * To-do mutations are shared team-admin operations. The worker supplies
  * only its immutable run identity, never an agent or run id from model input.
  */
 export const runTodoStartTool = async (

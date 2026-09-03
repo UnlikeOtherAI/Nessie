@@ -527,7 +527,7 @@ A workflow template is a blueprint that combines:
 - **Routing** — which agent handles each step (or "best available")
 - **Connectors** — which MCP servers / API connectors the workflow requires
 - **Variables** — typed workflow inputs and resource selectors resolved at install time or run time
-- **Execution environments** — optional VM/container/workspace templates for coding, triage, test, and deploy steps
+- **Execution environments** — optional VM/container/team templates for coding, triage, test, and deploy steps
 - **Output actions** — what happens when the workflow completes
 
 ### Workflow Template Schema
@@ -1265,9 +1265,9 @@ The build flow must be deterministic:
 Platform builder tools:
 
 - `create_from_template(template_id, spec)`
-- `validate_manifest(workspace)`
-- `run_template_tests(template_id, workspace)`
-- `package_plugin(workspace)`
+- `validate_manifest(team)`
+- `run_template_tests(template_id, team)`
+- `package_plugin(team)`
 - `submit_for_review(plugin_version_id)`
 
 The agent therefore learns by using the platform’s template + SDK + validator loop, not by guessing the entire system design from prose.

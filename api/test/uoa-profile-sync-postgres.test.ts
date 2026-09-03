@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { resolveUoaWorkspaceContext } from '../src/services/workspace-context.js'
+import { resolveUoaTeamContext } from '../src/services/team-context.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -24,7 +24,7 @@ runDatabaseTest('a UOA login re-syncs the profile mirror from its verified claim
     await prisma.organization.deleteMany({ where: { externalOrgId } }).catch(() => undefined)
     await prisma.$disconnect()
   })
-  const workspace = {
+  const team = {
     activeOrgId: externalOrgId,
     activeTeamId: externalTeamId,
     teamIds: [externalTeamId],
@@ -33,7 +33,7 @@ runDatabaseTest('a UOA login re-syncs the profile mirror from its verified claim
 
   // First login: UOA asserted no name at all, so the row is named by its
   // address rather than by a manufactured "Profile Sync".
-  const first = await resolveUoaWorkspaceContext(prisma, { email, uoaSub, workspace })
+  const first = await resolveUoaTeamContext(prisma, { email, uoaSub, team })
   assert.ok(first)
   assert.equal(
     (await prisma.organization.findUnique({
@@ -50,12 +50,12 @@ runDatabaseTest('a UOA login re-syncs the profile mirror from its verified claim
   assert.equal(provisioned.avatarUrl, null)
 
   // Second login, now with a name and a picture: the mirror follows.
-  const renamed = await resolveUoaWorkspaceContext(prisma, {
+  const renamed = await resolveUoaTeamContext(prisma, {
     avatarUrl: 'https://uoa.test/ada.png',
     displayName: 'Ada Lovelace',
     email,
     uoaSub,
-    workspace,
+    team,
   })
   assert.ok(renamed)
   assert.equal(renamed.userId, first.userId)
@@ -68,12 +68,12 @@ runDatabaseTest('a UOA login re-syncs the profile mirror from its verified claim
 
   // Third login with the same claims writes nothing: `updatedAt` is
   // `@updatedAt`, so an unnecessary write would move it.
-  const unchanged = await resolveUoaWorkspaceContext(prisma, {
+  const unchanged = await resolveUoaTeamContext(prisma, {
     avatarUrl: 'https://uoa.test/ada.png',
     displayName: 'Ada Lovelace',
     email,
     uoaSub,
-    workspace,
+    team,
   })
   assert.ok(unchanged)
   const quiet = await prisma.user.findUniqueOrThrow({
@@ -84,7 +84,7 @@ runDatabaseTest('a UOA login re-syncs the profile mirror from its verified claim
   assert.equal(quiet.updatedAt.getTime(), synced.updatedAt.getTime())
 
   // A login that asserts no name never blanks the mirror back to the address.
-  await resolveUoaWorkspaceContext(prisma, { email, uoaSub, workspace })
+  await resolveUoaTeamContext(prisma, { email, uoaSub, team })
   const preserved = await prisma.user.findUniqueOrThrow({
     where: { id: first.userId },
     select: { avatarUrl: true, displayName: true },

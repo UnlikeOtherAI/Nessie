@@ -14,7 +14,7 @@ export type UserAlertRecord = {
     | 'knowledge_published'
     | 'trigger_health'
     | 'call_missed'
-    | 'workspace_invitation'
+    | 'team_invitation'
     | 'approval_requested'
   messageId: string | null
   rootMessageId: string | null

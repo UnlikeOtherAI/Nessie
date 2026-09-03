@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { AgentCardSpecSchema } from '@nessie/schemas'
-import { buildAgentCardStateNote } from '@nessie/workspace-admin'
+import { buildAgentCardStateNote } from '@nessie/team-admin'
 
 /**
  * Cards in the model's context.

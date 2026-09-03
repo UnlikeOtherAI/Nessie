@@ -28,7 +28,7 @@ import {
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
 
 // Ticket-bound documents + personal-space provisioning. Every /tasks/:taskId/*
-// route resolves the same "ticket workspace" — the org-wide "Project
+// route resolves the same "ticket team" — the org-wide "Project
 // Documents" space plus this ticket's document folder inside it — before
 // branching per method, so a GET can 404/403 exactly like the writes and the
 // folder always exists by the time a client lists or creates a document.
@@ -90,7 +90,7 @@ export const registerKnowledgeTaskRoutes = (
   // project, and ensure the project's document space + this ticket's folder
   // exist. Returns null (having already replied) when the caller may not
   // proceed.
-  const resolveTicketWorkspace = async (
+  const resolveTicketTeam = async (
     _request: FastifyRequest,
     reply: FastifyReply,
     actorContext: AuthorizedActionContext,
@@ -133,8 +133,8 @@ export const registerKnowledgeTaskRoutes = (
     if (!decision) return reply
     const { taskId } = request.params as { taskId: string }
 
-    const workspace = await resolveTicketWorkspace(request, reply, actorContext, taskId, 'read')
-    if (!workspace) return reply
+    const team = await resolveTicketTeam(request, reply, actorContext, taskId, 'read')
+    if (!team) return reply
 
     const pages = await prisma.knowledgePage.findMany({
       where: {
@@ -159,16 +159,16 @@ export const registerKnowledgeTaskRoutes = (
     if (!decision) return reply
     const { taskId } = request.params as { taskId: string }
 
-    const workspace = await resolveTicketWorkspace(request, reply, actorContext, taskId, 'write')
-    if (!workspace) return reply
+    const team = await resolveTicketTeam(request, reply, actorContext, taskId, 'write')
+    if (!team) return reply
 
     let page: KnowledgePageRecord
     try {
       page = await provider.createPage({
         organizationId: actorContext.tenant.organizationId,
-        projectId: workspace.projectId,
-        spaceId: workspace.docsSpaceId,
-        parentPageId: workspace.folderId,
+        projectId: team.projectId,
+        spaceId: team.docsSpaceId,
+        parentPageId: team.folderId,
         taskId,
         title: body.title,
         body: body.body ?? null,
@@ -189,7 +189,7 @@ export const registerKnowledgeTaskRoutes = (
       resourceType: 'knowledge_page',
       resourceId: page.id,
       outcome: 'success',
-      metadata: { spaceId: workspace.docsSpaceId, taskId, title: page.title },
+      metadata: { spaceId: team.docsSpaceId, taskId, title: page.title },
       ...requestIds(request),
     })
     return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))
@@ -209,8 +209,8 @@ export const registerKnowledgeTaskRoutes = (
     if (!decision) return reply
     const { taskId } = request.params as { taskId: string }
 
-    const workspace = await resolveTicketWorkspace(request, reply, actorContext, taskId, 'write')
-    if (!workspace) return reply
+    const team = await resolveTicketTeam(request, reply, actorContext, taskId, 'write')
+    if (!team) return reply
 
     const file = await request.file()
     if (!file) {
@@ -229,7 +229,7 @@ export const registerKnowledgeTaskRoutes = (
         filename,
         mime,
         body: file.file,
-        scope: { projectId: workspace.projectId, spaceId: workspace.docsSpaceId },
+        scope: { projectId: team.projectId, spaceId: team.docsSpaceId },
       })
       attachmentId = stored.attachment.id
       if (file.file.truncated) {
@@ -249,9 +249,9 @@ export const registerKnowledgeTaskRoutes = (
     try {
       const page = await provider.createPage({
         organizationId: actorContext.tenant.organizationId,
-        projectId: workspace.projectId,
-        spaceId: workspace.docsSpaceId,
-        parentPageId: workspace.folderId,
+        projectId: team.projectId,
+        spaceId: team.docsSpaceId,
+        parentPageId: team.folderId,
         taskId,
         kind: 'file',
         title: filename,
@@ -266,7 +266,7 @@ export const registerKnowledgeTaskRoutes = (
         resourceType: 'knowledge_page',
         resourceId: page.id,
         outcome: 'success',
-        metadata: { spaceId: workspace.docsSpaceId, taskId, title: page.title, kind: 'file' },
+        metadata: { spaceId: team.docsSpaceId, taskId, title: page.title, kind: 'file' },
         ...requestIds(request),
       })
       return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))

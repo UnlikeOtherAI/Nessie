@@ -12,7 +12,7 @@ import type { SidebarAgentDm, SidebarPerson } from './types'
  * is provisioned before anybody speaks — a person's DM the first time either
  * side opens it, a private agent's home DM with the agent, a global agent's
  * (the Agent Designer's) home DM with the account itself — so a section that
- * listed provisioned channels was a roster of the workspace rather than of who
+ * listed provisioned channels was a roster of the team rather than of who
  * the viewer talks to. A row appears once a message exists, and the channel the
  * viewer is standing in stays listed so opening a fresh conversation never
  * makes its own row vanish underneath them.

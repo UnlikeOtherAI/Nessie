@@ -42,7 +42,7 @@ file is the rule**.
   finalize phases; if an ancestor replay wins mid-flight, finalize adopts the
   accepted UOA successor in place behind the unchanged local cookie. Login
   confirms current direct Nessie access before local mutation, product-link
-  epochs never regress, and first-workspace provisioning is exact-workspace
+  epochs never regress, and first-team provisioning is exact-team
   locked. DeepWater's product auth mode remains `uoa_sso` so first login
   creates the account link even though MCP transport auth uses Nessie's app API
   key. Generic Ledger AI calls may omit UOA delegation, but never the five-field

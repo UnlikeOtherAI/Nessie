@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { NativeFocusModeButton } from './NativeFocusModeButton'
-import { NativeIdentityAvatar, NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
+import { NativeIdentityAvatar, NativeTeamAvatar } from './NativeTeamAvatar'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import {
@@ -22,11 +22,11 @@ export type NativePhoneHeaderProps = {
   onAccountPress: () => void
   onToggleFocusMode: () => void
   onToolbarAction: (action: ToolbarAction) => void
-  onWorkspacePress: () => void
+  onTeamPress: () => void
   safeTop: number
   toolbarState: ToolbarState
-  workspaceAvatarUrl: string | null
-  workspaceName: string | null
+  teamAvatarUrl: string | null
+  teamName: string | null
 }
 
 const AccountPresenceIndicator = ({
@@ -110,7 +110,7 @@ const NativePhoneToolbarControls = ({
   </View>
 )
 
-// Portrait reserves this bar for workspace identity and account access. A
+// Portrait reserves this bar for team identity and account access. A
 // Max-class iPhone in landscape gains the navigation controls between them,
 // where its wider but shorter canvas can carry them without crowding content.
 export const NativePhoneHeader = ({
@@ -125,11 +125,11 @@ export const NativePhoneHeader = ({
   onAccountPress,
   onToggleFocusMode,
   onToolbarAction,
-  onWorkspacePress,
+  onTeamPress,
   safeTop,
   toolbarState,
-  workspaceAvatarUrl,
-  workspaceName,
+  teamAvatarUrl,
+  teamName,
 }: NativePhoneHeaderProps): React.JSX.Element => {
   const compact = landscape
   const accountDiameter = compact ? 36 : 42
@@ -145,28 +145,28 @@ export const NativePhoneHeader = ({
     >
       <View style={[styles.headerContent, { paddingTop: safeTop }, compact ? styles.headerContentCompact : null]}>
         <Pressable
-          accessibilityLabel={`Switch workspace, ${workspaceName ?? 'Workspace'}`}
+          accessibilityLabel={`Switch team, ${teamName ?? 'Team'}`}
           accessibilityRole="button"
           hitSlop={6}
-          onPress={onWorkspacePress}
+          onPress={onTeamPress}
           style={({ pressed }) => [
-            styles.workspace,
-            compact ? styles.workspaceCompact : null,
+            styles.team,
+            compact ? styles.teamCompact : null,
             pressed ? { backgroundColor: withOpacity(headerText, 0.14) } : null,
           ]}
         >
-          <NativeWorkspaceAvatar
+          <NativeTeamAvatar
             backgroundColor={withOpacity(accentColor, 0.45)}
-            imageUrl={workspaceAvatarUrl}
-            label={workspaceName ?? 'Workspace'}
+            imageUrl={teamAvatarUrl}
+            label={teamName ?? 'Team'}
             size={compact ? 26 : 30}
             textColor={headerText}
           />
           <Text
             numberOfLines={1}
-            style={[styles.workspaceName, compact ? styles.workspaceNameCompact : null, { color: headerText }]}
+            style={[styles.teamName, compact ? styles.teamNameCompact : null, { color: headerText }]}
           >
-            {workspaceName ?? 'Workspace'}
+            {teamName ?? 'Team'}
           </Text>
           <MaterialIcons color={headerText} name="keyboard-arrow-down" size={compact ? 20 : 24} />
         </Pressable>
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   toolbarButton: { alignItems: 'center', borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
   toolbarButtonDisabled: { opacity: 0.3 },
   toolbarControls: { alignItems: 'center', flexDirection: 'row', gap: 3 },
-  workspace: {
+  team: {
     alignItems: 'center',
     borderRadius: 22,
     flex: 1,
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 4,
   },
-  workspaceCompact: { gap: 6, paddingHorizontal: 2 },
-  workspaceName: { flexShrink: 1, fontSize: 21, fontWeight: '700' },
-  workspaceNameCompact: { fontSize: 17 },
+  teamCompact: { gap: 6, paddingHorizontal: 2 },
+  teamName: { flexShrink: 1, fontSize: 21, fontWeight: '700' },
+  teamNameCompact: { fontSize: 17 },
 })

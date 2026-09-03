@@ -6,7 +6,7 @@ import {
   AGENT_TODO_PROMPT_PROPOSAL_LIMIT,
   AGENT_TODO_PROMPT_TEMPLATE_LIMIT,
 } from '@nessie/schemas'
-import { loadAgentTodoPromptFacts } from '@nessie/workspace-admin'
+import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
 import type { PrismaClient } from '@prisma/client'
 
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'

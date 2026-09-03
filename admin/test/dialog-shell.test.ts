@@ -82,7 +82,7 @@ test('the three shipped panel geometries are the only widths on offer', () => {
 
 // ---------------------------------------------------------------------------
 // Close paths. These need real event dispatch, so they mount into jsdom the way
-// the workspace-invitation suite does.
+// the team-invitation suite does.
 // ---------------------------------------------------------------------------
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {

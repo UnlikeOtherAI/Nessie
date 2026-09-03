@@ -33,7 +33,7 @@ The credential is a server-side secret, so the browser cannot call UOA directly
 
 ### Team / company avatars are out of scope: they do not exist
 
-The original brief also asked for a workspace ("company") avatar page backed by
+The original brief also asked for a team ("company") avatar page backed by
 `/org/organisations/:orgId/teams/:teamId/avatar` and
 `/domain/teams/:teamId/avatar`. **Those endpoints are not part of the UOA
 contract.** Verified on 2026-07-25 against both machine and human sources:

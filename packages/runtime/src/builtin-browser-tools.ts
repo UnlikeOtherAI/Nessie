@@ -196,7 +196,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: BROWSER_DOWNLOAD_TOOL_ID,
     category: 'browser',
     label: 'Download From Browser',
-    summary: 'Save a file from the open browser into this workspace.',
+    summary: 'Save a file from the open browser into this team.',
     description:
       'Download the file a link or image node points at, and save it as an '
       + 'attachment you can send. Address it by the nodeId from the most recent '

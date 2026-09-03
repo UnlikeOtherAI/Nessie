@@ -12,7 +12,7 @@ Nessie pairs one active Nessie project to one BuildMe board source:
 
 ```text
 Nessie project id
-BuildMe workspace/team id
+BuildMe team/team id
 BuildMe board id
 sync mode: read_only
 column mapping: BuildMe column id -> Nessie column id
@@ -27,8 +27,8 @@ the source of truth for external board state; Nessie renders a projected view.
 
 Minimum read endpoints or MCP tools:
 
-- list workspaces/teams visible to the UOA active user;
-- list boards for a workspace/team;
+- list teams/teams visible to the UOA active user;
+- list boards for a team/team;
 - read one board with ordered columns;
 - read cards for one board with pagination or cursor support;
 - read card fields: id, title, description summary, column id, status, priority,
@@ -50,7 +50,7 @@ Optional later endpoints:
   source.
 - Keep unmapped columns visible as external columns; do not silently merge them.
 - Put conflict resolution behind an explicit review state.
-- Do not import workspace files, shell history, secrets, or raw development
+- Do not import team files, shell history, secrets, or raw development
   environment content as part of board sync.
 
 ## ESC Readiness States

@@ -16,7 +16,7 @@ import {
   ensureGlobalAgentBootstrap,
   getGlobalAgentBlueprint,
   listGlobalAgentBlueprints,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 import { enqueueRunExecution } from '../queue/pgqueue.js'
 import type { DesignerContinueInput } from '../contracts.js'

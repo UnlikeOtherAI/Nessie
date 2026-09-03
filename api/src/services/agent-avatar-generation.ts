@@ -1,5 +1,5 @@
 /**
- * Agent avatar generation moved to `@nessie/workspace-admin` so the assistant's
+ * Agent avatar generation moved to `@nessie/team-admin` so the assistant's
  * `agent_create` tool can run the same generate-then-attach step the create
  * route runs — `api/src/services/*` is unreachable from the worker, and a
  * second copy would fork the one billed Ledger image path on day one.
@@ -11,4 +11,4 @@ export {
   generateAgentAvatar,
   generateAvatarForNewAgent,
   type GeneratedAgentAvatar,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'

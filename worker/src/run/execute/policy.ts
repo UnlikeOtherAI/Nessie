@@ -14,13 +14,13 @@ import {
   resolveDecision,
   type PolicyRuleRow,
   verifyToolApprovalProof,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
 import type { ToolDenialReason } from '../tool-policy.js'
 import type { RunContext } from './types.js'
 
 // The worker's tool-invoke gate shares the one policy evaluator in
-// `@nessie/workspace-admin` (security boundary hardening, Workstream 5).
+// `@nessie/team-admin` (security boundary hardening, Workstream 5).
 // What stays here is only the adapter: the prisma-model fetch, the
 // per-binding row normalization, and the verdict mapping into the worker's
 // denial vocabulary. The scope chain comes from the shared `buildScopeChain`

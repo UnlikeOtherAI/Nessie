@@ -172,7 +172,7 @@ export const deepWaterIntegrationPluginManifest = {
       label: 'Research',
       view: 'deep-water-research',
       // The native history/launcher is reachable only while the generated
-      // Ledger-backed connector is active for the workspace.
+      // Ledger-backed connector is active for the team.
       requires: { connectorActive: true },
     },
   ],

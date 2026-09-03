@@ -42,7 +42,7 @@ const activationErrorStatus = (code: string): number => {
  * External-agent product activation (DeepSignal integration plan §5). Turning a
  * catalog product "on" provisions its external-agent channel after confirming
  * the caller's UOA link. DeepSignal's app key is process configuration, while
- * signed user/workspace context is minted per request. Generic connector OAuth
+ * signed user/team context is minted per request. Generic connector OAuth
  * continues to use the ordinary MCP routes.
  */
 export const registerExternalAgentProductRoutes = (

@@ -55,7 +55,7 @@ restated there:
   body (the cause stays behind the deep link, so a lock-screen notification
   cannot carry a provider error). The alert is revalidated on read
   (`visibleUserAlertWhere`), so it stops surfacing once the trigger is healthy.
-- `POST /api/triggers/:id/reauthorize` refuses and names a changed workspace;
+- `POST /api/triggers/:id/reauthorize` refuses and names a changed team;
   an owner taking over somebody else's schedule is a separate explicit act. It
   is the only recovery path: editing preserves the server-owned identity by
   design, resuming without repair re-arms into the same failure, and deletion

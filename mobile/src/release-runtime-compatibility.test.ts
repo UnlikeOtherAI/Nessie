@@ -6,7 +6,7 @@ const mobilePackage = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url).pathname, 'utf8'),
 ) as { dependencies: Record<string, string> }
 
-const workspacePackage = JSON.parse(
+const teamPackage = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url).pathname, 'utf8'),
 ) as { pnpm?: { overrides?: Record<string, string> } }
 
@@ -20,5 +20,5 @@ const reactNativePackage = JSON.parse(
 test('the release bundle uses a React version supported by React Native', () => {
   assert.match(mobilePackage.dependencies.react, /^19\.2\.\d+$/)
   assert.equal(reactNativePackage.peerDependencies.react, '^19.2.0')
-  assert.equal(workspacePackage.pnpm?.overrides?.react, undefined)
+  assert.equal(teamPackage.pnpm?.overrides?.react, undefined)
 })

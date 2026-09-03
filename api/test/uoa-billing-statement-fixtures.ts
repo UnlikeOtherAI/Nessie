@@ -65,7 +65,7 @@ export const prisma = (overrides: {
   team: {
     findFirst: async () => ({
       externalOrgId: overrides.externalOrgId ?? 'uoa-org',
-      externalWorkspaceId: 'uoa-team',
+      externalTeamId: 'uoa-team',
       name: 'Research',
       project: { organization: { name: 'Unlike Other AI' } },
     }),

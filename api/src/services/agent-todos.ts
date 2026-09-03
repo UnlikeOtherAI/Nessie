@@ -1,4 +1,4 @@
-// The worker consumes the same operations from @nessie/workspace-admin.
+// The worker consumes the same operations from @nessie/team-admin.
 // Keep API routes as a re-exporting adapter, never a second implementation.
 export {
   AGENT_TODO_ERROR_CODES,
@@ -15,4 +15,4 @@ export {
   listAgentTodos,
   updateAgentTodoStep,
   updateAgentTodoTemplate,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'

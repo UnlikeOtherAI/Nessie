@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { secretKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export type SecretScopeType = 'personal' | 'team' | 'project' | 'workspace'
+export type SecretScopeType = 'personal' | 'team' | 'project' | 'organization'
 
 export type SecretRecord = {
   reference: string

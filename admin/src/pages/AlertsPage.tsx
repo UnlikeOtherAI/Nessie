@@ -13,7 +13,7 @@ import {
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../facades/alerts/hooks'
-import { useAcceptWorkspaceInvitation } from '../facades/workspace/invitations'
+import { useAcceptTeamInvitation } from '../facades/team/invitations'
 import { alertKeys } from '../lib/query-keys'
 import { usePagedList } from '../facades/usePagedList'
 
@@ -32,7 +32,7 @@ export const AlertsPage = () => {
     queryKey: cacheKey,
   })
   const markRead = useMarkAlertsRead()
-  const acceptInvitation = useAcceptWorkspaceInvitation()
+  const acceptInvitation = useAcceptTeamInvitation()
 
   const unreadCount = summary.data?.unreadCount ?? 0
   const headerActions: PageHeaderAction[] = [

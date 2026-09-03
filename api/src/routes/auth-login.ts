@@ -13,7 +13,7 @@ import {
   resolveConfiguredAuthProvider,
 } from '../services/auth.js'
 import { exchangeExternalAuthCode } from '../services/external-auth.js'
-import { resolveExternalWorkspaceSelection } from '../services/identity-display.js'
+import { resolveExternalTeamSelection } from '../services/identity-display.js'
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
@@ -23,9 +23,9 @@ import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js
 import { loadSessionUserByEmail, loadSessionUserById } from '../services/users.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import {
-  rejectWorkspaceIdentity,
-  rejectWorkspaceRecovery,
-  rejectWorkspaceTarget,
+  rejectTeamIdentity,
+  rejectTeamRecovery,
+  rejectTeamTarget,
   verifyRecoveryBearer,
 } from './auth-login-recovery.js'
 import {
@@ -34,8 +34,8 @@ import {
   UoaRecoveryAccountLinkError,
 } from '../services/uoa-recovery-link.js'
 import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
-import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
-import { UoaSubjectConflictError } from '../services/workspace-principal.js'
+import { resolveUoaTeamContext } from '../services/team-context.js'
+import { UoaSubjectConflictError } from '../services/team-principal.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -57,14 +57,14 @@ export const registerAuthLoginRoute = (
   app.post('/api/auth/session', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LoginRequestSchema, request.body, reply)
     if (!body) return reply
-    // expectedWorkspace is a strict AUTHENTICATED discriminant for
-    // workspace-switch reauthorization, never an extra claim of an ordinary
+    // expectedTeam is a strict AUTHENTICATED discriminant for
+    // team-switch reauthorization, never an extra claim of an ordinary
     // login. It is valid ONLY as a complete providerId=uoa code exchange
     // accompanied by a current Bearer Nessie session, so every other shape —
     // password login, a local provider, an incomplete exchange — is refused
     // at the top, before any password verification or upstream path runs.
     let recoveryClaims: SessionTokenClaims | null = null
-    if (body.expectedWorkspace) {
+    if (body.expectedTeam) {
       const isUoaExchange = Boolean(
         body.providerId === 'uoa'
         && body.code
@@ -75,7 +75,7 @@ export const registerAuthLoginRoute = (
         ? resolveConfiguredAuthProvider(config, body.providerId as string)
         : null
       if (!provider || provider.type !== 'uoa') {
-        rejectWorkspaceRecovery(reply)
+        rejectTeamRecovery(reply)
         return reply
       }
       recoveryClaims = await verifyRecoveryBearer(request, {
@@ -84,7 +84,7 @@ export const registerAuthLoginRoute = (
         prisma,
       })
       if (!recoveryClaims) {
-        rejectWorkspaceRecovery(reply)
+        rejectTeamRecovery(reply)
         return reply
       }
     }
@@ -141,20 +141,20 @@ export const registerAuthLoginRoute = (
         if (provider.type === 'uoa' && !uoaSession) {
           throw new Error('UnlikeOtherAI did not return a renewable session proof.')
         }
-        const verifiedUoaWorkspace = uoaSession
-          ? resolveExternalWorkspaceSelection(uoaSession.identity.workspace)
+        const verifiedUoaTeam = uoaSession
+          ? resolveExternalTeamSelection(uoaSession.identity.team)
           : undefined
         if (
           uoaSession
-          && (!verifiedUoaWorkspace?.organizationId || !verifiedUoaWorkspace.teamId)
+          && (!verifiedUoaTeam?.organizationId || !verifiedUoaTeam.teamId)
         ) {
           throw new Error(
             'UnlikeOtherAI did not return an exact user, organization, and team.',
           )
         }
-        if (uoaSession && verifiedUoaWorkspace?.organizationId && verifiedUoaWorkspace.teamId) {
+        if (uoaSession && verifiedUoaTeam?.organizationId && verifiedUoaTeam.teamId) {
           // Recovery discriminants run FIRST — immediately after parsing the
-          // returned identity/workspace and before the billing confirm (a
+          // returned identity/team and before the billing confirm (a
           // POST side effect) or any local mutation (provisioning,
           // ProductAccountLink sync, session/family issuance, Set-Cookie).
           // Identity is the UOA SUBJECT, never the exchanged email: the same
@@ -165,11 +165,11 @@ export const registerAuthLoginRoute = (
           // newer returned epoch is accepted — but a REGRESSED epoch is
           // refused here, before any side effect, rather than being left to
           // the ProductAccountLink sync below.
-          if (recoveryClaims && body.expectedWorkspace) {
+          if (recoveryClaims && body.expectedTeam) {
           if (
             uoaSession.identity.externalSubject !== recoveryClaims.uoaIdentity?.subject
           ) {
-            rejectWorkspaceIdentity(reply)
+            rejectTeamIdentity(reply)
             return reply
           }
           const returnedEpoch = uoaSession.identity.uoaTokenVersion
@@ -179,21 +179,21 @@ export const registerAuthLoginRoute = (
             !Number.isSafeInteger(returnedEpoch)
             || returnedEpoch < 0
           ) {
-            rejectWorkspaceIdentity(reply)
+            rejectTeamIdentity(reply)
             return reply
           }
           // Non-null by the bearer guard above: the bearer's credential
           // epoch is the recovery's minimum acceptable UOA epoch.
           const bearerEpoch = recoveryClaims.uoaIdentity!.tokenVersion!
           if (returnedEpoch < bearerEpoch) {
-            rejectWorkspaceIdentity(reply)
+            rejectTeamIdentity(reply)
             return reply
           }
           if (
-            verifiedUoaWorkspace.organizationId !== body.expectedWorkspace.organizationId
-            || verifiedUoaWorkspace.teamId !== body.expectedWorkspace.teamId
+            verifiedUoaTeam.organizationId !== body.expectedTeam.organizationId
+            || verifiedUoaTeam.teamId !== body.expectedTeam.teamId
           ) {
-            rejectWorkspaceTarget(reply)
+            rejectTeamTarget(reply)
             return reply
           }
           // Pre-billing fence: the durable first-party Nessie account link
@@ -208,9 +208,9 @@ export const registerAuthLoginRoute = (
           try {
             await assertUoaRecoveryAccountLink(prisma, {
               identity: {
-                organizationId: verifiedUoaWorkspace.organizationId,
+                organizationId: verifiedUoaTeam.organizationId,
                 subject: uoaSession.identity.externalSubject,
-                teamId: verifiedUoaWorkspace.teamId,
+                teamId: verifiedUoaTeam.teamId,
                 tokenVersion: returnedEpoch,
               },
               localOrganizationId: recoveryClaims.org,
@@ -220,15 +220,15 @@ export const registerAuthLoginRoute = (
             })
           } catch (error) {
             if (error instanceof UoaRecoveryAccountLinkError) {
-              rejectWorkspaceIdentity(reply)
+              rejectTeamIdentity(reply)
               return reply
             }
             throw error
           }
           }
           await confirmUoaDirectServiceAccess({
-            organizationId: verifiedUoaWorkspace.organizationId,
-            teamId: verifiedUoaWorkspace.teamId,
+            organizationId: verifiedUoaTeam.organizationId,
+            teamId: verifiedUoaTeam.teamId,
             tokenVersion: uoaSession.identity.uoaTokenVersion,
             userId: uoaSession.identity.externalSubject,
           })
@@ -236,7 +236,7 @@ export const registerAuthLoginRoute = (
 
         let context
         try {
-          context = await resolveUoaWorkspaceContext(prisma, {
+          context = await resolveUoaTeamContext(prisma, {
             avatarUrl: identity.avatarUrl,
             displayName: identity.displayName,
             email: identity.email,
@@ -249,7 +249,7 @@ export const registerAuthLoginRoute = (
             // organization claim is the recovery's local-org scope, and the
             // authoritative account-link fence is the conditional claim inside
             // the SINGLE recovery transaction — after the exact
-            // external-workspace lock, before the target existing-or-create
+            // external-team lock, before the target existing-or-create
             // branch and every membership write, with the claimed row lock
             // held to commit. A refusal aborts the whole transaction after
             // billing ran at most once, with no target, membership, session,
@@ -259,7 +259,7 @@ export const registerAuthLoginRoute = (
                   // The claim fences the TARGET organization's link (created
                   // there on a first entry — a cross-org reauthorization is
                   // legitimate under the per-UOA-org model); the resolver
-                  // passes the org it resolved from the verified workspace
+                  // passes the org it resolved from the verified team
                   // claim. The bearer's own org claim below is only the
                   // legacy fallback scope and the pre-billing assert's home.
                   recoveryLinkClaim: (
@@ -268,9 +268,9 @@ export const registerAuthLoginRoute = (
                   ) =>
                     claimUoaRecoveryAccountLink(transaction, {
                       identity: {
-                        organizationId: verifiedUoaWorkspace!.organizationId!,
+                        organizationId: verifiedUoaTeam!.organizationId!,
                         subject: uoaSession.identity.externalSubject,
-                        teamId: verifiedUoaWorkspace!.teamId!,
+                        teamId: verifiedUoaTeam!.teamId!,
                         tokenVersion: uoaSession.identity.uoaTokenVersion,
                       },
                       localOrganizationId: targetOrganizationId,
@@ -279,17 +279,17 @@ export const registerAuthLoginRoute = (
                       userId: recoveryClaims.sub,
                       // Recovery keeps the legacy metadata byte-shape: only
                       // directory entries, never pending invitation data.
-                      workspaceDirectory: uoaSession.workspaceDirectory?.entries,
+                      teamDirectory: uoaSession.teamDirectory?.entries,
                     }),
                   existingUserId: recoveryClaims.sub,
                   expectedLocalOrganizationId: recoveryClaims.org,
                 }
               : {}),
-            workspace: identity.workspace,
+            team: identity.team,
           })
         } catch (error) {
           if (error instanceof UoaRecoveryAccountLinkError) {
-            rejectWorkspaceIdentity(reply)
+            rejectTeamIdentity(reply)
             return reply
           }
           throw error
@@ -298,7 +298,7 @@ export const registerAuthLoginRoute = (
           // A recovery reaching here with the bearer's exact organization
           // missing is an identity refusal, not a provisioning failure.
           if (recoveryClaims) {
-            rejectWorkspaceIdentity(reply)
+            rejectTeamIdentity(reply)
             return reply
           }
           sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
@@ -307,10 +307,10 @@ export const registerAuthLoginRoute = (
         if (recoveryClaims && context.userId !== recoveryClaims.sub) {
           // Unreachable by construction (the recovery seam resolves exactly
           // that id); fail closed rather than ever issue for another user.
-          rejectWorkspaceIdentity(reply)
+          rejectTeamIdentity(reply)
           return reply
         }
-        // The workspace context already resolved the one principal (by subject
+        // The team context already resolved the one principal (by subject
         // on the UOA path, by the proven bearer on recovery) and re-synced
         // the profile mirror from this exchange's verified claims — load the
         // session user by that id, never by email, and never repair the
@@ -323,7 +323,7 @@ export const registerAuthLoginRoute = (
 
 
         let uoaSessionIdentity: UoaSessionIdentity | undefined
-        if (uoaSession && verifiedUoaWorkspace?.organizationId && verifiedUoaWorkspace.teamId) {
+        if (uoaSession && verifiedUoaTeam?.organizationId && verifiedUoaTeam.teamId) {
           const uoaIdentity = uoaSession.identity
           // Recovery refreshed exactly the Nessie link inside the resolver
           // transaction (epoch + directory/active tuple, atomically with the
@@ -337,14 +337,14 @@ export const registerAuthLoginRoute = (
               organizationId: context.organizationId,
               uoaTokenVersion: uoaIdentity.uoaTokenVersion,
               userId: context.userId,
-              workspace: uoaIdentity.workspace,
-              workspaceDirectory: uoaSession.workspaceDirectory,
+              team: uoaIdentity.team,
+              teamDirectory: uoaSession.teamDirectory,
             })
           }
           uoaSessionIdentity = {
-            organizationId: verifiedUoaWorkspace.organizationId,
+            organizationId: verifiedUoaTeam.organizationId,
             subject: uoaIdentity.externalSubject,
-            teamId: verifiedUoaWorkspace.teamId,
+            teamId: verifiedUoaTeam.teamId,
             tokenVersion: uoaIdentity.uoaTokenVersion,
           }
         }

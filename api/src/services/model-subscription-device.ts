@@ -26,7 +26,7 @@ import {
  *   in the vault under a pending name and the subscription is only created once
  *   the person has seen WHICH account signed in — the device-flow confused
  *   deputy is that somebody else enters your code and their account gets
- *   attached to your workspace.
+ *   attached to your team.
  *
  * Spec: docs/plans/2026-09-02-personal-model-subscriptions.md §2.5.
  */

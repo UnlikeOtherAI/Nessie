@@ -44,7 +44,7 @@ export class SessionSourcePreserved extends SessionMutationRejection {
 
 /**
  * The renewed session belongs to a DIFFERENT user or a different local
- * workspace than the preserved source. The coordinator has already revoked
+ * team than the preserved source. The coordinator has already revoked
  * its cookie family, cleared once, and permanently fenced itself before this
  * error is thrown; the picker only needs to surface the failure.
  */

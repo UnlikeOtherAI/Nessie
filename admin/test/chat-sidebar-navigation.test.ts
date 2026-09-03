@@ -120,7 +120,7 @@ test('the new-message surface excludes the sender and keeps recipients available
   assert.match(source, /StartChannelConversation/)
 })
 
-test('the compose route retains the channel workspace and hides mobile navigation chrome', () => {
+test('the compose route retains the channel team and hides mobile navigation chrome', () => {
   const router = readSource('../src/router.tsx')
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const nativeShell = readSource('../../mobile/App.tsx')

@@ -242,7 +242,7 @@ export const openCloudBrowserSession = async (
       input.agentBrowser
         ? 'This agent’s browser lives on an account this run may not use — a '
           + 'scheduled run can only use the organisation’s account.'
-        : 'No Browserbase account is connected for this workspace.',
+        : 'No Browserbase account is connected for this team.',
     )
   }
 
@@ -262,7 +262,7 @@ export const openCloudBrowserSession = async (
       if (live >= settings.maxConcurrent) {
         throw new CloudBrowserError(
           CLOUD_BROWSER_ERROR_CODES.CAPACITY,
-          `This workspace already has ${live} cloud browsers open. Close one and retry.`,
+          `This team already has ${live} cloud browsers open. Close one and retry.`,
         )
       }
       if (input.agentBrowser) {

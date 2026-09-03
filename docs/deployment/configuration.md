@@ -80,10 +80,10 @@ Google sorts the relevant scopes into tiers, and the tier decides the review:
 
 **Restricted** scopes require Google's CASA security assessment for a *public*
 OAuth client. The internal-use exception is narrower than "we self-host": it
-applies only when every user belongs to the **same** Workspace/Cloud Identity
+applies only when every user belongs to the **same** Team/Cloud Identity
 organization, the Cloud project is owned by that organization, **and** the
 consent screen is set to **Internal**. A deployment serving users outside one
-Workspace org needs the assessment before it can ask for `gmail.readonly` or
+Team org needs the assessment before it can ask for `gmail.readonly` or
 `gmail.compose`. Sending alone (`gmail.send`) is only *sensitive*, so a
 send-only deployment avoids the assessment entirely.
 

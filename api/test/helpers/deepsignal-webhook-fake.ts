@@ -29,7 +29,7 @@ export type TeamEnablement = {
   organizationId: string
   productSlug: string
   teamExternalOrgId?: string | null
-  teamExternalWorkspaceId?: string | null
+  teamExternalTeamId?: string | null
   teamId: string
 }
 
@@ -108,8 +108,8 @@ export const makeInsightFake = (
           teamId: row.teamId,
           team: {
             externalOrgId: row.teamExternalOrgId ?? row.externalOrgId,
-            externalWorkspaceId:
-              row.teamExternalWorkspaceId ?? row.externalTeamId,
+            externalTeamId:
+              row.teamExternalTeamId ?? row.externalTeamId,
           },
         }
       },

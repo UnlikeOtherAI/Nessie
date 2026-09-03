@@ -47,7 +47,7 @@ test('isAttentionMessage accepts only a nessie:attention message carrying a badg
   // An empty map is still a valid (all-zero) attention message.
   assert.equal(isAttentionMessage({ type: 'nessie:attention', badges: {} }), true)
   // Wrong type — a distinct bridge capability, never the generic presentation payload.
-  assert.equal(isAttentionMessage({ type: 'nessie:workspace', badges: { channels: 3 } }), false)
+  assert.equal(isAttentionMessage({ type: 'nessie:team', badges: { channels: 3 } }), false)
   // Missing or malformed badges.
   assert.equal(isAttentionMessage({ type: 'nessie:attention' }), false)
   assert.equal(

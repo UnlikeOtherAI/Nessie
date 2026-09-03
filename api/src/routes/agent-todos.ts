@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/workspace-admin'
+import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/team-admin'
 import { claimThreadRunOrPend } from '@nessie/db'
 import { z } from 'zod'
 

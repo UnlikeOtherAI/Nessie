@@ -134,7 +134,7 @@ export default [
       // Popover/overlay placement geometry (D11): they clamp coordinates to the
       // window, they do not classify the device. The list shrinks as call sites
       // adopt the one placePopover helper (docs/navigation/overview.md §7) — the account,
-      // workspace, create and reaction menus and the wikilink suggestion list
+      // team, create and reaction menus and the wikilink suggestion list
       // came off it that way in step 8.
       'admin/src/components/overlays/placePopover.ts',
       'admin/src/layouts/admin-shell/GroupDmSidebarLabel.tsx',
@@ -345,7 +345,7 @@ export default [
       'packages/comms-providers/src/index.ts', // (b) wires global fetch into the Google connector, which dials only fixed Google endpoints.
       'packages/comms-slack/src/connector.ts', // (b) `deps.fetchImpl ?? fetch` — the client dials only https://slack.com/api/*.
       'packages/comms-slack/src/types.ts', // (c) `FetchLike = typeof fetch` DI-seam type for the Slack client.
-      'packages/workspace-admin/src/ledger-agent-model-catalog.ts', // (b)+(c) catalog fetch default targets the fixed Ledger endpoint.
+      'packages/team-admin/src/ledger-agent-model-catalog.ts', // (b)+(c) catalog fetch default targets the fixed Ledger endpoint.
       'api/src/services/github.ts', // (b) fixed api.github.com host, path built from a validated owner/repo.
       'api/src/services/uoa-billing-client.ts', // (c) `fetchImpl?: PinnedFetch` type position; values are already pinned.
       'api/src/services/uoa-avatar.ts', // (c) `fetchImpl?: PinnedFetch` type position; the dial itself goes through safeFetch.

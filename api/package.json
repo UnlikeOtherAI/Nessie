@@ -45,7 +45,7 @@
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@nessie/worker": "workspace:*",
-    "@nessie/workspace-admin": "workspace:*",
+    "@nessie/team-admin": "workspace:*",
     "@prisma/client": "^6.17.1",
     "@unlikeotherai/billing-statement-protocol": "workspace:*",
     "adm-zip": "^0.5.17",

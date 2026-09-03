@@ -1,16 +1,16 @@
 import { Prisma } from '@prisma/client'
-import { parseUserId, type WorkspaceMemberRecord } from '@nessie/schemas'
+import { parseUserId, type TeamMemberRecord } from '@nessie/schemas'
 import {
-  listWorkspaceMembers,
+  listTeamMembers,
   resolveLocalUserIdsByUoaSub,
-  resolveUoaRosterWorkspace,
+  resolveUoaRosterTeam,
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
-  type UoaRosterWorkspace,
-} from '@nessie/workspace-admin'
+  type UoaRosterTeam,
+} from '@nessie/team-admin'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireActingUserId } from './access.js'
 import { clampLimit, formatSection } from './tool-output.js'
@@ -18,7 +18,7 @@ import { clampLimit, formatSection } from './tool-output.js'
 /**
  * `people_search` mirrors what the Members page shows. On a UOA-linked team
  * the roster of record is UnlikeOtherAI's org API — the same
- * `listWorkspaceMembers` read `GET /api/workspace/members` relays — and the
+ * `listTeamMembers` read `GET /api/team/members` relays — and the
  * local user table answers only when the team is not UOA-linked (local mode).
  * A failed UOA read is reported in words, never silently answered from local
  * rows: a stale local list naming people UOA has removed is worse than an
@@ -30,7 +30,7 @@ const ROSTER_CACHE_MAX_ENTRIES = 50
 
 type RosterCacheEntry = {
   expiresAt: number
-  members: WorkspaceMemberRecord[]
+  members: TeamMemberRecord[]
 }
 
 // Agent runs ask repeatedly within one conversation; one short-lived roster
@@ -43,14 +43,14 @@ export const clearPeopleSearchRosterCache = (): void => {
 
 const readRosterCached = async (
   organizationId: string,
-  workspace: UoaRosterWorkspace,
+  team: UoaRosterTeam,
   uoaSubject: string,
   deps: UoaRosterDeps,
-): Promise<WorkspaceMemberRecord[]> => {
-  const key = `${organizationId}:${workspace.externalOrgId}:${workspace.externalTeamId}:${uoaSubject}`
+): Promise<TeamMemberRecord[]> => {
+  const key = `${organizationId}:${team.externalOrgId}:${team.externalTeamId}:${uoaSubject}`
   const cached = rosterCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.members
-  const members = await listWorkspaceMembers(workspace, deps)
+  const members = await listTeamMembers(team, deps)
   rosterCache.delete(key)
   if (rosterCache.size >= ROSTER_CACHE_MAX_ENTRIES) {
     const oldest = rosterCache.keys().next().value
@@ -60,21 +60,21 @@ const readRosterCached = async (
   return members
 }
 
-const matchesQuery = (member: WorkspaceMemberRecord, query: string): boolean =>
+const matchesQuery = (member: TeamMemberRecord, query: string): boolean =>
   (member.displayName ?? '').toLowerCase().includes(query)
   || (member.email ?? '').toLowerCase().includes(query)
 
 const searchUoaRoster = async (
   context: BuiltinToolRuntimeContext,
-  workspace: UoaRosterWorkspace,
+  team: UoaRosterTeam,
   searchQuery: string,
   take: number,
   deps: UoaRosterDeps,
 ): Promise<ToolExecutionResult> => {
-  let roster: WorkspaceMemberRecord[]
+  let roster: TeamMemberRecord[]
   try {
     const subjectDeps = withUoaRosterSubjectAssertion(
-      workspace,
+      team,
       context.actorContext.actionContext.uoaIdentity,
       deps,
     )
@@ -82,7 +82,7 @@ const searchUoaRoster = async (
     if (!subject) throw new UoaRosterIdentityError('A current UnlikeOtherAI session is required.')
     roster = await readRosterCached(
       context.channel.organizationId,
-      workspace,
+      team,
       subject,
       subjectDeps,
     )
@@ -93,7 +93,7 @@ const searchUoaRoster = async (
       || error instanceof UoaRosterIdentityError
     ) {
       throw new Error(
-        'The workspace roster lives in UnlikeOtherAI and could not be read '
+        'The team roster lives in UnlikeOtherAI and could not be read '
         + `(${error.message}). The local user table is not the roster of `
         + 'record here, so no local answer is given — try again shortly.',
       )
@@ -113,7 +113,7 @@ const searchUoaRoster = async (
   // exists — and so the caller's own row can say "(you)".
   //
   // Scoped to this organization by the shared resolver: `User.uoaSub` is
-  // globally unique, so an unscoped lookup would hand this workspace a local
+  // globally unique, so an unscoped lookup would hand this team a local
   // principal id for someone who only ever signed into a different one.
   const localIdBySub = await resolveLocalUserIdsByUoaSub(
     context.prisma,
@@ -139,8 +139,8 @@ const searchUoaRoster = async (
   return {
     inputSummary: `query=${searchQuery}`,
     outputPreview:
-      formatSection(`People (${lines.length}) — UnlikeOtherAI workspace roster`, lines)
-      || `No people matched "${searchQuery}" in the UnlikeOtherAI workspace roster.`,
+      formatSection(`People (${lines.length}) — UnlikeOtherAI team roster`, lines)
+      || `No people matched "${searchQuery}" in the UnlikeOtherAI team roster.`,
     toolName: 'people_search',
   }
 }
@@ -201,7 +201,7 @@ export const runPeopleSearchTool = async (
   }
   const take = clampLimit(limit, 10)
 
-  // Same resolution as GET /api/workspace/members: the run's channel names the
+  // Same resolution as GET /api/team/members: the run's channel names the
   // team, and only a team carrying both external ids on a deployment with UOA
   // credentials is UOA-linked. Null means local mode — the one case where the
   // local user table legitimately answers.
@@ -212,12 +212,12 @@ export const runPeopleSearchTool = async (
     },
     select: { teamId: true },
   })
-  const workspace = await resolveUoaRosterWorkspace(context.prisma, {
+  const team = await resolveUoaRosterTeam(context.prisma, {
     organizationId: context.channel.organizationId,
     teamId: channel?.teamId,
   })
-  if (workspace) {
-    return searchUoaRoster(context, workspace, searchQuery, take, rosterDeps)
+  if (team) {
+    return searchUoaRoster(context, team, searchQuery, take, rosterDeps)
   }
   return searchLocalUsers(context, searchQuery, take)
 }

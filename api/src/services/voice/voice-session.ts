@@ -159,7 +159,7 @@ export type StartVoiceSessionInput = {
  * Mints a credential and records the call.
  *
  * The UOA tuple is captured here, once, and every later relay for this call
- * re-signs against it rather than re-reading the request's ambient workspace —
+ * re-signs against it rather than re-reading the request's ambient team —
  * which can drift to another team mid-call and would silently move the call's
  * billing with it.
  */

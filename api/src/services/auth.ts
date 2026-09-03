@@ -13,8 +13,8 @@ import {
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
 import {
-  deriveUoaWorkspaceDirectoryFromTeams,
-  readUoaWorkspaceDirectory,
+  deriveUoaTeamDirectoryFromTeams,
+  readUoaTeamDirectory,
 } from './uoa-directory-cache.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
@@ -150,7 +150,7 @@ const parseHttpUrl = (value: unknown): string | undefined => {
   }
 }
 
-const uoaWorkspaceAvatarImageUrl = (teamId: string, value: unknown): string | undefined => {
+const uoaTeamAvatarImageUrl = (teamId: string, value: unknown): string | undefined => {
   const supplied = parseHttpUrl(value)
   const fallbackBase = supplied ? undefined : parseHttpUrl(resolveUoaBaseUrl())
   if (!supplied && !fallbackBase) return undefined
@@ -165,11 +165,11 @@ const uoaWorkspaceAvatarImageUrl = (teamId: string, value: unknown): string | un
   return url.toString()
 }
 
-const uoaWorkspaceDirectoryFromEntries = (
+const uoaTeamDirectoryFromEntries = (
   entries: readonly unknown[],
   activeTeamId: string | undefined,
-): MeResponse['uoaWorkspaces'] => {
-  const workspaces = entries.flatMap((entry) => {
+): MeResponse['uoaTeams'] => {
+  const teams = entries.flatMap((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
     const values = entry as Record<string, unknown>
     const organizationId = typeof values.organizationId === 'string' ? values.organizationId.trim() : ''
@@ -177,7 +177,7 @@ const uoaWorkspaceDirectoryFromEntries = (
     const label = typeof values.label === 'string' ? values.label.trim() : ''
     const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
     if (!organizationId || !teamId || !label) return []
-    const avatarImageUrl = uoaWorkspaceAvatarImageUrl(teamId, values.avatarImageUrl)
+    const avatarImageUrl = uoaTeamAvatarImageUrl(teamId, values.avatarImageUrl)
     return [{
       organizationId,
       teamId,
@@ -187,47 +187,47 @@ const uoaWorkspaceDirectoryFromEntries = (
       active: teamId === activeTeamId,
     }]
   })
-  return workspaces.length > 0 ? workspaces : undefined
+  return teams.length > 0 ? teams : undefined
 }
 
-// UOA's directory identifies workspaces with the external team id used for
+// UOA's directory identifies teams with the external team id used for
 // login. The avatar relay intentionally accepts only a local Team id and checks
-// a live TeamMember row, so add that id only for workspaces this person can
+// a live TeamMember row, so add that id only for teams this person can
 // already reach in Nessie. This keeps every picker image entitlement-scoped.
-const addWorkspaceAvatarTeamIds = async (
+const addLocalTeamAvatarIds = async (
   prisma: PrismaClient,
   userId: string,
-  workspaces: NonNullable<MeResponse['uoaWorkspaces']>,
-): Promise<MeResponse['uoaWorkspaces']> => {
-  const externalWorkspaceIds = [...new Set(workspaces.map((workspace) => workspace.teamId))]
-  const teams = await prisma.team.findMany({
+  teams: NonNullable<MeResponse['uoaTeams']>,
+): Promise<MeResponse['uoaTeams']> => {
+  const externalTeamIds = [...new Set(teams.map((team) => team.teamId))]
+  const reachableTeams = await prisma.team.findMany({
     where: {
-      externalWorkspaceId: { in: externalWorkspaceIds },
+      externalTeamId: { in: externalTeamIds },
       members: { some: { userId } },
     },
     select: {
       externalOrgId: true,
-      externalWorkspaceId: true,
+      externalTeamId: true,
       id: true,
       project: { select: { organization: { select: { name: true } } } },
     },
   })
   const localTeams = new Map(
-    teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
-      ? [[`${team.externalOrgId}:${team.externalWorkspaceId}`, {
+    reachableTeams.flatMap((team) => team.externalOrgId && team.externalTeamId
+      ? [[`${team.externalOrgId}:${team.externalTeamId}`, {
           avatarTeamId: parseTeamId(team.id),
           orgName: team.project.organization.name,
         }] as const]
       : []),
   )
 
-  return workspaces.map((workspace) => {
-    const localTeam = localTeams.get(`${workspace.organizationId}:${workspace.teamId}`)
-    if (!localTeam) return workspace
+  return teams.map((team) => {
+    const localTeam = localTeams.get(`${team.organizationId}:${team.teamId}`)
+    if (!localTeam) return team
     return {
-      ...workspace,
+      ...team,
       avatarTeamId: localTeam.avatarTeamId,
-      ...(workspace.orgName ? {} : { orgName: localTeam.orgName }),
+      ...(team.orgName ? {} : { orgName: localTeam.orgName }),
     }
   })
 }
@@ -235,29 +235,29 @@ const addWorkspaceAvatarTeamIds = async (
 // UOA owns the directory, so Nessie holds it only in the bounded in-memory
 // cache written at login and at every UOA token rotation. A cold cache (fresh
 // process, or another replica that has not rotated this session yet) degrades
-// to the local Team → UOA workspace mapping rather than to nothing, so the
+// to the local Team → UOA team mapping rather than to nothing, so the
 // switcher keeps working until the next rotation restores the real thing.
-const loadUoaWorkspaceDirectory = async (
+const loadUoaTeamDirectory = async (
   prisma: PrismaClient,
   userId: string,
   claims: SessionTokenClaims,
 ): Promise<{
   uoaPendingInvites: MeResponse['uoaPendingInvites']
-  uoaWorkspaces: MeResponse['uoaWorkspaces']
+  uoaTeams: MeResponse['uoaTeams']
 }> => {
   if (claims.providerType !== 'uoa') {
-    return { uoaPendingInvites: undefined, uoaWorkspaces: undefined }
+    return { uoaPendingInvites: undefined, uoaTeams: undefined }
   }
-  const directory = readUoaWorkspaceDirectory(userId)
-    ?? await deriveUoaWorkspaceDirectoryFromTeams(prisma, userId)
-  const workspaces = uoaWorkspaceDirectoryFromEntries(
+  const directory = readUoaTeamDirectory(userId)
+    ?? await deriveUoaTeamDirectoryFromTeams(prisma, userId)
+  const teams = uoaTeamDirectoryFromEntries(
     directory.entries,
     claims.uoaIdentity?.teamId,
   )
   return {
     uoaPendingInvites: directory.pendingInvites,
-    uoaWorkspaces: workspaces
-      ? await addWorkspaceAvatarTeamIds(prisma, userId, workspaces)
+    uoaTeams: teams
+      ? await addLocalTeamAvatarIds(prisma, userId, teams)
       : undefined,
   }
 }
@@ -276,7 +276,7 @@ export const buildMeResponse = async (
   // renders that way until the provider supplies a name.
   const [memberships, uoaDirectory] = await Promise.all([
     loadUserMemberships(prisma, user.id),
-    loadUoaWorkspaceDirectory(prisma, user.id, claims),
+    loadUoaTeamDirectory(prisma, user.id, claims),
   ])
 
   // Surface the live per-org role for the active context org so the admin's
@@ -319,8 +319,8 @@ export const buildMeResponse = async (
       autoRedirectToSso: config.auth.autoRedirectToSso,
     },
     memberships,
-    ...(uoaDirectory.uoaWorkspaces
-      ? { uoaWorkspaces: uoaDirectory.uoaWorkspaces }
+    ...(uoaDirectory.uoaTeams
+      ? { uoaTeams: uoaDirectory.uoaTeams }
       : {}),
     ...(uoaDirectory.uoaPendingInvites !== undefined
       ? { uoaPendingInvites: uoaDirectory.uoaPendingInvites }

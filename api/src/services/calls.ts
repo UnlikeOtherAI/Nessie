@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
-import { enqueueCallRingCancellation } from '@nessie/workspace-admin'
+import { enqueueCallRingCancellation } from '@nessie/team-admin'
 import type { CallRecord } from '../contracts.js'
 
 type DbClient = PrismaClient | Prisma.TransactionClient

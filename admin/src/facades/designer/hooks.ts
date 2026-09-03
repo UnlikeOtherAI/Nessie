@@ -91,7 +91,7 @@ const scrollSystemPromptToBottom = (): void => {
  * service reads this organisation's live catalogue itself (the same member-safe
  * projection `agent_tool_catalog` answers from), so the two faces of the Agent
  * Designer cannot enumerate different tools and the browser is not the source
- * of what the workspace has.
+ * of what the team has.
  */
 export const useDesignerChat = (
   formState: AgentFormState,

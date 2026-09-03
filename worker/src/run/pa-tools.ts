@@ -49,7 +49,7 @@ export {
 } from './pa-tools/executors.js'
 export {
   runAuthoredMessageSearchTool,
-  runWorkspaceSearchTool,
+  runTeamSearchTool,
 } from './pa-tools/conversation-search.js'
 export {
   runKbCommentAddTool,
@@ -83,7 +83,7 @@ export {
   runProjectCreateTool,
   runProjectListTool,
   runTeamCreateTool,
-} from './pa-tools/workspace-structure.js'
+} from './pa-tools/team-structure.js'
 export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,

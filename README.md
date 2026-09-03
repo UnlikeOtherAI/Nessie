@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/standards/workspace-model.md">Workspace Model</a> &middot;
+  <a href="docs/standards/team-model.md">Team Model</a> &middot;
   <a href="docs/brief.md">Product Brief</a> &middot;
   <a href="docs/remote/brief.md">Remote Brief</a> &middot;
   <a href="docs/review-findings.md">Validated Findings</a>
@@ -41,20 +41,20 @@ one — UOA stays the only authority over them:
 
 ```text
 Organisation                 ← one UOA organisation
-  └── Workspace              ← one UOA team. A user can be in many.
+  └── Team              ← one UOA team. A user can be in many.
         ├── Project          ← Nessie's own. UOA has no such concept.
         │     └── Channel
         └── agents, knowledge, boards, …
 ```
 
-A **workspace is the SSO's team** — the same thing under the product's own
+A **team is the SSO's team** — the same thing under the product's own
 word, not a container for one. A **project is a construct within Nessie**: a
-body of work living inside exactly one workspace, so "which workspace does this
+body of work living inside exactly one team, so "which team does this
 project belong to?" always has exactly one answer.
 
 The model in full, including the vocabulary rules and the one place the schema
 currently contradicts it, is
-[docs/standards/workspace-model.md](docs/standards/workspace-model.md).
+[docs/standards/team-model.md](docs/standards/team-model.md).
 
 ## Run locally
 
@@ -76,10 +76,10 @@ reload. Those ports are fixed — other tooling in the repo assumes them.
 ## Key features
 
 - **Channels, threads and DMs** — the collaboration surface people already know,
-  organised into workspaces and projects.
+  organised into teams and projects.
 - **Agents that work in them** — they draft, follow through, and post where the
   team is already looking, rather than in a separate tool.
-- **SSO-backed identity** — organisations, workspaces and membership come from
+- **SSO-backed identity** — organisations, teams and membership come from
   UnlikeOtherAI, which stays their only authority.
 - **RBAC and approval gates** — with an audit trail behind them.
 - **A token-cost ledger** — so agent spend is attributable.
@@ -97,7 +97,7 @@ reload. Those ports are fixed — other tooling in the repo assumes them.
                       |
               [Nessie API :5454] ──── [UnlikeOtherAI SSO]
                       |                 identity, organisations,
-                      |                 workspaces (teams), membership
+                      |                 teams (teams), membership
                       +--> [Worker / orchestrator]
                       +--> [Executors]
                       +--> [MCP connectors]
@@ -105,9 +105,9 @@ reload. Those ports are fixed — other tooling in the repo assumes them.
 ```
 
 UOA is the only authority over identity and the organisation structure. Nessie
-keeps the binding keys — the external organisation id, the external workspace
+keeps the binding keys — the external organisation id, the external team
 id, the user's subject — and asks UOA for the rest. Some display data (profile
-names, workspace names) is still mirrored locally and re-synced from UOA;
+names, team names) is still mirrored locally and re-synced from UOA;
 removing those mirrors is tracked in
 [the unification plan](docs/plans/2026-09-02-uoa-as-a-service-unification.md).
 
@@ -117,7 +117,7 @@ removing those mirrors is tracked in
 api/           HTTP/WS API (port 5454)
 admin/         Admin web UI — the primary surface (port 5455)
 worker/        Agent orchestration and background runs
-packages/      Shared libraries (schemas, db, runtime, workspace-admin, …)
+packages/      Shared libraries (schemas, db, runtime, team-admin, …)
 executor/      Sandboxed tool execution
 gateway/       Edge routing
 web/           Public marketing site
@@ -138,7 +138,7 @@ docs/          Standards, plans, and product documentation
 | [Apple publishing & direct device delivery](docs/publishing-apple-testflight.md) | TestFlight releases and the default standalone phone/tablet delivery policy |
 | [Running the native apps](docs/running-the-apps.md#default-physical-device-delivery) | Direct installation policy and local development paths |
 | [Product Brief](docs/brief.md) | Vision, modes, architecture, MVP direction |
-| [Workspace Model](docs/standards/workspace-model.md) | Organisation, workspace, project — what each is and which the SSO owns |
+| [Team Model](docs/standards/team-model.md) | Organisation, team, project — what each is and which the SSO owns |
 | [Remote Brief](docs/remote/brief.md) | Remote control-plane scope |
 | [Remote Tech Stack](docs/remote/techstack.md) | Remote service technology choices |
 | [Remote SSO](docs/remote/sso.md) | Remote authentication notes |

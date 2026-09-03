@@ -10,10 +10,10 @@ import {
   buildAgentVisibilityWhere,
   mergeAgentToolPolicy,
   normalizeToolPolicy,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 // The protected-key gate and the policy merge helpers moved to
-// `@nessie/workspace-admin` when agent creation became shared with the worker;
+// `@nessie/team-admin` when agent creation became shared with the worker;
 // they are re-exported here so every existing importer keeps one import site.
 export {
   acquireAgentToolPolicyLock,
@@ -27,7 +27,7 @@ export {
   registryEntryPolicyKey,
   registryEntryRequiresExplicitPolicy,
   stripProtectedAgentToolPolicy,
-} from '@nessie/workspace-admin'
+} from '@nessie/team-admin'
 
 const mapTarget = (agent: {
   agentKind: 'personal_assistant' | 'shared'

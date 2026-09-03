@@ -46,14 +46,14 @@ test('a missed call has an explicit link to its channel message', () => {
   })
 })
 
-test('workspace invitation alerts name the inviter and expose acceptance', () => {
+test('team invitation alerts name the inviter and expose acceptance', () => {
   const invitation: UserAlertRecord = {
     ...missedCall,
     actorDisplayName: null,
     actorUserId: null,
     channelId: null,
     channelLabel: null,
-    kind: 'workspace_invitation',
+    kind: 'team_invitation',
     messageId: null,
     metadata: {
       inviteId: 'invite-1',

@@ -28,7 +28,7 @@ const agent = (overrides: Partial<AgentRecord>): AgentRecord => ({
   status: 'idle',
   todosEnabled: false,
   updatedAt: '2026-01-01T00:00:00.000Z',
-  visibility: 'workspace',
+  visibility: 'team',
   ...overrides,
 } as AgentRecord)
 
@@ -46,7 +46,7 @@ test('a private agent is editable by its owner alone — org owners included', (
   assert.equal(canChangeAgentOwner(priv, owner), false)
 })
 
-test('a person-owned workspace agent admits its steward and org owners', () => {
+test('a person-owned team agent admits its steward and org owners', () => {
   const owned = agent({ ownerUserId: steward })
   assert.equal(agentOwnershipState(owned), 'person_owned')
   assert.equal(canEditAgentRecord(owned, owner), true)

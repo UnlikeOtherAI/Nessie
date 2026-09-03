@@ -1,7 +1,7 @@
 import type { AccessContext } from './access-context.js'
 
 /**
- * "Owner or admin" — the organisation roles that manage workspace-wide
+ * "Owner or admin" — the organisation roles that manage team-wide
  * settings. Strictly wider than owner-only, which several decisions still
  * require; this pair is not a substitute for those.
  *

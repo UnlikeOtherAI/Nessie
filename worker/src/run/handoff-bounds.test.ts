@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { AGENT_HANDOFF_TOOL_ID, BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
-import { AGENT_DESIGNER_SLUG } from '@nessie/workspace-admin'
+import { AGENT_DESIGNER_SLUG } from '@nessie/team-admin'
 
 import { authorizeToolCall, resolveAgentTools } from './tool-policy.js'
 import { buildHandoffRoutingBlock } from './execute/handoff-routing.js'

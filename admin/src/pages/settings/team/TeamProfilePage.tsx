@@ -7,14 +7,14 @@ import { Input } from '../../../components/shared/FormControls'
 import { Notice } from '../../../components/primitives/Notice'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
-import { WorkspaceAvatarPanel } from '../organization/WorkspaceAvatarPanel'
+import { TeamAvatarPanel } from '../organization/TeamAvatarPanel'
 import { useRenameTeam } from '../../../facades/projects/hooks'
 import type { TeamRecord } from '../../../lib/api-client'
 
 /**
- * A team's own identity. The picture is the workspace avatar UnlikeOtherAI
- * holds — the same one every UOA surface shows for this workspace — and the
- * name is UOA's too wherever this team is bound to a UOA workspace: `Team.name`
+ * A team's own identity. The picture is the team avatar UnlikeOtherAI
+ * holds — the same one every UOA surface shows for this team — and the
+ * name is UOA's too wherever this team is bound to a UOA team: `Team.name`
  * is a mirror, so editing it here would create the second copy of the org
  * structure the SSO invariant forbids and be overwritten by the next roster
  * read. A local install with no identity provider owns its own names.
@@ -54,7 +54,7 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
           <SectionLabel>Name</SectionLabel>
           {externallyManaged ? (
             <Notice className="mt-3" tone="info">
-              This workspace’s name is held by UnlikeOtherAI. Rename it there and it will
+              This team’s name is held by UnlikeOtherAI. Rename it there and it will
               follow here.
             </Notice>
           ) : null}
@@ -86,7 +86,7 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
           </form>
         </Card>
 
-        <WorkspaceAvatarPanel />
+        <TeamAvatarPanel />
       </div>
     </SettingsPanel>
   )

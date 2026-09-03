@@ -74,7 +74,7 @@ import {
   runTodoStepUpdateTool,
   runTodoTemplateProposeTool,
   runWorkflowTransformPreviewTool,
-  runWorkspaceSearchTool,
+  runTeamSearchTool,
   runEmailListTool,
   runEmailReadTool,
   runEmailSendTool,
@@ -196,9 +196,9 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAppSearchTool(context, args))
     case 'app_connect_request':
       return wrapTool(inputSummary, () => runAppConnectRequestTool(context, args))
-    case 'workspace_search':
+    case 'team_search':
       return wrapTool(inputSummary, () =>
-        runWorkspaceSearchTool(context, String(args.query ?? ''), args.limit),
+        runTeamSearchTool(context, String(args.query ?? ''), args.limit),
       )
     case 'authored_message_search':
       return wrapTool(inputSummary, () =>
@@ -276,13 +276,13 @@ const executeBuiltinToolUncorrected = async (
           channelId: String(args.channelId ?? ''),
         }),
       )
-    // Workspace provisioning. These validate their own arguments with zod
+    // Team provisioning. These validate their own arguments with zod
     // (the same create-trigger body the route parses), so they take `args` whole.
     case 'channel_create':
       return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
     case 'agent_create':
       return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
-    // Workspace structure: the project and team a channel lives inside, plus
+    // Team structure: the project and team a channel lives inside, plus
     // the read that turns a project or team NAME into the id they take.
     case 'project_list':
       return wrapTool(inputSummary, () => runProjectListTool(context, args))
@@ -293,7 +293,7 @@ const executeBuiltinToolUncorrected = async (
     case 'agent_list':
       return wrapTool(inputSummary, () => runAgentListTool(context, args))
     // Agent configuration: read one agent's record, rewrite it, list the tools
-    // this workspace can actually give it, set its portrait. Authority lives in
+    // this team can actually give it, set its portrait. Authority lives in
     // the shared `canEditAgent` predicate the PUT route uses.
     case 'agent_read':
       return wrapTool(inputSummary, () => runAgentReadTool(context, args))

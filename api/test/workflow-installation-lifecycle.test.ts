@@ -36,9 +36,9 @@ const SIMPLE_GRAPH = {
   ],
 }
 
-type Seed = Awaited<ReturnType<typeof seedWorkspace>>
+type Seed = Awaited<ReturnType<typeof seedTeam>>
 
-const seedWorkspace = async (prisma: PrismaClient) => {
+const seedTeam = async (prisma: PrismaClient) => {
   const org = await prisma.organization.create({
     data: { name: `wf-lifecycle ${randomUUID()}` },
   })
@@ -95,7 +95,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
 
 runDatabaseTest('W8: paused installations do not fire; the update endpoint drives the lifecycle', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
@@ -183,7 +183,7 @@ runDatabaseTest('W8: paused installations do not fire; the update endpoint drive
 
 runDatabaseTest('W27: retry preserves the original starter and records the retrying actor', async (t) => {
   const prisma = new PrismaClient()
-  const seed = await seedWorkspace(prisma)
+  const seed = await seedTeam(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()

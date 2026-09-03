@@ -60,7 +60,7 @@ const linkedPrisma = (tokenVersion = 7) => ({
   team: {
     findFirst: async () => ({
       externalOrgId: 'uoa-org',
-      externalWorkspaceId: 'uoa-team',
+      externalTeamId: 'uoa-team',
     }),
   },
 })

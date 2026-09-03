@@ -7,10 +7,10 @@ import { Input } from '../../../components/shared/FormControls'
 import { LogoPanel } from './LogoPanel'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
-import { WorkspaceAvatarPanel } from './WorkspaceAvatarPanel'
+import { TeamAvatarPanel } from './TeamAvatarPanel'
 import { toFormErrors } from '../../../facades/form-errors'
 
-/** Who the organisation is: its name, its logo, its workspace avatar. */
+/** Who the organisation is: its name, its logo, its team avatar. */
 export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
@@ -87,7 +87,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
         </Card>
 
         <LogoPanel />
-        <WorkspaceAvatarPanel />
+        <TeamAvatarPanel />
       </div>
     </SettingsPanel>
   )
