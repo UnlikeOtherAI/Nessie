@@ -67,6 +67,10 @@ export const registerAuthSecurityRoutes = (
       sendApiError(reply, 404, 'SESSION_NOT_FOUND', 'No such active session')
       return reply
     }
+    // This replica just ended the session; drop its cached verdict so the very
+    // next request on this process re-reads and rejects, rather than honouring
+    // the access token for the remainder of the cache TTL.
+    deps.invalidateSessionRevocationCache?.(sessionId)
     await clearPushSurfacePresenceForUser(prisma, actorContext.actor.actorId)
     if (currentSessionId(request) === sessionId) clearRefreshCookie(reply, config)
     return createApiResponse({ revoked })

@@ -461,7 +461,12 @@ export const registerAuthLoginRoute = (
       sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
       return reply
     }
-    const session = await buildLocalSession(user.id, [primaryOrganizationMember.role])
+    const session = await buildLocalSession(
+      user.id,
+      [primaryOrganizationMember.role],
+      undefined,
+      { userAgent: request.headers['user-agent'] ?? null },
+    )
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')

@@ -256,6 +256,15 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         return found ? userInclude(found) : null
       },
     },
+    // Session issuance upserts the revocation-registry row for the sid it
+    // mints (S9/SB-04 workstream 1e): the fake must model that delegate or
+    // the real issuer throws TypeError inside the login it is exercising.
+    authSession: {
+      upsert: async ({ create }: { create: Row }) => (
+        record('authSession.upsert'),
+        { id: create.id, userId: create.userId }
+      ),
+    },
     refreshToken: {
       findFirst: async () => (
         record('refreshToken.findFirst'),

@@ -23,6 +23,7 @@ export const completeConsumedAuthSession = async (
   input: {
     consumed: ConsumedSession
     presentedRawToken: string
+    userAgent?: string | null
   },
 ): Promise<unknown> => {
   const {
@@ -68,6 +69,7 @@ export const completeConsumedAuthSession = async (
         sessionId: consumed.sessionId,
         teamId: uoaContext.teamId,
         uoaIdentity: consumed.uoaIdentity,
+        userAgent: input.userAgent,
         userId: consumed.userId,
       })
     : await buildLocalSession(
@@ -77,7 +79,7 @@ export const completeConsumedAuthSession = async (
           providerId: consumed.providerId,
           providerType: consumed.providerType as SessionTokenClaims['providerType'],
         },
-        consumed.sessionId,
+        { sessionId: consumed.sessionId, userAgent: input.userAgent },
       )
   const verification = verifySessionToken(session.token, authSecret)
   if (!verification.ok) {
