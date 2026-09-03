@@ -364,33 +364,20 @@ const injectedFocusMessages = (
   }
 }
 
-test('focus mode reports the monochrome navigation palette to the native chrome', () => {
+// The bridge reports the page's own theme and nothing else. Focus mode's
+// monochrome chrome belongs to the native shell (native-focus-chrome.ts), so
+// nothing here reads the palette back out of the document or restyles it.
+test('focus mode leaves the reported theme as the page defines it', () => {
   const { theme } = injectedFocusMessages(true)
 
-  assert.equal(theme?.headerSurface, '#242424')
-  assert.equal(theme?.surface, '#353535')
-  assert.equal(theme?.accent, '#b9b9bc')
-  assert.equal(theme?.accentStrong, '#ececee')
-  assert.equal(theme?.inactive, '#aeaeaf')
-  assert.equal(theme?.headerText, '#f1f1f1')
-  assert.equal(theme?.text, '#f1f1f1')
+  assert.equal(theme?.headerSurface, '#2e1132')
+  assert.equal(theme?.surface, '#222629')
+  assert.equal(theme?.accent, '#7c3aed')
+  assert.equal(theme?.headerText, '#f8f5ef')
 })
 
 test('focus mode backs the native frame with the paper-white work surface', () => {
   assert.equal(injectedFocusMessages(true).bg?.color, 'rgb(255, 255, 255)')
-})
-
-// The phone is the form factor the focus palette never reached: its navigation
-// is native, so the charcoal in-page chrome the tablet reads simply is not in
-// the document. The work surface it does sit against has to drive it instead.
-test('a phone with only native navigation still reports a monochrome palette', () => {
-  const { theme } = injectedFocusMessages(true, { navChrome: false })
-
-  assert.equal(theme?.headerSurface, '#ffffff')
-  assert.equal(theme?.surface, '#ffffff')
-  assert.equal(theme?.accent, '#303030')
-  assert.equal(theme?.headerText, '#1d1d1d')
-  assert.equal(theme?.inactive, '#707070')
 })
 
 test('leaving focus mode restores the themed native palette and backdrop', () => {

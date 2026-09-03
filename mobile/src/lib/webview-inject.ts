@@ -98,29 +98,12 @@ export const INJECTED = `
     try { return document.querySelector('.admin-frame') } catch (e) { return null }
   }
   // Focus mode is a palette swap the admin scopes to the frame's children
-  // (.admin-topbar / .admin-shell), never to <html> or <body>. Reading tokens
-  // off documentElement therefore reports the base theme while the page is
-  // monochrome, so the native chrome kept its themed accents through focus.
+  // (.admin-topbar / .admin-shell), never to <html> or <body>, so the body
+  // colour stops describing the page. Only the backdrop below needs this; the
+  // native chrome's own focus palette lives in native-focus-chrome.ts.
   function focusActive() {
     var f = frameEl();
     return !!(f && f.classList && f.classList.contains('focus-mode'));
-  }
-  // In focus the native chrome follows whichever focus scope its own context
-  // mirrors: the charcoal navigation where the page still draws navigation
-  // (iPad, tablet), and otherwise the paper-white work surface, which on a
-  // phone is the whole screen the native header and tab bar sit against. Out
-  // of focus this stays on documentElement, so the reported palette is
-  // byte-for-byte what it was before.
-  function themeEl() {
-    var f = focusActive() ? frameEl() : null;
-    if (f && f.querySelector) {
-      var nav = f.querySelector(':scope > .admin-topbar')
-        || f.querySelector(':scope > .admin-shell > aside')
-        || f.querySelector(':scope > .admin-shell > .resizable-sidebar')
-        || f.querySelector(':scope > .admin-shell');
-      if (nav) return nav;
-    }
-    return document.documentElement;
   }
   function pick() {
     // In focus the work surface is the page, so the native backdrop behind the
@@ -144,8 +127,10 @@ export const INJECTED = `
       try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {}
     }
   }
+  // Always the page's own theme. Focus mode's palette is the native shell's
+  // business, not something to read back out of the document.
   function cssVar(name) {
-    try { return getComputedStyle(themeEl()).getPropertyValue(name).trim() } catch (e) { return '' }
+    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (e) { return '' }
   }
   var lastTheme = '';
   function postTheme() {
