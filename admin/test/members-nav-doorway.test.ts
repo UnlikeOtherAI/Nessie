@@ -22,6 +22,7 @@ const navItem = (path: string) => {
 }
 
 const membersItem = () => navItem('/settings/members')
+const teamMembersItem = () => navItem('/settings/team/members')
 
 test('a UOA session shows Members to every active member', () => {
   assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isUoaSession: true })), true)
@@ -36,6 +37,19 @@ test('a local session keeps Members owner-only', () => {
   assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isOwner: true })), true)
 })
 
+test('a UOA session shows Team > Members to every active member, same as Organization > Members', () => {
+  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true })), true)
+  assert.equal(
+    isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true, isOwner: true })),
+    true,
+  )
+})
+
+test('a local session keeps Team > Members owner-only, same as Organization > Members', () => {
+  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer()), false)
+  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isOwner: true })), true)
+})
+
 test('the UOA session flag widens nothing else', () => {
   const widened = ADMIN_NAV.flatMap((group) => group.items).filter(
     (item) =>
@@ -44,8 +58,8 @@ test('the UOA session flag widens nothing else', () => {
   )
 
   assert.deepEqual(
-    widened.map((item) => item.path),
-    ['/settings/members'],
+    widened.map((item) => item.path).sort(),
+    ['/settings/members', '/settings/team/members'],
   )
 })
 

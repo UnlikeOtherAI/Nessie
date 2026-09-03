@@ -40,6 +40,7 @@ import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsP
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SecretsPage } from './pages/settings/SecretsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
+import { TeamMembersPage } from './pages/settings/TeamMembersPage'
 import { TeamSettingsPage } from './pages/settings/TeamSettingsPage'
 import { UserSettingsPage } from './pages/settings/UserSettingsPage'
 import { StatusesPage } from './pages/settings/StatusesPage'
@@ -298,6 +299,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/team',
         element: <TeamSettingsPage />,
+      },
+      {
+        path: '/settings/team/members',
+        element: <TeamMembersPage />,
       },
       {
         path: '/settings/statuses',

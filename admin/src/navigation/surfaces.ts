@@ -314,6 +314,19 @@ export const SURFACES: Surface[] = [
     type: 'detail',
   },
   {
+    // The team roster, /settings/team/members — a direct sibling doorway of
+    // /settings/members (the organisation roster), not a tab nested inside
+    // /settings/team. Same screen identity/depth as every other settings
+    // page above, just two path segments instead of one.
+    depth: 1,
+    intent: { state: ['tab'] },
+    parentOf: toAdmin,
+    pattern: /^\/settings\/team\/members$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
     depth: 1,
     intent: { state: ['scope'] },
     parentOf: toAdmin,
