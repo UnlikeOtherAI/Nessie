@@ -60,7 +60,10 @@ import {
   runMeetingLinkCreateTool,
   runPeopleSearchTool,
   runPersonalAssistantJoinChannelTool,
+  runProjectCreateTool,
+  runProjectListTool,
   runSendMessageTool,
+  runTeamCreateTool,
   runUpdatePreferencesTool,
   runTodoStartTool,
   runTodoStepUpdateTool,
@@ -274,6 +277,14 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
     case 'agent_create':
       return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
+    // Workspace structure: the project and team a channel lives inside, plus
+    // the read that turns a project or team NAME into the id they take.
+    case 'project_list':
+      return wrapTool(inputSummary, () => runProjectListTool(context, args))
+    case 'project_create':
+      return wrapTool(inputSummary, () => runProjectCreateTool(context, args))
+    case 'team_create':
+      return wrapTool(inputSummary, () => runTeamCreateTool(context, args))
     case 'agent_list':
       return wrapTool(inputSummary, () => runAgentListTool(context, args))
     // Agent configuration: read one agent's record, rewrite it, list the tools

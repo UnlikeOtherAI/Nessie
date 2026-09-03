@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { AgentRecord } from '../../../lib/api-client'
+import type { AgentIdentity } from '../../shared/agent-identity'
 import type { PendingStreamMessage } from '../../../facades/threads/thinking'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { Pill } from '../../primitives/Pill'
@@ -63,7 +63,7 @@ export const OptimisticMessageRow = ({
 )
 
 type StreamingMessageRowProps = {
-  agent: AgentRecord | null
+  agent: AgentIdentity | null
   displayName: string
   entry: PendingStreamMessage
   isDedicatedAgentConversation: boolean

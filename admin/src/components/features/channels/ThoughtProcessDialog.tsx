@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AgentRecord } from '../../../lib/api-client'
+import type { AgentIdentity } from '../../shared/agent-identity'
 import { useRunThinkingLog } from '../../../facades/threads/hooks'
 import {
   mergeThinkingEntries,
@@ -20,7 +20,7 @@ import { useOverlay } from '../../overlays/useOverlay'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 
 type ThoughtProcessDialogProps = {
-  agent: AgentRecord | null
+  agent: AgentIdentity | null
   agentName: string
   entry: PendingStreamMessage
   onClose: () => void
@@ -209,8 +209,11 @@ const ThoughtProcessBody = ({
   )
 }
 
-type AgentIdentity = {
-  agent: AgentRecord | null
+// What the feed resolved for a run's agent: its identity (which the agent
+// identity directory answers for system-managed agents too) plus the label
+// this surface should use.
+type ResolvedAgentIdentity = {
+  agent: AgentIdentity | null
   name: string
 }
 
@@ -222,7 +225,7 @@ type AgentIdentity = {
  */
 export const useThoughtProcessDialog = (
   pendingMessages: PendingStreamMessage[],
-  resolveAgentIdentity: (agentId: string) => AgentIdentity,
+  resolveAgentIdentity: (agentId: string) => ResolvedAgentIdentity,
   threadId: string | undefined,
   token: string | null,
 ) => {

@@ -9,6 +9,7 @@ import {
   parseTaskId,
   parseThreadId,
   withActionContext,
+  withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
   type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
@@ -60,7 +61,7 @@ export const launchExecutorRun = async (
           OR: [{ visibility: 'public' }, { members: { some: { userId: actorContext.actor.actorId } } }],
         },
       },
-      select: { channel: { select: { id: true } }, id: true },
+      select: { channel: { select: { id: true, systemChannelType: true } }, id: true },
     })
     if (!thread) return { kind: 'thread_not_found' as const }
 
@@ -137,12 +138,20 @@ export const launchExecutorRun = async (
     const queued = await enqueueRunExecution(
       tx,
       {
-        actorContext: withActionContext(actorContext, {
-          agentId: parseAgentId(agent.id),
-          channelId: parseChannelId(thread.channel.id),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(thread.id),
-        }),
+        // Interactive, and the target agent must already be bound to the
+        // destination — which a single-member system DM's agent is. Same rule
+        // as every other wake path: that DM stamps its one member.
+        actorContext: withActionContext(
+          withDelegatedSystemDmIdentity(actorContext, {
+            systemChannelType: thread.channel.systemChannelType,
+          }),
+          {
+            agentId: parseAgentId(agent.id),
+            channelId: parseChannelId(thread.channel.id),
+            taskId: parseTaskId(task.id),
+            threadId: parseThreadId(thread.id),
+          },
+        ),
         agentId: parseAgentId(agent.id),
         interactive: true,
         messageId: message.id,

@@ -75,6 +75,12 @@
   --radius-lg: 14px;
   --radius-xl: 20px;
   --radius-panel: 2rem;
+  /* One horizontal edge for every page. Page headers (ResponsivePageHeader),
+     the shared PageBody/SettingsPanel bodies, and every hand-rolled page body
+     use this single value so content runs edge-to-edge and the header title
+     lines up with the body under it on every screen. Tune the page gutter
+     here, in one place, never per page. */
+  --page-gutter: 1rem;
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;

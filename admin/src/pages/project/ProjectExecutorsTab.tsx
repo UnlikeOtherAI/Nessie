@@ -15,7 +15,7 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
   )
 
   return (
-    <PageBody width="regular">
+    <PageBody>
       <Section
         actions={
           <Link

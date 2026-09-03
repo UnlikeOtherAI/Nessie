@@ -33,7 +33,14 @@ import {
 const GLOBAL_AGENT_KIND = 'shared' as const
 const GLOBAL_AGENT_CHANNEL_TYPE = 'system_agent' as const
 const GLOBAL_AGENT_DELEGATION_MODE = 'act_as_requesting_user' as const
-const GLOBAL_AGENT_SURFACE_POLICY = 'dm_only' as const
+// A global agent is bindable to ordinary channels (`isChannelBindableAgent`),
+// so the row must not claim `dm_only` — that is the storage-level statement
+// "this agent lives only in a per-user private DM", which is the Personal
+// Assistant's and an external product's shape, not this one. `delegationMode`
+// stays `act_as_requesting_user` and means exactly what it always did: the
+// surface condition (`isGlobalAgentHomeSurface`) is what decides where that
+// delegation is exercised, and a shared room is not it.
+const GLOBAL_AGENT_SURFACE_POLICY = 'shared' as const
 const GLOBAL_AGENT_SYSTEM_TEAM_NAME = 'Global Agent System'
 
 export type GlobalAgentBootstrapInput = {

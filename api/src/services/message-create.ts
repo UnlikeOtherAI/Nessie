@@ -326,10 +326,16 @@ export const createThreadMessage = async (
           organizationId: thread.channel.organizationId,
           userId: input.userId,
         })],
+        // `agentKind: 'shared'` is what excludes the Personal Assistant, whose
+        // presence is a different act with a different key. `systemManaged` is
+        // deliberately NOT filtered: an app-provided shared agent binds through
+        // the ordinary chokepoint, so mentioning one must offer the same invite
+        // every other agent gets. `executionMode` excludes external-agent
+        // products, which `bindAgentToChannel` refuses.
         agentKind: 'shared',
+        executionMode: { not: 'external_mcp' },
         id: { notIn: [...boundIds] },
         organizationId: thread.channel.organizationId,
-        systemManaged: false,
       },
       select: { id: true, name: true },
     })

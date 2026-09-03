@@ -104,7 +104,7 @@ export const PolicyPage = () => {
           not a screen of its own, so Back never disappears with it. */}
       <ScreenHeader title="Policy Rules" />
       <OwnerGate>
-        <PageBody width="regular">
+        <PageBody>
           <Section title="Create rule">
             <Card variant="section">
               <form className="grid gap-3" onSubmit={handleCreate}>
