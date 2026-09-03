@@ -3,6 +3,10 @@ type TauriWindow = Window & {
   __TAURI_INTERNALS__?: unknown
 }
 
+type DesktopPlatformWindow = Window & { __nessieDesktopPlatform?: unknown }
+
+export type DesktopPlatform = 'linux' | 'macos' | 'windows'
+
 export const isDesktopApp = (): boolean => {
   if (typeof window === 'undefined') {
     return false
@@ -10,6 +14,20 @@ export const isDesktopApp = (): boolean => {
 
   const tauriWindow = window as TauriWindow
   return '__TAURI_INTERNALS__' in tauriWindow || '__TAURI__' in tauriWindow
+}
+
+// The Tauri shell records its target OS before the document loads. User-agent
+// inference would make the hosted web app look native and duplicate macOS's
+// own traffic lights, so native chrome is driven by that structural fact.
+export const desktopPlatform = (): DesktopPlatform | null => {
+  if (!isDesktopApp()) return null
+  const platform = (window as DesktopPlatformWindow).__nessieDesktopPlatform
+  return platform === 'linux' || platform === 'macos' || platform === 'windows' ? platform : null
+}
+
+export const usesCustomDesktopWindowControls = (): boolean => {
+  const platform = desktopPlatform()
+  return platform === 'linux' || platform === 'windows'
 }
 
 type DesktopPendingWindow = Window & { __nessieDesktopPendingPath?: unknown }

@@ -62,11 +62,22 @@ pnpm --filter @nessie/desktop dev
 
 The Nessie desktop window opens and loads the local admin app.
 
+On Windows and Linux, the top-left of that window carries mac-style red,
+yellow, and green controls for close, minimise, and maximise/restore. They are
+Tauri-native window actions, not browser controls. macOS keeps its system
+traffic lights instead.
+
 The desktop script first bundles the local `nessie-executor` CLI and the exact
 Node runtime into private app resources. It records their hashes and the Node
 license in the bundle; use the package scripts below rather than invoking the
 Tauri binary directly, so the companion cannot launch a stale or missing
 executor runtime.
+
+`packages/billing-statement-protocol/` is a byte-for-byte vendored UOA
+contract. Git preserves its upstream LF bytes on every platform, including
+Windows, without applying `core.autocrlf`; its generated-artifact and SHA-256
+verification gates therefore remain valid. Do not edit or regenerate that
+package locally; update its upstream pin instead.
 
 ## Connected Chrome tab foundation
 

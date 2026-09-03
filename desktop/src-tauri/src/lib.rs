@@ -14,6 +14,15 @@ const DESKTOP_INIT_SCRIPT: &str = concat!(
     include_str!("desktop_build_freshness_init.js")
 );
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
+const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
+    "linux"
+} else if cfg!(target_os = "macos") {
+    "macos"
+} else if cfg!(target_os = "windows") {
+    "windows"
+} else {
+    "unknown"
+};
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
 // api.nessie.works are third-party in macOS WebKit, which blocks the HttpOnly
@@ -75,7 +84,9 @@ pub fn run() {
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
-                .initialization_script(DESKTOP_INIT_SCRIPT)
+                .initialization_script(format!(
+                    "{DESKTOP_INIT_SCRIPT}\nwindow.__nessieDesktopPlatform = {DESKTOP_PLATFORM:?};"
+                ))
                 .build()?;
 
             Ok(())

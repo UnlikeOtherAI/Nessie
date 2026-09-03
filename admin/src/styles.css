@@ -943,9 +943,56 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   min-width: 8px;
 }
 
-.admin-topbar-drag-zone--traffic {
+.desktop-window-controls {
+  display: flex;
   flex: 0 0 68px;
+  align-items: center;
+  gap: 8px;
   min-width: 68px;
+  padding-left: 5px;
+}
+
+.desktop-window-control {
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, #000 18%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, #000 78%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.desktop-window-control > span {
+  opacity: 0;
+  transform: translateY(-0.5px);
+}
+
+.desktop-window-control:hover,
+.desktop-window-control:focus-visible {
+  filter: brightness(0.9);
+  outline: none;
+  transform: scale(1.08);
+}
+
+.desktop-window-controls:hover .desktop-window-control > span,
+.desktop-window-control:focus-visible > span {
+  opacity: 1;
+}
+
+.desktop-window-control--close {
+  background: #ff5f57;
+}
+
+.desktop-window-control--minimize {
+  background: #febc2e;
+}
+
+.desktop-window-control--maximize {
+  background: #28c840;
 }
 
 .admin-topbar-spacer {

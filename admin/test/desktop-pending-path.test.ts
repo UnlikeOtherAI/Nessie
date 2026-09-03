@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { consumeDesktopPendingPath } from '../src/lib/desktop'
+import {
+  consumeDesktopPendingPath,
+  desktopPlatform,
+  usesCustomDesktopWindowControls,
+} from '../src/lib/desktop'
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
@@ -20,6 +24,27 @@ test('the retained desktop path is consumed once and must be an internal path', 
     assert.equal(consumeDesktopPendingPath(), null)
     fake.__nessieDesktopPendingPath = 'https://evil.example'
     assert.equal(consumeDesktopPendingPath(), null)
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous)
+    else delete (globalThis as { window?: unknown }).window
+  }
+})
+
+test('custom traffic lights are only exposed by Windows and Linux Tauri shells', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const fake = { __TAURI_INTERNALS__: {}, __nessieDesktopPlatform: 'windows' } as Window & {
+    __nessieDesktopPlatform?: unknown
+  }
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: fake, writable: true })
+  try {
+    assert.equal(desktopPlatform(), 'windows')
+    assert.equal(usesCustomDesktopWindowControls(), true)
+    fake.__nessieDesktopPlatform = 'linux'
+    assert.equal(usesCustomDesktopWindowControls(), true)
+    fake.__nessieDesktopPlatform = 'macos'
+    assert.equal(usesCustomDesktopWindowControls(), false)
+    fake.__nessieDesktopPlatform = 'unknown'
+    assert.equal(desktopPlatform(), null)
   } finally {
     if (previous) Object.defineProperty(globalThis, 'window', previous)
     else delete (globalThis as { window?: unknown }).window
