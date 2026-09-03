@@ -169,17 +169,22 @@ export const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
   return items
 }
 
+/**
+ * `messageAgent` is the caller's already-resolved author, not a map to look one
+ * up in. It used to take the channel's `agentMap`, which comes from
+ * `useAgents()`'s default scope and therefore omits every system-managed agent
+ * — so an Agent Designer message fell through to the `'Agent'` last resort. The
+ * lookup belongs at the call site, where the identity directory is reachable.
+ */
 export const getDisplayName = (
   entry: ThreadMessageRecord,
   meDisplayName: string,
-  agentMap: Map<string, AgentRecord>,
+  messageAgent: Pick<AgentRecord, 'name'> | null | undefined,
   assistantFallbackName = 'Agent',
   personalAssistantDisplayName?: string,
 ): string => {
   if (entry.role === 'assistant') {
-    return personalAssistantDisplayName
-      ?? agentMap.get(entry.agentId ?? '')?.name
-      ?? assistantFallbackName
+    return personalAssistantDisplayName ?? messageAgent?.name ?? assistantFallbackName
   }
 
   if (entry.role === 'system') {

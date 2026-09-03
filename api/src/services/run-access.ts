@@ -26,6 +26,11 @@ export type OrgRun = {
   principalUserId: string | null
   status: RunStatus
   channelId: string
+  // The destination's system-DM kind. A restart or a continue re-enqueues a run
+  // into this channel, so it owes the same delegated-identity stamp the wake
+  // paths make — without it, continuing an Agent Designer run loses every
+  // identity-delegated tool the original had.
+  channelSystemChannelType: string | null
   threadId: string
   triggerMessageId: string | null
   triggerMessageMetadata: unknown
@@ -49,7 +54,12 @@ export const loadRunForOrg = async (
       threadId: true,
       triggerMessageId: true,
       replyPlacement: true,
-      thread: { select: { channelId: true } },
+      thread: {
+        select: {
+          channelId: true,
+          channel: { select: { systemChannelType: true } },
+        },
+      },
       triggerMessage: { select: { metadata: true } },
     },
   })
@@ -60,6 +70,7 @@ export const loadRunForOrg = async (
     principalUserId: run.principalUserId,
     status: run.status,
     channelId: run.thread.channelId,
+    channelSystemChannelType: run.thread.channel.systemChannelType,
     threadId: run.threadId,
     triggerMessageId: run.triggerMessageId,
     triggerMessageMetadata: run.triggerMessage?.metadata ?? null,

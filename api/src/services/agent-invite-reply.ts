@@ -9,10 +9,12 @@ import {
 } from '@nessie/schemas'
 import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
 
-type AgentInviteReplyPrisma = Pick<PrismaClient, '$executeRaw' | 'message'>
+// `channel` is here because the enqueue chokepoint resolves the destination's
+// system-DM kind itself rather than trusting each wake path to pass it.
+type AgentInviteReplyPrisma = Pick<PrismaClient, '$executeRaw' | 'channel' | 'message'>
 
 type EnqueueOrchestration = (
-  prisma: Pick<PrismaClient, '$executeRaw'>,
+  prisma: Pick<PrismaClient, '$executeRaw' | 'channel'>,
   payload: OrchestrateDecideJobPayload,
   idempotencyKey: string,
 ) => Promise<boolean>
