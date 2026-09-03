@@ -12,7 +12,7 @@ web UI (`admin/`, React + React Router, port 5455 in dev).
 > bring them back from the dead, but there's no way to do that. It needs to
 > work on every level."
 
-"Every level" = the whole hierarchy: **Organisation → Project → Team → Channel
+"Every level" = the whole hierarchy: **Organisation → Workspace → Project → Channel
 → Thread**, plus the sibling object types that already carry a half-built
 notion of archiving (tasks, knowledge pages/spaces, agents, triggers,
 workflows). Deletion should stop being the normal disposal path; archive should

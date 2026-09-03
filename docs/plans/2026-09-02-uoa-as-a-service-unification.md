@@ -53,7 +53,10 @@ Project → Team → Channel, and the admin calls a Team a "workspace".
   with no constraint proving the team belongs to the project.
 
 So hiding Project would leave invisible RBAC and content scopes that users
-cannot see or reach — a half-migration. v1 was wrong here.
+cannot see or reach — a half-migration. v1 was wrong here, and v2 was wrong in
+the other direction: Project is not plumbing to be constrained into a 1:1 with
+a workspace, it is a Nessie-only body of work that lives INSIDE one. See §4.1
+and [standards/workspace-model.md](../standards/workspace-model.md).
 
 It already leaks. `CreateProjectDialog` asks for one name and silently creates a
 Team called `"{Name} Team"`; `EditProjectDialog` renames only the Project, so the
@@ -186,28 +189,54 @@ into the plan as a stated bound rather than left implicit.
 
 ## 4. Proposal
 
-### 4.1 Make the 1:1 real instead of pretending
+### 4.1 Invert the relationship — REPLACES the 1:1 proposal, which was wrong
 
-Do not hide Project; **constrain it**, so the hierarchy Nessie enforces is the
-hierarchy UOA has:
+v2 proposed a unique constraint on `Team.projectId` to force Project and Team
+into a genuine 1:1. **That was the wrong fix, and it was wrong because the
+premise was wrong.** It came from reading `AGENTS.md`'s "one `Team` (with its
+Project and `#general`)" and from `createWorkspaceEnvironment` creating the two
+together with one name — and concluded Project was plumbing that existed to
+satisfy a foreign key.
 
-- Add a **unique constraint on `Team.projectId`**, making Project↔Team genuinely
-  1:1, after a migration that resolves any existing zero- or multi-Team Project.
-- **Forbid standalone Team creation** (`POST /api/teams`) and standalone Project
-  creation for UOA-bound organisations. The only way to get the pair is
-  `createWorkspaceEnvironment`, which already creates them together.
-- The pair **is** the workspace. Project's semantics (boards, tasks, knowledge,
-  approvals) become the workspace's semantics — no hidden second scope, because
-  there is exactly one Team per Project.
-- **One name, on `Team`.** `Project.name` stops being read anywhere and stops
-  being a heal target.
-- **Two carve-outs, named explicitly**, because they are Teams/Projects that are
-  not user workspaces and the vocabulary must not claim them: the `channelRoot`
-  Project that holds organisation-wide channels, and `systemManaged` Teams (the
-  Personal Assistant and external-agent surfaces).
+The actual model, now stated canonically in
+[docs/standards/workspace-model.md](../standards/workspace-model.md):
 
-This kills the `"{Name} Team"` artefact, the rename drift, and the ambiguity
-about which Team a project-scoped rename would even target.
+```text
+Organisation → Workspace (= a UOA team) → Project → Channel
+```
+
+A **workspace is the SSO's team**. A **project is a Nessie-only construct
+inside one workspace** — a body of work, with no UOA counterpart. So a project
+belongs to a workspace, and "which workspace does this project belong to?" must
+always have one answer.
+
+**The schema has this inverted.** `Team.projectId` makes Project the *parent* of
+Team, so the database reads Organisation → Project → Workspace. That single
+inverted foreign key is the common cause of defects v1 and v2 treated as
+separate:
+
+- `createWorkspaceEnvironment` fabricates a Project for every workspace because
+  a Team cannot exist without a Project parent — forced, not chosen.
+- The fabricated project takes the workspace's name, so one upstream name lands
+  on two rows and both need healing.
+- `CreateProjectDialog` does the mirror image, silently creating `"{Name} Team"`.
+- Several workspaces can hang off one project, a state the model forbids.
+
+So the work is to **invert the relationship**: `Project.teamId` (a project
+carries the workspace it belongs to) replacing `Team.projectId`. Constraining
+the current direction, as v2 proposed, would have frozen the wrong shape
+permanently — welding a body of work to a group of people to stop them
+multiplying, instead of fixing which contains which.
+
+The migration touches `Channel` (which carries `organizationId`, `projectId`
+and `teamId` today, with nothing forbidding an inconsistent triple),
+`ProjectMember`, and every project-scoped table.
+`scripts/inspect-workspace-shape.sql` sizes it against real data.
+
+Two questions it must answer, neither inferable from the schema: whether a
+fresh workspace starts with zero projects or one starter project (today it
+always gets exactly one because it must), and what happens to `ProjectMember`
+once a project sits inside a workspace whose roster UOA already owns.
 
 ### 4.2 One word per concept — with the honest exceptions
 
@@ -303,9 +332,9 @@ cleanup, and v1 scheduled it last.
    (§3, §3a). The credential and the outbox come first: without them the sweep
    is either estate-wide or fails open.
 3. **Nessie**: consume them — membership becomes a fail-closed cache (§4.4).
-4. **Nessie**: the Project↔Team migration and its constraint (§4.1). This must
+4. **Nessie**: invert `Team.projectId` into `Project.teamId` (§4.1). This must
    land *before* any rename work, because until it does a project-scoped rename
-   has no single team to target.
+   has no single workspace to target.
 5. **Nessie**: refuse local name writes; route renames to UOA (§4.3).
 6. **Nessie**: retire `GET /api/users`, the profile mirror, `Team.externalOrgId`.
 7. **Nessie**: vocabulary pass, and split the members surface (§4.2).

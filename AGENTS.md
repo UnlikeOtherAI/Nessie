@@ -258,7 +258,11 @@ when one changes, the same turn updates it, not this section.
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
   organisation id (`Organization.externalOrgId`, unique), and one UOA workspace
-  is one `Team` (with its Project and `#general`) inside that organisation.
+  is one **workspace** (the local `Team` model) inside that organisation. A
+  workspace IS the UOA team, not a container for one; Nessie's own Projects and
+  Channels live INSIDE a workspace, and UOA has no concept of either. The model
+  in full, including the currently inverted `Team.projectId` foreign key:
+  [docs/standards/workspace-model.md](docs/standards/workspace-model.md).
   **Creating** either happens in-app against UOA's org API rather than by
   redirecting a person into its chooser for a second interactive login; the
   local rows are still born only in `materializeUoaWorkspace`, from what the
