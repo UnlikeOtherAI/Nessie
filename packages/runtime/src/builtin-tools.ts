@@ -12,6 +12,7 @@ import {
 import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
 import { HANDOFF_TOOL_DEFINITIONS } from './builtin-handoff-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
+import { WORKSPACE_STRUCTURE_TOOL_DEFINITIONS } from './builtin-workspace-structure-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
 import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
@@ -456,6 +457,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...CARD_TOOL_DEFINITIONS,
   ...HANDOFF_TOOL_DEFINITIONS,
   ...CHANNEL_TOOL_DEFINITIONS,
+  ...WORKSPACE_STRUCTURE_TOOL_DEFINITIONS,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,

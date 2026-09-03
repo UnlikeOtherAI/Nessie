@@ -8,9 +8,11 @@ file is the rule**.
 - **A personal-assistant tool that does what a person does by clicking calls
   the same function that person's button calls, and mirrors that route's
   authorization exactly — no weaker, no stronger.** The provisioning builtins in
-  `worker/src/run/pa-tools/provisioning.ts` are the pattern: `agent_list` and
-  `channel_create` are member-level because their routes carry only
-  `requireActorContext`; binding reproduces all four gates of
+  `worker/src/run/pa-tools/provisioning.ts` are the pattern: `agent_list`,
+  `channel_create` and `project_list` are member-level because their routes
+  carry only `requireActorContext`, while `project_create` and `team_create`
+  are organisation-owner because `POST /api/projects` and `POST /api/teams`
+  carry `requireOwner`; binding reproduces all four gates of
   `POST /api/agents/:agentId/bindings` (channel membership, the system-channel
   refusal, owner, `checkPolicy('agent','bind')`); trigger creation parses the
   route's own `CreateAgentTriggerBodySchema` and refuses a schedule with no UOA
@@ -47,8 +49,9 @@ file is the rule**.
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Personal assistant — workspace provisioning".
 
 
-Four `personalAssistantOnly` builtins reach the PA
-(`worker/src/run/pa-tools/provisioning.ts`), each mirroring one REST route's
+Seven `personalAssistantOnly` builtins reach the PA
+(`worker/src/run/pa-tools/provisioning.ts` and `workspace-structure.ts`), each
+mirroring one REST route's
 authorization — no weaker, no stronger — and calling the same service function
 the route calls. The pattern, visible-refusal for owner-gated tools, the
 tool-ships-with-its-resolving-read rule, and the one arm that also opens them to
@@ -83,6 +86,33 @@ Per-tool facts:
   `CreateAgentTriggerBodySchema`; scheduled/interval triggers build
   `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`, and
   a signing deployment refuses a schedule without it, as the route does.
+
+Three more (`worker/src/run/pa-tools/workspace-structure.ts`) cover the
+containers a channel needs — a channel hangs off a team, a team off a project:
+
+- `project_list` → `listProjectsForUser` + `listTeamsForOrganization`. Any
+  active member, matching `GET /api/projects` (owners see every project in the
+  organisation, everybody else the ones they are a `ProjectMember` of) with
+  each project's non-system teams nested, narrowed to those projects — strictly
+  narrower than `GET /api/teams`'s own organisation scope. It is the read that
+  makes `team_create`'s `projectId` and `channel_create`'s `teamId` usable on a
+  project the person merely named. It stamps `project:` scopes only on the
+  membership arm: an owner reads by role, so stamping would compute a basis the
+  requesting owner does not satisfy (the `recordVisibleAgentRead` reasoning).
+- `project_create` → `createProjectForUser`. **Organisation owner**, matching
+  `POST /api/projects`; carries that route's single owner-membership row and
+  default board columns.
+- `team_create` → `createTeamForUser`. **Organisation owner**, matching `POST
+  /api/teams`; a `projectId` outside the organisation gets the route's own
+  indistinguishable "not found".
+
+There is deliberately no project-shaped shortcut inside `createChannelForUser`:
+project → team → channel is three calls, exactly as it is three clicks, so
+`loadChannelTeamProject` stays the one path a channel is attached through. A
+`channel_create` call naming no `visibility` inside a global agent's home DM
+(`systemChannelType === 'system_agent'`) lands **private** — an omitted argument
+must not publish a room to the organisation; the PA's own `public` default is
+unchanged.
 
 Owner-gated tools stay **visible** to non-owners and refuse in words (the
 `connector_*` precedent). Role is re-read from the live `OrganizationMember` row

@@ -158,7 +158,10 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           enum: ['public', 'protected', 'private'],
           description:
-            'public (default): any member can find and join. protected/private: invite only.',
+            'public: any member can find and join. protected/private: invite '
+            + 'only, and the person you are acting for is its sole member. '
+            + 'Always set this from what the person actually asked for — who '
+            + 'else should see the channel is not something to assume.',
         },
         teamId: {
           type: 'string',
