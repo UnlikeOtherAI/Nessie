@@ -1,8 +1,11 @@
 # Nessie — Claude Code
 
 Multi-tenant, self-hosted agentic work platform. Organisations host their own
-Nessie instance; users collaborate in a hierarchy of Organisation → Project →
-Team → Channel, with RBAC, approval gates, an audit trail, a token-cost ledger,
+Nessie instance; users collaborate in a hierarchy of Organisation → Workspace →
+Project → Channel — where a **workspace is the SSO's team**, and a project is a
+Nessie-only construct inside one workspace
+([docs/standards/workspace-model.md](docs/standards/workspace-model.md)) —
+with RBAC, approval gates, an audit trail, a token-cost ledger,
 MCP connector management, triggers/scheduling, video calling, and human work
 distribution.
 

@@ -7,7 +7,7 @@ summary and points here; **this file is the rule**.
 
 
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
-- Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
+- Multi-tenancy: Organisation → Workspace → Project → Channel ([workspace-model.md](workspace-model.md)) with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
 - Agentic loop — run budgets (2026-08-05 redesign). The model and the failures
   behind each rule are the spec's:
