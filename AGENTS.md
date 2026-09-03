@@ -197,12 +197,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
   and held to exactly its encoded member (owner at **segment 4**) by the deferred
   home-membership trigger. Sole membership is what makes `effectiveUserId =
-  poster` and the single-candidate fast path safe, so it must hold at rest. Three
-  refusals keep it true: no agent binds into ANY system channel
-  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
-  refuses rename, archive and re-membering), `createAgentTrigger` refuses a
-  `systemSlug` target (a scheduled run re-arms its creator's identity), and
-  `assertGlobalAgentRunPlacement` admits only the home DM before any inference. Reachability is the point of the tier: `listAgentsForUser`'s
+  poster` and the single-candidate fast path safe, so it must hold at rest. Two refusals keep it true: no agent binds into ANY system **channel** (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise refuses rename, archive and re-membering), and `createAgentTrigger` refuses a `systemSlug` target (a scheduled run re-arms its creator's identity). The **agent**-side bind refusal is deliberately NOT `systemManaged`: a system-managed *shared* agent is placeable in ordinary channels — and therefore in projects, whose reach is their channels — under the ordinary gates (channel membership, owner, `checkPolicy('agent','bind')`), and `isChannelBindableAgent` refuses only the PA (its own presence path) and an external product (its own per-user DM), with `unbindAgentFromChannel` widened to match or a placed agent could never be removed.
+  `assertGlobalAgentRunPlacement` therefore admits its own home DM **or** an ordinary channel `boundAgentIds` proves it is bound to, and nothing else — a system channel reached there belongs to somebody else. A shared room is advice-only by construction: the identity-delegated tools keep asking for the home DM, so a global agent works a design out in the room and it is built in the person's own chat. Nothing else in the run path needed widening — memory containment, realtime narrowing, reply attribution and the orchestrator's single-candidate fast path are all keyed on the *surface*, so an ordinary channel already gives it ordinary shared-agent treatment.
+  Reachability is the point of the tier: `listAgentsForUser`'s
   `includeSystemManaged` arm is `{ organizationId, systemManaged: true }` and no
   longer channel-gated: an app-provided agent nobody can find is the
   unreachable-capability defect Rule zero names. Finding one has to lead

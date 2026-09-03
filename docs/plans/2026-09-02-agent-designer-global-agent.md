@@ -18,10 +18,7 @@ redesigning an agent is now the Designer's alone: those tools are
 `identityDelegatedOnly`, so the Personal Assistant hands off instead of carrying
 the design catalogue.
 
-**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only
-a stable tile colour, with generation left to the PA's lazy owner-triggered
-path. Binding a global agent into ordinary shared channels stays with the scopes
-doc's later phase; v1 global agents are DM-homed and own no triggers. The sidebar
+**Deferred, deliberately.** No avatar *image* at bootstrap (a billed call), only a stable tile colour, with generation left to the PA's lazy owner-triggered path. ~~Binding a global agent into ordinary shared channels stays with the scopes doc's later phase~~ — **that phase shipped 2026-09-02 too:** a system-managed *shared* agent binds to ordinary channels (and so reaches projects, whose reach is their channels) under the ordinary gates, the refusal narrowed to `isChannelBindableAgent`, and `assertGlobalAgentRunPlacement` now admits the home DM **or** a channel the agent is genuinely bound to; a shared room stays advice-only, because the identity-delegated tools keep asking for the home DM. Mechanics: [../global-agents.md](../global-agents.md) → "Where a global agent can be". v1 global agents still own no triggers. The sidebar
 keeps its ephemeral in-process transport rather than becoming thread-backed
 (D9's named end state). There is no `agent_delete` for anyone, and no
 policy-target or explicit-grant mutation from either face.
@@ -158,6 +155,8 @@ bug caught while mapping this. Fixing it legalizes the shape both need, so
 migration `20260902170000_external_agent_surface_invariants` ships that fourth
 tuple; the Designer work must **not** add a second one.)
 
+*Amended 2026-09-02, when global agents became bindable to ordinary channels.* `surface_policy = 'dm_only'` is the storage-level statement "this agent lives only in a per-user private DM", which stopped being true of a global agent — so `ensureGlobalAgent` writes `'shared'`, and migration `20260902230000_global_agents_bindable_to_channels` sanctions the fifth tuple `(systemManaged=true, shared, shared, act_as_requesting_user)` and re-states existing rows. `delegation_mode` is unchanged: *where* the delegation is exercised was always the surface predicate's call, never this column's. The external product's fourth tuple is untouched — `dm_only` is still exactly right for it.
+
 ### D2 — Home surface: a per-user private DM
 
 `dmKey = gagent:{slug}:{orgId}:{userId}`, `type='dm'`,
@@ -185,7 +184,7 @@ precedent, both adopted from review):
   widens to *any* non-null `systemChannelType` (and `unbindAgentFromChannel`
   learns the same scope). Without this, an ordinary agent bound into the
   Designer DM reads the whole design transcript and breaks the
-  single-candidate fast path.
+  single-candidate fast path. *(Still exactly true as built: when global agents became bindable on 2026-09-02 only the **agent**-side arm of that one line moved — `isChannelBindableAgent`, refusing the PA and external products — and the system-**channel** arm was left alone, with `unbindAgentFromChannel` widened symmetrically since removal must be at least as wide as placement.)*
 - **System channels are lifecycle-protected.** The `channel-manage.ts`
   chokepoints (rename, archive, membership) refuse channels with a non-null
   `systemChannelType` (the PA-channel refusals generalised), and the

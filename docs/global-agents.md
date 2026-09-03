@@ -10,6 +10,101 @@ one.
 Spec and full history:
 [plans/2026-09-02-agent-designer-global-agent.md](plans/2026-09-02-agent-designer-global-agent.md).
 
+## Where a global agent can be, and what it can do there
+
+A global agent is **bindable to ordinary channels**, like any other shared
+agent. Projects have no separate mechanism: a project's reach *is* its
+channels, so putting the Agent Designer in a project's channels is what "add it
+to the project" means, and there is deliberately no project-level agent picker
+to build. The decision is `docs/plans/2026-08-30-agent-scopes-personal-team-global.md`
+open question 1, resolved as recommended there.
+
+**The agent-side refusal is not `systemManaged`.**
+`isChannelBindableAgent` (`@nessie/workspace-admin` `agent-record.ts`) refuses
+exactly two agents, each for its own reason:
+
+- the **Personal Assistant**, whose presence is a per-user
+  `AgentBinding.principalUserId` row written by
+  `POST /api/channels/:channelId/personal-assistant` under its own partial
+  unique — a plain binding would be a second, principal-less presence for an
+  agent every one of whose runs resolves an owner;
+- an **external-agent product** (`executionMode = external_mcp`), which proxies
+  every turn to a *per-user* product instance over a DM key its integration
+  provisions. A shared room has no such user.
+
+Everything else about the bind is unchanged: `getChannelIfMember`, the private
+-agent refusal, `requireOwner` and `checkPolicy('agent', 'bind')` at both the
+route and the `agent_bind_channel` PA tool, and — untouched — the **system
+channel** refusal. No second agent joins any single-agent system DM, ever: that
+surface's sole membership is what makes `effectiveUserId = poster`, the
+orchestrator's single-candidate fast path and the private design transcript
+safe. `unbindAgentFromChannel` was widened in the same stroke (it filtered
+`systemManaged: false`), because removal must be at least as wide as placement
+or a placed agent is permanent.
+
+**Placement at run start admits two surfaces, and only one carries identity.**
+`assertGlobalAgentRunPlacement` (`worker/src/run/execute/global-agent-placement.ts`):
+
+1. its own home DM, decided by `isGlobalAgentHomeSurface` — the same predicate
+   the delegation gate and the identity-tool gate ask, so placement and identity
+   cannot disagree about what "its own home" means;
+2. an ordinary channel it is genuinely bound to, verified against
+   `context.boundAgentIds` (the destination's live `AgentBinding` set, loaded
+   once with the run context) rather than the channel's kind, so a stale job
+   into a channel it was unbound from still fails closed.
+
+A system channel is never the second arm: reaching that test means the first arm
+already said no, so any `systemChannelType` there is somebody else's
+single-agent surface. An unknown blueprint slug — one a deploy withdrew — still
+runs nowhere at all, bound or not.
+
+**A shared channel is advice-only, and that is the point.** The
+`personalAssistantOnly` identity-delegated arm
+(`resolveIdentityDelegatedToolIds`) requires the agent's own home DM, so in a
+shared channel the Designer has no `agent_create`, `agent_update`,
+`agent_bind_channel` or the rest — the tools are *omitted* from its schema, not
+offered and denied. `loadGlobalAgentCatalogueBlock` reads that same resolved
+toolset and picks the `read_only` closing instruction, which tells it to work
+the design out in the room and say where it gets built. `agent_handoff` is
+withheld from any `systemSlug` agent (loop bound), so it hands over in words.
+
+**Nothing else in the run path keyed on "system agent" needed widening.**
+Memory containment and scope resolution (`execute/memory.ts`), realtime scope
+narrowing (`execute/scopes.ts`), reply attribution (`execute/completion.ts`) and
+the orchestrator's `isSingleAgentSystemDm` fast path are all keyed on the
+*surface* — `systemChannelType` and the home `dmKey`, through
+`runDelegatesToRequestingPerson` / `isDelegatedSystemDmChannelType` — never on
+`systemManaged`. In an ordinary channel every one of them therefore already
+gives a global agent ordinary shared-agent treatment, and engagement there is
+the ordinary model-judged decision.
+
+**The stored row stopped claiming `dm_only`.** `surfacePolicy` is the
+storage-level statement "this agent lives only in a per-user private DM", so
+`ensureGlobalAgent` now writes `shared`; migration
+`20260902230000_global_agents_bindable_to_channels` sanctions that fifth tuple
+in `agents_system_managed_invariants_chk` and re-states existing rows.
+`delegationMode` stays `act_as_requesting_user` and is unchanged in meaning —
+*where* that delegation is exercised was always the surface predicate's call.
+The admin reads `surfacePolicy` as exactly this question:
+`useChannelPlaceableAgents` merges the system tier into the channel pickers and
+drops `dm_only` rows, so one sentence serves both sides.
+
+**The admin surfaces.** `GET /api/agents` omits every `systemManaged` row, so
+the members popup, the channel roster and the @mention typeahead were all
+structurally blind to a global agent — the address-book defect again.
+`ChannelsPage` reads `useChannelPlaceableAgents()` instead of `useAgents()`
+(the `?scope=all` query the identity directory already holds, so no extra
+request), which fixes the picker, the roster and the typeahead together. The
+`AvailableAgentRow` / `CurrentAgentRow` clone button is hidden for a global
+agent — `cloneAgent` refuses a `systemManaged` source, and a button whose only
+outcome is a 404 is worse than none — and a `global` pill names the tier.
+Server-side, `message-create.ts`'s pending-invite candidate query dropped its
+`systemManaged: false` filter (keeping `agentKind: 'shared'`, which excludes the
+PA, and adding an `external_mcp` exclusion), so @mentioning the Designer in a
+channel offers the same Invite & reply chip every other agent gets. Portraits
+need nothing: `AgentAvatar` already resolves through `AgentIdentityProvider`,
+which runs at `scope: 'all'`.
+
 ## The model a global agent runs on
 
 Blueprint pin → `NESSIE_DESIGNER_MODEL` → the organisation's default, resolved

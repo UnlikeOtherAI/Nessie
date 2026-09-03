@@ -383,7 +383,11 @@ export const runAgentBindChannelTool = async (
     throw error
   }
   if (!agent) {
-    throw new Error('Agent not found, or it is system managed and cannot be bound.')
+    throw new Error(
+      'Agent not found, or it is one this path never places — a Personal '
+      + 'Assistant (added through its own presence control) or an external '
+      + 'product agent (added by its integration).',
+    )
   }
 
   return {

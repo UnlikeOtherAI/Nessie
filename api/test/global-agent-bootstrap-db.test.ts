@@ -3,11 +3,17 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   bindAgentToChannel,
   canManageChannel,
+  checkPolicy,
   createAgentTrigger,
+  getChannelIfMember,
   listAgentsForUser,
+  unbindAgentFromChannel,
 } from '@nessie/workspace-admin'
 
 import {
@@ -16,6 +22,7 @@ import {
   ensureGlobalAgentsForUser,
   globalAgentHomeDmKey,
 } from '../src/services/global-agents.js'
+import { seedDefaultPolicies } from '../src/services/policy.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -127,10 +134,15 @@ dbTest('bootstrap is idempotent and writes the sanctioned system tuple', async (
         toolPolicy: true,
       },
     })
-    // The tuple migration 20260902170000 sanctioned; this phase adds no CHECK.
+    // The fifth tuple, sanctioned by 20260902230000. `surfacePolicy` is the
+    // storage-level statement "this agent lives only in a per-user private DM",
+    // and a global agent is placeable in ordinary channels, so it must not say
+    // `dm_only` — that is the PA's and an external product's shape.
+    // `delegationMode` is unchanged: *where* the delegation is exercised is the
+    // surface predicate's call, never this column's.
     assert.equal(agent.systemManaged, true)
     assert.equal(agent.agentKind, 'shared')
-    assert.equal(agent.surfacePolicy, 'dm_only')
+    assert.equal(agent.surfacePolicy, 'shared')
     assert.equal(agent.delegationMode, 'act_as_requesting_user')
     assert.equal(agent.systemSlug, 'agent-designer')
     assert.equal(agent.name, 'Agent Designer')
@@ -430,6 +442,205 @@ dbTest('an unbound global agent is still listed on the Global tab', async () => 
     assert.ok(designer, 'scope=all lists the Agent Designer for a member with no home DM')
     assert.equal(designer.systemManaged, true)
     assert.equal(designer.name, 'Agent Designer')
+  } finally {
+    await teardown(context)
+  }
+})
+
+/**
+ * The reachability half: a global agent is placeable in ordinary channels.
+ *
+ * Each case drives the *route's* gate chain in the route's own order —
+ * `getChannelIfMember`, the system-channel refusal, owner, `checkPolicy`, then
+ * `bindAgentToChannel` — against a real database, because the refusals that
+ * matter here are a CHECK, a partial unique and a deferred trigger.
+ */
+const ordinaryChannel = async (context: Seed, label: string): Promise<string> => {
+  const channel = await context.prisma.channel.create({
+    data: {
+      label,
+      organizationId: context.organizationId,
+      projectId: context.projectId,
+      slug: `${label}-${randomUUID().slice(0, 8)}`,
+      teamId: context.teamId,
+      type: 'standard',
+      visibility: 'private',
+      members: { create: [{ userId: context.userId }] },
+    },
+    select: { id: true },
+  })
+  return channel.id
+}
+
+const actorContextFor = (
+  context: Seed,
+  role: 'owner' | 'member',
+): AuthorizedActionContext => ({
+  actionContext: { requestId: `bind-${context.organizationId}-${role}` },
+  actor: {
+    actorId: role === 'owner' ? context.userId : context.otherUserId,
+    actorType: 'user',
+    roles: [role],
+  },
+  tenant: {
+    organizationId: context.organizationId,
+    projectId: context.projectId,
+    teamId: context.teamId,
+  },
+}) as AuthorizedActionContext
+
+dbTest('a global agent binds to an ordinary channel through the route gates', async () => {
+  const context = await seed('global-agent-bind')
+  const { organizationId, prisma, teamId, userId } = context
+
+  try {
+    const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
+      blueprint: AGENT_DESIGNER_BLUEPRINT,
+      organizationId,
+      teamId,
+      userId,
+    })
+    const channelId = await ordinaryChannel(context, 'design-room')
+    await seedDefaultPolicies(prisma, organizationId, userId)
+
+    // Gate 1: channel membership. Gate 2: the system-channel refusal — this
+    // channel is ordinary, which is exactly what makes it bindable.
+    const channel = await getChannelIfMember(prisma, userId, organizationId, channelId)
+    assert.ok(channel, 'the owner is a member of the channel')
+    assert.equal(channel.systemChannelType, undefined)
+
+    // Gate 3 is `requireOwner`. Gate 4: policy, on the scope chain the route
+    // builds. Both are asserted from the deny side too — a gate that admits
+    // everybody would make the allow above meaningless.
+    const decision = await checkPolicy(
+      prisma,
+      actorContextFor(context, 'owner'),
+      'agent',
+      'bind',
+      { agentId: bootstrap.agentId, channelId },
+    )
+    assert.equal(decision.allowed, true)
+    const memberDecision = await checkPolicy(
+      prisma,
+      actorContextFor(context, 'member'),
+      'agent',
+      'bind',
+      { agentId: bootstrap.agentId, channelId },
+    )
+    assert.equal(
+      memberDecision.allowed,
+      false,
+      'a plain member is still refused by the bind policy',
+    )
+
+    const bound = await bindAgentToChannel(prisma, {
+      agentId: bootstrap.agentId,
+      channelId,
+      organizationId,
+      userId,
+    })
+    assert.ok(bound, 'the Agent Designer is no longer refused by the chokepoint')
+    assert.equal(bound.systemManaged, true)
+    assert.ok(
+      bound.channelIds.includes(channelId),
+      'the returned record names the channel it was placed in',
+    )
+
+    // And it is one of that channel's agents, which is what makes both the run
+    // placement arm and the channel roster true.
+    const channelAgents = await prisma.agentBinding.findMany({
+      where: { channelId },
+      select: { agentId: true },
+    })
+    assert.deepEqual(channelAgents.map((row) => row.agentId), [bootstrap.agentId])
+
+    // Removal must be at least as wide as placement, or it is permanent.
+    await unbindAgentFromChannel(prisma, {
+      agentId: bootstrap.agentId,
+      channelId,
+      organizationId,
+    })
+    assert.equal(
+      await prisma.agentBinding.count({ where: { channelId } }),
+      0,
+      'unbind no longer filters systemManaged: false',
+    )
+
+    // Its own home DM binding is untouched by that removal.
+    assert.equal(
+      await prisma.agentBinding.count({
+        where: { agentId: bootstrap.agentId, channelId: bootstrap.channelId },
+      }),
+      1,
+    )
+  } finally {
+    await teardown(context)
+  }
+})
+
+dbTest('the Personal Assistant is never placed by this path', async () => {
+  const context = await seed('global-agent-bind-pa')
+  const { organizationId, prisma, userId } = context
+
+  try {
+    const channelId = await ordinaryChannel(context, 'pa-room')
+    // The PA's sanctioned tuple: it keeps its own presence route, which writes
+    // a per-user `principalUserId` row this chokepoint cannot produce.
+    const pa = await prisma.agent.create({
+      data: {
+        agentKind: 'personal_assistant',
+        delegationMode: 'act_as_requesting_user',
+        name: 'Personal Assistant',
+        organizationId,
+        surfacePolicy: 'dm_only',
+        systemManaged: true,
+      },
+      select: { id: true },
+    })
+
+    assert.equal(
+      await bindAgentToChannel(prisma, {
+        agentId: pa.id,
+        channelId,
+        organizationId,
+        userId,
+      }),
+      null,
+    )
+    assert.equal(await prisma.agentBinding.count({ where: { channelId } }), 0)
+  } finally {
+    await teardown(context)
+  }
+})
+
+dbTest('a private agent is still refused, and its owner is told why', async () => {
+  const context = await seed('global-agent-bind-private')
+  const { organizationId, prisma, userId } = context
+
+  try {
+    const channelId = await ordinaryChannel(context, 'private-room')
+    const priv = await prisma.agent.create({
+      data: {
+        name: 'Private agent',
+        organizationId,
+        ownerUserId: userId,
+        visibility: 'private',
+      },
+      select: { id: true },
+    })
+
+    await assert.rejects(
+      bindAgentToChannel(prisma, {
+        agentId: priv.id,
+        channelId,
+        organizationId,
+        userId,
+      }),
+      (error: unknown) =>
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY,
+    )
+    assert.equal(await prisma.agentBinding.count({ where: { channelId } }), 0)
   } finally {
     await teardown(context)
   }
