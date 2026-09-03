@@ -9,8 +9,14 @@ import {
   fetchUoaTeamAvatar,
   putUoaTeamAvatar,
   resolveUoaTeam,
+  type UoaAvatarDeps,
   type UoaTeam,
 } from '../services/uoa-avatar.js'
+import {
+  UoaRosterIdentityError,
+  UoaRosterUnavailableError,
+  withUoaRosterSubjectAssertion,
+} from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -19,13 +25,23 @@ import type { RouteDeps } from './types.js'
  * A separate read-only membership-scoped route serves the other teams visible
  * in the team picker.
  *
- * UOA's `/domain/teams/:teamId/avatar` endpoints take the domain-hash bearer
- * alone, which is full system trust for the domain and applies **no** role check
- * of its own. UOA requires the calling product to gate first, so the
- * owner/admin check below is the only thing standing between an ordinary member
- * and rewriting the whole team's picture. The current-team mutation
- * routes never take a team id from the request. The picker route accepts a team
- * id only for reads and verifies the signed-in user's membership first.
+ * Every call is relayed as the signed-in person where that is possible: a
+ * short-lived subject assertion of their UOA session puts the request on the
+ * `/org/*` family, where UOA re-resolves their live membership and their
+ * `teams.manage` capability, and where an organisation founded on another
+ * UOA-integrated domain is reachable at all. `/domain/*` is the fallback for a
+ * caller with no assertable UOA session, and for the picker's reads of a
+ * team other than the one the session is standing in — UOA pins an
+ * assertion to exactly the asserted team, so a foreign team id can never
+ * ride one.
+ *
+ * `/domain/*` is full system trust for the domain: those mutations apply **no**
+ * role check of their own, and UOA requires the calling product to gate first.
+ * The owner/admin check below is therefore load-bearing on that path, and stays
+ * the local entitlement gate on the `/org/*` path too. The current-team
+ * mutation routes never take a team id from the request. The picker route
+ * accepts a team id only for reads and verifies the signed-in user's membership
+ * first.
  */
 
 const NO_TEAM_MESSAGE =
@@ -50,6 +66,40 @@ const requireTeam = async (
     return null
   }
   return team
+}
+
+/**
+ * Relay credentials for one team: the caller's subject assertion when
+ * their UOA session is for exactly this team, and nothing extra otherwise.
+ *
+ * `withUoaRosterSubjectAssertion` throws when the session does not match, which
+ * here is not a refusal — it means only the `/domain/*` route is available, and
+ * that route is legitimate (and is all a non-UOA deployment ever had).
+ */
+const relayCredentials = (
+  actorContext: AuthorizedActionContext,
+  team: UoaTeam,
+  deps: UoaAvatarDeps,
+): UoaAvatarDeps => {
+  if (!team.externalOrgId) return deps
+  try {
+    return withUoaRosterSubjectAssertion(
+      {
+        externalOrgId: team.externalOrgId,
+        externalTeamId: team.externalTeamId,
+      },
+      actorContext.actionContext.uoaIdentity,
+      deps,
+    )
+  } catch (error) {
+    // No assertable session, or no signing material to assert with: either way
+    // `/domain/*` is what is left, and it answers 404 if it cannot see the team.
+    if (
+      error instanceof UoaRosterIdentityError
+      || error instanceof UoaRosterUnavailableError
+    ) return deps
+    throw error
+  }
 }
 
 const requireTeamAdmin = (
@@ -80,10 +130,11 @@ const relayTeamAvatar = async (
   request: FastifyRequest,
   reply: FastifyReply,
   team: UoaTeam,
+  relayDeps: UoaAvatarDeps,
 ): Promise<FastifyReply> => {
   let image = null
   try {
-    image = await fetchUoaTeamAvatar(team.externalTeamId)
+    image = await fetchUoaTeamAvatar(team, relayDeps)
   } catch (error) {
     if (sendRelayError(request, reply, error)) return reply
     throw error
@@ -95,9 +146,14 @@ const relayTeamAvatar = async (
   return sendAvatarImage(reply, image)
 }
 
+/**
+ * `avatarDeps` is the injectable egress seam (pinned fetch + DNS) these relays
+ * share. Production passes nothing.
+ */
 export const registerTeamAvatarRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
+  avatarDeps: UoaAvatarDeps = {},
 ): void => {
   const { requireActorContext } = deps
 
@@ -108,7 +164,12 @@ export const registerTeamAvatarRoutes = (
     const team = await requireTeam(deps, actorContext, reply)
     if (!team) return reply
 
-    return relayTeamAvatar(request, reply, team)
+    return relayTeamAvatar(
+      request,
+      reply,
+      team,
+      relayCredentials(actorContext, team, avatarDeps),
+    )
   })
 
   app.get<{ Params: { teamId: string } }>('/api/teams/:teamId/avatar', async (request, reply) => {
@@ -125,7 +186,16 @@ export const registerTeamAvatarRoutes = (
     if (!team) {
       return sendAvatarNotFound(reply, NO_TEAM_MESSAGE)
     }
-    return relayTeamAvatar(request, reply, team)
+    // The picker reads teams the session is not standing in, so an
+    // assertion is only ever available for the active one. `relayCredentials`
+    // supplies it there and falls back to `/domain/*` for the rest, which the
+    // switcher already backstops with UOA's public team image.
+    return relayTeamAvatar(
+      request,
+      reply,
+      team,
+      relayCredentials(actorContext, team, avatarDeps),
+    )
   })
 
   app.put('/api/team/avatar', async (request, reply) => {
@@ -140,7 +210,11 @@ export const registerTeamAvatarRoutes = (
     if (!image) return reply
 
     try {
-      const written = await putUoaTeamAvatar(team.externalTeamId, image)
+      const written = await putUoaTeamAvatar(
+        team,
+        image,
+        relayCredentials(actorContext, team, avatarDeps),
+      )
       if (!written) {
         return sendAvatarNotFound(reply, NO_TEAM_MESSAGE)
       }
@@ -161,7 +235,10 @@ export const registerTeamAvatarRoutes = (
     if (!team) return reply
 
     try {
-      const cleared = await deleteUoaTeamAvatar(team.externalTeamId)
+      const cleared = await deleteUoaTeamAvatar(
+        team,
+        relayCredentials(actorContext, team, avatarDeps),
+      )
       if (!cleared) {
         return sendAvatarNotFound(reply, NO_TEAM_MESSAGE)
       }

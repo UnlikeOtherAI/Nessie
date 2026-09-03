@@ -20,15 +20,19 @@ const REPLY_TIMEOUT_MS = 5 * 60_000
 const POLL_INTERVAL_MS = 2_500
 
 export type AssistantHandoff = {
-  dispatch: (text: string) => Promise<{ status: string; detail: string }>
+  dispatch: (
+    text: string,
+    /** Gemini's own id for the call, which is the idempotency key. */
+    providerCallId: string,
+  ) => Promise<{ status: string; detail: string }>
   stop: () => void
 }
 
 export const createAssistantHandoff = (deps: {
   api: VoiceApi
-  threadId: string
   /** Speaks a delivered reply through the model, in its own voice. */
   speak: (text: string) => void
+  voiceSessionId: string
 }): AssistantHandoff => {
   let stopped = false
   const timers = new Set<ReturnType<typeof setTimeout>>()
@@ -56,10 +60,10 @@ export const createAssistantHandoff = (deps: {
       await sleep(POLL_INTERVAL_MS)
       if (stopped) return
       try {
-        const replies = await deps.api.repliesAfter(deps.threadId, afterMessageId)
-        const reply = replies.find((message) => message.content.trim().length > 0)
+        const replies = await deps.api.repliesAfter(deps.voiceSessionId, afterMessageId)
+        const reply = replies.find((message) => message.text.trim().length > 0)
         if (reply) {
-          if (!stopped) deps.speak(reply.content)
+          if (!stopped) deps.speak(reply.text)
           return
         }
       } catch {
@@ -70,10 +74,10 @@ export const createAssistantHandoff = (deps: {
   }
 
   return {
-    dispatch: async (text) => {
+    dispatch: async (text, providerCallId) => {
       try {
-        const created = await deps.api.sendToAssistant(deps.threadId, text)
-        void awaitReply(created.message.id)
+        const created = await deps.api.sendToAssistant(deps.voiceSessionId, text, providerCallId)
+        void awaitReply(created.messageId)
         return {
           status: 'working',
           detail:

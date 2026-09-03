@@ -138,6 +138,48 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Changing what UOA owns, from inside Nessie
+
+"UOA is the authority" is a rule about **where the value is stored**, not about
+where a person is allowed to stand when they change it. Refusing the edit was
+never the invariant; writing a second copy was. So a team's name and its
+company picture are both changed from `/settings/team` → Profile, and both
+writes are relayed to UOA and then mirrored from the record UOA echoes back —
+never written locally and hoped for. Two consequences, both load-bearing:
+
+- **The mirror is written from UOA's response, not from the request.** UOA
+  normalizes what it accepted, so mirroring the echoed value is what makes the
+  two agree by construction. A refusal or an outage upstream must change
+  nothing locally, or the next `syncExternalTeamNames` silently reverts it
+  and the rename looks like it worked for one page load.
+- **Both rows carry the label.** `createTeamEnvironment` names the Team and
+  the Project it fabricates identically, so a rename heals both through
+  `mirrorExternalTeamName` — the same function the directory sync uses.
+
+### Which UOA route family, and why it is not a detail
+
+UOA exposes two, and picking the wrong one fails for exactly the tenants who
+matter most:
+
+- **`/domain/*`** — domain-hash bearer alone, no acting person. It is scoped to
+  organisations that were **created on** the calling product's domain, so an
+  organisation founded on another UOA-integrated domain answers the generic
+  `404` for every method. This is why the team avatar rendered as initials
+  in settings while the sidebar showed the team's real SSO icon (the
+  sidebar falls back to UOA's public, unscoped team image), and why an upload
+  could not override that icon at all.
+- **`/org/*`** — the same domain hash plus a short-lived product-signed
+  assertion of the signed-in person (`withUoaRosterSubjectAssertion`). UOA
+  re-resolves that person's live membership and capability, and the
+  organisation's origin domain is deliberately not a predicate. This is the path
+  for anything about the team the session is standing in.
+
+An assertion is pinned to the team it names: UOA requires
+`active.teamId` to equal the route's `:teamId`, so `/org/*` can only ever reach
+the current team. Reads of *another* team (the picker) therefore stay
+on `/domain/*`, backstopped by UOA's public team image. Nessie's own owner/admin
+gate stays in front of both — it is the only role check `/domain/*` gets.
+
 ## What Nessie must not store
 
 UOA owns identity and the organisation/team hierarchy, so Nessie keeps no second

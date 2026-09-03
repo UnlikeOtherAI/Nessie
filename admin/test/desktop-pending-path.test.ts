@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { consumeDesktopPendingPath } from '../src/lib/desktop'
+import {
+  consumeDesktopPendingPath,
+  desktopPlatform,
+  usesCustomDesktopWindowControls,
+} from '../src/lib/desktop'
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
@@ -24,6 +28,36 @@ test('the retained desktop path is consumed once and must be an internal path', 
     if (previous) Object.defineProperty(globalThis, 'window', previous)
     else delete (globalThis as { window?: unknown }).window
   }
+})
+
+test('custom traffic lights are only exposed by Windows and Linux Tauri shells', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const fake = { __nessieDesktopPlatform: 'windows' } as Window & {
+    __nessieDesktopPlatform?: unknown
+  }
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: fake, writable: true })
+  try {
+    assert.equal(desktopPlatform(), 'windows')
+    assert.equal(usesCustomDesktopWindowControls(), true)
+    fake.__nessieDesktopPlatform = 'linux'
+    assert.equal(usesCustomDesktopWindowControls(), true)
+    fake.__nessieDesktopPlatform = 'macos'
+    assert.equal(usesCustomDesktopWindowControls(), false)
+    fake.__nessieDesktopPlatform = 'unknown'
+    assert.equal(desktopPlatform(), null)
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous)
+    else delete (globalThis as { window?: unknown }).window
+  }
+})
+
+test('the green traffic light owns the shared window-layout popover', () => {
+  const controls = source('../src/layouts/admin-shell/DesktopWindowControls.tsx')
+  const layouts = source('../src/layouts/admin-shell/WindowLayoutPopover.tsx')
+  assert.match(controls, /LAYOUT_HOVER_DELAY_MS = 800/)
+  assert.match(controls, /<WindowLayoutPopover/)
+  assert.match(layouts, /from '..\/..\/components\/overlays\/Popover'/)
+  assert.match(layouts, /className="desktop-window-layout-popover"/)
 })
 
 test('the init script retains the path before dispatching, and both consumers exist', () => {

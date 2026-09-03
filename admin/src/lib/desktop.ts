@@ -1,7 +1,10 @@
 type TauriWindow = Window & {
   __TAURI__?: unknown
   __TAURI_INTERNALS__?: unknown
+  __nessieDesktopPlatform?: unknown
 }
+
+export type DesktopPlatform = 'linux' | 'macos' | 'windows'
 
 export const isDesktopApp = (): boolean => {
   if (typeof window === 'undefined') {
@@ -9,7 +12,28 @@ export const isDesktopApp = (): boolean => {
   }
 
   const tauriWindow = window as TauriWindow
-  return '__TAURI_INTERNALS__' in tauriWindow || '__TAURI__' in tauriWindow
+  // Some Tauri WebViews deliberately omit the legacy global bridge even with
+  // withGlobalTauri enabled. The shell's document-start platform marker is
+  // equally native and keeps its custom title bar reachable in that case.
+  return (
+    '__TAURI_INTERNALS__' in tauriWindow ||
+    '__TAURI__' in tauriWindow ||
+    '__nessieDesktopPlatform' in tauriWindow
+  )
+}
+
+// The Tauri shell records its target OS before the document loads. User-agent
+// inference would make the hosted web app look native and duplicate macOS's
+// own traffic lights, so native chrome is driven by that structural fact.
+export const desktopPlatform = (): DesktopPlatform | null => {
+  if (!isDesktopApp()) return null
+  const platform = (window as TauriWindow).__nessieDesktopPlatform
+  return platform === 'linux' || platform === 'macos' || platform === 'windows' ? platform : null
+}
+
+export const usesCustomDesktopWindowControls = (): boolean => {
+  const platform = desktopPlatform()
+  return platform === 'linux' || platform === 'windows'
 }
 
 type DesktopPendingWindow = Window & { __nessieDesktopPendingPath?: unknown }

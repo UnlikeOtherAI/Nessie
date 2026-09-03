@@ -6,6 +6,12 @@ export type NativeShellInfo = {
   formFactor: 'ipad' | 'large-phone-landscape' | 'phone'
   platform: string
   pendingPushPath: string | null
+  /**
+   * Whether this build can place a CallKit call. The admin asks before it
+   * offers the call button a native path, because an older installed build has
+   * the button and not the module.
+   */
+  voiceCall: boolean
 }
 
 /**
@@ -26,7 +32,9 @@ export const createNativePushSurfaceClientId = (): string => {
 export const nativeShellInfoScript = (info: NativeShellInfo): string => `
 window.__nessieNativeShell = { bottomInset: ${JSON.stringify(info.bottomInset)}, platform: ${
   JSON.stringify(info.platform)
-}, formFactor: ${JSON.stringify(info.formFactor)} };
+}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
+  JSON.stringify(info.voiceCall)
+} };
 window.__nessieNativeAppForeground = true;
 window.__nessiePushSurfaceClientId = ${JSON.stringify(info.clientId)};
 ${info.pendingPushPath ? `window.__nessiePendingPushPath = ${JSON.stringify(info.pendingPushPath)};` : ''}

@@ -19,13 +19,28 @@ const ADMIN_ROLES = new Set(['owner', 'admin'])
 const MAX_BYTES = 1024 * 1024
 const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
+type TeamAvatarPanelProps = {
+  /**
+   * The team this panel is showing, when the screen lets a person pick one
+   * that is not the one they are in. Omitted means the current team.
+   */
+  team?: { id: string; name: string } | undefined
+}
+
 /**
  * The company avatar UnlikeOtherAI holds for this team — the picture every
  * UOA surface shows for the team, distinct from the Nessie-side organisation
- * logo above it. Owners and admins can replace or clear it; everyone else sees
- * the preview only.
+ * logo on the organisation's own Profile screen. Owners and admins can replace
+ * or clear it; everyone else sees the preview only.
+ *
+ * The mutations always address the *current* team, because UOA authorizes
+ * them as the signed-in person inside it and refuses an assertion pointed at
+ * any other one. So when the screen's picker is showing a different team
+ * this panel previews that team's picture through the membership-scoped
+ * relay and withholds the controls, rather than silently editing the picture of
+ * the team the person happens to be standing in.
  */
-export const TeamAvatarPanel = () => {
+export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
   const { me, token } = useAuthSession()
   const { data: organization } = useCurrentOrganization()
   const revision = useTeamAvatarRevision()
@@ -35,9 +50,12 @@ export const TeamAvatarPanel = () => {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const teamName =
-    activeTeam(me)?.label ?? organization?.name ?? 'Team'
-  const canEdit = organization ? ADMIN_ROLES.has(organization.role) : false
+  const currentTeam = activeTeam(me)
+  const active = !team || team.id === me?.context.teamId
+  const teamName = active
+    ? currentTeam?.label ?? organization?.name ?? 'Team'
+    : team?.name ?? 'Team'
+  const canEdit = active && (organization ? ADMIN_ROLES.has(organization.role) : false)
   const busy = uploadAvatar.isPending || removeAvatar.isPending
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,16 +102,27 @@ export const TeamAvatarPanel = () => {
       <SectionLabel>Team avatar</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         The company picture for {teamName}, held by UnlikeOtherAI and shown
-        anywhere the team appears. Separate from the organisation logo above,
-        which is Nessie&rsquo;s own brand mark.
+        anywhere the team appears &mdash; including in every other
+        UnlikeOtherAI product. Separate from the organisation logo, which is the
+        whole tenant&rsquo;s brand mark.
       </div>
 
       <div className="mt-4 flex items-center gap-5">
+        {/*
+          The same three-step resolution the sidebar switcher uses — Nessie's
+          authenticated relay, then UOA's public team image, then initials — so
+          this panel shows the picture people are actually looking at. Passing
+          only the relay drew initials here while the rail showed the team's
+          real SSO icon, which read as "there is no picture" next to a Remove
+          button.
+        */}
         <TeamAvatar
           className="border border-[color:var(--sep)]"
+          imageUrl={active ? currentTeam?.avatarImageUrl : undefined}
           label={teamName}
           revision={revision}
           size={96}
+          {...(active ? {} : { teamId: team?.id })}
           token={token}
         />
 
@@ -131,7 +160,10 @@ export const TeamAvatarPanel = () => {
           </div>
         ) : (
           <div className="text-sm text-[color:var(--tx3)]">
-            Only organisation owners and admins can change the team avatar.
+            {active
+              ? 'Only organisation owners and admins can change the team avatar.'
+              : 'UnlikeOtherAI only accepts this change from inside the team. '
+                + 'Switch to it to change its picture.'}
           </div>
         )}
       </div>

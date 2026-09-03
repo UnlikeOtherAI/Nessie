@@ -54,18 +54,18 @@ user's session cookie into a WebView (fragile, and violates the
 "no ambient authority" reading of the access rules) or cannot call the API at
 all.
 
-**Voice-scoped pa-send + reply-poll.** The browser's `pa_send` handoff posts
-through the generic message routes on session auth. The schemas for the
-voice-scoped equivalents already exist in `packages/schemas/src/voice.ts`
-(`VoiceSendToAssistantRequestSchema`, `VoiceAssistantRepliesResponseSchema`),
-which pins the contract: `POST /api/voice/sessions/:id/pa-send` and a
-reply-poll route keyed on the voice session. What remains is the route
-implementation and its authorization: the session id itself is the capability
-bound to one installation, one thread, and one agent, so the route re-derives
-that binding from the stored session row and mirrors the browser path's
-entitlement checks rather than trusting a client-supplied thread id. The reply
-poll is long-poll or short-interval GET; the browser's handoff already polls,
-so Android inherits that cadence.
+**Voice-scoped pa-send + reply-poll — shipped 2026-09-03.** `POST
+/api/voice/sessions/:id/pa-send` and `GET /api/voice/sessions/:id/replies` live
+in `api/src/routes/voice-conversation.ts`, marked `duringACall`. The session id
+is the capability: the route re-derives the thread from the stored session row
+and never takes one from the client, then reads it through the same visibility
+check the composer's route uses, so a person who lost access mid-call cannot
+still post. The write goes through `createThreadMessage` and then
+`deliverCreatedMessage` — the same shared post-commit step the composer's route
+runs — so the run is indistinguishable from a typed one. The browser client was
+moved onto both routes in the same change, so Android inherits a path that is
+already exercised rather than a second one written blind, including its polling
+cadence.
 
 Both are ordinary API work with existing schema contracts and are verified in
 CI (route tests against the seeded Postgres, following the established
@@ -79,12 +79,12 @@ Each step lands on `main` behind the existing capability gate — Android
 clients simply see nothing until the mobile app ships, because
 `GET /api/voice/capability` is deployment-level, not platform-level.
 
-**Step 1 — Voice-scoped device credential + scoped routes (server only).**
-Installation registration returns a device token; pa-send and reply-poll
-routes ship with it. *Verification: CI only.* Route tests cover minting,
-revocation (a revoked installation's token fails session start), scope
-refusal (the token cannot reach non-voice routes), and the pa-send→run→reply
-round trip against the mock-LLM harness. This is a self-contained server PR.
+~~**Step 1 — Voice-scoped device credential + scoped routes (server only).**~~
+**Done (2026-09-03).** Installation registration returns a device token, and
+pa-send and reply-poll ship with it. Covered by `voice-device-credential.test.ts`
+(minting, revocation, and the scope refusal against a real route table) and
+`voice-conversation-routes.test.ts` (the hand-off's message, the run and push it
+enqueues, its budget and idempotency, and the reply poll in both lanes).
 
 **Step 2 — Shared JS voice core extraction.** The protocol payloads, usage
 normalisation, transcript collection, and outbox logic move from
@@ -434,12 +434,11 @@ the plan does not pretend otherwise.
    contract this plan specified — scoped, revocable, Keystore-held — is met,
    and the scope is enforced in one auth hook against a per-route flag. See
    §1.
-2. **pa-send authorization granularity.** The schemas pin the payload but not
-   the check: does the voice session row store enough (channelId, threadId,
-   agentId — it does, per `VoiceSessionCredentialSchema`) to re-derive the
-   browser path's entitlement exactly, or does pa-send need a membership
-   re-read like the PA tools' live-membership rule? Assumed the latter, to be
-   confirmed against the route it mirrors.
+2. ~~**pa-send authorization granularity.**~~ **Settled 2026-09-03:** both.
+   The session row is re-read for ownership and liveness, and the thread it
+   names is then resolved through the same visibility check the composer's
+   route uses — so a membership lost mid-call ends the write, not just the
+   next sign-in.
 3. **Play Console FGS declarations.** The exact current declaration form and
    whether `phoneCall` FGS type needs extra justification for VoIP-only —
    policy must be re-read at submission (§5).

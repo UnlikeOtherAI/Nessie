@@ -142,6 +142,7 @@ export const registerAuthRefreshRoute = (
     return completeConsumedAuthSession(deps, reply, {
       consumed,
       presentedRawToken: rawToken,
+      userAgent: request.headers['user-agent'] ?? null,
     })
   })
 }

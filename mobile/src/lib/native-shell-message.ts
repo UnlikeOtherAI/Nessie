@@ -44,6 +44,9 @@ export type NativeShellMessage = {
   userName?: string
   userPresence?: 'away' | 'offline' | 'online'
   userStatusEmoji?: string
+  /** `nessie:voice-call-start`'s provisioning payload — see native-voice-call.ts. */
+  voiceCall?: unknown
+  muted?: boolean
   teamAvatarUrl?: string
 }
 

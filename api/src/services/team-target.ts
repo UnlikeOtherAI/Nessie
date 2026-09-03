@@ -49,15 +49,31 @@ export const syncExternalTeamNames = async (
     if (label) labelByExternalTeamId.set(entry.teamId, label)
   }
   for (const [externalTeamId, label] of labelByExternalTeamId) {
-    await prisma.team.updateMany({
-      where: { externalTeamId, name: { not: label } },
-      data: { name: label },
-    })
-    await prisma.project.updateMany({
-      where: { teams: { some: { externalTeamId } }, name: { not: label } },
-      data: { name: label },
-    })
+    await mirrorExternalTeamName(prisma, externalTeamId, label)
   }
+}
+
+/**
+ * Write one UOA team label onto the local rows that mirror it: the Team
+ * and the Project fabricated to hold it, which `createTeamEnvironment`
+ * names identically (`docs/standards/team-model.md`). Shared with the
+ * rename relay so a rename lands on exactly the rows the next directory sync
+ * would heal — a rename that touched only the Team would be half-reverted the
+ * moment either row was read for a label.
+ */
+export const mirrorExternalTeamName = async (
+  prisma: Pick<PrismaClient, 'team' | 'project'>,
+  externalTeamId: string,
+  label: string,
+): Promise<void> => {
+  await prisma.team.updateMany({
+    where: { externalTeamId, name: { not: label } },
+    data: { name: label },
+  })
+  await prisma.project.updateMany({
+    where: { teams: { some: { externalTeamId } }, name: { not: label } },
+    data: { name: label },
+  })
 }
 
 // The environment a login resolves to: the project/team plus its #general

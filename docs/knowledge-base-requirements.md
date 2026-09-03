@@ -442,7 +442,7 @@ empty project means "nothing filed here", never "no knowledge base"), a new
 space is created in the project being viewed rather than the session's project,
 and the org-wide storage meter is hidden. Everything else is the same code: the
 space rows are the shared `KnowledgeSpaceList` and the document area is the same
-`KnowledgeTeam` the Knowledge section renders. The page hierarchy is derived client-side
+`KnowledgeWorkspace` the Knowledge section renders. The page hierarchy is derived client-side
 from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`.
 That list **omits each page's latest-version body** (it can be large and the
 tree/column/preview-header views never need it); the body is fetched on demand
@@ -566,7 +566,7 @@ route renders it to HTML (`markdown-it`, `api/src/lib/markdown.ts`) and creates 
 `kind = document` page with that body, so it gets the rich-text reader, the
 WYSIWYG editor, comments/notes and version history — identical to a document
 authored in-app. Import is capped at `MARKDOWN_IMPORT_MAX_BYTES` (5 MiB). Existing
-markdown file nodes are migrated on open: `KnowledgeTeam` calls
+markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
 `convert-to-document` (read the attachment text → HTML → new document version →
 flip `kind` → drop the now-unused blob) and then renders the document.
 

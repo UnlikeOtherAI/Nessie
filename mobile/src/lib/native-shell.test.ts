@@ -49,10 +49,16 @@ test('caches a cold-start push path before the WebView application mounts', () =
     formFactor: 'phone',
     pendingPushPath: '/channels/channel-a/threads/thread-a/replies/root-a',
     platform: 'ios',
+    voiceCall: true,
   }))
 
   assert.equal(window.__nessiePendingPushPath, '/channels/channel-a/threads/thread-a/replies/root-a')
-  assert.deepEqual(window.__nessieNativeShell, { bottomInset: 34, formFactor: 'phone', platform: 'ios' })
+  assert.deepEqual(window.__nessieNativeShell, {
+    bottomInset: 34,
+    formFactor: 'phone',
+    platform: 'ios',
+    voiceCall: true,
+  })
   assert.equal(events.at(-1)?.type, 'nessie:native-push-path')
   assert.equal(events.at(-1)?.detail, '/channels/channel-a/threads/thread-a/replies/root-a')
 })
@@ -64,12 +70,14 @@ test('publishes the large-phone landscape form factor after rotation', () => {
     formFactor: 'large-phone-landscape',
     pendingPushPath: null,
     platform: 'ios',
+    voiceCall: true,
   }))
 
   assert.deepEqual(window.__nessieNativeShell, {
     bottomInset: 21,
     formFactor: 'large-phone-landscape',
     platform: 'ios',
+    voiceCall: true,
   })
   assert.equal(events.at(-1)?.type, 'nessie:native-shell-info')
 })

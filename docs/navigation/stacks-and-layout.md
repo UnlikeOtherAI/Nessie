@@ -202,7 +202,7 @@ rather than a `transition-transform duration-300` utility. `ExecutorsPage`'s `Ex
 (`dashboard:add-widget`, `dashboard:versions`) are `NestedStage`s — a phone
 full screen, today's fixed-width side panel unchanged on `split`.
 
-**Knowledge is built.** `KnowledgeTeam` registers no Back of its own;
+**Knowledge is built.** `KnowledgeWorkspace` registers no Back of its own;
 its four inner screens are stages — `knowledge:folder` (11, a folder browsed
 beyond the space root), `knowledge:document` (12, the open document or file),
 `knowledge:history` (13) and `knowledge:editor` (14, `swipeable={false}` for

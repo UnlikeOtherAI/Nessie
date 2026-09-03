@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.km.nessie",
       "appleTeamId": "59S95D279D",
-      "buildNumber": "15",
+      "buildNumber": "16",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -24,6 +24,9 @@
         "NSLocalNetworkUsageDescription": "AppReveal exposes a debug MCP server on the local network for AI-assisted testing.",
         "NSBonjourServices": [
           "_appreveal._tcp"
+        ],
+        "UIBackgroundModes": [
+          "audio"
         ]
       }
     },

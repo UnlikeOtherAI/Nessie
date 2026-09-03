@@ -94,6 +94,35 @@ export const forgetUoaTeamDirectory = (userId: string): void => {
   directoryByUserId.delete(userId)
 }
 
+/**
+ * Rewrite one team's label in this user's cached directory after UOA has
+ * accepted a rename.
+ *
+ * The cache holds only UOA-verified identity data, and this stays inside that
+ * rule: the label written here is the one UOA echoed from the rename it just
+ * stored, not a local guess. Forgetting the whole directory instead would also
+ * show the new name — the cold-cache fallback derives labels from the freshly
+ * mirrored `Team.name` — but it would drop this user's verified pending
+ * invitations from the switcher until the next rotation, which is a visible
+ * regression for a rename. Other members and other replicas keep their own
+ * cached copy until their next rotation, exactly as they do for every other
+ * UOA-side change.
+ */
+export const renameCachedUoaTeam = (
+  userId: string,
+  externalTeamId: string,
+  label: string,
+  now: number = Date.now(),
+): void => {
+  const cached = directoryByUserId.get(userId)
+  if (!cached || cached.expiresAt <= now) return
+  cached.directory = {
+    ...cached.directory,
+    entries: cached.directory.entries.map((entry) =>
+      entry.teamId === externalTeamId ? { ...entry, label } : entry),
+  }
+}
+
 /** Test seam: drop every cached directory. */
 export const clearUoaTeamDirectoryCache = (): void => {
   directoryByUserId.clear()

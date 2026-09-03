@@ -81,7 +81,7 @@ Those three keep `useState`, each saying so where it stands, and
 | the tool registry (`ToolsPage`) | `source` | `all` · `builtin` · `custom` · `mcp-remote` · `interactive-session` |
 | the trigger list (`useTriggersPageState`) | `status` | `all` · `active` · `paused` · `error` |
 | full-page search (`SearchPage`) | `mode` | `text` · `semantic` (default: this device's last mode) |
-| a knowledge space (`KnowledgeTeam`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
+| a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
 | Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
 | an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
 

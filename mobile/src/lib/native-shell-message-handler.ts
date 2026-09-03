@@ -9,8 +9,10 @@ import {
   isConnectorAuthorizationMessage,
 } from './connector-authorization'
 import { isHapticMessage } from './haptics'
+import { isVoiceCallControlMessage, isVoiceCallStartMessage } from './native-voice-call'
 import { isAuthGateRoute, type LastKnownScreen } from './native-shell-layout'
 import { isScreenMessage } from './native-shell-message'
+import type { NativeVoiceCallProvisioning } from '../../modules/nessie-voice-call'
 import type { HapticKind, NativeShellMessage } from './native-shell-message'
 import { nativePushPathScript } from './native-shell'
 import { tabIndexForSection, TABS } from './tabs'
@@ -33,6 +35,9 @@ type Input = {
   replayPendingPushPath: () => string | null
   runExternalAuth: (url: string, state?: string) => Promise<void>
   runScript: (script: string) => void
+  setNativeVoiceCallMuted: (muted: boolean) => void
+  startNativeVoiceCall: (provisioning: NativeVoiceCallProvisioning) => void
+  endNativeVoiceCall: () => void
   screenActiveRef: { current: boolean }
   setCurrentPath: (path: string) => void
   setIndex: (value: number | ((current: number) => number)) => void
@@ -62,6 +67,21 @@ export const handleNativeShellMessage = (message: NativeShellMessage, input: Inp
     input.dispatchPresentation(message)
     if (message.type === 'nessie:attention') {
       void input.reconcileNativeAttention(nativeAttentionTotal(message)).catch(() => undefined)
+    }
+    return
+  }
+  // A call is native from the moment the button is pressed: the WebView hands
+  // over the credential and never touches the call again, because a locked
+  // phone suspends it.
+  if (isVoiceCallStartMessage(message)) {
+    input.startNativeVoiceCall(message.voiceCall)
+    return
+  }
+  if (isVoiceCallControlMessage(message)) {
+    if (message.type === 'nessie:voice-call-end') {
+      input.endNativeVoiceCall()
+    } else {
+      input.setNativeVoiceCallMuted(message.muted === true)
     }
     return
   }

@@ -16,10 +16,24 @@ import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from '
  * therefore return `200` + image bytes for anything visible to the authenticated
  * domain, and the standard generic `404` for anything else.
  *
- * Every endpoint used here is the `/domain/*` flavour, authenticated with the
- * domain-hash bearer alone. UOA's own guidance is explicit that this is the path
- * for a product backend: the dual-auth `/org/*` routes need a spendable end-user
- * access token, and Nessie deliberately keeps only a bound refresh credential.
+ * Two upstream families are used, and which one a team call takes is not
+ * cosmetic:
+ *
+ * - `/domain/*`, the domain-hash bearer alone. It is the only path for a call
+ *   with no acting person (a user avatar read, a team the caller is not
+ *   currently standing in), and it is scoped to organisations that were
+ *   **created on** this product's domain. An organisation founded on another
+ *   UOA-integrated domain answers the generic `404` here for every method —
+ *   which is why the team avatar looked empty in settings, and why an
+ *   upload could never replace the team's SSO icon, for exactly the tenants
+ *   who joined Nessie from an organisation they already had.
+ * - `/org/*`, the same domain hash plus a short-lived product-signed assertion
+ *   of the signed-in person (`withUoaRosterSubjectAssertion`). UOA re-resolves
+ *   that person's live membership and their `teams.manage` capability, and the
+ *   organisation's origin domain is deliberately not a predicate — "one
+ *   organisation is usable from every UOA-integrated product". This is the path
+ *   for the current team, and the assertion pins it there: UOA requires the
+ *   asserted team to equal the one named in the route.
  *
  * The domain hash is a server-side secret, so the browser can never call UOA
  * directly — the API relays the bytes (`routes/users.ts`,
@@ -76,6 +90,10 @@ export type UoaAvatarImage = {
 }
 
 export type UoaTeam = {
+  // The UOA organisation id — `Team.externalOrgId`. Null for a team bound
+  // to a UOA team without one; the `/org/*` routes are unreachable without it,
+  // so such a team can only use the `/domain/*` relay.
+  externalOrgId: string | null
   // The UOA team id — `Team.externalTeamId`.
   externalTeamId: string
   name: string
@@ -84,6 +102,13 @@ export type UoaTeam = {
 export type UoaAvatarDeps = {
   fetchImpl?: PinnedFetch
   resolveHost?: ResolveHost
+  /**
+   * A short-lived product-signed assertion of the signed-in UOA user. Its
+   * presence selects the `/org/*` family: the header goes up, and so does the
+   * `config_url` those routes verify the product's signature against. The
+   * `/domain/*` calls must never carry it.
+   */
+  subjectAssertion?: string
 }
 
 /**
@@ -180,10 +205,14 @@ export const resolveUoaTeam = async (
         : {}),
       ...(input.userId ? { members: { some: { userId: input.userId } } } : {}),
     },
-    select: { externalTeamId: true, name: true },
+    select: { externalOrgId: true, externalTeamId: true, name: true },
   })
   return team?.externalTeamId
-    ? { externalTeamId: team.externalTeamId, name: team.name }
+    ? {
+      externalOrgId: team.externalOrgId ?? null,
+      externalTeamId: team.externalTeamId,
+      name: team.name,
+    }
     : null
 }
 
@@ -196,14 +225,32 @@ const avatarSettings = (): UoaSettings | null => {
   return settings.clientSecret ? settings : null
 }
 
-const avatarUrl = (settings: UoaSettings, path: string): URL => {
+const avatarUrl = (
+  settings: UoaSettings,
+  path: string,
+  deps: UoaAvatarDeps = {},
+): URL => {
   const url = new URL(`${settings.baseUrl}${path}`)
   url.searchParams.set('domain', settings.domain)
+  // `/org/*` runs the config verifier, which needs the product's signed config.
+  if (deps.subjectAssertion) url.searchParams.set('config_url', settings.configUrl)
   return url
 }
 
 const authorization = (settings: UoaSettings): string =>
   `Bearer ${clientHash(settings)}`
+
+const upstreamHeaders = (
+  settings: UoaSettings,
+  accept: string,
+  deps: UoaAvatarDeps,
+): Record<string, string> => ({
+  Accept: accept,
+  Authorization: authorization(settings),
+  ...(deps.subjectAssertion
+    ? { 'X-UOA-Subject-Assertion': deps.subjectAssertion }
+    : {}),
+})
 
 const normalizeContentType = (value: string | null): string =>
   (value ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
@@ -233,11 +280,8 @@ const fetchAvatarImage = async (
 ): Promise<UoaAvatarImage | null> => {
   let response: Response
   try {
-    response = await safeFetch(avatarUrl(settings, path), {
-      headers: {
-        Accept: 'image/*',
-        Authorization: authorization(settings),
-      },
+    response = await safeFetch(avatarUrl(settings, path, deps), {
+      headers: upstreamHeaders(settings, 'image/*', deps),
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
     }, avatarFetchOptions(deps))
   } catch {
@@ -278,12 +322,9 @@ const mutateAvatar = async (
 ): Promise<void> => {
   let response: Response
   try {
-    response = await safeFetch(avatarUrl(settings, path), {
+    response = await safeFetch(avatarUrl(settings, path, deps), {
       method: init.method,
-      headers: {
-        Accept: 'application/json',
-        Authorization: authorization(settings),
-      },
+      headers: upstreamHeaders(settings, 'application/json', deps),
       body: init.body,
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
     }, avatarFetchOptions(deps))
@@ -300,6 +341,19 @@ const mutateAvatar = async (
     throw new UoaAvatarRejectedError(
       'Too many team avatar changes. Try again later.',
       429,
+    )
+  }
+  // An authorization refusal is only reachable on the `/org/*` family, which
+  // re-resolves the acting person's own `teams.manage` capability — the
+  // `/domain/*` mutations apply no role check at all, so they cannot 403. It
+  // must not fall into the branch below: telling a Nessie admin who lacks that
+  // UOA capability to "use a PNG under 1 MB" sends them to fix an image that
+  // was never the problem.
+  if (response.status === 401 || response.status === 403) {
+    throw new UoaAvatarRejectedError(
+      'UnlikeOtherAI would not accept this change. You may not have permission to change '
+      + 'this picture there.',
+      403,
     )
   }
   if (response.status >= 400 && response.status < 500 && response.status !== 404) {
@@ -331,22 +385,37 @@ export const fetchUoaUserAvatar = async (
 }
 
 /**
- * Fetch a UOA team's ("team") avatar bytes. Null when UOA is not configured
- * or the team belongs to another domain.
+ * Where a team's avatar lives upstream, for this caller.
+ *
+ * With a subject assertion the person is the authority and the `/org/*` route
+ * is reachable for an organisation founded anywhere; without one there is no
+ * acting person to assert, and only the origin-domain-scoped `/domain/*` route
+ * remains. A team with no `externalOrgId` cannot address `/org/*` at all,
+ * so it stays on `/domain/*` even when an assertion was supplied.
+ */
+const teamAvatarPath = (
+  team: UoaTeam,
+  deps: UoaAvatarDeps = {},
+): string =>
+  deps.subjectAssertion && team.externalOrgId
+    ? `/org/organisations/${encodeURIComponent(team.externalOrgId)}`
+      + `/teams/${encodeURIComponent(team.externalTeamId)}/avatar`
+    : `/domain/teams/${encodeURIComponent(team.externalTeamId)}/avatar`
+
+/**
+ * Fetch a UOA team's ("team") avatar bytes. Null when UOA is not
+ * configured, or when the chosen route cannot see the team — for `/domain/*`,
+ * an organisation founded on another domain.
  */
 export const fetchUoaTeamAvatar = async (
-  externalTeamId: string,
+  team: UoaTeam,
   deps: UoaAvatarDeps = {},
 ): Promise<UoaAvatarImage | null> => {
   const settings = avatarSettings()
   if (!settings) {
     return null
   }
-  return fetchAvatarImage(
-    settings,
-    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
-    deps,
-  )
+  return fetchAvatarImage(settings, teamAvatarPath(team, deps), deps)
 }
 
 export type UoaAvatarUpload = { body: Buffer; contentType: string; filename: string }
@@ -394,22 +463,26 @@ const deleteAvatar = async (path: string, deps: UoaAvatarDeps): Promise<boolean>
   return true
 }
 
-const teamAvatarPath = (externalTeamId: string): string =>
-  `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`
-
 const userAvatarPath = (uoaSub: string): string =>
   `/domain/users/${encodeURIComponent(uoaSub)}/avatar`
 
+/**
+ * Replace the team's UOA-hosted picture. This is the override: UOA
+ * resolves a team avatar as uploaded image → the team's `iconUrl` → generated
+ * SVG, so an upload here takes precedence over the icon the SSO holds,
+ * everywhere the team is drawn.
+ */
 export const putUoaTeamAvatar = (
-  externalTeamId: string,
+  team: UoaTeam,
   image: UoaAvatarUpload,
   deps: UoaAvatarDeps = {},
-): Promise<boolean> => putAvatar(teamAvatarPath(externalTeamId), image, deps)
+): Promise<boolean> => putAvatar(teamAvatarPath(team, deps), image, deps)
 
+/** Clear the override; UOA falls back to the team's SSO icon, then generated. */
 export const deleteUoaTeamAvatar = (
-  externalTeamId: string,
+  team: UoaTeam,
   deps: UoaAvatarDeps = {},
-): Promise<boolean> => deleteAvatar(teamAvatarPath(externalTeamId), deps)
+): Promise<boolean> => deleteAvatar(teamAvatarPath(team, deps), deps)
 
 /**
  * Replace the UOA-hosted picture for one person. The subject must be the acting

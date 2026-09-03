@@ -293,6 +293,22 @@ export const VoiceSendToAssistantResponseSchema = z.object({
 })
 export type VoiceSendToAssistantResponse = z.infer<typeof VoiceSendToAssistantResponseSchema>
 
+/**
+ * Query for `GET /api/voice/sessions/:id/replies`.
+ *
+ * `after` is the id the `pa_send` returned, not a timestamp: the client knows
+ * which hand-off it is waiting on, and a clock it read itself would drift
+ * against the server's. Everything the assistant said after that message —
+ * whether it answered in the hand-off's reply thread or top-level in the DM —
+ * is a reply to it.
+ */
+export const VoiceAssistantRepliesQuerySchema = z
+  .object({
+    after: z.string().uuid(),
+  })
+  .strict()
+export type VoiceAssistantRepliesQuery = z.infer<typeof VoiceAssistantRepliesQuerySchema>
+
 /** A reply the assistant produced after a `pa_send`, polled by the client. */
 export const VoiceAssistantReplySchema = z.object({
   messageId: z.string().uuid(),

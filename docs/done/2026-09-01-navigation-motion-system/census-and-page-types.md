@@ -133,7 +133,7 @@ never render.
 `PhoneNavigationButton` resolves local Back > route Back > menu, and the edge
 swipe, Android hardware Back and the native bridge all feed the same
 `performBack`. That part is right. But only three surfaces register a local
-Back (`ColumnBrowserColumn`, `AgentDetailPage`, `KnowledgeTeam`); none of
+Back (`ColumnBrowserColumn`, `AgentDetailPage`, `KnowledgeWorkspace`); none of
 the 50 overlays do, so hardware Back leaves the page under an open dialog; the
 thread panel and compose page close themselves; `AgentDetailPage` registers at
 priority 20, above the knowledge stages (11–14) nested in its Documents tab, so

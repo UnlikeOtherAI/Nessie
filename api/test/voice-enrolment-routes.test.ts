@@ -7,14 +7,16 @@ import { registerVoiceEnrolmentRoutes } from '../src/routes/voice-enrolment.js'
 import { registerVoiceRoutes } from '../src/routes/voice.js'
 
 /**
- * Enrolment moved out of `voice.ts` into its own module when the route file
- * crossed the 500-line cap. Nothing covered those three endpoints, so the
- * refactor could have dropped one silently — a registrar that is written but
- * never called compiles perfectly.
+ * `voice.ts` keeps shedding modules as it meets the 500-line cap — enrolment
+ * first, then the conversation bridge and the call record. Nothing covered
+ * those endpoints, so a split could have dropped one silently: a registrar
+ * that is written but never called compiles perfectly.
  *
  * The assertion is therefore the registered route table itself: the voice
  * subsystem's one entry point must still answer on every path its
- * authorization matrix lists.
+ * authorization matrix lists, and each row must carry the credential scope its
+ * matrix column claims. A missing `voiceCredential` marker is invisible from
+ * the browser and locks a phone out of the middle of a call.
  */
 
 /**
@@ -23,18 +25,22 @@ import { registerVoiceRoutes } from '../src/routes/voice.js'
  * the first version of this test read `/api/voice/installations` twice and
  * lost the `:installationId` route it was written to protect.
  */
-const routePaths = async (
+const routeTable = async (
   register: (app: ReturnType<typeof Fastify>) => void,
-): Promise<string[]> => {
+): Promise<{ duringACall: string[]; paths: string[] }> => {
   const app = Fastify()
   const paths = new Set<string>()
+  const duringACall = new Set<string>()
   app.addHook('onRoute', (route) => {
     paths.add(route.url)
+    if ((route.config as { voiceCredential?: boolean } | undefined)?.voiceCredential === true) {
+      duringACall.add(`${route.method as string} ${route.url}`)
+    }
   })
   register(app)
   await app.ready()
   await app.close()
-  return [...paths].sort()
+  return { duringACall: [...duringACall].sort(), paths: [...paths].sort() }
 }
 
 // Only what the enrolment routes reach; a handler is never invoked here.
@@ -44,7 +50,7 @@ const enrolmentDeps = {
 } as never
 
 test('the voice subsystem still registers every route in its authorization matrix', async () => {
-  const paths = await routePaths((app) => {
+  const { duringACall, paths } = await routeTable((app) => {
     registerVoiceRoutes(app, {
       ...(enrolmentDeps as object),
       authSecret: 'test',
@@ -63,15 +69,35 @@ test('the voice subsystem still registers every route in its authorization matri
     '/api/voice/installations/:installationId',
     '/api/voice/sessions',
     '/api/voice/sessions/:sessionId/end',
+    '/api/voice/sessions/:sessionId/pa-send',
+    '/api/voice/sessions/:sessionId/replies',
     '/api/voice/sessions/:sessionId/rotate',
     '/api/voice/sessions/:sessionId/tool-call',
     '/api/voice/sessions/:sessionId/transcript',
     '/api/voice/sessions/:sessionId/usage',
   ])
+
+  // The `session, device` column of the matrix, as code. Enrolment is
+  // deliberately absent: provisioning is the WebView's job on an ordinary
+  // sign-in, and a credential that could mint its successor would outlive the
+  // sign-out that should have ended it.
+  assert.deepEqual(duringACall, [
+    'GET /api/voice/sessions/:sessionId/replies',
+    // Fastify registers HEAD alongside every GET; the scope must cover it too.
+    'HEAD /api/voice/sessions/:sessionId/replies',
+    'POST /api/voice/device-token/refresh',
+    'POST /api/voice/sessions',
+    'POST /api/voice/sessions/:sessionId/end',
+    'POST /api/voice/sessions/:sessionId/pa-send',
+    'POST /api/voice/sessions/:sessionId/rotate',
+    'POST /api/voice/sessions/:sessionId/tool-call',
+    'POST /api/voice/sessions/:sessionId/transcript',
+    'POST /api/voice/sessions/:sessionId/usage',
+  ])
 })
 
 test('enrolment registers on its own, so the split is a real seam rather than a re-export', async () => {
-  const paths = await routePaths((app) => registerVoiceEnrolmentRoutes(app, enrolmentDeps))
+  const { paths } = await routeTable((app) => registerVoiceEnrolmentRoutes(app, enrolmentDeps))
   assert.deepEqual(paths, [
     '/api/voice/capability',
     '/api/voice/device-token',

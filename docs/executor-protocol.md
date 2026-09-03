@@ -11,7 +11,7 @@ this document.
 ## 1. Scope and non-goals
 
 An executor is a paired, capability-bearing endpoint that runs a constrained
-workspace sandbox or a managed coding session on a user-controlled machine. It
+team sandbox or a managed coding session on a user-controlled machine. It
 is neither an MCP server instance nor an existing Docker/GCloud execution
 environment.
 
@@ -28,7 +28,7 @@ arbitrary local-network proxy.
 | Human user | Pair an executor and manage it when entitled; confirm access or invocation changes. | Expand a locally denied policy or act without current entitlement. |
 | Agent, including Personal Assistant | Invoke an already available operation; prepare a proposed access change for its requesting user. | Administer access, approve itself, select a free-form executor, alter local policy, or apply a prepared change. |
 | Nessie control plane | Resolve availability, bind a run, lease commands, retain redacted audit facts, and send policy narrowing. | Dial a machine, widen local policy, access host credentials, or treat terminal text as an authorization/outcome. |
-| Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host workspace/credentials directly, or send raw local data to audit. |
+| Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host team/credentials directly, or send raw local data to audit. |
 | Guest VM / coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
 
 A descriptor signed by an executor key proves that paired key made the claim;
@@ -170,15 +170,15 @@ debug build, which injects an internal opt-in for exactly
 origin. It generates and stores the machine key
 locally, submits the signed enrollment proof, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
-profile is deliberately limited to daemon-owned COW workspace operations:
-`file.list`, `file.read`, `file.write`, `workspace.review`, and
+profile is deliberately limited to daemon-owned COW team operations:
+`file.list`, `file.read`, `file.write`, `team.review`, and
 `sandbox.stop`. Browser work remains disabled until its owner configures the
 separate guest VM policy. `command.run` is additionally available only through
 its reviewed, exact command bundle; it accepts shell-free argv in a no-egress
 guest. Coding and every remaining unimplemented operation remain refused.
 
 `nessie-executor configure --operations ...` can narrow or restore that fixed
-COW subset in local owner-only state. A proposal that adds `workspace.promote`
+COW subset in local owner-only state. A proposal that adds `team.promote`
 also requires `--native-helper` to name an absolute, owner-only, non-link,
 owner-executable native binary; the daemon rechecks that binary before every
 apply. It increments the local descriptor revision but does not submit or
@@ -221,8 +221,8 @@ human manager can prepare a separate executor-revocation review to end current
 activity. The local origin ceiling is intentionally not uploaded: the UI names
 that absence so a launcher confirms the target with the human companion owner
 rather than mistaking Nessie for an origin-policy editor. The guest creates a fresh private browser-profile leaf for
-each VM and rejects one preseeded by the COW workspace, so the browser starts
-without workspace-provided cookies, extensions, or other ambient state.
+each VM and rejects one preseeded by the COW team, so the browser starts
+without team-provided cookies, extensions, or other ambient state.
 
 ### Connected Chrome tabs (local foundation; not advertised yet)
 
@@ -296,7 +296,7 @@ Browser work is an exception to ordinary small bundles: it is exactly
 run, all bound to one durable `ExecutorSession`. The legacy single-bind endpoint
 refuses browser operations, and no later binding can be added to a browser run.
 The worker withholds the browser schemas unless all four bindings reference that
-same session, so a file operation cannot share the browser's COW workspace.
+same session, so a file operation cannot share the browser's COW team.
 `browser.open` atomically changes the session from `pending` to `active` before
 creating its command; `sandbox.stop` changes it to `stopped`. Poll delivery
 re-reads the binding and exact session *after* acquiring the executor lock, and
@@ -309,7 +309,7 @@ for live browser records in the same transaction that advances the daemon
 epoch.
 
 Managed Codex work uses the same durable-fencing shape, but its exact bundle is
-`coding.launch`, `coding.observe`, `workspace.review`, and `sandbox.stop`.
+`coding.launch`, `coding.observe`, `team.review`, and `sandbox.stop`.
 It too requires a fresh run with no prior binding and rejects every later or
 mixed binding, including the legacy single-bind route. The worker withholds the
 entire bundle unless all four bindings reference one `coding_session`; a coding
@@ -341,20 +341,20 @@ The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
-`workspace.review`, and `sandbox.stop`. It can execute a server-authored
-`workspace.promote` command only after its local policy has the separate
+`team.review`, and `sandbox.stop`. It can execute a server-authored
+`team.promote` command only after its local policy has the separate
 owner-verified native-helper configuration described above; that command is
 not model-facing. Nessie can create it only from the originating user's
 reviewed-draft confirmation flow; there is no general-purpose promotion API.
 Pairing requires one existing absolute
-workspace directory; the daemon stores only its canonical path in owner-only
+team directory; the daemon stores only its canonical path in owner-only
 local state. File requests accept only relative paths, reject traversal and
 every symbolic-link component, re-check that the configured root is still an
 ordinary directory, and return bounded structured results without a host path.
 `file.write` first creates a bounded daemon-owned COW tree under the secure
 state directory using the server-provenanced run ID; it never opens the paired
 root for write, and later file reads/lists for that run use the draft tree.
-`workspace.review` emits at most 100 changed relative paths with kind and byte
+`team.review` emits at most 100 changed relative paths with kind and byte
 count plus a canonical manifest digest only when the fully encoded result fits
 the command receipt cap; otherwise it fails closed. It never reads the paired
 root for write or applies a change. The file-only backend is not itself a
@@ -372,7 +372,7 @@ substrate for that later backend. It atomically snapshots a paired root into a
 daemon-owned scratch tree, rejecting every symbolic link, hard-linked file,
 special file, and source tree over the file/byte limits. Scratch writes can
 never touch the paired host root, and `sandbox.stop` can remove only the exact
-derived run directory. `file.write` and the read-only `workspace.review` are
+derived run directory. `file.write` and the read-only `team.review` are
 the only advertised consumers of this substrate after normal descriptor and
 grant review. The daemon records a hash-only base manifest alongside the draft,
 so review can report its exact COW delta without trusting a mutable host tree.
@@ -432,13 +432,13 @@ never a shared channel, scheduled job, child run, or arbitrary agent run. The
 PA has no confirmation tool: confirmation is a user-owned web or desktop
 control. Audit records the acting user and PA delegation provenance separately.
 For a reviewed COW draft, it can similarly prepare only the current user's
-acknowledged `workspace.review` receipt. That step decrypts the receipt inside
+acknowledged `team.review` receipt. That step decrypts the receipt inside
 the worker, returns the same short-lived web control, and never exposes draft
 content, a host path, or the deployment encryption secret to the model.
 
 ## 8. Sandbox, forced egress, and credentials
 
-The initial backend is a per-session Linux micro-VM. The selected workspace is
+The initial backend is a per-session Linux micro-VM. The selected team is
 read-only through virtiofs. It has no host shell, home, Docker socket, SSH
 agent, host mount beyond that root, inherited environment, or direct network.
 
@@ -515,7 +515,7 @@ still receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
 Root exists in the guest only long enough to mount `/proc` and the explicitly
 requested COW virtiofs share and to remove the one-use token file. Before it
 opens a control or egress socket, init drops groups, GID, and UID to the COW
-mount's non-root visible owner (or `65534:65534` when no workspace is mounted).
+mount's non-root visible owner (or `65534:65534` when no team is mounted).
 A root-owned share fails boot instead of leaving a privileged workload behind.
 Browser, CLI, and any future child process inherit that unprivileged identity;
 there is no setuid helper or privilege reacquisition path in the guest image.
@@ -525,7 +525,7 @@ is writable only from inside the guest and mounts at `/work` with `nodev`,
 `nosuid`, and `noexec`; the host directory must be an absolute, non-link,
 owner-private ordinary directory. This primitive is intentionally not a generic
 share or a command-line feature. Its eventual launcher must derive that URL
-only from `ensureSandboxWorkspace` for the exact server-bound run, never from a
+only from `ensureSandboxTeam` for the exact server-bound run, never from a
 paired root, user request, model value, or descriptor field. The guest exits
 before hello if its explicitly requested COW mount cannot be made. No current
 descriptor attaches this device, so it cannot weaken the existing COW-only
@@ -614,11 +614,11 @@ guest-image mount must still carry that snapshot into the VM and re-check its
 exact digest.
 
 The VM now mounts that verified bundle on its own `nessie-runtime` virtiofs tag
-at `/runtime`, read-only with `nosuid,nodev`. Unlike the COW workspace it is
+at `/runtime`, read-only with `nosuid,nodev`. Unlike the COW team it is
 executable: a `noexec` runtime mount would make a browser, tmux, or CLI
 impossible. The writable `/work` COW mount remains `nodev,nosuid,noexec`, so
 guest execution can originate only from the read-only runtime payload (or the
-fixed initrd `/init`), never from a workspace edit. A runtime-requested boot
+fixed initrd `/init`), never from a team edit. A runtime-requested boot
 fails before control hello if its exact mount is unavailable. The companion
 passes the verified manifest's `sha256:` digest in the VM-only boot contract;
 before privilege drop or control hello, the guest hashes that manifest, rejects
@@ -638,7 +638,7 @@ instead of allowing a new command to erase a live guest's draft.
 signed helper. It re-reads the durable lease immediately before each child
 process, verifies owner-private builder/kernel/helper artifacts, creates a
 fresh private VM directory, and sends the random boot token only to each
-child's standard input. Its helper argv contains the lease's COW workspace and
+child's standard input. Its helper argv contains the lease's COW team and
 no other host root. It discards the token-bearing initrd/console directory and
 releases the lease in `finally`; a child timeout kills the helper first. This
 is still a handshake probe, not a model tool or an `ExecutorSession` launch.
@@ -663,17 +663,17 @@ resources; the hash check makes a damaged or partial local bundle fail closed.
 
 The remote admin webview can ask the desktop process only to pair an existing
 server invitation, start/stop an already paired executor, or change the initial
-workspace-operation policy. It cannot name an executable, a state directory, a
-workspace path, or arbitrary command arguments. Workspace selection occurs in a
+team-operation policy. It cannot name an executable, a state directory, a
+team path, or arbitrary command arguments. Team selection occurs in a
 native folder dialog, the state directory is derived privately from the server
 executor id, and every mutable action is repeated in an OS-native confirmation
 dialog. The pairing challenge is written to the packaged CLI's standard input
-through `--pair-input-stdin` together with the locally selected workspace,
+through `--pair-input-stdin` together with the locally selected team,
 never passed in the child argument list. The desktop IPC response reports only
 executor id and daemon state; it never returns the local path, key, auth profile
 path, terminal output, browser data, or secret.
 
-The desktop policy editor currently controls only the COW workspace bundle.
+The desktop policy editor currently controls only the COW team bundle.
 Browser/Codex configuration continues to require their separately verified CLI
 artifact inputs and cannot be upgraded into a desktop action by webview input.
 Release IPC is available only to `https://app.nessie.works` after the outer app
@@ -687,7 +687,7 @@ does not duplicate a still-tearing-down daemon.
 
 `nessie-executor configure-codex` verifies an owner-private Codex auth-file
 *path* and the exact guest artifacts, then proposes a new descriptor revision
-containing `coding.launch`, `coding.observe`, `workspace.review`, and
+containing `coding.launch`, `coding.observe`, `team.review`, and
 `sandbox.stop`. The source contents never reach Node, executor state, a
 descriptor, Nessie, logs, or command arguments: the owner-controlled initrd
 builder alone reads it, the guest moves it once into a fresh private home below
@@ -705,7 +705,7 @@ companion gateway. There is no direct DNS, network, host home, keychain,
 global Codex configuration, or API-token environment inheritance.
 
 The authenticated outer Codex process uses its guest-private home, but the
-model-generated child commands run in the named workspace sandbox. That policy
+model-generated child commands run in the named team sandbox. That policy
 denies the whole executor-control directory and network access. Before launch,
 the exact Codex binary must prove that both direct and nested
 dangerously-permissive child sandboxes receive `EACCES`/`EPERM` when attempting
@@ -717,12 +717,12 @@ principals rather than relying on same-UID modes or an environment variable.
 `coding.observe` returns only typed `{ agent, lifecycle, exitStatus? }` state.
 The companion derives that state solely from the fixed tmux dead-pane fields;
 it never captures a terminal pane. An exited session moves to `attention`, where
-the agent may use the bundle's `workspace.review` operation; `sandbox.stop`, a
+the agent may use the bundle's `team.review` operation; `sandbox.stop`, a
 timeout, daemon fencing, VM exit, or revocation stops the guest and erases the
 transient login material. There is no remote terminal attach, prompt channel,
 or terminal-control API.
 
-Its optional `--workspace-cow` argument exists only for the companion's
+Its optional `--team-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
 configuration, so the guest must mount it before hello can succeed. It is never
 populated from a server command, model tool argument, browser request, or UI
@@ -755,7 +755,7 @@ The managed runtime can contain Codex and Claude artifacts, but the product
 coding bundle launches only Codex. Neither host `~/.codex`/`~/.claude`, the
 keychain, nor global CLI tokens are mounted. The only supported login source is
 the staged owner-private Codex auth file described above; a CLI-inherited proof,
-environment variable, or same-UID helper would give arbitrary workspace code a
+environment variable, or same-UID helper would give arbitrary team code a
 delegated provider capability and is forbidden. Executor fencing and teardown
 close the guest route immediately.
 
@@ -767,8 +767,8 @@ records, audit, logs, realtime events, and error reports.
 
 ## 9. Promotion is the sole host-write boundary
 
-Guest work—including coding sessions—uses a copy-on-write scratch workspace.
-`workspace.promote` is the only host-write operation. It requires its own
+Guest work—including coding sessions—uses a copy-on-write scratch team.
+`team.promote` is the only host-write operation. It requires its own
 executor-operation grant, logical tool grant, local policy decision, binding,
 approval, fence, and accepted/started/result-acknowledged receipts.
 
@@ -784,14 +784,14 @@ visible local/human confirmation.
 The checked-in native component at `executor/native` keeps both commands
 descriptor-only: it receives the paired root and COW draft exclusively as
 already-open directory descriptors on file descriptors 3 and 4; it receives
-neither path as JSON or an argument. `workspace-preflight` re-opens every
+neither path as JSON or an argument. `team-preflight` re-opens every
 manifest component relative to those descriptors with no-follow calls, rejects
 links, special files, mount crossings and malformed relative names, recomputes
 both the host base and draft hashes, and reports only a ready/rejected result.
 It also recomputes the canonical manifest digest rather than trusting a digest
 provided by its caller.
 
-`workspace-apply` is a daemon-internal native primitive, **not an executor
+`team-apply` is a daemon-internal native primitive, **not an executor
 descriptor or worker tool**. Before its first host rename it re-runs preflight,
 copies every draft file into a daemon-controlled `.nessie-executor-promotions`
 journal beneath the paired root, and persists the complete manifest plus the
@@ -805,13 +805,13 @@ excluded from sandbox snapshots and listings, and all sandbox/native manifest
 operations reject it. New nested paths must already have a safe host parent;
 this primitive does not create host directories.
 
-`workspace.promote` has no model-facing worker schema. Instead, **Your
+`team.promote` has no model-facing worker schema. Instead, **Your
 reviewed drafts** shows only reviews from runs the current user originated.
 That person prepares a single-use continuation, then supplies a fresh password
 before confirmation. The server rechecks the exact acknowledged review result
 digest, manifest digest, originating run/user/agent, executor authorization
 revision, operation grant, logical grant, active local policy, and server-held
-executor identity. It atomically binds `workspace.promote`, derives an approval
+executor identity. It atomically binds `team.promote`, derives an approval
 digest over the review and binding fence, creates the encrypted command plus
 its normal queue/ToolCall records, and consumes the continuation. The daemon
 rebuilds its local manifest and refuses a changed digest before it invokes the
@@ -864,7 +864,7 @@ executor, other users, local paths, credentials, or raw output.
 | Stolen pairing link or key replay | Short-lived single-use verifier, proof of possession, human fingerprint confirmation, certificate/key rotation fencing. |
 | Confused deputy through shared agent | Exact private human **and** agent assignment plus exact operation grant and immutable run context. |
 | Browser/CLI SSRF or DNS bypass | Guest-only forced gateway, no direct DNS/UDP/QUIC, pinned fetch on every route/redirect. |
-| Guest writes host workspace | COW only; daemon-owned `workspace.promote` with no-follow manifest validation, approval, fencing, journaled recovery. |
+| Guest writes host team | COW only; daemon-owned `team.promote` with no-follow manifest validation, approval, fencing, journaled recovery. |
 | Lost command acknowledgement | Durable receipts and `unknown_outcome` mapped to existing `needs_setup`, never presumed success. |
 | PA prompt injection mutates access | Prepare/structural-confirm/step-up flow in PA DM only; actor user rechecked at commit. |
 | Host credential exfiltration | No host CLI home/keychain mount; an owner-private Codex source is copied only through a transient root-only initrd leaf into the conformance-gated guest home; no broker/server copy or raw-data retention. |

@@ -209,7 +209,7 @@ export const executorKeys = {
   workspacePromotion: (promotionId?: string) =>
     ['executors', 'team-promotion', promotionId ?? 'none'] as const,
   workspaceReviews: (executorId?: string) =>
-    ['executors', executorId ?? 'none', 'workspace-reviews'] as const,
+    ['executors', executorId ?? 'none', 'team-reviews'] as const,
 }
 
 export const favoriteKeys = {

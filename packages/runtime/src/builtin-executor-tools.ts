@@ -156,14 +156,14 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
   personalAssistantOnly: true,
 }
 
-export const EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'executor_workspace_promotion_prepare',
+export const EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'executor.workspace_promotion_prepare',
   category: 'executors',
-  summary: 'Prepare reviewed executor workspace promotion for confirmation.',
-  label: 'Prepare Reviewed Workspace Promotion',
+  summary: 'Prepare reviewed executor team promotion for confirmation.',
+  label: 'Prepare Reviewed Team Promotion',
   description:
-    'Prepare the requesting user’s own reviewed executor draft for a host-workspace promotion. '
-    + 'The user must inspect and password-confirm the exact manifest in Executors; this assistant cannot write the host workspace.',
+    'Prepare the requesting user’s own reviewed executor draft for a host-team promotion. '
+    + 'The user must inspect and password-confirm the exact manifest in Executors; this assistant cannot write the host team.',
   parameters: {
     type: 'object',
     properties: { reviewCommandId: UUID },
@@ -183,5 +183,5 @@ export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION,
   EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION,
   EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION,
-  EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION,
+  EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION,
 ]
