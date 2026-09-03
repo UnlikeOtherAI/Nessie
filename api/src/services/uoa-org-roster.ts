@@ -4,6 +4,8 @@
 // The routes keep importing it from here.
 export {
   acceptWorkspaceInvitation,
+  createUoaOrganisation,
+  createUoaWorkspaceTeam,
   createWorkspaceInvitations,
   listWorkspaceInvitations,
   listWorkspaceMembers,
@@ -21,6 +23,7 @@ export {
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
+  type UoaProvisionedWorkspace,
   type UoaRosterDeps,
   type UoaRosterPrisma,
   type UoaRosterWorkspace,

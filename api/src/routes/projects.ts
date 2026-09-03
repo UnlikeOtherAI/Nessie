@@ -162,10 +162,29 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        teams: { where: { externalWorkspaceId: { not: null } }, select: { id: true }, take: 1 },
+      },
     })
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    // A project backing a UOA workspace takes its name from that workspace:
+    // `syncExternalWorkspaceNames` rewrites it from the verified directory on
+    // every login and rotation. Accepting a local rename made the value persist
+    // just long enough to look saved before a refresh silently reverted it.
+    // The avatar below is Nessie's own and stays editable.
+    if (body.name !== undefined && project.teams.length > 0 && body.name !== project.name) {
+      sendApiError(
+        reply,
+        409,
+        'WORKSPACE_NAME_MANAGED_BY_SSO',
+        'This workspace is named in UnlikeOtherAI. Rename it there and the change will appear here.',
+      )
       return reply
     }
 

@@ -77,6 +77,7 @@ import { registerWorkflowRoutes } from './routes/workflows.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
 import { registerWorkspaceInvitationAcceptanceRoute } from './routes/workspace-invitations.js'
 import { registerWorkspaceMembersRoutes } from './routes/workspace-members.js'
+import { registerWorkspaceProvisioningRoutes } from './routes/workspace-provisioning.js'
 import {
   buildDashboardEgressPolicy,
   createDashboardCredentialStore,
@@ -131,6 +132,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerWorkspaceAvatarRoutes(app, deps)
   registerProfileAvatarRoutes(app, deps)
   registerWorkspaceMembersRoutes(app, deps)
+  registerWorkspaceProvisioningRoutes(app, deps)
   registerWorkspaceInvitationAcceptanceRoute(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
