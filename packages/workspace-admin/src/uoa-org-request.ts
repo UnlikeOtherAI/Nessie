@@ -52,7 +52,7 @@ export const rosterSettings = (): UoaSettings | null => {
   return settings.clientSecret ? settings : null
 }
 
-export const orgPath = (workspace: UoaRosterWorkspace): string =>
+export const orgPath = (workspace: Pick<UoaRosterWorkspace, 'externalOrgId'>): string =>
   `/org/organisations/${encodeURIComponent(workspace.externalOrgId)}`
 
 export const teamPath = (workspace: UoaRosterWorkspace): string =>

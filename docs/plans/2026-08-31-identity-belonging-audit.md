@@ -384,6 +384,25 @@ that means any member of any workspace can enumerate the organisation's other
 workspaces, a visibility UOA's own directory (your ACTIVE memberships only)
 does not grant. Rule-zero check 2: scope by entitlement, not ambient org.
 
+**Fixed 2026-09-03.** A sibling instance of the same class of bug was found
+and fixed the same day: `admin/src/pages/settings/SettingsMembersPage.tsx`
+rendered the admin's "Organization → Members" page from
+`WorkspaceMembersSection`, which reads `GET /api/workspace/members`
+([workspace-members.ts:90-92](../../api/src/routes/workspace-members.ts)) —
+resolved from the session's currently active TEAM
+(`resolveUoaRosterWorkspace`), not the organisation. A UOA org can hold many
+teams; the page titled "Organization Members" silently showed only whoever
+was in whichever team the viewer's session happened to be scoped to, never
+the whole org. Fixed with a genuinely org-wide read: `listOrganisationMembers`
+(`packages/workspace-admin/src/uoa-org-members.ts`, calling
+`/org/organisations/:orgId/members?status=all` directly, no team join) served
+via `GET /api/organization/members`
+(`api/src/routes/organization-members.ts`), rendered by a new
+`OrganizationMembersSection.tsx` on the same page. The team-scoped
+`GET /api/workspace/members` and `WorkspaceMembersSection` are unchanged —
+they remain the correct primitive for a future per-team members page (see
+`docs/plans/2026-09-01-team-members-page.md`).
+
 **F11 — An absent `OrganizationMember` row fails open (medium, latent).**
 Request authentication rejects a *present-and-deactivated* membership, but an
 absent one passes through — deliberately, for system actors — and the actor
