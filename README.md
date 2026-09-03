@@ -29,9 +29,32 @@ These are the same images the public site (`web/`) shows at [nessie.works](https
 
 ## What it is
 
-Nessie is a local-first assistant project built around a TypeScript orchestrator and a native macOS app. The intended interaction model is simple: talk to it, type to it, or let it spawn a focused sub-agent to do research across local files, shell commands, and web lookups.
+Nessie is a multi-tenant, self-hosted agentic work platform: channels, threads
+and DMs your team already knows, with agents that do the work in them.
+Organisations host their own instance.
 
-The current repo contains the orchestrator backend, MCP server, tool layer, macOS app shell, and a separate Go-based remote control-plane scaffold. The architecture is coherent, but several headline features are still incomplete, especially the end-to-end voice path.
+### How it is organised
+
+Identity and the organisation structure come from **UnlikeOtherAI (UOA)**, the
+SSO. It owns two levels and the people in them, and Nessie mirrors them one for
+one rather than keeping its own copy:
+
+```text
+Organisation                 ← one UOA organisation
+  └── Workspace              ← one UOA team. A user can be in many.
+        ├── Project          ← Nessie's own. UOA has no such concept.
+        │     └── Channel
+        └── agents, knowledge, boards, …
+```
+
+A **workspace is the SSO's team** — the same thing under the product's own
+word, not a container for one. A **project is a construct within Nessie**: a
+body of work living inside exactly one workspace, so "which workspace does this
+project belong to?" always has exactly one answer.
+
+The model in full, including the vocabulary rules and the one place the schema
+currently contradicts it, is
+[docs/standards/workspace-model.md](docs/standards/workspace-model.md).
 
 ## Status
 
@@ -87,20 +110,24 @@ pnpm macos:build
 ## Architecture
 
 ```text
- [You]
-   |
-   v
- [macOS App] <----WS/SSE/HTTP----> [Nessie Backend]
-                                       |
-                                       +--> [Orchestrator]
-                                       +--> [Tool Layer]
-                                       +--> [MCP Server]
-                                       +--> [Realtime Voice Client]
-
- [Remote Control Plane (Go)]
-   |
-   +--> separate scaffold for future remote access
+ [Admin web UI]  [iOS / iPad]  [macOS]      ← the admin UI is the primary surface
+        |             |            |
+        +-------------+------------+
+                      |
+                HTTP / WS / SSE
+                      |
+              [Nessie API :5454] ──── [UnlikeOtherAI SSO]
+                      |                 identity, organisations,
+                      |                 workspaces (teams), membership
+                      +--> [Worker / orchestrator]
+                      +--> [Executors]
+                      +--> [MCP connectors]
+                      +--> [Postgres]
 ```
+
+Nessie stores no second copy of what the SSO owns. It keeps the binding keys —
+the external organisation id, the external workspace id, the user's subject —
+and asks UOA for the rest.
 
 ## Repository structure
 
