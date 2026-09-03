@@ -114,7 +114,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{desktop_webview_url, PRODUCTION_ADMIN_URL};
+    use super::{desktop_webview_url, DESKTOP_INIT_SCRIPT, PRODUCTION_ADMIN_URL};
     use tauri::utils::config::WebviewUrl;
 
     #[test]
