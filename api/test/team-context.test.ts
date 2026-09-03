@@ -448,7 +448,7 @@ const team = (activeTeamId: string, role = 'member'): ExternalAuthTeam => ({
   teamRoles: { [activeTeamId]: role },
 })
 
-test('auto-provisions the per-UOA-org Organization and its team team', async () => {
+test('auto-provisions the per-UOA-org Organization and its team', async () => {
   const orgId = randomUUID()
   const { client, state } = makeFake({ organizationId: orgId })
 
@@ -462,9 +462,9 @@ test('auto-provisions the per-UOA-org Organization and its team team', async () 
   assert.equal(org?.externalOrgId, 'uoa-org-1')
   // Placeholder name until the team directory supplies UOA's orgName.
   assert.equal(org?.name, 'Organisation uoa-org-')
-  const team = state.teams.find((t) => t.id === ctx!.teamId)
-  assert.equal(team?.externalTeamId, 'ws-backend')
-  assert.equal(team?.externalOrgId, 'uoa-org-1')
+  const materializedTeam = state.teams.find((t) => t.id === ctx!.teamId)
+  assert.equal(materializedTeam?.externalTeamId, 'ws-backend')
+  assert.equal(materializedTeam?.externalOrgId, 'uoa-org-1')
   const project = state.projects.find((p) => p.id === ctx!.projectId)
   assert.equal(project?.organizationId, ctx!.organizationId)
   // UOA said `member` for this team, and a verified claim outranks the
@@ -674,7 +674,7 @@ test('a cross-org team switch materializes the TARGET organization and its links
   )
   assert.ok(source)
   const target = { organizationId: 'uoa-org-2', teamId: 'ws-elsewhere' }
-  const targetTeam: ExternalAuthTeam = {
+  const targetTeamClaim: ExternalAuthTeam = {
     activeOrgId: target.organizationId,
     activeTeamId: target.teamId,
     teamIds: [target.teamId],
@@ -688,7 +688,7 @@ test('a cross-org team switch materializes the TARGET organization and its links
       email: 'mover@x.com',
       externalSubject: 'uoa-sub-mover',
       uoaTokenVersion: 4,
-      team: targetTeam,
+      team: targetTeamClaim,
     },
     target,
     userId: source!.userId,

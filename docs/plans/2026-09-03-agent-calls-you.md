@@ -1,6 +1,6 @@
 # The assistant calls you
 
-Phase 3 of [the voice-calling plan](2026-09-02-gemini-voice-calling.md), which
+Phase 3 of [the voice-calling plan](2026-09-02-gemini-voice-calling/overview.md), which
 said each of these deserves its own spec. This is that spec: the assistant
 places the call, and the person's own setting decides when it may.
 

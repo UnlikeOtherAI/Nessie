@@ -11,7 +11,7 @@ channel kind: in the `personal_assistant` DM it starts a live voice call with
 the assistant; everywhere else it keeps minting provider-linked meetings
 (below). Structural, never a reading of content, and never a second phone
 glyph. Spec and phasing:
-[docs/plans/2026-09-02-gemini-voice-calling.md](../plans/2026-09-02-gemini-voice-calling.md).
+[docs/plans/2026-09-02-gemini-voice-calling/overview.md](../plans/2026-09-02-gemini-voice-calling/overview.md).
 
 - **The API is a credential broker, not a media path.** `POST
   /api/voice/sessions` asks Ledger (`/v1/gemini/live-token`) for Google's

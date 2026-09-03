@@ -111,19 +111,19 @@ runDatabaseTest('a created project holds its creator and nobody else', async (t)
 
 runDatabaseTest('a project, a team in it, and a channel in that team', async (t) => {
   const prisma = new PrismaClient()
-  const team = await seed(prisma)
-  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const project = await createProjectForUser(prisma, {
     name: 'Marketing',
-    organizationId: team.organizationId,
-    userId: team.ownerId,
+    organizationId: seeded.organizationId,
+    userId: seeded.ownerId,
   })
   const team = await createTeamForUser(prisma, {
     name: 'Campaigns',
-    organizationId: team.organizationId,
+    organizationId: seeded.organizationId,
     projectId: project.id,
-    userId: team.ownerId,
+    userId: seeded.ownerId,
   })
   assert.ok(team)
   assert.equal(team.projectId, project.id)
@@ -132,13 +132,13 @@ runDatabaseTest('a project, a team in it, and a channel in that team', async (t)
     where: { teamId: team.id },
     select: { role: true, userId: true },
   })
-  assert.deepEqual(teamMembers, [{ role: 'owner', userId: team.ownerId }])
+  assert.deepEqual(teamMembers, [{ role: 'owner', userId: seeded.ownerId }])
 
   const channel = await createChannelForUser(prisma, {
     label: 'Launch plan',
-    organizationId: team.organizationId,
+    organizationId: seeded.organizationId,
     teamId: team.id,
-    userId: team.ownerId,
+    userId: seeded.ownerId,
     visibility: 'private',
   })
   assert.ok(channel)
@@ -151,76 +151,76 @@ runDatabaseTest('a project, a team in it, and a channel in that team', async (t)
     where: { channelId: channel.id },
     select: { userId: true },
   })
-  assert.deepEqual(channelMembers, [{ userId: team.ownerId }])
+  assert.deepEqual(channelMembers, [{ userId: seeded.ownerId }])
 })
 
 runDatabaseTest('createTeamForUser refuses a cross-organisation project', async (t) => {
   const prisma = new PrismaClient()
-  const team = await seed(prisma)
-  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const team = await createTeamForUser(prisma, {
     name: 'Campaigns',
-    organizationId: team.organizationId,
-    projectId: team.otherProjectId,
-    userId: team.ownerId,
+    organizationId: seeded.organizationId,
+    projectId: seeded.otherProjectId,
+    userId: seeded.ownerId,
   })
   assert.equal(team, null)
   assert.equal(
-    await prisma.team.count({ where: { projectId: team.otherProjectId } }),
+    await prisma.team.count({ where: { projectId: seeded.otherProjectId } }),
     0,
   )
 })
 
 runDatabaseTest('the project list is scoped by entitlement and by organisation', async (t) => {
   const prisma = new PrismaClient()
-  const team = await seed(prisma)
-  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const ownerProject = await createProjectForUser(prisma, {
     name: 'Owner only',
-    organizationId: team.organizationId,
-    userId: team.ownerId,
+    organizationId: seeded.organizationId,
+    userId: seeded.ownerId,
   })
   const memberProject = await createProjectForUser(prisma, {
     name: 'Member project',
-    organizationId: team.organizationId,
-    userId: team.memberId,
+    organizationId: seeded.organizationId,
+    userId: seeded.memberId,
   })
 
   const asOwner = await listProjectsForUser(prisma, {
     isOwner: true,
-    organizationId: team.organizationId,
-    userId: team.ownerId,
+    organizationId: seeded.organizationId,
+    userId: seeded.ownerId,
   })
   const ownerIds = new Set(asOwner.map((project) => project.id))
   assert.ok(ownerIds.has(ownerProject.id))
   assert.ok(ownerIds.has(memberProject.id))
-  assert.ok(!ownerIds.has(team.otherProjectId), 'never another organisation')
+  assert.ok(!ownerIds.has(seeded.otherProjectId), 'never another organisation')
 
   const asMember = await listProjectsForUser(prisma, {
     isOwner: false,
-    organizationId: team.organizationId,
-    userId: team.memberId,
+    organizationId: seeded.organizationId,
+    userId: seeded.memberId,
   })
   assert.deepEqual(asMember.map((project) => project.id), [memberProject.id])
 
   // Teams narrow to the projects handed in, and never leave the organisation.
   const team = await createTeamForUser(prisma, {
     name: 'Campaigns',
-    organizationId: team.organizationId,
+    organizationId: seeded.organizationId,
     projectId: memberProject.id,
-    userId: team.memberId,
+    userId: seeded.memberId,
   })
   assert.ok(team)
   const memberTeams = await listTeamsForOrganization(prisma, {
-    organizationId: team.organizationId,
+    organizationId: seeded.organizationId,
     projectIds: [memberProject.id],
   })
   assert.deepEqual(memberTeams.map((row) => row.id), [team.id])
   assert.deepEqual(
     await listTeamsForOrganization(prisma, {
-      organizationId: team.organizationId,
+      organizationId: seeded.organizationId,
       projectIds: [ownerProject.id],
     }),
     [],

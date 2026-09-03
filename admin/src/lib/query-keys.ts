@@ -442,9 +442,9 @@ export const teamKeys = {
   all: ['teams'] as const,
   // Client-only cache-buster for the fixed `/api/team/avatar` URL; nothing
   // fetches it, so it never refetches or resets on its own.
-  avatarRevision: ['team', 'avatar', 'revision'] as const,
-  invitations: ['team', 'invitations'] as const,
-  members: ['team', 'members'] as const,
+  avatarRevision: ['teams', 'avatar', 'revision'] as const,
+  invitations: ['teams', 'invitations'] as const,
+  members: ['teams', 'members'] as const,
 }
 
 export const threadKeys = {
