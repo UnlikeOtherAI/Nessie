@@ -171,6 +171,12 @@ export type WriteCallRecordInput = {
   userDisplayName: string
   /** Surfaces a failed compaction in the log rather than only in metadata. */
   onCompactionFailure?: (error: unknown) => void
+  /**
+   * Surfaces a transcript whose bytes could not be freed after the record
+   * failed to land — leaked storage and an over-counted usage ledger, which
+   * nothing else would ever report.
+   */
+  onTranscriptCleanupFailure?: (error: unknown) => void
 }
 
 /**
@@ -255,75 +261,105 @@ export const writeVoiceCallRecord = async (
       lines: input.lines,
     })
 
-  const message = await prisma.$transaction(async (tx) => {
-    const created = await tx.message.create({
-      data: {
-        threadId: input.session.threadId,
-        agentId: input.session.agentId,
-        role: 'assistant',
-        content,
-        metadata: callMetadata({
-          compacted: compaction !== null,
-          durationMs: input.durationMs,
-          session: input.session,
-          transcriptAttachmentId: null,
-          turnCount: input.lines.length,
-        }),
-      },
-    })
-    const claimed = await tx.voiceSession.updateMany({
-      where: { id: input.session.id, transcriptMessageId: null },
-      data: {
-        transcriptMessageId: created.id,
-        status: 'ended',
-        endedAt: input.session.endedAt ?? new Date(),
-      },
-    })
-    if (claimed.count !== 1) {
-      throw new VoiceSessionError(
-        'VOICE_TRANSCRIPT_ALREADY_RECORDED',
-        'This call already has a record.',
-        409,
-      )
-    }
-    return created
+  const attribution = attributionFromActorContext(input.actorContext, {
+    agentId: input.session.agentId,
+    agentKind: 'personal_assistant',
+    systemComponent: 'voice-call',
   })
 
-  let attachmentId: string | null = null
-  if (hasTranscript) {
-    const markdown = renderTranscriptMarkdown({
-      agentName: input.agentName,
-      durationMs: input.durationMs,
-      lines: input.lines,
-      startedAt: input.session.startedAt,
-      userDisplayName: input.userDisplayName,
-    })
-    const stored = await input.fileService.store({
-      attribution: attributionFromActorContext(input.actorContext, {
-        agentId: input.session.agentId,
-        agentKind: 'personal_assistant',
-        systemComponent: 'voice-call',
-      }),
+  // The bytes go down BEFORE the record exists, deliberately.
+  //
+  // Written the other way round — record first, transcript after — a storage
+  // failure left a committed record holding the claim, so the client's retry
+  // was refused as already-recorded and the transcript was gone for good. The
+  // record that survived was indistinguishable from a call that never had one:
+  // no control, no error, nothing to retry. That is the worst outcome
+  // available, because a call cannot be reproduced.
+  //
+  // Storing first inverts which way a failure falls. Nothing is committed, the
+  // slot stays unclaimed, and the same submission simply works when it is sent
+  // again.
+  const stored = hasTranscript
+    ? await input.fileService.store({
+      attribution,
       organizationId: input.session.organizationId,
       uploaderId: input.session.userId,
       filename: `voice-call-${input.session.startedAt.toISOString().slice(0, 19).replace(/[:T]/gu, '-')}.md`,
       mime: 'text/markdown',
-      body: Readable.from([Buffer.from(markdown, 'utf8')]),
-      messageId: message.id,
+      body: Readable.from([
+        Buffer.from(
+          renderTranscriptMarkdown({
+            agentName: input.agentName,
+            durationMs: input.durationMs,
+            lines: input.lines,
+            startedAt: input.session.startedAt,
+            userDisplayName: input.userDisplayName,
+          }),
+          'utf8',
+        ),
+      ]),
+      // Linked inside the transaction below, once the message it belongs to
+      // exists. Until then it is an unlinked attachment, reachable only by its
+      // own uploader — who is the caller.
     })
-    attachmentId = stored.attachment.id
-    await prisma.message.update({
-      where: { id: message.id },
-      data: {
-        metadata: callMetadata({
-          compacted: compaction !== null,
-          durationMs: input.durationMs,
-          session: input.session,
-          transcriptAttachmentId: attachmentId,
-          turnCount: input.lines.length,
-        }),
-      },
+    : null
+  const attachmentId = stored?.attachment.id ?? null
+
+  let message: { id: string }
+  try {
+    message = await prisma.$transaction(async (tx) => {
+      const created = await tx.message.create({
+        data: {
+          threadId: input.session.threadId,
+          agentId: input.session.agentId,
+          role: 'assistant',
+          content,
+          metadata: callMetadata({
+            compacted: compaction !== null,
+            durationMs: input.durationMs,
+            session: input.session,
+            transcriptAttachmentId: attachmentId,
+            turnCount: input.lines.length,
+          }),
+        },
+      })
+      const claimed = await tx.voiceSession.updateMany({
+        where: { id: input.session.id, transcriptMessageId: null },
+        data: {
+          transcriptMessageId: created.id,
+          status: 'ended',
+          endedAt: input.session.endedAt ?? new Date(),
+        },
+      })
+      if (claimed.count !== 1) {
+        throw new VoiceSessionError(
+          'VOICE_TRANSCRIPT_ALREADY_RECORDED',
+          'This call already has a record.',
+          409,
+        )
+      }
+      if (attachmentId) {
+        await tx.attachment.update({
+          data: { messageId: created.id },
+          where: { id: attachmentId },
+        })
+      }
+      return created
     })
+  } catch (error) {
+    // The record did not land, so its transcript must not linger. Freeing it
+    // through the one `FileService` chokepoint is what keeps the storage
+    // ledger honest: the bytes were counted at store, and only `delete` writes
+    // the balancing event. A failure here leaks bytes and over-counts usage,
+    // which is worth reporting but never worth masking the real error.
+    if (attachmentId) {
+      await input.fileService
+        .delete(attachmentId, input.session.organizationId, attribution)
+        .catch((cleanupError: unknown) => {
+          input.onTranscriptCleanupFailure?.(cleanupError)
+        })
+    }
+    throw error
   }
 
   return { messageId: message.id, attachmentId }

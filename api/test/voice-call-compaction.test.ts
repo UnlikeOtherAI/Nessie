@@ -71,6 +71,9 @@ const fakePrisma = (): { prisma: PrismaClient; written: WrittenMessage[] } => {
           },
         },
         voiceSession: { updateMany: async () => ({ count: 1 }) },
+        // The transcript is stored before the record and linked to it here,
+        // inside the claim's own transaction.
+        attachment: { update: async () => ({ id: 'attachment-1' }) },
       }),
     message: {
       update: async ({ data }: { data: { metadata: Record<string, unknown> } }) => {
