@@ -1,0 +1,10 @@
+{
+  "name": "nessie-voice-call",
+  "version": "0.1.0",
+  "description": "CallKit-backed Gemini Live calls with the Nessie Personal Assistant.",
+  "main": "index.ts",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Nessie",
+  "homepage": "https://nessie.works"
+}

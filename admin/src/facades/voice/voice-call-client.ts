@@ -36,7 +36,12 @@ import { createAssistantHandoff, type AssistantHandoff } from './voice-assistant
  * record — happens server-side; this file only carries bytes and state.
  */
 
-export type VoiceCallPhase = 'idle' | 'connecting' | 'live' | 'ending' | 'failed'
+/**
+ * `held` is native-only: a cellular call arrived and the platform took ours.
+ * The browser has no equivalent, but the phase lives here because both clients
+ * render through the one in-call surface.
+ */
+export type VoiceCallPhase = 'idle' | 'connecting' | 'live' | 'held' | 'ending' | 'failed'
 
 export type VoiceCallState = {
   phase: VoiceCallPhase

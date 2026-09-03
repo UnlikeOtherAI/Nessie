@@ -74,6 +74,40 @@ glyph. Spec and phasing:
   is spoken later; replies are polled through a viewer-entitled read rather than
   the thread SSE stream, which is cut structurally when a run consumes a
   privileged source.
+- **On iPhone the call is native, and the seam is the call lifecycle — not
+  CallKit.** `mobile/modules/nessie-voice-call/` is a local Expo module whose
+  `AgentCallSession` protocol states four moments a platform reports: connect
+  (which must start **no** audio I/O), audio activated, audio deactivated, and
+  held. CallKit drives them today; Android's self-managed `ConnectionService`
+  drives the same four, which is why everything above the audio layer — the
+  Gemini protocol client, the credential relay, rotation, the usage relay, the
+  transcript — is written once. Adding a CallKit-shaped parameter to that
+  protocol is how the second platform stops being a port and becomes a fork.
+- **Held is not muted.** Muting keeps a silent stream flowing so Gemini's VAD
+  can still see the end of an utterance; holding — a cellular call arriving, or
+  `didDeactivate` without an end action — stops sending altogether, because
+  silence is a real audio stream that is billed and answered into an output
+  nobody can hear.
+- **A route change rebuilds the audio pipeline, not just the route.** The
+  platform picks the route; `AVAudioEngine` does not follow it — the input
+  node's hardware format changes, so the installed tap and the sample-rate
+  converter are stale and the playback graph's connections are broken. Build
+  the converter inside capture from the *current* input format and rebuild on
+  both `AVAudioSession.routeChangeNotification` and
+  `.AVAudioEngineConfigurationChange`. A converter built once at init is the
+  bug: it points at a format the session had not chosen yet.
+- **The call belongs to the process, not the JS bundle.** A reload tears down
+  the Expo module and every listener while the CallKit call, the socket and the
+  microphone keep running, so the call lives on `VoiceCallController.shared`
+  and `getActiveCallState()` reads a lock-guarded snapshot off the main actor —
+  the shell asks during its first render, and the queue it would otherwise wait
+  on is the one painting. Without it a reload leaves the UI blind mid-call.
+- **The WebView provisions once; the phone renews itself.** The SPA mints the
+  voice-scoped device credential on its ordinary session and hands it over the
+  shell bridge. Everything after that is the native side's, against
+  `POST /api/voice/device-token/refresh` — a locked phone has no foreground
+  WebView to ask. It is stored `AfterFirstUnlockThisDeviceOnly`, because a
+  locked-phone call has to *rewrite* it and the stricter class fails that write.
 - **Local-dev constraint:** the Ledger call goes through `safeFetch`, which
   refuses loopback and private addresses, so a local Ledger cannot be used —
   point `LEDGER_PUBLIC_URL` at the hosted service.

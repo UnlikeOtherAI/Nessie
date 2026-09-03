@@ -43,6 +43,15 @@ import { openAllowedCallExternalUrl, webViewNavigationDisposition } from './src/
 import { openConnectorAuthorizationUrl } from './src/lib/connector-authorization'
 import { triggerHaptic } from './src/lib/haptics'
 import { handleNativeShellMessage } from './src/lib/native-shell-message-handler'
+import {
+  addNativeVoiceCallStateListener,
+  endNativeVoiceCall,
+  getActiveNativeVoiceCallState,
+  isNativeVoiceCallAvailable,
+  setNativeVoiceCallMuted,
+  startNativeVoiceCall,
+} from './modules/nessie-voice-call'
+import { nativeVoiceCallStateScript } from './src/lib/native-voice-call'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
@@ -156,6 +165,18 @@ const Shell = (): React.JSX.Element => {
     webRef.current?.injectJavaScript(wrapNativeWebViewScript(script))
   }, [])
 
+  // The call is native and survives a JS reload; the event stream does not.
+  // Republishing the live state on every load is what stops a reload leaving
+  // the admin blind while a call is running.
+  useEffect(() => {
+    if (!isNativeVoiceCallAvailable()) return undefined
+    runScript(nativeVoiceCallStateScript(getActiveNativeVoiceCallState()))
+    const subscription = addNativeVoiceCallStateListener((state) => {
+      runScript(nativeVoiceCallStateScript(state))
+    })
+    return () => subscription?.remove()
+  }, [runScript])
+
   const flushExternalAuthDelivery = useCallback((): void => {
     flushNativeExternalAuthDelivery(externalAuthDeliveries.current, runScript)
   }, [runScript])
@@ -201,6 +222,7 @@ const Shell = (): React.JSX.Element => {
       formFactor: nativeFormFactor,
       pendingPushPath,
       platform: Platform.OS,
+      voiceCall: isNativeVoiceCallAvailable(),
     }))
   }, [insets.bottom, nativeFormFactor, pendingPushPath, runScript])
   const sourceUri = bootRecovery.reloadNonce === 0
@@ -327,8 +349,12 @@ const Shell = (): React.JSX.Element => {
       ),
       reconcileNativeAttention: async (total) => reconcileNativeAttentionPresentation(total),
       replayPendingPushPath,
+      endNativeVoiceCall: () => void endNativeVoiceCall().catch(() => undefined),
       runExternalAuth,
       runScript,
+      setNativeVoiceCallMuted: (muted) => void setNativeVoiceCallMuted(muted).catch(() => undefined),
+      startNativeVoiceCall: (provisioning) => void startNativeVoiceCall(provisioning)
+        .catch(() => undefined),
       screenActiveRef,
       setCurrentPath,
       setIndex,

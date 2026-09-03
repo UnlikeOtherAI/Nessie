@@ -1,6 +1,8 @@
 import type {
   ReportVoiceUsageResponse,
   SubmitVoiceTranscriptResponse,
+  VoiceDeviceToken,
+  VoiceInstallationPlatform,
   VoiceInstallationRecord,
   VoiceSessionCredential,
   VoiceSessionRotation,
@@ -19,6 +21,7 @@ import type { UsageReport } from './voice-usage-outbox'
  */
 
 const INSTALLATION_STORAGE_KEY = 'nessie.voice.installation-id'
+const NATIVE_INSTALLATION_STORAGE_KEY = 'nessie.voice.native-installation-id'
 
 export type VoiceApi = ReturnType<typeof createVoiceApi>
 
@@ -31,15 +34,47 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
    * is cached locally, and a stale one is re-registered rather than trusted.
    */
   ensureInstallation: async (): Promise<string> => {
-    const cached = readCachedInstallationId()
+    const cached = readCachedInstallationId(INSTALLATION_STORAGE_KEY)
     if (cached) return cached
     const installation = await apiClient.post<VoiceInstallationRecord>(
       '/api/voice/installations',
       { platform: 'web', label: describeBrowser() },
     )
-    writeCachedInstallationId(installation.id)
+    writeCachedInstallationId(INSTALLATION_STORAGE_KEY, installation.id)
     return installation.id
   },
+
+  /**
+   * Registers a slot for the device the *native* layer will call from.
+   *
+   * Separate from the browser's own installation because Ledger reserves daily
+   * budget per slot and the two are different devices as far as that budget is
+   * concerned — the phone's app and the phone's browser can each hold a call.
+   * Cached under its own key for the same reason.
+   */
+  ensureNativeInstallation: async (
+    platform: VoiceInstallationPlatform,
+    label: string,
+  ): Promise<string> => {
+    const cached = readCachedInstallationId(NATIVE_INSTALLATION_STORAGE_KEY)
+    if (cached) return cached
+    const installation = await apiClient.post<VoiceInstallationRecord>(
+      '/api/voice/installations',
+      { platform, label },
+    )
+    writeCachedInstallationId(NATIVE_INSTALLATION_STORAGE_KEY, installation.id)
+    return installation.id
+  },
+
+  /**
+   * Mints the voice-scoped credential the native layer holds during a call.
+   *
+   * Session auth, from the WebView, once: a credential that could mint its
+   * successor would outlive the sign-out that should have ended it, so renewal
+   * is the native side's own refresh exchange rather than another trip here.
+   */
+  mintDeviceToken: (installationId: string): Promise<VoiceDeviceToken> =>
+    apiClient.post<VoiceDeviceToken>('/api/voice/device-token', { installationId }),
 
   forgetInstallation: (): void => {
     try {
@@ -121,17 +156,17 @@ export const createVoiceApi = (apiClient: ApiClient) => ({
   },
 })
 
-const readCachedInstallationId = (): string | null => {
+const readCachedInstallationId = (key: string): string | null => {
   try {
-    return window.localStorage.getItem(INSTALLATION_STORAGE_KEY)
+    return window.localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-const writeCachedInstallationId = (id: string): void => {
+const writeCachedInstallationId = (key: string, id: string): void => {
   try {
-    window.localStorage.setItem(INSTALLATION_STORAGE_KEY, id)
+    window.localStorage.setItem(key, id)
   } catch {
     // A private-mode browser re-registers next call; that is a wasted row,
     // not a failure, and the per-user cap still bounds it.

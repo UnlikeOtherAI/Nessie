@@ -11,7 +11,7 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
-import { useVoiceCall, useVoiceCapability } from '../facades/voice/hooks'
+import { usePersonalAssistantCall, useVoiceCapability } from '../facades/voice/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
@@ -164,7 +164,7 @@ export const ChannelsPage = () => {
   // The Personal Assistant DM answers the same call button with a live voice
   // call instead of a provider-linked meeting. The branch is structural — it
   // follows from the channel being that DM — never a reading of its content.
-  const voiceCall = useVoiceCall()
+  const voiceCall = usePersonalAssistantCall()
   const voiceCapability = useVoiceCapability()
   // Both must hold: the conversation takes voice calls (structural — it is
   // the assistant's DM) and this deployment is wired to place them.

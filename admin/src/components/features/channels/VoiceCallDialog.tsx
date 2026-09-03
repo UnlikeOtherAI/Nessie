@@ -32,6 +32,8 @@ const statusLabel = (state: VoiceCallState): string => {
       return 'Connecting…'
     case 'live':
       return state.assistantSpeaking ? 'Speaking' : 'Listening'
+    case 'held':
+      return 'On hold'
     case 'ending':
       return 'Ending call…'
     case 'failed':
@@ -63,7 +65,7 @@ const VoiceCallDialog = ({
 
   // One timer for the call clock, running only while a call is up.
   useEffect(() => {
-    if (state.phase !== 'live') return undefined
+    if (state.phase !== 'live' && state.phase !== 'held') return undefined
     const timer = setInterval(() => setNow(Date.now()), 1_000)
     return () => clearInterval(timer)
   }, [state.phase])
@@ -74,7 +76,7 @@ const VoiceCallDialog = ({
     if (node) node.scrollTop = node.scrollHeight
   }, [state.transcript.length, state.liveUserText, state.liveAssistantText])
 
-  const live = state.phase === 'live' || state.phase === 'connecting'
+  const live = state.phase === 'live' || state.phase === 'connecting' || state.phase === 'held'
   const agentName = state.agentName ?? 'Personal Assistant'
 
   return (

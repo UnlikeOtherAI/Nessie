@@ -192,8 +192,18 @@ the app was built against the admin web origin instead of the API origin.
 
 ## Mobile app — WebView shell
 
-The mobile app is a **WebView shell around the admin web UI** wrapped in native
-chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
+One thing in the app is deliberately **not** the WebView: calling the Personal
+Assistant. On iPhone the header call button hands off to a local Expo native
+module (`mobile/modules/nessie-voice-call/`) that places a real CallKit call, so
+it reaches the lock screen, Recents, AirPods and CarPlay and keeps running with
+the app in the background. The WebView mints the voice-scoped device credential
+once and passes it over the shell bridge; everything after that is native,
+because a locked phone has no foreground WebView. The module is iOS-only —
+Android answers "unavailable" and keeps the in-page web call. Rules and rationale:
+[docs/standards/voice-calling.md](standards/voice-calling.md).
+
+The rest of the mobile app is a **WebView shell around the admin web UI** wrapped
+in native chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
 `react-native-webview` that loads the admin, passing beneath a **native bottom tab
 bar** (`react-native-bottom-tabs`; iOS 26 Liquid Glass on iPhone, Material on
 Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
@@ -437,13 +447,36 @@ On Xcode 26 the Expo installer can hang at "Connecting to device". If so, build
 and install manually after `expo prebuild`:
 
 ```sh
-cd mobile/ios
-xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Debug \
-  -destination "id=<DEVICE-UDID>" -allowProvisioningUpdates build
-# then locate Nessie.app from the build log and:
-xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
-xcrun devicectl device process launch --device <DEVICE-UDID> com.km.nessie
+cd mobile
+npx expo prebuild --platform ios --no-install --clean
+cd ios
+# CocoaPods reads the Podfile path through `unicode_normalize`, which raises
+# `Encoding::CompatibilityError` under a non-UTF-8 locale. Set one explicitly
+# rather than debugging the backtrace it prints instead of an error message.
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Release \
+  -destination "id=<DEVICE-UDID>" -derivedDataPath <build-dir> \
+  -allowProvisioningUpdates build
+xcrun devicectl device install app --device <DEVICE-UDID> \
+  <build-dir>/Build/Products/Release-iphoneos/Nessie.app
+xcrun devicectl device process launch --device <DEVICE-UDID> \
+  --terminate-existing com.km.nessie
 ```
+
+`Release` rather than `Debug`: the release configuration embeds the JS bundle,
+which is what makes the installed app self-contained and Metro-free — the
+default-delivery policy at the top of this guide. **Launch needs the device
+unlocked.** A locked phone refuses with
+`FBSOpenApplicationErrorDomain error 7 … Locked`; the install itself succeeds,
+so the fix is to unlock the phone and re-run the launch command, never to treat
+a successful install as a completed deployment.
+
+`xcodebuild` buffers its output heavily when it is not attached to a terminal,
+so a build driven from a script can look completely silent for ten minutes and
+then print everything at once. Pipe it through a `grep` for
+`error:|BUILD SUCCEEDED|BUILD FAILED` rather than concluding it has hung — and
+note that the summary at the end names the *failed build commands*, while the
+compiler diagnostics themselves appear far earlier in the stream.
 
 ### Direct device deployment requests
 

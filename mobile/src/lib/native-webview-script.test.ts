@@ -27,6 +27,7 @@ const scriptBuilders: ReadonlyArray<{ name: string; script: () => string }> = [
       formFactor: 'phone',
       pendingPushPath: null,
       platform: 'ios',
+      voiceCall: true,
     }),
   },
   { name: 'nativePhoneTabBarClearanceScript', script: () => nativePhoneTabBarClearanceScript(0) },
