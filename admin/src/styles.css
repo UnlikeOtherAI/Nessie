@@ -714,6 +714,21 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   min-width: 0;
 }
 
+/* Native-shell bottom clearance (home indicator / Android floating dock).
+   The installed shells inject the values as custom properties on :root
+   (`--nessie-native-bottom-overlay`; mobile/src/lib/webview-inject.ts), but
+   only the app knows which wrapper holds each surface — the wide shell puts
+   its aside inside ResizableSidebar, a detached thread inside
+   ResizableThreadPanel — so the selectors are owned here, never injected.
+
+   Unwrapped, and one wrapper deep: the secondary nav and the detached thread
+   panel each sit inside their resizable column. Two wrappers deep covers the
+   phone tablet-root list, where the shell's main holds the navigation
+   viewport, which holds the wrapper div, which holds the aside. */
+.admin-shell :is(> aside, > main, > * > aside, > * > main, > * > * > aside, > * > * > main) {
+  padding-bottom: calc(var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
+}
+
 .resizable-sidebar-control {
   position: absolute;
   z-index: 20;
