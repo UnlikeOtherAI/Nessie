@@ -38,7 +38,7 @@ export const resolveDurableBrowserConnection = async (
     agentVisibility: 'workspace' | 'private'
     agentOwnerUserId: string | null
   },
-): Promise<{ id: string; scope: 'organization' | 'user'; projectId: string; apiKeyRef: string }> => {
+): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string; apiKeyRef: string }> => {
   const rows = await prisma.cloudBrowserConnection.findMany({
     where: { organizationId: input.organizationId, status: 'active' },
     select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },

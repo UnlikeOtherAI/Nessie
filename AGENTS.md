@@ -257,12 +257,12 @@ when one changes, the same turn updates it, not this section.
 - **UOA owns the org structure, not just the people in it.** Where UOA SSO is
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization`, bound by the stable UOA
-  organisation id (`Organization.externalOrgId`, unique), and one UOA workspace
-  is one **workspace** (the local `Team` model) inside that organisation. A
-  workspace IS the UOA team, not a container for one; Nessie's own Projects and
-  Channels live INSIDE a workspace, and UOA has no concept of either. The model
-  in full, including the currently inverted `Team.projectId` foreign key:
-  [docs/standards/workspace-model.md](docs/standards/workspace-model.md).
+  organisation id (`Organization.externalOrgId`, unique), and one UOA **team** is
+  one **workspace** inside that organisation. **A workspace IS the UOA team;
+  a project is Nessie's own and lives inside one.** Read
+  [docs/standards/workspace-model.md](docs/standards/workspace-model.md) before
+  writing code here — the local model is still called `Team` and its `projectId`
+  foreign key currently points the wrong way.
   **Creating** either happens in-app against UOA's org API rather than by
   redirecting a person into its chooser for a second interactive login; the
   local rows are still born only in `materializeUoaWorkspace`, from what the
@@ -451,6 +451,18 @@ block injects that home id and title so the model never invents a `spaceId`.
 
 
 Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
+
+## Settings — one cascade, and a lock a person can see
+
+A setting that exists at more than one level resolves through `ScopedSetting`
+(`@nessie/runtime` `scoped-settings.ts`): organisation → team → person, most
+specific wins, stopping at the first level marked `locked`. A lock may carry no
+value, pinning whatever resolved above it, and the level that locked it comes
+back with the answer so the surface greys the control and names it rather than
+accepting an edit the server would refuse.
+Read [`docs/standards/scoped-settings.md`](docs/standards/scoped-settings.md)
+before writing code here.
+
 
 ## Message reply threads (#233)
 

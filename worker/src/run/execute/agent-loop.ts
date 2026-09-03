@@ -137,6 +137,7 @@ export const runExecutionAgentLoop = async (
       id: context.channel.id,
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
+      teamId: context.channel.teamId ?? null,
     },
     agentIdentity: {
       ownerUserId: context.agent.ownerUserId ?? null,

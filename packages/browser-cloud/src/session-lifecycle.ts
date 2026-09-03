@@ -1,4 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { resolveScopedSetting } from '@nessie/runtime'
+
+import type { ConnectionScope } from './connection-management.js'
 
 import {
   createBrowserbaseClient,
@@ -28,10 +31,17 @@ export type CloudBrowserDeps = {
 
 export type ResolvedConnection = {
   id: string
-  scope: 'organization' | 'user'
+  scope: ConnectionScope
   projectId: string
   apiKeyRef: string
 }
+
+
+/** Outermost first, matching the setting cascade's own order. */
+const CONNECTION_SCOPE_ORDER: readonly ConnectionScope[] = ['organization', 'team', 'user']
+
+/** The cascade key that governs which account an agent's browser runs on. */
+export const CLOUD_BROWSER_SETTING_KEY = 'browser.connection'
 
 /** Statuses that hold the one-live-session-per-run partial unique index. */
 export const LIVE_SESSION_STATUSES = ['allocating', 'active', 'releasing'] as const
@@ -55,31 +65,57 @@ export const cloudBrowserSettings = (env: NodeJS.ProcessEnv = process.env): {
 }
 
 /**
- * The organization subscription first, then the requesting person's own
- * account. An unattended run has no requester, so it can only ever use the
- * organization connection — a schedule must never spend an individual's
- * browser-hours.
+ * The most specific connection the run can reach — a person's own account over
+ * their team's, a team's over the organisation's — unless a level above has
+ * locked `browser.connection`, in which case that level's account is what
+ * everyone below uses. This is the one shared cascade
+ * (`@nessie/runtime` `resolveScopedSetting`), not a second ordering rule
+ * hardcoded here: it used to prefer the organisation unconditionally, which an
+ * owner could neither see nor change.
+ *
+ * An unattended run has no requester, so it never reaches a personal account —
+ * a schedule must not spend an individual's browser-hours. A team account is
+ * shared, so it may.
  */
 export const resolveConnectionForRun = async (
-  prisma: Pick<PrismaClient, 'cloudBrowserConnection'>,
-  input: { organizationId: string; requestedByUserId: string | null },
+  prisma: Pick<PrismaClient, 'cloudBrowserConnection' | 'scopedSetting'>,
+  input: {
+    organizationId: string
+    teamId: string | null
+    requestedByUserId: string | null
+  },
 ): Promise<ResolvedConnection | null> => {
-  const rows = await prisma.cloudBrowserConnection.findMany({
-    where: {
+  const [rows, setting] = await Promise.all([
+    prisma.cloudBrowserConnection.findMany({
+      where: {
+        organizationId: input.organizationId,
+        status: 'active',
+        OR: [
+          { scope: 'organization' },
+          ...(input.teamId ? [{ scope: 'team' as const, teamId: input.teamId }] : []),
+          ...(input.requestedByUserId
+            ? [{ scope: 'user' as const, userId: input.requestedByUserId }]
+            : []),
+        ],
+      },
+      select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },
+    }),
+    resolveScopedSetting(prisma, {
       organizationId: input.organizationId,
-      status: 'active',
-      OR: [
-        { scope: 'organization' },
-        ...(input.requestedByUserId
-          ? [{ scope: 'user' as const, userId: input.requestedByUserId }]
-          : []),
-      ],
-    },
-    select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },
-  })
-  const organization = rows.find((row) => row.scope === 'organization')
-  const personal = rows.find((row) => row.scope === 'user')
-  const chosen = organization ?? personal
+      teamId: input.teamId,
+      userId: input.requestedByUserId,
+    }, CLOUD_BROWSER_SETTING_KEY),
+  ])
+
+  // Walk inwards and keep the last account we are still allowed to reach. The
+  // lock stops the walk at the level that set it, exactly as the cascade
+  // resolves any other setting.
+  const byScope = new Map(rows.map((row) => [row.scope as ConnectionScope, row]))
+  let chosen: (typeof rows)[number] | undefined
+  for (const scope of CONNECTION_SCOPE_ORDER) {
+    chosen = byScope.get(scope) ?? chosen
+    if (setting.lockedAtScope === scope) break
+  }
   if (!chosen) return null
   return {
     id: chosen.id,
@@ -134,6 +170,8 @@ export type OpenSessionInput = {
   runId: string
   threadId: string
   agentId: string
+  /** The channel's team, which is one level of the connection cascade. */
+  teamId: string | null
   requestedByUserId: string | null
   /**
    * Ride the agent's durable browser instead of a throwaway session. The
@@ -183,18 +221,20 @@ export const openCloudBrowserSession = async (
         id: input.agentBrowser.connectionId,
         organizationId: input.organizationId,
         status: 'active',
-        // An unattended run has no requester, so it may only ever ride the
-        // organisation subscription — a schedule must not bill somebody's
-        // personal account, however its agent's browser came to live there.
+        // An unattended run has no requester, so it may only ever ride a
+        // shared account — a schedule must not bill somebody's personal
+        // account, however its agent's browser came to live there. A team
+        // account is shared, so it qualifies alongside the organisation's.
         ...(input.requestedByUserId
           ? {}
-          : { scope: 'organization' as const }),
+          : { scope: { in: ['organization', 'team'] as const } }),
       },
       select: { id: true, scope: true, projectId: true, apiKeyRef: true },
     })
     : await resolveConnectionForRun(deps.prisma, {
       organizationId: input.organizationId,
       requestedByUserId: input.requestedByUserId,
+      teamId: input.teamId,
     })
   if (!connection) {
     throw new CloudBrowserError(

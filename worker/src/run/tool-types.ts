@@ -62,6 +62,8 @@ export type BuiltinToolRuntimeContext = {
   channel: {
     id: string
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
+    /** One level of the setting cascade; absent on a channel with no team. */
+    teamId?: string | null
     systemChannelType?: ChannelSystemType | null
   }
   /**

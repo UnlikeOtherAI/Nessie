@@ -14,6 +14,19 @@ import { emitAuditEvent } from '../services/audit.js'
 import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
+/**
+ * Renaming a team is refused when UOA owns it.
+ *
+ * A UOA workspace maps 1:1 onto a Team, and UOA is the authority for its name;
+ * `Team.name` is a non-authoritative mirror. Writing it locally would create
+ * exactly the second copy of the org structure the SSO invariant forbids, and
+ * the next roster read would overwrite it anyway. A local install with no IdP
+ * (`externalWorkspaceId` null) owns its own names, so there it is allowed.
+ */
+const RenameTeamBodySchema = z.object({
+  name: z.string().trim().min(1).max(200),
+}).strict()
+
 const UpdateTeamSettingsBodySchema = z.object({
   callProvider: CallLinkProviderSchema,
 }).strict()
@@ -157,6 +170,49 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  app.patch('/api/teams/:teamId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const roles = actorContext.actor.roles ?? []
+    if (!roles.includes('owner') && !roles.includes('admin')) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
+      return reply
+    }
+
+    const body = parseInput(RenameTeamBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const { teamId } = request.params as { teamId: string }
+    const team = await prisma.team.findFirst({
+      where: {
+        id: teamId,
+        project: { organizationId: actorContext.tenant.organizationId },
+      },
+      select: { externalWorkspaceId: true, id: true },
+    })
+    if (!team) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+      return reply
+    }
+    if (team.externalWorkspaceId) {
+      sendApiError(
+        reply,
+        409,
+        'TEAM_NAME_OWNED_BY_IDP',
+        'This workspace’s name is held by UnlikeOtherAI. Rename it there and it '
+        + 'will follow here.',
+      )
+      return reply
+    }
+
+    const updated = await prisma.team.update({
+      data: { name: body.name },
+      where: { id: team.id },
+      select: { id: true, name: true },
+    })
+    return createApiResponse(updated)
   })
 
   app.patch('/api/teams/:teamId/settings', async (request, reply) => {

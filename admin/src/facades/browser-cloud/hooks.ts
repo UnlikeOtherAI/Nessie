@@ -22,6 +22,8 @@ export const useCloudBrowserConnections = () => {
 
 export type ConnectCloudBrowserInput = {
   scope: CloudBrowserScope
+  /** Required at team scope. */
+  teamId?: string
   apiKey: string
   projectId: string
 }

@@ -100,7 +100,7 @@ export const UserMenuPopover = ({
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 
-      <Link className={rowClassName} onClick={onClose} to="/settings/profile">
+      <Link className={rowClassName} onClick={onClose} to="/settings/account">
         <span>Account settings</span>
         <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
       </Link>

@@ -1,11 +1,14 @@
--- Sizes the Project -> Team unification before it is attempted.
+-- Sizes the Project/Workspace foreign-key inversion before it is attempted.
 --
--- Nessie's local hierarchy carries a Project between Organization and Team,
--- while UOA has only Organisation -> Team. `Team.project_id` has no unique
--- constraint, so a Project may hold zero, one or many Teams — and
--- `POST /api/teams` lets any of those be created. Making the pair genuinely
--- 1:1 is the gate on unifying the vocabulary and on routing renames upstream,
--- so the first question is how many rows are not already 1:1.
+-- The model is Organisation -> Workspace -> Project -> Channel: a workspace IS
+-- the SSO's team, and a project is Nessie's own, living inside exactly one
+-- workspace (docs/standards/workspace-model.md). The schema has this INVERTED —
+-- `Team.project_id` makes a Project the parent of a Team — and the fix is to
+-- flip the relationship into `Project.team_id`, NOT to add a unique constraint
+-- to the current direction, which would freeze the wrong shape.
+--
+-- This sizes that inversion: how many rows do not already fit one-project-per-
+-- workspace, and what would have to be decided for those that do not.
 --
 -- Read-only. Safe to run against production.
 
@@ -24,7 +27,7 @@ GROUP BY team_count
 ORDER BY team_count;
 
 \echo ''
-\echo '== The projects that would block a unique constraint (more than one team) =='
+\echo '== Projects holding more than one workspace (each needs a decision on inversion) =='
 SELECT
   p.id           AS project_id,
   p.name         AS project_name,
@@ -52,8 +55,8 @@ ORDER BY t.created_at;
 
 \echo ''
 \echo '== Project members who are not members of that project''s team(s) =='
-\echo '-- These are the rows that lose access if project membership collapses'
-\echo '-- into workspace membership, so they must be migrated, not dropped.'
+\echo '-- If project membership is ever derived from workspace membership,'
+\echo '-- these are the rows that would lose access, so they must be migrated.'
 SELECT COUNT(*) AS orphaned_project_members
 FROM project_members pm
 JOIN projects p ON p.id = pm.project_id AND p.channel_root = false

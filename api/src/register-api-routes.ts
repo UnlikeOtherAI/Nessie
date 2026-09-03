@@ -9,6 +9,7 @@ import { registerAppConnectionRequestRoutes } from './routes/app-connection-requ
 import { registerAppsConnectRoutes } from './routes/apps-connect.js'
 import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerBrowserCloudRoutes } from './routes/browser-cloud.js'
+import { registerScopedSettingsRoutes } from './routes/scoped-settings.js'
 import { registerAgentCardRoutes } from './routes/agent-cards.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
@@ -160,6 +161,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerApprovalRoutes(app, deps)
   registerAgentCardRoutes(app, deps)
   registerBrowserCloudRoutes(app, deps)
+  registerScopedSettingsRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)

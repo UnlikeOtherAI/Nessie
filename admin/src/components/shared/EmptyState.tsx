@@ -32,7 +32,7 @@ type EmptyStateProps = {
  *
  * The dashed border is what distinguishes it at a glance from a populated row,
  * which is the failure the plain-centred-text empty states had: on
- * `/settings/notifications` an empty muted-channels list rendered as an
+ * `/settings/account?tab=notifications` an empty muted-channels list rendered as an
  * `admin-card p-3` line, visually identical to a list holding one channel.
  *
  * It answers "empty", never "loading" and never "failed" — those are

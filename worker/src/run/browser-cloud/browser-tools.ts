@@ -211,6 +211,7 @@ const runOpen = async (
       threadId: context.run.threadId,
       agentId: context.agentId,
       requestedByUserId: context.run.principalUserId ?? null,
+      teamId: context.channel.teamId ?? null,
       ...(agentBrowser ? { agentBrowser } : {}),
     })
     const gate: OriginGateState = {

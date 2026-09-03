@@ -250,7 +250,6 @@ export const OrganizationSummarySchema = z.object({
   role: z.string(),
   logoAttachmentId: z.string().uuid().nullable(),
   stripImageMetadata: z.boolean(),
-  conversationalSetupEnabled: z.boolean(),
   // True when this organisation is bound to an UnlikeOtherAI organisation, so
   // its name is UOA's and a rename is relayed there rather than stored here.
   // The id itself is deliberately not exposed — the client needs the fact, not
@@ -258,18 +257,6 @@ export const OrganizationSummarySchema = z.object({
   nameManagedExternally: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
-
-// This is intentionally separate from UpdateOrganizationRequestSchema. The
-// early-access gate has a narrower, live-owner-only route than ordinary
-// organization profile settings, and accepts no unrelated configuration.
-export const SetConversationalSetupEnabledRequestSchema = z
-  .object({
-    conversationalSetupEnabled: z.boolean(),
-  })
-  .strict()
-export type SetConversationalSetupEnabledRequest = z.infer<
-  typeof SetConversationalSetupEnabledRequestSchema
->
 
 // Owners/admins set or clear the org's round logo. `null` clears it.
 export const UpdateOrganizationLogoRequestSchema = z.object({

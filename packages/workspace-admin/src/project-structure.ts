@@ -157,6 +157,10 @@ export const listTeamsForOrganization = async (
   return teams.map((team) => ({
     callProvider: team.callProvider as TeamRecord['callProvider'],
     createdAt: team.createdAt.toISOString(),
+    // UOA holds a bound workspace's name, so it cannot be renamed here. The
+    // external id itself is never exposed — a surface needs the fact, not the
+    // identifier.
+    externallyManaged: team.externalWorkspaceId !== null,
     id: parseTeamId(team.id),
     memberCount: team.members.length,
     name: team.name,

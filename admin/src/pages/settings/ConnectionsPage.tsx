@@ -4,9 +4,7 @@ import {
 } from '../../facades/connections/hooks'
 import type { CommsProvider } from '../../lib/api-client'
 import { EmptyState } from '../../components/shared/EmptyState'
-import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
 import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
-import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/MyBrowserLoginsPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
@@ -61,7 +59,7 @@ export const ConnectionsPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="Account" title="Connected accounts">
+    <SettingsPanel eyebrow="User" title="Connected accounts">
       <div className="flex flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
           Link your Slack, Gmail, or Microsoft account so your Chief of Staff can
@@ -109,8 +107,6 @@ export const ConnectionsPage = () => {
 
         <ModelSubscriptionSection />
         <MailboxConnectionsPanel scope="user" />
-        <CloudBrowserPanel scope="user" />
-        <MyBrowserLoginsPanel />
       </div>
     </SettingsPanel>
   )

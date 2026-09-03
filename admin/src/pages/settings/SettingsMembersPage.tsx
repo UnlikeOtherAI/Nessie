@@ -211,7 +211,7 @@ export const SettingsMembersPage = () => {
 
   // Members management is owner-only; non-owners are routed back to their profile.
   if (!isOwner) {
-    return <Navigate to="/settings/profile" replace />
+    return <Navigate to="/settings/account" replace />
   }
 
   const createUserSubmit = async (event: FormEvent<HTMLFormElement>) => {

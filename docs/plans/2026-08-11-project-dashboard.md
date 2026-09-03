@@ -86,7 +86,7 @@ use). Sections load independently — one slow query never blanks the page.
   lives in the sidebar `+` and the main `/channels` surface.
 - **Click:** row → `/channels/:channelId`.
 - **Loading:** 3 skeleton rows (`bg-[color:var(--overlay)]`, `animate-pulse`, rounded).
-- **Empty:** "No channels yet. Channels created under this project's teams will appear here."
+- **Empty:** "No channels yet. Channels created under this project's teams will appear here. (Historical: written against the inverted `Team.projectId` schema — see `docs/standards/workspace-model.md`.)"
 
 ### 3.2 Work
 

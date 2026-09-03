@@ -18,7 +18,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { PushPreferenceCard } from './notification-preference-controls'
-import { FeedbackBanner, type SettingsFeedback, SettingsPanel } from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback, SettingsPanel, type SettingsTabHostProps } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { Switch } from '../../components/primitives/Switch'
 import { Card } from '../../components/shared/Card'
@@ -192,7 +192,7 @@ const BrowserNotificationsSection = () => {
   )
 }
 
-export const NotificationsPage = () => {
+export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
   const { me } = useAuthSession()
   const { focusModeEnabled, setFocusModeEnabled, updating: focusModeUpdating } = useFocusMode()
   const channelsQuery = useChannels()
@@ -316,7 +316,7 @@ export const NotificationsPage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="Account"
+      eyebrow="User"
       title="Notifications"
       actions={[
         {
@@ -335,6 +335,7 @@ export const NotificationsPage = () => {
         } satisfies PageHeaderAction,
       ]}
     >
+      {tabs}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
         <form
           className="grid gap-4"

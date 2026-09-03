@@ -72,7 +72,7 @@ const isAgentDetailRoute = (pathname: string): boolean =>
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
+type AdminNavGroupId = 'agents' | 'user' | 'team' | 'organization' | 'governance' | 'platform';
 
 type AdminNavGroup = {
   id: AdminNavGroupId;
@@ -173,26 +173,16 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    id: 'account',
-    heading: 'Account',
+    id: 'user',
+    heading: 'User',
     items: [
       {
-        path: '/settings/profile',
-        label: 'Profile & Session',
+        path: '/settings/account',
+        label: 'Settings',
         icon: icon(
           <>
             <circle cx="12" cy="8" r="4" />
             <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
-          </>,
-        ),
-      },
-      {
-        path: '/settings/security',
-        label: 'Security',
-        icon: icon(
-          <>
-            <rect height="10" rx="2" width="14" x="5" y="11" />
-            <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
           </>,
         ),
       },
@@ -204,20 +194,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
             <rect height="10" rx="2" width="14" x="5" y="11" />
             <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M12 14v3" strokeLinecap="round" />
-          </>,
-        ),
-      },
-      {
-        path: '/settings/notifications',
-        label: 'Notifications',
-        icon: icon(
-          <>
-            <path
-              d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d="M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
           </>,
         ),
       },
@@ -262,22 +238,21 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
+    ],
+  },
+  {
+    id: 'team',
+    heading: 'Team',
+    items: [
       {
-        path: '/settings/appearance',
-        label: 'Appearance',
+        path: '/settings/team',
+        label: 'Settings',
+        visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
         icon: icon(
           <>
-            <circle cx="12" cy="12" r="4" />
-            <path
-              d="M12 3v2M12 19v2M3 12h2M19 12h2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M5 5l1.4 1.4M17.6 17.6 19 19M5 19l1.4-1.4M17.6 6.4 19 5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <circle cx="9" cy="8" r="3" />
+            <path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16 11a3 3 0 100-6M17 20c0-2.4-.9-4.1-2.3-5" strokeLinecap="round" strokeLinejoin="round" />
           </>,
         ),
       },
@@ -289,7 +264,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       {
         path: '/settings/organization',
-        label: 'General',
+        label: 'Settings',
         visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
         icon: icon(
           <>

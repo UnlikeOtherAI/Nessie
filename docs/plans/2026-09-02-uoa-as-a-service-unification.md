@@ -37,8 +37,11 @@ mechanism upstream.
 
 ## 1. The shape of the problem
 
-UOA has **two** levels: Organisation → Team. Nessie has **four**: Organization →
-Project → Team → Channel, and the admin calls a Team a "workspace".
+UOA has **two** levels: Organisation → Team. Nessie's model is Organisation →
+Workspace → Project → Channel, where a workspace IS the UOA team and a project
+is Nessie's own ([standards/workspace-model.md](../standards/workspace-model.md)).
+The SCHEMA, however, reads Organisation → Project → Workspace, because
+`Team.projectId` points the wrong way.
 
 `Project` is not the harmless plumbing v1 claimed. Verified in the schema:
 
@@ -210,17 +213,18 @@ inside one workspace** — a body of work, with no UOA counterpart. So a project
 belongs to a workspace, and "which workspace does this project belong to?" must
 always have one answer.
 
-**The schema has this inverted.** `Team.projectId` makes Project the *parent* of
-Team, so the database reads Organisation → Project → Workspace. That single
-inverted foreign key is the common cause of defects v1 and v2 treated as
-separate:
+The inversion forces `createWorkspaceEnvironment` to fabricate a Project for
+every workspace — a Team cannot exist without a Project parent — and that
+phantom project then takes the workspace's name, so one upstream name lands on
+two rows.
 
-- `createWorkspaceEnvironment` fabricates a Project for every workspace because
-  a Team cannot exist without a Project parent — forced, not chosen.
-- The fabricated project takes the workspace's name, so one upstream name lands
-  on two rows and both need healing.
-- `CreateProjectDialog` does the mirror image, silently creating `"{Name} Team"`.
-- Several workspaces can hang off one project, a state the model forbids.
+Two defects usually filed alongside these do **not** follow from the direction,
+and this plan should not claim they do: `CreateProjectDialog`'s `"{Name} Team"`
+comes from there being no way to create a project inside an existing workspace,
+and multi-workspace-per-project comes from a missing `@unique` on
+`Team.projectId`. Inverting the FK resolves both as a side effect — a reason to
+prefer the inversion, not evidence that one key caused everything. See
+[standards/workspace-model.md](../standards/workspace-model.md).
 
 So the work is to **invert the relationship**: `Project.teamId` (a project
 carries the workspace it belongs to) replacing `Team.projectId`. Constraining

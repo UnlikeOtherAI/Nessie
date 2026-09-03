@@ -4,11 +4,7 @@ import {
   useSessions,
 } from '../../facades/auth/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import {
-  FeedbackBanner,
-  SettingsPanel,
-  type SettingsFeedback,
-} from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback, SettingsPanel, type SettingsTabHostProps } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { ActiveSessionsTable } from '../../components/features/settings/ActiveSessionsTable'
 
@@ -94,7 +90,7 @@ const ChangePasswordCard = () => {
   )
 }
 
-export const SecuritySettingsPage = () => {
+export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
   const { me } = useAuthSession()
   const { data: sessions = [], isLoading } = useSessions()
 
@@ -105,7 +101,8 @@ export const SecuritySettingsPage = () => {
   const isLocalAccount = me.auth.providerType === 'local-bootstrap'
 
   return (
-    <SettingsPanel eyebrow="Account" title="Security">
+    <SettingsPanel eyebrow="User" title="Security">
+      {tabs}
       <div className="grid w-full gap-4">
         <section className="admin-card p-4">
           <SectionLabel>Active sessions</SectionLabel>

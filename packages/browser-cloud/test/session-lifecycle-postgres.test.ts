@@ -269,6 +269,7 @@ runDatabaseTest('an unattended run never spends an individual’s browser hours'
     const mine = await resolveConnectionForRun(prisma, {
       organizationId: seed.organizationId,
       requestedByUserId: seed.userId,
+      teamId: null,
     })
     assert.equal(mine?.scope, 'user')
 
@@ -276,6 +277,7 @@ runDatabaseTest('an unattended run never spends an individual’s browser hours'
     const theirs = await resolveConnectionForRun(prisma, {
       organizationId: seed.organizationId,
       requestedByUserId: seed.otherUserId,
+      teamId: null,
     })
     assert.equal(theirs, null)
 
@@ -283,11 +285,13 @@ runDatabaseTest('an unattended run never spends an individual’s browser hours'
     const unattended = await resolveConnectionForRun(prisma, {
       organizationId: seed.organizationId,
       requestedByUserId: null,
+      teamId: null,
     })
     assert.equal(unattended, null)
 
-    // Once the company subscribes, the organisation connection wins for
-    // everyone — including the person who already had their own.
+    // Once the company subscribes, an unattended run has a shared account to
+    // use — but the person who already had their own keeps it, because the
+    // cascade takes the most specific account unless a level above locks it.
     await prisma.cloudBrowserConnection.create({
       data: {
         organizationId: seed.organizationId,
@@ -297,12 +301,38 @@ runDatabaseTest('an unattended run never spends an individual’s browser hours'
         createdByUserId: seed.userId,
       },
     })
+    const nowUnattended = await resolveConnectionForRun(prisma, {
+      organizationId: seed.organizationId,
+      requestedByUserId: null,
+      teamId: null,
+    })
+    assert.equal(nowUnattended?.scope, 'organization')
+
     const preferred = await resolveConnectionForRun(prisma, {
       organizationId: seed.organizationId,
       requestedByUserId: seed.userId,
+      teamId: null,
     })
-    assert.equal(preferred?.scope, 'organization')
-    assert.equal(preferred?.projectId, 'company')
+    assert.equal(preferred?.scope, 'user', 'the more specific account wins')
+
+    // Locking `browser.connection` at the organisation is how an owner makes
+    // the company account the one everybody uses.
+    await prisma.scopedSetting.create({
+      data: {
+        key: 'browser.connection',
+        locked: true,
+        organizationId: seed.organizationId,
+        scope: 'organization',
+        updatedByUserId: seed.userId,
+      },
+    })
+    const locked = await resolveConnectionForRun(prisma, {
+      organizationId: seed.organizationId,
+      requestedByUserId: seed.userId,
+      teamId: null,
+    })
+    assert.equal(locked?.scope, 'organization')
+    assert.equal(locked?.projectId, 'company')
   } finally {
     await seed.cleanup()
     await prisma.$disconnect()
@@ -328,6 +358,7 @@ runDatabaseTest('a needs_attention connection stops resolving for new runs', asy
     const resolved = await resolveConnectionForRun(prisma, {
       organizationId: seed.organizationId,
       requestedByUserId: seed.userId,
+      teamId: null,
     })
 
     // A dead key must stop the toolset advertising a browser, rather than

@@ -10,7 +10,7 @@ import { Notice } from '../../components/primitives/Notice'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { Card } from '../../components/shared/Card'
 import { KeyValueList } from '../../components/shared/KeyValueList'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from './settings-shared'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
 // provider *type* so the brand shows even when the configured label is a login
@@ -23,7 +23,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   custom: 'Custom provider',
 }
 
-export const SettingsProfilePage = () => {
+export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const navigate = useNavigate()
   const { me, logout } = useAuthSession()
   const statusesQuery = useStatuses()
@@ -63,8 +63,8 @@ export const SettingsProfilePage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="Account"
-      title="Profile & Session"
+      eyebrow="User"
+      title="Profile"
       actions={[
         {
           id: 'sign-out',
@@ -74,6 +74,7 @@ export const SettingsProfilePage = () => {
         } satisfies PageHeaderAction,
       ]}
     >
+      {tabs}
       {hasLoadError && (
         <Notice className="mb-4" role="alert" tone="danger">
           Some account details failed to load.{' '}

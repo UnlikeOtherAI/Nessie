@@ -16,7 +16,7 @@ export const PushCredentialsPage = () => {
 
   // Platform push credentials are super-admin only; others go back to profile.
   if (!isSuperAdmin) {
-    return <Navigate to="/settings/profile" replace />
+    return <Navigate to="/settings/account" replace />
   }
 
   return (

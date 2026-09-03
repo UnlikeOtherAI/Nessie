@@ -27,7 +27,6 @@ const attachmentId = '00000000-0000-4000-8000-0000000000c3'
 const userId = '00000000-0000-4000-8000-0000000000c4'
 
 type OrganizationRow = {
-  conversationalSetupEnabled: boolean
   createdAt: Date
   externalOrgId: string | null
   id: string
@@ -114,7 +113,6 @@ const makeApp = (
 }
 
 const organizationRow = (overrides: Partial<OrganizationRow> = {}): OrganizationRow => ({
-  conversationalSetupEnabled: false,
   createdAt: new Date('2026-08-01T00:00:00.000Z'),
   // A local-mode organisation: its name is genuinely local, so the PATCH below
   // never relays a rename to UnlikeOtherAI.
@@ -171,70 +169,6 @@ test('an organisation admin cannot designate their own organisation through the 
   assert.equal(response.statusCode, 200)
   assert.equal(updates.length, 1)
   assert.equal('instanceBrand' in (updates[0] ?? {}), false)
-})
-
-test('only an active owner may change conversational setup early access', async () => {
-  const { app, updates } = makeApp(
-    [organizationRow()],
-    { role: 'owner', deactivatedAt: null },
-  )
-  const response = await app.inject({
-    method: 'PUT',
-    url: '/api/organizations/current/features/conversational-setup',
-    payload: { conversationalSetupEnabled: true },
-  })
-
-  assert.equal(response.statusCode, 200)
-  assert.equal(updates.length, 1)
-  assert.deepEqual(updates[0], { conversationalSetupEnabled: true })
-  assert.equal(response.json().data.conversationalSetupEnabled, true)
-})
-
-test('an administrator without the owner role cannot change conversational setup early access', async () => {
-  const { app, updates } = makeApp(
-    [organizationRow()],
-    { role: 'admin', deactivatedAt: null },
-  )
-  const response = await app.inject({
-    method: 'PUT',
-    url: '/api/organizations/current/features/conversational-setup',
-    payload: { conversationalSetupEnabled: true },
-  })
-
-  assert.equal(response.statusCode, 403)
-  assert.equal(response.json().error.code, 'FORBIDDEN')
-  assert.deepEqual(updates, [])
-})
-
-test('a deactivated owner cannot change conversational setup early access', async () => {
-  const { app, updates } = makeApp(
-    [organizationRow()],
-    { role: 'owner', deactivatedAt: new Date('2026-09-01T12:00:00.000Z') },
-  )
-  const response = await app.inject({
-    method: 'PUT',
-    url: '/api/organizations/current/features/conversational-setup',
-    payload: { conversationalSetupEnabled: true },
-  })
-
-  assert.equal(response.statusCode, 403)
-  assert.equal(response.json().error.code, 'FORBIDDEN')
-  assert.deepEqual(updates, [])
-})
-
-test('the conversational setup route accepts only its boolean setting', async () => {
-  const { app, updates } = makeApp(
-    [organizationRow()],
-    { role: 'owner', deactivatedAt: null },
-  )
-  const response = await app.inject({
-    method: 'PUT',
-    url: '/api/organizations/current/features/conversational-setup',
-    payload: { conversationalSetupEnabled: true, name: 'Must not be accepted' },
-  })
-
-  assert.equal(response.statusCode, 400)
-  assert.deepEqual(updates, [])
 })
 
 test('the migration backfills the single-organisation instance and nothing else', () => {

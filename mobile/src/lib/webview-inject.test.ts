@@ -254,3 +254,140 @@ test('recognises hexadecimal CSS colours when choosing native contrast', () => {
   assert.equal(isDark('#f1e9dc'), false)
   assert.equal(isDark('#2e1132'), true)
 })
+
+// Focus mode scopes its palette to the frame's children, so the base theme
+// stays on documentElement throughout. These drive the injected script against
+// that real shape to prove the native chrome follows focus in and back out.
+const BASE_TOKENS: Record<string, string> = {
+  '--accent': '#7c3aed',
+  '--accent-strong': '#5b21b6',
+  '--on-accent': '#ffffff',
+  '--panel': '#222629',
+  '--rail': '#2e1132',
+  '--tx': '#f8f5ef',
+  '--tx2': '#b6b0a9',
+  '--tx3': '#949597',
+}
+const FOCUS_SURFACE_TOKENS: Record<string, string> = {
+  ...BASE_TOKENS,
+  '--accent': '#303030',
+  '--accent-strong': '#000000',
+  '--panel': '#ffffff',
+  '--rail': '#ffffff',
+  '--tx': '#1d1d1d',
+  '--tx2': '#4d4d4d',
+  '--tx3': '#707070',
+}
+const FOCUS_NAV_TOKENS: Record<string, string> = {
+  ...BASE_TOKENS,
+  '--accent': '#b9b9bc',
+  '--accent-strong': '#ececee',
+  '--panel': '#353535',
+  '--rail': '#242424',
+  '--tx': '#f1f1f1',
+  '--tx2': '#d4d4d6',
+  '--tx3': '#aeaeaf',
+}
+
+const injectedFocusMessages = (
+  focusEnabled: boolean,
+  // A phone draws no in-page navigation: its header and tab bar are native, so
+  // only the work surface carries a focus palette.
+  { navChrome: hasNavChrome = true }: { navChrome?: boolean } = {},
+): { bg?: Record<string, unknown>; theme?: Record<string, unknown> } => {
+  const messages: Record<string, unknown>[] = []
+  const navChrome = { tag: 'topbar' }
+  const workSurface = { tag: 'shell' }
+  const frame = {
+    classList: { contains: (name: string): boolean => focusEnabled && name === 'focus-mode' },
+    querySelector: (selector: string): unknown => {
+      if (selector === ':scope > .admin-topbar') return hasNavChrome ? navChrome : null
+      if (selector === ':scope > .admin-shell') return workSurface
+      return null
+    },
+  }
+  const body = { tag: 'body' }
+  const documentElement = { tag: 'html' }
+  const document = {
+    body,
+    documentElement,
+    head: { appendChild: (): void => undefined },
+    addEventListener: (): void => undefined,
+    createElement: (): FakeElement => ({}),
+    getElementById: (): null => null,
+    querySelector: (selector: string): unknown =>
+      selector === '.admin-frame' ? frame : null,
+  }
+  const window = {
+    __nessieNativeShell: { formFactor: 'phone', platform: 'ios' },
+    addEventListener: (): void => undefined,
+    location: { protocol: 'file:' },
+    ReactNativeWebView: {
+      postMessage: (message: string): void => {
+        messages.push(JSON.parse(message) as Record<string, unknown>)
+      },
+    },
+  }
+  class FakeMutationObserver {
+    constructor(_callback: () => void) {}
+
+    observe(): void {}
+  }
+  const getComputedStyle = (element: unknown): {
+    backgroundColor: string
+    colorScheme: string
+    getPropertyValue: (name: string) => string
+  } => {
+    const tokens = element === navChrome
+      ? FOCUS_NAV_TOKENS
+      : element === workSurface
+        ? FOCUS_SURFACE_TOKENS
+        : BASE_TOKENS
+    const backgroundColor = element === workSurface
+      ? 'rgb(255, 255, 255)'
+      : element === body
+        ? 'rgb(26, 29, 33)'
+        : 'rgba(0, 0, 0, 0)'
+    return {
+      backgroundColor,
+      colorScheme: 'dark',
+      getPropertyValue: (name) => tokens[name] ?? '',
+    }
+  }
+
+  const runInjectedScript = new Function('window', 'document', 'MutationObserver', 'getComputedStyle', INJECTED)
+  runInjectedScript(window, document, FakeMutationObserver, getComputedStyle)
+
+  return {
+    bg: messages.find((message) => message.type === 'bg'),
+    theme: messages.find((message) => message.type === 'theme'),
+  }
+}
+
+// The bridge reports the page's own theme and nothing else. Focus mode's
+// monochrome chrome belongs to the native shell (native-focus-chrome.ts), so
+// nothing here reads the palette back out of the document or restyles it.
+test('focus mode leaves the reported theme as the page defines it', () => {
+  const { theme } = injectedFocusMessages(true)
+
+  assert.equal(theme?.headerSurface, '#2e1132')
+  assert.equal(theme?.surface, '#222629')
+  assert.equal(theme?.accent, '#7c3aed')
+  assert.equal(theme?.headerText, '#f8f5ef')
+})
+
+test('focus mode backs the native frame with the paper-white work surface', () => {
+  assert.equal(injectedFocusMessages(true).bg?.color, 'rgb(255, 255, 255)')
+})
+
+test('leaving focus mode restores the themed native palette and backdrop', () => {
+  const { bg, theme } = injectedFocusMessages(false)
+
+  assert.equal(theme?.headerSurface, '#2e1132')
+  assert.equal(theme?.surface, '#222629')
+  assert.equal(theme?.accent, '#7c3aed')
+  assert.equal(theme?.accentStrong, '#5b21b6')
+  assert.equal(theme?.inactive, '#949597')
+  assert.equal(theme?.headerText, '#f8f5ef')
+  assert.equal(bg?.color, 'rgb(26, 29, 33)')
+})
