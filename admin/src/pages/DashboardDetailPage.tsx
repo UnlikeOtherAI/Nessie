@@ -16,16 +16,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
-import { Skeleton, SkeletonBlock } from '../components/primitives/Skeleton'
-import { DashboardGrid } from '../components/features/dashboards/DashboardGrid'
-import { DashboardWidgetCard } from '../components/features/dashboards/DashboardWidgetCard'
+import { Skeleton } from '../components/primitives/Skeleton'
+import { DashboardCanvas } from '../components/features/dashboards/DashboardCanvas'
 import { DashboardVersionsPanel } from '../components/features/dashboards/DashboardVersionsPanel'
 import { AddWidgetPanel } from '../components/features/dashboards/AddWidgetPanel'
 import {
   useDashboard,
   useSaveLayout,
-  useWidgetData,
-  type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
@@ -33,36 +30,6 @@ import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBack
 import { dashboardKeys } from '../lib/query-keys'
 import { draftKey, useDraft } from '../navigation/useDraft'
 import { NestedStage } from '../navigation/NestedStage'
-
-/**
- * Each widget loads its own data so one inaccessible widget degrades to a lock
- * tile instead of failing the page.
- */
-const WidgetSlot = ({
-  widget,
-  editable,
-}: {
-  widget: DashboardWidgetRecord
-  editable: boolean
-}) => {
-  const { data: projection, refetch } = useWidgetData(widget.id)
-
-  return (
-    <div className="relative h-full">
-      {editable ? (
-        <div
-          className="dashboard-widget-handle absolute inset-x-0 top-0 z-10 h-6 cursor-move"
-          title="Drag to move"
-        />
-      ) : null}
-      {projection ? (
-        <DashboardWidgetCard onRetry={() => void refetch()} projection={projection} />
-      ) : (
-        <SkeletonBlock className="h-full rounded-lg" />
-      )}
-    </div>
-  )
-}
 
 export const DashboardDetailPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
@@ -110,38 +77,7 @@ export const DashboardDetailPage = () => {
     return map
   }, [dashboard])
 
-  /**
-   * A widget with no rect yet (just added, or added by an agent) still has to
-   * appear, so it is placed at the end rather than silently omitted.
-   */
-  const layout = useMemo<DashboardLayout>(() => {
-    const base = draftLayout ?? { lg: [], md: [], sm: [] }
-    const widgets = dashboard?.widgets ?? []
-    const ensure = (rects: DashboardLayout['lg'], columns: number, width: number) => {
-      const placed = new Set(rects.map((rect) => rect.widgetId))
-      const missing = widgets.filter((widget) => !placed.has(widget.id))
-      let y = rects.reduce((max, rect) => Math.max(max, rect.y + rect.h), 0)
-      return [
-        ...rects.filter((rect) => widgetKinds.has(rect.widgetId)),
-        ...missing.map((widget, index) => {
-          const rect = {
-            widgetId: widget.id,
-            x: (index * width) % columns,
-            y,
-            w: Math.min(width, columns),
-            h: 6,
-          }
-          if ((index + 1) * width >= columns) y += 6
-          return rect
-        }),
-      ]
-    }
-    return {
-      lg: ensure(base.lg, 12, 6),
-      md: ensure(base.md, 8, 4),
-      sm: ensure(base.sm, 4, 4),
-    }
-  }, [draftLayout, dashboard, widgetKinds])
+  const layout = draftLayout ?? { lg: [], md: [], sm: [] }
 
   // Never a blocking dialog: a refused save renders the choice as a bar over the
   // grid, and the arrangement stays in the draft either way.
@@ -300,18 +236,13 @@ export const DashboardDetailPage = () => {
               </button>
             </div>
           ) : (
-            <DashboardGrid
+            <DashboardCanvas
+              dashboard={dashboard}
               editable={editing}
               layout={layout}
               onLayoutChange={setDraftLayout}
               widgetKinds={widgetKinds}
-            >
-              {dashboard.widgets.map((widget) => (
-                <div key={widget.id}>
-                  <WidgetSlot editable={editing} widget={widget} />
-                </div>
-              ))}
-            </DashboardGrid>
+            />
           )}
         </div>
       </div>

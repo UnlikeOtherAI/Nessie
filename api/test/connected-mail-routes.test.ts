@@ -118,7 +118,12 @@ test('mail mutations require an allowed origin, JSON and a non-empty body', asyn
     const headers = { origin: 'http://localhost:5455', 'content-type': 'application/json' }
     const noOrigin = await app.inject({ method: 'POST', url, payload: { to: ['a@example.test'] } })
     assert.equal(noOrigin.statusCode, 403)
-    const form = await app.inject({ method: 'POST', url, headers: { origin: headers.origin }, payload: { to: ['a@example.test'] } })
+    const form = await app.inject({
+      method: 'POST',
+      url,
+      headers: { origin: headers.origin, 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'to=a%40example.test',
+    })
     assert.equal(form.statusCode, 415)
     const empty = await app.inject({ method: 'POST', url, headers, payload: {} })
     assert.equal(empty.statusCode, 400)

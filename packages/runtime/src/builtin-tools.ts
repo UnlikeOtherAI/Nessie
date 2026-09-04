@@ -227,6 +227,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Send a message as the current user to a thread, channelId, or a DM by targetUserId. ' +
+      'Optional attachmentIds must name the current user\'s still-unlinked uploads. ' +
       'Resolve named channels with channel_find first; do not guess between duplicate channel names.',
     parameters: {
       type: 'object',
@@ -234,6 +235,15 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         content: {
           type: 'string',
           description: 'Message content to send',
+        },
+        attachmentIds: {
+          type: 'array',
+          description:
+            'Up to 10 IDs returned by attachment_upload. Each is linked to this message.',
+          items: { type: 'string' },
+          maxItems: 10,
+          minItems: 1,
+          uniqueItems: true,
         },
         threadId: {
           type: 'string',
