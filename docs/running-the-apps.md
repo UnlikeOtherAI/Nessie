@@ -75,10 +75,11 @@ On Windows and Linux, the top-left of that window carries 14.4px mac-style red,
 yellow, and green controls for close, minimise, and maximise/restore. Their
 inset marks appear together on hover. When the native window is inactive, all
 three dots dim to light grey and return to their action colours on focus.
-Holding the pointer over the green control opens a translucent glass **Window
-layouts** popover at half scale: it can place the window into halves or thirds,
-fill the current display's usable work area, or enter full screen. Those choices
-use Tauri-native monitor, position and size actions rather than imitating a
+Holding the pointer over the green control opens a translucent neutral-grey glass
+**Window layouts** popover at half scale below the traffic lights: it can place
+the window into halves or thirds, fill the current display's
+ usable work area, or enter full screen. Those choices use Tauri-native monitor,
+ position and size actions rather than imitating a
 browser panel. Windows and Linux remove the native title-bar buttons so this
 strip is the only window chrome; macOS keeps its system traffic lights instead.
 

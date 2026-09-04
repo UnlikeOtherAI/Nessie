@@ -1085,14 +1085,14 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   border: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
   border-radius: 22px;
   background:
-    linear-gradient(135deg, rgb(249 229 252 / 64%), rgb(202 150 214 / 43%)),
+    linear-gradient(135deg, rgb(245 247 249 / 72%), rgb(166 172 181 / 48%)),
     color-mix(in srgb, var(--panel) 74%, transparent);
   box-shadow:
-    0 22px 54px rgb(22 7 27 / 34%),
+    0 22px 54px rgb(20 24 28 / 28%),
     inset 0 1px rgb(255 255 255 / 47%),
-    inset 0 -1px rgb(75 25 87 / 16%);
-  backdrop-filter: blur(26px) saturate(1.35);
-  -webkit-backdrop-filter: blur(26px) saturate(1.35);
+    inset 0 -1px rgb(36 42 48 / 16%);
+  backdrop-filter: blur(26px) saturate(1.05);
+  -webkit-backdrop-filter: blur(26px) saturate(1.05);
 }
 
 .desktop-window-layout-popover::before {
@@ -1103,7 +1103,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   height: 15px;
   border-top: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
-  background: rgb(239 207 245 / 78%);
+  background: rgb(221 225 229 / 86%);
   content: '';
   transform: rotate(45deg);
 }
@@ -1133,7 +1133,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   min-height: 57px;
   place-items: center;
   border-radius: 10px;
-  color: color-mix(in srgb, var(--tx) 86%, #190f1d);
+  color: color-mix(in srgb, var(--tx) 86%, #15171a);
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
