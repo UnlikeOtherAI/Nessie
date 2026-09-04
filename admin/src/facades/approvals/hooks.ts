@@ -81,6 +81,9 @@ export const useEmailApprovalReview = (approvalId: string | undefined, enabled: 
     gcTime: 0,
     queryKey: emailApprovalReviewKey(approvalId),
     queryFn: () => apiClient.get(`/api/approvals/${approvalId}/email-review`),
+    // Unlike ordinary detail navigation, the prior result contains the exact
+    // email. Never briefly render one approval's private message for another.
+    placeholderData: () => undefined,
     retry: false,
   })
 }
