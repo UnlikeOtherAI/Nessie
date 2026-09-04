@@ -99,7 +99,10 @@ pinned publisher. A manual run of the exact `main` branch with `source_ref`
 empty is also a signed verification boundary and fails closed when the signer
 is absent. This produces an installable security-test artifact without minting
 a release tag. Manual source overrides and non-main runs never receive signing
-credentials and remain unsigned development evidence only.
+credentials and remain unsigned development evidence only. They also never
+reach the persistent self-hosted Hyper-V runner; its administrator-level job is
+gated to the exact trusted `main` run or a release tag, after the signed build
+and install checks pass.
 
 | Secret | What it holds |
 | --- | --- |
