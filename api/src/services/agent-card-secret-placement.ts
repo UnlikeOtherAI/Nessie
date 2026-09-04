@@ -67,6 +67,9 @@ type DashboardSourcePlacement = {
   value: string
 }
 
+/** Mirrors the `{12,}` floor the scanner's assignment grammar already uses. */
+const MIN_REDACTABLE_SECRET_LENGTH = 12
+
 export type AgentCardSecretPlacements = {
   connector: ConnectorPlacement[]
   dashboardSource: DashboardSourcePlacement[]
@@ -308,8 +311,14 @@ export const storeAgentCardSecrets = async (
     // computed here — the exact value the person typed, masked to its
     // structural prefix, plus a scanner pass for anything alongside it. An
     // agent chooses the target, never the text.
+    //
+    // The length floor is what stops this being a defacement tool: the rewrite
+    // replaces every occurrence of the submitted value, so a card naming
+    // somebody else's message plus a presser who types a common word would
+    // otherwise scribble over that message. Nothing shorter than the shortest
+    // credential the scanner will match is worth scrubbing.
     let redactedMessageId: string | null = null
-    if (placement.redactMessageId) {
+    if (placement.redactMessageId && placement.value.length >= MIN_REDACTABLE_SECRET_LENGTH) {
       const message = await tx.message.findFirst({
         select: { content: true, id: true },
         where: { id: placement.redactMessageId, threadId: input.threadId },
