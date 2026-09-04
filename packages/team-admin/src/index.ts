@@ -157,3 +157,9 @@ export {
   type MailboxAccessErrorCode,
   type ReachableMailbox,
 } from './mailbox-connection-access.js'
+
+export {
+  ConnectedMailPresentationError,
+  resolveConnectedMailPresentationAccess,
+  type ConnectedMailPresentationAccess,
+} from './connected-mail-presentation.js'

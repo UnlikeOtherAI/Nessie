@@ -272,6 +272,23 @@ draft cards return an **Open in Mail** doorway. `card_post` remains the single
 renderer for an agent-curated email preview or compose form — a dedicated
 `email_card` kind is forbidden.
 
+### Implemented presentation foundation
+
+The worker foundation now provides strict, content-free `mailSurfaceDoorway`
+metadata and the provider-neutral `mail_present` builtin. Its mailbox branch
+uses a shared presentation-access seam for the effective requester,
+per-agent connection access, live organisation and team entitlement, and
+ambiguity refusal. Its Gmail branch requires the current requester to own the
+named active Google connection. Both branches record the account's disclosure
+scope before writing the ordinary agent message and publish only the normal
+restricted-aware message event. The tool accepts no mail content and has no
+send path.
+
+`mailbox_compose` currently returns a `card_post`-compatible universal form
+template. A card response is only a normal user turn; a later `mailbox_send`
+call still takes the existing pinned approval path. API provider routes and the
+admin Mail surface remain later slices.
+
 ## Reuse and component shape
 
 Extract the existing hosted-agent mailbox's visual pieces rather than building
