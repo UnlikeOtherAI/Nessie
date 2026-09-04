@@ -40,7 +40,7 @@ export const WindowLayoutPopover = ({
     onClose={onClose}
     open={open}
     placement="bottom-start"
-    style={{ marginLeft: -27, marginTop: 20 }}
+    style={{ marginLeft: -27, marginTop: 36 }}
   >
     <div
       className="desktop-window-layout-content"
